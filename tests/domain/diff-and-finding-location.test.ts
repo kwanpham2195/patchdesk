@@ -37,6 +37,8 @@ describe("PatchParser and FindingLocationMapper", () => {
     expect(mapFindingLocation(files, { file: "src/a.ts", lineStart: 99, diffSide: "new" })).toMatchObject({ mappingStatus: "invalid_line", postable: false });
     expect(mapFindingLocation(files, { file: "missing.ts", lineStart: 1, diffSide: "new" })).toMatchObject({ mappingStatus: "unmapped", postable: false });
     expect(mapFindingLocation(files, { file: "image.png", lineStart: 1, diffSide: "new" })).toMatchObject({ mappingStatus: "unmapped", postable: false, warning: "binary" });
+    const omitted = parseUnifiedPatch("diff --git a/large.ts b/large.ts\ndiff too large to display\n");
+    expect(mapFindingLocation(omitted, { file: "large.ts", lineStart: 1, diffSide: "new" })).toEqual({ mappingStatus: "unmapped", postable: false, warning: "omitted" });
   });
 
   it("converts only same-side mapped ranges into GitHub coordinates", () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DiffWorkbench } from "./components/diff-workbench";
 
 export type DashboardScreenState =
   | "empty"
@@ -56,6 +57,7 @@ type Preview = {
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
 export function App({ initialState }: AppProps): React.JSX.Element {
+  const diffFixture = typeof window !== "undefined" && window.location.hash === "#diff-fixture";
   const [view, setView] = useState<View>("pending");
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
@@ -120,6 +122,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   useEffect(() => {
     void load();
   }, []);
+
+  if (diffFixture) return <DiffWorkbench patch={fixturePatch} finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }} />;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
@@ -333,6 +337,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     </main>
   );
 }
+
+const fixturePatch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1 +1 @@\n-old\n+new\n";
 
 function Pending({
   state,
