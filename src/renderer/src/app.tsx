@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DiffWorkbench } from "./components/diff-workbench";
+import { ReviewWorkbench } from "./components/review-workbench";
 import { SafeRunPanel } from "./components/safe-run-panel";
 
 export type DashboardScreenState =
@@ -60,6 +61,7 @@ type Preview = {
 export function App({ initialState }: AppProps): React.JSX.Element {
   const diffFixture = typeof window !== "undefined" && window.location.hash === "#diff-fixture";
   const runFixture = typeof window !== "undefined" && window.location.hash === "#run-fixture";
+  const workbenchFixture = typeof window !== "undefined" && window.location.hash === "#workbench-fixture";
   const [view, setView] = useState<View>("pending");
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
@@ -127,6 +129,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
 
   if (diffFixture) return <DiffWorkbench patch={fixturePatch} finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }} />;
   if (runFixture) return <SafeRunPanel sessionId="fixture-session" attemptId="001" />;
+  if (workbenchFixture) return <ReviewWorkbench result={workbenchFixtureData.result as never} draft={workbenchFixtureData.draft} comments={workbenchFixtureData.comments as never} checks={workbenchFixtureData.checks} history={workbenchFixtureData.history} debugHref={workbenchFixtureData.debugHref} />;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
@@ -342,6 +345,25 @@ export function App({ initialState }: AppProps): React.JSX.Element {
 }
 
 const fixturePatch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1 +1 @@\n-old\n+new\n";
+
+const workbenchFixtureData = {
+  result: {
+    changeSummary: "Review completed for Patchdesk workbench",
+    verdict: "comment",
+    summary: "One mapped finding and one finding that needs manual placement.",
+    findings: [
+      { id: "mapped", severity: "P1", title: "Keep writes behind the stale-head check", file: "src/services/review-workbench.ts", lineStart: 42, diffSide: "new", explanation: "A GitHub adapter must never bypass the current head check.", suggestedComment: "Keep the stale-head check at the write boundary.", confidence: "high", mappingStatus: "mapped" },
+      { id: "unmapped", severity: "P2", title: "Document the manual placement", explanation: "This review point has no verified diff coordinate.", confidence: "medium", mappingStatus: "unmapped" },
+    ],
+    validationPlan: ["pnpm test -- --run review-workbench", "pnpm test:e2e -- --grep completed-review"],
+    assumptions: ["The head SHA remains current while this local draft is edited."],
+  },
+  draft: { summaryBody: "One mapped finding and one finding that needs manual placement.", comments: [{ findingId: "mapped", body: "Keep the stale-head check at the write boundary.", postability: "postable" as const }] },
+  comments: { threads: [{ id: "thread-1", state: "open" as const, location: { path: "src/services/review-workbench.ts", line: 42 }, comments: [{ id: "comment-1", author: "reviewer", body: "Existing GitHub review comment.", createdAt: "2026-07-16T00:00:00.000Z" as never, url: "https://github.com/centraldigital/patchdesk/pull/1#discussion_r1" }] }] },
+  checks: { overall: "failing" as const, checks: [{ name: "unit", required: true as const, status: "completed" as const, conclusion: "failure" as const, url: "https://github.com/centraldigital/patchdesk/actions/runs/1" }, { name: "docs", required: false as const, status: "queued" as const }] },
+  history: [{ id: "001", state: "ReviewCompleted" as const }, { id: "002", state: "ReviewFailed" as const }, { id: "003", state: "Stale" as const }, { id: "004", state: "Discarded" as const }, { id: "005", state: "Merged" as const }, { id: "006", state: "IgnoredLateResult" as const }],
+  debugHref: "/debug/fixture-session",
+};
 
 function Pending({
   state,
