@@ -4,9 +4,9 @@ import { createDesktopLifecycle } from "../src/main/app-lifecycle";
 import { preloadScriptPath } from "../src/main/electron-paths";
 
 describe("desktop lifecycle", () => {
-  it("uses electron-vite's emitted preload module in development and packaged output", () => {
+  it("uses Electron's CommonJS preload output in development and packaged output", () => {
     expect(preloadScriptPath("/app/out/main")).toBe(
-      "/app/out/preload/preload.mjs",
+      "/app/out/preload/preload.js",
     );
   });
 

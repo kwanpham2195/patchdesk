@@ -119,6 +119,25 @@ export class DashboardController {
     return ok({ profile: profile.value, dashboard: dashboard.value });
   }
 
+  /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
+  async refreshWatchlistRepo(
+    input: unknown,
+  ): Promise<Result<DashboardPrList, DashboardControllerFailure>> {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    const ref = repoRef(input);
+    if (ref._tag === "err") return ref;
+    const target = profile.value.repos.find(
+      (repo) =>
+        repo.host === ref.value.host &&
+        repo.owner === ref.value.owner &&
+        repo.repo === ref.value.repo,
+    );
+    if (target === undefined) return failure("not_found");
+    const refreshed = await this.dashboard.refreshRepository(profile.value, target);
+    return refreshed._tag === "ok" ? refreshed : failure("storage");
+  }
+
   async addWatchlistRepo(
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {

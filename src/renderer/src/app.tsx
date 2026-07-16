@@ -129,6 +129,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await api("/v1/dashboard/refresh", { method: "POST" });
     await load();
   };
+  const refreshRepo = async (repo: Repo): Promise<void> => {
+    await api("/v1/dashboard/refresh/repository", {
+      method: "POST",
+      body: repo,
+    });
+    await load();
+  };
   const saveProfile = async (): Promise<void> => {
     const exists = profiles.some((profile) => profile.id === profileDraft.id);
     await api("/v1/profiles", {
@@ -253,7 +260,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             {dashboard?.dashboard.repos.map(({ repo, state: outcome }) => (
               <p key={key(repo)} className="mt-2 text-sm">
                 {repo.owner}/{repo.repo}{" "}
-                <small className="text-slate-400">{outcome}</small>
+                <small className="text-slate-400">{outcome}</small>{" "}
+                <button
+                  aria-label={`Refresh ${repo.owner}/${repo.repo}`}
+                  onClick={() => void refreshRepo(repo)}
+                >
+                  Refresh repo
+                </button>
               </p>
             ))}
           </section>
@@ -288,6 +301,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               onPath={editPath}
               onRemove={remove}
               onArchive={archive}
+              onRefreshRepo={refreshRepo}
             />
           )}
         </section>
@@ -442,6 +456,7 @@ function Settings({
   onPath,
   onRemove,
   onArchive,
+  onRefreshRepo,
 }: {
   readonly dashboard?: Dashboard;
   readonly paths: Record<string, string>;
@@ -476,6 +491,7 @@ function Settings({
   readonly onPath: (repo: Repo) => void;
   readonly onRemove: (repo: Repo) => void;
   readonly onArchive: (repo: Repo) => void;
+  readonly onRefreshRepo: (repo: Repo) => void;
 }): React.JSX.Element {
   return (
     <>
@@ -591,6 +607,7 @@ function Settings({
           </label>
           <button onClick={() => onPath(repo)}>Save path</button>
           <button onClick={() => onRemove(repo)}>Remove repo</button>
+          <button onClick={() => onRefreshRepo(repo)}>Refresh repo</button>
           <button onClick={() => onArchive(repo)}>
             {repo.archived ? "Restore repo" : "Archive repo"}
           </button>

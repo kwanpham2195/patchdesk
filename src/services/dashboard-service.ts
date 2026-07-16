@@ -114,6 +114,14 @@ export class DashboardService {
     return ok({ rows, repos, directEntryAvailable: true });
   }
 
+  /** Refreshes one explicit watchlist repo without reading its siblings. */
+  async refreshRepository(
+    profile: WorkspaceProfileConfig,
+    repo: WatchedRepoConfig,
+  ): Promise<Result<DashboardPrList, never>> {
+    return await this.listPendingPullRequests({ ...profile, repos: [repo] });
+  }
+
   async discoverWorkspaceRepos(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<ReadonlyArray<DiscoveredRepo>, never>> {

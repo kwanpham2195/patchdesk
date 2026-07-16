@@ -110,6 +110,26 @@ describe("dashboard renderer API flow", () => {
       ),
     ).toBe(false);
   });
+
+  it("refreshes only the selected watchlist repository", async () => {
+    const fetch = installApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText(/Real dashboard row/);
+
+    await user.click(
+      screen.getByRole("button", { name: "Refresh centraldigital/patchdesk" }),
+    );
+
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/dashboard/refresh/repository") &&
+          (init as RequestInit | undefined)?.method === "POST" &&
+          String((init as RequestInit).body).includes("patchdesk"),
+      ),
+    ).toBe(true);
+  });
 });
 
 function installApi(
