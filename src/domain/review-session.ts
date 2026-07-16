@@ -12,8 +12,17 @@ import {
   type PullRequestNumber,
   type GitSha,
 } from "./ids";
-import { hasActiveDraft, type ReviewDraft } from "./review-draft";
-import type { ReviewAttempt, ReviewAttemptState } from "./review-attempt";
+import type { PullRequestSnapshot } from "./github-context";
+import {
+  hasActiveDraft,
+  type GitHubReviewEvent,
+  type ReviewDraft,
+} from "./review-draft";
+import type {
+  ReviewAttempt,
+  ReviewAttemptState,
+  ReviewFailureSummary,
+} from "./review-attempt";
 import type { ReviewResult } from "./review-result";
 import { err, ok, type Result } from "./result";
 
@@ -30,17 +39,42 @@ export type ReviewSessionState =
   | { readonly _tag: "Created" }
   | { readonly _tag: "Running"; readonly attemptId: ReviewAttemptId }
   | { readonly _tag: "ReviewCompleted"; readonly attemptId: ReviewAttemptId }
-  | { readonly _tag: "ReviewFailed"; readonly attemptId: ReviewAttemptId }
+  | {
+      readonly _tag: "ReviewFailed";
+      readonly attemptId: ReviewAttemptId;
+      readonly error: ReviewFailureSummary;
+    }
   | { readonly _tag: "Stale"; readonly reason: "head_changed" | "orphaned_run"; readonly currentHeadSha?: GitSha }
   | { readonly _tag: "Discarded"; readonly attemptId: ReviewAttemptId }
   | { readonly _tag: "Merged"; readonly mergedAt: IsoTimestamp };
 
+export type ReviewWorktreeRef = {
+  readonly path: AbsolutePath;
+  readonly headSha: GitSha;
+};
+
+export type SubmittedReviewRef = {
+  readonly reviewId: string;
+  readonly event: GitHubReviewEvent;
+  readonly submittedAt: IsoTimestamp;
+};
+
+export type MergeDecisionRef = {
+  readonly mergedAt: IsoTimestamp;
+  readonly mergeCommitSha?: GitSha;
+};
+
 export type ReviewSession = {
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
+  readonly pr: PullRequestSnapshot;
+  readonly patchPath: AbsolutePath;
+  readonly worktree: ReviewWorktreeRef;
   readonly state: ReviewSessionState;
   readonly currentAttemptId?: ReviewAttemptId;
   readonly draft?: Pick<ReviewDraft, "state">;
+  readonly submittedReview?: SubmittedReviewRef;
+  readonly mergeDecision?: MergeDecisionRef;
   readonly visibleResult?: ReviewResult;
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
@@ -50,16 +84,23 @@ export type ActiveDraftBlocksRerun = { readonly _tag: "ActiveDraftBlocksRerun" }
 export type SessionImmutable = { readonly _tag: "SessionImmutable" };
 export type CannotAllocateAttempt = { readonly _tag: "CannotAllocateAttempt" };
 export type AttemptNotCurrent = { readonly _tag: "AttemptNotCurrent" };
+export type AttemptSessionMismatch = { readonly _tag: "AttemptSessionMismatch" };
 
 /** Construct a new deterministic session without filesystem or GitHub effects. */
 export function createReviewSession(input: {
   readonly key: ReviewSessionKey;
+  readonly pr: PullRequestSnapshot;
+  readonly patchPath: AbsolutePath;
+  readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
   readonly draft?: Pick<ReviewDraft, "state">;
 }): ReviewSession {
   return {
     id: createReviewSessionId(input.key),
     key: input.key,
+    pr: input.pr,
+    patchPath: input.patchPath,
+    worktree: input.worktree,
     state: { _tag: "Created" },
     ...(input.draft === undefined ? {} : { draft: input.draft }),
     createdAt: input.createdAt,
@@ -101,9 +142,12 @@ export function completeAttempt(
   result: ReviewResult,
   completedAt: IsoTimestamp,
   resultPath: AbsolutePath,
-): Result<{ readonly session: ReviewSession; readonly attempt: Pick<ReviewAttempt, "id" | "sessionId" | "state"> }, SessionImmutable> {
+): Result<{ readonly session: ReviewSession; readonly attempt: Pick<ReviewAttempt, "id" | "sessionId" | "state"> }, SessionImmutable | AttemptSessionMismatch> {
   if (session.state._tag === "Merged") {
     return err({ _tag: "SessionImmutable" });
+  }
+  if (attempt.sessionId !== session.id) {
+    return err({ _tag: "AttemptSessionMismatch" });
   }
 
   if (
@@ -158,6 +202,18 @@ export function discardCurrentAttempt(
 }
 
 /** Mark a session as terminal after a successful explicit merge action. */
-export function markSessionMerged(session: ReviewSession, mergedAt: IsoTimestamp): ReviewSession {
-  return { ...session, state: { _tag: "Merged", mergedAt }, updatedAt: mergedAt };
+export function markSessionMerged(
+  session: ReviewSession,
+  mergedAt: IsoTimestamp,
+): Result<ReviewSession, SessionImmutable> {
+  if (session.state._tag === "Merged") {
+    return err({ _tag: "SessionImmutable" });
+  }
+
+  return ok({
+    ...session,
+    state: { _tag: "Merged", mergedAt },
+    mergeDecision: { mergedAt },
+    updatedAt: mergedAt,
+  });
 }

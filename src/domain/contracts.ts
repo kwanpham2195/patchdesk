@@ -1,12 +1,14 @@
 import * as v from "valibot";
 
 import {
+  parseAbsolutePath,
   parseGitSha,
   parsePullRequestNumber,
   parseReviewAttemptId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type GitSha,
+  type AbsolutePath,
   type PullRequestNumber,
   type ReviewAttemptId,
   type ReviewSessionId,
@@ -49,7 +51,10 @@ export type ReviewPrWorkflowInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
   readonly attemptId: ReviewAttemptId;
-  readonly worktreePath: string;
+  readonly worktreePath: AbsolutePath;
+  readonly contextPath: AbsolutePath;
+  readonly reviewInputPath: AbsolutePath;
+  readonly patchPath: AbsolutePath;
 };
 
 export type StartReviewRequest = {
@@ -89,6 +94,9 @@ export const reviewPrWorkflowInputSchema = v.strictObject({
   sessionId: v.string(),
   attemptId: v.string(),
   worktreePath: v.pipe(v.string(), v.minLength(1)),
+  contextPath: v.pipe(v.string(), v.minLength(1)),
+  reviewInputPath: v.pipe(v.string(), v.minLength(1)),
+  patchPath: v.pipe(v.string(), v.minLength(1)),
 });
 
 /** Valibot schema for a Flue model result before Patchdesk maps finding locations. */
@@ -155,7 +163,11 @@ export function parseReviewSessionStorageFile(
   ) return invalid("storage");
 
   if (parsed.output.state._tag === "Running") {
-    if (stateAttemptId === undefined) {
+    if (
+      stateAttemptId === undefined ||
+      currentAttemptId === undefined ||
+      currentAttemptId.value !== stateAttemptId.value
+    ) {
       return invalid("storage");
     }
     return ok({
@@ -177,17 +189,32 @@ export function parseReviewPrWorkflowInput(
   input: unknown,
 ): Result<ReviewPrWorkflowInput, InvalidDomainContract> {
   const parsed = v.safeParse(reviewPrWorkflowInputSchema, input);
-  if (!parsed.success || !parsed.output.worktreePath.startsWith("/")) return invalid("flue");
+  if (!parsed.success) return invalid("flue");
 
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
   const sessionId = parseReviewSessionId(parsed.output.sessionId);
   const attemptId = parseReviewAttemptId(parsed.output.attemptId);
-  if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err") return invalid("flue");
+  const worktreePath = parseAbsolutePath(parsed.output.worktreePath);
+  const contextPath = parseAbsolutePath(parsed.output.contextPath);
+  const reviewInputPath = parseAbsolutePath(parsed.output.reviewInputPath);
+  const patchPath = parseAbsolutePath(parsed.output.patchPath);
+  if (
+    profileId._tag === "err" ||
+    sessionId._tag === "err" ||
+    attemptId._tag === "err" ||
+    worktreePath._tag === "err" ||
+    contextPath._tag === "err" ||
+    reviewInputPath._tag === "err" ||
+    patchPath._tag === "err"
+  ) return invalid("flue");
   return ok({
     profileId: profileId.value,
     sessionId: sessionId.value,
     attemptId: attemptId.value,
-    worktreePath: parsed.output.worktreePath,
+    worktreePath: worktreePath.value,
+    contextPath: contextPath.value,
+    reviewInputPath: reviewInputPath.value,
+    patchPath: patchPath.value,
   });
 }
 

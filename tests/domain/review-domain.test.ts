@@ -56,6 +56,15 @@ const times = {
   merged: mustParse(parseIsoTimestamp("2026-07-16T00:02:00.000Z")),
 };
 
+const sessionContext = {
+  pr: { headSha: ids.headSha, isDraft: false, isOpen: true },
+  patchPath: mustParse(parseAbsolutePath("/tmp/patch.diff")),
+  worktree: {
+    path: mustParse(parseAbsolutePath("/tmp/worktree")),
+    headSha: ids.headSha,
+  },
+};
+
 describe("Patchdesk review domain", () => {
   it("parses a workspace profile and rejects unknown config keys", () => {
     const valid = parseWorkspaceProfileConfig({
@@ -100,6 +109,30 @@ describe("Patchdesk review domain", () => {
       _tag: "err",
       error: { _tag: "InvalidPullRequestInput" },
     });
+  });
+
+  it("rejects invalid host, owner, repo, PR number, SHA, and finding severity", () => {
+    expect(parseGitHubHost("github.com/path")).toMatchObject({ _tag: "err" });
+    expect(parseGitHubOwner("../centraldigital")).toMatchObject({ _tag: "err" });
+    expect(parseGitHubRepoName("patchdesk/extra")).toMatchObject({ _tag: "err" });
+    expect(parsePullRequestNumber(0)).toMatchObject({ _tag: "err" });
+    expect(parseGitSha("ABCDEF1234567890abcdef1234567890abcdef12")).toMatchObject({ _tag: "err" });
+    expect(
+      parseModelReviewResult({
+        changeSummary: "Adds parsing.",
+        verdict: "comment",
+        summary: "One note.",
+        findings: [{
+          id: "finding-1",
+          severity: "critical",
+          title: "Invalid severity",
+          explanation: "The value is outside the contract.",
+          confidence: "high",
+        }],
+        validationPlan: [],
+        assumptions: [],
+      }),
+    ).toMatchObject({ _tag: "err", error: { _tag: "InvalidModelReviewResult" } });
   });
 
   it("creates a stable path-safe session ID whose collision hash distinguishes profiles", () => {
@@ -200,6 +233,7 @@ describe("Patchdesk review domain", () => {
   it("blocks reruns while a local draft is active", () => {
     const session = createReviewSession({
       key: ids,
+      ...sessionContext,
       createdAt: times.created,
       draft: { state: { _tag: "LocalDraft" } },
     });
@@ -213,6 +247,7 @@ describe("Patchdesk review domain", () => {
   it("ignores a late result from a non-current attempt without changing the session result", () => {
     const session = createReviewSession({
       key: ids,
+      ...sessionContext,
       createdAt: times.created,
     });
     const started = mustParse(startNextAttempt(session, ["001"]));
@@ -245,18 +280,23 @@ describe("Patchdesk review domain", () => {
   it("makes a successfully merged session immutable", () => {
     const session = createReviewSession({
       key: ids,
+      ...sessionContext,
       createdAt: times.created,
     });
-    const merged = markSessionMerged(session, times.merged);
+    const merged = mustParse(markSessionMerged(session, times.merged));
 
     expect(startNextAttempt(merged, [])).toMatchObject({
+      _tag: "err",
+      error: { _tag: "SessionImmutable" },
+    });
+    expect(markSessionMerged(merged, times.completed)).toMatchObject({
       _tag: "err",
       error: { _tag: "SessionImmutable" },
     });
   });
 
   it("marks a completion after discard as an ignored late result", () => {
-    const session = createReviewSession({ key: ids, createdAt: times.created });
+    const session = createReviewSession({ key: ids, ...sessionContext, createdAt: times.created });
     const started = mustParse(startNextAttempt(session, []));
     const discarded = mustParse(
       discardCurrentAttempt(started.session, started.attemptId, times.completed),
@@ -290,6 +330,40 @@ describe("Patchdesk review domain", () => {
     });
   });
 
+  it("rejects a matching attempt ID that belongs to a different session", () => {
+    const session = createReviewSession({ key: ids, ...sessionContext, createdAt: times.created });
+    const started = mustParse(startNextAttempt(session, []));
+    const otherSession = createReviewSession({
+      key: { ...ids, profileId: mustParse(parseWorkspaceProfileId("other-profile")) },
+      ...sessionContext,
+      createdAt: times.created,
+    });
+    const result = mustParse(
+      parseReviewResult({
+        changeSummary: "Adds strict review parsing.",
+        verdict: "comment",
+        summary: "One note.",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+      }),
+    );
+
+    expect(
+      completeAttempt(
+        started.session,
+        {
+          id: started.attemptId,
+          sessionId: otherSession.id,
+          state: { _tag: "Running", flueRunId: "run-wrong-session" },
+        },
+        result,
+        times.completed,
+        mustParse(parseAbsolutePath("/tmp/result.json")),
+      ),
+    ).toMatchObject({ _tag: "err", error: { _tag: "AttemptSessionMismatch" } });
+  });
+
   it("parses strict boundary contracts for config, GitHub, storage, Flue, and UI requests", () => {
     expect(parsePatchdeskConfig({ recentPrs: [] })).toMatchObject({ _tag: "ok" });
     expect(parsePatchdeskConfig({ recentPrs: [], typo: true })).toMatchObject({
@@ -318,13 +392,56 @@ describe("Patchdesk review domain", () => {
       }),
     ).toMatchObject({ _tag: "ok" });
     expect(
+      parseReviewSessionStorageFile({
+        id: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__000000000000",
+        currentAttemptId: "001",
+        state: { _tag: "Running", attemptId: "002" },
+      }),
+    ).toMatchObject({ _tag: "err", error: { _tag: "InvalidDomainContract", boundary: "storage" } });
+    expect(
       parseReviewPrWorkflowInput({
         profileId: "cfw",
         sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__000000000000",
         attemptId: "001",
         worktreePath: "/tmp/worktree",
+        contextPath: "/tmp/context.json",
+        reviewInputPath: "/tmp/review-input.md",
+        patchPath: "/tmp/patch.diff",
       }),
     ).toMatchObject({ _tag: "ok" });
+    expect(
+      parseReviewPrWorkflowInput({
+        profileId: "cfw",
+        sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__000000000000",
+        attemptId: "001",
+        worktreePath: "/tmp/worktree\0unsafe",
+        contextPath: "/tmp/context.json",
+        reviewInputPath: "/tmp/review-input.md",
+        patchPath: "/tmp/patch.diff",
+      }),
+    ).toMatchObject({ _tag: "err", error: { _tag: "InvalidDomainContract", boundary: "flue" } });
+    expect(
+      parseReviewPrWorkflowInput({
+        profileId: "cfw",
+        sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__000000000000",
+        attemptId: "001",
+        worktreePath: "/tmp/worktree",
+        contextPath: "relative/context.json",
+        reviewInputPath: "/tmp/review-input.md",
+        patchPath: "/tmp/patch.diff",
+      }),
+    ).toMatchObject({ _tag: "err", error: { _tag: "InvalidDomainContract", boundary: "flue" } });
+    expect(
+      parseReviewPrWorkflowInput({
+        profileId: "cfw",
+        sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__000000000000",
+        attemptId: "001",
+        worktreePath: "/tmp/worktree",
+        contextPath: "/tmp/context.json",
+        reviewInputPath: "/tmp/review-input\0unsafe.md",
+        patchPath: "relative/patch.diff",
+      }),
+    ).toMatchObject({ _tag: "err", error: { _tag: "InvalidDomainContract", boundary: "flue" } });
     expect(
       parseStartReviewRequest({ profileId: "cfw", value: "centraldigital/patchdesk#42" }),
     ).toMatchObject({ _tag: "ok" });
