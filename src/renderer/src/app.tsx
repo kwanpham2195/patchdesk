@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DiffWorkbench } from "./components/diff-workbench";
+import { SafeRunPanel } from "./components/safe-run-panel";
 
 export type DashboardScreenState =
   | "empty"
@@ -58,6 +59,7 @@ type Preview = {
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
 export function App({ initialState }: AppProps): React.JSX.Element {
   const diffFixture = typeof window !== "undefined" && window.location.hash === "#diff-fixture";
+  const runFixture = typeof window !== "undefined" && window.location.hash === "#run-fixture";
   const [view, setView] = useState<View>("pending");
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
@@ -124,6 +126,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   }, []);
 
   if (diffFixture) return <DiffWorkbench patch={fixturePatch} finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }} />;
+  if (runFixture) return <SafeRunPanel sessionId="fixture-session" attemptId="001" />;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });

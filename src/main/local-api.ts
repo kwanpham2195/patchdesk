@@ -18,6 +18,7 @@ import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
+import type { SafeRunProjection } from "../services/run-projection";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -37,6 +38,8 @@ export type LocalApiConfiguration = {
   readonly github?: GitHubReader;
   readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
+  /** Test-only adapter; production never accepts mutable run state over HTTP. */
+  readonly runProjection?: (input: { readonly runId: string; readonly sessionId: string; readonly attemptId: string }) => SafeRunProjection;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -140,7 +143,7 @@ export async function startLocalApiServer(
     if (sessionId === undefined || attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
     const run = runs.get(context.req.param("runId"), { sessionId, attemptId });
     if (run._tag === "err") return context.json({ error: "run_not_owned" }, 403);
-    const projected = projectSafeRun({ status: "disconnected", elapsedMs: run.value.projection.elapsedMs, step: "inspecting" });
+    const projected = projectSafeRun(configuration.runProjection?.({ runId: run.value.runId, sessionId, attemptId }) ?? { status: "disconnected", elapsedMs: run.value.projection.elapsedMs, step: "inspecting" });
     return projected._tag === "ok" ? context.json(projected.value) : context.json({ error: "invalid_run" }, 500);
   });
 
