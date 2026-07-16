@@ -20,6 +20,7 @@ import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { MergeWriteController } from "../services/merge-write-controller";
+import { ReviewCompletionService } from "../services/review-completion-service";
 import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import type { SafeRunProjection } from "../services/run-projection";
@@ -98,6 +99,7 @@ export async function startLocalApiServer(
     paths,
     () => new Date().toISOString() as never,
   );
+  const reviewCompletion = new ReviewCompletionService(paths, () => new Date().toISOString() as never);
   const merger = configuration.mergeWriter ?? (isGitHubMergeWriter(github) ? github : undefined);
   const mergeWrites = merger === undefined ? undefined : new MergeWriteController(profiles, new ReviewSessionStore(paths), { getPullRequest: github.getPullRequest.bind(github), getPullRequestChecks: github.getPullRequestChecks.bind(github), mergePullRequest: merger.mergePullRequest.bind(merger) }, ["squash", "merge", "rebase"], () => new Date().toISOString() as never);
   app.get("/v1/profiles", async (context) =>
@@ -182,6 +184,7 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/load", async (context) =>
     response(context, await reviewWorkbench.load(await jsonBody(context))),
   );
+  app.post("/v1/reviews/complete", async (context) => response(context, await reviewCompletion.complete(await jsonBody(context))));
   app.post("/v1/reviews/merge", async (context) => mergeWrites === undefined ? context.json({ error: "merge_unavailable" }, 503) : response(context, await mergeWrites.merge(await jsonBody(context))));
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId"); const attemptId = context.req.query("attemptId");
