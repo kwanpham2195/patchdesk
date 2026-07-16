@@ -1,0 +1,4 @@
+{
+  "fixture": "pure-rename",
+  "expected": "rename-only patch renders without line mapping"
+}

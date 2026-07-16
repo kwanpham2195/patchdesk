@@ -32,8 +32,10 @@ const safeSlug = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
 const attemptFolderSyntax = /^\d{3}$/;
-const sessionIdSyntax = /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__sha-[a-f0-9]{8}__[a-f0-9]{12}$/;
+const sessionIdSyntax =
+  /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__sha-[a-f0-9]{8}__[a-f0-9]{12}$/;
 const isoTimestampSyntax = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const contentHashSyntax = /^[a-f0-9]{64}$/;
 
 /** Parse a path-safe workspace profile identifier. */
 export function parseWorkspaceProfileId(
@@ -79,7 +81,9 @@ export function parsePullRequestNumber(
 }
 
 /** Parse a lower-case Git object SHA accepted by Patchdesk. */
-export function parseGitSha(input: unknown): Result<GitSha, InvalidDomainValue> {
+export function parseGitSha(
+  input: unknown,
+): Result<GitSha, InvalidDomainValue> {
   if (typeof input !== "string" || !shaSyntax.test(input)) {
     return err({ _tag: "InvalidDomainValue", field: "gitSha" });
   }
@@ -109,7 +113,11 @@ export function parseReviewSessionId(
 export function parseReviewAttemptId(
   input: unknown,
 ): Result<ReviewAttemptId, InvalidDomainValue> {
-  if (typeof input !== "string" || !attemptFolderSyntax.test(input) || input === "000") {
+  if (
+    typeof input !== "string" ||
+    !attemptFolderSyntax.test(input) ||
+    input === "000"
+  ) {
     return err({ _tag: "InvalidDomainValue", field: "reviewAttemptId" });
   }
 
@@ -127,11 +135,26 @@ export function parseIsoTimestamp(
   return ok(brand(input));
 }
 
+/** Parse a lower-case SHA-256 content hash used to version local review artifacts. */
+export function parseContentHash(
+  input: unknown,
+): Result<ContentHash, InvalidDomainValue> {
+  if (typeof input !== "string" || !contentHashSyntax.test(input)) {
+    return err({ _tag: "InvalidDomainValue", field: "contentHash" });
+  }
+
+  return ok(brand(input));
+}
+
 /** Parse an absolute local filesystem path without performing filesystem I/O. */
 export function parseAbsolutePath(
   input: unknown,
 ): Result<AbsolutePath, InvalidDomainValue> {
-  if (typeof input !== "string" || !input.startsWith("/") || input.includes("\0")) {
+  if (
+    typeof input !== "string" ||
+    !input.startsWith("/") ||
+    input.includes("\0")
+  ) {
     return err({ _tag: "InvalidDomainValue", field: "absolutePath" });
   }
 
@@ -201,7 +224,12 @@ function parseSafeSlug<Name extends string>(
   input: unknown,
   field: string,
 ): Result<Brand<string, Name>, InvalidDomainValue> {
-  if (typeof input !== "string" || !safeSlug.test(input) || input === "." || input === "..") {
+  if (
+    typeof input !== "string" ||
+    !safeSlug.test(input) ||
+    input === "." ||
+    input === ".."
+  ) {
     return err({ _tag: "InvalidDomainValue", field });
   }
 

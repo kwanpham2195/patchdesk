@@ -1,0 +1,4 @@
+{
+  "fixture": "missing-local-path",
+  "expected": "profile shows the missing checkout path"
+}

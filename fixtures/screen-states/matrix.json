@@ -1,0 +1,40 @@
+{
+  "screens": [
+    {
+      "screen": "dashboard",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "launch",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "in-progress-workbench",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "completed-workbench",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "draft-sheet",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "submit-dialog",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "merge-confirmation",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "history",
+      "states": ["loading", "degraded", "error", "success"]
+    },
+    {
+      "screen": "settings",
+      "states": ["loading", "degraded", "error", "success"]
+    }
+  ]
+}

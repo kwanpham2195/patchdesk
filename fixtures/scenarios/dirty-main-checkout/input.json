@@ -1,0 +1,4 @@
+{
+  "fixture": "dirty-main-checkout",
+  "expected": "existing checkout stays unchanged"
+}

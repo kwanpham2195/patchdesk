@@ -1,0 +1,4 @@
+{
+  "fixture": "unmapped-findings",
+  "expected": "finding remains visible and cannot become inline feedback"
+}

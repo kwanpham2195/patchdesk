@@ -1,0 +1,4 @@
+{
+  "fixture": "invalid-flue-json",
+  "expected": "model output parse failure is safe and typed"
+}
