@@ -26,6 +26,7 @@ export type DashboardRepoState =
   | "missing_local_path"
   | "github_auth"
   | "github_read"
+  | "archived"
   | "no_open_prs";
 export type DashboardRow = {
   readonly summary: PullRequestSummary;
@@ -57,20 +58,27 @@ export class DashboardService {
   async listPendingPullRequests(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<DashboardPrList, never>> {
+    const archivedRepos = profile.repos
+      .filter((repo) => repo.archived === true)
+      .map((repo) => ({ repo, state: "archived" as const }));
+    const activeRepos = profile.repos.filter((repo) => repo.archived !== true);
     const auth = await this.github.resolveAuthenticatedAccount(profile);
     if (auth._tag === "err")
       return ok({
         rows: [],
-        repos: profile.repos.map((repo) => ({
-          repo,
-          state: mapFailure(auth.error),
-        })),
+        repos: [
+          ...archivedRepos,
+          ...activeRepos.map((repo) => ({
+            repo,
+            state: mapFailure(auth.error),
+          })),
+        ],
         directEntryAvailable: true,
       });
 
     const rows: DashboardRow[] = [];
-    const repos: DashboardRepo[] = [];
-    for (const repo of profile.repos) {
+    const repos: DashboardRepo[] = [...archivedRepos];
+    for (const repo of activeRepos) {
       const list = await this.github.listOpenPullRequests({
         profile,
         repo: {

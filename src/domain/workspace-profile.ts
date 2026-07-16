@@ -19,6 +19,7 @@ export type WatchedRepoConfig = {
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
   readonly localPath?: AbsolutePath;
+  readonly archived?: boolean;
 };
 
 export type WorkspaceProfileConfig = {
@@ -46,6 +47,7 @@ const rawWatchedRepoSchema = v.strictObject({
   owner: v.string(),
   repo: v.string(),
   localPath: v.optional(v.string()),
+  archived: v.optional(v.boolean()),
 });
 
 /** Valibot boundary schema for a persisted workspace-profile JSON record. */
@@ -72,7 +74,10 @@ export function parseWorkspaceProfileConfig(
   const id = parseWorkspaceProfileId(parsed.output.id);
   const githubHost = parseGitHubHost(parsed.output.githubHost);
   const ownerFilters = parseAll(parsed.output.ownerFilters, parseGitHubOwner);
-  const workspaceRoots = parseAll(parsed.output.workspaceRoots, parseAbsolutePath);
+  const workspaceRoots = parseAll(
+    parsed.output.workspaceRoots,
+    parseAbsolutePath,
+  );
   const rulePaths = parseAll(parsed.output.rulePaths, parseAbsolutePath);
   const repos = parseAll(parsed.output.repos, parseWatchedRepo);
   if (
@@ -104,7 +109,10 @@ function parseWatchedRepo(
   const host = parseGitHubHost(input.host);
   const owner = parseGitHubOwner(input.owner);
   const repo = parseGitHubRepoName(input.repo);
-  const localPath = input.localPath === undefined ? undefined : parseAbsolutePath(input.localPath);
+  const localPath =
+    input.localPath === undefined
+      ? undefined
+      : parseAbsolutePath(input.localPath);
   if (
     host._tag === "err" ||
     owner._tag === "err" ||
@@ -119,6 +127,7 @@ function parseWatchedRepo(
     owner: owner.value,
     repo: repo.value,
     ...(localPath === undefined ? {} : { localPath: localPath.value }),
+    ...(input.archived === undefined ? {} : { archived: input.archived }),
   });
 }
 

@@ -8,183 +8,234 @@ export type DashboardScreenState =
   | "error"
   | "archived"
   | "no_open_prs";
-
-export type AppProps = {
-  readonly initialState?: DashboardScreenState;
+export type AppProps = { readonly initialState?: DashboardScreenState };
+type View = "pending" | "settings";
+type Profile = {
+  readonly id: string;
+  readonly label: string;
+  readonly githubHost?: string;
+};
+type Repo = {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly localPath?: string;
+};
+type RepoOutcome = { readonly repo: Repo; readonly state: string };
+type PrRow = {
+  readonly summary: {
+    readonly ref: { readonly number: number };
+    readonly title: string;
+    readonly author: string;
+    readonly checkSummary?: { readonly overall: string };
+  };
+  readonly priority: string;
+  readonly badges: ReadonlyArray<string>;
+};
+type Dashboard = {
+  readonly profile: Profile;
+  readonly dashboard: {
+    readonly rows: ReadonlyArray<PrRow>;
+    readonly repos: ReadonlyArray<RepoOutcome>;
+  };
+};
+type Preview = {
+  readonly pr: {
+    readonly owner: string;
+    readonly repo: string;
+    readonly number: number;
+  };
+  readonly confirmation: {
+    readonly required: boolean;
+    readonly targetProfileId?: string;
+  };
 };
 
-type View = "pending" | "settings";
-
-const rows = [
-  {
-    id: 1842,
-    title: "Cache role permissions from master data",
-    author: "jessevu",
-    priority: "Review requested",
-    checks: "Passing",
-    badges: ["Review requested"],
-  },
-  {
-    id: 1817,
-    title: "Add CRM contact export",
-    author: "pmquan2cfw",
-    priority: "Recently updated",
-    checks: "Pending",
-    badges: ["Authored"],
-  },
-];
-
-/** Browserable, read-only dashboard shell for selecting an existing PR or entering one directly. */
-export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
+/** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
+export function App({ initialState }: AppProps): React.JSX.Element {
   const [view, setView] = useState<View>("pending");
-  const [entryOpen, setEntryOpen] = useState(false);
+  const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
+  const [dashboard, setDashboard] = useState<Dashboard | undefined>();
+  const [state, setState] = useState<DashboardScreenState>(
+    initialState ?? "loading",
+  );
   const [reference, setReference] = useState("");
-  const [showSwitch, setShowSwitch] = useState(false);
-  const [localPath, setLocalPath] = useState("");
-  const [activeProfile, setActiveProfile] = useState("cfw");
-  const [liveState, setLiveState] =
-    useState<DashboardScreenState>(initialState);
+  const [preview, setPreview] = useState<Preview | undefined>();
+  const [openedPr, setOpenedPr] = useState<string | undefined>();
+  const [newRepo, setNewRepo] = useState("");
+  const [paths, setPaths] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    void requestLocalApi("/v1/dashboard").then((payload) => {
-      if (!isRecord(payload) || !isRecord(payload.profile)) return;
-      if (typeof payload.profile.id === "string")
-        setActiveProfile(payload.profile.id);
-      if (
-        isRecord(payload.dashboard) &&
-        Array.isArray(payload.dashboard.repos)
-      ) {
-        const states = payload.dashboard.repos.map((repo) =>
-          isRecord(repo) ? repo.state : undefined,
-        );
-        if (states.includes("github_auth")) setLiveState("error");
-        else if (states.includes("missing_local_path"))
-          setLiveState("degraded");
-        else if (states.includes("no_open_prs")) setLiveState("no_open_prs");
-      }
-    });
-  }, []);
-
-  const previewReference = async (): Promise<void> => {
-    const payload = await requestLocalApi("/v1/direct-entry/preview", {
-      method: "POST",
-      body: JSON.stringify({ reference }),
-    });
-    if (
-      isRecord(payload) &&
-      isRecord(payload.confirmation) &&
-      payload.confirmation.required === true
-    ) {
-      setShowSwitch(true);
+  const load = async (): Promise<void> => {
+    if (typeof window === "undefined" || !("patchdesk" in window)) {
+      setState(initialState ?? "empty");
       return;
     }
-    if (reference.includes("github.example.test")) setShowSwitch(true);
+    setState("loading");
+    const [profilePayload, dashboardPayload] = await Promise.all([
+      api("/v1/profiles"),
+      api("/v1/dashboard"),
+    ]);
+    if (Array.isArray(profilePayload))
+      setProfiles(profilePayload.filter(isProfile));
+    if (isDashboard(dashboardPayload)) {
+      setDashboard(dashboardPayload);
+      const outcomes = dashboardPayload.dashboard.repos.map(
+        (item) => item.state,
+      );
+      setState(
+        outcomes.includes("github_auth") || outcomes.includes("github_read")
+          ? "error"
+          : outcomes.includes("archived")
+            ? "archived"
+            : outcomes.includes("no_open_prs") &&
+                dashboardPayload.dashboard.rows.length === 0
+              ? "no_open_prs"
+              : outcomes.includes("missing_local_path")
+                ? "degraded"
+                : dashboardPayload.dashboard.rows.length === 0
+                  ? "empty"
+                  : "success",
+      );
+    } else if (initialState === undefined) setState("empty");
   };
+  useEffect(() => {
+    void load();
+  }, []);
 
-  const selectProfile = async (profileId: string): Promise<void> => {
-    const payload = await requestLocalApi("/v1/profiles/select", {
+  const select = async (id: string): Promise<void> => {
+    await api("/v1/profiles/select", { method: "POST", body: { id } });
+    await load();
+  };
+  const addRepo = async (): Promise<void> => {
+    const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
+    if (match === null) return;
+    await api("/v1/watchlist", {
       method: "POST",
-      body: JSON.stringify({ id: profileId }),
+      body: {
+        host: dashboard?.profile.githubHost ?? "github.com",
+        owner: match[1],
+        repo: match[2],
+      },
     });
-    if (isRecord(payload) && typeof payload.id === "string")
-      setActiveProfile(payload.id);
+    setNewRepo("");
+    await load();
+  };
+  const editPath = async (repo: Repo): Promise<void> => {
+    await api("/v1/watchlist/path", {
+      method: "PATCH",
+      body: { ...repo, localPath: paths[key(repo)] ?? repo.localPath ?? "" },
+    });
+    await load();
+  };
+  const remove = async (repo: Repo): Promise<void> => {
+    await api("/v1/watchlist", { method: "DELETE", body: repo });
+    await load();
+  };
+  const previewEntry = async (): Promise<void> => {
+    const value = await api("/v1/direct-entry/preview", {
+      method: "POST",
+      body: { reference },
+    });
+    if (isPreview(value)) setPreview(value);
+  };
+  const confirmEntry = async (): Promise<void> => {
+    if (preview === undefined) return;
+    if (preview.confirmation.targetProfileId !== undefined)
+      await select(preview.confirmation.targetProfileId);
+    setOpenedPr(`${preview.pr.owner}/${preview.pr.repo}#${preview.pr.number}`);
+    setPreview(undefined);
   };
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto grid min-h-screen max-w-7xl grid-cols-[15rem_1fr]">
-        <aside className="border-r border-slate-800 bg-slate-950 px-5 py-7">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">
+        <aside className="border-r border-slate-800 px-5 py-7">
+          <p className="text-xs uppercase tracking-[.2em] text-cyan-300">
             Local pull request review
           </p>
           <h1 className="mt-2 text-3xl font-semibold">Patchdesk</h1>
-          <label
-            className="mt-8 block text-sm text-slate-400"
-            htmlFor="profile"
-          >
+          <label className="mt-8 block text-sm" htmlFor="profile">
             Workspace profile
           </label>
           <select
             id="profile"
-            className="mt-2 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2"
-            value={activeProfile}
-            onChange={(event) => void selectProfile(event.target.value)}
+            className="mt-2 w-full rounded bg-slate-900 p-2"
+            value={dashboard?.profile.id ?? ""}
+            onChange={(event) => void select(event.target.value)}
           >
-            <option value="cfw">CFW</option>
-            <option value="enterprise">Enterprise</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
           </select>
-          <nav className="mt-8 space-y-1" aria-label="Patchdesk navigation">
+          <nav className="mt-8 space-y-1">
             <button
-              className="w-full rounded px-3 py-2 text-left hover:bg-slate-800"
+              className="block w-full p-2 text-left"
               onClick={() => setView("pending")}
             >
               Pending PRs
             </button>
             <button
-              className="w-full rounded px-3 py-2 text-left hover:bg-slate-800"
+              className="block w-full p-2 text-left"
               onClick={() => setView("settings")}
             >
               Settings
             </button>
           </nav>
-          <section
-            className="mt-9 border-t border-slate-800 pt-5"
-            aria-label="Watched repositories"
-          >
-            <h2 className="text-sm font-semibold text-slate-300">Watchlist</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              centraldigital / cfw-bo-staff-api
-            </p>
-            <p className="text-xs text-slate-500">2 open pull requests</p>
+          <section className="mt-8 border-t border-slate-800 pt-4">
+            <h2>Watchlist</h2>
+            {dashboard?.dashboard.repos.map(({ repo, state: outcome }) => (
+              <p key={key(repo)} className="mt-2 text-sm">
+                {repo.owner}/{repo.repo}{" "}
+                <small className="text-slate-400">{outcome}</small>
+              </p>
+            ))}
           </section>
         </aside>
-
         <section className="px-8 py-7">
           {view === "pending" ? (
-            <PendingDashboard
-              state={liveState}
-              entryOpen={entryOpen}
-              onOpenEntry={() => setEntryOpen(true)}
-              onCloseEntry={() => setEntryOpen(false)}
+            <Pending
+              state={state}
+              {...(dashboard === undefined ? {} : { dashboard })}
               reference={reference}
-              onReferenceChange={setReference}
-              onPreview={() => void previewReference()}
+              onReference={setReference}
+              onPreview={() => void previewEntry()}
+              onRefresh={() => void load()}
+              {...(openedPr === undefined ? {} : { openedPr })}
             />
           ) : (
-            <Settings localPath={localPath} onLocalPathChange={setLocalPath} />
+            <Settings
+              {...(dashboard === undefined ? {} : { dashboard })}
+              paths={paths}
+              setPaths={setPaths}
+              newRepo={newRepo}
+              setNewRepo={setNewRepo}
+              onAdd={() => void addRepo()}
+              onPath={editPath}
+              onRemove={remove}
+            />
           )}
         </section>
       </div>
-      {showSwitch ? (
+      {preview?.confirmation.required ? (
         <section
           role="dialog"
-          aria-modal="true"
           aria-label="Switch workspace profile"
-          className="fixed inset-0 grid place-items-center bg-slate-950/80 p-6"
+          className="fixed inset-0 grid place-items-center bg-slate-950/80"
         >
-          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-            <h2 className="text-xl font-semibold">Switch workspace profile</h2>
-            <p className="mt-3 text-slate-300">
-              This pull request uses github.example.test. Switch from CFW to the
-              suggested Enterprise profile before opening it.
+          <div className="rounded bg-slate-900 p-6">
+            <h2>Switch workspace profile</h2>
+            <p className="mt-2">
+              Use the suggested profile before opening {preview.pr.owner}/
+              {preview.pr.repo}#{preview.pr.number}.
             </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                className="rounded border border-slate-600 px-3 py-2"
-                onClick={() => setShowSwitch(false)}
-              >
-                Keep CFW
-              </button>
-              <button
-                className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
-                onClick={() => {
-                  void selectProfile("enterprise");
-                  setShowSwitch(false);
-                }}
-              >
-                Switch profile
-              </button>
-            </div>
+            <button
+              className="mt-4 rounded bg-cyan-500 p-2 text-slate-950"
+              onClick={() => void confirmEntry()}
+            >
+              Switch profile and open pull request
+            </button>
           </div>
         </section>
       ) : null}
@@ -192,289 +243,219 @@ export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
   );
 }
 
-function PendingDashboard({
+function Pending({
   state,
-  entryOpen,
-  onOpenEntry,
-  onCloseEntry,
+  dashboard,
   reference,
-  onReferenceChange,
+  onReference,
   onPreview,
+  onRefresh,
+  openedPr,
 }: {
   readonly state: DashboardScreenState;
-  readonly entryOpen: boolean;
-  readonly onOpenEntry: () => void;
-  readonly onCloseEntry: () => void;
+  readonly dashboard?: Dashboard;
   readonly reference: string;
-  readonly onReferenceChange: (value: string) => void;
+  readonly onReference: (value: string) => void;
   readonly onPreview: () => void;
+  readonly onRefresh: () => void;
+  readonly openedPr?: string;
 }): React.JSX.Element {
   return (
     <>
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex justify-between">
         <div>
-          <p className="text-sm text-slate-400">CFW / pmquan2cfw</p>
-          <h2 className="mt-1 text-2xl font-semibold">Pending pull requests</h2>
-        </div>
-        <div className="flex gap-3">
-          <button
-            className="rounded border border-slate-700 px-3 py-2"
-            onClick={onOpenEntry}
-          >
-            Open pull request
-          </button>
-          <button className="rounded bg-slate-800 px-3 py-2">Refresh</button>
-        </div>
-      </header>
-      {state === "empty" ? <EmptyWatchlist onOpenEntry={onOpenEntry} /> : null}
-      {state === "loading" ? <LoadingRows /> : null}
-      {state === "error" ? (
-        <DashboardNotice
-          title="GitHub access unavailable"
-          detail="Refresh the watchlist after GitHub authentication is available. Direct PR entry remains available."
-          tone="error"
-        />
-      ) : null}
-      {state === "archived" ? (
-        <DashboardNotice
-          title="Archived or inaccessible repository"
-          detail="This watched repository cannot be listed. Remove it or keep it hidden from the dashboard."
-          tone="warning"
-        />
-      ) : null}
-      {state === "no_open_prs" ? (
-        <DashboardNotice
-          title="No pending pull requests"
-          detail="Refresh later or add another watched repository. Direct PR entry remains available."
-          tone="warning"
-        />
-      ) : null}
-      {state === "degraded" ? (
-        <DashboardNotice
-          title="Missing local path"
-          detail="GitHub metadata is available, but this repo has no local checkout configured. You can still open a PR directly."
-          tone="warning"
-        />
-      ) : null}
-      {state === "success" || state === "degraded" ? <PrRows /> : null}
-      {entryOpen ? (
-        <section
-          className="mt-6 rounded-xl border border-slate-700 bg-slate-900 p-5"
-          aria-label="Direct pull request entry"
-        >
-          <h3 className="text-lg font-semibold">Open a pull request</h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Paste a GitHub PR URL or use owner/repo#123. This does not start a
-            review.
+          <p className="text-slate-400">
+            {dashboard?.profile.label ?? "First run"}
           </p>
-          <label className="mt-4 block text-sm" htmlFor="pr-reference">
-            Pull request reference
-          </label>
-          <input
-            id="pr-reference"
-            className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2"
-            value={reference}
-            onChange={(event) => onReferenceChange(event.target.value)}
-            placeholder="centraldigital/repo#123"
-          />
-          <div className="mt-4 flex gap-3">
-            <button
-              className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
-              onClick={onPreview}
-            >
-              Preview pull request
-            </button>
-            <button
-              className="rounded border border-slate-600 px-3 py-2"
-              onClick={onCloseEntry}
-            >
-              Cancel
-            </button>
-          </div>
-        </section>
-      ) : null}
-    </>
-  );
-}
-
-function EmptyWatchlist({
-  onOpenEntry,
-}: {
-  readonly onOpenEntry: () => void;
-}): React.JSX.Element {
-  return (
-    <section className="mt-8 rounded-xl border border-dashed border-slate-700 bg-slate-900/70 p-8">
-      <h3 className="text-lg font-semibold">Your watchlist is empty</h3>
-      <p className="mt-2 text-slate-400">
-        Open a pull request to begin a local review.
-      </p>
-      <p className="mt-1 text-sm text-slate-500">
-        Add watched repos from Settings when you are ready.
-      </p>
-      <button
-        className="mt-5 rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
-        onClick={onOpenEntry}
-      >
-        Open pull request
-      </button>
-    </section>
-  );
-}
-
-function LoadingRows(): React.JSX.Element {
-  return (
-    <div className="mt-8 space-y-3" aria-label="Loading pull requests">
-      <div className="h-16 animate-pulse rounded bg-slate-800" />
-      <div className="h-16 animate-pulse rounded bg-slate-800" />
-    </div>
-  );
-}
-
-function DashboardNotice({
-  title,
-  detail,
-  tone,
-}: {
-  readonly title: string;
-  readonly detail: string;
-  readonly tone: "warning" | "error";
-}): React.JSX.Element {
-  return (
-    <section
-      className={`mt-7 rounded-lg border p-4 ${tone === "error" ? "border-red-900 bg-red-950/40" : "border-amber-800 bg-amber-950/30"}`}
-    >
-      <h3 className="font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-slate-300">{detail}</p>
-    </section>
-  );
-}
-
-function PrRows(): React.JSX.Element {
-  return (
-    <section className="mt-7 overflow-hidden rounded-xl border border-slate-800">
-      <div className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-slate-800 px-5 py-3 text-xs uppercase tracking-wide text-slate-400">
-        <span>Pull request</span>
-        <span>Checks</span>
-        <span>Priority</span>
-      </div>
-      {rows.map((row) => (
-        <button
-          key={row.id}
-          className="grid w-full grid-cols-[1fr_auto_auto] gap-4 border-b border-slate-800 px-5 py-4 text-left hover:bg-slate-900"
-        >
-          <span>
-            <strong>
-              #{row.id} {row.title}
-            </strong>
-            <small className="mt-1 block text-slate-400">{row.author}</small>
-          </span>
-          <span className="text-sm text-slate-300">{row.checks}</span>
-          <span className="rounded bg-slate-800 px-2 py-1 text-xs text-cyan-200">
-            {row.badges.join(", ")}
-          </span>
-        </button>
-      ))}
-    </section>
-  );
-}
-
-function Settings({
-  localPath,
-  onLocalPathChange,
-}: {
-  readonly localPath: string;
-  readonly onLocalPathChange: (value: string) => void;
-}): React.JSX.Element {
-  return (
-    <>
-      <header>
-        <p className="text-sm text-slate-400">Local configuration only</p>
-        <h2 className="mt-1 text-2xl font-semibold">Watchlist settings</h2>
-      </header>
-      <section className="mt-7 rounded-xl border border-slate-800 bg-slate-900 p-6">
-        <h3 className="font-semibold">centraldigital / cfw-bo-staff-api</h3>
-        <p className="mt-1 text-sm text-slate-400">
-          GitHub metadata is read-only. No GitHub write action is available
-          here.
-        </p>
-        <label className="mt-5 block text-sm" htmlFor="local-path">
-          Local path
-        </label>
-        <input
-          id="local-path"
-          className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2"
-          value={localPath}
-          onChange={(event) => onLocalPathChange(event.target.value)}
-          placeholder="/Users/you/Work/cfw/cfw-bo-staff-api"
-        />
-        <div className="mt-5 flex gap-3">
-          <button
-            className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
-            onClick={() =>
-              void requestLocalApi("/v1/watchlist/path", {
-                method: "PATCH",
-                body: JSON.stringify({
-                  host: "github.com",
-                  owner: "centraldigital",
-                  repo: "cfw-bo-staff-api",
-                  localPath,
-                }),
-              })
-            }
-          >
-            Save local path
-          </button>
-          <button
-            className="rounded border border-slate-600 px-3 py-2"
-            onClick={() =>
-              void requestLocalApi("/v1/github/access", { method: "POST" })
-            }
-          >
-            Test GitHub access
-          </button>
-          <button
-            className="rounded border border-red-900 px-3 py-2 text-red-200"
-            onClick={() =>
-              void requestLocalApi("/v1/watchlist", {
-                method: "DELETE",
-                body: JSON.stringify({
-                  host: "github.com",
-                  owner: "centraldigital",
-                  repo: "cfw-bo-staff-api",
-                }),
-              })
-            }
-          >
-            Remove repo
-          </button>
+          <h2 className="text-2xl font-semibold">Pending pull requests</h2>
         </div>
+        <button onClick={onRefresh}>Refresh</button>
+        <button onClick={onPreview}>Open pull request</button>
+      </header>
+      {openedPr ? (
+        <p className="mt-4 rounded bg-cyan-950 p-3">Opened {openedPr}</p>
+      ) : null}
+      <section className="mt-6 rounded border border-slate-800 p-4">
+        <label htmlFor="pr-reference">Pull request reference</label>
+        <input
+          id="pr-reference"
+          className="ml-3 rounded bg-slate-900 p-2"
+          value={reference}
+          onChange={(event) => onReference(event.target.value)}
+        />
+        <button className="ml-3" onClick={onPreview}>
+          Preview pull request
+        </button>
+      </section>
+      <Outcome state={state} repos={dashboard?.dashboard.repos ?? []} />
+      <section className="mt-6">
+        {dashboard?.dashboard.rows.map((row) => (
+          <article
+            key={row.summary.ref.number}
+            className="border-b border-slate-800 py-3"
+          >
+            <strong>
+              #{row.summary.ref.number} {row.summary.title}
+            </strong>
+            <p className="text-sm text-slate-400">
+              {row.summary.author} ·{" "}
+              {row.summary.checkSummary?.overall ?? "unknown"} ·{" "}
+              {row.badges.join(", ") || row.priority}
+            </p>
+          </article>
+        ))}
       </section>
     </>
   );
 }
-
-async function requestLocalApi(
+function Outcome({
+  state,
+  repos,
+}: {
+  readonly state: DashboardScreenState;
+  readonly repos: ReadonlyArray<RepoOutcome>;
+}): React.JSX.Element {
+  if (state === "loading") return <p className="mt-6">Loading dashboard…</p>;
+  if (state === "empty")
+    return (
+      <>
+        <p className="mt-6">Open a pull request to begin a local review.</p>
+        <p>Add a repo in Settings or enter a PR directly.</p>
+      </>
+    );
+  if (state === "degraded") return <p className="mt-6">Missing local path</p>;
+  return (
+    <section className="mt-6 space-y-2">
+      {repos
+        .filter((repo) => repo.state !== "ready")
+        .map(({ repo, state: outcome }) => (
+          <p key={key(repo)}>
+            {repo.owner}/{repo.repo}:{" "}
+            {outcome === "no_open_prs"
+              ? "No pending pull requests"
+              : outcome === "github_auth"
+                ? "GitHub authentication required"
+                : outcome === "github_read"
+                  ? "GitHub metadata unavailable"
+                  : outcome === "archived"
+                    ? "Archived repository"
+                    : outcome === "missing_local_path"
+                      ? "Missing local path"
+                      : outcome}
+          </p>
+        ))}
+    </section>
+  );
+}
+function Settings({
+  dashboard,
+  paths,
+  setPaths,
+  newRepo,
+  setNewRepo,
+  onAdd,
+  onPath,
+  onRemove,
+}: {
+  readonly dashboard?: Dashboard;
+  readonly paths: Record<string, string>;
+  readonly setPaths: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  readonly newRepo: string;
+  readonly setNewRepo: (value: string) => void;
+  readonly onAdd: () => void;
+  readonly onPath: (repo: Repo) => void;
+  readonly onRemove: (repo: Repo) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      <h2 className="text-2xl font-semibold">Watchlist settings</h2>
+      <div className="mt-4">
+        <label htmlFor="repo-add">Repository</label>
+        <input
+          id="repo-add"
+          value={newRepo}
+          onChange={(event) => setNewRepo(event.target.value)}
+          placeholder="owner/repo"
+        />
+        <button onClick={onAdd}>Add repo</button>
+      </div>
+      {dashboard?.dashboard.repos.map(({ repo }) => (
+        <section key={key(repo)} className="mt-5 border border-slate-800 p-4">
+          <h3>
+            {repo.owner}/{repo.repo}
+          </h3>
+          <label>
+            Local path{" "}
+            <input
+              value={paths[key(repo)] ?? repo.localPath ?? ""}
+              onChange={(event) =>
+                setPaths((current) => ({
+                  ...current,
+                  [key(repo)]: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <button onClick={() => onPath(repo)}>Save path</button>
+          <button onClick={() => onRemove(repo)}>Remove repo</button>
+        </section>
+      ))}
+    </>
+  );
+}
+async function api(
   path: string,
-  init: RequestInit = {},
+  init: { readonly method?: string; readonly body?: unknown } = {},
 ): Promise<unknown> {
   if (typeof window === "undefined" || !("patchdesk" in window))
     return undefined;
   const response = await fetch(
     new URL(path.slice(1), window.patchdesk.localApi.baseUrl),
     {
-      ...init,
+      ...(init.method === undefined ? {} : { method: init.method }),
       headers: {
         "Content-Type": "application/json",
         "X-Patchdesk-Capability": window.patchdesk.localApi.capability,
-        ...init.headers,
       },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     },
   ).catch(() => undefined);
-  return response === undefined || !response.ok
-    ? undefined
-    : await response.json().catch(() => undefined);
+  return response?.ok
+    ? await response.json().catch(() => undefined)
+    : undefined;
 }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
+function key(repo: Repo): string {
+  return `${repo.host}/${repo.owner}/${repo.repo}`;
+}
+function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+function isProfile(value: unknown): value is Profile {
+  return (
+    record(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string"
+  );
+}
+function isDashboard(value: unknown): value is Dashboard {
+  return (
+    record(value) &&
+    isProfile(value.profile) &&
+    record(value.dashboard) &&
+    Array.isArray(value.dashboard.rows) &&
+    Array.isArray(value.dashboard.repos)
+  );
+}
+function isPreview(value: unknown): value is Preview {
+  return (
+    record(value) &&
+    record(value.pr) &&
+    typeof value.pr.owner === "string" &&
+    typeof value.pr.repo === "string" &&
+    typeof value.pr.number === "number" &&
+    record(value.confirmation) &&
+    typeof value.confirmation.required === "boolean"
+  );
 }

@@ -259,6 +259,26 @@ describe("Milestone 5 dashboard service", () => {
     });
   });
 
+  it("emits an archived repo outcome without issuing a GitHub read", async () => {
+    const service = new DashboardService(new FakeGitHubAdapter({}));
+    const repo = profile.repos[0];
+    if (repo === undefined) throw new Error("fixture must include a repo");
+    const result = await service.listPendingPullRequests({
+      ...profile,
+      repos: [{ ...repo, archived: true }],
+    });
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        rows: [],
+        repos: [
+          { repo: { ...repo, archived: true }, state: "archived" },
+        ],
+        directEntryAvailable: true,
+      },
+    });
+  });
+
   it("discovers git-origin suggestions without modifying the watchlist", async () => {
     const service = new DashboardService(new FakeGitHubAdapter({}), {
       async findOrigins() {
