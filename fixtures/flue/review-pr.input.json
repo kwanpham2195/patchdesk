@@ -4,5 +4,6 @@
   "attemptId": "001",
   "contextPath": "/tmp/context.json",
   "reviewInputPath": "/tmp/review-input.md",
-  "patchPath": "/tmp/patch.diff"
+  "patchPath": "/tmp/patch.diff",
+  "worktreePath": "/tmp/worktree"
 }

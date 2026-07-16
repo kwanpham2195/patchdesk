@@ -1,12 +1,16 @@
+import { dirname, join } from "node:path";
+
 import { defineAgent, defineWorkflow } from "@flue/runtime";
 import * as v from "valibot";
 
+import { CommandRunner } from "../adapters/github/command-runner";
 import patchdeskCodeReview from "../skills/patchdesk-code-review/SKILL.md" with { type: "skill" };
 import { modelReviewResultSchema } from "../domain/review-result";
+import { runModelReview, type ReviewModelSession } from "../services/model-review-runner";
 
-const fixtureReviewAgent = defineAgent(() => ({
+const reviewAgent = defineAgent(() => ({
   instructions:
-    "This fixture performs no shell, sandbox, GitHub, network, or model operation.",
+    "Review one prepared pull request through the supplied read-only inspection tools. Return only schema-backed findings supported by evidence.",
   model: "openai/gpt-5.5",
   skills: [patchdeskCodeReview],
 }));
@@ -18,24 +22,30 @@ const reviewPrFixtureInput = v.strictObject({
   contextPath: v.pipe(v.string(), v.minLength(1)),
   reviewInputPath: v.pipe(v.string(), v.minLength(1)),
   patchPath: v.pipe(v.string(), v.minLength(1)),
+  worktreePath: v.pipe(v.string(), v.minLength(1)),
 });
 
 /**
- * Exercises current Flue source discovery and schema validation without exposing HTTP routes.
- * Intentionally omits `route` and `runs` exports until session/run ownership enforcement exists.
+ * A finite model operation. It deliberately exposes no route or run stream until Patchdesk
+ * can authorize the app capability and exact session/attempt ownership at both boundaries.
  */
 export default defineWorkflow({
-  agent: fixtureReviewAgent,
+  agent: reviewAgent,
   input: reviewPrFixtureInput,
   output: modelReviewResultSchema,
-  run({ input }) {
-    return {
-      changeSummary: `Prepared review ${input.sessionId}`,
-      verdict: "comment" as const,
-      summary: "No model invocation is configured for the deterministic fixture.",
-      findings: [],
-      validationPlan: [],
-      assumptions: ["The app-owned inspector is the only permitted data source."],
-    };
+  async run({ harness, input }) {
+    const commands = new CommandRunner();
+    const session = await harness.session();
+    return await runModelReview({
+      session: session as ReviewModelSession,
+      worktreePath: input.worktreePath,
+      contextPath: input.contextPath,
+      reviewInputPath: input.reviewInputPath,
+      debugPath: join(dirname(input.contextPath), "debug.json"),
+      async gitShow(argv) {
+        const result = await commands.runText({ argv, timeoutMs: 15_000 });
+        return result._tag === "ok" ? result.value : "";
+      },
+    });
   },
 });
