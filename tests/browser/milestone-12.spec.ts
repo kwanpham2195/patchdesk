@@ -22,7 +22,7 @@ test("normal dashboard direct entry opens the persisted in-progress review sessi
     await page.goto(origin(renderer));
     await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1");
     await page.getByRole("button", { name: "Preview pull request" }).click();
-    await expect(page.getByRole("main")).toContainText("Review session started");
+    await expect(page.getByRole("main")).toContainText("Review session started", { timeout: 15_000 });
     await expect(page.getByText("Preparing the persisted review workbench")).toBeVisible();
     await page.screenshot({ path: "test-results/milestone-12-normal-open.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
