@@ -98,7 +98,7 @@ describe("local API capability boundary", () => {
       method: "OPTIONS",
       headers: {
         Origin: allowedOrigin,
-        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Method": "PUT",
         "Access-Control-Request-Headers": "content-type,x-patchdesk-capability",
       },
     });
@@ -108,6 +108,9 @@ describe("local API capability boundary", () => {
     );
     expect(response.headers.get("access-control-allow-headers")).toContain(
       "X-Patchdesk-Capability",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "PUT",
     );
   });
 

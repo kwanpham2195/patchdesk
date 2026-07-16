@@ -8,15 +8,18 @@ import {
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
 import { DashboardService, type DashboardPrList } from "./dashboard-service";
 import {
   addWatchedRepo,
   createDefaultCfwProfile,
   ProfileSettingsService,
   removeWatchedRepo,
+  setWatchedRepoArchived,
   updateWatchedRepoPath,
 } from "./profile-service";
 import type { WatchedRepoRef } from "./profile-service";
+import type { OriginFinder } from "./dashboard-service";
 import {
   parsePullRequestEntry,
   profileSwitchConfirmation,
@@ -36,9 +39,10 @@ export class DashboardController {
   constructor(
     private readonly profiles: ProfileStore,
     github: GitHubReader,
+    origins?: OriginFinder,
   ) {
     this.settings = new ProfileSettingsService(profiles);
-    this.dashboard = new DashboardService(github);
+    this.dashboard = new DashboardService(github, origins);
   }
 
   async listProfiles(): Promise<
@@ -67,6 +71,34 @@ export class DashboardController {
       );
     const selected = await this.settings.selectProfile(profile.value.id);
     return selected._tag === "ok" ? ok(profile.value) : failure("storage");
+  }
+
+  /** Creates or updates a profile through the typed profile JSON boundary. */
+  async saveProfile(
+    input: unknown,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    if (!isObject(input)) return failure("invalid_input");
+    const id = parseWorkspaceProfileId(input.id);
+    if (id._tag === "err") return failure("invalid_input");
+    const existing = await this.profiles.load(id.value);
+    if (existing._tag === "err" && existing.error.reason !== "not_found")
+      return failure("storage");
+    const current = existing._tag === "ok" ? existing.value : undefined;
+    const profile = parseWorkspaceProfileConfig({
+      id: input.id,
+      label: input.label,
+      githubHost: input.githubHost,
+      ghAccount: input.ghAccount,
+      ownerFilters: current?.ownerFilters ?? [],
+      workspaceRoots: Array.isArray(input.workspaceRoots)
+        ? input.workspaceRoots
+        : (current?.workspaceRoots ?? []),
+      rulePaths: current?.rulePaths ?? [],
+      repos: current?.repos ?? [],
+    });
+    if (profile._tag === "err") return failure("invalid_input");
+    const saved = await this.settings.saveProfile(profile.value);
+    return saved._tag === "ok" ? ok(profile.value) : failure("storage");
   }
 
   async dashboardForActiveProfile(): Promise<
@@ -142,6 +174,39 @@ export class DashboardController {
     if (changed._tag === "err") return failure("not_found");
     const saved = await this.settings.saveProfile(changed.value);
     return saved._tag === "ok" ? ok(changed.value) : failure("storage");
+  }
+
+  async archiveWatchlistRepo(
+    input: unknown,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    const ref = repoRef(input);
+    if (
+      ref._tag === "err" ||
+      !isObject(input) ||
+      typeof input.archived !== "boolean"
+    )
+      return failure("invalid_input");
+    const changed = setWatchedRepoArchived(
+      profile.value,
+      ref.value,
+      input.archived,
+    );
+    if (changed._tag === "err") return failure("not_found");
+    const saved = await this.settings.saveProfile(changed.value);
+    return saved._tag === "ok" ? ok(changed.value) : failure("storage");
+  }
+
+  async discoverWorkspaceRepos(): Promise<
+    Result<ReadonlyArray<WatchedRepoRef>, DashboardControllerFailure>
+  > {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    const discovered = await this.dashboard.discoverWorkspaceRepos(
+      profile.value,
+    );
+    return discovered._tag === "ok" ? discovered : failure("storage");
   }
 
   async previewDirectEntry(

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { createDesktopLifecycle } from "../src/main/app-lifecycle";
+import { preloadScriptPath } from "../src/main/electron-paths";
 
 describe("desktop lifecycle", () => {
+  it("uses electron-vite's emitted preload module in development and packaged output", () => {
+    expect(preloadScriptPath("/app/out/main")).toBe(
+      "/app/out/preload/preload.mjs",
+    );
+  });
+
   it("health-checks the local API before showing the workbench and stops it on quit", async () => {
     const events: Array<string> = [];
     const lifecycle = createDesktopLifecycle({

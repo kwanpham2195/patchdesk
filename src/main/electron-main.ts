@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 
 import { createDesktopLifecycle } from "./app-lifecycle";
+import { preloadScriptPath } from "./electron-paths";
 import { createAppCapability } from "./ipc-contract";
 import {
   healthCheckLocalApi,
@@ -50,7 +51,7 @@ const desktopLifecycle = createDesktopLifecycle({
         ],
         contextIsolation: true,
         nodeIntegration: false,
-        preload: join(__dirname, "preload.js"),
+        preload: preloadScriptPath(__dirname),
       },
     });
 

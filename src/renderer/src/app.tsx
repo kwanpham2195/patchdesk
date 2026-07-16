@@ -13,13 +13,16 @@ type View = "pending" | "settings";
 type Profile = {
   readonly id: string;
   readonly label: string;
-  readonly githubHost?: string;
+  readonly githubHost: string;
+  readonly ghAccount: string;
+  readonly workspaceRoots?: ReadonlyArray<string>;
 };
 type Repo = {
   readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly localPath?: string;
+  readonly archived?: boolean;
 };
 type RepoOutcome = { readonly repo: Repo; readonly state: string };
 type PrRow = {
@@ -64,6 +67,15 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [openedPr, setOpenedPr] = useState<string | undefined>();
   const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
+  const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
+  const [githubAccess, setGithubAccess] = useState<string | undefined>();
+  const [profileDraft, setProfileDraft] = useState({
+    id: "",
+    label: "",
+    githubHost: "github.com",
+    ghAccount: "",
+    workspaceRoot: "",
+  });
 
   const load = async (): Promise<void> => {
     if (typeof window === "undefined" || !("patchdesk" in window)) {
@@ -79,6 +91,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       setProfiles(profilePayload.filter(isProfile));
     if (isDashboard(dashboardPayload)) {
       setDashboard(dashboardPayload);
+      setProfileDraft({
+        id: dashboardPayload.profile.id,
+        label: dashboardPayload.profile.label,
+        githubHost: dashboardPayload.profile.githubHost,
+        ghAccount: dashboardPayload.profile.ghAccount,
+        workspaceRoot: dashboardPayload.profile.workspaceRoots?.[0] ?? "",
+      });
       const outcomes = dashboardPayload.dashboard.repos.map(
         (item) => item.state,
       );
@@ -106,6 +125,24 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
     await load();
   };
+  const refreshDashboard = async (): Promise<void> => {
+    await api("/v1/dashboard/refresh", { method: "POST" });
+    await load();
+  };
+  const saveProfile = async (): Promise<void> => {
+    const exists = profiles.some((profile) => profile.id === profileDraft.id);
+    await api("/v1/profiles", {
+      method: exists ? "PUT" : "POST",
+      body: {
+        ...profileDraft,
+        workspaceRoots:
+          profileDraft.workspaceRoot.trim().length === 0
+            ? []
+            : [profileDraft.workspaceRoot.trim()],
+      },
+    });
+    await load();
+  };
   const addRepo = async (): Promise<void> => {
     const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
     if (match === null) return;
@@ -131,12 +168,40 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await api("/v1/watchlist", { method: "DELETE", body: repo });
     await load();
   };
+  const archive = async (repo: Repo): Promise<void> => {
+    await api("/v1/watchlist/archive", {
+      method: "PATCH",
+      body: { ...repo, archived: repo.archived !== true },
+    });
+    await load();
+  };
+  const discover = async (): Promise<void> => {
+    const value = await api("/v1/watchlist/suggestions");
+    if (Array.isArray(value)) setSuggestions(value.filter(isRepo));
+  };
+  const addSuggestion = async (repo: Repo): Promise<void> => {
+    await api("/v1/watchlist", { method: "POST", body: repo });
+    setSuggestions((current) =>
+      current.filter((item) => key(item) !== key(repo)),
+    );
+    await load();
+  };
+  const testGitHubAccess = async (): Promise<void> => {
+    const value = await api("/v1/github/access", { method: "POST" });
+    if (record(value) && typeof value.state === "string")
+      setGithubAccess(value.state);
+  };
   const previewEntry = async (): Promise<void> => {
     const value = await api("/v1/direct-entry/preview", {
       method: "POST",
       body: { reference },
     });
-    if (isPreview(value)) setPreview(value);
+    if (!isPreview(value)) return;
+    if (value.confirmation.required) {
+      setPreview(value);
+      return;
+    }
+    setOpenedPr(`${value.pr.owner}/${value.pr.repo}#${value.pr.number}`);
   };
   const confirmEntry = async (): Promise<void> => {
     if (preview === undefined) return;
@@ -201,7 +266,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               reference={reference}
               onReference={setReference}
               onPreview={() => void previewEntry()}
-              onRefresh={() => void load()}
+              onRefresh={() => void refreshDashboard()}
               {...(openedPr === undefined ? {} : { openedPr })}
             />
           ) : (
@@ -211,9 +276,18 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               setPaths={setPaths}
               newRepo={newRepo}
               setNewRepo={setNewRepo}
+              profileDraft={profileDraft}
+              setProfileDraft={setProfileDraft}
+              suggestions={suggestions}
+              {...(githubAccess === undefined ? {} : { githubAccess })}
               onAdd={() => void addRepo()}
+              onSaveProfile={() => void saveProfile()}
+              onDiscover={() => void discover()}
+              onAddSuggestion={(repo) => void addSuggestion(repo)}
+              onTestGitHubAccess={() => void testGitHubAccess()}
               onPath={editPath}
               onRemove={remove}
+              onArchive={archive}
             />
           )}
         </section>
@@ -235,6 +309,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               onClick={() => void confirmEntry()}
             >
               Switch profile and open pull request
+            </button>
+            <button className="ml-3" onClick={() => setPreview(undefined)}>
+              Keep current profile
             </button>
           </div>
         </section>
@@ -353,9 +430,18 @@ function Settings({
   setPaths,
   newRepo,
   setNewRepo,
+  profileDraft,
+  setProfileDraft,
+  suggestions,
+  githubAccess,
   onAdd,
+  onSaveProfile,
+  onDiscover,
+  onAddSuggestion,
+  onTestGitHubAccess,
   onPath,
   onRemove,
+  onArchive,
 }: {
   readonly dashboard?: Dashboard;
   readonly paths: Record<string, string>;
@@ -364,13 +450,101 @@ function Settings({
   >;
   readonly newRepo: string;
   readonly setNewRepo: (value: string) => void;
+  readonly profileDraft: {
+    readonly id: string;
+    readonly label: string;
+    readonly githubHost: string;
+    readonly ghAccount: string;
+    readonly workspaceRoot: string;
+  };
+  readonly setProfileDraft: React.Dispatch<
+    React.SetStateAction<{
+      id: string;
+      label: string;
+      githubHost: string;
+      ghAccount: string;
+      workspaceRoot: string;
+    }>
+  >;
+  readonly suggestions: ReadonlyArray<Repo>;
+  readonly githubAccess?: string;
   readonly onAdd: () => void;
+  readonly onSaveProfile: () => void;
+  readonly onDiscover: () => void;
+  readonly onAddSuggestion: (repo: Repo) => void;
+  readonly onTestGitHubAccess: () => void;
   readonly onPath: (repo: Repo) => void;
   readonly onRemove: (repo: Repo) => void;
+  readonly onArchive: (repo: Repo) => void;
 }): React.JSX.Element {
   return (
     <>
       <h2 className="text-2xl font-semibold">Watchlist settings</h2>
+      <section className="mt-4 border border-slate-800 p-4">
+        <h3>Workspace profile</h3>
+        <label>
+          Profile ID
+          <input
+            value={profileDraft.id}
+            onChange={(event) =>
+              setProfileDraft((current) => ({
+                ...current,
+                id: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          Label
+          <input
+            value={profileDraft.label}
+            onChange={(event) =>
+              setProfileDraft((current) => ({
+                ...current,
+                label: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          GitHub host
+          <input
+            value={profileDraft.githubHost}
+            onChange={(event) =>
+              setProfileDraft((current) => ({
+                ...current,
+                githubHost: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          GitHub account
+          <input
+            value={profileDraft.ghAccount}
+            onChange={(event) =>
+              setProfileDraft((current) => ({
+                ...current,
+                ghAccount: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          Workspace root
+          <input
+            value={profileDraft.workspaceRoot}
+            onChange={(event) =>
+              setProfileDraft((current) => ({
+                ...current,
+                workspaceRoot: event.target.value,
+              }))
+            }
+            placeholder="/absolute/workspace/path"
+          />
+        </label>
+        <button onClick={onSaveProfile}>Save profile</button>
+      </section>
       <div className="mt-4">
         <label htmlFor="repo-add">Repository</label>
         <input
@@ -381,6 +555,23 @@ function Settings({
         />
         <button onClick={onAdd}>Add repo</button>
       </div>
+      <section className="mt-4">
+        <button onClick={onDiscover}>Discover workspace repos</button>
+        <button className="ml-3" onClick={onTestGitHubAccess}>
+          Test GitHub access
+        </button>
+        {githubAccess === undefined ? null : (
+          <p>GitHub access: {githubAccess}</p>
+        )}
+        {suggestions.map((repo) => (
+          <p key={key(repo)}>
+            {repo.owner}/{repo.repo}{" "}
+            <button onClick={() => onAddSuggestion(repo)}>
+              Add suggestion
+            </button>
+          </p>
+        ))}
+      </section>
       {dashboard?.dashboard.repos.map(({ repo }) => (
         <section key={key(repo)} className="mt-5 border border-slate-800 p-4">
           <h3>
@@ -400,6 +591,9 @@ function Settings({
           </label>
           <button onClick={() => onPath(repo)}>Save path</button>
           <button onClick={() => onRemove(repo)}>Remove repo</button>
+          <button onClick={() => onArchive(repo)}>
+            {repo.archived ? "Restore repo" : "Archive repo"}
+          </button>
         </section>
       ))}
     </>
@@ -436,7 +630,17 @@ function isProfile(value: unknown): value is Profile {
   return (
     record(value) &&
     typeof value.id === "string" &&
-    typeof value.label === "string"
+    typeof value.label === "string" &&
+    typeof value.githubHost === "string" &&
+    typeof value.ghAccount === "string"
+  );
+}
+function isRepo(value: unknown): value is Repo {
+  return (
+    record(value) &&
+    typeof value.host === "string" &&
+    typeof value.owner === "string" &&
+    typeof value.repo === "string"
   );
 }
 function isDashboard(value: unknown): value is Dashboard {

@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/renderer/src/app";
 
 const dashboard = {
-  profile: { id: "cfw", label: "CFW", githubHost: "github.com" },
+  profile: {
+    id: "cfw",
+    label: "CFW",
+    githubHost: "github.com",
+    ghAccount: "pmquan2cfw",
+  },
   dashboard: {
     rows: [
       {
@@ -85,9 +90,31 @@ describe("dashboard renderer API flow", () => {
       ),
     ).toBe(true);
   });
+
+  it("opens a normal direct entry immediately and lets users keep their current profile", async () => {
+    const fetch = installApi({ confirmationRequired: false });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText(/Real dashboard row/);
+    await user.type(
+      screen.getByLabelText("Pull request reference"),
+      "octo/service#3",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Preview pull request" }),
+    );
+    expect(await screen.findByText("Opened octo/service#3")).toBeTruthy();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("v1/profiles/select"),
+      ),
+    ).toBe(false);
+  });
 });
 
-function installApi(): ReturnType<typeof vi.fn> {
+function installApi(
+  options: { readonly confirmationRequired?: boolean } = {},
+): ReturnType<typeof vi.fn> {
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {
@@ -102,17 +129,26 @@ function installApi(): ReturnType<typeof vi.fn> {
     const body =
       path.includes("v1/profiles") && !path.includes("select")
         ? [
-            { id: "cfw", label: "CFW", githubHost: "github.com" },
+            {
+              id: "cfw",
+              label: "CFW",
+              githubHost: "github.com",
+              ghAccount: "pmquan2cfw",
+            },
             {
               id: "enterprise",
               label: "Enterprise",
               githubHost: "github.example.test",
+              ghAccount: "enterprise-user",
             },
           ]
         : path.includes("direct-entry")
           ? {
               pr: { owner: "octo", repo: "service", number: 3 },
-              confirmation: { required: true, targetProfileId: "enterprise" },
+              confirmation: {
+                required: options.confirmationRequired ?? true,
+                targetProfileId: "enterprise",
+              },
             }
           : dashboard;
     return new Response(JSON.stringify(body), {

@@ -19,6 +19,7 @@ import {
   createDefaultCfwProfile,
   ProfileSettingsService,
   removeWatchedRepo,
+  setWatchedRepoArchived,
   updateWatchedRepoPath,
 } from "../../src/services/profile-service";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -271,12 +272,29 @@ describe("Milestone 5 dashboard service", () => {
       _tag: "ok",
       value: {
         rows: [],
-        repos: [
-          { repo: { ...repo, archived: true }, state: "archived" },
-        ],
+        repos: [{ repo: { ...repo, archived: true }, state: "archived" }],
         directEntryAvailable: true,
       },
     });
+  });
+
+  it("archives and restores a watchlist repo without dropping its local path", () => {
+    const repo = profile.repos[0];
+    if (repo === undefined) throw new Error("fixture must include a repo");
+    const ref = { host: repo.host, owner: repo.owner, repo: repo.repo };
+    const archived = setWatchedRepoArchived(profile, ref, true);
+    expect(archived).toMatchObject({
+      _tag: "ok",
+      value: { repos: [{ archived: true, localPath: "/workspace/patchdesk" }] },
+    });
+    if (archived._tag === "err") return;
+    const restored = setWatchedRepoArchived(archived.value, ref, false);
+    expect(restored).toMatchObject({
+      _tag: "ok",
+      value: { repos: [{ localPath: "/workspace/patchdesk" }] },
+    });
+    if (restored._tag === "err") return;
+    expect(restored.value.repos[0]?.archived).toBeUndefined();
   });
 
   it("discovers git-origin suggestions without modifying the watchlist", async () => {

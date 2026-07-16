@@ -12,6 +12,9 @@ import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
+import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
+import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 
 const localApiConfigurationSchema = object({
@@ -25,6 +28,10 @@ const localhostHostname = "127.0.0.1";
 export type LocalApiConfiguration = {
   readonly allowedOrigin: string;
   readonly capability: AppCapability;
+  /** Explicit seams used only by local integration tests; production uses real main-process adapters. */
+  readonly github?: GitHubReader;
+  readonly origins?: OriginFinder;
+  readonly paths?: PatchdeskPaths;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -50,12 +57,20 @@ export async function startLocalApiServer(
   app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
   app.get("/health", (context) => context.json({ status: "ok" }));
+  const commands = new CommandRunner();
   const dashboard = new DashboardController(
-    new ProfileStore(PatchdeskPaths.default()),
-    new GitHubAdapter(new CommandRunner()),
+    new ProfileStore(configuration.paths ?? PatchdeskPaths.default()),
+    configuration.github ?? new GitHubAdapter(commands),
+    configuration.origins ?? new WorkspaceOriginFinder(commands),
   );
   app.get("/v1/profiles", async (context) =>
     response(context, await dashboard.listProfiles()),
+  );
+  app.post("/v1/profiles", async (context) =>
+    response(context, await dashboard.saveProfile(await jsonBody(context))),
+  );
+  app.put("/v1/profiles", async (context) =>
+    response(context, await dashboard.saveProfile(await jsonBody(context))),
   );
   app.post("/v1/profiles/select", async (context) =>
     response(
@@ -64,6 +79,9 @@ export async function startLocalApiServer(
     ),
   );
   app.get("/v1/dashboard", async (context) =>
+    response(context, await dashboard.dashboardForActiveProfile()),
+  );
+  app.post("/v1/dashboard/refresh", async (context) =>
     response(context, await dashboard.dashboardForActiveProfile()),
   );
   app.post("/v1/watchlist", async (context) =>
@@ -80,6 +98,15 @@ export async function startLocalApiServer(
       context,
       await dashboard.removeWatchlistRepo(await jsonBody(context)),
     ),
+  );
+  app.patch("/v1/watchlist/archive", async (context) =>
+    response(
+      context,
+      await dashboard.archiveWatchlistRepo(await jsonBody(context)),
+    ),
+  );
+  app.get("/v1/watchlist/suggestions", async (context) =>
+    response(context, await dashboard.discoverWorkspaceRepos()),
   );
   app.post("/v1/github/access", async (context) =>
     response(context, await dashboard.testGitHubAccess()),
@@ -120,7 +147,7 @@ function corsForRenderer(
       );
       context.header(
         "Access-Control-Allow-Methods",
-        "GET, POST, PATCH, DELETE, OPTIONS",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       );
     }
     if (context.req.method === "OPTIONS") return context.body(null, 204);
