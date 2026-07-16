@@ -36,7 +36,9 @@ export class ReviewInspector {
 
   async gitShow(revision: string): Promise<Result<string, InspectorDenied>> {
     if (revision !== "HEAD" && !/^[a-f0-9]{40,64}$/.test(revision)) return err({ _tag: "InspectorDenied" });
-    const argv = ["git", "show", "--format=", "--no-ext-diff", revision] as const;
+    let worktreePath: string;
+    try { worktreePath = await realpath(this.input.worktreePath); } catch { return err({ _tag: "InspectorDenied" }); }
+    const argv = ["git", "-C", worktreePath, "show", "--format=", "--no-ext-diff", revision] as const;
     this.allowedReadCommands.push(argv);
     await this.persistDebug();
     return ok(await this.input.gitShow(argv));
@@ -61,7 +63,9 @@ export class ReviewInspector {
 
   private async persistDebug(): Promise<void> {
     if (this.input.debugPath === undefined) return;
-    await writeFile(this.input.debugPath, JSON.stringify(this.debug(), null, 2), "utf8");
+    let existing: Record<string, unknown> = {};
+    try { const raw: unknown = JSON.parse(await readFile(this.input.debugPath, "utf8")); if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) existing = raw as Record<string, unknown>; } catch { /* Context owns first write; inspector only adds safe operation fields. */ }
+    await writeFile(this.input.debugPath, JSON.stringify({ ...existing, ...this.debug() }, null, 2), "utf8");
   }
 }
 

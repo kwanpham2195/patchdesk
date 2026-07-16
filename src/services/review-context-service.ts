@@ -3,6 +3,7 @@ import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 
 import { err, ok, type Result } from "../domain/result";
+import { containsSensitiveData } from "../adapters/storage/json-file";
 
 export type ReviewContextFailure = { readonly _tag: "ReviewContextFailed" };
 type ContextInput = {
@@ -20,6 +21,7 @@ type ContextInput = {
 export class ReviewContextService {
   async prepare(input: ContextInput): Promise<Result<{ readonly contextPath: string; readonly reviewInputPath: string; readonly debugPath: string; readonly contextHash: string }, ReviewContextFailure>> {
     if (input.changedFiles.some((path) => path.startsWith("/") || path.split("/").includes(".."))) return err({ _tag: "ReviewContextFailed" });
+    if (containsSensitiveData({ pr: input.pr, comments: input.comments, checks: input.checks, patch: input.patch })) return err({ _tag: "ReviewContextFailed" });
     try {
       await mkdir(input.attemptDirectory, { recursive: true });
       const rootRules = await this.rootRuleMetadata(input.worktreePath);

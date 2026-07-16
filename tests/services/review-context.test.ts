@@ -22,4 +22,13 @@ describe("ReviewContextService", () => {
       expect(await readFile(join(attempt, "debug.json"), "utf8")).toContain("inspectedPaths");
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it("rejects credential-like GitHub metadata before writing any artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
+    try {
+      const attempt = join(root, "attempt");
+      const result = await new ReviewContextService().prepare({ worktreePath: root, attemptDirectory: attempt, pr: { title: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing" }, changedFiles: [], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [] });
+      expect(result).toEqual({ _tag: "err", error: { _tag: "ReviewContextFailed" } });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });

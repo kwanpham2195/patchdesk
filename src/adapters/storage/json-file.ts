@@ -138,7 +138,8 @@ async function syncDirectoryBestEffort(path: string): Promise<void> {
   await handle.close().catch(() => undefined);
 }
 
-function containsSensitiveData(value: unknown): boolean {
+/** Detect credential-like values before any Patchdesk artifact is persisted. */
+export function containsSensitiveData(value: unknown): boolean {
   if (typeof value === "string") {
     return containsCredentialLikeValue(value);
   }

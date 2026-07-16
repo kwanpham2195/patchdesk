@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { parseAbsolutePath, type GitHubHost, type GitHubOwner, type GitHubRepoName, type GitSha, type IsoTimestamp, type PullRequestNumber, type WorkspaceProfileId } from "../domain/ids";
-import { createReviewSession, type ReviewSession } from "../domain/review-session";
+import { parseAbsolutePath, parseContentHash, type GitHubHost, type GitHubOwner, type GitHubRepoName, type GitSha, type IsoTimestamp, type PullRequestNumber, type WorkspaceProfileId } from "../domain/ids";
+import { createReviewSession, startNextAttempt, type ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -30,17 +30,23 @@ export class ReviewSessionService {
     const exactWorktreePath = parseAbsolutePath(this.paths.worktreeDirectory(input.profileId, session.id));
     if (exactPatchPath._tag === "err" || exactWorktreePath._tag === "err") return err({ _tag: "StartReviewFailed" });
     const exact = { ...session, patchPath: exactPatchPath.value, worktree: { path: exactWorktreePath.value, headSha: input.headSha } };
+    if (this.dependencies === undefined || input.profile === undefined) {
+      const stored = await new ReviewSessionStore(this.paths).save(exact);
+      return stored._tag === "ok" ? ok({ session: exact, outcome: { mode: "metadata_only", warning: "missing_local_path" } }) : err({ _tag: "StartReviewFailed" });
+    }
     const prepared = await this.prepareReadOnlyInput(input, exact.id);
     if (prepared._tag === "err") return prepared;
-    if (prepared.value.mode === "worktree") {
-      const patchWritten = await this.writePatchAndContext(input, exact, prepared.value);
-      if (patchWritten._tag === "err") return patchWritten;
-    } else {
-      const patchWritten = await this.writeDiffOnlyPatch(input, exact);
-      if (patchWritten._tag === "err") return patchWritten;
-    }
-    const stored = await new ReviewSessionStore(this.paths).save(exact);
-    return stored._tag === "ok" ? ok({ session: exact, outcome: prepared.value }) : err({ _tag: "StartReviewFailed" });
+    const artifacts = await this.writePatchAndContext(input, exact, prepared.value.mode === "worktree" ? prepared.value.path : exact.worktree.path);
+    if (artifacts._tag === "err") return artifacts;
+    const started = startNextAttempt(exact, []);
+    if (started._tag === "err") return err({ _tag: "StartReviewFailed" });
+    const contextPath = parseAbsolutePath(artifacts.value.contextPath); const reviewInputPath = parseAbsolutePath(artifacts.value.reviewInputPath); const debugPath = parseAbsolutePath(artifacts.value.debugPath); const contextHash = parseContentHash(artifacts.value.contextHash); const skillHash = parseContentHash("0".repeat(64));
+    if (contextPath._tag === "err" || reviewInputPath._tag === "err" || debugPath._tag === "err" || contextHash._tag === "err" || skillHash._tag === "err") return err({ _tag: "StartReviewFailed" });
+    const attempt = { id: started.value.attemptId, sessionId: exact.id, state: { _tag: "Running" as const, flueRunId: "prepared" }, flueRunId: "prepared", model: "not-started", reviewSkillVersion: skillHash.value, contextHash: contextHash.value, contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, debugPath: debugPath.value, startedAt: this.now() };
+    const store = new ReviewSessionStore(this.paths);
+    const attemptStored = await store.saveAttempt(input.profileId, exact.id, attempt);
+    const sessionStored = attemptStored._tag === "ok" ? await store.save(started.value.session) : attemptStored;
+    return sessionStored._tag === "ok" ? ok({ session: started.value.session, outcome: prepared.value }) : err({ _tag: "StartReviewFailed" });
   }
 
   private async prepareReadOnlyInput(input: StartReviewInput, sessionId: ReviewSession["id"]): Promise<Result<ManagedWorktree | MetadataOnlyReview, StartReviewFailure>> {
@@ -52,7 +58,7 @@ export class ReviewSessionService {
     return prepared._tag === "ok" ? prepared : err({ _tag: "StartReviewFailed" });
   }
 
-  private async writePatchAndContext(input: StartReviewInput, session: ReviewSession, worktree: ManagedWorktree): Promise<Result<void, StartReviewFailure>> {
+  private async writePatchAndContext(input: StartReviewInput, session: ReviewSession, worktreePath: string): Promise<Result<{ readonly contextPath: string; readonly reviewInputPath: string; readonly debugPath: string; readonly contextHash: string }, StartReviewFailure>> {
     if (this.dependencies === undefined || input.profile === undefined) return err({ _tag: "StartReviewFailed" });
     const pr: PullRequestRef = { host: input.host, owner: input.owner, repo: input.repo, number: input.number };
     const [comments, checks, diff] = await Promise.all([
@@ -62,16 +68,8 @@ export class ReviewSessionService {
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err") return err({ _tag: "StartReviewFailed" });
     try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); } catch { return err({ _tag: "StartReviewFailed" }); }
-    const context = await this.dependencies.context.prepare({ worktreePath: worktree.path, attemptDirectory: this.paths.attemptDirectory(input.profileId, session.id, "001" as never), pr: { title: `${input.owner}/${input.repo}#${input.number}`, headSha: input.headSha }, comments: comments.value, checks: checks.value, changedFiles: parseChangedFiles(diff.value), patch: { path: session.patchPath, sha256: "0".repeat(64) }, rulePaths: input.profile.rulePaths });
-    return context._tag === "ok" ? ok(undefined) : err({ _tag: "StartReviewFailed" });
-  }
-
-  private async writeDiffOnlyPatch(input: StartReviewInput, session: ReviewSession): Promise<Result<void, StartReviewFailure>> {
-    if (this.dependencies === undefined || input.profile === undefined) return ok(undefined);
-    const pr: PullRequestRef = { host: input.host, owner: input.owner, repo: input.repo, number: input.number };
-    const diff = await this.dependencies.github.getPullRequestDiff({ profile: input.profile, pr });
-    if (diff._tag === "err") return err({ _tag: "StartReviewFailed" });
-    try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); return ok(undefined); } catch { return err({ _tag: "StartReviewFailed" }); }
+    const context = await this.dependencies.context.prepare({ worktreePath, attemptDirectory: this.paths.attemptDirectory(input.profileId, session.id, "001" as never), pr: { title: `${input.owner}/${input.repo}#${input.number}`, headSha: input.headSha }, comments: comments.value, checks: checks.value, changedFiles: parseChangedFiles(diff.value), patch: { path: session.patchPath, sha256: "0".repeat(64) }, rulePaths: input.profile.rulePaths });
+    return context._tag === "ok" ? context : err({ _tag: "StartReviewFailed" });
   }
 }
 
