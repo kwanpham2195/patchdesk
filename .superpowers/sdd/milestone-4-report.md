@@ -63,3 +63,28 @@ git diff --check
 ```
 
 Results: focused adapter tests passed 12 tests. The full suite passed 74 tests across 7 files; lint, strict typecheck, Prettier, and diff checks passed.
+
+## Active-account fix
+
+`gh auth status --hostname` can list multiple accounts, so successful status is insufficient by itself. The adapter now parses its account blocks and accepts the configured `ghAccount` only when that same block contains `Active account: true`; a listed inactive account is classified as `GitHubAuthenticationFailed` (`github_auth`).
+
+Red proof:
+
+```text
+pnpm test -- --run github-adapter
+```
+
+The new inactive-account regression failed because the prior parser accepted any matching account line.
+
+Green verification:
+
+```text
+pnpm test -- --run github-adapter
+pnpm lint
+pnpm typecheck
+pnpm test -- --run
+pnpm exec prettier --check src/adapters/github src/domain/github-context.ts tests/adapters/github-adapter.test.ts fixtures/github .superpowers/sdd/milestone-4-report.md
+git diff --check
+```
+
+Results: focused adapter tests passed 13 tests. The full suite passed 75 tests across 7 files; lint, strict typecheck, Prettier, and diff checks passed.

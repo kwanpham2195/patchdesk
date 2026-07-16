@@ -383,7 +383,7 @@ export class GitHubAdapter implements GitHubReader {
     });
     if (
       response._tag === "err" ||
-      !statusHasAccount(response.value, profile.ghAccount)
+      !statusHasActiveAccount(response.value, profile.ghAccount)
     ) {
       return err({
         _tag: "GitHubAuthenticationFailed",
@@ -734,9 +734,26 @@ function isManagedFetchedRef(value: string): boolean {
   );
 }
 
-function statusHasAccount(status: string, account: string): boolean {
+function statusHasActiveAccount(status: string, account: string): boolean {
   const escapedAccount = account.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\baccount\\s+${escapedAccount}(?:\\s|$)`, "i").test(
-    status,
+  const configuredAccount = new RegExp(
+    `\\baccount\\s+${escapedAccount}(?:\\s|$)`,
+    "i",
   );
+  let selectedAccountIsConfigured = false;
+
+  for (const line of status.split(/\r?\n/)) {
+    if (/\baccount\s+\S+/i.test(line)) {
+      selectedAccountIsConfigured = configuredAccount.test(line);
+      continue;
+    }
+    if (
+      selectedAccountIsConfigured &&
+      /\bActive account:\s*true\b/i.test(line)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }

@@ -545,6 +545,27 @@ describe("GitHubAdapter read boundary", () => {
     });
   });
 
+  it("classifies a configured account that is listed but inactive as github_auth", async () => {
+    const adapter = new GitHubAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout:
+              "github.com\n  ✓ Logged in to github.com account pmquan2cfw (keyring)\n  - Active account: false\n  ✓ Logged in to github.com account another-user (keyring)\n  - Active account: true\n",
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+
+    expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubAuthenticationFailed", operation: "auth_status" },
+    });
+  });
+
   it("classifies malformed valid JSON GitHub responses without exposing payloads", async () => {
     const adapter = new GitHubAdapter(
       new CommandRunner(
