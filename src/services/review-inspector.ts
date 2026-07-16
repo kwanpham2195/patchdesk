@@ -1,10 +1,10 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
 import { err, ok, type Result } from "../domain/result";
 
 export type InspectorDenied = { readonly _tag: "InspectorDenied" };
-type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
+type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
 
 /** Session-bound allowlist for model inspection; it intentionally has no arbitrary command method. */
 export class ReviewInspector {
@@ -18,6 +18,7 @@ export class ReviewInspector {
   async searchFiles(query: string): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
     if (!safeQuery(query)) return err({ _tag: "InspectorDenied" });
     this.searches.push(query);
+    await this.persistDebug();
     const matches: Array<string> = [];
     for (const path of this.input.changedFiles) {
       const content = await this.readWhole(path);
@@ -37,6 +38,7 @@ export class ReviewInspector {
     if (revision !== "HEAD" && !/^[a-f0-9]{40,64}$/.test(revision)) return err({ _tag: "InspectorDenied" });
     const argv = ["git", "show", "--format=", "--no-ext-diff", revision] as const;
     this.allowedReadCommands.push(argv);
+    await this.persistDebug();
     return ok(await this.input.gitShow(argv));
   }
 
@@ -52,9 +54,14 @@ export class ReviewInspector {
       if (relative(root, candidate).startsWith("..")) return err({ _tag: "InspectorDenied" });
       const resolved = await realpath(candidate);
       if (relative(root, resolved).startsWith("..")) return err({ _tag: "InspectorDenied" });
-      if (!this.inspectedPaths.includes(path)) this.inspectedPaths.push(path);
+      if (!this.inspectedPaths.includes(path)) { this.inspectedPaths.push(path); await this.persistDebug(); }
       return ok(await readFile(resolved, "utf8"));
     } catch { return err({ _tag: "InspectorDenied" }); }
+  }
+
+  private async persistDebug(): Promise<void> {
+    if (this.input.debugPath === undefined) return;
+    await writeFile(this.input.debugPath, JSON.stringify(this.debug(), null, 2), "utf8");
   }
 }
 
