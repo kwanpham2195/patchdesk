@@ -1,7 +1,9 @@
 import { useState } from "react";
 
 import type { CheckSummary, GitHubComments } from "../../../domain/github-context";
+import type { GitHubReviewEvent, ReviewDraft } from "../../../domain/review-draft";
 import type { ReviewResult } from "../../../domain/review-result";
+import { ReviewSubmissionDialog } from "./review-submission-dialog";
 
 type LocalDraftView = {
   readonly summaryBody: string;
@@ -26,6 +28,12 @@ export function ReviewWorkbench(props: {
   readonly debugHref: string;
   readonly staleHead?: boolean;
   readonly canDiscard?: boolean;
+  /** Product callers receive these callbacks from the authenticated main-process local API, never from gh in the renderer. */
+  readonly submission?: {
+    readonly draft: ReviewDraft;
+    readonly onCreatePending: () => Promise<{ readonly reviewId: string }>;
+    readonly onSubmitPending: (event: GitHubReviewEvent, summaryBody: string) => Promise<{ readonly reviewId: string }>;
+  };
 }): React.JSX.Element {
   const [draftBodies, setDraftBodies] = useState(() =>
     Object.fromEntries(props.draft.comments.map((comment) => [comment.findingId, comment.body])),
@@ -65,7 +73,8 @@ export function ReviewWorkbench(props: {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-slate-400">Draft edits stay local. GitHub submission is unavailable in this phase.</p>
+          <p className="mt-3 text-sm text-slate-400">Draft edits stay local until you explicitly create a pending GitHub review.</p>
+          {props.submission === undefined ? <p className="mt-3 text-sm text-slate-400">GitHub submission is unavailable until this completed review has a main-process review-write session.</p> : <ReviewSubmissionDialog draft={props.submission.draft} findings={props.result.findings} onCreatePending={props.submission.onCreatePending} onSubmitPending={props.submission.onSubmitPending} />}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-5" aria-label="Existing GitHub review threads">

@@ -157,6 +157,15 @@ export interface GitHubReviewWriter {
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
 }
 
+export interface GitHubMergeWriter {
+  mergePullRequest(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly method: "merge" | "squash" | "rebase";
+  }): Promise<Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>>;
+}
+
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
 export type FetchedDiffRefs = {
   readonly repositoryPath: AbsolutePath;
@@ -226,7 +235,7 @@ type GitHubReadOperation =
  * GitHub CLI external adapter. It owns all gh execution and returns parsed, safe projections.
  * Read operations and explicit review writes live in the main process; renderer code never reaches this adapter.
  */
-export class GitHubAdapter implements GitHubReader, GitHubReviewWriter {
+export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter {
   constructor(private readonly commands: CommandRunner) {}
 
   async listOpenPullRequests(input: {
@@ -468,6 +477,27 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter {
       : ok({ reviewId });
   }
 
+  async mergePullRequest(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly method: "merge" | "squash" | "rebase";
+  }): Promise<Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "PUT", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/merge`, "--input", "-"],
+      stdin: JSON.stringify({ sha: input.headSha, merge_method: input.method }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    if (typeof response.value !== "object" || response.value === null || (response.value as { readonly merged?: unknown }).merged !== true)
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not confirm the merge." });
+    const rawSha = (response.value as { readonly sha?: unknown }).sha;
+    const sha = rawSha === undefined ? undefined : parseGitSha(rawSha);
+    return sha !== undefined && sha._tag === "err"
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub returned an invalid merge commit." })
+      : ok(sha === undefined ? {} : { mergeCommitSha: sha.value });
+  }
+
   private async verifyFetchedRefs(
     refs: FetchedDiffRefs,
   ): Promise<Result<void, GitHubReadFailure>> {
@@ -516,7 +546,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter {
 }
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
-export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter {
+export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter {
   constructor(private readonly values: Partial<FakeGitHubAdapterValues>) {}
 
   async listOpenPullRequests(input: {
@@ -605,6 +635,18 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter {
       ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing submitted review fixture." })
       : ok(this.values.submittedReview);
   }
+
+  async mergePullRequest(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly method: "merge" | "squash" | "rebase";
+  }): Promise<Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>> {
+    void input;
+    return this.values.mergeResult === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing merge fixture." })
+      : ok(this.values.mergeResult);
+  }
 }
 
 /** Fixture values accepted by FakeGitHubAdapter. */
@@ -617,6 +659,7 @@ export type FakeGitHubAdapterValues = {
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
   readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
   readonly submittedReview: { readonly reviewId: string };
+  readonly mergeResult: { readonly mergeCommitSha?: GitSha };
 };
 
 function parsePullRequest(

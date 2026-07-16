@@ -49,4 +49,15 @@ describe("review submission dialog", () => {
     expect(screen.getByText("Review 9001 submitted as COMMENT.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /create|submit/i })).toBeNull();
   });
+
+  it("keeps the dialog and editable draft visible when pending-review creation is rejected", async () => {
+    const user = userEvent.setup();
+    render(<ReviewSubmissionDialog draft={draft} findings={[]} onCreatePending={async () => { throw new Error("rejected"); }} onSubmitPending={async () => ({ reviewId: "9001" })} />);
+    await user.click(screen.getByRole("button", { name: "Create pending review" }));
+    await user.click(screen.getByLabelText("I understand this creates one pending GitHub review."));
+    await user.click(screen.getByRole("button", { name: "Confirm pending review" }));
+    expect(screen.getByRole("alert").textContent).toBe("GitHub rejected the pending review. Your local draft was preserved.");
+    expect(screen.getByRole("dialog", { name: "Create pending review" })).toBeTruthy();
+    expect(screen.getByText("Keep the guard.")).toBeTruthy();
+  });
 });

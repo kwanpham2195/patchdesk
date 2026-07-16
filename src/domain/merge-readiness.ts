@@ -14,6 +14,8 @@ export function evaluateMergeReadiness(input: {
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
   readonly checks: CheckSummary;
   readonly hasGitHubReviewBlocker: boolean;
+  readonly hasRequestChanges: boolean;
+  readonly hasHighSeverityFinding: boolean;
 }): MergeReadiness {
   const blockers: Array<MergeReadiness["blockers"][number]> = [];
   if (!input.isCurrentHead) blockers.push("stale_head");
@@ -23,7 +25,14 @@ export function evaluateMergeReadiness(input: {
   if (hasBlockingRequiredCheck(input.checks)) blockers.push("required_check");
   if (input.hasGitHubReviewBlocker) blockers.push("github_review");
 
-  return { _tag: blockers.length === 0 ? "Ready" : "Blocked", blockers, warnings: [] };
+  const warnings: Array<MergeReadiness["warnings"][number]> = [];
+  if (input.hasRequestChanges) warnings.push("request_changes");
+  if (input.hasHighSeverityFinding) warnings.push("high_severity_finding");
+  return {
+    _tag: blockers.length > 0 ? "Blocked" : warnings.length > 0 ? "NeedsAcknowledgement" : "Ready",
+    blockers,
+    warnings,
+  };
 }
 
 function hasBlockingRequiredCheck(checks: CheckSummary): boolean {

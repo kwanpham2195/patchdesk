@@ -10,12 +10,14 @@ import {
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
+import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
+import { ReviewWriteController } from "../services/review-write-controller";
 import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import type { SafeRunProjection } from "../services/run-projection";
@@ -66,12 +68,18 @@ export async function startLocalApiServer(
   app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
   app.get("/health", (context) => context.json({ status: "ok" }));
+  const paths = configuration.paths ?? PatchdeskPaths.default();
   const commands = new CommandRunner();
+  const github = configuration.github ?? new GitHubAdapter(commands);
+  const profiles = new ProfileStore(paths);
   const dashboard = new DashboardController(
-    new ProfileStore(configuration.paths ?? PatchdeskPaths.default()),
-    configuration.github ?? new GitHubAdapter(commands),
+    profiles,
+    github,
     configuration.origins ?? new WorkspaceOriginFinder(commands),
   );
+  const reviewWrites = github instanceof GitHubAdapter
+    ? new ReviewWriteController(profiles, new ReviewSessionStore(paths), github, () => new Date().toISOString() as never)
+    : undefined;
   app.get("/v1/profiles", async (context) =>
     response(context, await dashboard.listProfiles()),
   );
@@ -138,6 +146,16 @@ export async function startLocalApiServer(
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     return context.json(runs.create(parsed.output));
   });
+  app.post("/v1/reviews/pending", async (context) =>
+    reviewWrites === undefined
+      ? context.json({ error: "review_write_unavailable" }, 503)
+      : response(context, await reviewWrites.createPending(await jsonBody(context))),
+  );
+  app.post("/v1/reviews/submit", async (context) =>
+    reviewWrites === undefined
+      ? context.json({ error: "review_write_unavailable" }, 503)
+      : response(context, await reviewWrites.submitPending(await jsonBody(context))),
+  );
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId"); const attemptId = context.req.query("attemptId");
     if (sessionId === undefined || attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);

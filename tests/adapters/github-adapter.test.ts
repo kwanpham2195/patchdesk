@@ -673,4 +673,13 @@ describe("GitHubAdapter review write boundary", () => {
     expect(executor.requests).toEqual([submitArgv]);
     expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(summaryPayload));
   });
+
+  it("merges only through the explicit SHA-pinned GitHub endpoint", async () => {
+    const [mergeArgv, mergePayload] = await Promise.all([golden("merge-pull-request"), payload("merge-pull-request.json")]);
+    const executor = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ merged: true, sha: headSha }), stderr: "" }]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.mergePullRequest({ profile, pr, headSha: mustParse(parseGitSha(headSha)), method: "squash" })).resolves.toEqual({ _tag: "ok", value: { mergeCommitSha: mustParse(parseGitSha(headSha)) } });
+    expect(executor.requests).toEqual([mergeArgv]);
+    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(mergePayload));
+  });
 });

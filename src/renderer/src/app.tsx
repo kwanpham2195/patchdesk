@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DiffWorkbench } from "./components/diff-workbench";
 import { ReviewWorkbench } from "./components/review-workbench";
 import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
+import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
 
 export type DashboardScreenState =
@@ -64,6 +65,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const runFixture = typeof window !== "undefined" && window.location.hash === "#run-fixture";
   const workbenchFixture = typeof window !== "undefined" && window.location.hash === "#workbench-fixture";
   const submissionFixture = typeof window !== "undefined" && window.location.hash === "#submission-fixture";
+  const submissionRejectionFixture = typeof window !== "undefined" && window.location.hash === "#submission-rejection-fixture";
+  const mergeFixture = typeof window !== "undefined" && window.location.hash === "#merge-fixture";
   const [view, setView] = useState<View>("pending");
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
@@ -133,6 +136,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   if (runFixture) return <SafeRunPanel sessionId="fixture-session" attemptId="001" />;
   if (workbenchFixture) return <ReviewWorkbench result={workbenchFixtureData.result as never} draft={workbenchFixtureData.draft} comments={workbenchFixtureData.comments as never} checks={workbenchFixtureData.checks} history={workbenchFixtureData.history} debugHref={workbenchFixtureData.debugHref} />;
   if (submissionFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><ReviewSubmissionDialog draft={submissionFixtureData.draft as never} findings={submissionFixtureData.findings as never} onCreatePending={async () => ({ reviewId: "9001" })} onSubmitPending={async () => ({ reviewId: "9001" })} /></div></main>;
+  if (submissionRejectionFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><ReviewSubmissionDialog draft={submissionFixtureData.draft as never} findings={submissionFixtureData.findings as never} onCreatePending={async () => { throw new Error("fixture rejection"); }} onSubmitPending={async () => ({ reviewId: "9001" })} /></div></main>;
+  if (mergeFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><MergeConfirmationDialog readiness={{ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] }} context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }} methods={["squash", "merge"]} onMerge={async () => ({ mergeCommitSha: "abcdef" })} /></div></main>;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
