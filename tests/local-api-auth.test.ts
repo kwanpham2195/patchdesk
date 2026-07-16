@@ -91,6 +91,43 @@ describe("local API capability boundary", () => {
 
     expect(response.status).toBe(403);
   });
+
+  it("allows the renderer's capability preflight with only the required headers", async () => {
+    localApi = await startTestLocalApi();
+    const response = await fetch(new URL("v1/dashboard", localApi.url), {
+      method: "OPTIONS",
+      headers: {
+        Origin: allowedOrigin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "content-type,x-patchdesk-capability",
+      },
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      allowedOrigin,
+    );
+    expect(response.headers.get("access-control-allow-headers")).toContain(
+      "X-Patchdesk-Capability",
+    );
+  });
+
+  it("returns a typed 400 for malformed JSON instead of leaking a parser exception", async () => {
+    localApi = await startTestLocalApi();
+    const response = await fetch(
+      new URL("v1/direct-entry/preview", localApi.url),
+      {
+        method: "POST",
+        headers: {
+          "X-Patchdesk-Capability": capability,
+          Origin: allowedOrigin,
+          "Content-Type": "application/json",
+        },
+        body: "{bad-json",
+      },
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
+  });
 });
 
 async function startTestLocalApi(): Promise<LocalApiServer> {

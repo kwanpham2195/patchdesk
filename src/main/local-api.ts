@@ -10,7 +10,8 @@ import {
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
-import { FakeGitHubAdapter } from "../adapters/github/github-adapter";
+import { GitHubAdapter } from "../adapters/github/github-adapter";
+import { CommandRunner } from "../adapters/github/command-runner";
 import { DashboardController } from "../services/dashboard-controller";
 
 const localApiConfigurationSchema = object({
@@ -46,11 +47,12 @@ export async function startLocalApiServer(
   }
 
   const app = new Hono();
+  app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
   app.get("/health", (context) => context.json({ status: "ok" }));
   const dashboard = new DashboardController(
     new ProfileStore(PatchdeskPaths.default()),
-    new FakeGitHubAdapter({}),
+    new GitHubAdapter(new CommandRunner()),
   );
   app.get("/v1/profiles", async (context) =>
     response(context, await dashboard.listProfiles()),
@@ -58,7 +60,7 @@ export async function startLocalApiServer(
   app.post("/v1/profiles/select", async (context) =>
     response(
       context,
-      await dashboard.selectProfile((await context.req.json()).id),
+      await dashboard.selectProfile(field(await jsonBody(context), "id")),
     ),
   );
   app.get("/v1/dashboard", async (context) =>
@@ -67,27 +69,27 @@ export async function startLocalApiServer(
   app.post("/v1/watchlist", async (context) =>
     response(
       context,
-      await dashboard.addWatchlistRepo(await context.req.json()),
+      await dashboard.addWatchlistRepo(await jsonBody(context)),
     ),
   );
   app.patch("/v1/watchlist/path", async (context) =>
-    response(context, await dashboard.setLocalPath(await context.req.json())),
+    response(context, await dashboard.setLocalPath(await jsonBody(context))),
   );
   app.delete("/v1/watchlist", async (context) =>
     response(
       context,
-      await dashboard.removeWatchlistRepo(await context.req.json()),
+      await dashboard.removeWatchlistRepo(await jsonBody(context)),
     ),
   );
   app.post("/v1/github/access", async (context) =>
     response(context, await dashboard.testGitHubAccess()),
   );
-  app.post("/v1/direct-entry/preview", async (context) =>
-    response(
-      context,
-      await dashboard.previewDirectEntry(await context.req.json()),
-    ),
-  );
+  app.post("/v1/direct-entry/preview", async (context) => {
+    const body = await jsonBody(context);
+    return body === undefined
+      ? context.json({ error: "invalid_input" }, 400)
+      : response(context, await dashboard.previewDirectEntry(body));
+  });
 
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);
@@ -102,6 +104,38 @@ export async function startLocalApiServer(
       },
     },
   };
+}
+
+function corsForRenderer(
+  configuration: LocalApiConfiguration,
+): MiddlewareHandler {
+  return async (context, next) => {
+    const origin = context.req.header("Origin");
+    if (origin === configuration.allowedOrigin) {
+      context.header("Access-Control-Allow-Origin", origin);
+      context.header("Vary", "Origin");
+      context.header(
+        "Access-Control-Allow-Headers",
+        `Content-Type, ${APP_CAPABILITY_HEADER}`,
+      );
+      context.header(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PATCH, DELETE, OPTIONS",
+      );
+    }
+    if (context.req.method === "OPTIONS") return context.body(null, 204);
+    await next();
+  };
+}
+
+async function jsonBody(context: Context): Promise<unknown> {
+  return await context.req.json().catch(() => undefined);
+}
+
+function field(value: unknown, name: string): unknown {
+  return typeof value === "object" && value !== null && name in value
+    ? (value as Record<string, unknown>)[name]
+    : undefined;
 }
 
 function response(
