@@ -6,6 +6,8 @@ import { err, ok, type Result } from "../../domain/result";
 export type CommandRequest = {
   readonly argv: ReadonlyArray<string>;
   readonly timeoutMs: number;
+  /** Non-secret JSON payload supplied directly to the child process, never through a shell. */
+  readonly stdin?: string;
 };
 
 /** Captured completion state from a process execution boundary. */
@@ -79,7 +81,7 @@ class NodeCommandExecutor implements CommandExecutor {
     return new Promise((resolve) => {
       const child = spawn(executable, input.argv.slice(1), {
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
       let stderr = "";
@@ -105,6 +107,7 @@ class NodeCommandExecutor implements CommandExecutor {
       child.stderr?.on("data", (chunk: string) => {
         stderr += chunk;
       });
+      child.stdin?.end(input.stdin);
       child.once("error", () => finish({ _tag: "Unavailable" }));
       child.once("close", (exitCode) => {
         if (timedOut) {

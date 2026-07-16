@@ -76,14 +76,17 @@ const pr: PullRequestRef = {
 
 class FakeProcessExecutor implements CommandExecutor {
   readonly requests: Array<ReadonlyArray<string>> = [];
+  readonly stdin: Array<string | undefined> = [];
 
   constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
 
   async execute(input: {
     readonly argv: ReadonlyArray<string>;
     readonly timeoutMs: number;
+    readonly stdin?: string;
   }): Promise<CommandExecution> {
     this.requests.push(input.argv);
+    this.stdin.push(input.stdin);
     const response = this.responses[this.requests.length - 1];
     if (response === undefined)
       throw new Error("Missing fake command response");
@@ -637,5 +640,37 @@ describe("GitHubAdapter read boundary", () => {
       _tag: "ok",
       value: [{ title: "Fixture PR" }],
     });
+  });
+});
+
+describe("GitHubAdapter review write boundary", () => {
+  it("creates a pending review and submits its selected event through JSON stdin", async () => {
+    const [createArgv, submitArgv, createPayload, submitPayload] = await Promise.all([golden("create-pending-review"), golden("submit-pending-review"), payload("create-pending-review.json"), payload("submit-pending-review.json")]);
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ id: 9001, state: "PENDING" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    await expect(adapter.createPendingReview({ profile, pr, headSha: mustParse(parseGitSha(headSha)), summaryBody: "Keep the safety check.", comments: [{ body: "Comment body", path: "src/review.ts", line: 7, lineEnd: 9, diffSide: "new" }] })).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001", state: "PENDING" } });
+    await expect(adapter.submitPendingReview({ profile, pr, reviewId: "9001", event: "REQUEST_CHANGES", summaryBody: "Request changes before merge." })).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
+
+    expect(executor.requests).toEqual([createArgv, submitArgv]);
+    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(createPayload));
+    expect(JSON.parse(executor.stdin[1] ?? "{}")).toEqual(JSON.parse(submitPayload));
+  });
+
+  it("rejects a create response unless GitHub confirms the review is pending", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }), stderr: "" }])));
+    await expect(adapter.createPendingReview({ profile, pr, headSha: mustParse(parseGitSha(headSha)), summaryBody: "summary", comments: [{ body: "Comment body", path: "src/review.ts", line: 7, diffSide: "new" }] })).resolves.toEqual({ _tag: "err", error: { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a PENDING review." } });
+  });
+
+  it("uses the same explicit event endpoint for a summary-only submit", async () => {
+    const [submitArgv, summaryPayload] = await Promise.all([golden("submit-pending-review"), payload("submit-summary-only-review.json")]);
+    const executor = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }), stderr: "" }]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.submitPendingReview({ profile, pr, reviewId: "9001", event: "COMMENT", summaryBody: "Summary-only review." })).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
+    expect(executor.requests).toEqual([submitArgv]);
+    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(summaryPayload));
   });
 });

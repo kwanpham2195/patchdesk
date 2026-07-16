@@ -23,6 +23,7 @@ import {
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-draft";
 
 const commandTimeoutMs = 15_000;
 const threadQuery =
@@ -130,6 +131,32 @@ export interface GitHubReader {
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
 
+export type PendingReviewComment = {
+  readonly body: string;
+  readonly path: string;
+  readonly line: number;
+  readonly lineEnd?: number;
+  readonly diffSide: "new" | "old";
+};
+
+/** Explicit write boundary. Product services must recheck the PR head immediately before calling it. */
+export interface GitHubReviewWriter {
+  createPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly summaryBody: string;
+    readonly comments: ReadonlyArray<PendingReviewComment>;
+  }): Promise<Result<{ readonly reviewId: string; readonly state: "PENDING" }, GitHubWriteFailure>>;
+  submitPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: string;
+    readonly event: GitHubReviewEvent;
+    readonly summaryBody: string;
+  }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
+}
+
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
 export type FetchedDiffRefs = {
   readonly repositoryPath: AbsolutePath;
@@ -197,9 +224,9 @@ type GitHubReadOperation =
 
 /**
  * GitHub CLI external adapter. It owns all gh execution and returns parsed, safe projections.
- * It has no GitHub write operation.
+ * Read operations and explicit review writes live in the main process; renderer code never reaches this adapter.
  */
-export class GitHubAdapter implements GitHubReader {
+export class GitHubAdapter implements GitHubReader, GitHubReviewWriter {
   constructor(private readonly commands: CommandRunner) {}
 
   async listOpenPullRequests(input: {
@@ -397,6 +424,50 @@ export class GitHubAdapter implements GitHubReader {
     return ok({ host: profile.githubHost, account: profile.ghAccount });
   }
 
+  async createPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly summaryBody: string;
+    readonly comments: ReadonlyArray<PendingReviewComment>;
+  }): Promise<Result<{ readonly reviewId: string; readonly state: "PENDING" }, GitHubWriteFailure>> {
+    if (input.comments.length === 0)
+      return err({ _tag: "GitHubWriteFailure", category: "rejected", message: "No postable comments are selected." });
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`, "--input", "-"],
+      stdin: JSON.stringify({
+        commit_id: input.headSha,
+        body: input.summaryBody,
+        comments: input.comments.map(toGitHubReviewComment),
+      }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    const pending = parsePendingReview(response.value);
+    return pending === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a PENDING review." })
+      : ok(pending);
+  }
+
+  async submitPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: string;
+    readonly event: GitHubReviewEvent;
+    readonly summaryBody: string;
+  }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/events`, "--input", "-"],
+      stdin: JSON.stringify({ event: input.event, body: input.summaryBody }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    const reviewId = parseReviewId(response.value);
+    return reviewId === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a submitted review ID." })
+      : ok({ reviewId });
+  }
+
   private async verifyFetchedRefs(
     refs: FetchedDiffRefs,
   ): Promise<Result<void, GitHubReadFailure>> {
@@ -445,7 +516,7 @@ export class GitHubAdapter implements GitHubReader {
 }
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
-export class FakeGitHubAdapter implements GitHubReader {
+export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter {
   constructor(private readonly values: Partial<FakeGitHubAdapterValues>) {}
 
   async listOpenPullRequests(input: {
@@ -508,6 +579,32 @@ export class FakeGitHubAdapter implements GitHubReader {
       ? missing("auth_status")
       : ok(this.values.authenticatedAccount);
   }
+
+  async createPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly summaryBody: string;
+    readonly comments: ReadonlyArray<PendingReviewComment>;
+  }): Promise<Result<{ readonly reviewId: string; readonly state: "PENDING" }, GitHubWriteFailure>> {
+    void input;
+    return this.values.pendingReview === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending review fixture." })
+      : ok(this.values.pendingReview);
+  }
+
+  async submitPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: string;
+    readonly event: GitHubReviewEvent;
+    readonly summaryBody: string;
+  }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
+    void input;
+    return this.values.submittedReview === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing submitted review fixture." })
+      : ok(this.values.submittedReview);
+  }
 }
 
 /** Fixture values accepted by FakeGitHubAdapter. */
@@ -518,6 +615,8 @@ export type FakeGitHubAdapterValues = {
   readonly checks: CheckSummary;
   readonly diff: string;
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
+  readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
+  readonly submittedReview: { readonly reviewId: string };
 };
 
 function parsePullRequest(
@@ -728,6 +827,43 @@ function commandFailure(
   return failure._tag === "CommandAuthenticationRequired"
     ? err({ _tag: "GitHubAuthenticationFailed", operation })
     : err({ _tag: "GitHubReadFailed", operation });
+}
+
+function toGitHubReviewComment(comment: PendingReviewComment): Record<string, unknown> {
+  const side = comment.diffSide === "new" ? "RIGHT" : "LEFT";
+  return {
+    path: comment.path,
+    line: comment.lineEnd ?? comment.line,
+    side,
+    body: comment.body,
+    ...(comment.lineEnd === undefined
+      ? {}
+      : { start_line: comment.line, start_side: side }),
+  };
+}
+
+function parseReviewId(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("id" in input)) return undefined;
+  const value = (input as { readonly id: unknown }).id;
+  return typeof value === "string" || (typeof value === "number" && Number.isSafeInteger(value))
+    ? String(value)
+    : undefined;
+}
+
+function parsePendingReview(input: unknown): { readonly reviewId: string; readonly state: "PENDING" } | undefined {
+  const reviewId = parseReviewId(input);
+  if (reviewId === undefined || typeof input !== "object" || input === null) return undefined;
+  return (input as { readonly state?: unknown }).state === "PENDING"
+    ? { reviewId, state: "PENDING" }
+    : undefined;
+}
+
+function writeFailure(failure: CommandFailure): GitHubWriteFailure {
+  if (failure._tag === "CommandAuthenticationRequired")
+    return { _tag: "GitHubWriteFailure", category: "auth", message: "GitHub authentication is required." };
+  if (failure._tag === "CommandFailed")
+    return { _tag: "GitHubWriteFailure", category: "rejected", message: "GitHub rejected the review request." };
+  return { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub review request could not be confirmed." };
 }
 
 function invalid(

@@ -1,0 +1,14 @@
+{
+  "commit_id": "abcdef1234567890abcdef1234567890abcdef12",
+  "body": "Keep the safety check.",
+  "comments": [
+    {
+      "path": "src/review.ts",
+      "line": 9,
+      "side": "RIGHT",
+      "start_line": 7,
+      "start_side": "RIGHT",
+      "body": "Comment body"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DiffWorkbench } from "./components/diff-workbench";
 import { ReviewWorkbench } from "./components/review-workbench";
+import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
 
 export type DashboardScreenState =
@@ -62,6 +63,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const diffFixture = typeof window !== "undefined" && window.location.hash === "#diff-fixture";
   const runFixture = typeof window !== "undefined" && window.location.hash === "#run-fixture";
   const workbenchFixture = typeof window !== "undefined" && window.location.hash === "#workbench-fixture";
+  const submissionFixture = typeof window !== "undefined" && window.location.hash === "#submission-fixture";
   const [view, setView] = useState<View>("pending");
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
@@ -130,6 +132,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   if (diffFixture) return <DiffWorkbench patch={fixturePatch} finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }} />;
   if (runFixture) return <SafeRunPanel sessionId="fixture-session" attemptId="001" />;
   if (workbenchFixture) return <ReviewWorkbench result={workbenchFixtureData.result as never} draft={workbenchFixtureData.draft} comments={workbenchFixtureData.comments as never} checks={workbenchFixtureData.checks} history={workbenchFixtureData.history} debugHref={workbenchFixtureData.debugHref} />;
+  if (submissionFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><ReviewSubmissionDialog draft={submissionFixtureData.draft as never} findings={submissionFixtureData.findings as never} onCreatePending={async () => ({ reviewId: "9001" })} onSubmitPending={async () => ({ reviewId: "9001" })} /></div></main>;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
@@ -363,6 +366,18 @@ const workbenchFixtureData = {
   checks: { overall: "failing" as const, checks: [{ name: "unit", required: true as const, status: "completed" as const, conclusion: "failure" as const, url: "https://github.com/centraldigital/patchdesk/actions/runs/1" }, { name: "docs", required: false as const, status: "queued" as const }] },
   history: [{ id: "001", state: "ReviewCompleted" as const }, { id: "002", state: "ReviewFailed" as const }, { id: "003", state: "Stale" as const }, { id: "004", state: "Discarded" as const }, { id: "005", state: "Merged" as const }, { id: "006", state: "IgnoredLateResult" as const }],
   debugHref: "/debug/fixture-session",
+};
+
+const submissionFixtureData = {
+  draft: {
+    state: { _tag: "LocalDraft" },
+    summaryBody: "Request changes before merge.",
+    comments: [
+      { findingId: "p1", include: true, path: "src/services/review-submission-service.ts", line: 34, body: "Keep the stale-head check at the write boundary.", postability: "postable" },
+      { findingId: "unmapped", include: true, path: "src/services/review-submission-service.ts", line: 55, body: "This has no verified GitHub location.", postability: "invalid_line" },
+    ],
+  },
+  findings: [{ id: "p1", severity: "P1" }],
 };
 
 function Pending({
