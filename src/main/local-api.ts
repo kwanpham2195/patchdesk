@@ -17,6 +17,7 @@ import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { projectSafeRun } from "../services/run-projection";
+import { ReviewRunRegistry } from "../services/review-run-registry";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -58,6 +59,7 @@ export async function startLocalApiServer(
   }
 
   const app = new Hono();
+  const runs = new ReviewRunRegistry();
   app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
   app.get("/health", (context) => context.json({ status: "ok" }));
@@ -131,10 +133,14 @@ export async function startLocalApiServer(
     const body = await jsonBody(context);
     const parsed = safeParse(object({ sessionId: pipe(string(), minLength(1)), attemptId: pipe(string(), minLength(1)) }), body);
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    return context.json({ runId: `${parsed.output.sessionId}:${parsed.output.attemptId}`, projection: { status: "queued", elapsedMs: 0, step: "preparing" } });
+    return context.json(runs.create(parsed.output));
   });
   app.get("/v1/runs/:runId", (context) => {
-    const projected = projectSafeRun({ status: "disconnected", elapsedMs: 0, step: "inspecting" });
+    const sessionId = context.req.query("sessionId"); const attemptId = context.req.query("attemptId");
+    if (sessionId === undefined || attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
+    const run = runs.get(context.req.param("runId"), { sessionId, attemptId });
+    if (run._tag === "err") return context.json({ error: "run_not_owned" }, 403);
+    const projected = projectSafeRun({ status: "disconnected", elapsedMs: run.value.projection.elapsedMs, step: "inspecting" });
     return projected._tag === "ok" ? context.json(projected.value) : context.json({ error: "invalid_run" }, 500);
   });
 

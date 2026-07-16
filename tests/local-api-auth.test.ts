@@ -137,8 +137,11 @@ describe("local API capability boundary", () => {
     const headers = { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
     const started = await fetch(new URL("v1/runs/review-pr", localApi.url), { method: "POST", headers, body: JSON.stringify({ sessionId: "session", attemptId: "001" }) });
     expect(started.status).toBe(200);
-    const disconnected = await fetch(new URL("v1/runs/session:001", localApi.url), { headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin } });
+    const startedBody = await started.json() as { readonly runId: string };
+    const disconnected = await fetch(new URL(`v1/runs/${encodeURIComponent(startedBody.runId)}?sessionId=session&attemptId=001`, localApi.url), { headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin } });
     await expect(disconnected.json()).resolves.toEqual({ status: "disconnected", elapsedMs: 0, step: "inspecting" });
+    const foreign = await fetch(new URL(`v1/runs/${encodeURIComponent(startedBody.runId)}?sessionId=other&attemptId=001`, localApi.url), { headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin } });
+    expect(foreign.status).toBe(403);
   });
 });
 
