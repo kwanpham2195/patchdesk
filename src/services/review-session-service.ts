@@ -35,6 +35,9 @@ export class ReviewSessionService {
     if (prepared.value.mode === "worktree") {
       const patchWritten = await this.writePatchAndContext(input, exact, prepared.value);
       if (patchWritten._tag === "err") return patchWritten;
+    } else {
+      const patchWritten = await this.writeDiffOnlyPatch(input, exact);
+      if (patchWritten._tag === "err") return patchWritten;
     }
     const stored = await new ReviewSessionStore(this.paths).save(exact);
     return stored._tag === "ok" ? ok({ session: exact, outcome: prepared.value }) : err({ _tag: "StartReviewFailed" });
@@ -61,6 +64,14 @@ export class ReviewSessionService {
     try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); } catch { return err({ _tag: "StartReviewFailed" }); }
     const context = await this.dependencies.context.prepare({ worktreePath: worktree.path, attemptDirectory: this.paths.attemptDirectory(input.profileId, session.id, "001" as never), pr: { title: `${input.owner}/${input.repo}#${input.number}`, headSha: input.headSha }, comments: comments.value, checks: checks.value, changedFiles: parseChangedFiles(diff.value), patch: { path: session.patchPath, sha256: "0".repeat(64) }, rulePaths: input.profile.rulePaths });
     return context._tag === "ok" ? ok(undefined) : err({ _tag: "StartReviewFailed" });
+  }
+
+  private async writeDiffOnlyPatch(input: StartReviewInput, session: ReviewSession): Promise<Result<void, StartReviewFailure>> {
+    if (this.dependencies === undefined || input.profile === undefined) return ok(undefined);
+    const pr: PullRequestRef = { host: input.host, owner: input.owner, repo: input.repo, number: input.number };
+    const diff = await this.dependencies.github.getPullRequestDiff({ profile: input.profile, pr });
+    if (diff._tag === "err") return err({ _tag: "StartReviewFailed" });
+    try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); return ok(undefined); } catch { return err({ _tag: "StartReviewFailed" }); }
   }
 }
 
