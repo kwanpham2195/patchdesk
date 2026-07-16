@@ -1,4 +1,8 @@
 {
-  "fixture": "review-pr",
-  "pullRequestNumber": 1
+  "profileId": "cfw",
+  "sessionId": "github.com__centraldigital__patchdesk__pr-1__sha-abcdef12__0123456789ab",
+  "attemptId": "001",
+  "contextPath": "/tmp/context.json",
+  "reviewInputPath": "/tmp/review-input.md",
+  "patchPath": "/tmp/patch.diff"
 }
