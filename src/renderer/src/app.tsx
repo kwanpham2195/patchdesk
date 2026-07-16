@@ -251,29 +251,29 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await openPullRequest(preview.pr);
     setPreview(undefined);
   };
-  const openPullRequest = async (pr: Preview["pr"]): Promise<void> => {
+  async function openPullRequest(pr: Preview["pr"]): Promise<void> {
     setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
     const value = await api("/v1/reviews/open", { method: "POST", body: { profileId: dashboard?.profile.id, host: pr.host ?? dashboard?.profile.githubHost, owner: pr.owner, repo: pr.repo, number: pr.number } });
     if (isWorkbenchPayload(value)) {
       setWorkbench(value);
     }
-  };
-  const reviewWrite = async (path: string, extra: Record<string, unknown> = {}): Promise<{ readonly reviewId: string }> => {
+  }
+  async function reviewWrite(path: string, extra: Record<string, unknown> = {}): Promise<{ readonly reviewId: string }> {
     if (workbench === undefined || dashboard === undefined || workbench.draft === undefined) throw new Error("Review workbench is unavailable");
     const value = await api(path, { method: "POST", body: { profileId: dashboard.profile.id, sessionId: workbench.session.id, draft: workbench.draft, ...extra } });
     if (!isWorkbenchWrite(value)) throw new Error("Review write was rejected");
     setWorkbench((current) => current === undefined ? current : { ...current, session: value.session as WorkbenchPayload["session"], draft: value.draft });
     const state = value.draft.state as { readonly pendingReviewId?: string; readonly reviewId?: string };
     return { reviewId: state.reviewId ?? state.pendingReviewId ?? "review" };
-  };
-  const mergeReview = async (method: "merge" | "squash" | "rebase", acknowledgedWarnings: boolean): Promise<{ readonly mergeCommitSha?: string }> => {
+  }
+  async function mergeReview(method: "merge" | "squash" | "rebase", acknowledgedWarnings: boolean): Promise<{ readonly mergeCommitSha?: string }> {
     if (workbench === undefined || dashboard === undefined) throw new Error("Review workbench is unavailable");
     const value = await api("/v1/reviews/merge", { method: "POST", body: { profileId: dashboard.profile.id, sessionId: workbench.session.id, method, acknowledgedWarnings } });
     if (!record(value) || !record(value.session)) throw new Error("Merge was rejected");
     setWorkbench((current) => current === undefined ? current : { ...current, session: value.session as WorkbenchPayload["session"] });
     const mergeCommitSha = record(value.session.mergeDecision) && typeof value.session.mergeDecision.mergeCommitSha === "string" ? value.session.mergeDecision.mergeCommitSha : undefined;
     return mergeCommitSha === undefined ? {} : { mergeCommitSha };
-  };
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">

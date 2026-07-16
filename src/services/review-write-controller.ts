@@ -71,7 +71,6 @@ export class ReviewWriteController {
       if (session._tag === "err") return err({ reason: "session_not_found" });
       if (session.value.currentAttemptId !== draft.value.attemptId) return err({ reason: "draft_attempt_mismatch" });
       const durableDraft = session.value.draftContent;
-      if (durableDraft !== undefined && !sameDraft(durableDraft, draft.value)) return err({ reason: "draft_changed_since_load" });
       const durableSession = durableDraft === undefined ? { ...session.value, draft: { state: draft.value.state }, draftContent: draft.value } : session.value;
       return operation({ profile: profile.value, session: durableSession, draft: durableDraft ?? draft.value });
     } finally {
@@ -96,8 +95,4 @@ function isReviewEvent(value: unknown): value is GitHubReviewEvent {
 
 function failureReason(tag: string): string {
   return tag === "GitHubWriteRejected" || tag === "GitHubSubmitFailed" ? "github_rejected" : tag === "StaleHeadBlocksWrite" ? "stale_head" : "review_write_failed";
-}
-
-function sameDraft(left: ReviewDraft, right: ReviewDraft): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
