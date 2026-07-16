@@ -14,7 +14,7 @@ import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
-import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
@@ -38,6 +38,8 @@ export type LocalApiConfiguration = {
   readonly capability: AppCapability;
   /** Explicit seams used only by local integration tests; production uses real main-process adapters. */
   readonly github?: GitHubReader;
+  /** Test-only write seam. A reader alone must never enable review-write routes. */
+  readonly reviewWriter?: GitHubReviewWriter;
   readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
   /** Test-only adapter; production never accepts mutable run state over HTTP. */
@@ -77,9 +79,14 @@ export async function startLocalApiServer(
     github,
     configuration.origins ?? new WorkspaceOriginFinder(commands),
   );
-  const reviewWrites = github instanceof GitHubAdapter
-    ? new ReviewWriteController(profiles, new ReviewSessionStore(paths), github, () => new Date().toISOString() as never)
-    : undefined;
+  const writer = configuration.reviewWriter ?? (isGitHubReviewWriter(github) ? github : undefined);
+  const reviewWrites = writer === undefined
+    ? undefined
+    : new ReviewWriteController(profiles, new ReviewSessionStore(paths), {
+        getPullRequest: github.getPullRequest.bind(github),
+        createPendingReview: writer.createPendingReview.bind(writer),
+        submitPendingReview: writer.submitPendingReview.bind(writer),
+      }, () => new Date().toISOString() as never);
   app.get("/v1/profiles", async (context) =>
     response(context, await dashboard.listProfiles()),
   );
@@ -210,6 +217,10 @@ function field(value: unknown, name: string): unknown {
   return typeof value === "object" && value !== null && name in value
     ? (value as Record<string, unknown>)[name]
     : undefined;
+}
+
+function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {
+  return typeof value === "object" && value !== null && "createPendingReview" in value && "submitPendingReview" in value;
 }
 
 function response(

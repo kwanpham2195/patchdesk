@@ -1,4 +1,4 @@
-import type { GitHubAdapter } from "../adapters/github/github-adapter";
+import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { parseReviewDraft, type GitHubReviewEvent, type ReviewDraft } from "../domain/review-draft";
@@ -22,7 +22,7 @@ export class ReviewWriteController {
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
-    private readonly github: GitHubAdapter,
+    private readonly github: Pick<GitHubReader, "getPullRequest"> & GitHubReviewWriter,
     private readonly now: () => IsoTimestamp,
   ) {}
 
@@ -70,7 +70,10 @@ export class ReviewWriteController {
       if (profile._tag === "err") return err({ reason: "profile_not_found" });
       if (session._tag === "err") return err({ reason: "session_not_found" });
       if (session.value.currentAttemptId !== draft.value.attemptId) return err({ reason: "draft_attempt_mismatch" });
-      return operation({ profile: profile.value, session: session.value, draft: draft.value });
+      const durableDraft = session.value.draftContent;
+      if (durableDraft !== undefined && !sameDraft(durableDraft, draft.value)) return err({ reason: "draft_changed_since_load" });
+      const durableSession = durableDraft === undefined ? { ...session.value, draft: { state: draft.value.state }, draftContent: draft.value } : session.value;
+      return operation({ profile: profile.value, session: durableSession, draft: durableDraft ?? draft.value });
     } finally {
       this.inFlight.delete(key);
     }
@@ -93,4 +96,8 @@ function isReviewEvent(value: unknown): value is GitHubReviewEvent {
 
 function failureReason(tag: string): string {
   return tag === "GitHubWriteRejected" || tag === "GitHubSubmitFailed" ? "github_rejected" : tag === "StaleHeadBlocksWrite" ? "stale_head" : "review_write_failed";
+}
+
+function sameDraft(left: ReviewDraft, right: ReviewDraft): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

@@ -204,7 +204,7 @@ function isReviewEvent(value: unknown): value is GitHubReviewEvent {
 }
 
 function withDraft(session: ReviewSession, draft: ReviewDraft, updatedAt: IsoTimestamp): ReviewSession {
-  return { ...session, draft: { state: draft.state }, updatedAt };
+  return { ...session, draft: { state: draft.state }, draftContent: draft, updatedAt };
 }
 
 function sessionPr(session: ReviewSession): PullRequestRef {

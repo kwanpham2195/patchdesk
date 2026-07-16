@@ -21,7 +21,7 @@ import type {
   ReviewAttempt,
   ReviewAttemptState,
 } from "../../domain/review-attempt";
-import type { ReviewDraftState } from "../../domain/review-draft";
+import { parseReviewDraft, type ReviewDraftState } from "../../domain/review-draft";
 import { parseReviewResult } from "../../domain/review-result";
 import type {
   ReviewSession,
@@ -114,6 +114,7 @@ const reviewSessionSchema = v.strictObject({
   state: sessionStateSchema,
   currentAttemptId: v.optional(v.string()),
   draft: v.optional(v.strictObject({ state: draftStateSchema })),
+  draftContent: v.optional(v.unknown()),
   submittedReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -326,7 +327,12 @@ export function parseStoredReviewSession(
     raw.output.draft === undefined
       ? undefined
       : parseDraftState(raw.output.draft.state);
-  if (state._tag === "err" || draft?._tag === "err") return invalidRead();
+  const draftContent =
+    raw.output.draftContent === undefined
+      ? undefined
+      : parseReviewDraft(raw.output.draftContent);
+  if (state._tag === "err" || draft?._tag === "err" || draftContent?._tag === "err") return invalidRead();
+  if (draftContent !== undefined && (draft === undefined || draftContent.value.state._tag !== draft.value._tag)) return invalidRead();
   if (
     state.value._tag === "Running" &&
     (currentAttemptId === undefined ||
@@ -401,6 +407,7 @@ export function parseStoredReviewSession(
       ? {}
       : { currentAttemptId: currentAttemptId.value }),
     ...(draft === undefined ? {} : { draft: { state: draft.value } }),
+    ...(draftContent === undefined ? {} : { draftContent: draftContent.value }),
     ...(submittedReview === undefined
       ? {}
       : { submittedReview: submittedReview.value }),

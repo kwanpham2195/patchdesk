@@ -73,6 +73,8 @@ export type ReviewSession = {
   readonly state: ReviewSessionState;
   readonly currentAttemptId?: ReviewAttemptId;
   readonly draft?: Pick<ReviewDraft, "state">;
+  /** Full validated draft retained locally so an interrupted/rejected GitHub write can be safely resumed. */
+  readonly draftContent?: ReviewDraft;
   readonly submittedReview?: SubmittedReviewRef;
   readonly mergeDecision?: MergeDecisionRef;
   readonly visibleResult?: ReviewResult;
