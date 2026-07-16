@@ -131,6 +131,8 @@ export type FetchedDiffRefs = {
   readonly repositoryPath: AbsolutePath;
   readonly baseRef: string;
   readonly headRef: string;
+  readonly baseSha: GitSha;
+  readonly headSha: GitSha;
 } & { readonly [fetchedDiffRefsBrand]: "FetchedDiffRefs" };
 
 declare const fetchedDiffRefsBrand: unique symbol;
@@ -140,6 +142,8 @@ export function createFetchedDiffRefs(input: {
   readonly repositoryPath: AbsolutePath;
   readonly baseRef: string;
   readonly headRef: string;
+  readonly baseSha: GitSha;
+  readonly headSha: GitSha;
 }): Result<FetchedDiffRefs, InvalidFetchedDiffRefs> {
   if (
     !isManagedFetchedRef(input.baseRef) ||
@@ -149,7 +153,7 @@ export function createFetchedDiffRefs(input: {
   }
 
   // SAFETY: the parser above establishes that both ref arguments name Patchdesk-managed refs,
-  // and the branded path has already passed the filesystem-path boundary parser.
+  // and the branded path and expected commit IDs have already passed their boundary parsers.
   return ok(input as FetchedDiffRefs);
 }
 
@@ -351,6 +355,9 @@ export class GitHubAdapter implements GitHubReader {
     if (input.fetchedRefs === undefined)
       return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
 
+    const fetchedRefs = await this.verifyFetchedRefs(input.fetchedRefs);
+    if (fetchedRefs._tag === "err") return fetchedRefs;
+
     const fallback = await this.commands.runText({
       argv: [
         "git",
@@ -371,20 +378,65 @@ export class GitHubAdapter implements GitHubReader {
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
     const response = await this.commands.runText({
+      argv: ["gh", "auth", "status", "--hostname", profile.githubHost],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (
+      response._tag === "err" ||
+      !statusHasAccount(response.value, profile.ghAccount)
+    ) {
+      return err({
+        _tag: "GitHubAuthenticationFailed",
+        operation: "auth_status",
+      });
+    }
+    return ok({ host: profile.githubHost, account: profile.ghAccount });
+  }
+
+  private async verifyFetchedRefs(
+    refs: FetchedDiffRefs,
+  ): Promise<Result<void, GitHubReadFailure>> {
+    const base = await this.resolveFetchedRef(
+      refs.repositoryPath,
+      refs.baseRef,
+    );
+    if (base._tag === "err" || base.value !== refs.baseSha) {
+      return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
+    }
+    const head = await this.resolveFetchedRef(
+      refs.repositoryPath,
+      refs.headRef,
+    );
+    if (head._tag === "err" || head.value !== refs.headSha) {
+      return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
+    }
+    return ok(undefined);
+  }
+
+  private async resolveFetchedRef(
+    repositoryPath: AbsolutePath,
+    ref: string,
+  ): Promise<Result<GitSha, GitHubReadFailure>> {
+    const response = await this.commands.runText({
       argv: [
-        "gh",
-        "auth",
-        "status",
-        "--hostname",
-        profile.githubHost,
-        "--user",
-        profile.ghAccount,
+        "git",
+        "-C",
+        repositoryPath,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        `${ref}^{commit}`,
       ],
       timeoutMs: commandTimeoutMs,
     });
-    if (response._tag === "err")
-      return commandFailure("auth_status", response.error);
-    return ok({ host: profile.githubHost, account: profile.ghAccount });
+    if (response._tag === "err") {
+      return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
+    }
+    const sha = parseGitSha(response.value.trim());
+    return sha._tag === "ok"
+      ? sha
+      : err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
 }
 
@@ -679,5 +731,12 @@ function isManagedFetchedRef(value: string): boolean {
     /^refs\/patchdesk\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value) &&
     !value.includes("..") &&
     !value.includes("//")
+  );
+}
+
+function statusHasAccount(status: string, account: string): boolean {
+  const escapedAccount = account.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\baccount\\s+${escapedAccount}(?:\\s|$)`, "i").test(
+    status,
   );
 }

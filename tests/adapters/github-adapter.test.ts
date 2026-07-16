@@ -43,6 +43,7 @@ const payloadRoot = join(
   "payloads",
 );
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
+const baseSha = "1234567890abcdef1234567890abcdef12345678";
 
 function mustParse<T, E>(
   result:
@@ -364,6 +365,18 @@ describe("GitHubAdapter read boundary", () => {
       {
         _tag: "Exited",
         exitCode: 0,
+        stdout: `${baseSha}\n`,
+        stderr: "",
+      },
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: `${headSha}\n`,
+        stderr: "",
+      },
+      {
+        _tag: "Exited",
+        exitCode: 0,
         stdout: "diff --git a/fallback.ts b/fallback.ts\n",
         stderr: "",
       },
@@ -379,6 +392,8 @@ describe("GitHubAdapter read boundary", () => {
             repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
             baseRef: "refs/patchdesk/base",
             headRef: "refs/patchdesk/head",
+            baseSha: mustParse(parseGitSha(baseSha)),
+            headSha: mustParse(parseGitSha(headSha)),
           }),
         ),
       }),
@@ -388,6 +403,26 @@ describe("GitHubAdapter read boundary", () => {
     });
     expect(executor.requests).toEqual([
       await golden("get-diff"),
+      [
+        "git",
+        "-C",
+        "/tmp/patchdesk-repo",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "refs/patchdesk/base^{commit}",
+      ],
+      [
+        "git",
+        "-C",
+        "/tmp/patchdesk-repo",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "refs/patchdesk/head^{commit}",
+      ],
       [
         "git",
         "-C",
@@ -405,8 +440,129 @@ describe("GitHubAdapter read boundary", () => {
         repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
         baseRef: "--output=/tmp/unsafe",
         headRef: "refs/patchdesk/head",
+        baseSha: mustParse(parseGitSha(baseSha)),
+        headSha: mustParse(parseGitSha(headSha)),
       }),
     ).toEqual({ _tag: "err", error: { _tag: "InvalidFetchedDiffRefs" } });
+  });
+
+  it("does not run git diff when an expected fetched ref is absent", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "pull request diff unavailable",
+      },
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "unknown revision" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    expect(
+      await adapter.getPullRequestDiff({
+        profile,
+        pr,
+        fetchedRefs: mustParse(
+          createFetchedDiffRefs({
+            repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
+            baseRef: "refs/patchdesk/base",
+            headRef: "refs/patchdesk/head",
+            baseSha: mustParse(parseGitSha(baseSha)),
+            headSha: mustParse(parseGitSha(headSha)),
+          }),
+        ),
+      }),
+    ).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubReadFailed", operation: "get_diff" },
+    });
+    expect(executor.requests).toEqual([
+      await golden("get-diff"),
+      [
+        "git",
+        "-C",
+        "/tmp/patchdesk-repo",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "refs/patchdesk/base^{commit}",
+      ],
+    ]);
+  });
+
+  it("does not run git diff when a managed fetched ref resolves to the wrong commit", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "pull request diff unavailable",
+      },
+      { _tag: "Exited", exitCode: 0, stdout: `${headSha}\n`, stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    expect(
+      await adapter.getPullRequestDiff({
+        profile,
+        pr,
+        fetchedRefs: mustParse(
+          createFetchedDiffRefs({
+            repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
+            baseRef: "refs/patchdesk/base",
+            headRef: "refs/patchdesk/head",
+            baseSha: mustParse(parseGitSha(baseSha)),
+            headSha: mustParse(parseGitSha(headSha)),
+          }),
+        ),
+      }),
+    ).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubReadFailed", operation: "get_diff" },
+    });
+    expect(executor.requests).toHaveLength(2);
+  });
+
+  it("classifies a successful status for a different gh account as github_auth", async () => {
+    const adapter = new GitHubAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout:
+              "github.com\n  ✓ Logged in to github.com account another-user (keyring)\n",
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+
+    expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubAuthenticationFailed", operation: "auth_status" },
+    });
+  });
+
+  it("classifies malformed valid JSON GitHub responses without exposing payloads", async () => {
+    const adapter = new GitHubAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: await payload("malformed-get-pr.json"),
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+
+    expect(await adapter.getPullRequest({ profile, pr })).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubResponseInvalid", operation: "get_pr" },
+    });
   });
 
   it("maps missing local GitHub auth to github_auth and provides a fixture fake", async () => {

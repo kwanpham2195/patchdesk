@@ -36,3 +36,30 @@ Results: the focused adapter suite passed 8 tests. The full suite passed 70 test
 ## Scope boundary
 
 No live `gh` command was run during this milestone. The adapter never reads, persists, returns, or logs token values; authentication is resolved only with `gh auth status` inside the adapter. Dashboard UI, GitHub writes, worktree fetching, and fetched-ref creation remain out of scope.
+
+## Review fixes
+
+- Replaced the unsupported `gh auth status --user` argv with the supported hostname-only status command. The adapter confirms that its safe status output identifies the configured account, and every status failure or mismatch becomes `GitHubAuthenticationFailed` (`github_auth`) without exposing command output.
+- Strengthened diff fallback evidence: the adapter now verifies both Patchdesk-managed refs with `git rev-parse --verify --quiet --end-of-options`, parses the resolved commits, and requires them to match the expected fetched SHAs before it runs `git diff`. Missing or mismatched refs stop the fallback.
+- Added `fixtures/github/payloads/malformed-get-pr.json`, which is valid JSON but fails the GitHub response contract and is classified as `GitHubResponseInvalid`.
+
+Review-fix TDD red proof:
+
+```text
+pnpm test -- --run github-adapter
+```
+
+Before the changes, 4 new regression tests failed: the auth argv still had `--user`, fallback accepted syntactic ref names without resolving them, an account mismatch passed, and the malformed response fixture was absent.
+
+Review-fix green verification:
+
+```text
+pnpm test -- --run github-adapter
+pnpm lint
+pnpm typecheck
+pnpm test -- --run
+pnpm exec prettier --check src/adapters/github src/domain/github-context.ts tests/adapters/github-adapter.test.ts fixtures/github .superpowers/sdd/milestone-4-report.md
+git diff --check
+```
+
+Results: focused adapter tests passed 12 tests. The full suite passed 74 tests across 7 files; lint, strict typecheck, Prettier, and diff checks passed.

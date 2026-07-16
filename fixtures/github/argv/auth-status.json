@@ -1,1 +1,1 @@
-["gh", "auth", "status", "--hostname", "github.com", "--user", "pmquan2cfw"]
+["gh", "auth", "status", "--hostname", "github.com"]

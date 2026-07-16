@@ -1,1 +1,3 @@
-Logged in to github.com account pmquan2cfw
+github.com
+  ✓ Logged in to github.com account pmquan2cfw (keyring)
+  - Active account: true
