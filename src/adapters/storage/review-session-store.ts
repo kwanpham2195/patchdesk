@@ -369,7 +369,9 @@ export function parseStoredReviewSession(
   const visibleResult =
     raw.output.visibleResult === undefined
       ? undefined
-      : parseReviewResult(raw.output.visibleResult);
+      : hasRawNotes(raw.output.visibleResult)
+        ? invalidRead()
+        : parseReviewResult(raw.output.visibleResult);
   if (
     submittedReview?._tag === "err" ||
     mergeDecision?._tag === "err" ||
@@ -634,5 +636,13 @@ function hasSensitiveKey(value: unknown): boolean {
     ([key, nestedValue]) =>
       /(?:token|secret|authorization|cookie|password)/i.test(key) ||
       hasSensitiveKey(nestedValue),
+  );
+}
+
+function hasRawNotes(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.hasOwn(value, "rawNotes")
   );
 }

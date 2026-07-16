@@ -285,6 +285,68 @@ describe("Patchdesk storage", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("refuses a GitHub PAT even when it appears in an otherwise benign persisted field", async () => {
+    const paths = await testPaths();
+    const profiles = new ProfileStore(paths);
+
+    expect(
+      await profiles.save({
+        ...profile,
+        label: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789",
+      }),
+    ).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "sensitive_value" },
+    });
+    await expect(access(paths.profileFile(profile.id))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("refuses raw model notes from persisted visible review results", async () => {
+    const paths = await testPaths();
+    const sessions = new ReviewSessionStore(paths);
+    const session = sessionFor(paths);
+    const withRawNotes = {
+      ...session,
+      visibleResult: {
+        changeSummary: "Adds persistence.",
+        verdict: "comment",
+        summary: "One finding.",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+        rawNotes:
+          "diff --git a/private-file b/private-file\nsecret file contents",
+      },
+    };
+
+    expect(await sessions.save(withRawNotes)).toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: "invalid_stored_value",
+      },
+    });
+    await mkdir(paths.sessionDirectory(profile.id, session.id), {
+      recursive: true,
+    });
+    await writeFile(
+      paths.sessionFile(profile.id, session.id),
+      JSON.stringify(withRawNotes),
+      "utf8",
+    );
+    expect(await sessions.load(profile.id, session.id)).toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_stored_value",
+      },
+    });
+  });
+
   it("appends non-authoritative safe debug events as JSON lines", async () => {
     const paths = await testPaths();
     const sessions = new ReviewSessionStore(paths);

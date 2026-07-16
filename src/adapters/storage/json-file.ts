@@ -38,7 +38,7 @@ export async function writeAtomicJson(
   path: string,
   value: unknown,
 ): Promise<Result<void, StorageFailure>> {
-  if (containsSensitiveKey(value)) {
+  if (containsSensitiveData(value)) {
     return err(storageFailure("write", "sensitive_value"));
   }
 
@@ -77,7 +77,7 @@ export async function appendJsonLine(
   path: string,
   value: unknown,
 ): Promise<Result<void, StorageFailure>> {
-  if (containsSensitiveKey(value)) {
+  if (containsSensitiveData(value)) {
     return err(storageFailure("append", "sensitive_value"));
   }
 
@@ -134,9 +134,12 @@ async function syncDirectoryBestEffort(path: string): Promise<void> {
   await handle.close().catch(() => undefined);
 }
 
-function containsSensitiveKey(value: unknown): boolean {
+function containsSensitiveData(value: unknown): boolean {
+  if (typeof value === "string") {
+    return containsCredentialLikeValue(value);
+  }
   if (Array.isArray(value)) {
-    return value.some(containsSensitiveKey);
+    return value.some(containsSensitiveData);
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -145,10 +148,16 @@ function containsSensitiveKey(value: unknown): boolean {
   for (const [key, nestedValue] of Object.entries(value)) {
     if (
       /(?:token|secret|authorization|cookie|password)/i.test(key) ||
-      containsSensitiveKey(nestedValue)
+      containsSensitiveData(nestedValue)
     ) {
       return true;
     }
   }
   return false;
+}
+
+function containsCredentialLikeValue(value: string): boolean {
+  return /(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|\bBearer\s+[A-Za-z0-9._~-]{16,}\b|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b)/.test(
+    value,
+  );
 }
