@@ -15,7 +15,7 @@ describe("merge confirmation dialog", () => {
     expect((screen.getByRole("button", { name: "Confirm merge" }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByLabelText("I acknowledge the merge warnings."));
     await user.click(screen.getByRole("button", { name: "Confirm merge" }));
-    expect(merge).toHaveBeenCalledWith("squash");
+    expect(merge).toHaveBeenCalledWith("squash", true);
     expect(screen.getByText("Merged abcdef.")).toBeTruthy();
   });
 });
