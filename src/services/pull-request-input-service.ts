@@ -38,10 +38,11 @@ export function parsePullRequestEntry(
       },
   defaultHost: GitHubHost,
 ): Result<PullRequestRef, PullRequestInputParseFailure> {
-  if (typeof input === "string") return mapLegacyInput(input);
+  if (typeof input === "string") return mapLegacyInput(input, defaultHost);
   if (input._tag === "SelectedDashboardPr") return ok(input.pr);
-  if (input._tag === "GitHubUrl") return mapLegacyInput(input.url);
-  if (input._tag === "CompactRef") return mapLegacyInput(input.value);
+  if (input._tag === "GitHubUrl") return mapLegacyInput(input.url, defaultHost);
+  if (input._tag === "CompactRef")
+    return mapLegacyInput(input.value, defaultHost);
 
   const host =
     input.host === undefined ? ok(defaultHost) : parseGitHubHost(input.host);
@@ -95,8 +96,9 @@ export function profileSwitchConfirmation(
 
 function mapLegacyInput(
   value: string,
+  defaultHost: GitHubHost,
 ): Result<PullRequestRef, PullRequestInputParseFailure> {
-  const parsed = parsePullRequestInput(value);
+  const parsed = parsePullRequestInput(value, defaultHost);
   return parsed._tag === "ok"
     ? ok(parsed.value)
     : err({ _tag: "PullRequestInputParseFailure" });

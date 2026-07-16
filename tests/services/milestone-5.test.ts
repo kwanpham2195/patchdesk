@@ -160,6 +160,10 @@ describe("Milestone 5 profile and direct-entry services", () => {
     expect(
       parsePullRequestEntry("centraldigital/patchdesk#42", profile.githubHost),
     ).toMatchObject({ _tag: "ok" });
+    const enterpriseHost = mustParse(parseGitHubHost("github.example.test"));
+    expect(
+      parsePullRequestEntry("outside/service#7", enterpriseHost),
+    ).toMatchObject({ _tag: "ok", value: { host: "github.example.test" } });
     expect(
       parsePullRequestEntry(
         {
@@ -221,8 +225,8 @@ describe("Milestone 5 dashboard service", () => {
       listOpenPullRequests: [
         summary(4, { isDraft: true }),
         summary(3, { author: "pmquan2cfw" }),
-        summary(2, { labels: ["assigned:pmquan2cfw"] }),
-        summary(1, { labels: ["review-requested:pmquan2cfw"] }),
+        summary(2, { assignees: ["pmquan2cfw"] }),
+        summary(1, { requestedReviewers: ["pmquan2cfw"] }),
       ],
       authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
     });

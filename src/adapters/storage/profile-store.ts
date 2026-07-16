@@ -2,12 +2,16 @@ import {
   parsePatchdeskConfig,
   type PatchdeskConfigFile,
 } from "../../domain/contracts";
+import { readdir } from "node:fs/promises";
 import {
   parseWorkspaceProfileConfig,
   type WorkspaceProfileConfig,
 } from "../../domain/workspace-profile";
 import { err, type Result } from "../../domain/result";
-import type { WorkspaceProfileId } from "../../domain/ids";
+import {
+  parseWorkspaceProfileId,
+  type WorkspaceProfileId,
+} from "../../domain/ids";
 import {
   readJsonFile,
   type StorageFailure,
@@ -84,5 +88,35 @@ export class ProfileStore {
     }
 
     return parsed;
+  }
+
+  /** Lists persisted profiles; no profiles is a normal first-run result. */
+  async list(): Promise<
+    Result<ReadonlyArray<WorkspaceProfileConfig>, StorageFailure>
+  > {
+    let names: ReadonlyArray<string>;
+    try {
+      names = await readdir(`${this.paths.configDirectory()}/profiles`);
+    } catch (cause: unknown) {
+      if (
+        typeof cause === "object" &&
+        cause !== null &&
+        "code" in cause &&
+        cause.code === "ENOENT"
+      ) {
+        return { _tag: "ok", value: [] };
+      }
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+    const profiles: WorkspaceProfileConfig[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const id = parseWorkspaceProfileId(name.slice(0, -5));
+      if (id._tag === "err") continue;
+      const loaded = await this.load(id.value);
+      if (loaded._tag === "err") return loaded;
+      profiles.push(loaded.value);
+    }
+    return { _tag: "ok", value: profiles };
   }
 }

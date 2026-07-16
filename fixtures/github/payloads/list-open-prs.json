@@ -21,6 +21,16 @@
         "name": "review"
       }
     ],
+    "requested_reviewers": [
+      {
+        "login": "pmquan2cfw"
+      }
+    ],
+    "assignees": [
+      {
+        "login": "pmquan2cfw"
+      }
+    ],
     "additions": 12,
     "deletions": 3,
     "changed_files": 2

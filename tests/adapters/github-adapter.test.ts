@@ -115,6 +115,8 @@ function pullRequestPayload(
     updated_at: "2026-07-16T12:00:00Z",
     mergeable_state: "clean",
     labels: [{ name: "review" }],
+    requested_reviewers: [{ login: "pmquan2cfw" }],
+    assignees: [{ login: "pmquan2cfw" }],
     additions: 12,
     deletions: 3,
     changed_files: 2,
@@ -250,7 +252,14 @@ describe("GitHubAdapter read boundary", () => {
       await adapter.listOpenPullRequests({ profile, repo: pr }),
     ).toMatchObject({
       _tag: "ok",
-      value: [{ title: "Add safe GitHub reads", changedFileCount: 2 }],
+      value: [
+        {
+          title: "Add safe GitHub reads",
+          changedFileCount: 2,
+          requestedReviewers: ["pmquan2cfw"],
+          assignees: ["pmquan2cfw"],
+        },
+      ],
     });
     expect(await adapter.getPullRequest({ profile, pr })).toMatchObject({
       _tag: "ok",

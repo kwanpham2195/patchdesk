@@ -141,9 +141,8 @@ function priorityFor(
   summary: PullRequestSummary,
   account: string,
 ): PendingPrPriority {
-  if (summary.labels.includes(`review-requested:${account}`))
-    return "review_requested";
-  if (summary.labels.includes(`assigned:${account}`)) return "assigned";
+  if (summary.requestedReviewers?.includes(account)) return "review_requested";
+  if (summary.assignees?.includes(account)) return "assigned";
   if (summary.isDraft) return "draft";
   if (summary.author === account) return "recently_updated";
   return "recently_updated";

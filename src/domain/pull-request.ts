@@ -43,19 +43,32 @@ export type InvalidPullRequestInput = {
 /** Parse direct URL or compact owner/repo#number input at the UI boundary. */
 export function parsePullRequestInput(
   input: unknown,
+  defaultHost: GitHubHost = "github.com" as GitHubHost,
 ): Result<PullRequestRef, InvalidPullRequestInput> {
   if (typeof input !== "string") {
     return err({ _tag: "InvalidPullRequestInput" });
   }
 
-  const urlMatch = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(input);
+  const urlMatch = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(
+    input,
+  );
   if (urlMatch !== null) {
-    return parseReference(urlMatch[1], urlMatch[2], urlMatch[3], Number(urlMatch[4]));
+    return parseReference(
+      urlMatch[1],
+      urlMatch[2],
+      urlMatch[3],
+      Number(urlMatch[4]),
+    );
   }
 
   const compactMatch = /^([^/]+)\/([^#]+)#(\d+)$/.exec(input);
   if (compactMatch !== null) {
-    return parseReference("github.com", compactMatch[1], compactMatch[2], Number(compactMatch[3]));
+    return parseReference(
+      defaultHost,
+      compactMatch[1],
+      compactMatch[2],
+      Number(compactMatch[3]),
+    );
   }
 
   return err({ _tag: "InvalidPullRequestInput" });
@@ -85,5 +98,10 @@ function parseReference(
     return err({ _tag: "InvalidPullRequestInput" });
   }
 
-  return ok({ host: host.value, owner: owner.value, repo: repo.value, number: number.value });
+  return ok({
+    host: host.value,
+    owner: owner.value,
+    repo: repo.value,
+    number: number.value,
+  });
 }

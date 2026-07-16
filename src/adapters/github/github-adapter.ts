@@ -39,6 +39,10 @@ const pullRequestSchema = v.looseObject({
   updated_at: v.string(),
   mergeable_state: v.optional(v.string()),
   labels: v.optional(v.array(v.looseObject({ name: v.string() }))),
+  requested_reviewers: v.optional(
+    v.array(v.looseObject({ login: v.string() })),
+  ),
+  assignees: v.optional(v.array(v.looseObject({ login: v.string() }))),
   additions: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   deletions: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   changed_files: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
@@ -548,6 +552,18 @@ function parsePullRequest(
     reviewState: "unknown",
     mergeability: mapMergeability(parsed.output.mergeable_state),
     labels: (parsed.output.labels ?? []).map((label) => label.name),
+    ...(parsed.output.requested_reviewers === undefined
+      ? {}
+      : {
+          requestedReviewers: parsed.output.requested_reviewers.map(
+            (reviewer) => reviewer.login,
+          ),
+        }),
+    ...(parsed.output.assignees === undefined
+      ? {}
+      : {
+          assignees: parsed.output.assignees.map((assignee) => assignee.login),
+        }),
     updatedAt: updatedAt.value,
     ...(parsed.output.changed_files === undefined
       ? {}

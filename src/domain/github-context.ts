@@ -55,6 +55,9 @@ export type PullRequestSummary = PullRequestSnapshot & {
     "none" | "review_pending" | "approved" | "changes_requested" | "unknown";
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
   readonly labels: ReadonlyArray<string>;
+  /** GitHub metadata used for dashboard priority; labels are never interpreted as assignment state. */
+  readonly requestedReviewers?: ReadonlyArray<string>;
+  readonly assignees?: ReadonlyArray<string>;
   readonly updatedAt: IsoTimestamp;
   readonly changedFileCount?: number;
   readonly additions?: number;

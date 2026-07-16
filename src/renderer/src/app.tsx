@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type DashboardScreenState =
-  "empty" | "loading" | "success" | "degraded" | "error";
+  | "empty"
+  | "loading"
+  | "success"
+  | "degraded"
+  | "error"
+  | "archived"
+  | "no_open_prs";
 
 export type AppProps = {
   readonly initialState?: DashboardScreenState;
@@ -35,9 +41,53 @@ export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
   const [reference, setReference] = useState("");
   const [showSwitch, setShowSwitch] = useState(false);
   const [localPath, setLocalPath] = useState("");
+  const [activeProfile, setActiveProfile] = useState("cfw");
+  const [liveState, setLiveState] =
+    useState<DashboardScreenState>(initialState);
 
-  const previewReference = (): void => {
+  useEffect(() => {
+    void requestLocalApi("/v1/dashboard").then((payload) => {
+      if (!isRecord(payload) || !isRecord(payload.profile)) return;
+      if (typeof payload.profile.id === "string")
+        setActiveProfile(payload.profile.id);
+      if (
+        isRecord(payload.dashboard) &&
+        Array.isArray(payload.dashboard.repos)
+      ) {
+        const states = payload.dashboard.repos.map((repo) =>
+          isRecord(repo) ? repo.state : undefined,
+        );
+        if (states.includes("github_auth")) setLiveState("error");
+        else if (states.includes("missing_local_path"))
+          setLiveState("degraded");
+        else if (states.includes("no_open_prs")) setLiveState("no_open_prs");
+      }
+    });
+  }, []);
+
+  const previewReference = async (): Promise<void> => {
+    const payload = await requestLocalApi("/v1/direct-entry/preview", {
+      method: "POST",
+      body: JSON.stringify({ reference }),
+    });
+    if (
+      isRecord(payload) &&
+      isRecord(payload.confirmation) &&
+      payload.confirmation.required === true
+    ) {
+      setShowSwitch(true);
+      return;
+    }
     if (reference.includes("github.example.test")) setShowSwitch(true);
+  };
+
+  const selectProfile = async (profileId: string): Promise<void> => {
+    const payload = await requestLocalApi("/v1/profiles/select", {
+      method: "POST",
+      body: JSON.stringify({ id: profileId }),
+    });
+    if (isRecord(payload) && typeof payload.id === "string")
+      setActiveProfile(payload.id);
   };
 
   return (
@@ -57,7 +107,8 @@ export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
           <select
             id="profile"
             className="mt-2 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2"
-            defaultValue="cfw"
+            value={activeProfile}
+            onChange={(event) => void selectProfile(event.target.value)}
           >
             <option value="cfw">CFW</option>
             <option value="enterprise">Enterprise</option>
@@ -91,13 +142,13 @@ export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
         <section className="px-8 py-7">
           {view === "pending" ? (
             <PendingDashboard
-              state={initialState}
+              state={liveState}
               entryOpen={entryOpen}
               onOpenEntry={() => setEntryOpen(true)}
               onCloseEntry={() => setEntryOpen(false)}
               reference={reference}
               onReferenceChange={setReference}
-              onPreview={previewReference}
+              onPreview={() => void previewReference()}
             />
           ) : (
             <Settings localPath={localPath} onLocalPathChange={setLocalPath} />
@@ -126,7 +177,10 @@ export function App({ initialState = "empty" }: AppProps): React.JSX.Element {
               </button>
               <button
                 className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
-                onClick={() => setShowSwitch(false)}
+                onClick={() => {
+                  void selectProfile("enterprise");
+                  setShowSwitch(false);
+                }}
               >
                 Switch profile
               </button>
@@ -179,6 +233,20 @@ function PendingDashboard({
           title="GitHub access unavailable"
           detail="Refresh the watchlist after GitHub authentication is available. Direct PR entry remains available."
           tone="error"
+        />
+      ) : null}
+      {state === "archived" ? (
+        <DashboardNotice
+          title="Archived or inaccessible repository"
+          detail="This watched repository cannot be listed. Remove it or keep it hidden from the dashboard."
+          tone="warning"
+        />
+      ) : null}
+      {state === "no_open_prs" ? (
+        <DashboardNotice
+          title="No pending pull requests"
+          detail="Refresh later or add another watched repository. Direct PR entry remains available."
+          tone="warning"
         />
       ) : null}
       {state === "degraded" ? (
@@ -340,17 +408,73 @@ function Settings({
           placeholder="/Users/you/Work/cfw/cfw-bo-staff-api"
         />
         <div className="mt-5 flex gap-3">
-          <button className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950">
+          <button
+            className="rounded bg-cyan-500 px-3 py-2 font-medium text-slate-950"
+            onClick={() =>
+              void requestLocalApi("/v1/watchlist/path", {
+                method: "PATCH",
+                body: JSON.stringify({
+                  host: "github.com",
+                  owner: "centraldigital",
+                  repo: "cfw-bo-staff-api",
+                  localPath,
+                }),
+              })
+            }
+          >
             Save local path
           </button>
-          <button className="rounded border border-slate-600 px-3 py-2">
+          <button
+            className="rounded border border-slate-600 px-3 py-2"
+            onClick={() =>
+              void requestLocalApi("/v1/github/access", { method: "POST" })
+            }
+          >
             Test GitHub access
           </button>
-          <button className="rounded border border-red-900 px-3 py-2 text-red-200">
+          <button
+            className="rounded border border-red-900 px-3 py-2 text-red-200"
+            onClick={() =>
+              void requestLocalApi("/v1/watchlist", {
+                method: "DELETE",
+                body: JSON.stringify({
+                  host: "github.com",
+                  owner: "centraldigital",
+                  repo: "cfw-bo-staff-api",
+                }),
+              })
+            }
+          >
             Remove repo
           </button>
         </div>
       </section>
     </>
   );
+}
+
+async function requestLocalApi(
+  path: string,
+  init: RequestInit = {},
+): Promise<unknown> {
+  if (typeof window === "undefined" || !("patchdesk" in window))
+    return undefined;
+  const response = await fetch(
+    new URL(path.slice(1), window.patchdesk.localApi.baseUrl),
+    {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Patchdesk-Capability": window.patchdesk.localApi.capability,
+        ...init.headers,
+      },
+    },
+  ).catch(() => undefined);
+  return response === undefined || !response.ok
+    ? undefined
+    : await response.json().catch(() => undefined);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
