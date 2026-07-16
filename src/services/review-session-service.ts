@@ -13,7 +13,7 @@ import type { ManagedWorktree, MetadataOnlyReview, ReviewWorktreeService } from 
 
 export type StartReviewFailure = { readonly _tag: "StartReviewFailed" };
 type StartReviewInput = { readonly profileId: WorkspaceProfileId; readonly host: GitHubHost; readonly owner: GitHubOwner; readonly repo: GitHubRepoName; readonly number: PullRequestNumber; readonly headSha: GitSha; readonly isDraft: boolean; readonly isOpen: boolean; readonly profile?: WorkspaceProfileConfig; readonly localPath?: string };
-type StartDependencies = { readonly github: GitHubReader; readonly worktrees: ReviewWorktreeService; readonly context: ReviewContextService };
+export type StartDependencies = { readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks" | "getPullRequestDiff">; readonly worktrees: ReviewWorktreeService; readonly context: ReviewContextService };
 
 /** Creates the durable, exact-head session record before any workflow is allowed to inspect it. */
 export class ReviewSessionService {

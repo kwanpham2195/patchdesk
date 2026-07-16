@@ -23,6 +23,9 @@ import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
+import { ReviewContextService } from "../services/review-context-service";
+import { ReviewWorktreeService } from "../services/review-worktree-service";
+import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
 
 const localApiConfigurationSchema = object({
@@ -78,6 +81,12 @@ export async function startLocalApiServer(
   const paths = configuration.paths ?? PatchdeskPaths.default();
   const commands = new CommandRunner();
   const github = configuration.github ?? new GitHubAdapter(commands);
+  const readOnlyGit = {
+    async run(argv: ReadonlyArray<string>) {
+      const output = await commands.runText({ argv, timeoutMs: 15_000 });
+      return output._tag === "ok" ? ok({ stdout: output.value }) : err({ _tag: "GitReadFailed" as const });
+    },
+  };
   const profiles = new ProfileStore(paths);
   const dashboard = new DashboardController(
     profiles,
@@ -98,6 +107,11 @@ export async function startLocalApiServer(
     github,
     paths,
     () => new Date().toISOString() as never,
+    {
+      github,
+      worktrees: new ReviewWorktreeService(paths, readOnlyGit),
+      context: new ReviewContextService(),
+    },
   );
   const reviewCompletion = new ReviewCompletionService(paths, () => new Date().toISOString() as never);
   const merger = configuration.mergeWriter ?? (isGitHubMergeWriter(github) ? github : undefined);

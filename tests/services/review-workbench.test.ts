@@ -1,14 +1,28 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import {
   createLocalDraft,
   discardWorkbenchAttempt,
   draftWriteBlocker,
   recoverOrphanedWorkbenchAttempt,
 } from "../../src/services/review-workbench";
+import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import type { ReviewAttempt } from "../../src/domain/review-attempt";
 import type { ReviewResult } from "../../src/domain/review-result";
 import type { ReviewSession } from "../../src/domain/review-session";
+
+function must<T>(value: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {
+  if (value._tag === "err") throw new Error("Invalid fixture");
+  return value.value;
+}
 
 const session = {
   id: "github.com__centraldigital__patchdesk__pr-1__sha-abcdef12__0123456789ab",
@@ -54,6 +68,67 @@ const result = {
 } as unknown as ReviewResult;
 
 describe("review workbench", () => {
+  it("prepares a persisted running attempt when opening a new direct review", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-workbench-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const profile = must(parseWorkspaceProfileConfig({
+        id: "cfw",
+        label: "CFW",
+        githubHost: "github.com",
+        ghAccount: "fixture",
+        ownerFilters: [],
+        workspaceRoots: [],
+        rulePaths: [],
+        repos: [],
+      }));
+      const github = new FakeGitHubAdapter({
+        pullRequest: {
+          ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
+          title: "Fixture review",
+          author: "fixture",
+          headBranch: "feature/review",
+          baseBranch: "sit",
+          headSha: "abcdef1234567890abcdef1234567890abcdef12",
+          isDraft: false,
+          isOpen: true,
+          reviewState: "none",
+          mergeability: "unknown",
+          labels: [],
+          updatedAt: "2026-07-16T00:00:00.000Z",
+        } as never,
+        comments: { threads: [] },
+        checks: { overall: "passing", checks: [] },
+        diff: "+++ b/src/review.ts\n+new line\n",
+      });
+      await new ProfileStore(paths).save(profile);
+      const controller = new ReviewWorkbenchController(
+        new ProfileStore(paths),
+        new ReviewSessionStore(paths),
+        github,
+        paths,
+        () => "2026-07-16T00:00:00.000Z" as never,
+      );
+
+      const opened = await controller.open({
+        profileId: "cfw",
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      });
+
+      expect(opened).toMatchObject({
+        _tag: "ok",
+        value: { state: "review_started", session: { state: { _tag: "Running", attemptId: "001" } } },
+      });
+      if (opened._tag === "err") return;
+      expect(await readFile(opened.value.session.patchPath, "utf8")).toContain("src/review.ts");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("creates an editable local draft only for mapped locations and keeps unmapped findings visible", () => {
     const draft = createLocalDraft({
       session,

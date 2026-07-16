@@ -15,7 +15,9 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { evaluateMergeReadiness, type MergeReadiness } from "../domain/merge-readiness";
-import { ReviewSessionService } from "./review-session-service";
+import { ReviewContextService } from "./review-context-service";
+import { ReviewSessionService, type StartDependencies } from "./review-session-service";
+import { ReviewWorktreeService } from "./review-worktree-service";
 
 export type ReviewWorkbenchFailure = { readonly reason: "invalid_input" | "not_found" | "github_read" | "storage" };
 export type ReviewWorkbenchProjection =
@@ -36,9 +38,10 @@ export class ReviewWorkbenchController {
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
-    private readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks">,
+    private readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks" | "getPullRequestDiff">,
     private readonly paths: ConstructorParameters<typeof ReviewSessionService>[0],
     private readonly now: () => IsoTimestamp,
+    private readonly startDependencies?: StartDependencies,
   ) {}
 
   async open(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
@@ -57,7 +60,13 @@ export class ReviewWorkbenchController {
     const stored = await this.sessions.load(profileId.value, sessionId);
     if (stored._tag === "ok") return this.project(profile.value, stored.value);
     if (stored.error.reason !== "not_found") return err({ reason: "storage" });
-    const created = await new ReviewSessionService(this.paths, this.now).startReview({ profileId: profileId.value, host: host.value, owner: owner.value, repo: repo.value, number: number.value, headSha: current.value.headSha, isDraft: current.value.isDraft, isOpen: current.value.isOpen });
+    const matchingRepo = profile.value.repos.find((candidate) => candidate.host === host.value && candidate.owner === owner.value && candidate.repo === repo.value);
+    const dependencies = this.startDependencies ?? {
+      github: this.github,
+      worktrees: new ReviewWorktreeService(this.paths, { async run() { return err({ _tag: "GitReadFailed" }); } }),
+      context: new ReviewContextService(),
+    };
+    const created = await new ReviewSessionService(this.paths, this.now, dependencies).startReview({ profileId: profileId.value, host: host.value, owner: owner.value, repo: repo.value, number: number.value, headSha: current.value.headSha, isDraft: current.value.isDraft, isOpen: current.value.isOpen, profile: profile.value, ...(matchingRepo?.localPath === undefined ? {} : { localPath: matchingRepo.localPath }) });
     return created._tag === "err" ? err({ reason: "storage" }) : this.project(profile.value, created.value.session);
   }
 
