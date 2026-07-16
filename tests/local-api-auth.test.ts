@@ -78,7 +78,7 @@ describe("local API capability boundary", () => {
     expect(response.status).toBe(403);
   });
 
-  it("rejects a request shaped as a cross-site fetch", async () => {
+  it("accepts the renderer's cross-origin loopback fetch when origin and capability match", async () => {
     localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
@@ -89,7 +89,7 @@ describe("local API capability boundary", () => {
       },
     });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("allows the renderer's capability preflight with only the required headers", async () => {

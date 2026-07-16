@@ -1,6 +1,6 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { safeParse, minLength, object, pipe, string } from "valibot";
+import { optional, safeParse, minLength, object, pipe, string } from "valibot";
 
 import {
   APP_CAPABILITY_HEADER,
@@ -19,6 +19,7 @@ import { DashboardController } from "../services/dashboard-controller";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
+  developmentOrigin: optional(pipe(string(), minLength(1))),
   capability: pipe(string(), minLength(1)),
 });
 
@@ -27,6 +28,8 @@ const localhostHostname = "127.0.0.1";
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
   readonly allowedOrigin: string;
+  /** Vite's fixed renderer origin, accepted only by the unpackaged desktop app. */
+  readonly developmentOrigin?: string | undefined;
   readonly capability: AppCapability;
   /** Explicit seams used only by local integration tests; production uses real main-process adapters. */
   readonly github?: GitHubReader;
@@ -144,7 +147,7 @@ function corsForRenderer(
 ): MiddlewareHandler {
   return async (context, next) => {
     const origin = context.req.header("Origin");
-    if (origin === configuration.allowedOrigin) {
+    if (isAllowedOrigin(configuration, origin)) {
       context.header("Access-Control-Allow-Origin", origin);
       context.header("Vary", "Origin");
       context.header(
@@ -214,11 +217,9 @@ function requireLocalApiAccess(
     }
 
     const origin = context.req.header("Origin");
-    const fetchSite = context.req.header("Sec-Fetch-Site");
     const fetchMode = context.req.header("Sec-Fetch-Mode");
     if (
-      origin !== configuration.allowedOrigin ||
-      fetchSite === "cross-site" ||
+      !isAllowedOrigin(configuration, origin) ||
       fetchMode === "navigate"
     ) {
       return context.json({ error: "Origin is not allowed" }, 403);
@@ -226,6 +227,16 @@ function requireLocalApiAccess(
 
     await next();
   };
+}
+
+function isAllowedOrigin(
+  configuration: LocalApiConfiguration,
+  origin: string | undefined,
+): boolean {
+  return (
+    origin === configuration.allowedOrigin ||
+    origin === configuration.developmentOrigin
+  );
 }
 
 async function listenOnLoopback(

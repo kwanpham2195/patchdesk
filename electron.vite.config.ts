@@ -14,8 +14,9 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
     build: {
+      // The sandbox cannot resolve external Node packages from a preload script.
+      externalizeDeps: false,
       rollupOptions: {
         input: "src/main/preload.ts",
         output: {

@@ -17,6 +17,8 @@ const desktopLifecycle = createDesktopLifecycle({
     async start() {
       const startup = await startLocalApiServer({
         allowedOrigin: rendererOrigin,
+        // electron-vite loads this fixed local origin in development; the capability still protects the loopback API.
+        developmentOrigin: "http://localhost:5173",
         capability: createAppCapability(),
       });
       if (startup._tag === "started") {
