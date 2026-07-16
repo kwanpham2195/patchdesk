@@ -9,6 +9,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
+    "test:e2e": "vitest --run dashboard.e2e",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "electron:build": "pnpm build"
