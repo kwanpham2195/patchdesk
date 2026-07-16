@@ -1,0 +1,38 @@
+# Patchdesk Phase 1 — Milestone 4 report
+
+Status: complete
+
+## Scope delivered
+
+- Added a read-only GitHub Adapter behind an explicit-argv `CommandRunner`.
+- Added typed, safe classifications for timeout, unavailable command, missing local GitHub authentication, nonzero exit, and invalid JSON. Raw stdout and stderr remain inside the process boundary and do not enter adapter failures.
+- Added reads for open PRs, one PR snapshot, review conversation threads, check runs, patch diff, and `gh auth status` account resolution. No GitHub write method exists.
+- Added a fixture-only `FakeGitHubAdapter` so later dashboard and review tests can supply GitHub data without a process, filesystem, or network call.
+- Added checked-in golden argv and response-payload fixtures for every read/auth command. The diff path runs `gh pr diff` first, and only attempts `git diff` when the caller supplies validated, explicit fetched-ref evidence.
+
+## TDD evidence
+
+Red:
+
+```text
+pnpm test -- --run github-adapter
+```
+
+The first run failed because `src/adapters/github/command-runner` did not exist. The test suite defined the desired boundary and golden argv contracts before production code was added.
+
+Green:
+
+```text
+pnpm test -- --run github-adapter
+pnpm lint
+pnpm typecheck
+pnpm test -- --run
+pnpm exec prettier --check src/adapters/github src/domain/github-context.ts tests/adapters/github-adapter.test.ts fixtures/github/argv
+git diff --check
+```
+
+Results: the focused adapter suite passed 8 tests. The full suite passed 70 tests across 7 files; lint, strict typecheck, Prettier, and diff checks passed.
+
+## Scope boundary
+
+No live `gh` command was run during this milestone. The adapter never reads, persists, returns, or logs token values; authentication is resolved only with `gh auth status` inside the adapter. Dashboard UI, GitHub writes, worktree fetching, and fetched-ref creation remain out of scope.

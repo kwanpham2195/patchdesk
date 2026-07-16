@@ -1,0 +1,10 @@
+{
+  "check_runs": [
+    {
+      "name": "test",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://example.test/check"
+    }
+  ]
+}

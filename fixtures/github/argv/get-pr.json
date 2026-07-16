@@ -1,0 +1,7 @@
+[
+  "gh",
+  "api",
+  "--hostname",
+  "github.com",
+  "repos/centraldigital/patchdesk/pulls/42"
+]

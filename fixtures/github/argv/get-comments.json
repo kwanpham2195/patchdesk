@@ -1,0 +1,15 @@
+[
+  "gh",
+  "api",
+  "graphql",
+  "--hostname",
+  "github.com",
+  "-f",
+  "query=query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine diffSide } } } } } } }",
+  "-F",
+  "owner=centraldigital",
+  "-F",
+  "name=patchdesk",
+  "-F",
+  "number=42"
+]

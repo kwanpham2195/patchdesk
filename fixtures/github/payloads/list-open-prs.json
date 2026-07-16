@@ -1,0 +1,28 @@
+[
+  {
+    "number": 42,
+    "title": "Add safe GitHub reads",
+    "state": "open",
+    "draft": false,
+    "head": {
+      "ref": "feat/github-read",
+      "sha": "abcdef1234567890abcdef1234567890abcdef12"
+    },
+    "base": {
+      "ref": "sit"
+    },
+    "user": {
+      "login": "reviewer"
+    },
+    "updated_at": "2026-07-16T12:00:00Z",
+    "mergeable_state": "clean",
+    "labels": [
+      {
+        "name": "review"
+      }
+    ],
+    "additions": 12,
+    "deletions": 3,
+    "changed_files": 2
+  }
+]

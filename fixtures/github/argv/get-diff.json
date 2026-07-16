@@ -1,0 +1,9 @@
+[
+  "gh",
+  "pr",
+  "diff",
+  "42",
+  "--repo",
+  "github.com/centraldigital/patchdesk",
+  "--patch"
+]
