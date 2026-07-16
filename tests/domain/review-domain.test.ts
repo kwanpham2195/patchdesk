@@ -364,6 +364,61 @@ describe("Patchdesk review domain", () => {
     ).toMatchObject({ _tag: "err", error: { _tag: "AttemptSessionMismatch" } });
   });
 
+  it("ignores a duplicate completion and preserves the first visible result", () => {
+    const session = createReviewSession({ key: ids, ...sessionContext, createdAt: times.created });
+    const started = mustParse(startNextAttempt(session, []));
+    const firstResult = mustParse(
+      parseReviewResult({
+        changeSummary: "Adds strict review parsing.",
+        verdict: "comment",
+        summary: "First completion remains visible.",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+      }),
+    );
+    const duplicateResult = mustParse(
+      parseReviewResult({
+        changeSummary: "Different result must not replace the first.",
+        verdict: "request_changes",
+        summary: "Duplicate completion.",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+      }),
+    );
+    const attempt = {
+      id: started.attemptId,
+      sessionId: started.session.id,
+      state: { _tag: "Running" as const, flueRunId: "run-current" },
+    };
+    const completed = mustParse(
+      completeAttempt(
+        started.session,
+        attempt,
+        firstResult,
+        times.completed,
+        mustParse(parseAbsolutePath("/tmp/result.json")),
+      ),
+    );
+
+    expect(
+      completeAttempt(
+        completed.session,
+        attempt,
+        duplicateResult,
+        times.merged,
+        mustParse(parseAbsolutePath("/tmp/duplicate-result.json")),
+      ),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        session: { visibleResult: { summary: "First completion remains visible." } },
+        attempt: { state: { _tag: "IgnoredLateResult", reason: "not_current" } },
+      },
+    });
+  });
+
   it("parses strict boundary contracts for config, GitHub, storage, Flue, and UI requests", () => {
     expect(parsePatchdeskConfig({ recentPrs: [] })).toMatchObject({ _tag: "ok" });
     expect(parsePatchdeskConfig({ recentPrs: [], typo: true })).toMatchObject({

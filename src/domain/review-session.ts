@@ -151,9 +151,10 @@ export function completeAttempt(
   }
 
   if (
-    session.state._tag === "Discarded" ||
+    session.state._tag !== "Running" ||
+    session.state.attemptId !== attempt.id ||
     session.currentAttemptId !== attempt.id ||
-    attempt.state._tag === "Discarded"
+    attempt.state._tag !== "Running"
   ) {
     const reason =
       session.state._tag === "Discarded" || attempt.state._tag === "Discarded"
