@@ -4,9 +4,16 @@ export type StartedLocalApi = {
   readonly url: URL;
 };
 
+/** The safe result of starting the local API before the desktop workbench opens. */
+export type LocalApiStartupResult<
+  TServer extends StartedLocalApi = StartedLocalApi,
+> =
+  | { readonly _tag: "started"; readonly server: TServer }
+  | { readonly _tag: "invalid-configuration" };
+
 /** Narrow server lifecycle dependency owned by the desktop composition root. */
 export type LocalApiLifecycle = {
-  start(): Promise<StartedLocalApi>;
+  start(): Promise<LocalApiStartupResult>;
   healthCheck(server: StartedLocalApi): Promise<boolean>;
   stop(server: StartedLocalApi): Promise<void>;
 };
@@ -32,13 +39,24 @@ export function createDesktopLifecycle(
 
   return {
     async start(): Promise<DesktopStartResult> {
-      const server = await dependencies.localApi.start();
+      const startup = await dependencies.localApi.start();
+      if (startup._tag !== "started") {
+        return { _tag: "local-api-unavailable" };
+      }
+
+      const server = startup.server;
       activeServer = server;
 
-      const isHealthy = await dependencies.localApi.healthCheck(server);
+      let isHealthy: boolean;
+      try {
+        isHealthy = await dependencies.localApi.healthCheck(server);
+      } catch {
+        await stopAfterFailedHealthCheck(server);
+        return { _tag: "local-api-unavailable" };
+      }
+
       if (!isHealthy) {
-        await dependencies.localApi.stop(server);
-        activeServer = undefined;
+        await stopAfterFailedHealthCheck(server);
         return { _tag: "local-api-unavailable" };
       }
 
@@ -62,4 +80,15 @@ export function createDesktopLifecycle(
       await dependencies.localApi.stop(server);
     },
   };
+
+  async function stopAfterFailedHealthCheck(
+    server: StartedLocalApi,
+  ): Promise<void> {
+    activeServer = undefined;
+    try {
+      await dependencies.localApi.stop(server);
+    } catch {
+      // A failed health check already makes startup terminal; do not leak cleanup details into Electron.
+    }
+  }
 }

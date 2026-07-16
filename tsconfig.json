@@ -5,6 +5,12 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/src/*"],
+      "@flue/runtime": ["src/flue-runtime-types.ts"],
+      "@flue/runtime/routing": ["src/flue-routing-types.ts"]
+    },
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
     "strict": true,

@@ -14,12 +14,15 @@ let runningLocalApi: LocalApiServer | undefined;
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
-      const server = await startLocalApiServer({
+      const startup = await startLocalApiServer({
         allowedOrigin: rendererOrigin,
         capability: createAppCapability(),
       });
-      runningLocalApi = server;
-      return server;
+      if (startup._tag === "started") {
+        runningLocalApi = startup.server;
+      }
+
+      return startup;
     },
     async healthCheck(server) {
       return await healthCheckLocalApi(server, rendererOrigin);

@@ -7,6 +7,7 @@ import {
   hasMatchingAppCapability,
   type AppCapability,
 } from "./ipc-contract";
+import type { LocalApiStartupResult } from "./app-lifecycle";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -31,13 +32,13 @@ export type LocalApiServer = {
 /** Starts the Hono API on a random loopback port with capability and origin checks. */
 export async function startLocalApiServer(
   configuration: LocalApiConfiguration,
-): Promise<LocalApiServer> {
+): Promise<LocalApiStartupResult<LocalApiServer>> {
   const parsedConfiguration = safeParse(
     localApiConfigurationSchema,
     configuration,
   );
   if (!parsedConfiguration.success) {
-    throw new Error("Invalid local API configuration");
+    return { _tag: "invalid-configuration" };
   }
 
   const app = new Hono();
@@ -48,10 +49,13 @@ export async function startLocalApiServer(
   const url = new URL(`http://${localhostHostname}:${port}/`);
 
   return {
-    capability: parsedConfiguration.output.capability,
-    url,
-    async stop(): Promise<void> {
-      await closeServer(server);
+    _tag: "started",
+    server: {
+      capability: parsedConfiguration.output.capability,
+      url,
+      async stop(): Promise<void> {
+        await closeServer(server);
+      },
     },
   };
 }

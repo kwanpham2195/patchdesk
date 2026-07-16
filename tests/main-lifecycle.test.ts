@@ -10,8 +10,11 @@ describe("desktop lifecycle", () => {
         async start() {
           events.push("server:start");
           return {
-            capability: "test-capability",
-            url: new URL("http://127.0.0.1:43123/"),
+            _tag: "started" as const,
+            server: {
+              capability: "test-capability",
+              url: new URL("http://127.0.0.1:43123/"),
+            },
           };
         },
         async healthCheck() {
@@ -46,8 +49,11 @@ describe("desktop lifecycle", () => {
         async start() {
           events.push("server:start");
           return {
-            capability: "test-capability",
-            url: new URL("http://127.0.0.1:43123/"),
+            _tag: "started" as const,
+            server: {
+              capability: "test-capability",
+              url: new URL("http://127.0.0.1:43123/"),
+            },
           };
         },
         async healthCheck() {
@@ -69,6 +75,39 @@ describe("desktop lifecycle", () => {
     expect(events).toEqual(["server:start", "server:health", "server:stop"]);
   });
 
+  it("returns a safe startup failure when the local API health check rejects", async () => {
+    const events: Array<string> = [];
+    const lifecycle = createDesktopLifecycle({
+      localApi: {
+        async start() {
+          events.push("server:start");
+          return {
+            _tag: "started" as const,
+            server: {
+              capability: "test-capability",
+              url: new URL("http://127.0.0.1:43123/"),
+            },
+          };
+        },
+        async healthCheck() {
+          events.push("server:health");
+          throw new Error("connection refused");
+        },
+        async stop() {
+          events.push("server:stop");
+        },
+      },
+      async showWorkbench() {
+        events.push("workbench:show");
+      },
+    });
+
+    await expect(lifecycle.start()).resolves.toEqual({
+      _tag: "local-api-unavailable",
+    });
+    expect(events).toEqual(["server:start", "server:health", "server:stop"]);
+  });
+
   it("stops the local API when opening the workbench fails", async () => {
     const events: Array<string> = [];
     const lifecycle = createDesktopLifecycle({
@@ -76,8 +115,11 @@ describe("desktop lifecycle", () => {
         async start() {
           events.push("server:start");
           return {
-            capability: "test-capability",
-            url: new URL("http://127.0.0.1:43123/"),
+            _tag: "started" as const,
+            server: {
+              capability: "test-capability",
+              url: new URL("http://127.0.0.1:43123/"),
+            },
           };
         },
         async healthCheck() {

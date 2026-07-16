@@ -17,8 +17,17 @@ afterEach(async () => {
 });
 
 describe("local API capability boundary", () => {
+  it("returns a safe typed failure for invalid startup configuration", async () => {
+    const startup = await startLocalApiServer({
+      capability: "",
+      allowedOrigin: "",
+    });
+
+    expect(startup).toEqual({ _tag: "invalid-configuration" });
+  });
+
   it("returns health only to the allowed origin with the app capability", async () => {
-    localApi = await startLocalApiServer({ capability, allowedOrigin });
+    localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
       headers: {
@@ -34,7 +43,7 @@ describe("local API capability boundary", () => {
   });
 
   it("rejects a request with no app capability", async () => {
-    localApi = await startLocalApiServer({ capability, allowedOrigin });
+    localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
       headers: { Origin: allowedOrigin },
@@ -44,7 +53,7 @@ describe("local API capability boundary", () => {
   });
 
   it("rejects a request with the wrong app capability", async () => {
-    localApi = await startLocalApiServer({ capability, allowedOrigin });
+    localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
       headers: {
@@ -57,7 +66,7 @@ describe("local API capability boundary", () => {
   });
 
   it("rejects a request from a different origin", async () => {
-    localApi = await startLocalApiServer({ capability, allowedOrigin });
+    localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
       headers: {
@@ -70,7 +79,7 @@ describe("local API capability boundary", () => {
   });
 
   it("rejects a request shaped as a cross-site fetch", async () => {
-    localApi = await startLocalApiServer({ capability, allowedOrigin });
+    localApi = await startTestLocalApi();
 
     const response = await fetch(new URL("health", localApi.url), {
       headers: {
@@ -83,3 +92,12 @@ describe("local API capability boundary", () => {
     expect(response.status).toBe(403);
   });
 });
+
+async function startTestLocalApi(): Promise<LocalApiServer> {
+  const startup = await startLocalApiServer({ capability, allowedOrigin });
+  if (startup._tag !== "started") {
+    throw new Error("Expected valid local API startup");
+  }
+
+  return startup.server;
+}
