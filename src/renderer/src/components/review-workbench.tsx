@@ -4,6 +4,8 @@ import type { CheckSummary, GitHubComments } from "../../../domain/github-contex
 import type { GitHubReviewEvent, ReviewDraft } from "../../../domain/review-draft";
 import type { ReviewResult } from "../../../domain/review-result";
 import { ReviewSubmissionDialog } from "./review-submission-dialog";
+import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
+import type { MergeReadiness } from "../../../domain/merge-readiness";
 
 type LocalDraftView = {
   readonly summaryBody: string;
@@ -33,6 +35,12 @@ export function ReviewWorkbench(props: {
     readonly draft: ReviewDraft;
     readonly onCreatePending: () => Promise<{ readonly reviewId: string }>;
     readonly onSubmitPending: (event: GitHubReviewEvent, summaryBody: string) => Promise<{ readonly reviewId: string }>;
+  };
+  readonly merge?: {
+    readonly readiness: MergeReadiness;
+    readonly context: { readonly repo: string; readonly prNumber: number; readonly title: string; readonly base: string; readonly head: string; readonly headSha: string };
+    readonly methods: ReadonlyArray<MergeMethod>;
+    readonly onMerge: (method: MergeMethod, acknowledgedWarnings: boolean) => Promise<{ readonly mergeCommitSha?: string }>;
   };
 }): React.JSX.Element {
   const [draftBodies, setDraftBodies] = useState(() =>
@@ -86,6 +94,8 @@ export function ReviewWorkbench(props: {
           <h2 className="text-lg font-semibold">Checks: {props.checks.overall}</h2>
           <ul className="mt-3 space-y-2">{props.checks.checks.map((check) => <li key={check.name} className="rounded border border-slate-800 p-3"><details><summary>{check.name} · {check.required === true ? "Required" : check.required === false ? "Optional" : "Requirement unknown"} · {check.conclusion ?? check.status}</summary><p className="mt-2 text-sm text-slate-300">{check.status}{check.url === undefined ? "" : " · "}<>{check.url === undefined ? null : <a className="text-cyan-300 underline" href={check.url}>Open check on GitHub</a>}</></p></details></li>)}</ul>
         </section>
+
+        {props.merge === undefined ? null : <MergeConfirmationDialog readiness={props.merge.readiness} context={props.merge.context} methods={props.merge.methods} onMerge={props.merge.onMerge} />}
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-5" aria-label="Validation plan">
           <h2 className="text-lg font-semibold">Validation plan</h2>

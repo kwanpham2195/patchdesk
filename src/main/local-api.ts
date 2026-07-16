@@ -14,10 +14,12 @@ import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
-import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
+import type { GitHubMergeWriter, GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
+import { ReviewWorkbenchController } from "../services/review-workbench-controller";
+import { MergeWriteController } from "../services/merge-write-controller";
 import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import type { SafeRunProjection } from "../services/run-projection";
@@ -40,6 +42,8 @@ export type LocalApiConfiguration = {
   readonly github?: GitHubReader;
   /** Test-only write seam. A reader alone must never enable review-write routes. */
   readonly reviewWriter?: GitHubReviewWriter;
+  /** Test-only merge seam. Production gets this capability from the main-process adapter. */
+  readonly mergeWriter?: GitHubMergeWriter;
   readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
   /** Test-only adapter; production never accepts mutable run state over HTTP. */
@@ -87,6 +91,15 @@ export async function startLocalApiServer(
         createPendingReview: writer.createPendingReview.bind(writer),
         submitPendingReview: writer.submitPendingReview.bind(writer),
       }, () => new Date().toISOString() as never);
+  const reviewWorkbench = new ReviewWorkbenchController(
+    profiles,
+    new ReviewSessionStore(paths),
+    github,
+    paths,
+    () => new Date().toISOString() as never,
+  );
+  const merger = configuration.mergeWriter ?? (isGitHubMergeWriter(github) ? github : undefined);
+  const mergeWrites = merger === undefined ? undefined : new MergeWriteController(profiles, new ReviewSessionStore(paths), { getPullRequest: github.getPullRequest.bind(github), getPullRequestChecks: github.getPullRequestChecks.bind(github), mergePullRequest: merger.mergePullRequest.bind(merger) }, ["squash", "merge", "rebase"], () => new Date().toISOString() as never);
   app.get("/v1/profiles", async (context) =>
     response(context, await dashboard.listProfiles()),
   );
@@ -163,6 +176,13 @@ export async function startLocalApiServer(
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(context, await reviewWrites.submitPending(await jsonBody(context))),
   );
+  app.post("/v1/reviews/open", async (context) =>
+    response(context, await reviewWorkbench.open(await jsonBody(context))),
+  );
+  app.post("/v1/reviews/load", async (context) =>
+    response(context, await reviewWorkbench.load(await jsonBody(context))),
+  );
+  app.post("/v1/reviews/merge", async (context) => mergeWrites === undefined ? context.json({ error: "merge_unavailable" }, 503) : response(context, await mergeWrites.merge(await jsonBody(context))));
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId"); const attemptId = context.req.query("attemptId");
     if (sessionId === undefined || attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
@@ -222,6 +242,7 @@ function field(value: unknown, name: string): unknown {
 function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {
   return typeof value === "object" && value !== null && "createPendingReview" in value && "submitPendingReview" in value;
 }
+function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter { return typeof value === "object" && value !== null && "mergePullRequest" in value; }
 
 function response(
   context: Context,

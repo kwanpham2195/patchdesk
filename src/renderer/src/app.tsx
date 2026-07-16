@@ -32,7 +32,7 @@ type Repo = {
 type RepoOutcome = { readonly repo: Repo; readonly state: string };
 type PrRow = {
   readonly summary: {
-    readonly ref: { readonly number: number };
+    readonly ref: { readonly host: string; readonly owner: string; readonly repo: string; readonly number: number };
     readonly title: string;
     readonly author: string;
     readonly checkSummary?: { readonly overall: string };
@@ -49,6 +49,7 @@ type Dashboard = {
 };
 type Preview = {
   readonly pr: {
+    readonly host?: string;
     readonly owner: string;
     readonly repo: string;
     readonly number: number;
@@ -57,6 +58,16 @@ type Preview = {
     readonly required: boolean;
     readonly targetProfileId?: string;
   };
+};
+type WorkbenchPayload = {
+  readonly state: "review_started" | "completed";
+  readonly session: { readonly id: string; readonly key: { readonly profileId: string; readonly owner: string; readonly repo: string; readonly prNumber: number; readonly headSha: string }; readonly currentAttemptId?: string; readonly draftContent?: unknown };
+  readonly result?: unknown;
+  readonly draft?: unknown;
+  readonly comments?: unknown;
+  readonly checks?: unknown;
+  readonly history?: unknown;
+  readonly mergeReadiness?: unknown;
 };
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
@@ -76,6 +87,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [reference, setReference] = useState("");
   const [preview, setPreview] = useState<Preview | undefined>();
   const [openedPr, setOpenedPr] = useState<string | undefined>();
+  const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
@@ -138,6 +150,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   if (submissionFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><ReviewSubmissionDialog draft={submissionFixtureData.draft as never} findings={submissionFixtureData.findings as never} onCreatePending={async () => ({ reviewId: "9001" })} onSubmitPending={async () => ({ reviewId: "9001" })} /></div></main>;
   if (submissionRejectionFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><ReviewSubmissionDialog draft={submissionFixtureData.draft as never} findings={submissionFixtureData.findings as never} onCreatePending={async () => { throw new Error("fixture rejection"); }} onSubmitPending={async () => ({ reviewId: "9001" })} /></div></main>;
   if (mergeFixture) return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><MergeConfirmationDialog readiness={{ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] }} context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }} methods={["squash", "merge"]} onMerge={async () => ({ mergeCommitSha: "abcdef" })} /></div></main>;
+
+  if (workbench?.state === "review_started") return <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-100"><section className="mx-auto max-w-3xl rounded-xl border border-slate-800 bg-slate-900 p-6" aria-label="Review in progress"><p className="text-xs uppercase tracking-[.2em] text-cyan-300">Review session started</p><h1 className="mt-2 text-2xl font-semibold">Preparing the persisted review workbench</h1><p className="mt-3 text-sm text-slate-300">Session {workbench.session.id}</p>{workbench.session.currentAttemptId === undefined ? <p className="mt-3 text-sm text-slate-400">The review has been recorded locally and will appear here when its result is complete.</p> : <SafeRunPanel sessionId={workbench.session.id} attemptId={workbench.session.currentAttemptId} />}</section></main>;
+
+  if (workbench?.state === "completed" && dashboard !== undefined) return <ReviewWorkbench result={workbench.result as never} draft={{ summaryBody: (workbench.draft as { readonly summaryBody?: string } | undefined)?.summaryBody ?? "", comments: ((workbench.draft as { readonly comments?: ReadonlyArray<{ readonly findingId: string; readonly body: string; readonly postability: "postable" }> } | undefined)?.comments ?? []) }} comments={workbench.comments as never} checks={workbench.checks as never} history={workbench.history as never ?? []} debugHref={`/debug/${workbench.session.id}`} submission={{ draft: workbench.draft as never, onCreatePending: async () => reviewWrite("/v1/reviews/pending"), onSubmitPending: async (event, summaryBody) => reviewWrite("/v1/reviews/submit", { event, summaryBody }) }} merge={{ readiness: workbench.mergeReadiness as never, context: { repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`, prNumber: workbench.session.key.prNumber, title: (workbench.result as { readonly changeSummary?: string } | undefined)?.changeSummary ?? "Pull request", base: "base", head: "head", headSha: workbench.session.key.headSha }, methods: ["squash", "merge", "rebase"], onMerge: async (method, acknowledgedWarnings) => mergeReview(method, acknowledgedWarnings) }} />;
 
   const select = async (id: string): Promise<void> => {
     await api("/v1/profiles/select", { method: "POST", body: { id } });
@@ -226,14 +242,37 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       setPreview(value);
       return;
     }
-    setOpenedPr(`${value.pr.owner}/${value.pr.repo}#${value.pr.number}`);
+    await openPullRequest(value.pr);
   };
   const confirmEntry = async (): Promise<void> => {
     if (preview === undefined) return;
     if (preview.confirmation.targetProfileId !== undefined)
       await select(preview.confirmation.targetProfileId);
-    setOpenedPr(`${preview.pr.owner}/${preview.pr.repo}#${preview.pr.number}`);
+    await openPullRequest(preview.pr);
     setPreview(undefined);
+  };
+  const openPullRequest = async (pr: Preview["pr"]): Promise<void> => {
+    setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
+    const value = await api("/v1/reviews/open", { method: "POST", body: { profileId: dashboard?.profile.id, host: pr.host ?? dashboard?.profile.githubHost, owner: pr.owner, repo: pr.repo, number: pr.number } });
+    if (isWorkbenchPayload(value)) {
+      setWorkbench(value);
+    }
+  };
+  const reviewWrite = async (path: string, extra: Record<string, unknown> = {}): Promise<{ readonly reviewId: string }> => {
+    if (workbench === undefined || dashboard === undefined || workbench.draft === undefined) throw new Error("Review workbench is unavailable");
+    const value = await api(path, { method: "POST", body: { profileId: dashboard.profile.id, sessionId: workbench.session.id, draft: workbench.draft, ...extra } });
+    if (!isWorkbenchWrite(value)) throw new Error("Review write was rejected");
+    setWorkbench((current) => current === undefined ? current : { ...current, session: value.session as WorkbenchPayload["session"], draft: value.draft });
+    const state = value.draft.state as { readonly pendingReviewId?: string; readonly reviewId?: string };
+    return { reviewId: state.reviewId ?? state.pendingReviewId ?? "review" };
+  };
+  const mergeReview = async (method: "merge" | "squash" | "rebase", acknowledgedWarnings: boolean): Promise<{ readonly mergeCommitSha?: string }> => {
+    if (workbench === undefined || dashboard === undefined) throw new Error("Review workbench is unavailable");
+    const value = await api("/v1/reviews/merge", { method: "POST", body: { profileId: dashboard.profile.id, sessionId: workbench.session.id, method, acknowledgedWarnings } });
+    if (!record(value) || !record(value.session)) throw new Error("Merge was rejected");
+    setWorkbench((current) => current === undefined ? current : { ...current, session: value.session as WorkbenchPayload["session"] });
+    const mergeCommitSha = record(value.session.mergeDecision) && typeof value.session.mergeDecision.mergeCommitSha === "string" ? value.session.mergeDecision.mergeCommitSha : undefined;
+    return mergeCommitSha === undefined ? {} : { mergeCommitSha };
   };
 
   return (
@@ -298,6 +337,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               onReference={setReference}
               onPreview={() => void previewEntry()}
               onRefresh={() => void refreshDashboard()}
+              onOpenRow={(pr) => void openPullRequest(pr)}
               {...(openedPr === undefined ? {} : { openedPr })}
             />
           ) : (
@@ -392,6 +432,7 @@ function Pending({
   onReference,
   onPreview,
   onRefresh,
+  onOpenRow,
   openedPr,
 }: {
   readonly state: DashboardScreenState;
@@ -400,6 +441,7 @@ function Pending({
   readonly onReference: (value: string) => void;
   readonly onPreview: () => void;
   readonly onRefresh: () => void;
+  readonly onOpenRow: (pr: Preview["pr"]) => void;
   readonly openedPr?: string;
 }): React.JSX.Element {
   return (
@@ -444,6 +486,7 @@ function Pending({
               {row.summary.checkSummary?.overall ?? "unknown"} ·{" "}
               {row.badges.join(", ") || row.priority}
             </p>
+            <button className="mt-2 text-sm text-cyan-300" onClick={() => onOpenRow(row.summary.ref)}>Open review</button>
           </article>
         ))}
       </section>
@@ -719,6 +762,12 @@ function isDashboard(value: unknown): value is Dashboard {
     Array.isArray(value.dashboard.rows) &&
     Array.isArray(value.dashboard.repos)
   );
+}
+function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {
+  return record(value) && (value.state === "review_started" || value.state === "completed") && record(value.session) && typeof value.session.id === "string";
+}
+function isWorkbenchWrite(value: unknown): value is { readonly session: unknown; readonly draft: { readonly state: unknown } } {
+  return record(value) && "session" in value && record(value.draft) && "state" in value.draft;
 }
 function isPreview(value: unknown): value is Preview {
   return (
