@@ -16,6 +16,7 @@ import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finde
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
+import { projectSafeRun } from "../services/run-projection";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -125,6 +126,16 @@ export async function startLocalApiServer(
     return body === undefined
       ? context.json({ error: "invalid_input" }, 400)
       : response(context, await dashboard.previewDirectEntry(body));
+  });
+  app.post("/v1/runs/review-pr", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(object({ sessionId: pipe(string(), minLength(1)), attemptId: pipe(string(), minLength(1)) }), body);
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    return context.json({ runId: `${parsed.output.sessionId}:${parsed.output.attemptId}`, projection: { status: "queued", elapsedMs: 0, step: "preparing" } });
+  });
+  app.get("/v1/runs/:runId", (context) => {
+    const projected = projectSafeRun({ status: "disconnected", elapsedMs: 0, step: "inspecting" });
+    return projected._tag === "ok" ? context.json(projected.value) : context.json({ error: "invalid_run" }, 500);
   });
 
   const { server, port } = await listenOnLoopback(app);

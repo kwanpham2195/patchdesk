@@ -131,6 +131,15 @@ describe("local API capability boundary", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
   });
+
+  it("protects safe review-run routes with the same capability and returns a disconnected projection", async () => {
+    localApi = await startTestLocalApi();
+    const headers = { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
+    const started = await fetch(new URL("v1/runs/review-pr", localApi.url), { method: "POST", headers, body: JSON.stringify({ sessionId: "session", attemptId: "001" }) });
+    expect(started.status).toBe(200);
+    const disconnected = await fetch(new URL("v1/runs/session:001", localApi.url), { headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin } });
+    await expect(disconnected.json()).resolves.toEqual({ status: "disconnected", elapsedMs: 0, step: "inspecting" });
+  });
 });
 
 async function startTestLocalApi(): Promise<LocalApiServer> {
