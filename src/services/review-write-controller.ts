@@ -1,6 +1,6 @@
 import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
-import { ProfileStore } from "../adapters/storage/profile-store";
-import { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { parseReviewDraft, type GitHubReviewEvent, type ReviewDraft } from "../domain/review-draft";
 import { parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";

@@ -14,6 +14,7 @@ import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../src/domain/review-session";
+import type { ReviewDraft } from "../src/domain/review-draft";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 
 const capability = "test-only-capability";
@@ -205,7 +206,7 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
   await new ProfileStore(paths).save(profile);
   const session = createReviewSession({ key: { profileId, host, owner, repo, prNumber: number, headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath("/tmp/patch.diff")), worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha }, createdAt: "2026-07-16T00:00:00.000Z" as never });
-  const draft = { sessionId: session.id, attemptId, state: { _tag: "LocalDraft" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, comments: [{ findingId: "finding", include: true, originalSuggestedBody: "Comment", body: "Comment", path: "src/write.ts", line: 7, diffSide: "new" as const, postability: "postable" as const }], createdAt: "2026-07-16T00:00:00.000Z", updatedAt: "2026-07-16T00:00:00.000Z" } as unknown as import("../src/domain/review-draft").ReviewDraft;
+  const draft = { sessionId: session.id, attemptId, state: { _tag: "LocalDraft" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, comments: [{ findingId: "finding", include: true, originalSuggestedBody: "Comment", body: "Comment", path: "src/write.ts", line: 7, diffSide: "new" as const, postability: "postable" as const }], createdAt: "2026-07-16T00:00:00.000Z", updatedAt: "2026-07-16T00:00:00.000Z" } as unknown as ReviewDraft;
   const completed = { ...session, state: { _tag: "ReviewCompleted" as const, attemptId }, currentAttemptId: attemptId, draft: { state: draft.state }, draftContent: draft } as ReviewSession;
   const sessions = new ReviewSessionStore(paths);
   await sessions.save(completed);
