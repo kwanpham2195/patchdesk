@@ -27,7 +27,11 @@ export async function readJsonFile(
   }
 
   try {
-    return ok(JSON.parse(contents) as unknown);
+    const parsed: unknown = JSON.parse(contents);
+    if (containsSensitiveData(parsed)) {
+      return err(storageFailure("read", "sensitive_value"));
+    }
+    return ok(parsed);
   } catch {
     return err(storageFailure("read", "invalid_json"));
   }

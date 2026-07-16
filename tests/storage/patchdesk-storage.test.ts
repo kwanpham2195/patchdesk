@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -300,6 +300,25 @@ describe("Patchdesk storage", () => {
     });
     await expect(access(paths.profileFile(profile.id))).rejects.toMatchObject({
       code: "ENOENT",
+    });
+  });
+
+  it("refuses a GitHub PAT when loading a pre-existing profile artifact", async () => {
+    const paths = await testPaths();
+    const profiles = new ProfileStore(paths);
+    await mkdir(dirname(paths.profileFile(profile.id)), { recursive: true });
+    await writeFile(
+      paths.profileFile(profile.id),
+      JSON.stringify({
+        ...profile,
+        label: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789",
+      }),
+      "utf8",
+    );
+
+    expect(await profiles.load(profile.id)).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", operation: "read", reason: "sensitive_value" },
     });
   });
 
