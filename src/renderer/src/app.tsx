@@ -87,6 +87,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [reference, setReference] = useState("");
   const [preview, setPreview] = useState<Preview | undefined>();
   const [openedPr, setOpenedPr] = useState<string | undefined>();
+  const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
@@ -256,10 +257,14 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     setPreview(undefined);
   };
   async function openPullRequest(pr: Preview["pr"]): Promise<void> {
-    setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
+    setOpenedPr(undefined);
+    setOpenError(undefined);
     const value = await api("/v1/reviews/open", { method: "POST", body: { profileId: dashboard?.profile.id, host: pr.host ?? dashboard?.profile.githubHost, owner: pr.owner, repo: pr.repo, number: pr.number } });
     if (isWorkbenchPayload(value)) {
+      setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
       setWorkbench(value);
+    } else {
+      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
     }
   }
   async function reviewWrite(path: string, extra: Record<string, unknown> = {}): Promise<{ readonly reviewId: string }> {
@@ -343,6 +348,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               onRefresh={() => void refreshDashboard()}
               onOpenRow={(pr) => void openPullRequest(pr)}
               {...(openedPr === undefined ? {} : { openedPr })}
+              {...(openError === undefined ? {} : { openError })}
             />
           ) : (
             <Settings
@@ -438,6 +444,7 @@ function Pending({
   onRefresh,
   onOpenRow,
   openedPr,
+  openError,
 }: {
   readonly state: DashboardScreenState;
   readonly dashboard?: Dashboard;
@@ -447,6 +454,7 @@ function Pending({
   readonly onRefresh: () => void;
   readonly onOpenRow: (pr: Preview["pr"]) => void;
   readonly openedPr?: string;
+  readonly openError?: string;
 }): React.JSX.Element {
   return (
     <>
@@ -463,6 +471,7 @@ function Pending({
       {openedPr ? (
         <p className="mt-4 rounded bg-cyan-950 p-3">Opened {openedPr}</p>
       ) : null}
+      {openError ? <p role="alert" className="mt-4 rounded bg-red-950 p-3">{openError}</p> : null}
       <section className="mt-6 rounded border border-slate-800 p-4">
         <label htmlFor="pr-reference">Pull request reference</label>
         <input

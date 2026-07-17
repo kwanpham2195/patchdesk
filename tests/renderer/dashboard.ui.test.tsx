@@ -103,7 +103,7 @@ describe("dashboard renderer API flow", () => {
     await user.click(
       screen.getByRole("button", { name: "Preview pull request" }),
     );
-    expect(await screen.findByText("Opened octo/service#3")).toBeTruthy();
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not prepare octo/service#3.");
     expect(
       fetch.mock.calls.some(([input]) =>
         String(input).includes("v1/profiles/select"),
