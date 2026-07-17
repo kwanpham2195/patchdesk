@@ -9,6 +9,11 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api";
+import { CommandRunner } from "../adapters/github/command-runner";
+import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { err, ok } from "../domain/result";
+import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
+import { ReviewCompletionService } from "../services/review-completion-service";
 
 const rendererOrigin = getRendererOrigin();
 let runningLocalApi: LocalApiServer | undefined;
@@ -20,6 +25,7 @@ const desktopLifecycle = createDesktopLifecycle({
         // electron-vite loads this fixed local origin in development; the capability still protects the loopback API.
         developmentOrigin: "http://localhost:5173",
         capability: createAppCapability(),
+        workflowInvoker: createWorkflowInvoker(),
       });
       if (startup._tag === "started") {
         runningLocalApi = startup.server;
@@ -66,6 +72,20 @@ const desktopLifecycle = createDesktopLifecycle({
     await window.loadURL(rendererUrl);
   },
 });
+
+function createWorkflowInvoker() {
+  const completion = new ReviewCompletionService(PatchdeskPaths.default(), () => new Date().toISOString() as never);
+  const flue = new FlueCliReviewInvoker(new CommandRunner(), app.getAppPath());
+  return {
+    async invoke(input: Parameters<FlueCliReviewInvoker["invoke"]>[0]) {
+      const result = await flue.invoke(input);
+      if (result._tag === "err") return err({ reason: "failed" as const });
+      const persisted = await completion.complete({ profileId: input.profileId, sessionId: input.sessionId, attemptId: input.attemptId, result: result.value });
+      if (persisted._tag === "err") return err({ reason: "failed" as const });
+      return ok({ runId: `flue:${input.sessionId}:${input.attemptId}` });
+    },
+  };
+}
 
 app.whenReady().then(async () => {
   const result = await desktopLifecycle.start();

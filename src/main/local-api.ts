@@ -25,7 +25,7 @@ import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
-import type { ReviewWorkflowInvoker } from "../services/review-workflow-starter";
+import { ReviewWorkflowStarter, type ReviewWorkflowInvoker } from "../services/review-workflow-starter";
 import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
 
@@ -117,6 +117,9 @@ export async function startLocalApiServer(
     },
   );
   const reviewCompletion = new ReviewCompletionService(paths, () => new Date().toISOString() as never);
+  const workflowStarter = configuration.workflowInvoker === undefined
+    ? undefined
+    : new ReviewWorkflowStarter(new ReviewSessionStore(paths), configuration.workflowInvoker);
   const merger = configuration.mergeWriter ?? (isGitHubMergeWriter(github) ? github : undefined);
   const mergeWrites = merger === undefined ? undefined : new MergeWriteController(profiles, new ReviewSessionStore(paths), { getPullRequest: github.getPullRequest.bind(github), getPullRequestChecks: github.getPullRequestChecks.bind(github), mergePullRequest: merger.mergePullRequest.bind(merger) }, ["squash", "merge", "rebase"], () => new Date().toISOString() as never);
   app.get("/v1/profiles", async (context) =>
@@ -180,13 +183,21 @@ export async function startLocalApiServer(
       : response(context, await dashboard.previewDirectEntry(body));
   });
   app.post("/v1/runs/review-pr", async (context) => {
-    if (configuration.workflowInvoker === undefined) {
+    if (workflowStarter === undefined) {
       return context.json({ error: "workflow_unavailable" }, 503);
     }
     const body = await jsonBody(context);
-    const parsed = safeParse(object({ sessionId: pipe(string(), minLength(1)), attemptId: pipe(string(), minLength(1)) }), body);
+    const parsed = safeParse(object({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), attemptId: pipe(string(), minLength(1)) }), body);
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    return context.json(runs.create(parsed.output));
+    const run = runs.create(parsed.output);
+    runs.update(run.runId, { status: "connecting", elapsedMs: 0, step: "preparing" });
+    const started = await workflowStarter.start(parsed.output);
+    if (started._tag === "err") {
+      runs.update(run.runId, { status: "failed", elapsedMs: 0, step: "failed", message: "Review run failed" });
+      return context.json({ error: started.error.reason }, 400);
+    }
+    runs.update(run.runId, { status: "completed", elapsedMs: 0, step: "complete" });
+    return context.json(run);
   });
   app.post("/v1/reviews/pending", async (context) =>
     reviewWrites === undefined
