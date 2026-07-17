@@ -15,6 +15,7 @@ import {
   recoverOrphanedWorkbenchAttempt,
 } from "../../src/services/review-workbench";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import { ReviewSessionService } from "../../src/services/review-session-service";
 import type { ReviewAttempt } from "../../src/domain/review-attempt";
 import type { ReviewResult } from "../../src/domain/review-result";
 import type { ReviewSession } from "../../src/domain/review-session";
@@ -102,6 +103,20 @@ describe("review workbench", () => {
         diff: "+++ b/src/review.ts\n+new line\n",
       });
       await new ProfileStore(paths).save(profile);
+      const metadataOnly = await new ReviewSessionService(
+        paths,
+        () => "2026-07-16T00:00:00.000Z" as never,
+      ).startReview({
+        profileId: profile.id,
+        host: profile.githubHost,
+        owner: "centraldigital" as never,
+        repo: "patchdesk" as never,
+        number: 42 as never,
+        headSha: "abcdef1234567890abcdef1234567890abcdef12" as never,
+        isDraft: false,
+        isOpen: true,
+      });
+      expect(metadataOnly).toMatchObject({ _tag: "ok", value: { session: { state: { _tag: "Created" } } } });
       const controller = new ReviewWorkbenchController(
         new ProfileStore(paths),
         new ReviewSessionStore(paths),

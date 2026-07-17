@@ -58,8 +58,10 @@ export class ReviewWorkbenchController {
     if (current._tag === "err") return err({ reason: "github_read" });
     const sessionId = createReviewSessionId({ profileId: profileId.value, host: host.value, owner: owner.value, repo: repo.value, prNumber: number.value, headSha: current.value.headSha });
     const stored = await this.sessions.load(profileId.value, sessionId);
-    if (stored._tag === "ok") return this.project(profile.value, stored.value);
-    if (stored.error.reason !== "not_found") return err({ reason: "storage" });
+    // Older metadata-only sessions have no attempt/artifacts, so they must be prepared
+    // before the workbench can honestly present a runnable review.
+    if (stored._tag === "ok" && stored.value.state._tag !== "Created") return this.project(profile.value, stored.value);
+    if (stored._tag === "err" && stored.error.reason !== "not_found") return err({ reason: "storage" });
     const matchingRepo = profile.value.repos.find((candidate) => candidate.host === host.value && candidate.owner === owner.value && candidate.repo === repo.value);
     const dependencies = this.startDependencies ?? {
       github: this.github,
