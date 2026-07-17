@@ -278,7 +278,7 @@ describe("GitHubAdapter read boundary", () => {
             comments: [
               expect.objectContaining({
                 id: "comment-1",
-                location: { path: "src/review.ts", line: 7, diffSide: "new" },
+                location: { path: "src/review.ts", line: 7 },
               }),
             ],
           },

@@ -222,7 +222,10 @@ export async function startLocalApiServer(
     if (sessionId === undefined || attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
     const run = runs.get(context.req.param("runId"), { sessionId, attemptId });
     if (run._tag === "err") return context.json({ error: "run_not_owned" }, 403);
-    const projected = projectSafeRun(configuration.runProjection?.({ runId: run.value.runId, sessionId, attemptId }) ?? { status: "disconnected", elapsedMs: run.value.projection.elapsedMs, step: "inspecting" });
+    const projected = projectSafeRun(
+      configuration.runProjection?.({ runId: run.value.runId, sessionId, attemptId })
+        ?? run.value.projection,
+    );
     return projected._tag === "ok" ? context.json(projected.value) : context.json({ error: "invalid_run" }, 500);
   });
 
