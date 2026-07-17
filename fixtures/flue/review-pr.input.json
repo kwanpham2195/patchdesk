@@ -2,8 +2,8 @@
   "profileId": "cfw",
   "sessionId": "github.com__centraldigital__patchdesk__pr-1__sha-abcdef12__0123456789ab",
   "attemptId": "001",
-  "contextPath": "/tmp/context.json",
-  "reviewInputPath": "/tmp/review-input.md",
-  "patchPath": "/tmp/patch.diff",
-  "worktreePath": "/tmp/worktree"
+  "contextPath": "fixtures/flue/runtime/context.json",
+  "reviewInputPath": "fixtures/flue/runtime/review-input.md",
+  "patchPath": "fixtures/flue/runtime/patch.diff",
+  "worktreePath": "fixtures/flue/runtime"
 }
