@@ -25,6 +25,7 @@ import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
+import type { ReviewWorkflowInvoker } from "../services/review-workflow-starter";
 import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
 
@@ -50,6 +51,8 @@ export type LocalApiConfiguration = {
   readonly mergeWriter?: GitHubMergeWriter;
   readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
+  /** Main-process-owned finite Flue invocation; renderer requests never provide workflow paths. */
+  readonly workflowInvoker?: ReviewWorkflowInvoker;
   /** Test-only adapter; production never accepts mutable run state over HTTP. */
   readonly runProjection?: (input: { readonly runId: string; readonly sessionId: string; readonly attemptId: string }) => SafeRunProjection;
 };
@@ -177,6 +180,9 @@ export async function startLocalApiServer(
       : response(context, await dashboard.previewDirectEntry(body));
   });
   app.post("/v1/runs/review-pr", async (context) => {
+    if (configuration.workflowInvoker === undefined) {
+      return context.json({ error: "workflow_unavailable" }, 503);
+    }
     const body = await jsonBody(context);
     const parsed = safeParse(object({ sessionId: pipe(string(), minLength(1)), attemptId: pipe(string(), minLength(1)) }), body);
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
