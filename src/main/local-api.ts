@@ -183,7 +183,7 @@ export async function startLocalApiServer(
       : response(context, await dashboard.previewDirectEntry(body));
   });
   app.post("/v1/runs/review-pr", async (context) => {
-    if (workflowStarter === undefined) {
+    if (workflowStarter === undefined && configuration.runProjection === undefined) {
       return context.json({ error: "workflow_unavailable" }, 503);
     }
     const body = await jsonBody(context);
@@ -191,12 +191,14 @@ export async function startLocalApiServer(
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const run = runs.create(parsed.output);
     runs.update(run.runId, { status: "connecting", elapsedMs: 0, step: "preparing" });
-    const started = await workflowStarter.start(parsed.output);
-    if (started._tag === "err") {
-      runs.update(run.runId, { status: "failed", elapsedMs: 0, step: "failed", message: "Review run failed" });
-      return context.json({ error: started.error.reason }, 400);
+    if (workflowStarter !== undefined) {
+      const started = await workflowStarter.start(parsed.output);
+      if (started._tag === "err") {
+        runs.update(run.runId, { status: "failed", elapsedMs: 0, step: "failed", message: "Review run failed" });
+        return context.json({ error: started.error.reason }, 400);
+      }
+      runs.update(run.runId, { status: "completed", elapsedMs: 0, step: "complete" });
     }
-    runs.update(run.runId, { status: "completed", elapsedMs: 0, step: "complete" });
     return context.json(run);
   });
   app.post("/v1/reviews/pending", async (context) =>
