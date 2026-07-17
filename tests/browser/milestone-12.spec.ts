@@ -13,7 +13,7 @@ import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoNa
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { startLocalApiServer, type LocalApiServer } from "../../src/main/local-api";
 
-test("normal dashboard direct entry opens the persisted in-progress review session", async ({ page }) => {
+test("normal dashboard reports a preparation failure instead of fabricating a review session", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-normal-")); let api: LocalApiServer | undefined;
   try {
     const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths: PatchdeskPaths.forTest(root), github: new FakeGitHubAdapter({ pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Fixture", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" } as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, diff: "+++ b/src/review.ts\n+fixture\n" }) });
@@ -22,8 +22,7 @@ test("normal dashboard direct entry opens the persisted in-progress review sessi
     await page.goto(origin(renderer));
     await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1");
     await page.getByRole("button", { name: "Preview pull request" }).click();
-    await expect(page.getByRole("main")).toContainText("Review session started", { timeout: 15_000 });
-    await expect(page.getByText("Preparing the persisted review workbench")).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Could not prepare centraldigital/patchdesk#1.");
     await page.screenshot({ path: "test-results/milestone-12-normal-open.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });

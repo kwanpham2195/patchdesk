@@ -93,7 +93,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("button", { name: "Pending PRs" }).click();
   await page.getByLabel("Pull request reference").fill("acme/service#3");
   await page.getByRole("button", { name: "Preview pull request" }).click();
-  await expect(page.getByText("Opened acme/service#3")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Could not prepare acme/service#3.");
 
   await page
     .getByLabel("Pull request reference")
