@@ -53,6 +53,15 @@ afterEach(() => {
 });
 
 describe("dashboard renderer API flow", () => {
+  it("disables direct PR entry until the active profile loads", () => {
+    installApi({ dashboardPending: true });
+    render(<App />);
+
+    expect(
+      screen.getByRole("button", { name: "Preview pull request" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("loads profile, watchlist, rows, and archived outcome from authenticated API responses", async () => {
     installApi();
     render(<App />);
@@ -133,7 +142,7 @@ describe("dashboard renderer API flow", () => {
 });
 
 function installApi(
-  options: { readonly confirmationRequired?: boolean } = {},
+  options: { readonly confirmationRequired?: boolean; readonly dashboardPending?: boolean } = {},
 ): ReturnType<typeof vi.fn> {
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
@@ -146,6 +155,8 @@ function installApi(
   });
   const fetch = vi.fn(async (input: URL | string) => {
     const path = String(input);
+    if (options.dashboardPending === true && path.includes("v1/dashboard"))
+      return await new Promise<Response>(() => {});
     const body =
       path.includes("v1/profiles") && !path.includes("select")
         ? [

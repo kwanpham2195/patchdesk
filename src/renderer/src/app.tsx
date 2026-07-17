@@ -466,7 +466,7 @@ function Pending({
           <h2 className="text-2xl font-semibold">Pending pull requests</h2>
         </div>
         <button onClick={onRefresh}>Refresh</button>
-        <button onClick={onPreview}>Open pull request</button>
+        <button onClick={onPreview} disabled={dashboard === undefined}>Open pull request</button>
       </header>
       {openedPr ? (
         <p className="mt-4 rounded bg-cyan-950 p-3">Opened {openedPr}</p>
@@ -480,7 +480,7 @@ function Pending({
           value={reference}
           onChange={(event) => onReference(event.target.value)}
         />
-        <button className="ml-3" onClick={onPreview}>
+        <button className="ml-3" onClick={onPreview} disabled={dashboard === undefined}>
           Preview pull request
         </button>
       </section>
