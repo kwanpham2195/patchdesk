@@ -6,6 +6,8 @@ import { err, ok, type Result } from "../../domain/result";
 export type CommandRequest = {
   readonly argv: ReadonlyArray<string>;
   readonly timeoutMs: number;
+  /** Optional adapter-owned working directory; never supplied by the renderer or model. */
+  readonly cwd?: string;
   /** Non-secret JSON payload supplied directly to the child process, never through a shell. */
   readonly stdin?: string;
 };
@@ -80,6 +82,7 @@ class NodeCommandExecutor implements CommandExecutor {
 
     return new Promise((resolve) => {
       const child = spawn(executable, input.argv.slice(1), {
+        ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
       });
