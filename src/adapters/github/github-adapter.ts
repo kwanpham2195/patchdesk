@@ -27,7 +27,7 @@ import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-
 
 const commandTimeoutMs = 15_000;
 const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine diffSide } } } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine side } } } } } } }";
 
 const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -90,7 +90,7 @@ const threadResponseSchema = v.looseObject({
                         v.pipe(v.number(), v.integer(), v.minValue(1)),
                       ),
                     ),
-                    diffSide: v.optional(v.nullable(v.string())),
+                    side: v.optional(v.nullable(v.string())),
                   }),
                 ),
               }),
@@ -740,7 +740,7 @@ function parseComment(
     input.path,
     input.line,
     input.originalLine,
-    input.diffSide,
+    input.side,
   );
   const comment: GitHubComment = {
     id: input.id,

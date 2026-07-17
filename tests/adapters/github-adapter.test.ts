@@ -270,7 +270,20 @@ describe("GitHubAdapter read boundary", () => {
     });
     expect(await adapter.getPullRequestComments({ profile, pr })).toEqual({
       _tag: "ok",
-      value: { threads: [] },
+      value: {
+        threads: [
+          {
+            id: "thread-1",
+            state: "open",
+            comments: [
+              expect.objectContaining({
+                id: "comment-1",
+                location: { path: "src/review.ts", line: 7, diffSide: "new" },
+              }),
+            ],
+          },
+        ],
+      },
     });
     expect(
       await adapter.getPullRequestChecks({

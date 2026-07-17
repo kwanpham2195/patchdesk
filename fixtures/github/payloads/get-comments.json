@@ -3,7 +3,29 @@
     "repository": {
       "pullRequest": {
         "reviewThreads": {
-          "nodes": []
+          "nodes": [
+            {
+              "id": "thread-1",
+              "isResolved": false,
+              "isOutdated": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "comment-1",
+                    "body": "Review this line.",
+                    "createdAt": "2026-07-16T12:00:00Z",
+                    "updatedAt": null,
+                    "url": "https://example.test/comment/1",
+                    "author": { "login": "reviewer" },
+                    "path": "src/review.ts",
+                    "line": 7,
+                    "originalLine": 7,
+                    "side": "RIGHT"
+                  }
+                ]
+              }
+            }
+          ]
         }
       }
     }
