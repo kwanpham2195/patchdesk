@@ -11,7 +11,7 @@ import { runModelReview, type ReviewModelSession } from "../services/model-revie
 const reviewAgent = defineAgent(() => ({
   instructions:
     "Review one prepared pull request through the supplied read-only inspection tools. Return only schema-backed findings supported by evidence.",
-  model: "openai/gpt-5.5",
+  model: "opencode-go/kimi-k2.7-code",
   skills: [patchdeskCodeReview],
 }));
 
