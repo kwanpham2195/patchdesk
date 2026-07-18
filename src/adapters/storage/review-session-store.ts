@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { readdir } from "node:fs/promises";
 
 import {
   createReviewSessionId,
@@ -27,6 +28,7 @@ import type {
   ReviewSession,
   ReviewSessionState,
 } from "../../domain/review-session";
+import { parseReviewScope } from "../../domain/review-comparison";
 import { err, ok, type Result } from "../../domain/result";
 import {
   appendJsonLine,
@@ -95,6 +97,7 @@ const draftStateSchema = v.variant("_tag", [
 ]);
 
 const reviewSessionSchema = v.strictObject({
+  schemaVersion: v.optional(v.picklist([1, 2])),
   id: v.string(),
   key: v.strictObject({
     profileId: v.string(),
@@ -109,7 +112,14 @@ const reviewSessionSchema = v.strictObject({
     isDraft: v.boolean(),
     isOpen: v.boolean(),
   }),
+  prContext: v.optional(v.strictObject({
+    title: v.string(),
+    author: v.string(),
+    headBranch: v.string(),
+    baseBranch: v.string(),
+  })),
   patchPath: v.string(),
+  scope: v.optional(v.unknown()),
   worktree: v.strictObject({ path: v.string(), headSha: v.string() }),
   state: sessionStateSchema,
   currentAttemptId: v.optional(v.string()),
@@ -155,6 +165,10 @@ const reviewAttemptSchema = v.strictObject({
   flueRunId: v.optional(v.string()),
   model: v.pipe(v.string(), v.minLength(1)),
   patchdeskVersion: v.optional(v.pipe(v.string(), v.minLength(1))),
+  scopeKind: v.optional(v.picklist(["full", "incremental"])),
+  baseSessionId: v.optional(v.string()),
+  comparisonContentHash: v.optional(v.string()),
+  fullPatchHash: v.optional(v.string()),
   reviewSkillVersion: v.string(),
   contextHash: v.string(),
   contextPath: v.string(),
@@ -258,6 +272,48 @@ export class ReviewSessionStore {
     return parsed;
   }
 
+  async listSessions(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<ReadonlyArray<ReviewSession>, StorageFailure>> {
+    const root = this.paths.profileReviewsDirectory(profileId);
+    let entries: ReadonlyArray<string>;
+    try {
+      entries = await readdir(root);
+    } catch (cause: unknown) {
+      if (isMissing(cause)) return ok([]);
+      return storageListFailure();
+    }
+    const sessions: ReviewSession[] = [];
+    for (const entry of entries) {
+      const sessionId = parseReviewSessionId(entry);
+      if (sessionId._tag === "err") continue;
+      const loaded = await this.load(profileId, sessionId.value);
+      if (loaded._tag === "ok") sessions.push(loaded.value);
+    }
+    return ok(sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
+  }
+
+  async listAttempts(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<ReadonlyArray<ReviewAttempt>, StorageFailure>> {
+    let entries: ReadonlyArray<string>;
+    try {
+      entries = await readdir(this.paths.attemptsDirectory(profileId, sessionId));
+    } catch (cause: unknown) {
+      if (isMissing(cause)) return ok([]);
+      return storageListFailure();
+    }
+    const attempts: ReviewAttempt[] = [];
+    for (const entry of entries) {
+      const attemptId = parseReviewAttemptId(entry);
+      if (attemptId._tag === "err") continue;
+      const loaded = await this.loadAttempt(profileId, sessionId, attemptId.value);
+      if (loaded._tag === "ok") attempts.push(loaded.value);
+    }
+    return ok(attempts.sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
+  }
+
   async appendDebug(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
@@ -279,6 +335,14 @@ export class ReviewSessionStore {
   }
 }
 
+function isMissing(cause: unknown): boolean {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+}
+
+function storageListFailure(): Result<never, StorageFailure> {
+  return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+}
+
 /** Parse persisted session.json into full domain state, rejecting contradictory records. */
 export function parseStoredReviewSession(
   input: unknown,
@@ -294,6 +358,9 @@ export function parseStoredReviewSession(
   const headSha = parseGitSha(raw.output.key.headSha);
   const id = parseReviewSessionId(raw.output.id);
   const patchPath = parseAbsolutePath(raw.output.patchPath);
+  const scope = raw.output.schemaVersion === 2
+    ? parseReviewScope(raw.output.scope)
+    : ok({ kind: "full" } as const);
   const worktreePath = parseAbsolutePath(raw.output.worktree.path);
   const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
   const prHeadSha = parseGitSha(raw.output.pr.headSha);
@@ -308,6 +375,7 @@ export function parseStoredReviewSession(
     headSha._tag === "err" ||
     id._tag === "err" ||
     patchPath._tag === "err" ||
+    scope._tag === "err" ||
     worktreePath._tag === "err" ||
     worktreeHeadSha._tag === "err" ||
     prHeadSha._tag === "err" ||
@@ -386,6 +454,7 @@ export function parseStoredReviewSession(
     return invalidRead();
 
   return ok({
+    schemaVersion: 2,
     id: id.value,
     key: {
       profileId: profileId.value,
@@ -400,7 +469,9 @@ export function parseStoredReviewSession(
       isDraft: raw.output.pr.isDraft,
       isOpen: raw.output.pr.isOpen,
     },
+    ...(raw.output.prContext === undefined ? {} : { prContext: raw.output.prContext }),
     patchPath: patchPath.value,
+    scope: scope.value,
     worktree: { path: worktreePath.value, headSha: worktreeHeadSha.value },
     state: state.value,
     ...(currentAttemptId === undefined
@@ -432,6 +503,9 @@ export function parseStoredReviewAttempt(
   const sessionId = parseReviewSessionId(raw.output.sessionId);
   const skillHash = parseContentHash(raw.output.reviewSkillVersion);
   const contextHash = parseContentHash(raw.output.contextHash);
+  const baseSessionId = raw.output.baseSessionId === undefined ? undefined : parseReviewSessionId(raw.output.baseSessionId);
+  const comparisonContentHash = raw.output.comparisonContentHash === undefined ? undefined : parseContentHash(raw.output.comparisonContentHash);
+  const fullPatchHash = raw.output.fullPatchHash === undefined ? undefined : parseContentHash(raw.output.fullPatchHash);
   const contextPath = parseAbsolutePath(raw.output.contextPath);
   const reviewInputPath = parseAbsolutePath(raw.output.reviewInputPath);
   const debugPath = parseAbsolutePath(raw.output.debugPath);
@@ -442,6 +516,9 @@ export function parseStoredReviewAttempt(
     sessionId._tag === "err" ||
     skillHash._tag === "err" ||
     contextHash._tag === "err" ||
+    (baseSessionId !== undefined && baseSessionId._tag === "err") ||
+    (comparisonContentHash !== undefined && comparisonContentHash._tag === "err") ||
+    (fullPatchHash !== undefined && fullPatchHash._tag === "err") ||
     contextPath._tag === "err" ||
     reviewInputPath._tag === "err" ||
     debugPath._tag === "err" ||
@@ -470,6 +547,18 @@ export function parseStoredReviewAttempt(
     flueRunId !== state.value.flueRunId
   )
     return invalidRead();
+  if (
+    raw.output.scopeKind === "full" &&
+    (baseSessionId !== undefined || comparisonContentHash !== undefined)
+  )
+    return invalidRead();
+  if (
+    raw.output.scopeKind === "incremental" &&
+    (baseSessionId === undefined ||
+      comparisonContentHash === undefined ||
+      fullPatchHash === undefined)
+  )
+    return invalidRead();
 
   return ok({
     id: id.value,
@@ -480,6 +569,10 @@ export function parseStoredReviewAttempt(
     ...(raw.output.patchdeskVersion === undefined
       ? {}
       : { patchdeskVersion: raw.output.patchdeskVersion }),
+    ...(raw.output.scopeKind === undefined ? {} : { scopeKind: raw.output.scopeKind }),
+    ...(baseSessionId === undefined ? {} : { baseSessionId: baseSessionId.value }),
+    ...(comparisonContentHash === undefined ? {} : { comparisonContentHash: comparisonContentHash.value }),
+    ...(fullPatchHash === undefined ? {} : { fullPatchHash: fullPatchHash.value }),
     reviewSkillVersion: skillHash.value,
     contextHash: contextHash.value,
     contextPath: contextPath.value,

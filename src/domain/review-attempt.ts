@@ -39,6 +39,11 @@ export type ReviewAttempt = {
   readonly flueRunId?: string;
   readonly model: string;
   readonly patchdeskVersion?: string;
+  /** Scope provenance records the immutable artifact set inspected by the model. */
+  readonly scopeKind?: "full" | "incremental";
+  readonly baseSessionId?: ReviewSessionId;
+  readonly comparisonContentHash?: ContentHash;
+  readonly fullPatchHash?: ContentHash;
   readonly reviewSkillVersion: ContentHash;
   readonly contextHash: ContentHash;
   readonly contextPath: AbsolutePath;

@@ -13,7 +13,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import {
+  parseStoredReviewSession,
+  ReviewSessionStore,
+} from "../../src/adapters/storage/review-session-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -141,6 +144,36 @@ describe("Patchdesk storage", () => {
         session.id,
       ),
     );
+    expect(paths.comparisonPatchFile(profile.id, session.id)).toBe(
+      join(paths.sessionDirectory(profile.id, session.id), "comparison.diff"),
+    );
+    expect(paths.comparisonMetadataFile(profile.id, session.id)).toBe(
+      join(paths.sessionDirectory(profile.id, session.id), "comparison.json"),
+    );
+    expect(paths.previousFindingsFile(profile.id, session.id)).toBe(
+      join(paths.sessionDirectory(profile.id, session.id), "previous-findings.json"),
+    );
+    expect(paths.findingLifecycleFile(profile.id, session.id)).toBe(
+      join(paths.sessionDirectory(profile.id, session.id), "finding-lifecycle.json"),
+    );
+    expect(paths.inboxCacheFile(profile.id)).toBe(
+      join(paths.cacheDirectory(), "profiles", "cfw", "inbox-v1.json"),
+    );
+  });
+
+  it("normalizes a schema-v1 session to the v2 full-review scope without rewriting it", async () => {
+    const paths = await testPaths();
+    const session = sessionFor(paths);
+    const parsed = parseStoredReviewSession({
+      ...session,
+      schemaVersion: 1,
+      scope: undefined,
+    });
+
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { schemaVersion: 2, scope: { kind: "full" } },
+    });
   });
 
   it("round-trips profiles, sessions, and attempts with atomic file replacement", async () => {

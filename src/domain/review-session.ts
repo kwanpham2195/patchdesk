@@ -24,6 +24,7 @@ import type {
   ReviewFailureSummary,
 } from "./review-attempt";
 import type { ReviewResult } from "./review-result";
+import type { ReviewScope } from "./review-comparison";
 import { err, ok, type Result } from "./result";
 
 export type ReviewSessionKey = {
@@ -65,10 +66,19 @@ export type MergeDecisionRef = {
 };
 
 export type ReviewSession = {
+  /** The in-memory representation is always normalized to the current schema. */
+  readonly schemaVersion: 2;
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
+  readonly prContext?: {
+    readonly title: string;
+    readonly author: string;
+    readonly headBranch: string;
+    readonly baseBranch: string;
+  };
   readonly patchPath: AbsolutePath;
+  readonly scope: ReviewScope;
   readonly worktree: ReviewWorktreeRef;
   readonly state: ReviewSessionState;
   readonly currentAttemptId?: ReviewAttemptId;
@@ -92,16 +102,20 @@ export type AttemptSessionMismatch = { readonly _tag: "AttemptSessionMismatch" }
 export function createReviewSession(input: {
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
+  readonly prContext?: ReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
   readonly draft?: Pick<ReviewDraft, "state">;
 }): ReviewSession {
   return {
+    schemaVersion: 2,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,
+    ...(input.prContext === undefined ? {} : { prContext: input.prContext }),
     patchPath: input.patchPath,
+    scope: { kind: "full" },
     worktree: input.worktree,
     state: { _tag: "Created" },
     ...(input.draft === undefined ? {} : { draft: input.draft }),

@@ -69,6 +69,10 @@ export class PatchdeskPaths {
     );
   }
 
+  profileReviewsDirectory(profileId: WorkspaceProfileId): string {
+    return join(this.dataDirectory(), "profiles", profileId, "reviews");
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
@@ -78,6 +82,38 @@ export class PatchdeskPaths {
 
   patchFile(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): string {
     return join(this.sessionDirectory(profileId, sessionId), "patch.diff");
+  }
+
+  comparisonPatchFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "comparison.diff");
+  }
+
+  comparisonMetadataFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "comparison.json");
+  }
+
+  previousFindingsFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "previous-findings.json");
+  }
+
+  findingLifecycleFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "finding-lifecycle.json");
+  }
+
+  inboxCacheFile(profileId: WorkspaceProfileId): string {
+    return join(this.cacheDirectory(), "profiles", profileId, "inbox-v1.json");
   }
 
   worktreeMetadataFile(
@@ -104,6 +140,13 @@ export class PatchdeskPaths {
       "attempts",
       attemptId,
     );
+  }
+
+  attemptsDirectory(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "attempts");
   }
 
   attemptFile(
