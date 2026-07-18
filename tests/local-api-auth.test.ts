@@ -12,10 +12,11 @@ import { FakeGitHubAdapter, type GitHubReader, type GitHubReviewWriter } from ".
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
-import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
+import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../src/domain/review-session";
 import type { ReviewDraft } from "../src/domain/review-draft";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
+import { ProfileSettingsService } from "../src/services/profile-service";
 
 const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";
@@ -126,6 +127,36 @@ describe("local API capability boundary", () => {
     );
   });
 
+  it("returns main-process-owned application metadata with safe environment diagnostics", async () => {
+    const startup = await startLocalApiServer({
+      capability,
+      allowedOrigin,
+      appMetadata: {
+        productName: "Patchdesk",
+        version: "0.1.0",
+        architecture: "arm64",
+        distribution: "unsigned_internal",
+      },
+    });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+
+    const response = await fetch(new URL("v1/environment", localApi.url), {
+      headers: {
+        "X-Patchdesk-Capability": capability,
+        Origin: allowedOrigin,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      productName: "Patchdesk",
+      version: "0.1.0",
+      architecture: "arm64",
+      distribution: "unsigned_internal",
+    });
+  });
+
   it("returns a typed 400 for malformed JSON instead of leaking a parser exception", async () => {
     localApi = await startTestLocalApi();
     const response = await fetch(
@@ -152,6 +183,55 @@ describe("local API capability boundary", () => {
     await expect(started.json()).resolves.toEqual({ error: "workflow_unavailable" });
   });
 
+  it("serves a read-only maintainer inbox through the capability boundary", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-inbox-api-")));
+    const profile = must(parseWorkspaceProfileConfig({
+      id: "cfw",
+      label: "CFW",
+      githubHost: "github.com",
+      ghAccount: "maintainer",
+      ownerFilters: [],
+      workspaceRoots: [],
+      rulePaths: [],
+      repos: [{ host: "github.com", owner: "centraldigital", repo: "patchdesk" }],
+    }));
+    const settings = new ProfileSettingsService(new ProfileStore(paths));
+    await settings.saveProfile(profile);
+    await settings.selectProfile(profile.id);
+    const host = must(parseGitHubHost("github.com"));
+    const owner = must(parseGitHubOwner("centraldigital"));
+    const repo = must(parseGitHubRepoName("patchdesk"));
+    const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+    const github = new FakeGitHubAdapter({
+      authenticatedAccount: { host: "github.com", account: "maintainer" },
+      listOpenPullRequests: [{
+        ref: { host, owner, repo, number: must(parsePullRequestNumber(42)) },
+        title: "Fixture inbox PR",
+        author: "author",
+        headBranch: "feature/inbox",
+        baseBranch: "sit",
+        headSha: sha,
+        isDraft: false,
+        isOpen: true,
+        reviewState: "none",
+        mergeability: "unknown",
+        labels: [],
+        requestedReviewers: ["maintainer"],
+        updatedAt: must(parseIsoTimestamp("2026-07-18T00:00:00.000Z")),
+      }],
+      checks: { overall: "unknown", checks: [] },
+    });
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const response = await fetch(new URL("v1/inbox", localApi.url), { headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin } });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      profile: { id: "cfw" },
+      inbox: { dataFreshness: "fresh", rows: [{ title: "Fixture inbox PR", recommendedAction: { kind: "run_review" } }] },
+    });
+  });
+
   it("keeps review writes unavailable when the API receives only a GitHub reader", async () => {
     const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-")));
     const reader = { async getPullRequest() { return { _tag: "err" as const, error: { _tag: "GitHubReadFailed" as const } }; } } as unknown as GitHubReader;
@@ -176,7 +256,7 @@ describe("local API capability boundary", () => {
     const fixture = await reviewWriteFixture({ _tag: "err", error: { _tag: "GitHubWriteFailure", category: "rejected", message: "Rejected by fixture." } });
     localApi = fixture.api;
     const response = await fetch(new URL("v1/reviews/pending", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual({ error: "github_rejected" });
     await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "ReviewCompleted" }, draftContent: { state: { _tag: "DraftFailed" } } } });
   });
@@ -210,7 +290,7 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const writer: GitHubReviewWriter = { async createPendingReview() { return createResult; }, async submitPendingReview() { return { _tag: "ok", value: { reviewId: "9001" } }; } };
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github, reviewWriter: writer });
   if (startup._tag !== "started") throw new Error("Expected local API");
-  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, sessionId: completed.id, draft } };
+  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, sessionId: completed.id, expectedRevision: draft.updatedAt, acknowledgement: true } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {

@@ -1,5 +1,8 @@
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
+import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -10,6 +13,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
 import { DashboardService, type DashboardPrList } from "./dashboard-service";
+import { MaintainerInboxService, type MaintainerInbox } from "./maintainer-inbox-service";
 import {
   addWatchedRepo,
   createDefaultCfwProfile,
@@ -35,14 +39,22 @@ export type DashboardControllerFailure = {
 export class DashboardController {
   private readonly settings: ProfileSettingsService;
   private readonly dashboard: DashboardService;
+  private readonly inbox: MaintainerInboxService;
 
   constructor(
     private readonly profiles: ProfileStore,
     github: GitHubReader,
     origins?: OriginFinder,
+    paths: PatchdeskPaths = PatchdeskPaths.default(),
   ) {
     this.settings = new ProfileSettingsService(profiles);
     this.dashboard = new DashboardService(github, origins);
+    this.inbox = new MaintainerInboxService(
+      github,
+      new ReviewSessionStore(paths),
+      new MaintainerInboxCacheStore(paths),
+      { now: () => new Date().toISOString() as never },
+    );
   }
 
   async listProfiles(): Promise<
@@ -117,6 +129,23 @@ export class DashboardController {
     );
     if (dashboard._tag === "err") return failure("storage");
     return ok({ profile: profile.value, dashboard: dashboard.value });
+  }
+
+  /** Returns the read-only maintainer inbox for the active profile without starting a review. */
+  async inboxForActiveProfile(): Promise<
+    Result<
+      {
+        readonly profile: WorkspaceProfileConfig;
+        readonly inbox: MaintainerInbox;
+      },
+      DashboardControllerFailure
+    >
+  > {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    const inbox = await this.inbox.list(profile.value);
+    if (inbox._tag === "err") return failure("storage");
+    return ok({ profile: profile.value, inbox: inbox.value });
   }
 
   /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
