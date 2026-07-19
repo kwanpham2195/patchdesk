@@ -450,14 +450,16 @@ export function ReviewWorkbench(props: {
                 {inspectorOpen ? "Hide details" : "Show details"}
               </Button>
               <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="hidden max-[1099px]:inline-flex"
-                  >
-                    Files and findings
-                  </Button>
+                <SheetTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="hidden max-[1099px]:inline-flex"
+                    />
+                  }
+                >
+                  Files and findings
                 </SheetTrigger>
                 <SheetContent side="left">
                   <SheetHeader>

@@ -116,11 +116,9 @@ export function ReviewDraftSheet({
 
   return (
     <Sheet open={open} onOpenChange={changeOpen}>
-      <SheetTrigger asChild>
-        <Button className="w-full">
-          <FilePenLine />
-          Edit review draft
-        </Button>
+      <SheetTrigger render={<Button className="w-full" />}>
+        <FilePenLine />
+        Edit review draft
       </SheetTrigger>
       <SheetContent
         className="w-full overflow-y-auto sm:max-w-xl"

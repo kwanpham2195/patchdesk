@@ -132,10 +132,8 @@ export function DiffWorkbench({
           </div>
           <div className="hidden shrink-0 gap-2 max-[1099px]:flex">
             <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  Files and findings
-                </Button>
+              <SheetTrigger render={<Button variant="outline" size="sm" />}>
+                Files and findings
               </SheetTrigger>
               <SheetContent side="left">
                 <SheetHeader>
@@ -205,10 +203,8 @@ export function DiffWorkbench({
               </SheetContent>
             </Sheet>
             <Sheet open={contextOpen} onOpenChange={setContextOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  Review context
-                </Button>
+              <SheetTrigger render={<Button variant="outline" size="sm" />}>
+                Review context
               </SheetTrigger>
               <SheetContent side="right">
                 <SheetHeader>
