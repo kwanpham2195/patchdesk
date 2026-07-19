@@ -299,10 +299,15 @@ export function AppShell({
         }}
         title="Navigate Patchdesk"
         description="Open a Patchdesk destination"
-        className="max-w-md border-border bg-popover shadow-2xl min-[1280px]:gap-2 min-[1280px]:p-2"
+        className="flex max-h-[min(38rem,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden border-border bg-popover p-0 shadow-2xl min-[1280px]:max-h-[min(38rem,calc(100dvh-4rem))]"
+        showCloseButton={false}
       >
-        <CommandInput className="min-[1280px]:h-9 min-[1280px]:text-[13px]" placeholder="Search views and actions…" />
-        <CommandList className="max-h-[min(22rem,calc(100vh-12rem))] p-1 min-[1280px]:text-[13px]">
+        <CommandInput
+          showCloseButton
+          className="min-[1280px]:text-[13px]"
+          placeholder="Search views and actions…"
+        />
+        <CommandList className="max-h-none min-h-0 flex-1 p-1 min-[1280px]:text-[13px]">
           <CommandEmpty>No matching destination.</CommandEmpty>
           <CommandGroup heading="Navigate">
             {primaryDestinations.map((item) => {
@@ -335,7 +340,7 @@ export function AppShell({
             </CommandItem>
           </CommandGroup>
         </CommandList>
-        <div className="flex items-center gap-2 border-t px-2 py-1.5 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 text-[11px] text-muted-foreground">
           <Kbd>↑↓</Kbd>
           <span>to navigate</span>
           <Kbd>↵</Kbd>

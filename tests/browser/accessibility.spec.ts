@@ -73,6 +73,43 @@ test("keyboard users can skip, navigate, and close quick navigation", async ({
   ).toBeHidden();
 });
 
+test("quick navigation scrolls results without obscuring them behind its footer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 480 });
+  await page.goto(origin(renderer));
+  await page.keyboard.press("Meta+K");
+
+  const dialog = page.getByRole("dialog", { name: "Navigate Patchdesk" });
+  const list = dialog.locator('[data-slot="command-list"]');
+  const footer = dialog.getByText("to navigate").locator("..");
+  const lastAction = dialog.getByRole("option", {
+    name: "Open selected pull request",
+  });
+
+  await expect(list).toBeVisible();
+  expect(
+    await list.evaluate((element) => element.scrollHeight > element.clientHeight),
+  ).toBe(true);
+
+  await lastAction.scrollIntoViewIfNeeded();
+  await expect(lastAction).toBeVisible();
+
+  const [listBox, footerBox, actionBox] = await Promise.all([
+    list.boundingBox(),
+    footer.boundingBox(),
+    lastAction.boundingBox(),
+  ]);
+  expect(listBox).not.toBeNull();
+  expect(footerBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  if (listBox === null || footerBox === null || actionBox === null) {
+    throw new Error("quick navigation did not render its list, footer, and action");
+  }
+  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(footerBox.y);
+  expect(footerBox.y).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
+});
+
 test("forced colors and reduced motion preserve the workbench interaction surface", async ({
   page,
 }) => {
