@@ -13,7 +13,8 @@ The migration is intentionally a visual reset to current shadcn defaults. Local 
 - [x] 2026-07-19: Inventory completed. `components.json` reports `style: "new-york"`, `base: "radix"`; 19 renderer UI wrappers import `radix-ui`.
 - [x] 2026-07-19: User authorized a current Base UI visual reset instead of preserving legacy `new-york` styling; latest Base UI Nova wrappers are now the intended source of truth.
 - [x] 2026-07-19: Command-palette checkpoint committed (`384a237`); migration branch established from it.
-- [ ] Record a fast baseline (lint, typecheck, renderer unit tests, build). Slow gates (Playwright, package, packaged smoke, CDP screenshots) are deferred to Milestone 5 per Matthew.
+- [x] 2026-07-19: Fast baseline recorded in `.migration/project.md` (lint, typecheck, 216 unit tests, build all pass). Slow gates (Playwright, package, packaged smoke, CDP screenshots) deferred to Milestone 5 per Matthew.
+- [x] 2026-07-19: `base-nova` preset applied via components.json style flip (CLI `init` cannot detect the electron-vite framework); `@base-ui/react@1.6.0` added alongside `radix-ui`. Migrated: button (+ alert-dialog compat fix).
 - [ ] Apply the latest `base-nova` preset, regenerate stock wrappers one family at a time, and restore only essential product behavior through consumers and narrow layout classes. Produce one `.migration/<component>.md` report for each primitive family.
 - [ ] Sweep all renderer code and styles for Radix imports, Radix state selectors, Radix CSS variables, and `asChild` consumers; remove `radix-ui` only after the sweep is empty.
 - [ ] Validate the packaged Electron app over CDP, update this plan’s outcome sections, and request review before any subsequent visual-polish pass.
