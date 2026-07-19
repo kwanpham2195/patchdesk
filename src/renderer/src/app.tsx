@@ -2500,8 +2500,7 @@ function Settings({
             <AlertDialogAction
               variant="destructive"
               disabled={removing}
-              onClick={(event) => {
-                event.preventDefault();
+              onClick={() => {
                 void confirmRemoval();
               }}
             >

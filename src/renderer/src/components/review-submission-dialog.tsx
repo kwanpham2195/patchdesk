@@ -143,15 +143,17 @@ export function ReviewSubmissionDialog(props: {
             if (!pending) setCreateOpen(open);
           }}
         >
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full"
-              disabled={postable.length === 0}
-            >
-              <Send />
-              Create pending review
-            </Button>
+          <AlertDialogTrigger
+            render={
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={postable.length === 0}
+              />
+            }
+          >
+            <Send />
+            Create pending review
           </AlertDialogTrigger>
           <AlertDialogContent aria-busy={pending}>
             <AlertDialogHeader>
@@ -209,8 +211,7 @@ export function ReviewSubmissionDialog(props: {
               <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 disabled={!createAcknowledged || pending}
-                onClick={(event) => {
-                  event.preventDefault();
+                onClick={() => {
                   void create();
                 }}
               >
@@ -231,8 +232,8 @@ export function ReviewSubmissionDialog(props: {
               if (!pending) setSubmitOpen(open);
             }}
           >
-            <AlertDialogTrigger asChild>
-              <Button className="w-full">Submit pending review</Button>
+            <AlertDialogTrigger render={<Button className="w-full" />}>
+              Submit pending review
             </AlertDialogTrigger>
             <AlertDialogContent aria-busy={pending}>
               <AlertDialogHeader>
@@ -289,8 +290,7 @@ export function ReviewSubmissionDialog(props: {
                 <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   disabled={!submitAcknowledged || pending}
-                  onClick={(action) => {
-                    action.preventDefault();
+                  onClick={() => {
                     void submit();
                   }}
                 >
