@@ -18,6 +18,7 @@ import {
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -299,54 +300,50 @@ export function AppShell({
         }}
         title="Navigate Patchdesk"
         description="Open a Patchdesk destination"
-        className="flex max-h-[min(38rem,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden border-border bg-popover p-0 shadow-2xl min-[1280px]:max-h-[min(38rem,calc(100dvh-4rem))]"
-        showCloseButton={false}
       >
-        <CommandInput
-          showCloseButton
-          className="min-[1280px]:text-[13px]"
-          placeholder="Search views and actions…"
-        />
-        <CommandList className="max-h-none min-h-0 flex-1 p-1 min-[1280px]:text-[13px]">
-          <CommandEmpty>No matching destination.</CommandEmpty>
-          <CommandGroup heading="Navigate">
-            {primaryDestinations.map((item) => {
-              const Icon = icons[item.kind];
-              return (
-                <CommandItem
-                  key={item.kind}
-                  value={item.label}
-                  onSelect={() => go({ kind: item.kind })}
-                >
-                  <Icon />
-                  {item.label}
-                  {destinationKey(destination) === item.kind ? (
-                    <CommandShortcut>Current</CommandShortcut>
-                  ) : null}
+        <Command>
+          <CommandInput placeholder="Search views and actions…" />
+          <CommandList>
+            <CommandEmpty>No matching destination.</CommandEmpty>
+            <CommandGroup heading="Navigate">
+              {primaryDestinations.map((item) => {
+                const Icon = icons[item.kind];
+                return (
+                  <CommandItem
+                    key={item.kind}
+                    value={item.label}
+                    onSelect={() => go({ kind: item.kind })}
+                  >
+                    <Icon />
+                    {item.label}
+                    {destinationKey(destination) === item.kind ? (
+                      <CommandShortcut>Current</CommandShortcut>
+                    ) : null}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+            <CommandGroup heading="Inbox">
+              {inboxCommands.map(([id, label]) => (
+                <CommandItem key={id} value={label} onSelect={() => chooseInboxView(id)}>
+                  <GitPullRequest />
+                  {label}
                 </CommandItem>
-              );
-            })}
-          </CommandGroup>
-          <CommandGroup heading="Inbox">
-            {inboxCommands.map(([id, label]) => (
-              <CommandItem key={id} value={label} onSelect={() => chooseInboxView(id)}>
-                <GitPullRequest />
-                {label}
+              ))}
+              <CommandItem value="Open selected pull request action" onSelect={openSelectedInboxAction}>
+                <ArrowLeft className="rotate-180" />
+                Open selected pull request
               </CommandItem>
-            ))}
-            <CommandItem value="Open selected pull request action" onSelect={openSelectedInboxAction}>
-              <ArrowLeft className="rotate-180" />
-              Open selected pull request
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-        <div className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 text-[11px] text-muted-foreground">
-          <Kbd>↑↓</Kbd>
-          <span>to navigate</span>
-          <Kbd>↵</Kbd>
-          <span>to open</span>
-          <Kbd className="ml-auto">esc</Kbd>
-        </div>
+            </CommandGroup>
+          </CommandList>
+          <div className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 text-[11px] text-muted-foreground">
+            <Kbd>↑↓</Kbd>
+            <span>to navigate</span>
+            <Kbd>↵</Kbd>
+            <span>to open</span>
+            <Kbd className="ml-auto">esc</Kbd>
+          </div>
+        </Command>
       </CommandDialog>
       </div>
     </SidebarProvider>
