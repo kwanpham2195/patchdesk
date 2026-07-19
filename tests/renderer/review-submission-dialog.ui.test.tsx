@@ -37,7 +37,7 @@ describe("review submission dialog", () => {
     await user.click(screen.getByRole("button", { name: "Submit pending review" }));
     expect(screen.getByRole("alertdialog", { name: "Submit pending review" })).toBeTruthy();
     await user.click(screen.getByRole("combobox", { name: "Review event" }));
-    await user.click(screen.getByRole("option", { name: "REQUEST_CHANGES" }));
+    await user.click(await screen.findByRole("option", { name: "REQUEST_CHANGES" }));
     expect(screen.getByText("Review summary")).toBeTruthy();
     await user.click(screen.getByRole("checkbox", { name: "I understand this submits the pending review." }));
     await user.click(screen.getByRole("button", { name: "Submit review" }));

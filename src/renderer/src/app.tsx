@@ -2184,7 +2184,9 @@ function Settings({
               <Label htmlFor="active-profile">Active profile</Label>
               <Select
                 value={dashboard?.profile.id ?? profileDraft.id}
-                onValueChange={onSelectProfile}
+                onValueChange={(value) => {
+                  if (value !== null) onSelectProfile(value);
+                }}
               >
                 <SelectTrigger id="active-profile" className="mt-1.5">
                   <SelectValue placeholder="Select a profile" />
