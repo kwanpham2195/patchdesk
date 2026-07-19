@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 import { err, ok, type Result } from "../../domain/result";
+import { discoverExecutable } from "../../main/executable-discovery";
 
 /** An explicit executable and argument vector owned by an external adapter. */
 export type CommandRequest = {
@@ -10,6 +11,8 @@ export type CommandRequest = {
   readonly cwd?: string;
   /** Non-secret JSON payload supplied directly to the child process, never through a shell. */
   readonly stdin?: string;
+  /** Adapter-owned environment additions; renderer input never reaches this field. */
+  readonly environment?: Readonly<Record<string, string>>;
 };
 
 /** Captured completion state from a process execution boundary. */
@@ -25,6 +28,7 @@ export type CommandExecution =
       readonly stdout: string;
       readonly stderr: string;
     }
+  | { readonly _tag: "OutputExceeded" }
   | { readonly _tag: "Unavailable" };
 
 /** The narrow process seam used by CommandRunner. */
@@ -79,17 +83,23 @@ class NodeCommandExecutor implements CommandExecutor {
   async execute(input: CommandRequest): Promise<CommandExecution> {
     const executable = input.argv[0];
     if (executable === undefined) return { _tag: "Unavailable" };
+    const resolvedExecutable = await discoverExecutable(executable);
+    if (resolvedExecutable === undefined) return { _tag: "Unavailable" };
 
     return new Promise((resolve) => {
-      const child = spawn(executable, input.argv.slice(1), {
+      const child = spawn(resolvedExecutable, input.argv.slice(1), {
         ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
         shell: false,
+        detached: process.platform !== "win32",
+        env: input.environment === undefined ? process.env : { ...process.env, ...input.environment },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
       let stderr = "";
       let settled = false;
       let timedOut = false;
+      let outputExceeded = false;
+      const maxOutputBytes = 2 * 1024 * 1024;
 
       const finish = (execution: CommandExecution): void => {
         if (settled) return;
@@ -99,20 +109,32 @@ class NodeCommandExecutor implements CommandExecutor {
       };
       const timeout = setTimeout(() => {
         timedOut = true;
-        child.kill();
+        terminateOwnedProcess(child.pid);
       }, input.timeoutMs);
 
       child.stdout?.setEncoding("utf8");
       child.stderr?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
         stdout += chunk;
+        if (Buffer.byteLength(stdout) > maxOutputBytes) {
+          outputExceeded = true;
+          terminateOwnedProcess(child.pid);
+        }
       });
       child.stderr?.on("data", (chunk: string) => {
         stderr += chunk;
+        if (Buffer.byteLength(stderr) > maxOutputBytes) {
+          outputExceeded = true;
+          terminateOwnedProcess(child.pid);
+        }
       });
       child.stdin?.end(input.stdin);
       child.once("error", () => finish({ _tag: "Unavailable" }));
       child.once("close", (exitCode) => {
+        if (outputExceeded) {
+          finish({ _tag: "OutputExceeded" });
+          return;
+        }
         if (timedOut) {
           finish({ _tag: "TimedOut", stdout, stderr });
           return;
@@ -128,11 +150,21 @@ function classifyExecution(
 ): CommandFailure | undefined {
   if (execution._tag === "TimedOut") return { _tag: "CommandTimedOut" };
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
+  if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
   if (execution.exitCode === 0) return undefined;
   if (isAuthenticationFailure(execution.stderr)) {
     return { _tag: "CommandAuthenticationRequired" };
   }
   return { _tag: "CommandFailed" };
+}
+
+function terminateOwnedProcess(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    process.kill(process.platform === "win32" ? pid : -pid, "SIGTERM");
+  } catch {
+    // The process may already have exited between the timeout/output event and termination.
+  }
 }
 
 function isAuthenticationFailure(stderr: string): boolean {

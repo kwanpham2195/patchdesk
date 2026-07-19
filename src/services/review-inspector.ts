@@ -4,7 +4,7 @@ import { relative, resolve } from "node:path";
 import { err, ok, type Result } from "../domain/result";
 
 export type InspectorDenied = { readonly _tag: "InspectorDenied" };
-type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
+type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly fileSnapshots?: Readonly<Record<string, string>>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
 
 /** Session-bound allowlist for model inspection; it intentionally has no arbitrary command method. */
 export class ReviewInspector {
@@ -50,6 +50,11 @@ export class ReviewInspector {
 
   private async readWhole(path: string): Promise<Result<string, InspectorDenied>> {
     if (!isRelative(path)) return err({ _tag: "InspectorDenied" });
+    const snapshot = this.input.fileSnapshots?.[path];
+    if (snapshot !== undefined) {
+      if (!this.inspectedPaths.includes(path)) this.inspectedPaths.push(path);
+      return ok(snapshot);
+    }
     try {
       const root = await realpath(this.input.worktreePath);
       const candidate = resolve(root, path);

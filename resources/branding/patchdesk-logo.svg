@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Patchdesk</title>
+  <rect width="64" height="64" rx="15" fill="#5E6AD2"/>
+  <path fill="#F7F8F8" d="M35 10h13a6 6 0 0 1 6 6v13a6 6 0 0 1-6 6H37v-4h-5v-4h5v-4h-5v-4h3V10Z"/>
+  <path fill="#F7F8F8" d="M16 30h12v4h5v4h-5v4h5v4h-5v4h5v4h-3v10H16a6 6 0 0 1-6-6V36a6 6 0 0 1 6-6Z"/>
+</svg>

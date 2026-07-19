@@ -20,4 +20,24 @@ describe("review run registry", () => {
       value: { ...run, projection: { status: "running", elapsedMs: 12, step: "inspecting" } },
     });
   });
+
+  it("keeps the first owned run and its projection when create is repeated", () => {
+    const registry = new ReviewRunRegistry();
+    const owner = { sessionId: "one", attemptId: "001" };
+    const run = registry.create(owner);
+    registry.update(run.runId, {
+      status: "running",
+      elapsedMs: 12,
+      step: "inspecting",
+    });
+
+    expect(registry.create(owner)).toEqual({
+      ...run,
+      projection: {
+        status: "running",
+        elapsedMs: 12,
+        step: "inspecting",
+      },
+    });
+  });
 });

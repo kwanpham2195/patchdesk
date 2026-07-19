@@ -1,66 +1,319 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Send, TriangleAlert } from "lucide-react";
 
-import type { GitHubReviewEvent, ReviewDraft } from "../../../domain/review-draft";
+import type {
+  GitHubReviewEvent,
+  ReviewDraft,
+} from "../../../domain/review-draft";
 import type { ReviewFinding } from "../../../domain/review-result";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 
 type DialogPhase =
   | { readonly _tag: "local" }
   | { readonly _tag: "pending"; readonly reviewId: string }
-  | { readonly _tag: "submitted"; readonly reviewId: string; readonly event: GitHubReviewEvent };
+  | {
+      readonly _tag: "submitted";
+      readonly reviewId: string;
+      readonly event: GitHubReviewEvent;
+    };
 
-/** Confirmation-only renderer surface; main-process callers own the actual GitHub write service. */
+/** Exact-saved-draft confirmation surface; callbacks retain main-process ownership. */
 export function ReviewSubmissionDialog(props: {
-  readonly draft: Pick<ReviewDraft, "state" | "summaryBody" | "comments">;
+  readonly draft: Pick<ReviewDraft, "state" | "summaryBody" | "comments"> & {
+    readonly updatedAt?: string;
+  };
   readonly findings: ReadonlyArray<Pick<ReviewFinding, "id" | "severity">>;
   readonly onCreatePending: () => Promise<{ readonly reviewId: string }>;
-  readonly onSubmitPending: (event: GitHubReviewEvent, summaryBody: string) => Promise<{ readonly reviewId: string }>;
+  readonly onSubmitPending: (
+    event: GitHubReviewEvent,
+    summaryBody: string,
+  ) => Promise<{ readonly reviewId: string }>;
+  readonly onPendingChange?: (pending: boolean) => void;
 }): React.JSX.Element {
-  const [phase, setPhase] = useState<DialogPhase>(() => initialPhase(props.draft));
-  const [dialog, setDialog] = useState<"create" | "submit" | undefined>();
+  const [phase, setPhase] = useState<DialogPhase>(() =>
+    initialPhase(props.draft),
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [submitOpen, setSubmitOpen] = useState(false);
   const [createAcknowledged, setCreateAcknowledged] = useState(false);
   const [submitAcknowledged, setSubmitAcknowledged] = useState(false);
   const [event, setEvent] = useState<GitHubReviewEvent>("COMMENT");
-  const [summaryBody, setSummaryBody] = useState(props.draft.summaryBody);
-  const [writeError, setWriteError] = useState<string | undefined>();
+  const [writeError, setWriteError] = useState<string>();
+  const [pending, setPending] = useState(false);
   const postable = useMemo(
-    () => props.draft.comments.filter((comment) => comment.include && comment.postability === "postable" && comment.body.trim().length > 0),
+    () =>
+      props.draft.comments.filter(
+        (comment) =>
+          comment.include &&
+          comment.postability === "postable" &&
+          comment.body.trim().length > 0,
+      ),
     [props.draft.comments],
   );
-  const includesP0P1 = postable.some((comment) => props.findings.some((finding) => finding.id === comment.findingId && (finding.severity === "P0" || finding.severity === "P1")));
+  const includesP0P1 = postable.some((comment) =>
+    props.findings.some(
+      (finding) =>
+        finding.id === comment.findingId &&
+        (finding.severity === "P0" || finding.severity === "P1"),
+    ),
+  );
+  const writeErrorAlert =
+    writeError === undefined ? null : (
+      <Alert variant="destructive">
+        <TriangleAlert />
+        <AlertTitle>Review write failed</AlertTitle>
+        <AlertDescription>{writeError}</AlertDescription>
+      </Alert>
+    );
+  useEffect(() => {
+    props.onPendingChange?.(pending);
+  }, [pending, props.onPendingChange]);
 
   const create = async (): Promise<void> => {
+    if (pending) return;
+    setPending(true);
+    setWriteError(undefined);
     try {
-      const pending = await props.onCreatePending();
-      setPhase({ _tag: "pending", reviewId: pending.reviewId });
-      setDialog(undefined);
+      const result = await props.onCreatePending();
+      setPhase({ _tag: "pending", reviewId: result.reviewId });
+      setCreateOpen(false);
     } catch {
-      setWriteError("GitHub rejected the pending review. Your local draft was preserved.");
+      setWriteError(
+        "GitHub rejected the pending review. Your saved local draft was preserved.",
+      );
+    } finally {
+      setPending(false);
     }
   };
   const submit = async (): Promise<void> => {
+    if (pending) return;
+    setPending(true);
+    setWriteError(undefined);
     try {
-      const submitted = await props.onSubmitPending(event, summaryBody.trim());
-      setPhase({ _tag: "submitted", reviewId: submitted.reviewId, event });
-      setDialog(undefined);
+      const result = await props.onSubmitPending(
+        event,
+        props.draft.summaryBody,
+      );
+      setPhase({ _tag: "submitted", reviewId: result.reviewId, event });
+      setSubmitOpen(false);
     } catch {
-      setWriteError("GitHub could not submit the pending review. Your local draft was preserved.");
+      setWriteError(
+        "GitHub could not submit the pending review. Your saved local draft was preserved.",
+      );
+    } finally {
+      setPending(false);
     }
   };
 
-  if (phase._tag === "submitted") return <p role="status" className="text-sm text-cyan-200">Review {phase.reviewId} submitted as {phase.event}.</p>;
+  if (phase._tag === "submitted")
+    return (
+      <p role="status" className="text-sm text-primary">
+        Review {phase.reviewId} submitted as {phase.event}.
+      </p>
+    );
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900 p-5" aria-label="GitHub review submission">
-      <h2 className="text-lg font-semibold">GitHub review</h2>
-      {writeError === undefined ? null : <p role="alert" className="mt-2 text-sm text-rose-200">{writeError}</p>}
-      {phase._tag === "local" ? <button className="mt-3 rounded bg-cyan-700 px-3 py-2 text-sm" onClick={() => setDialog("create")} disabled={postable.length === 0}>Create pending review</button> : <><p className="mt-2 text-sm text-cyan-200">Pending review {phase.reviewId} created.</p><button className="mt-3 rounded bg-cyan-700 px-3 py-2 text-sm" onClick={() => setDialog("submit")}>Submit pending review</button></>}
-      {dialog === "create" ? <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-4" role="dialog" aria-label="Create pending review"><h3 className="font-medium">Create pending review</h3>{includesP0P1 ? <p className="mt-2 text-sm text-amber-200">P0/P1 findings are included in this review.</p> : null}<ul className="mt-3 space-y-2">{postable.map((comment) => <li key={comment.findingId} className="rounded border border-slate-800 p-2 text-sm"><strong>{comment.path}:{comment.line}</strong><p className="text-slate-300">{comment.body}</p></li>)}</ul><label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={createAcknowledged} onChange={(event) => setCreateAcknowledged(event.target.checked)} />I understand this creates one pending GitHub review.</label><div className="mt-3 flex gap-2"><button className="rounded bg-cyan-700 px-3 py-2 text-sm" onClick={() => void create()} disabled={!createAcknowledged}>Confirm pending review</button><button className="rounded bg-slate-700 px-3 py-2 text-sm" onClick={() => setDialog(undefined)}>Cancel</button></div></div> : null}
-      {dialog === "submit" ? <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-4" role="dialog" aria-label="Submit pending review"><h3 className="font-medium">Submit pending review</h3>{includesP0P1 ? <p className="mt-2 text-sm text-amber-200">P0/P1 findings are included in this review.</p> : null}<label className="mt-3 block text-sm">Review event<select className="mt-1 block rounded border border-slate-700 bg-slate-900 p-2" value={event} onChange={(value) => setEvent(value.target.value as GitHubReviewEvent)}><option value="COMMENT">COMMENT</option><option value="APPROVE">APPROVE</option><option value="REQUEST_CHANGES">REQUEST_CHANGES</option></select></label><label className="mt-3 block text-sm">Review summary<textarea className="mt-1 block w-full rounded border border-slate-700 bg-slate-900 p-2" value={summaryBody} onChange={(value) => setSummaryBody(value.target.value)} /></label><label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={submitAcknowledged} onChange={(value) => setSubmitAcknowledged(value.target.checked)} />I understand this submits the pending review.</label><div className="mt-3 flex gap-2"><button className="rounded bg-cyan-700 px-3 py-2 text-sm" onClick={() => void submit()} disabled={!submitAcknowledged || summaryBody.trim().length === 0}>Submit review</button><button className="rounded bg-slate-700 px-3 py-2 text-sm" onClick={() => setDialog(undefined)}>Cancel</button></div></div> : null}
+    <section aria-label="GitHub review submission">
+      {phase._tag === "local" ? (
+        <AlertDialog
+          open={createOpen}
+          onOpenChange={(open) => {
+            if (!pending) setCreateOpen(open);
+          }}
+        >
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={postable.length === 0}
+            >
+              <Send />
+              Create pending review
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent aria-busy={pending}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Create pending review</AlertDialogTitle>
+              <AlertDialogDescription>
+                This creates one pending GitHub review from the exact saved
+                local draft. It does not submit the review.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {writeErrorAlert}
+            <div className="space-y-3 text-sm">
+              <div className="flex gap-2">
+                <Badge variant="secondary">{postable.length} comments</Badge>
+                {props.draft.updatedAt === undefined ? null : (
+                  <Badge variant="outline">
+                    Revision {props.draft.updatedAt}
+                  </Badge>
+                )}
+              </div>
+              {includesP0P1 ? (
+                <Alert>
+                  <TriangleAlert />
+                  <AlertTitle>P0/P1 findings included</AlertTitle>
+                  <AlertDescription>
+                    Review every high-severity comment before continuing.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              <ul className="max-h-52 space-y-2 overflow-auto">
+                {postable.map((comment) => (
+                  <li key={comment.findingId} className="rounded-md border p-3">
+                    <strong>
+                      {comment.path}:{comment.line}
+                    </strong>
+                    <p className="mt-1 text-muted-foreground">{comment.body}</p>
+                  </li>
+                ))}
+              </ul>
+              <Field orientation="horizontal" className="items-start gap-2">
+                <Checkbox
+                  id="create-review-ack"
+                  checked={createAcknowledged}
+                  onCheckedChange={(checked) =>
+                    setCreateAcknowledged(checked === true)
+                  }
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="create-review-ack" className="leading-5">
+                    I understand this creates one pending GitHub review.
+                  </FieldLabel>
+                </FieldContent>
+              </Field>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!createAcknowledged || pending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void create();
+                }}
+              >
+                {pending ? <Spinner /> : null}
+                {pending ? "Creating…" : "Confirm pending review"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        <div>
+          <p className="mb-3 text-sm text-primary">
+            Pending review {phase.reviewId} created.
+          </p>
+          <AlertDialog
+            open={submitOpen}
+            onOpenChange={(open) => {
+              if (!pending) setSubmitOpen(open);
+            }}
+          >
+            <AlertDialogTrigger asChild>
+              <Button className="w-full">Submit pending review</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent aria-busy={pending}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Submit pending review</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Submit the existing pending review using the exact saved
+                  summary and selected event.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {writeErrorAlert}
+              <div className="space-y-4">
+                <Field>
+                  <FieldLabel htmlFor="review-event">Review event</FieldLabel>
+                  <Select
+                    value={event}
+                    onValueChange={(value) =>
+                      setEvent(value as GitHubReviewEvent)
+                    }
+                  >
+                    <SelectTrigger id="review-event" className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="COMMENT">COMMENT</SelectItem>
+                      <SelectItem value="APPROVE">APPROVE</SelectItem>
+                      <SelectItem value="REQUEST_CHANGES">
+                        REQUEST_CHANGES
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <div className="rounded-md border bg-muted p-3 text-sm">
+                  <p className="font-medium">Saved review summary</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {props.draft.summaryBody}
+                  </p>
+                </div>
+                <Field orientation="horizontal" className="items-start gap-2">
+                  <Checkbox
+                    id="submit-review-ack"
+                    checked={submitAcknowledged}
+                    onCheckedChange={(checked) =>
+                      setSubmitAcknowledged(checked === true)
+                    }
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="submit-review-ack" className="leading-5">
+                      I understand this submits the pending review.
+                    </FieldLabel>
+                  </FieldContent>
+                </Field>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={!submitAcknowledged || pending}
+                  onClick={(action) => {
+                    action.preventDefault();
+                    void submit();
+                  }}
+                >
+                  {pending ? <Spinner /> : null}
+                  {pending ? "Submitting…" : "Submit review"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
     </section>
   );
 }
 
 function initialPhase(draft: Pick<ReviewDraft, "state">): DialogPhase {
-  if (draft.state._tag === "PendingGitHubReview") return { _tag: "pending", reviewId: draft.state.pendingReviewId };
-  if (draft.state._tag === "SubmittedGitHubReview") return { _tag: "submitted", reviewId: draft.state.reviewId, event: draft.state.event };
+  if (draft.state._tag === "PendingGitHubReview")
+    return { _tag: "pending", reviewId: draft.state.pendingReviewId };
+  if (draft.state._tag === "SubmittedGitHubReview")
+    return {
+      _tag: "submitted",
+      reviewId: draft.state.reviewId,
+      event: draft.state.event,
+    };
   return { _tag: "local" };
 }

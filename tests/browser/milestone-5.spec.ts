@@ -11,6 +11,7 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "../../src/main/local-api";
+import { installTestDesktopBridge } from "./bridge-fixture";
 
 const capability = "browser-test-capability";
 let client: Server | undefined;
@@ -49,14 +50,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   if (started._tag !== "started") throw new Error("local API did not start");
   api = started.server;
 
-  await page.addInitScript(
-    ({ baseUrl, capability: apiCapability }) => {
-      Object.defineProperty(window, "patchdesk", {
-        value: { localApi: { baseUrl, capability: apiCapability } },
-      });
-    },
-    { baseUrl: api.url.toString(), capability },
-  );
+  await installTestDesktopBridge(page, api.url.toString(), capability);
   await page.goto(origin);
 
   expect(
@@ -66,34 +60,35 @@ test("renderer uses the protected loopback API for profile and watchlist control
     }, new URL("health", api.url).toString()),
   ).toBe(401);
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Profile ID").fill("enterprise");
   await page.getByLabel("Label").fill("Enterprise");
   await page.getByLabel("GitHub host").fill("github.example.test");
   await page.getByLabel("GitHub account").fill("enterprise-user");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await page.getByLabel("Workspace profile").selectOption("enterprise");
+  await page.getByLabel("Active profile").click();
+  await page.getByRole("option", { name: "Enterprise" }).click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page.getByLabel("Workspace profile")).toHaveValue("enterprise");
+  await expect(page.getByLabel("Active profile")).toContainText("Enterprise updated");
 
   await page.getByRole("button", { name: "Test GitHub access" }).click();
   await expect(page.getByText("GitHub access: available")).toBeVisible();
-  await page.getByRole("button", { name: "Discover workspace repos" }).click();
+  await page.getByRole("button", { name: "Discover workspace repositories" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await page.getByRole("button", { name: "Add suggestion" }).click();
   await expect(
-    page.getByRole("button", { name: "Archive repo" }),
+    page.getByRole("button", { name: "Archive" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Archive repo" }).click();
+  await page.getByRole("button", { name: "Archive" }).click();
   await expect(
-    page.getByRole("button", { name: "Restore repo" }),
+    page.getByRole("button", { name: "Restore" }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Pending PRs" }).click();
   await page.getByLabel("Pull request reference").fill("acme/service#3");
   await page.getByRole("button", { name: "Preview pull request" }).click();
-  await expect(page.getByRole("alert")).toContainText("Could not prepare acme/service#3.");
+  await expect(page.getByRole("alert").filter({ hasText: "Could not open review" })).toContainText("Could not prepare acme/service#3.");
 
   await page
     .getByLabel("Pull request reference")

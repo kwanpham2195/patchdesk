@@ -37,6 +37,7 @@ import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
+import { ReviewComparisonService } from "../services/review-comparison-service";
 import {
   ReviewWorkflowStarter,
   type ReviewWorkflowInvoker,
@@ -172,6 +173,11 @@ export async function startLocalApiServer(
       worktrees: new ReviewWorktreeService(paths, readOnlyGit),
       context: new ReviewContextService(),
     },
+    new ReviewComparisonService(
+      paths,
+      readOnlyGit,
+      () => new Date().toISOString() as never,
+    ),
   );
   const reviewCompletion = new ReviewCompletionService(
     paths,
@@ -234,6 +240,12 @@ export async function startLocalApiServer(
   );
   app.post("/v1/inbox/refresh", async (context) =>
     response(context, await dashboard.inboxForActiveProfile()),
+  );
+  app.post("/v1/inbox/refresh/repository", async (context) =>
+    response(
+      context,
+      await dashboard.refreshWatchlistRepo(await jsonBody(context)),
+    ),
   );
   app.post("/v1/watchlist", async (context) =>
     response(

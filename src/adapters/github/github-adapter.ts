@@ -19,15 +19,19 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
+  type ReviewSessionId,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-draft";
+import type { RevisionComparison } from "../../domain/review-comparison";
 
 const commandTimeoutMs = 15_000;
 const threadQuery =
   "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine } } } } } } }";
+const maintainerInboxQuery =
+  "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 
 const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -101,12 +105,56 @@ const threadResponseSchema = v.looseObject({
   }),
 });
 
+const maintainerInboxResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      pullRequests: v.looseObject({
+        nodes: v.array(v.looseObject({
+          number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+          title: v.string(),
+          isDraft: v.boolean(),
+          headRefName: v.string(),
+          headRefOid: v.string(),
+          baseRefName: v.string(),
+          author: v.nullish(v.looseObject({ login: v.string() })),
+          updatedAt: v.string(),
+          mergeable: v.string(),
+          reviewDecision: v.nullish(v.string()),
+          additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          reviewRequests: v.looseObject({
+            nodes: v.array(v.looseObject({
+              requestedReviewer: v.nullish(
+                v.looseObject({ login: v.optional(v.string()) }),
+              ),
+            })),
+          }),
+          assignees: v.looseObject({ nodes: v.array(v.looseObject({ login: v.string() })) }),
+          commits: v.looseObject({
+            nodes: v.array(v.looseObject({
+              commit: v.looseObject({
+                statusCheckRollup: v.nullish(v.looseObject({ state: v.string() })),
+              }),
+            })),
+          }),
+        })),
+        pageInfo: v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) }),
+      }),
+    }),
+  }),
+});
+
 /** The typed read-only operations product code may request from GitHub. */
 export interface GitHubReader {
   listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: PullRequestRef;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>>;
+  listMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>>;
   getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -125,10 +173,34 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
   }): Promise<Result<string, GitHubReadFailure>>;
+  compareRevisions(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly baseSha: GitSha;
+    readonly headSha: GitSha;
+    readonly baseSessionId: ReviewSessionId;
+  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>>;
   resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
+
+export type MaintainerPullRequest = {
+  readonly summary: PullRequestSummary;
+  readonly checks: CheckSummary;
+};
+
+export type MaintainerPullRequestListing = {
+  readonly pullRequests: ReadonlyArray<MaintainerPullRequest>;
+  /** False means GitHub reported more than Patchdesk's deliberate 300-PR cap. */
+  readonly complete: boolean;
+};
+
+/** GitHub comparison is usable only when both metadata and one complete unified diff are verified. */
+export type GitHubRevisionComparison = {
+  readonly comparison: RevisionComparison;
+  readonly patch?: string;
+};
 
 export type PendingReviewComment = {
   readonly body: string;
@@ -224,10 +296,12 @@ export type GitHubReadFailure =
 
 type GitHubReadOperation =
   | "list_open_prs"
+  | "list_maintainer_prs"
   | "get_pr"
   | "get_comments"
   | "get_checks"
   | "get_diff"
+  | "compare_revisions"
   | "auth_status";
 
 /**
@@ -267,6 +341,47 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       summaries.push(summary.value);
     }
     return ok(summaries);
+  }
+
+  /** Lists up to 300 open PRs with the inbox metadata in three bounded GraphQL pages. */
+  async listMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>> {
+    const pullRequests: Array<MaintainerPullRequest> = [];
+    let cursor: string | undefined;
+    let hasNextPage = true;
+    for (let page = 0; page < 3 && hasNextPage; page += 1) {
+      const response = await this.commands.runJson({
+        argv: [
+          "gh", "api", "graphql", "--hostname", input.profile.githubHost,
+          "-f", `query=${maintainerInboxQuery}`,
+          "-F", `owner=${input.repo.owner}`,
+          "-F", `name=${input.repo.repo}`,
+          ...(cursor === undefined ? [] : ["-f", `cursor=${cursor}`]),
+        ],
+        timeoutMs: commandTimeoutMs,
+      });
+      if (response._tag === "err")
+        return commandFailure("list_maintainer_prs", response.error);
+      const parsed = v.safeParse(maintainerInboxResponseSchema, response.value);
+      if (!parsed.success) return invalid("list_maintainer_prs");
+      const connection = parsed.output.data.repository.pullRequests;
+      for (const node of connection.nodes) {
+        const projected = parseMaintainerPullRequest(
+          node,
+          input.profile.githubHost,
+          input.repo.owner,
+          input.repo.repo,
+        );
+        if (projected._tag === "err") return invalid("list_maintainer_prs");
+        pullRequests.push(projected.value);
+      }
+      hasNextPage = connection.pageInfo.hasNextPage;
+      cursor = connection.pageInfo.endCursor ?? undefined;
+      if (hasNextPage && cursor === undefined) return invalid("list_maintainer_prs");
+    }
+    return ok({ pullRequests, complete: !hasNextPage });
   }
 
   async getPullRequest(input: {
@@ -413,16 +528,53 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       : commandFailure("get_diff", fallback.error);
   }
 
+  async compareRevisions(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly baseSha: GitSha;
+    readonly headSha: GitSha;
+    readonly baseSessionId: ReviewSessionId;
+  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>> {
+    const endpoint = `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.baseSha}...${input.headSha}`;
+    const metadata = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, endpoint],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (metadata._tag === "err") return commandFailure("compare_revisions", metadata.error);
+    const comparison = parseGitHubComparison(metadata.value, input);
+    if (comparison === undefined) return invalid("compare_revisions");
+    if (comparison.completeness === "incomplete") return ok({ comparison });
+    const patch = await this.commands.runText({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "-H", "Accept: application/vnd.github.v3.diff", endpoint],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (patch._tag === "err") return commandFailure("compare_revisions", patch.error);
+    return patch.value.length === 0
+      ? ok({ comparison: { ...comparison, completeness: "incomplete" } })
+      : ok({ comparison, patch: patch.value });
+  }
+
   async resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
     const response = await this.commands.runText({
-      argv: ["gh", "auth", "status", "--hostname", profile.githubHost],
+      // `gh auth status` exits nonzero if any stale, inactive account is
+      // invalid, even when the configured active account can make API calls.
+      // Ask GitHub who this invocation can actually authenticate as instead.
+      argv: [
+        "gh",
+        "api",
+        "--hostname",
+        profile.githubHost,
+        "user",
+        "--jq",
+        ".login",
+      ],
       timeoutMs: commandTimeoutMs,
     });
     if (
       response._tag === "err" ||
-      !statusHasActiveAccount(response.value, profile.ghAccount)
+      response.value.trim() !== profile.ghAccount
     ) {
       return err({
         _tag: "GitHubAuthenticationFailed",
@@ -558,6 +710,24 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       : ok(this.values.listOpenPullRequests);
   }
 
+  async listMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>> {
+    void input;
+    if (this.values.maintainerPullRequests !== undefined)
+      return ok(this.values.maintainerPullRequests);
+    if (this.values.listOpenPullRequests === undefined)
+      return missing("list_maintainer_prs");
+    return ok({
+      pullRequests: this.values.listOpenPullRequests.map((summary) => ({
+        summary,
+        checks: this.values.checks ?? { overall: "unknown", checks: [] },
+      })),
+      complete: true,
+    });
+  }
+
   async getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -598,6 +768,19 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return this.values.diff === undefined
       ? missing("get_diff")
       : ok(this.values.diff);
+  }
+
+  async compareRevisions(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly baseSha: GitSha;
+    readonly headSha: GitSha;
+    readonly baseSessionId: ReviewSessionId;
+  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>> {
+    void input;
+    return this.values.comparison === undefined
+      ? missing("compare_revisions")
+      : ok(this.values.comparison);
   }
 
   async resolveAuthenticatedAccount(
@@ -651,15 +834,144 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
 /** Fixture values accepted by FakeGitHubAdapter. */
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
+  readonly maintainerPullRequests: MaintainerPullRequestListing;
   readonly pullRequest: PullRequestSummary;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly diff: string;
+  readonly comparison: GitHubRevisionComparison;
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
   readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
   readonly submittedReview: { readonly reviewId: string };
   readonly mergeResult: { readonly mergeCommitSha?: GitSha };
 };
+
+function parseMaintainerPullRequest(
+  input: v.InferOutput<typeof maintainerInboxResponseSchema>["data"]["repository"]["pullRequests"]["nodes"][number],
+  host: GitHubHost,
+  owner: GitHubOwner,
+  repo: GitHubRepoName,
+): Result<MaintainerPullRequest, { readonly _tag: "Invalid" }> {
+  const number = parsePullRequestNumber(input.number);
+  const headSha = parseGitSha(input.headRefOid);
+  const updatedAt = parseGitHubTimestamp(input.updatedAt);
+  if (number._tag === "err" || headSha._tag === "err" || updatedAt._tag === "err")
+    return err({ _tag: "Invalid" });
+  const summary: PullRequestSummary = {
+    ref: { host, owner, repo, number: number.value },
+    title: input.title,
+    author: input.author?.login ?? "ghost",
+    headBranch: input.headRefName,
+    baseBranch: input.baseRefName,
+    headSha: headSha.value,
+    isDraft: input.isDraft,
+    isOpen: true,
+    reviewState: mapReviewDecision(input.reviewDecision),
+    mergeability: mapMergeability(input.mergeable),
+    labels: [],
+    requestedReviewers: input.reviewRequests.nodes.flatMap((request) =>
+      request.requestedReviewer?.login === undefined
+        ? []
+        : [request.requestedReviewer.login],
+    ),
+    assignees: input.assignees.nodes.map((assignee) => assignee.login),
+    updatedAt: updatedAt.value,
+    additions: input.additions,
+    deletions: input.deletions,
+    changedFileCount: input.changedFiles,
+  };
+  const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
+  return ok({ summary, checks: rollupCheckSummary(rollup) });
+}
+
+function parseGitHubComparison(
+  input: unknown,
+  expected: {
+    readonly baseSessionId: ReviewSessionId;
+    readonly baseSha: GitSha;
+    readonly headSha: GitSha;
+  },
+): RevisionComparison | undefined {
+  if (!isObject(input)) return undefined;
+  const baseSha = readSha(input.base_commit);
+  const headSha = readSha(input.head_commit);
+  const createdAt = typeof input.created_at === "string" ? parseGitHubTimestamp(input.created_at) : undefined;
+  if (baseSha !== expected.baseSha || headSha !== expected.headSha || createdAt === undefined || createdAt._tag === "err" || !Array.isArray(input.files) || !Array.isArray(input.commits)) return undefined;
+  const files = input.files.map(parseComparedFile);
+  const commits = input.commits.map(parseComparedCommit);
+  if (files.some((file) => file === undefined) || commits.some((commit) => commit === undefined)) return undefined;
+  const safeFiles = files.filter((file): file is NonNullable<typeof file> => file !== undefined);
+  const safeCommits = commits.filter((commit): commit is NonNullable<typeof commit> => commit !== undefined);
+  const additions = safeFiles.reduce((total, file) => total + file.additions, 0);
+  const deletions = safeFiles.reduce((total, file) => total + file.deletions, 0);
+  return {
+    schemaVersion: 1,
+    baseSessionId: expected.baseSessionId,
+    baseHeadSha: expected.baseSha,
+    headSha: expected.headSha,
+    ancestry: input.status === "ahead" ? "fast_forward" : "rewritten",
+    source: "github",
+    // GitHub's comparison file list is capped. Refuse to call a cap-sized list complete.
+    completeness: safeFiles.length >= 300 ? "incomplete" : "complete",
+    commits: safeCommits,
+    files: safeFiles,
+    additions,
+    deletions,
+    createdAt: createdAt.value,
+  };
+}
+
+function parseComparedFile(input: unknown): RevisionComparison["files"][number] | undefined {
+  if (!isObject(input) || typeof input.filename !== "string" || typeof input.status !== "string" || !isNonNegativeInteger(input.additions) || !isNonNegativeInteger(input.deletions)) return undefined;
+  const status = input.status === "added" || input.status === "modified" || input.status === "deleted" || input.status === "renamed" || input.status === "copied" ? input.status : "unknown";
+  const oldPath = typeof input.previous_filename === "string" ? input.previous_filename : undefined;
+  const textPatchAvailable = typeof input.patch === "string";
+  return { path: input.filename, ...(oldPath === undefined ? {} : { oldPath }), status, additions: input.additions, deletions: input.deletions, binary: !textPatchAvailable, textPatchAvailable };
+}
+
+function parseComparedCommit(input: unknown): RevisionComparison["commits"][number] | undefined {
+  if (!isObject(input) || typeof input.sha !== "string" || !isObject(input.commit) || typeof input.commit.message !== "string" || !isObject(input.commit.author) || typeof input.commit.author.name !== "string" || typeof input.commit.author.date !== "string") return undefined;
+  const sha = parseGitSha(input.sha);
+  const authoredAt = parseGitHubTimestamp(input.commit.author.date);
+  if (sha._tag === "err" || authoredAt._tag === "err") return undefined;
+  return { sha: sha.value, subject: input.commit.message.split("\n", 1)[0] ?? "", author: input.commit.author.name, authoredAt: authoredAt.value };
+}
+
+function readSha(input: unknown): GitSha | undefined {
+  if (!isObject(input)) return undefined;
+  const sha = parseGitSha(input.sha);
+  return sha._tag === "ok" ? sha.value : undefined;
+}
+
+function isObject(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null;
+}
+
+function isNonNegativeInteger(input: unknown): input is number {
+  return typeof input === "number" && Number.isSafeInteger(input) && input >= 0;
+}
+
+function mapReviewDecision(value: string | null | undefined): PullRequestSummary["reviewState"] {
+  switch (value) {
+    case "APPROVED": return "approved";
+    case "CHANGES_REQUESTED": return "changes_requested";
+    case "REVIEW_REQUIRED": return "review_pending";
+    case null:
+    case undefined: return "none";
+    default: return "unknown";
+  }
+}
+
+function rollupCheckSummary(value: string | undefined): CheckSummary {
+  switch (value) {
+    case "SUCCESS": return { overall: "passing", checks: [] };
+    case "FAILURE":
+    case "ERROR":
+    case "EXPECTED": return { overall: "failing", checks: [] };
+    case "PENDING": return { overall: "pending", checks: [] };
+    default: return { overall: "unknown", checks: [] };
+  }
+}
 
 function parsePullRequest(
   input: unknown,
@@ -799,9 +1111,9 @@ function toCheckRunSummary(
 function mapMergeability(
   value: string | undefined,
 ): PullRequestSummary["mergeability"] {
-  if (value === "clean") return "mergeable";
-  if (value === "dirty") return "conflicting";
-  if (value === "blocked") return "blocked";
+  if (value === "clean" || value === "MERGEABLE") return "mergeable";
+  if (value === "dirty" || value === "CONFLICTING") return "conflicting";
+  if (value === "blocked" || value === "BLOCKED") return "blocked";
   return "unknown";
 }
 
@@ -926,28 +1238,4 @@ function isManagedFetchedRef(value: string): boolean {
     !value.includes("..") &&
     !value.includes("//")
   );
-}
-
-function statusHasActiveAccount(status: string, account: string): boolean {
-  const escapedAccount = account.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const configuredAccount = new RegExp(
-    `\\baccount\\s+${escapedAccount}(?:\\s|$)`,
-    "i",
-  );
-  let selectedAccountIsConfigured = false;
-
-  for (const line of status.split(/\r?\n/)) {
-    if (/\baccount\s+\S+/i.test(line)) {
-      selectedAccountIsConfigured = configuredAccount.test(line);
-      continue;
-    }
-    if (
-      selectedAccountIsConfigured &&
-      /\bActive account:\s*true\b/i.test(line)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
 }

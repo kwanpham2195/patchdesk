@@ -1,4 +1,5 @@
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewScope } from "../domain/review-comparison";
 import {
   parseReviewAttemptId,
   parseReviewSessionId,
@@ -19,6 +20,7 @@ export type ReviewWorkflowInput = {
   readonly reviewInputPath: AbsolutePath;
   readonly patchPath: AbsolutePath;
   readonly worktreePath: AbsolutePath;
+  readonly scope?: ReviewScope;
 };
 
 export type ReviewWorkflowInvoker = {
@@ -69,6 +71,7 @@ export class ReviewWorkflowStarter {
       reviewInputPath: attempt.value.reviewInputPath,
       patchPath: session.value.patchPath,
       worktreePath: session.value.worktree.path,
+      scope: session.value.scope,
     });
     return invoked._tag === "ok" ? ok(invoked.value) : err({ reason: invoked.error.reason });
   }

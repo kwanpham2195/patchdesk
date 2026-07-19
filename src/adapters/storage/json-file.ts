@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -58,7 +58,8 @@ export async function writeAtomicJson(
   );
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    await mkdir(directory, { recursive: true });
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
     handle = await open(temporaryPath, "wx", 0o600);
     await handle.writeFile(`${serialized}\n`, "utf8");
     await syncBestEffort(handle);
@@ -152,7 +153,9 @@ export function containsSensitiveData(value: unknown): boolean {
 
   for (const [key, nestedValue] of Object.entries(value)) {
     if (
-      /(?:token|secret|authorization|cookie|password)/i.test(key) ||
+      // Opaque, one-way finding tokens are deliberate persisted review evidence;
+      // credential-shaped values are still rejected by the value scan below.
+      /(?:secret|authorization|cookie|password)/i.test(key) ||
       containsSensitiveData(nestedValue)
     ) {
       return true;

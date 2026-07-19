@@ -12,13 +12,14 @@ import { createReviewSession } from "../../src/domain/review-session";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { startLocalApiServer, type LocalApiServer } from "../../src/main/local-api";
+import { installTestDesktopBridge } from "./bridge-fixture";
 
 test("normal dashboard direct entry opens the persisted in-progress review session", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-normal-")); let api: LocalApiServer | undefined;
   try {
     const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths: PatchdeskPaths.forTest(root), github: new FakeGitHubAdapter({ pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Fixture", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" } as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, diff: "+++ b/src/review.ts\n+fixture\n" }) });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
-    await page.addInitScript(({ baseUrl }) => Object.defineProperty(window, "patchdesk", { value: { localApi: { baseUrl, capability: "cap" } } }), { baseUrl: api.url.toString() });
+    await installTestDesktopBridge(page, api.url.toString(), "cap");
     await page.goto(origin(renderer));
     await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1");
     await page.getByRole("button", { name: "Preview pull request" }).click();
@@ -35,7 +36,7 @@ test("normal dashboard opens a seeded completed workbench and writes one confirm
     const github = new FakeGitHubAdapter({ authenticatedAccount: { host: "github.com", account: "fixture" }, listOpenPullRequests: [], pullRequest: summary() as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github, reviewWriter: { async createPendingReview() { creates += 1; return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; }, async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; } } });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
-    await page.addInitScript(({ baseUrl }) => Object.defineProperty(window, "patchdesk", { value: { localApi: { baseUrl, capability: "cap" } } }), { baseUrl: api.url.toString() });
+    await installTestDesktopBridge(page, api.url.toString(), "cap");
     await page.goto(origin(renderer)); await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1"); await page.getByRole("button", { name: "Preview pull request" }).click();
     await expect(page.getByRole("main")).toContainText("Completed review"); await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
     await page.getByRole("button", { name: "Create pending review" }).click(); await page.getByLabel("I understand this creates one pending GitHub review.").check(); await page.getByRole("button", { name: "Confirm pending review" }).click();

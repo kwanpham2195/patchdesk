@@ -1,0 +1,160 @@
+import { randomUUID } from "node:crypto";
+import type { IpcMain } from "electron";
+import { literal, optional, picklist, safeParse, strictObject, string, union, unknown } from "valibot";
+
+import {
+  APP_CAPABILITY_HEADER,
+  DESKTOP_REQUEST_CHANNEL,
+  type DesktopRequest,
+  type DesktopResponse,
+  type LocalApiDesktopRequest,
+} from "./ipc-contract";
+import type { StartedLocalApi } from "./app-lifecycle";
+
+const requestSchema = union([
+  strictObject({
+    path: string(),
+    method: optional(picklist(["GET", "POST", "PUT", "PATCH", "DELETE"])),
+    body: optional(unknown()),
+  }),
+  strictObject({
+    operation: literal("selectDirectory"),
+    defaultPath: optional(string()),
+  }),
+  strictObject({
+    operation: literal("setNavigationState"),
+    state: picklist(["clear", "dirty_draft", "write_pending"]),
+  }),
+]);
+
+const allowedRoutes = new Set([
+  "GET /v1/profiles",
+  "POST /v1/profiles",
+  "PUT /v1/profiles",
+  "POST /v1/profiles/select",
+  "GET /v1/dashboard",
+  "POST /v1/dashboard/refresh",
+  "POST /v1/dashboard/refresh/repository",
+  "GET /v1/inbox",
+  "POST /v1/inbox/refresh",
+  "POST /v1/inbox/refresh/repository",
+  "POST /v1/watchlist",
+  "PATCH /v1/watchlist/path",
+  "DELETE /v1/watchlist",
+  "PATCH /v1/watchlist/archive",
+  "GET /v1/watchlist/suggestions",
+  "POST /v1/github/access",
+  "GET /v1/environment",
+  "POST /v1/direct-entry/preview",
+  "POST /v1/runs/review-pr",
+  "POST /v1/reviews/pending",
+  "POST /v1/reviews/submit",
+  "POST /v1/reviews/open",
+  "GET /v1/reviews",
+  "POST /v1/reviews/load",
+  "POST /v1/reviews/draft",
+  "POST /v1/reviews/merge",
+]);
+
+const maxResponseBytes = 2 * 1024 * 1024;
+
+export function isAllowedDesktopRequest(input: LocalApiDesktopRequest): boolean {
+  const method = input.method ?? "GET";
+  const url = new URL(input.path, "http://patchdesk.invalid");
+  if (url.origin !== "http://patchdesk.invalid") return false;
+  if (url.pathname.startsWith("/v1/runs/") && method === "GET") return true;
+  return allowedRoutes.has(`${method} ${url.pathname}`);
+}
+
+export function installDesktopRequestBridge(
+  ipc: Pick<IpcMain, "handle" | "removeHandler">,
+  senderId: number,
+  server: StartedLocalApi,
+  rendererOrigin: string,
+  operations: {
+    readonly selectDirectory: (input: { readonly defaultPath?: string }) => Promise<string | undefined>;
+    readonly setNavigationState: (state: "clear" | "dirty_draft" | "write_pending") => void;
+  },
+): void {
+  ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
+  ipc.handle(DESKTOP_REQUEST_CHANNEL, async (event, input: unknown): Promise<DesktopResponse> => {
+    const correlationId = randomUUID();
+    const parsed = safeParse(requestSchema, input);
+    const request: DesktopRequest | undefined = !parsed.success
+      ? undefined
+      : "operation" in parsed.output
+        ? parsed.output.operation === "setNavigationState"
+          ? { operation: parsed.output.operation, state: parsed.output.state }
+          : {
+              operation: parsed.output.operation,
+              ...(parsed.output.defaultPath === undefined ? {} : { defaultPath: parsed.output.defaultPath }),
+            }
+        : {
+            path: parsed.output.path,
+            ...(parsed.output.method === undefined ? {} : { method: parsed.output.method }),
+            ...(parsed.output.body === undefined ? {} : { body: parsed.output.body }),
+          };
+    if (request === undefined || event.sender.id !== senderId) {
+      return { ok: false, status: 400, body: { error: "invalid_input" }, correlationId };
+    }
+
+    if ("operation" in request) {
+      if (request.operation === "setNavigationState") {
+        operations.setNavigationState(request.state);
+        return { ok: true, status: 200, body: {}, correlationId };
+      }
+      try {
+        const path = await operations.selectDirectory(
+          request.defaultPath === undefined ? {} : { defaultPath: request.defaultPath },
+        );
+        return { ok: true, status: 200, body: { path: path ?? null }, correlationId };
+      } catch {
+        return { ok: false, status: 500, body: { error: "directory_picker_failed" }, correlationId };
+      }
+    }
+
+    if (!isAllowedDesktopRequest(request)) {
+      return { ok: false, status: 400, body: { error: "invalid_input" }, correlationId };
+    }
+
+    const method = request.method ?? "GET";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch(new URL(request.path.slice(1), server.url), {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Origin: rendererOrigin,
+          [APP_CAPABILITY_HEADER]: server.capability,
+        },
+        ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+        signal: controller.signal,
+      });
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > maxResponseBytes) {
+        return { ok: false, status: 502, body: { error: "response_too_large" }, correlationId };
+      }
+      const text = new TextDecoder().decode(bytes);
+      const body = text.length === 0 ? undefined : parseJson(text);
+      return { ok: response.ok, status: response.status, body, correlationId };
+    } catch (cause: unknown) {
+      return {
+        ok: false,
+        status: cause instanceof Error && cause.name === "AbortError" ? 504 : 503,
+        body: { error: cause instanceof Error && cause.name === "AbortError" ? "timeout" : "unavailable" },
+        correlationId,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return { error: "invalid_response" };
+  }
+}

@@ -37,7 +37,7 @@ export type DraftComment = {
   readonly line: number;
   readonly lineEnd?: number;
   readonly diffSide: "new" | "old";
-  readonly postability: "postable" | "invalid_line" | "stale_sha" | "api_rejected";
+  readonly postability: "postable" | "already_reported" | "invalid_line" | "stale_sha" | "api_rejected";
 };
 
 export type ReviewDraft = {
@@ -63,7 +63,7 @@ const draftSchema = v.strictObject({
   summaryBody: v.string(),
   suggestedEvent: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
   comments: v.array(v.strictObject({
-    findingId: v.string(), include: v.boolean(), originalSuggestedBody: v.string(), body: v.string(), path: v.string(), line: v.pipe(v.number(), v.integer(), v.minValue(1)), lineEnd: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))), diffSide: v.picklist(["new", "old"]), postability: v.picklist(["postable", "invalid_line", "stale_sha", "api_rejected"]),
+    findingId: v.string(), include: v.boolean(), originalSuggestedBody: v.string(), body: v.string(), path: v.string(), line: v.pipe(v.number(), v.integer(), v.minValue(1)), lineEnd: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))), diffSide: v.picklist(["new", "old"]), postability: v.picklist(["postable", "already_reported", "invalid_line", "stale_sha", "api_rejected"]),
   })),
   createdAt: v.string(),
   updatedAt: v.string(),

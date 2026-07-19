@@ -1,8 +1,8 @@
 import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { parseReviewDraft, type GitHubReviewEvent, type ReviewDraft } from "../domain/review-draft";
-import { parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
+import type { GitHubReviewEvent, ReviewDraft } from "../domain/review-draft";
+import { parseIsoTimestamp, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -40,10 +40,9 @@ export class ReviewWriteController {
 
   async submitPending(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
     const event = field(input, "event");
-    const summaryBody = field(input, "summaryBody");
-    if (!isReviewEvent(event) || typeof summaryBody !== "string") return err({ reason: "invalid_input" });
+    if (!isReviewEvent(event)) return err({ reason: "invalid_input" });
     return this.withLoaded(input, async ({ profile, session, draft }) => {
-      const submitted = await submitPendingReview({ profile, session, draft, event, summaryBody, gateway: this.github, now: this.now() });
+      const submitted = await submitPendingReview({ profile, session, draft, event, summaryBody: draft.summaryBody, gateway: this.github, now: this.now() });
       if (submitted._tag === "ok") {
         const persisted = await this.sessions.save(submitted.value.session);
         return persisted._tag === "ok" ? ok(submitted.value) : err({ reason: "storage_failed" });
@@ -59,9 +58,8 @@ export class ReviewWriteController {
   ): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
     const profileId = parseWorkspaceProfileId(field(input, "profileId"));
     const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const draft = parseReviewDraft(field(input, "draft"));
-    if (profileId._tag === "err" || sessionId._tag === "err" || draft._tag === "err") return err({ reason: "invalid_input" });
-    if (draft.value.sessionId !== sessionId.value) return err({ reason: "invalid_input" });
+    const expectedRevision = parseIsoTimestamp(field(input, "expectedRevision"));
+    if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err" || field(input, "acknowledgement") !== true) return err({ reason: "invalid_input" });
     const key = `${profileId.value}:${sessionId.value}`;
     if (this.inFlight.has(key)) return err({ reason: "review_write_in_progress" });
     this.inFlight.add(key);
@@ -69,10 +67,11 @@ export class ReviewWriteController {
       const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
       if (profile._tag === "err") return err({ reason: "profile_not_found" });
       if (session._tag === "err") return err({ reason: "session_not_found" });
-      if (session.value.currentAttemptId !== draft.value.attemptId) return err({ reason: "draft_attempt_mismatch" });
       const durableDraft = session.value.draftContent;
-      const durableSession = durableDraft === undefined ? { ...session.value, draft: { state: draft.value.state }, draftContent: draft.value } : session.value;
-      return operation({ profile: profile.value, session: durableSession, draft: durableDraft ?? draft.value });
+      if (durableDraft === undefined) return err({ reason: "draft_not_found" });
+      if (session.value.currentAttemptId !== durableDraft.attemptId) return err({ reason: "draft_attempt_mismatch" });
+      if (durableDraft.updatedAt !== expectedRevision.value) return err({ reason: "revision_conflict" });
+      return operation({ profile: profile.value, session: session.value, draft: durableDraft });
     } finally {
       this.inFlight.delete(key);
     }

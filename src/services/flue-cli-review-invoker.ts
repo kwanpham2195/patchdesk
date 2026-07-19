@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import type { CommandRunner } from "../adapters/github/command-runner";
 import { parseModelReviewResult, type ModelReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
@@ -10,13 +12,16 @@ export class FlueCliReviewInvoker {
   constructor(
     private readonly commands: CommandRunner,
     private readonly projectRoot: string,
+    private readonly runtimeExecutable = process.execPath,
+    private readonly cliPath = join(projectRoot, "node_modules/@flue/cli/bin/flue.mjs"),
   ) {}
 
   async invoke(input: ReviewWorkflowInput): Promise<Result<ModelReviewResult, FlueCliReviewFailure>> {
     const output = await this.commands.runJson({
-      argv: ["pnpm", "exec", "flue", "run", "workflow:review-pr", "--input", JSON.stringify(input)],
+      argv: [this.runtimeExecutable, this.cliPath, "run", "workflow:review-pr", "--input", JSON.stringify(input)],
       cwd: this.projectRoot,
       timeoutMs: 10 * 60_000,
+      environment: { ELECTRON_RUN_AS_NODE: "1" },
     });
     if (output._tag === "err") return err({ reason: "execution_failed" });
     const parsed = parseModelReviewResult(output.value);

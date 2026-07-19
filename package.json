@@ -2,6 +2,7 @@
   "name": "patchdesk",
   "version": "0.1.0",
   "private": true,
+  "productName": "Patchdesk",
   "description": "Local-first desktop workbench for safe pull request review.",
   "type": "module",
   "main": "./out/main/electron-main.js",
@@ -13,25 +14,35 @@
     "test:e2e": "pnpm build && playwright test",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "electron:build": "pnpm build"
+    "build:icon": "node scripts/build-app-icon.mjs",
+    "verify:icon": "node scripts/verify-app-icon.mjs",
+    "package:mac": "pnpm build && pnpm verify:icon && electron-builder --mac dir",
+    "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
+    "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
+    "test:package-smoke": "node scripts/package-smoke.mjs"
   },
   "dependencies": {
     "@flue/react": "1.0.0-beta.9",
     "@flue/runtime": "1.0.0-beta.9",
     "@flue/sdk": "1.0.0-beta.9",
+    "@flue/cli": "1.0.0-beta.9",
     "@hono/node-server": "^2.0.3",
     "@pierre/diffs": "^1.2.12",
     "@pierre/trees": "1.0.0-beta.5",
+    "class-variance-authority": "^0.7.1",
     "clsx": "2.1.1",
+    "cmdk": "^1.1.1",
     "hono": "^4.8.3",
+    "lucide-react": "^1.25.0",
+    "radix-ui": "^1.6.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "tailwind-merge": "3.6.0",
     "valibot": "^1.1.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@electron-toolkit/utils": "^4.0.0",
-    "@flue/cli": "1.0.0-beta.9",
     "@swc/core": "^1.15.3",
     "@tailwindcss/vite": "^4.1.12",
     "@testing-library/react": "^16.3.0",
@@ -41,6 +52,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
     "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -49,11 +61,39 @@
     "jsdom": "^26.1.0",
     "playwright": "^1.54.2",
     "prettier": "^3.6.2",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.1.12",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.39.0",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
   },
-  "packageManager": "pnpm@8.8.0+sha1.9922e8b650d393700209ccd81e0ebdbcbe43b0d3"
+  "packageManager": "pnpm@8.8.0+sha1.9922e8b650d393700209ccd81e0ebdbcbe43b0d3",
+  "build": {
+    "appId": "com.centraldigital.patchdesk",
+    "productName": "Patchdesk",
+    "asar": true,
+    "asarUnpack": [
+      "src/workflows/**",
+      "src/skills/**",
+      "node_modules/@flue/**"
+    ],
+    "files": [
+      "out/**",
+      "src/workflows/**",
+      "src/skills/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "resources/icons/patchdesk.icns",
+      "target": [
+        "dir"
+      ],
+      "identity": null
+    }
+  }
 }

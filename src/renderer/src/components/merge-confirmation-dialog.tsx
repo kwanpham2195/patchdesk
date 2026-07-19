@@ -1,21 +1,57 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { GitMerge, ShieldAlert } from "lucide-react";
 
 import type { MergeReadiness } from "../../../domain/merge-readiness";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 
-/** Renderer confirmation surface; it can call a privileged merge seam only after explicit user acknowledgement. */
+/** Fresh-read merge confirmation surface; privileged execution remains in main. */
 export function MergeConfirmationDialog(props: {
   readonly readiness: MergeReadiness;
   readonly context: { readonly repo: string; readonly prNumber: number; readonly title: string; readonly base: string; readonly head: string; readonly headSha: string };
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly onMerge: (method: MergeMethod, acknowledgedWarnings: boolean) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly onPendingChange?: (pending: boolean) => void;
 }): React.JSX.Element {
   const [method, setMethod] = useState<MergeMethod>(props.methods[0] ?? "squash");
   const [open, setOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
-  const [merged, setMerged] = useState<string | undefined>();
-  if (merged !== undefined) return <p role="status" className="text-cyan-200">Merged {merged}.</p>;
-  if (props.readiness._tag === "Blocked") return <section aria-label="Merge readiness" className="rounded border border-rose-700 bg-rose-950/30 p-4"><h2 className="font-semibold">Merge blocked</h2><ul className="mt-2 list-disc pl-5 text-sm">{props.readiness.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></section>;
-  return <section aria-label="Merge readiness" className="rounded border border-slate-700 bg-slate-900 p-4"><h2 className="font-semibold">Merge readiness</h2>{props.readiness.warnings.length === 0 ? <p className="mt-2 text-sm text-cyan-200">No merge warnings.</p> : <ul className="mt-2 list-disc pl-5 text-sm text-amber-200">{props.readiness.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}<label className="mt-3 block text-sm">Merge method<select className="mt-1 block rounded bg-slate-950 p-2" value={method} onChange={(event) => setMethod(event.target.value as MergeMethod)}>{props.methods.map((candidate) => <option key={candidate} value={candidate}>{candidate}</option>)}</select></label><button className="mt-3 rounded bg-cyan-700 px-3 py-2 text-sm" onClick={() => setOpen(true)}>Prepare merge confirmation</button>{open ? <div role="dialog" aria-label="Confirm merge" className="mt-4 rounded border border-slate-700 bg-slate-950 p-4"><h3 className="font-semibold">Confirm merge</h3><p className="mt-2 text-sm">{props.context.repo}#{props.context.prNumber} · {props.context.title}</p><p className="text-sm text-slate-300">{props.context.base} ← {props.context.head} · {props.context.headSha} · {method}</p>{props.readiness._tag === "NeedsAcknowledgement" ? <label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />I acknowledge the merge warnings.</label> : null}<button className="mt-3 rounded bg-cyan-700 px-3 py-2 text-sm" disabled={props.readiness._tag === "NeedsAcknowledgement" && !acknowledged} onClick={() => void props.onMerge(method, acknowledged).then((result) => setMerged(result.mergeCommitSha ?? "pull request"))}>Confirm merge</button></div> : null}</section>;
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string>();
+  const [merged, setMerged] = useState<string>();
+  useEffect(() => {
+    props.onPendingChange?.(pending);
+  }, [pending, props.onPendingChange]);
+
+  const merge = async (): Promise<void> => {
+    if (pending) return;
+    setPending(true); setError(undefined);
+    try { const result = await props.onMerge(method, acknowledged); setMerged(result.mergeCommitSha ?? "pull request"); setOpen(false); }
+    catch { setError("GitHub did not confirm the merge. Refresh the pull request before retrying."); }
+    finally { setPending(false); }
+  };
+
+  if (merged !== undefined) return <p role="status" className="text-sm text-primary">Merged {merged}.</p>;
+  if (props.readiness._tag === "Blocked") return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{props.readiness.blockers.map((blocker) => <li key={blocker}>{blocker.replaceAll("_", " ")}</li>)}</ul></AlertDescription></Alert>;
+  return (
+    <section aria-label="Merge readiness" className="space-y-3">
+      {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+      <div><Label htmlFor="merge-method">Merge method</Label><Select value={method} onValueChange={(value) => setMethod(value as MergeMethod)}><SelectTrigger id="merge-method" className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent>{props.methods.map((candidate) => <SelectItem key={candidate} value={candidate}>{candidate}</SelectItem>)}</SelectContent></Select></div>
+      <AlertDialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next); }}>
+        <AlertDialogTrigger asChild><Button variant="outline" className="w-full"><GitMerge />Prepare merge confirmation</Button></AlertDialogTrigger>
+        <AlertDialogContent aria-busy={pending}>
+          <AlertDialogHeader><AlertDialogTitle>Confirm merge</AlertDialogTitle><AlertDialogDescription>This is an irreversible GitHub write. Confirm the exact pull request, head SHA, and method.</AlertDialogDescription></AlertDialogHeader>
+          <div className="space-y-3 text-sm"><div className="rounded-md border bg-muted p-3"><p className="font-medium">{props.context.repo}#{props.context.prNumber} · {props.context.title}</p><p className="mt-1 text-muted-foreground">{props.context.base} ← {props.context.head}</p><code className="mt-2 block break-all">{props.context.headSha}</code><Badge className="mt-2" variant="secondary">{method}</Badge></div>{props.readiness.warnings.length === 0 ? <p>No merge warnings.</p> : <Alert><ShieldAlert /><AlertTitle>Merge warnings</AlertTitle><AlertDescription>{props.readiness.warnings.map((warning) => warning.replaceAll("_", " ")).join(", ")}</AlertDescription></Alert>}{props.readiness._tag === "NeedsAcknowledgement" ? <div className="flex items-start gap-2"><Checkbox id="merge-ack" checked={acknowledged} onCheckedChange={(checked) => setAcknowledged(checked === true)} /><Label htmlFor="merge-ack" className="leading-5">I acknowledge the merge warnings.</Label></div> : null}</div>
+          <AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction disabled={pending || (props.readiness._tag === "NeedsAcknowledgement" && !acknowledged)} onClick={(event) => { event.preventDefault(); void merge(); }}>{pending ? "Merging…" : "Confirm merge"}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
 }

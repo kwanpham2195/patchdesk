@@ -50,6 +50,7 @@ describe("ReviewWorkflowStarter", () => {
       reviewInputPath: fixture.attempt.reviewInputPath,
       patchPath: fixture.session.patchPath,
       worktreePath: fixture.session.worktree.path,
+      scope: { kind: "full" },
     }]);
   });
 

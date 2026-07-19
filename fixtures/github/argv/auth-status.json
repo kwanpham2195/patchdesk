@@ -1,1 +1,1 @@
-["gh", "auth", "status", "--hostname", "github.com"]
+["gh", "api", "--hostname", "github.com", "user", "--jq", ".login"]

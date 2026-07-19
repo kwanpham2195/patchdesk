@@ -201,15 +201,96 @@ describe("CommandRunner", () => {
 });
 
 describe("GitHubAdapter read boundary", () => {
+  it("returns parsed GraphQL inbox rows and marks a capped listing incomplete", async () => {
+    const page = (hasNextPage: boolean, endCursor: string | null) => ({
+      data: {
+        repository: {
+          pullRequests: {
+            nodes: [{
+              number: 42,
+              title: "Add safe GitHub reads",
+              isDraft: false,
+              headRefName: "feat/github-read",
+              headRefOid: headSha,
+              baseRefName: "sit",
+              author: { login: "reviewer" },
+              updatedAt: "2026-07-16T12:00:00Z",
+              mergeable: "MERGEABLE",
+              reviewDecision: "REVIEW_REQUIRED",
+              additions: 12,
+              deletions: 3,
+              changedFiles: 2,
+              reviewRequests: {
+                nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
+              },
+              assignees: { nodes: [] },
+              commits: { nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }] },
+            }],
+            pageInfo: { hasNextPage, endCursor },
+          },
+        },
+      },
+    });
+    const executor = new FakeProcessExecutor([0, 1, 2].map((index) => ({
+      _tag: "Exited" as const,
+      exitCode: 0,
+      stdout: JSON.stringify(page(true, `cursor-${index}`)),
+      stderr: "",
+    })));
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listMaintainerPullRequests({ profile, repo: pr });
+
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        complete: false,
+        pullRequests: expect.arrayContaining([
+          expect.objectContaining({
+            summary: expect.objectContaining({ reviewState: "review_pending", mergeability: "mergeable" }),
+            checks: { overall: "passing", checks: [] },
+          }),
+        ]),
+      },
+    });
+    if (result._tag === "ok") expect(result.value.pullRequests).toHaveLength(3);
+    expect(executor.requests).toHaveLength(3);
+    expect(executor.requests[1]).toContain("cursor=cursor-0");
+    expect(
+      executor.requests[0]?.some((argument) =>
+        argument.includes("reviewRequests(first: 50)"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses one verified GitHub comparison diff only when the file metadata is complete", async () => {
+    const compare = {
+      base_commit: { sha: baseSha },
+      head_commit: { sha: headSha },
+      created_at: "2026-07-18T00:00:00Z",
+      status: "ahead",
+      commits: [{ sha: headSha, commit: { message: "Fix guard\n\nDetails", author: { name: "Reviewer", date: "2026-07-18T00:00:00Z" } } }],
+      files: [{ filename: "src/guard.ts", status: "modified", additions: 2, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new" }],
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(compare), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: "diff --git a/src/guard.ts b/src/guard.ts\n", stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.compareRevisions({ profile, pr, baseSha: mustParse(parseGitSha(baseSha)), headSha: mustParse(parseGitSha(headSha)), baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-12345678__000000000000" as never });
+    expect(result).toMatchObject({ _tag: "ok", value: { comparison: { source: "github", completeness: "complete", additions: 2, deletions: 1 }, patch: expect.stringContaining("src/guard.ts") } });
+    expect(executor.requests).toHaveLength(2);
+    expect(executor.requests[1]).toContain("Accept: application/vnd.github.v3.diff");
+  });
+
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
-    const [listOpenPrs, getPr, getComments, getChecks, getDiff, authStatus] =
+    const [listOpenPrs, getPr, getComments, getChecks, getDiff] =
       await Promise.all([
         payload("list-open-prs.json"),
         payload("get-pr.json"),
         payload("get-comments.json"),
         payload("get-checks.json"),
         payload("get-diff.patch"),
-        payload("auth-status.txt"),
       ]);
     const executor = new FakeProcessExecutor([
       {
@@ -245,7 +326,7 @@ describe("GitHubAdapter read boundary", () => {
       {
         _tag: "Exited",
         exitCode: 0,
-        stdout: authStatus,
+        stdout: "pmquan2cfw\n",
         stderr: "",
       },
     ]);

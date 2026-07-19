@@ -1,36 +1,52 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
-
 /** Header accepted by the loopback API for every request. */
 export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
 
 /** Opaque local credential shared with the renderer only through preload. */
 export type AppCapability = string;
 
-/** Generates a high-entropy, process-local API capability. */
-export function createAppCapability(): AppCapability {
-  return randomBytes(32).toString("base64url");
-}
-
-/** Compares a presented capability without exposing a timing oracle for equal-length values. */
-export function hasMatchingAppCapability(
-  expected: AppCapability,
-  presented: string | undefined,
-): boolean {
-  if (presented === undefined) {
-    return false;
-  }
-
-  const expectedBytes = Buffer.from(expected);
-  const presentedBytes = Buffer.from(presented);
-
-  return (
-    expectedBytes.length === presentedBytes.length &&
-    timingSafeEqual(expectedBytes, presentedBytes)
-  );
-}
-
 /** Represents the narrow local API surface that preload may expose to the renderer. */
 export type RendererLocalApi = {
   readonly baseUrl: string;
   readonly capability: AppCapability;
+};
+
+export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
+export const DESKTOP_NAVIGATE_CHANNEL = "patchdesk:navigate";
+export type DesktopDestination = "settings";
+
+/** Allowlisted loopback API request projected through the desktop bridge. */
+export type LocalApiDesktopRequest = {
+  readonly path: string;
+  readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly body?: unknown;
+};
+
+/** Privileged desktop operation accepted only from the owning renderer. */
+export type SelectDirectoryDesktopRequest = {
+  readonly operation: "selectDirectory";
+  readonly defaultPath?: string;
+};
+
+export type SetNavigationStateDesktopRequest = {
+  readonly operation: "setNavigationState";
+  readonly state: "clear" | "dirty_draft" | "write_pending";
+};
+
+/** Closed renderer-to-main request union. */
+export type DesktopRequest =
+  | LocalApiDesktopRequest
+  | SelectDirectoryDesktopRequest
+  | SetNavigationStateDesktopRequest;
+
+export type DesktopResponse = {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly body: unknown;
+  readonly correlationId: string;
+};
+
+/** The renderer-visible API contains operations, never loopback credentials. */
+export type PatchdeskDesktopApi = {
+  request(input: DesktopRequest): Promise<DesktopResponse>;
+  onNavigate(listener: (destination: DesktopDestination) => void): () => void;
 };

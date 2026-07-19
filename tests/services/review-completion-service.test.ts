@@ -65,6 +65,37 @@ describe("ReviewCompletionService", () => {
     }
     await expect(access(fixture.resultPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("projects incremental lifecycle evidence and excludes previously submitted comments by default", async () => {
+    const fixture = await runningReview();
+    const scope = {
+      kind: "incremental" as const,
+      baseSessionId: fixture.session.id,
+      baseHeadSha: fixture.session.key.headSha,
+      headSha: fixture.session.key.headSha,
+      comparisonPatchPath: must(parseAbsolutePath(fixture.paths.comparisonPatchFile(fixture.profileId, fixture.session.id))),
+      comparisonMetadataPath: must(parseAbsolutePath(fixture.paths.comparisonMetadataFile(fixture.profileId, fixture.session.id))),
+      previousFindingsPath: must(parseAbsolutePath(fixture.paths.previousFindingsFile(fixture.profileId, fixture.session.id))),
+      lifecyclePath: must(parseAbsolutePath(fixture.paths.findingLifecycleFile(fixture.profileId, fixture.session.id))),
+    };
+    await writeFile(scope.comparisonPatchPath, "diff --git a/src/review.ts b/src/review.ts\n--- a/src/review.ts\n+++ b/src/review.ts\n@@ -12 +12 @@\n-old\n+new\n", "utf8");
+    await writeFile(scope.comparisonMetadataPath, JSON.stringify({ schemaVersion: 1, baseSessionId: scope.baseSessionId, baseHeadSha: scope.baseHeadSha, headSha: scope.headSha, ancestry: "fast_forward", source: "local_git", completeness: "complete", commits: [], files: [{ path: "src/review.ts", status: "modified", additions: 1, deletions: 1, binary: false, textPatchAvailable: true }], additions: 1, deletions: 1, createdAt: at }), "utf8");
+    await writeFile(scope.previousFindingsPath, JSON.stringify([{ token: "a".repeat(64), findingId: "mapped", severity: "P1", title: "Protect the guard", explanation: "Keep the current-head check.", file: "src/review.ts", wasSubmitted: true }]), "utf8");
+    expect(await fixture.store.save({ ...fixture.session, scope })).toEqual({ _tag: "ok", value: undefined });
+
+    const completed = await fixture.service.complete({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      attemptId: fixture.attempt.id,
+      result: {
+        ...result(),
+        priorFindingAssessments: [{ priorFindingToken: "a".repeat(64), disposition: "still_present", explanation: "The guard remains absent.", currentFindingId: "mapped" }],
+      },
+    });
+
+    expect(completed).toMatchObject({ _tag: "ok", value: { draft: { comments: [{ findingId: "mapped", include: false, postability: "already_reported" }] } } });
+    expect(JSON.parse(await readFile(scope.lifecyclePath, "utf8"))).toMatchObject([{ status: "still_present", draftPostability: "already_reported" }]);
+  });
 });
 
 async function runningReview() {
@@ -117,6 +148,7 @@ async function runningReview() {
     session: started.session,
     attempt,
     resultPath: paths.attemptResultFile(profileId, started.session.id, started.attemptId),
+    paths,
   };
 }
 

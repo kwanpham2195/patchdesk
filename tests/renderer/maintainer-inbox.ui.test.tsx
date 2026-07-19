@@ -1,0 +1,151 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
+import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+
+const rows: ReadonlyArray<InboxRow> = [
+  {
+    identity: { host: "github.com", owner: "centraldigital", repo: "customer-management", number: 118 },
+    title: "Review updated VIP snapshot replacement",
+    author: "maintainer",
+    baseBranch: "sit",
+    headBranch: "feat/vip",
+    currentHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
+    isDraft: false,
+    updatedAt: "2026-07-18T10:00:00.000Z",
+    changeStats: { additions: 12, deletions: 4, changedFiles: 2 },
+    checks: { overall: "passing", checks: [] },
+    reviewState: "review_pending",
+    mergeability: "mergeable",
+    latestReview: {
+      sessionId: "review-118",
+      reviewedHeadSha: "1234567890abcdef1234567890abcdef12345678",
+      state: "completed",
+      updatedAt: "2026-07-17T10:00:00.000Z",
+      matchesCurrentHead: false,
+    },
+    categories: ["updated_since_review", "needs_review"],
+    recommendedAction: { kind: "review_updates", label: "Review updates", baseSessionId: "review-118" },
+    dataFreshness: "fresh",
+  },
+  {
+    identity: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
+    title: "Handle current review draft",
+    author: "reviewer",
+    baseBranch: "main",
+    headBranch: "fix/draft",
+    currentHeadSha: "fedcba1234567890abcdef1234567890abcdef12",
+    isDraft: false,
+    updatedAt: "2026-07-17T10:00:00.000Z",
+    changeStats: { additions: 1, deletions: 1, changedFiles: 1 },
+    checks: { overall: "failing", checks: [] },
+    reviewState: "none",
+    mergeability: "blocked",
+    latestReview: {
+      sessionId: "review-42",
+      reviewedHeadSha: "fedcba1234567890abcdef1234567890abcdef12",
+      state: "draft",
+      updatedAt: "2026-07-17T10:00:00.000Z",
+      matchesCurrentHead: true,
+    },
+    categories: ["has_local_draft", "checks_failing"],
+    recommendedAction: { kind: "edit_draft", label: "Edit review draft", sessionId: "review-42" },
+    dataFreshness: "fresh",
+  },
+];
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
+
+describe("MaintainerInbox", () => {
+  it("filters queues, moves selection by keyboard, and starts only the selected recommended action", async () => {
+    const openedReviews: Array<{ readonly number: number; readonly mode: string }> = [];
+    const openedSessions: Array<string> = [];
+    const user = userEvent.setup();
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={rows}
+        freshness="fresh"
+        loading={false}
+        onRefresh={() => undefined}
+        onOpenReview={(row, mode) => openedReviews.push({ number: row.identity.number, mode })}
+        onOpenSession={(sessionId) => openedSessions.push(sessionId)}
+      />,
+    );
+
+    expect(screen.getByRole("option", { name: /#42/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: /#118/ }).getAttribute("aria-selected")).toBe("true");
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("dialog", { name: "Review updates" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^Review updates$/ }));
+    expect(openedReviews).toEqual([{ number: 118, mode: "incremental" }]);
+    expect(openedSessions).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: /Updated/ }));
+    expect(screen.getByRole("option", { name: /#118/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /#42/ })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    await user.click(screen.getByRole("button", { name: /^Review updates$/ }));
+    expect(openedReviews).toEqual([
+      { number: 118, mode: "incremental" },
+      { number: 118, mode: "incremental" },
+    ]);
+  });
+
+  it("persists the selected filter and search locally without affecting review state", async () => {
+    const user = userEvent.setup();
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={rows}
+        freshness="fresh"
+        loading={false}
+        onRefresh={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenSession={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Checks failing/ }));
+    await user.type(screen.getByLabelText("Filter pull requests"), "draft");
+    expect(window.localStorage.getItem("patchdesk.inbox-view.v1.cfw")).toContain("checks_failing");
+    expect(screen.getByRole("option", { name: /#42/ })).toBeTruthy();
+  });
+
+  it("saves and deletes profile-scoped inbox views without mutating review state", async () => {
+    const user = userEvent.setup();
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={rows}
+        freshness="fresh"
+        loading={false}
+        onRefresh={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenSession={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Updated/ }));
+    await user.click(screen.getByRole("button", { name: "Save current view" }));
+    await user.type(screen.getByLabelText("View name"), "VIP updates");
+    await user.click(screen.getByRole("button", { name: "Save view" }));
+    expect(screen.getByRole("button", { name: "VIP updates" })).toBeTruthy();
+    expect(window.localStorage.getItem("patchdesk.inbox-view.v1.cfw")).toContain("VIP updates");
+
+    await user.click(screen.getByRole("button", { name: "Delete VIP updates saved view" }));
+    await user.click(screen.getByRole("button", { name: "Delete view" }));
+    expect(screen.queryByRole("button", { name: "VIP updates" })).toBeNull();
+  });
+});

@@ -104,6 +104,7 @@ export function createReviewSession(input: {
   readonly pr: PullRequestSnapshot;
   readonly prContext?: ReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
+  readonly scope?: ReviewScope;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
   readonly draft?: Pick<ReviewDraft, "state">;
@@ -115,7 +116,7 @@ export function createReviewSession(input: {
     pr: input.pr,
     ...(input.prContext === undefined ? {} : { prContext: input.prContext }),
     patchPath: input.patchPath,
-    scope: { kind: "full" },
+    scope: input.scope ?? { kind: "full" },
     worktree: input.worktree,
     state: { _tag: "Created" },
     ...(input.draft === undefined ? {} : { draft: input.draft }),

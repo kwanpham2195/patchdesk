@@ -1,33 +1,22 @@
-import { contextBridge } from "electron";
-import { minLength, object, pipe, safeParse, string, url } from "valibot";
+import { contextBridge, ipcRenderer } from "electron";
 
-import type { RendererLocalApi } from "./ipc-contract";
+import {
+  DESKTOP_NAVIGATE_CHANNEL,
+  DESKTOP_REQUEST_CHANNEL,
+  type DesktopDestination,
+  type DesktopRequest,
+  type PatchdeskDesktopApi,
+} from "./ipc-contract";
 
-const preloadConfigurationSchema = object({
-  baseUrl: pipe(string(), url()),
-  capability: pipe(string(), minLength(1)),
+const desktopApi: PatchdeskDesktopApi = Object.freeze({
+  async request(input: DesktopRequest) {
+    return await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, input);
+  },
+  onNavigate(listener: (destination: DesktopDestination) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, destination: DesktopDestination): void => listener(destination);
+    ipcRenderer.on(DESKTOP_NAVIGATE_CHANNEL, handler);
+    return () => ipcRenderer.off(DESKTOP_NAVIGATE_CHANNEL, handler);
+  },
 });
 
-const apiUrlArgument = "--patchdesk-api-url=";
-const capabilityArgument = "--patchdesk-api-capability=";
-
-const parsedConfiguration = safeParse(preloadConfigurationSchema, {
-  baseUrl: readArgument(apiUrlArgument),
-  capability: readArgument(capabilityArgument),
-});
-
-if (!parsedConfiguration.success) {
-  throw new Error("Patchdesk preload received invalid local API configuration");
-}
-
-const localApi: RendererLocalApi = Object.freeze({
-  baseUrl: parsedConfiguration.output.baseUrl,
-  capability: parsedConfiguration.output.capability,
-});
-
-contextBridge.exposeInMainWorld("patchdesk", Object.freeze({ localApi }));
-
-function readArgument(prefix: string): string | undefined {
-  const argument = process.argv.find((value) => value.startsWith(prefix));
-  return argument?.slice(prefix.length);
-}
+contextBridge.exposeInMainWorld("patchdesk", desktopApi);

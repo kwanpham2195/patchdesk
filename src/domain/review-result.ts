@@ -2,10 +2,12 @@ import * as v from "valibot";
 
 import {
   parseFindingId,
+  parseContentHash,
   parseRepoRelativePath,
   type FindingId,
   type RepoRelativePath,
 } from "./ids";
+import type { ModelPriorFindingAssessment } from "./finding-lifecycle";
 import { err, ok, type Result } from "./result";
 
 export type ReviewVerdict = "approve" | "comment" | "request_changes";
@@ -40,6 +42,7 @@ export type ModelReviewResult = {
   readonly findings: ReadonlyArray<ModelReviewFinding>;
   readonly validationPlan: ReadonlyArray<string>;
   readonly assumptions: ReadonlyArray<string>;
+  readonly priorFindingAssessments?: ReadonlyArray<ModelPriorFindingAssessment>;
   readonly rawNotes?: string;
 };
 
@@ -47,7 +50,7 @@ export type ReviewFinding = ModelReviewFinding & {
   readonly mappingStatus: FindingMappingStatus;
 };
 
-export type ReviewResult = Omit<ModelReviewResult, "findings"> & {
+export type ReviewResult = Omit<ModelReviewResult, "findings" | "priorFindingAssessments"> & {
   readonly findings: ReadonlyArray<ReviewFinding>;
 };
 
@@ -80,6 +83,12 @@ export const modelReviewResultSchema = v.strictObject({
   findings: v.array(v.strictObject(findingSchema)),
   validationPlan: v.array(v.pipe(v.string(), v.minLength(1))),
   assumptions: v.array(v.string()),
+  priorFindingAssessments: v.optional(v.array(v.strictObject({
+    priorFindingToken: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+    disposition: v.picklist(["still_present", "resolved", "unverified"]),
+    explanation: v.pipe(v.string(), v.minLength(1)),
+    currentFindingId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  }))),
   rawNotes: v.optional(v.string()),
 });
 
@@ -112,6 +121,12 @@ export function parseModelReviewResult(
   if (findings._tag === "err") {
     return err({ _tag: "InvalidModelReviewResult" });
   }
+  const assessments = parsed.output.priorFindingAssessments === undefined
+    ? undefined
+    : parsePriorFindingAssessments(parsed.output.priorFindingAssessments);
+  if (assessments !== undefined && assessments._tag === "err") {
+    return err({ _tag: "InvalidModelReviewResult" });
+  }
 
   return ok({
     changeSummary: parsed.output.changeSummary,
@@ -120,8 +135,31 @@ export function parseModelReviewResult(
     findings: findings.value,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
+    ...(assessments === undefined ? {} : { priorFindingAssessments: assessments.value }),
     ...(parsed.output.rawNotes === undefined ? {} : { rawNotes: parsed.output.rawNotes }),
   });
+}
+
+function parsePriorFindingAssessments(
+  assessments: ReadonlyArray<NonNullable<v.InferOutput<typeof modelReviewResultSchema>["priorFindingAssessments"]>[number]>,
+): Result<ReadonlyArray<ModelPriorFindingAssessment>, InvalidModelReviewResult> {
+  const values: Array<ModelPriorFindingAssessment> = [];
+  for (const assessment of assessments) {
+    const token = parseContentHash(assessment.priorFindingToken);
+    const currentFindingId = assessment.currentFindingId === undefined
+      ? undefined
+      : parseFindingId(assessment.currentFindingId);
+    if (token._tag === "err" || (currentFindingId !== undefined && currentFindingId._tag === "err")) {
+      return err({ _tag: "InvalidModelReviewResult" });
+    }
+    values.push({
+      priorFindingToken: token.value,
+      disposition: assessment.disposition,
+      explanation: assessment.explanation,
+      ...(currentFindingId === undefined ? {} : { currentFindingId: currentFindingId.value }),
+    });
+  }
+  return ok(values);
 }
 
 /** Parse a final Patchdesk result whose mapping status was computed outside the model. */

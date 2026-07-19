@@ -1,8 +1,135 @@
 import { useEffect, useState } from "react";
-type Projection = { readonly status: "queued" | "connecting" | "running" | "completed" | "failed" | "disconnected"; readonly elapsedMs: number; readonly step: string; readonly message?: string };
-/** App-owned live run projection; intentionally does not subscribe to raw Flue event streams. */
-export function SafeRunPanel({ profileId, sessionId, attemptId, onCompleted }: { readonly profileId: string; readonly sessionId: string; readonly attemptId: string; readonly onCompleted?: (profileId: string, sessionId: string) => void | Promise<void> }): React.JSX.Element {
-  const [projection, setProjection] = useState<Projection>({ status: "queued", elapsedMs: 0, step: "preparing" });
-  useEffect(() => { let cancelled = false; const run = async (): Promise<void> => { if (!("patchdesk" in window)) return; const base = window.patchdesk.localApi.baseUrl; const headers = { "Content-Type": "application/json", "X-Patchdesk-Capability": window.patchdesk.localApi.capability }; const created = await fetch(new URL("v1/runs/review-pr", base), { method: "POST", headers, body: JSON.stringify({ profileId, sessionId, attemptId }) }); if (!created.ok) { if (!cancelled) setProjection({ status: "failed", elapsedMs: 0, step: "failed", message: "Run unavailable" }); return; } const value = await created.json() as { readonly runId: string }; for (let index = 0; index < 8 && !cancelled; index += 1) { const status = await fetch(new URL(`v1/runs/${encodeURIComponent(value.runId)}?sessionId=${encodeURIComponent(sessionId)}&attemptId=${encodeURIComponent(attemptId)}`, base), { headers }); const projection = status.ok ? await status.json() as Projection : { status: "disconnected" as const, elapsedMs: 0, step: "inspecting" }; if (!cancelled) setProjection(projection); if (projection.status === "completed" && onCompleted !== undefined) { await onCompleted(profileId, sessionId); return; } await new Promise((resolve) => setTimeout(resolve, 300)); } }; void run(); return () => { cancelled = true; }; }, [profileId, sessionId, attemptId, onCompleted]);
-  return <section aria-label="Live review run"><p>Run status: {projection.status}</p><p>Step: {projection.step}</p><p>Elapsed: {projection.elapsedMs}ms</p>{projection.message === undefined ? null : <p>{projection.message}</p>}</section>;
+import { CircleAlert, RotateCcw } from "lucide-react";
+
+import { requestJson } from "@/api-client";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
+import { Spinner } from "@/components/ui/spinner";
+
+type Projection = {
+  readonly status: "queued" | "connecting" | "running" | "completed" | "failed" | "disconnected";
+  readonly elapsedMs: number;
+  readonly step: "preparing" | "inspecting" | "validating" | "drafting" | "complete" | "failed";
+  readonly message?: string;
+};
+
+export function SafeRunPanel({
+  profileId,
+  sessionId,
+  attemptId,
+  runId,
+  onStart,
+  onCompleted,
+}: {
+  readonly profileId: string;
+  readonly sessionId: string;
+  readonly attemptId: string;
+  readonly runId?: string;
+  readonly onStart?: () => Promise<void>;
+  readonly onCompleted?: (profileId: string, sessionId: string) => Promise<void>;
+}): React.JSX.Element {
+  const [projection, setProjection] = useState<Projection>();
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (runId === undefined) return;
+    let cancelled = false;
+    const observe = async (): Promise<void> => {
+      let delayMs = 300;
+      while (!cancelled) {
+        try {
+          const value = await requestJson(
+            `/v1/runs/${encodeURIComponent(runId)}?sessionId=${encodeURIComponent(sessionId)}&attemptId=${encodeURIComponent(attemptId)}`,
+          );
+          if (!isProjection(value)) throw new Error("invalid projection");
+          if (cancelled) return;
+          setProjection(value);
+          if (value.status === "completed") {
+            if (onCompleted !== undefined) await onCompleted(profileId, sessionId);
+            return;
+          }
+          if (value.status === "failed") return;
+          delayMs = 300;
+        } catch {
+          if (!cancelled) setProjection({ status: "disconnected", elapsedMs: 0, step: "inspecting", message: "Patchdesk lost its local run connection. The review was not restarted." });
+          delayMs = Math.min(delayMs * 2, 5_000);
+        }
+        await wait(delayMs);
+      }
+    };
+    void observe();
+    return () => { cancelled = true; };
+  }, [attemptId, onCompleted, profileId, runId, sessionId]);
+
+  const start = async (): Promise<void> => {
+    if (onStart === undefined || starting) return;
+    setStarting(true);
+    try { await onStart(); } finally { setStarting(false); }
+  };
+
+  if (runId === undefined) {
+    return (
+      <Alert className="mt-4">
+        <RotateCcw />
+        <AlertTitle>This review is not running</AlertTitle>
+        <AlertDescription className="mt-2">
+          Reopening a session never restarts its workflow automatically.
+          {onStart === undefined ? null : <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>{starting ? "Starting…" : "Start review"}</Button>}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const current = projection ?? { status: "connecting" as const, elapsedMs: 0, step: "preparing" as const };
+  return (
+    <Card
+      className="mt-5 gap-0 rounded-lg py-0 shadow-none"
+      aria-live="polite"
+      aria-busy={current.status === "queued" || current.status === "connecting" || current.status === "running"}
+    >
+      <CardContent className="p-0">
+        <Item className="rounded-b-none border-0 p-4">
+          <ItemContent>
+            <ItemTitle>Run status: {current.status}</ItemTitle>
+            <p className="text-xs text-muted-foreground">
+              {stepLabel(current.step)} · {formatElapsed(current.elapsedMs)}
+            </p>
+          </ItemContent>
+          <ItemActions>
+            <Badge variant={current.status === "failed" || current.status === "disconnected" ? "destructive" : "secondary"}>
+              {current.status === "queued" || current.status === "connecting" || current.status === "running" ? <Spinner /> : null}
+              {current.status}
+            </Badge>
+          </ItemActions>
+        </Item>
+        {current.message === undefined ? null : (
+          <Alert className="m-3 mt-0 rounded-md border-0 bg-muted py-3 shadow-none">
+            <CircleAlert />
+            <AlertDescription>{current.message}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function isProjection(value: unknown): value is Projection {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.status === "string" && typeof item.elapsedMs === "number" && typeof item.step === "string";
+}
+
+function stepLabel(step: Projection["step"]): string {
+  return step === "complete" ? "Review ready" : step === "failed" ? "Review stopped" : `${step[0]?.toUpperCase() ?? ""}${step.slice(1)} changes`;
+}
+
+function formatElapsed(elapsedMs: number): string {
+  return `${Math.max(0, Math.round(elapsedMs / 1_000))}s elapsed`;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

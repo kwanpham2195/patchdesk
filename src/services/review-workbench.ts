@@ -24,6 +24,8 @@ export function createLocalDraft(input: {
   readonly session: ReviewSession;
   readonly attempt: Pick<ReviewAttempt, "id" | "sessionId">;
   readonly result: ReviewResult;
+  /** Previously submitted findings remain visible but never start as duplicate comments. */
+  readonly alreadyReportedFindingIds?: ReadonlySet<ReviewFinding["id"]>;
   readonly createdAt: IsoTimestamp;
 }): Result<LocalDraftProjection, CannotCreateLocalDraft> {
   if (input.attempt.sessionId !== input.session.id)
@@ -38,16 +40,17 @@ export function createLocalDraft(input: {
       unmappedFindings.push(finding);
       continue;
     }
+    const alreadyReported = input.alreadyReportedFindingIds?.has(finding.id) ?? false;
     comments.push({
       findingId: finding.id,
-      include: true,
+      include: !alreadyReported,
       originalSuggestedBody: finding.suggestedComment ?? finding.explanation,
       body: finding.suggestedComment ?? finding.explanation,
       path: finding.file,
       line: finding.lineStart,
       ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }),
       diffSide: finding.diffSide,
-      postability: "postable",
+      postability: alreadyReported ? "already_reported" : "postable",
     });
   }
 

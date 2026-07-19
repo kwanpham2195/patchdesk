@@ -5,7 +5,7 @@ import type {
   MaintainerInboxCacheStore,
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { CheckSummary, PullRequestSummary } from "../domain/github-context";
+import type { PullRequestSummary } from "../domain/github-context";
 import type { IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
 import {
@@ -77,22 +77,21 @@ export class MaintainerInboxService {
     repo: WatchedRepoConfig,
     sessions: ReadonlyArray<ReviewSession>,
   ): Promise<{ readonly rows: ReadonlyArray<MaintainerInboxRow>; readonly repository: MaintainerInboxRepository }> {
-    const listed = await this.github.listOpenPullRequests({ profile, repo: { host: repo.host, owner: repo.owner, repo: repo.repo, number: 1 as never } });
+    const listed = await this.github.listMaintainerPullRequests({ profile, repo: { host: repo.host, owner: repo.owner, repo: repo.repo, number: 1 as never } });
     if (listed._tag === "err") return { rows: [], repository: { repo, state: listed.error._tag === "GitHubAuthenticationFailed" ? "github_auth" : "github_read", complete: false } };
-    const rows = await Promise.all(listed.value.map(async (summary) => {
-      const checks = await this.github.getPullRequestChecks({ profile, pr: summary.ref, headSha: summary.headSha });
+    const rows = listed.value.pullRequests.map(({ summary, checks }) => {
       const latestReview = latestReviewFor(summary, sessions);
       return projectMaintainerInboxRow({
         summary,
-        checks: checks._tag === "ok" ? checks.value : unknownChecks(),
+        checks,
         activeAccount: profile.ghAccount,
         ...(latestReview === undefined ? {} : { latestReview }),
         dataFreshness: "fresh",
       });
-    }));
+    });
     return {
       rows,
-      repository: { repo, state: listed.value.length === 0 ? "no_open_prs" : repo.localPath === undefined ? "missing_local_path" : "ready", complete: true },
+      repository: { repo, state: listed.value.pullRequests.length === 0 ? "no_open_prs" : repo.localPath === undefined ? "missing_local_path" : "ready", complete: listed.value.complete },
     };
   }
 
@@ -127,10 +126,6 @@ function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
     dataFreshness: "cached",
     recommendedAction: row.recommendedAction.kind === "open_merge_readiness" ? { kind: "run_review", label: "Run review" } : row.recommendedAction,
   };
-}
-
-function unknownChecks(): CheckSummary {
-  return { overall: "unknown", checks: [] };
 }
 
 function compareRows(left: MaintainerInboxRow, right: MaintainerInboxRow): number {

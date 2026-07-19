@@ -27,7 +27,7 @@ describe("FlueCliReviewInvoker", () => {
         assumptions: [],
       }),
     });
-    const invoker = new FlueCliReviewInvoker(new CommandRunner(executor), "/workspace/patchdesk");
+    const invoker = new FlueCliReviewInvoker(new CommandRunner(executor), "/workspace/patchdesk", "/runtime/node", "/runtime/flue.mjs");
 
     await expect(invoker.invoke({
       profileId: "cfw" as never,
@@ -39,7 +39,7 @@ describe("FlueCliReviewInvoker", () => {
       worktreePath: "/tmp/worktree" as never,
     })).resolves.toMatchObject({ _tag: "ok", value: { verdict: "comment" } });
     expect(executor.requests).toEqual([{
-      argv: ["pnpm", "exec", "flue", "run", "workflow:review-pr", "--input", JSON.stringify({ profileId: "cfw", sessionId: "session", attemptId: "001", contextPath: "/tmp/context.json", reviewInputPath: "/tmp/review-input.md", patchPath: "/tmp/patch.diff", worktreePath: "/tmp/worktree" })],
+      argv: ["/runtime/node", "/runtime/flue.mjs", "run", "workflow:review-pr", "--input", JSON.stringify({ profileId: "cfw", sessionId: "session", attemptId: "001", contextPath: "/tmp/context.json", reviewInputPath: "/tmp/review-input.md", patchPath: "/tmp/patch.diff", worktreePath: "/tmp/worktree" })],
       cwd: "/workspace/patchdesk",
     }]);
   });

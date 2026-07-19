@@ -1,5 +1,7 @@
-import type { ContentHash, FindingId, RepoRelativePath } from "./ids";
-import type { FindingSeverity, ReviewFinding } from "./review-result";
+import * as v from "valibot";
+
+import { parseContentHash, parseFindingId, parseRepoRelativePath, type ContentHash, type FindingId, type RepoRelativePath } from "./ids";
+import type { FindingCategory, FindingSeverity, ReviewFinding } from "./review-result";
 import { err, ok, type Result } from "./result";
 
 export type PriorFindingToken = ContentHash;
@@ -15,6 +17,7 @@ export type PriorFindingEvidence = {
   readonly token: PriorFindingToken;
   readonly findingId: FindingId;
   readonly severity: FindingSeverity;
+  readonly category?: FindingCategory;
   readonly title: string;
   readonly explanation: string;
   readonly file?: RepoRelativePath;
@@ -37,6 +40,43 @@ export type FindingLifecycleFailure = {
   readonly _tag: "InvalidPriorFindingAssessment";
   readonly reason: "unknown_token" | "duplicate_token" | "unknown_current_finding" | "duplicate_current_finding";
 };
+
+const priorFindingEvidenceSchema = v.array(v.strictObject({
+  token: v.string(),
+  findingId: v.string(),
+  severity: v.picklist(["P0", "P1", "P2", "P3"]),
+  category: v.optional(v.picklist(["bug", "security", "test", "performance", "maintainability", "docs"])),
+  title: v.pipe(v.string(), v.minLength(1)),
+  explanation: v.pipe(v.string(), v.minLength(1)),
+  file: v.optional(v.string()),
+  wasSubmitted: v.boolean(),
+}));
+
+/** Parse persisted opaque prior-finding evidence before model or completion code uses it. */
+export function parsePriorFindingEvidence(input: unknown): Result<ReadonlyArray<PriorFindingEvidence>, { readonly _tag: "InvalidPriorFindingEvidence" }> {
+  const parsed = v.safeParse(priorFindingEvidenceSchema, input);
+  if (!parsed.success) return err({ _tag: "InvalidPriorFindingEvidence" });
+  const values: Array<PriorFindingEvidence> = [];
+  for (const finding of parsed.output) {
+    const token = parseContentHash(finding.token);
+    const findingId = parseFindingId(finding.findingId);
+    const file = finding.file === undefined ? undefined : parseRepoRelativePath(finding.file);
+    if (token._tag === "err" || findingId._tag === "err" || (file !== undefined && file._tag === "err")) {
+      return err({ _tag: "InvalidPriorFindingEvidence" });
+    }
+    values.push({
+      token: token.value,
+      findingId: findingId.value,
+      severity: finding.severity,
+      ...(finding.category === undefined ? {} : { category: finding.category }),
+      title: finding.title,
+      explanation: finding.explanation,
+      ...(file === undefined ? {} : { file: file.value }),
+      wasSubmitted: finding.wasSubmitted,
+    });
+  }
+  return ok(values);
+}
 
 /** Derive conservative lifecycle state from Patchdesk-owned evidence and model assessments. */
 export function projectFindingLifecycle(input: {

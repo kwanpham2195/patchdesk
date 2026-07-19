@@ -7,9 +7,9 @@ test("merge confirmation shows warnings and requires acknowledgement", async ({ 
   const server = await serveRenderer();
   try {
     await page.goto(`${origin(server)}/#merge-fixture`);
-    await expect(page.getByText("request_changes")).toBeVisible();
     await page.getByRole("button", { name: "Prepare merge confirmation" }).click();
-    await expect(page.getByRole("dialog", { name: "Confirm merge" })).toBeVisible();
+    await expect(page.getByRole("alertdialog", { name: "Confirm merge" })).toBeVisible();
+    await expect(page.getByText("request changes, high severity finding")).toBeVisible();
     await expect(page.getByText("centraldigital/patchdesk#42")).toBeVisible();
     await page.getByLabel("I acknowledge the merge warnings.").check();
     await page.getByRole("button", { name: "Confirm merge" }).click();
