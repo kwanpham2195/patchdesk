@@ -23,18 +23,24 @@ No pre-existing failures in the fast gates.
 
 ## Dependency transition
 
-Pending. Target: add `@base-ui/react` alongside `radix-ui@^1.6.2`, apply the
-`base-nova` preset via the shadcn CLI, remove `radix-ui` only after the final
-sweep (Milestone 5).
+Done (Milestone 1): `@base-ui/react@1.6.0` added alongside `radix-ui@^1.6.2`;
+`components.json` style flipped to `base-nova` (CLI `init` cannot detect the
+electron-vite framework, so the flip was a manual edit; `shadcn add` resolves
+the base-nova registry from it). `radix-ui` removal is scheduled for Milestone 5.
 
 ## Wrapper/consumer sweep summary
 
-Not started. 19 Radix wrappers under `src/renderer/src/components/ui` plus
-`toggle-variants.ts`; consumer sweep pending per the plan.
+Milestone 1 complete (2026-07-19). Migrated: button, badge, separator, label,
+checkbox, scroll-area, tabs, toggle, toggle-group, button-group, item.
+Deleted `toggle-variants.ts` (superseded by base-nova toggle's own export).
+Test adaptations: PointerEvent polyfill in `tests/setup.ts` (Base UI checkbox
+re-dispatches clicks as PointerEvent, which jsdom lacks), and role-based
+checkbox queries in the two write-confirmation dialog suites.
 
 ## Final Radix count
 
-Not yet measured. Source of truth at any point:
+8 wrappers remain on Radix as of Milestone 1 close (dialog, alert-dialog,
+sheet, dropdown-menu, select, popover, tooltip, sidebar). Source of truth:
 `rg -l 'radix-ui' src/renderer/src/components/ui`.
 
 ## Outstanding behavior deltas
