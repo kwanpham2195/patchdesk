@@ -13,6 +13,25 @@ if (typeof HTMLElement !== "undefined") {
   }
 }
 
+// jsdom has no PointerEvent; Base UI primitives re-dispatch clicks as
+// PointerEvent on their hidden inputs, so polyfill it as a MouseEvent subclass.
+if (typeof window !== "undefined" && window.PointerEvent === undefined) {
+  class PointerEventPolyfill extends MouseEvent {
+    public readonly pointerId: number;
+    public readonly pointerType: string;
+    public readonly isPrimary: boolean;
+
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId ?? 0;
+      this.pointerType = params.pointerType ?? "";
+      this.isPrimary = params.isPrimary ?? false;
+    }
+  }
+  window.PointerEvent =
+    PointerEventPolyfill as unknown as typeof window.PointerEvent;
+}
+
 if (typeof ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class ResizeObserverStub implements ResizeObserver {
     disconnect(): void {}

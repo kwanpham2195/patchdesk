@@ -29,7 +29,7 @@ describe("review submission dialog", () => {
     expect(screen.getByText("src/write.ts:8")).toBeTruthy();
     expect(screen.queryByText("src/write.ts:15")).toBeNull();
     expect((screen.getByRole("button", { name: "Confirm pending review" }) as HTMLButtonElement).disabled).toBe(true);
-    await user.click(screen.getByLabelText("I understand this creates one pending GitHub review."));
+    await user.click(screen.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }));
     await user.click(screen.getByRole("button", { name: "Confirm pending review" }));
     expect(create).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Pending review 9001 created.")).toBeTruthy();
@@ -39,7 +39,7 @@ describe("review submission dialog", () => {
     await user.click(screen.getByRole("combobox", { name: "Review event" }));
     await user.click(screen.getByRole("option", { name: "REQUEST_CHANGES" }));
     expect(screen.getByText("Review summary")).toBeTruthy();
-    await user.click(screen.getByLabelText("I understand this submits the pending review."));
+    await user.click(screen.getByRole("checkbox", { name: "I understand this submits the pending review." }));
     await user.click(screen.getByRole("button", { name: "Submit review" }));
     expect(submit).toHaveBeenCalledWith("REQUEST_CHANGES", "Review summary");
     expect(screen.getByText("Review 9001 submitted as REQUEST_CHANGES.")).toBeTruthy();
@@ -55,7 +55,7 @@ describe("review submission dialog", () => {
     const user = userEvent.setup();
     render(<ReviewSubmissionDialog draft={draft} findings={[]} onCreatePending={async () => { throw new Error("rejected"); }} onSubmitPending={async () => ({ reviewId: "9001" })} />);
     await user.click(screen.getByRole("button", { name: "Create pending review" }));
-    await user.click(screen.getByLabelText("I understand this creates one pending GitHub review."));
+    await user.click(screen.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }));
     await user.click(screen.getByRole("button", { name: "Confirm pending review" }));
     expect(screen.getByRole("alert").textContent).toContain("GitHub rejected the pending review. Your saved local draft was preserved.");
     expect(screen.getByRole("alertdialog", { name: "Create pending review" })).toBeTruthy();
@@ -74,7 +74,7 @@ describe("review submission dialog", () => {
       onPendingChange={(pending) => pendingStates.push(pending)}
     />);
     await user.click(screen.getByRole("button", { name: "Create pending review" }));
-    await user.click(screen.getByLabelText("I understand this creates one pending GitHub review."));
+    await user.click(screen.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }));
     await user.click(screen.getByRole("button", { name: "Confirm pending review" }));
 
     expect(pendingStates.at(-1)).toBe(true);
