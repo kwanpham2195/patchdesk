@@ -1179,14 +1179,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       >
         {preview === undefined ? null : (
           <DialogContent
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              keepProfileButton.current?.focus();
-            }}
-            onCloseAutoFocus={(event) => {
-              event.preventDefault();
-              previewTrigger.current?.focus();
-            }}
+            initialFocus={keepProfileButton}
+            finalFocus={previewTrigger}
           >
             <DialogHeader>
               <DialogTitle>Switch workspace profile</DialogTitle>

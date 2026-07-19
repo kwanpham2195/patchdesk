@@ -38,11 +38,12 @@ function CommandDialog({
   className,
   showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof Dialog> & {
+}: Omit<React.ComponentProps<typeof Dialog>, "children"> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  children?: React.ReactNode
 }) {
   return (
     <Dialog {...props}>
@@ -84,10 +85,10 @@ function CommandInput({
         {...props}
       />
       {showCloseButton && (
-        <DialogClose asChild>
-          <Button aria-label="Close" size="icon-sm" variant="ghost">
-            <XIcon data-icon="inline-end" />
-          </Button>
+        <DialogClose
+          render={<Button aria-label="Close" size="icon-sm" variant="ghost" />}
+        >
+          <XIcon data-icon="inline-end" />
         </DialogClose>
       )}
     </div>
