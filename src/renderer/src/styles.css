@@ -100,11 +100,13 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
 :focus-visible {

@@ -1555,7 +1555,7 @@ function InboxScreen({
               onChange={(event) => onReference(event.target.value)}
             />
           </div>
-          <Button size="sm" onClick={onPreview} disabled={state === "loading"}>
+          <Button size="sm" className="text-xs" onClick={onPreview} disabled={state === "loading"}>
             Preview pull request
           </Button>
         </div>
