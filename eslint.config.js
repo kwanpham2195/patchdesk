@@ -31,4 +31,11 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // shadcn registry wrappers export cva variant factories alongside components
+    files: ["src/renderer/src/components/ui/**/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );
