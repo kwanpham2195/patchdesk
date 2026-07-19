@@ -198,19 +198,21 @@ export function AppShell({
           </span>
         </div>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={navigationBlocked}
-              onClick={() => setCommandOpen(true)}
-            >
-              <Search />
-              Navigate
-              <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground">
-                ⌘K
-              </Kbd>
-            </Button>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={navigationBlocked}
+                onClick={() => setCommandOpen(true)}
+              />
+            }
+          >
+            <Search />
+            Navigate
+            <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground">
+              ⌘K
+            </Kbd>
           </TooltipTrigger>
           <TooltipContent>
             {navigationBlocked
