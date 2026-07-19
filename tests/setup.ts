@@ -32,6 +32,15 @@ if (typeof window !== "undefined" && window.PointerEvent === undefined) {
     PointerEventPolyfill as unknown as typeof window.PointerEvent;
 }
 
+// jsdom lacks Element.getAnimations; Base UI scroll-area uses it to sync
+// thumb visibility with running transitions.
+if (
+  typeof Element !== "undefined" &&
+  Element.prototype.getAnimations === undefined
+) {
+  Element.prototype.getAnimations = () => [];
+}
+
 if (typeof ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class ResizeObserverStub implements ResizeObserver {
     disconnect(): void {}

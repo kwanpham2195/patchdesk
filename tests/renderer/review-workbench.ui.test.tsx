@@ -132,7 +132,7 @@ describe("review workbench", () => {
     ).toBeNull();
     await user.click(screen.getByRole("button", { name: "Options" }));
     await user.click(
-      screen.getByRole("menuitemcheckbox", { name: "Accessible text view" }),
+      await screen.findByRole("menuitemcheckbox", { name: "Accessible text view" }),
     );
     expect(
       document.querySelectorAll('[data-selected-line="true"]'),

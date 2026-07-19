@@ -33,6 +33,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -485,50 +486,54 @@ export function ReviewDiffView({
             <ChevronsUpDown /> Expand
           </Button>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="xs">
-                <SlidersHorizontal /> Options
-              </Button>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
+              <SlidersHorizontal /> Options
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Diff display</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={preferences.density === "compact"}
-                onCheckedChange={(checked) =>
-                  onPreferencesChange({
-                    density: checked === true ? "compact" : "comfortable",
-                  })
-                }
-              >
-                Compact density
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={expandUnchanged}
-                onCheckedChange={(checked) =>
-                  setExpandUnchanged(checked === true)
-                }
-              >
-                Show all unchanged lines
-              </DropdownMenuCheckboxItem>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Diff display</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={preferences.density === "compact"}
+                  onCheckedChange={(checked) =>
+                    onPreferencesChange({
+                      density: checked === true ? "compact" : "comfortable",
+                    })
+                  }
+                >
+                  Compact density
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={expandUnchanged}
+                  onCheckedChange={(checked) =>
+                    setExpandUnchanged(checked === true)
+                  }
+                >
+                  Show all unchanged lines
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={preferences.overflow === "wrap"}
-                onCheckedChange={(checked) =>
-                  onPreferencesChange({
-                    overflow: checked === true ? "wrap" : "scroll",
-                  })
-                }
-              >
-                Wrap long lines
-              </DropdownMenuCheckboxItem>
+              <DropdownMenuGroup>
+                <DropdownMenuCheckboxItem
+                  checked={preferences.overflow === "wrap"}
+                  onCheckedChange={(checked) =>
+                    onPreferencesChange({
+                      overflow: checked === true ? "wrap" : "scroll",
+                    })
+                  }
+                >
+                  Wrap long lines
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={accessible}
-                onCheckedChange={(checked) => setAccessible(checked === true)}
-              >
-                <Accessibility />
-                Accessible text view
-              </DropdownMenuCheckboxItem>
+              <DropdownMenuGroup>
+                <DropdownMenuCheckboxItem
+                  checked={accessible}
+                  onCheckedChange={(checked) => setAccessible(checked === true)}
+                >
+                  <Accessibility />
+                  Accessible text view
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
