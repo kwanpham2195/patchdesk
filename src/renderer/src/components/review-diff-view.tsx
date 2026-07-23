@@ -43,65 +43,14 @@ import { requestJson } from "@/api-client";
 
 registerPierreThemeLoaders();
 
-const DARK_DIFF_STYLE = {
-  "--diffs-dark-bg": "#080d15",
-  "--diffs-dark-addition-color": "#63d68b",
-  "--diffs-dark-deletion-color": "#fb7185",
-  "--diffs-bg-context-override": "#080d15",
-  "--diffs-bg-context-gutter-override": "#0c1320",
-  "--diffs-bg-addition-override": "#10291f",
-  "--diffs-bg-addition-number-override": "#123524",
-  "--diffs-bg-deletion-override": "#32181e",
-  "--diffs-bg-deletion-number-override": "#422027",
-  "--diffs-bg-selection-override": "#17314b",
-  "--diffs-bg-selection-number-override": "#1a4265",
-  "--diffs-bg-separator-override": "#111927",
-  "--diffs-bg-hover-override": "#152032",
-  "--diffs-fg-number-override": "#78869a",
-  "--diffs-fg-number-addition-override": "#63d68b",
-  "--diffs-fg-number-deletion-override": "#fb7185",
-  "--patchdesk-diff-addition-token": "#bbf7d0",
-  "--patchdesk-diff-deletion-token": "#fecdd3",
+// Theme colors belong to the selected Pierre/Shiki descriptor. Patchdesk only
+// owns the code metrics at this boundary so changing an independently saved
+// light or dark theme changes both syntax and surface color as expected.
+const DIFF_CODE_METRICS = {
   fontSize: "13px",
   lineHeight: "20px",
   fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
-
-const LIGHT_DIFF_STYLE = {
-  "--diffs-light-bg": "#ffffff",
-  "--diffs-bg-context-override": "#ffffff",
-  "--diffs-bg-context-gutter-override": "#f8fafc",
-  "--diffs-bg-addition-override": "#ecfdf3",
-  "--diffs-bg-addition-number-override": "#d8f8e4",
-  "--diffs-bg-deletion-override": "#fff1f2",
-  "--diffs-bg-deletion-number-override": "#ffe1e5",
-  "--diffs-bg-selection-override": "#eef0ff",
-  "--diffs-bg-selection-number-override": "#dfe3ff",
-  "--diffs-bg-separator-override": "#f1f3f5",
-  "--diffs-bg-hover-override": "#f6f7fb",
-  "--diffs-fg-number-override": "#64748b",
-  "--diffs-fg-number-addition-override": "#15803d",
-  "--diffs-fg-number-deletion-override": "#be123c",
-  "--patchdesk-diff-addition-token": "#166534",
-  "--patchdesk-diff-deletion-token": "#881337",
-  fontSize: "13px",
-  lineHeight: "20px",
-  fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
-} as CSSProperties;
-
-// Pierre renders code in a shadow root, so the safety rule must travel through
-// its documented `unsafeCSS` seam rather than the application stylesheet. The
-// semantic diff backgrounds stay Pierre-native; this only ensures syntax tokens
-// on added and deleted lines remain readable in the selected light/dark pair.
-const ACCESSIBLE_CHANGED_LINE_TOKENS = `
-  [data-line-type="change-addition"] span {
-    color: var(--patchdesk-diff-addition-token) !important;
-  }
-
-  [data-line-type="change-deletion"] span {
-    color: var(--patchdesk-diff-deletion-token) !important;
-  }
-`;
 
 export type SelectedDiffRange = {
   readonly start: number;
@@ -505,7 +454,6 @@ function ReviewDiffSurface({
       stickyHeaders: true,
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
-      unsafeCSS: ACCESSIBLE_CHANGED_LINE_TOKENS,
     }),
     [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow, themePreferences],
   );
@@ -681,7 +629,7 @@ function ReviewDiffSurface({
           patch={selectedPatch}
           disableWorkerPool
           className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
-          style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
+          style={DIFF_CODE_METRICS}
           options={{
             theme: diffThemeFor(themePreferences),
             themeType: appearance,
@@ -692,7 +640,6 @@ function ReviewDiffSurface({
             expandUnchanged: expandUnchanged || expandSelectedRange,
             lineDiffType: "word-alt",
             diffIndicators: "bars",
-            unsafeCSS: ACCESSIBLE_CHANGED_LINE_TOKENS,
           }}
           selectedLines={selectedLines?.range ?? null}
           renderCustomHeader={renderPatchHeader}
@@ -706,7 +653,7 @@ function ReviewDiffSurface({
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-hidden overflow-y-auto font-mono"
-            style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
+            style={DIFF_CODE_METRICS}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
             onScroll={handleViewerScroll}
