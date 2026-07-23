@@ -66,7 +66,7 @@ try {
   await window.waitForLoadState("domcontentloaded");
   try {
     await window
-      .getByText("Completed review", { exact: true })
+      .getByText("Review complete", { exact: true })
       .waitFor({ timeout: 15_000 });
     await window
       .getByText("centraldigital/patchdesk#42", { exact: false })
