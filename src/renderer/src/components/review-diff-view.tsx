@@ -36,6 +36,10 @@ import {
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
+import {
+  reviewContextControl,
+  type ReviewContextStatus,
+} from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -132,9 +136,8 @@ function ReviewDiffSurface({
   const [hydratedFiles, setHydratedFiles] = useState<
     ReadonlyMap<string, FileDiffMetadata>
   >(() => new Map());
-  const [contextStatus, setContextStatus] = useState<
-    "idle" | "loading" | "ready" | "unavailable"
-  >("idle");
+  const [contextStatus, setContextStatus] =
+    useState<ReviewContextStatus>("idle");
   const [loadedCount, setLoadedCount] = useState(1);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
   const [themePreferences, setThemePreferences] = useState<DiffThemePreferences>(() =>
@@ -561,6 +564,24 @@ function ReviewDiffSurface({
     }),
     [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow, themePreferences],
   );
+  const hasExpandableRenderedFile = useMemo(
+    () =>
+      items
+        .slice(0, loadedCount)
+        .some((item) => {
+          if (item.type !== "diff") return false;
+          const hydrated = hydratedFiles.get(item.id);
+          return hydrated !== undefined && !hydrated.isPartial;
+        }),
+    [hydratedFiles, items, loadedCount],
+  );
+  const contextControl = reviewContextControl({
+    hasSourceSession:
+      sourceProfileId !== undefined && sourceSessionId !== undefined,
+    status: contextStatus,
+    hasExpandableRenderedFile,
+    expanded: expandUnchanged,
+  });
   const renderFileChangeCounts = useCallback(
     (path: string) => {
       const stats = fileStatsByPath.get(path) ?? {
@@ -692,21 +713,13 @@ function ReviewDiffSurface({
             variant={expandUnchanged ? "secondary" : "ghost"}
             size="xs"
             aria-pressed={expandUnchanged}
-            aria-label={
-              expandUnchanged
-                ? "Collapse unchanged context"
-                : "Expand unchanged context"
-            }
-            title={
-              expandUnchanged
-                ? "Collapse unchanged context"
-                : "Expand unchanged context"
-            }
-            disabled={contextStatus === "loading"}
+            aria-label={contextControl.description}
+            title={contextControl.description}
+            disabled={contextControl.disabled}
             onClick={() => setExpandUnchanged((current) => !current)}
           >
             {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
-            {contextStatus === "loading" ? "Loading context" : "Context"}
+            {contextControl.label}
           </Button>
           <Button
             className={virtualized ? undefined : "hidden"}
