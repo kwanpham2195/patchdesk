@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  processFile,
   type CodeViewDiffItem,
   type CodeViewItem,
   type FileDiffMetadata,
@@ -36,6 +37,8 @@ import type { FileChangeStats } from "@/review-diff-data";
 import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Spinner } from "@/components/ui/spinner";
+import { requestJson } from "@/api-client";
 
 registerPierreThemeLoaders();
 
@@ -87,6 +90,19 @@ export type SelectedDiffRange = {
   readonly side: "new" | "old";
 };
 
+type DiffSourceSession = {
+  readonly profileId: string;
+  readonly sessionId: string;
+};
+
+type DiffSourceResponse =
+  | {
+      readonly state: "ready";
+      readonly oldFile?: { readonly name: string; readonly contents: string };
+      readonly newFile?: { readonly name: string; readonly contents: string };
+    }
+  | { readonly state: "unavailable"; readonly reason: string };
+
 type PierreCodeView = NonNullable<
   ReturnType<CodeViewHandle<undefined>["getInstance"]>
 >;
@@ -120,6 +136,7 @@ export function ReviewDiffView({
   collapsedPaths,
   onPreferencesChange,
   onCollapsedPathsChange,
+  sourceSession,
   virtualized = true,
 }: {
   readonly patch: string;
@@ -133,9 +150,17 @@ export function ReviewDiffView({
     update: Partial<ReviewViewPreferences>,
   ) => void;
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
+  /** Optional main-process-only source seam used to hydrate omitted hunk context. */
+  readonly sourceSession?: DiffSourceSession;
   readonly virtualized?: boolean;
 }): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
+  const [hydratedFiles, setHydratedFiles] = useState<
+    ReadonlyMap<string, FileDiffMetadata>
+  >(() => new Map());
+  const [contextStatus, setContextStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable"
+  >("idle");
   const [loadedCount, setLoadedCount] = useState(1);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
   const [themePreferences, setThemePreferences] = useState<DiffThemePreferences>(() =>
@@ -171,7 +196,11 @@ export function ReviewDiffView({
     () => selectPatch(rawFilePatches, patch, selectedPath),
     [patch, rawFilePatches, selectedPath],
   );
-  const files = parsedFiles;
+  const files = useMemo(
+    () =>
+      parsedFiles.map((file) => hydratedFiles.get(file.name) ?? file),
+    [hydratedFiles, parsedFiles],
+  );
   const visibleFiles = useMemo(
     () =>
       preferences.fileMode === "selected" && selectedPath !== undefined
@@ -215,6 +244,75 @@ export function ReviewDiffView({
     typeof CSSStyleSheet !== "undefined" &&
     "replaceSync" in CSSStyleSheet.prototype;
   const viewerKey = `${preferences.fileMode}:${preferences.fileMode === "selected" ? (selectedPath ?? "none") : "all"}`;
+  const sourceProfileId = sourceSession?.profileId;
+  const sourceSessionId = sourceSession?.sessionId;
+
+  useEffect(() => {
+    if (
+      !expandUnchanged ||
+      selectedPath === undefined ||
+      sourceProfileId === undefined ||
+      sourceSessionId === undefined
+    ) {
+      setContextStatus("idle");
+      return;
+    }
+    if (hydratedFiles.has(selectedPath)) {
+      setContextStatus("ready");
+      return;
+    }
+    const rawFilePatch = selectPatch(rawFilePatches, patch, selectedPath);
+    if (!rawFilePatch.startsWith("diff --git ")) {
+      setContextStatus("unavailable");
+      return;
+    }
+    let active = true;
+    setContextStatus("loading");
+    void requestJson("/v1/reviews/diff-file", {
+      method: "POST",
+      body: {
+        profileId: sourceProfileId,
+        sessionId: sourceSessionId,
+        path: selectedPath,
+      },
+    })
+      .then((value) => {
+        if (!active) return;
+        const source = parseDiffSourceResponse(value);
+        if (source?.state !== "ready") {
+          setContextStatus("unavailable");
+          return;
+        }
+        const hydrated = processFile(rawFilePatch, {
+          ...(source.oldFile === undefined ? {} : { oldFile: source.oldFile }),
+          ...(source.newFile === undefined ? {} : { newFile: source.newFile }),
+        });
+        if (hydrated === undefined) {
+          setContextStatus("unavailable");
+          return;
+        }
+        setHydratedFiles((current) => {
+          const next = new Map(current);
+          next.set(selectedPath, hydrated);
+          return next;
+        });
+        setContextStatus("ready");
+      })
+      .catch(() => {
+        if (active) setContextStatus("unavailable");
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    expandUnchanged,
+    hydratedFiles,
+    patch,
+    rawFilePatches,
+    selectedPath,
+    sourceProfileId,
+    sourceSessionId,
+  ]);
 
   useEffect(() => {
     nextItemIndex.current = 1;
@@ -489,9 +587,15 @@ export function ReviewDiffView({
             variant={expandUnchanged ? "secondary" : "ghost"}
             size="xs"
             aria-pressed={expandUnchanged}
+            disabled={contextStatus === "loading"}
             onClick={() => setExpandUnchanged((current) => !current)}
           >
-            <ChevronsUpDown /> {expandUnchanged ? "Context" : "Collapsed context"}
+            {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
+            {contextStatus === "loading"
+              ? "Loading context"
+              : expandUnchanged
+                ? "Context"
+                : "Collapsed context"}
           </Button>
           <Button
             className={virtualized ? undefined : "hidden"}
@@ -505,6 +609,15 @@ export function ReviewDiffView({
           </Button>
         </div>
       </div>
+      {contextStatus === "loading" ? (
+        <p className="sr-only" aria-live="polite">
+          Loading unchanged context for {selectedPath}.
+        </p>
+      ) : contextStatus === "unavailable" ? (
+        <p className="sr-only" aria-live="polite">
+          Additional unchanged context is unavailable for {selectedPath}.
+        </p>
+      ) : null}
       {!browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
@@ -688,4 +801,34 @@ function selectPatch(
     files[0] ??
     patch
   );
+}
+
+function parseDiffSourceResponse(value: unknown): DiffSourceResponse | undefined {
+  if (typeof value !== "object" || value === null || !("state" in value)) {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.state === "unavailable" && typeof candidate.reason === "string") {
+    return { state: "unavailable", reason: candidate.reason };
+  }
+  if (candidate.state !== "ready") return undefined;
+  const parseFile = (
+    input: unknown,
+  ): { readonly name: string; readonly contents: string } | undefined =>
+    typeof input === "object" &&
+    input !== null &&
+    "name" in input &&
+    "contents" in input &&
+    typeof input.name === "string" &&
+    typeof input.contents === "string"
+      ? { name: input.name, contents: input.contents }
+      : undefined;
+  const oldFile = parseFile(candidate.oldFile);
+  const newFile = parseFile(candidate.newFile);
+  if (oldFile === undefined && newFile === undefined) return undefined;
+  return {
+    state: "ready",
+    ...(oldFile === undefined ? {} : { oldFile }),
+    ...(newFile === undefined ? {} : { newFile }),
+  };
 }

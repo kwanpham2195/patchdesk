@@ -41,6 +41,8 @@ export type CheckSummary = {
 
 export type PullRequestSnapshot = {
   readonly headSha: GitSha;
+  /** Exact base SHA used to hydrate omitted diff context when it is available. */
+  readonly baseSha?: GitSha;
   readonly isDraft: boolean;
   readonly isOpen: boolean;
 };

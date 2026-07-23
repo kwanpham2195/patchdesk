@@ -8,6 +8,12 @@ import {
 describe("desktop request bridge", () => {
   it("allows the maintainer inbox reads required by the desktop renderer", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/inbox" })).toBe(true);
+    expect(
+      isAllowedDesktopRequest({
+        path: "/v1/reviews/diff-file",
+        method: "POST",
+      }),
+    ).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/dashboard/refresh", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/inbox/refresh", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/inbox/refresh/repository", method: "POST" })).toBe(false);

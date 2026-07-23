@@ -35,11 +35,13 @@ import {
 export function DiffWorkbench({
   patch,
   finding,
+  sourceSession,
   className,
   fillViewport = true,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
+  readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
   readonly className?: string;
   readonly fillViewport?: boolean;
 }): React.JSX.Element {
@@ -53,7 +55,7 @@ export function DiffWorkbench({
   );
   const [preferences, setPreferences] = useState<ReviewViewPreferences>({
     ...DEFAULT_REVIEW_VIEW_PREFERENCES,
-    fileMode: "selected",
+    fileMode: "all",
   });
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -255,7 +257,7 @@ export function DiffWorkbench({
             setPreferences((current) => ({ ...current, ...update }))
           }
           onCollapsedPathsChange={setCollapsedPaths}
-          virtualized={false}
+          {...(sourceSession === undefined ? {} : { sourceSession })}
         />
       </div>
       <aside

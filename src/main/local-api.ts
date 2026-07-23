@@ -40,6 +40,7 @@ import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
+import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
   ReviewWorkflowStarter,
@@ -189,6 +190,11 @@ export async function startLocalApiServer(
   const reviewCompletion = new ReviewCompletionService(
     paths,
     () => new Date().toISOString() as never,
+  );
+  const reviewDiffSources = new ReviewDiffSourceService(
+    profiles,
+    sessions,
+    github,
   );
   const workflowStarter =
     configuration.workflowInvoker === undefined
@@ -415,6 +421,9 @@ export async function startLocalApiServer(
   });
   app.post("/v1/reviews/load", async (context) =>
     response(context, await reviewWorkbench.load(await jsonBody(context))),
+  );
+  app.post("/v1/reviews/diff-file", async (context) =>
+    response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
   app.post("/v1/reviews/draft", async (context) =>
     response(context, await reviewDrafts.update(await jsonBody(context))),

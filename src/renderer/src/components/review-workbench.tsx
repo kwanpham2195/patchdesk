@@ -84,6 +84,7 @@ const DEFAULT_FINDING_FILTER: FindingFilter = { severity: "all", confidence: "al
 
 export function ReviewWorkbench(props: {
   readonly profileId?: string;
+  readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
   readonly result: ReviewResult;
   readonly reviewScope?: ReviewScope;
   readonly fullPatch?: string;
@@ -560,6 +561,9 @@ export function ReviewWorkbench(props: {
               collapsedPaths={collapsedPaths}
               onPreferencesChange={updatePreferences}
               onCollapsedPathsChange={setCollapsedPaths}
+              {...(props.sourceSession === undefined
+                ? {}
+                : { sourceSession: props.sourceSession })}
             />
           )}
         </div>

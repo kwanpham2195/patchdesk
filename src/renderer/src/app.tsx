@@ -822,7 +822,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             </div>
           </header>
           {showingChecks ? <div className="p-4"><PreparedChecks checks={workbench.checks} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /></div> : null}
-          {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} className="min-h-0 flex-1" fillViewport={false} /> : null}
+          {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} sourceSession={{ profileId: workbench.session.key.profileId, sessionId: workbench.session.id }} className="min-h-0 flex-1" fillViewport={false} /> : null}
           {workbench.session.currentAttemptId === undefined ? (
             showingDiff || showingChecks ? null : (
               <div className="mt-4 space-y-3">
@@ -915,6 +915,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     return shell(
       <ReviewWorkbench
         profileId={workbench.session.key.profileId}
+        sourceSession={{
+          profileId: workbench.session.key.profileId,
+          sessionId: workbench.session.id,
+        }}
         result={workbench.result as never}
         {...(workbench.reviewScope === undefined ? {} : { reviewScope: workbench.reviewScope as never })}
         {...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch })}

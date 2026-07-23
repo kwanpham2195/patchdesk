@@ -20,6 +20,7 @@ import {
   type GitHubOwner,
   type GitHubRepoName,
   type ReviewSessionId,
+  type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
@@ -28,10 +29,13 @@ import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-
 import type { RevisionComparison } from "../../domain/review-comparison";
 
 const commandTimeoutMs = 15_000;
+// Two source blobs travel through the 2 MiB Electron bridge, so each stays
+// below 512 KiB after allowing for JSON framing and multibyte text.
+const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
   "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine } } } } } } }";
 const maintainerInboxQuery =
-  "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
+  "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 
 const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -40,7 +44,7 @@ const pullRequestSchema = v.looseObject({
   state: v.picklist(["open", "closed"]),
   draft: v.boolean(),
   head: v.looseObject({ ref: v.string(), sha: v.string() }),
-  base: v.looseObject({ ref: v.string() }),
+  base: v.looseObject({ ref: v.string(), sha: v.optional(v.string()) }),
   user: v.looseObject({ login: v.string() }),
   updated_at: v.string(),
   mergeable_state: v.optional(v.string()),
@@ -63,6 +67,13 @@ const checkRunsSchema = v.looseObject({
       details_url: v.optional(v.nullable(v.string())),
     }),
   ),
+});
+
+const repositoryFileSchema = v.looseObject({
+  type: v.string(),
+  encoding: v.optional(v.string()),
+  content: v.optional(v.string()),
+  size: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
 });
 
 const threadResponseSchema = v.looseObject({
@@ -117,6 +128,7 @@ const maintainerInboxResponseSchema = v.looseObject({
           headRefName: v.string(),
           headRefOid: v.string(),
           baseRefName: v.string(),
+          baseRefOid: v.optional(v.string()),
           author: v.nullish(v.looseObject({ login: v.string() })),
           updatedAt: v.string(),
           mergeable: v.string(),
@@ -174,6 +186,13 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
   }): Promise<Result<string, GitHubReadFailure>>;
+  /** Fetch one bounded text blob at an immutable revision for local diff hydration. */
+  getFileContents(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly sha: GitSha;
+    readonly path: RepoRelativePath;
+  }): Promise<Result<GitHubFileContents, GitHubReadFailure>>;
   compareRevisions(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -202,6 +221,11 @@ export type GitHubRevisionComparison = {
   readonly comparison: RevisionComparison;
   readonly patch?: string;
 };
+
+/** Safe projection for one source file; binary and oversized blobs never enter the renderer. */
+export type GitHubFileContents =
+  | { readonly state: "available"; readonly contents: string }
+  | { readonly state: "binary" | "too_large" };
 
 export type PendingReviewComment = {
   readonly body: string;
@@ -302,6 +326,7 @@ type GitHubReadOperation =
   | "get_comments"
   | "get_checks"
   | "get_diff"
+  | "get_file"
   | "compare_revisions"
   | "auth_status";
 
@@ -527,6 +552,46 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     return fallback._tag === "ok"
       ? fallback
       : commandFailure("get_diff", fallback.error);
+  }
+
+  async getFileContents(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly sha: GitSha;
+    readonly path: RepoRelativePath;
+  }): Promise<Result<GitHubFileContents, GitHubReadFailure>> {
+    const encodedPath = input.path
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    const response = await this.commands.runJson({
+      argv: [
+        "gh",
+        "api",
+        "--hostname",
+        input.profile.githubHost,
+        `repos/${input.pr.owner}/${input.pr.repo}/contents/${encodedPath}?ref=${input.sha}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return commandFailure("get_file", response.error);
+    const parsed = v.safeParse(repositoryFileSchema, response.value);
+    if (!parsed.success || parsed.output.type !== "file") return invalid("get_file");
+    if ((parsed.output.size ?? 0) > maxHydratedFileBytes) {
+      return ok({ state: "too_large" });
+    }
+    if (parsed.output.encoding !== "base64" || parsed.output.content === undefined) {
+      return err({ _tag: "GitHubReadFailed", operation: "get_file" });
+    }
+    const contents = Buffer.from(
+      parsed.output.content.replaceAll("\n", ""),
+      "base64",
+    );
+    if (contents.byteLength > maxHydratedFileBytes) {
+      return ok({ state: "too_large" });
+    }
+    if (contents.includes(0)) return ok({ state: "binary" });
+    return ok({ state: "available", contents: contents.toString("utf8") });
   }
 
   async compareRevisions(input: {
@@ -771,6 +836,18 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       : ok(this.values.diff);
   }
 
+  async getFileContents(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly sha: GitSha;
+    readonly path: RepoRelativePath;
+  }): Promise<Result<GitHubFileContents, GitHubReadFailure>> {
+    void input;
+    return this.values.fileContents === undefined
+      ? missing("get_file")
+      : ok(this.values.fileContents);
+  }
+
   async compareRevisions(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -840,6 +917,7 @@ export type FakeGitHubAdapterValues = {
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly diff: string;
+  readonly fileContents: GitHubFileContents;
   readonly comparison: GitHubRevisionComparison;
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
   readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
@@ -855,8 +933,17 @@ function parseMaintainerPullRequest(
 ): Result<MaintainerPullRequest, { readonly _tag: "Invalid" }> {
   const number = parsePullRequestNumber(input.number);
   const headSha = parseGitSha(input.headRefOid);
+  const baseSha =
+    input.baseRefOid === undefined
+      ? undefined
+      : parseGitSha(input.baseRefOid);
   const updatedAt = parseGitHubTimestamp(input.updatedAt);
-  if (number._tag === "err" || headSha._tag === "err" || updatedAt._tag === "err")
+  if (
+    number._tag === "err" ||
+    headSha._tag === "err" ||
+    (baseSha !== undefined && baseSha._tag === "err") ||
+    updatedAt._tag === "err"
+  )
     return err({ _tag: "Invalid" });
   const summary: PullRequestSummary = {
     ref: { host, owner, repo, number: number.value },
@@ -865,6 +952,7 @@ function parseMaintainerPullRequest(
     headBranch: input.headRefName,
     baseBranch: input.baseRefName,
     headSha: headSha.value,
+    ...(baseSha === undefined ? {} : { baseSha: baseSha.value }),
     isDraft: input.isDraft,
     isOpen: true,
     reviewState: mapReviewDecision(input.reviewDecision),
@@ -986,10 +1074,15 @@ function parsePullRequest(
   if (!parsed.success) return err({ _tag: "Invalid" });
   const number = parsePullRequestNumber(parsed.output.number);
   const headSha = parseGitSha(parsed.output.head.sha);
+  const baseSha =
+    parsed.output.base.sha === undefined
+      ? undefined
+      : parseGitSha(parsed.output.base.sha);
   const updatedAt = parseGitHubTimestamp(parsed.output.updated_at);
   if (
     number._tag === "err" ||
     headSha._tag === "err" ||
+    (baseSha !== undefined && baseSha._tag === "err") ||
     updatedAt._tag === "err"
   )
     return err({ _tag: "Invalid" });
@@ -1004,6 +1097,7 @@ function parsePullRequest(
     headBranch: parsed.output.head.ref,
     baseBranch: parsed.output.base.ref,
     headSha: headSha.value,
+    ...(baseSha === undefined ? {} : { baseSha: baseSha.value }),
     isDraft: parsed.output.draft,
     isOpen: parsed.output.state === "open",
     reviewState: "unknown",

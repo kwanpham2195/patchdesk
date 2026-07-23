@@ -14,7 +14,7 @@ import type { ManagedWorktree, MetadataOnlyReview, ReviewWorktreeService } from 
 import { preparedReviewArtifacts } from "./review-attempt-artifacts";
 
 export type StartReviewFailure = { readonly _tag: "StartReviewFailed" };
-type StartReviewInput = { readonly profileId: WorkspaceProfileId; readonly host: GitHubHost; readonly owner: GitHubOwner; readonly repo: GitHubRepoName; readonly number: PullRequestNumber; readonly headSha: GitSha; readonly isDraft: boolean; readonly isOpen: boolean; readonly prContext?: ReviewSession["prContext"]; readonly profile?: WorkspaceProfileConfig; readonly localPath?: string; readonly scope?: ReviewScope };
+type StartReviewInput = { readonly profileId: WorkspaceProfileId; readonly host: GitHubHost; readonly owner: GitHubOwner; readonly repo: GitHubRepoName; readonly number: PullRequestNumber; readonly headSha: GitSha; readonly baseSha?: GitSha; readonly isDraft: boolean; readonly isOpen: boolean; readonly prContext?: ReviewSession["prContext"]; readonly profile?: WorkspaceProfileConfig; readonly localPath?: string; readonly scope?: ReviewScope };
 export type StartDependencies = { readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks" | "getPullRequestDiff">; readonly worktrees: ReviewWorktreeService; readonly context: ReviewContextService };
 
 /** Creates the durable, exact-head session record before any workflow is allowed to inspect it. */
@@ -27,7 +27,7 @@ export class ReviewSessionService {
     const patchPath = parseAbsolutePath(this.paths.patchFile(input.profileId, provisionalId as never));
     const worktreePath = parseAbsolutePath(this.paths.worktreeDirectory(input.profileId, provisionalId as never));
     if (patchPath._tag === "err" || worktreePath._tag === "err") return err({ _tag: "StartReviewFailed" });
-    const session = createReviewSession({ key, pr: { headSha: input.headSha, isDraft: input.isDraft, isOpen: input.isOpen }, ...(input.prContext === undefined ? {} : { prContext: input.prContext }), patchPath: patchPath.value, ...(input.scope === undefined ? {} : { scope: input.scope }), worktree: { path: worktreePath.value, headSha: input.headSha }, createdAt: this.now() });
+    const session = createReviewSession({ key, pr: { headSha: input.headSha, ...(input.baseSha === undefined ? {} : { baseSha: input.baseSha }), isDraft: input.isDraft, isOpen: input.isOpen }, ...(input.prContext === undefined ? {} : { prContext: input.prContext }), patchPath: patchPath.value, ...(input.scope === undefined ? {} : { scope: input.scope }), worktree: { path: worktreePath.value, headSha: input.headSha }, createdAt: this.now() });
     const exactPatchPath = parseAbsolutePath(this.paths.patchFile(input.profileId, session.id));
     const exactWorktreePath = parseAbsolutePath(this.paths.worktreeDirectory(input.profileId, session.id));
     if (exactPatchPath._tag === "err" || exactWorktreePath._tag === "err") return err({ _tag: "StartReviewFailed" });

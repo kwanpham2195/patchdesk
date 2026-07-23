@@ -111,6 +111,7 @@ const reviewSessionSchema = v.strictObject({
   }),
   pr: v.strictObject({
     headSha: v.string(),
+    baseSha: v.optional(v.string()),
     isDraft: v.boolean(),
     isOpen: v.boolean(),
   }),
@@ -466,6 +467,10 @@ export function parseStoredReviewSession(
   const worktreePath = parseAbsolutePath(raw.output.worktree.path);
   const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
   const prHeadSha = parseGitSha(raw.output.pr.headSha);
+  const prBaseSha =
+    raw.output.pr.baseSha === undefined
+      ? undefined
+      : parseGitSha(raw.output.pr.baseSha);
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   const updatedAt = parseIsoTimestamp(raw.output.updatedAt);
   if (
@@ -481,6 +486,7 @@ export function parseStoredReviewSession(
     worktreePath._tag === "err" ||
     worktreeHeadSha._tag === "err" ||
     prHeadSha._tag === "err" ||
+    (prBaseSha !== undefined && prBaseSha._tag === "err") ||
     createdAt._tag === "err" ||
     updatedAt._tag === "err"
   )
@@ -579,6 +585,7 @@ export function parseStoredReviewSession(
     },
     pr: {
       headSha: prHeadSha.value,
+      ...(prBaseSha === undefined ? {} : { baseSha: prBaseSha.value }),
       isDraft: raw.output.pr.isDraft,
       isOpen: raw.output.pr.isOpen,
     },
