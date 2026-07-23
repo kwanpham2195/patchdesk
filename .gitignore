@@ -2,6 +2,10 @@ node_modules/
 dist/
 out/
 out-electron/
+release/
 playwright-report/
 test-results/
 .DS_Store
+.superpowers/
+.pi-subagents/
+PLAN.md
