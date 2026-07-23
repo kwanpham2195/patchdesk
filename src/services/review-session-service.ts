@@ -58,6 +58,8 @@ export class ReviewSessionService {
 
   private async writePatchAndContext(input: StartReviewInput, session: ReviewSession, prepared: ManagedWorktree | MetadataOnlyReview): Promise<Result<{ readonly contextPath: string; readonly reviewInputPath: string; readonly debugPath: string; readonly contextHash: string }, StartReviewFailure>> {
     if (this.dependencies === undefined || input.profile === undefined) return err({ _tag: "StartReviewFailed" });
+    if (input.baseSha === undefined) return err({ _tag: "StartReviewFailed" });
+    const baseSha = input.baseSha;
     const pr: PullRequestRef = { host: input.host, owner: input.owner, repo: input.repo, number: input.number };
     const preparedPath = prepared.mode === "worktree"
       ? parseAbsolutePath(prepared.path)
@@ -65,20 +67,26 @@ export class ReviewSessionService {
     if (preparedPath !== undefined && preparedPath._tag === "err") {
       return err({ _tag: "StartReviewFailed" });
     }
-    const fetchedRefs = prepared.mode !== "worktree" || input.baseSha === undefined || preparedPath === undefined
+    const fetchedRefs = prepared.mode !== "worktree" || preparedPath === undefined
       ? undefined
       : createFetchedDiffRefs({
           repositoryPath: preparedPath.value,
           baseRef: prepared.baseRef,
           headRef: prepared.headRef,
-          baseSha: input.baseSha,
+          baseSha,
           headSha: input.headSha,
         });
     if (fetchedRefs !== undefined && fetchedRefs._tag === "err") return err({ _tag: "StartReviewFailed" });
     const [comments, checks, diff] = await Promise.all([
       this.dependencies.github.getPullRequestComments({ profile: input.profile, pr }),
       this.dependencies.github.getPullRequestChecks({ profile: input.profile, pr, headSha: input.headSha }),
-      this.dependencies.github.getPullRequestDiff({ profile: input.profile, pr, ...(fetchedRefs === undefined ? {} : { fetchedRefs: fetchedRefs.value }) }),
+      this.dependencies.github.getPullRequestDiff({
+        profile: input.profile,
+        pr,
+        ...(fetchedRefs === undefined
+          ? { snapshot: { baseSha, headSha: input.headSha } }
+          : { fetchedRefs: fetchedRefs.value }),
+      }),
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err") return err({ _tag: "StartReviewFailed" });
     try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); } catch { return err({ _tag: "StartReviewFailed" }); }

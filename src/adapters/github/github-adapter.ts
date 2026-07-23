@@ -185,6 +185,8 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
+    /** Immutable remote comparison used only when no managed checkout exists. */
+    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
   }): Promise<Result<string, GitHubReadFailure>>;
   /** Fetch one bounded text blob at an immutable revision for local diff hydration. */
   getFileContents(input: {
@@ -512,6 +514,8 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
+    /** Immutable remote comparison used only when no managed checkout exists. */
+    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
   }): Promise<Result<string, GitHubReadFailure>> {
     if (input.fetchedRefs !== undefined) {
       const fetchedRefs = await this.verifyFetchedRefs(input.fetchedRefs);
@@ -525,6 +529,24 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
           "diff",
           "--no-ext-diff",
           `${input.fetchedRefs.baseRef}...${input.fetchedRefs.headRef}`,
+        ],
+        timeoutMs: commandTimeoutMs,
+      });
+      return exact._tag === "ok"
+        ? exact
+        : commandFailure("get_diff", exact.error);
+    }
+
+    if (input.snapshot !== undefined) {
+      const exact = await this.commands.runText({
+        argv: [
+          "gh",
+          "api",
+          "--hostname",
+          input.profile.githubHost,
+          "-H",
+          "Accept: application/vnd.github.v3.diff",
+          `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
         ],
         timeoutMs: commandTimeoutMs,
       });
@@ -830,6 +852,7 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
+    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
   }): Promise<Result<string, GitHubReadFailure>> {
     void input;
     return this.values.diff === undefined

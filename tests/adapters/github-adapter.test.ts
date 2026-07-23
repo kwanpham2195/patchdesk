@@ -533,6 +533,43 @@ describe("GitHubAdapter read boundary", () => {
     ]);
   });
 
+  it("uses an immutable GitHub comparison when no managed checkout is available", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: "diff --git a/exact.ts b/exact.ts\n",
+        stderr: "",
+      },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    expect(
+      await adapter.getPullRequestDiff({
+        profile,
+        pr,
+        snapshot: {
+          baseSha: mustParse(parseGitSha(baseSha)),
+          headSha: mustParse(parseGitSha(headSha)),
+        },
+      }),
+    ).toEqual({
+      _tag: "ok",
+      value: "diff --git a/exact.ts b/exact.ts\n",
+    });
+    expect(executor.requests).toEqual([
+      [
+        "gh",
+        "api",
+        "--hostname",
+        profile.githubHost,
+        "-H",
+        "Accept: application/vnd.github.v3.diff",
+        `repos/${pr.owner}/${pr.repo}/compare/${baseSha}...${headSha}`,
+      ],
+    ]);
+  });
+
   it("rejects untrusted ref names before a git diff fallback can be requested", () => {
     expect(
       createFetchedDiffRefs({
