@@ -14,17 +14,24 @@ import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile"
 import { startLocalApiServer, type LocalApiServer } from "../../src/main/local-api";
 import { installTestDesktopBridge } from "./bridge-fixture";
 
-test("normal dashboard direct entry opens the persisted in-progress review session", async ({ page }) => {
+test("normal dashboard direct entry opens the prepared review workbench", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-normal-")); let api: LocalApiServer | undefined;
   try {
-    const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths: PatchdeskPaths.forTest(root), github: new FakeGitHubAdapter({ pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Fixture", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" } as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, diff: "+++ b/src/review.ts\n+fixture\n" }) });
+    const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths: PatchdeskPaths.forTest(root), github: new FakeGitHubAdapter({ pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Fixture", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" } as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, diff: "diff --git a/src/review.ts b/src/review.ts\n--- a/src/review.ts\n+++ b/src/review.ts\n@@ -1 +1 @@\n-old\n+fixture\n" }) });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
     await installTestDesktopBridge(page, api.url.toString(), "cap");
     await page.goto(origin(renderer));
     await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1");
     await page.getByRole("button", { name: "Preview pull request" }).click();
-    await expect(page.getByRole("main")).toContainText("Review session started", { timeout: 15_000 });
-    await expect(page.getByText("Preparing the persisted review workbench")).toBeVisible();
+    await expect(page.getByRole("main")).toContainText("Prepared review", { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Fixture" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
+    await expect(page.getByText(/^Session /)).toHaveCount(0);
+    await page.getByRole("button", { name: "View diff" }).click();
+    const diff = page.getByLabel("Diff workbench");
+    await expect(diff).toBeVisible();
+    expect((await diff.boundingBox())?.width).toBeGreaterThan(900);
+    await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
     await page.screenshot({ path: "test-results/milestone-12-normal-open.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });

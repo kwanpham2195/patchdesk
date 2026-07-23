@@ -21,6 +21,7 @@ import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
+import { cn } from "@/lib/utils";
 import {
   Sheet,
   SheetContent,
@@ -34,9 +35,13 @@ import {
 export function DiffWorkbench({
   patch,
   finding,
+  className,
+  fillViewport = true,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
+  readonly className?: string;
+  readonly fillViewport?: boolean;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
@@ -69,7 +74,11 @@ export function DiffWorkbench({
     <section
       aria-label="Diff workbench"
       data-patch-bytes={patch.length}
-      className="grid min-h-[calc(100vh-3.5rem)] min-w-0 grid-cols-[15rem_minmax(0,1fr)_18rem] max-[1099px]:grid-cols-1"
+      className={cn(
+        "grid min-w-0 grid-cols-[15rem_minmax(0,1fr)_18rem] max-[1099px]:grid-cols-1",
+        fillViewport ? "min-h-[calc(100vh-3.5rem)]" : "h-full min-h-0",
+        className,
+      )}
     >
       <aside
         aria-label="Review navigation"

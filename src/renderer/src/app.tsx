@@ -690,90 +690,87 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       { kind: "workbench", sessionId: "fixture-session" },
     );
 
-  if (workbench?.state === "review_started")
+  if (workbench?.state === "review_started") {
+    const showingDiff = destination.kind === "workbench" && destination.initialSection === "diff";
+    const showingChecks = destination.kind === "workbench" && destination.initialSection === "checks";
+    const prLabel = `${workbench.session.key.owner}/${workbench.session.key.repo}#${workbench.session.key.prNumber}`;
+    const snapshotLabel = workbench.reviewedHeadSha ?? workbench.session.key.headSha;
+
     return shell(
       <section
-        className="mx-auto max-w-3xl p-6"
-        aria-label="Review in progress"
+        className={showingDiff ? "flex min-h-0 flex-1 flex-col" : "mx-auto w-full max-w-3xl p-6"}
+        aria-label="Prepared review workbench"
       >
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-[.16em] text-primary">
-            Review session started
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold">
-            Preparing the persisted review workbench
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Session {workbench.session.id}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2" aria-label="Read-only inspection actions">
-            <Button variant={destination.kind === "workbench" && destination.initialSection === "diff" ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "diff" })}>View diff</Button>
-            <Button variant={destination.kind === "workbench" && destination.initialSection === "checks" ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "checks" })}>Inspect failing checks</Button>
-          </div>
-          {destination.kind === "workbench" && destination.initialSection === "checks" ? <PreparedChecks checks={workbench.checks} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /> : null}
-          {destination.kind === "workbench" && destination.initialSection === "diff" && workbench.fullPatch !== undefined ? <div className="mt-4"><DiffWorkbench patch={workbench.fullPatch} /></div> : null}
-          {workbench.session.currentAttemptId === undefined ? (
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                This session is prepared locally. Run review starts read-only
-                analysis; Patchdesk will never write to GitHub automatically.
-              </p>
-              <Button onClick={() => setRunDialogOpen(true)}>Run review</Button>
-              {runError === undefined ? null : (
-                <Alert variant="destructive" className="mt-3">
-                  <AlertTitle>Review was not started</AlertTitle>
-                  <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
-                    {runError}
-                    <Button variant="outline" size="sm" onClick={() => void openPullRequest({ host: dashboard?.profile.githubHost ?? "github.com", owner: workbench.session.key.owner, repo: workbench.session.key.repo, number: workbench.session.key.prNumber }, "full")}>Refresh and reopen review</Button>
-                  </AlertDescription>
-                </Alert>
-              )}
-              <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
-                <DialogContent aria-describedby="run-review-description">
-                  <DialogHeader>
-                    <DialogTitle>Run local review</DialogTitle>
-                    <DialogDescription id="run-review-description">Patchdesk will inspect the prepared snapshot read-only. It will not write to GitHub.</DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-3 py-2">
-                    <Label className="grid gap-1.5">Model
-                      <Select value={reviewModel} onValueChange={(value) => { if (value !== null) setReviewModel(value); }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{reviewModels.map((model) => <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="grid gap-1.5">Reasoning
-                      <Select value={reviewReasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") setReviewReasoning(value); }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
-                      </Select>
-                    </Label>
-                  </div>
-                  <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button onClick={() => { setRunDialogOpen(false); void startOwnedRun(workbench.session.key.profileId, workbench.session.id); }}>Start read-only review</Button></DialogFooter>
-                </DialogContent>
-              </Dialog>
+        <div className={showingDiff ? "flex min-h-0 flex-1 flex-col bg-card" : "rounded-xl border bg-card p-6 shadow-sm"}>
+          <header className={showingDiff ? "flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-4 py-3" : undefined}>
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[.16em] text-primary">Prepared review</p>
+              <h1 className="mt-2 text-2xl font-semibold">{workbench.pullRequest?.title ?? `Pull request ${prLabel}`}</h1>
+              <p className="mt-2 text-sm text-muted-foreground">{prLabel} · snapshot {snapshotLabel.slice(0, 12)} · read-only</p>
             </div>
-          ) : (
+            <div className="flex flex-wrap gap-2" aria-label="Read-only inspection actions">
+              <Button variant={showingDiff ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "diff" })}>View diff</Button>
+              <Button variant={showingChecks ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "checks" })}>Inspect failing checks</Button>
+              {workbench.session.currentAttemptId === undefined ? <Button size="sm" onClick={() => setRunDialogOpen(true)}>Run review</Button> : null}
+            </div>
+          </header>
+          {showingChecks ? <div className="p-4"><PreparedChecks checks={workbench.checks} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /></div> : null}
+          {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} className="min-h-0 flex-1" fillViewport={false} /> : null}
+          {workbench.session.currentAttemptId === undefined ? (
+            showingDiff || showingChecks ? null : (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-muted-foreground">Inspect the saved diff and checks first. Run review starts read-only analysis; Patchdesk will never write to GitHub automatically.</p>
+                {runError === undefined ? null : (
+                  <Alert variant="destructive">
+                    <AlertTitle>Review was not started</AlertTitle>
+                    <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
+                      {runError}
+                      <Button variant="outline" size="sm" onClick={() => void openPullRequest({ host: dashboard?.profile.githubHost ?? "github.com", owner: workbench.session.key.owner, repo: workbench.session.key.repo, number: workbench.session.key.prNumber }, "full")}>Refresh and reopen review</Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )
+          ) : showingDiff || showingChecks ? null : (
             <SafeRunPanel
               profileId={workbench.session.key.profileId}
               sessionId={workbench.session.id}
               attemptId={workbench.session.currentAttemptId}
-              {...(workbench.runId === undefined
-                ? {}
-                : { runId: workbench.runId })}
-              onStart={async () =>
-                startOwnedRun(
-                  workbench.session.key.profileId,
-                  workbench.session.id,
-                  workbench.session.currentAttemptId,
-                )
-              }
+              {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
+              onStart={async () => startOwnedRun(workbench.session.key.profileId, workbench.session.id, workbench.session.currentAttemptId)}
               onCompleted={loadCompletedWorkbench}
             />
           )}
+          {workbench.session.currentAttemptId === undefined ? (
+            <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
+              <DialogContent aria-describedby="run-review-description">
+                <DialogHeader>
+                  <DialogTitle>Run local review</DialogTitle>
+                  <DialogDescription id="run-review-description">Patchdesk will inspect the prepared snapshot read-only. It will not write to GitHub.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3 py-2">
+                  <Label className="grid gap-1.5">Model
+                    <Select value={reviewModel} onValueChange={(value) => { if (value !== null) setReviewModel(value); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{reviewModels.map((model) => <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Label>
+                  <Label className="grid gap-1.5">Reasoning
+                    <Select value={reviewReasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") setReviewReasoning(value); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
+                    </Select>
+                  </Label>
+                </div>
+                <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button onClick={() => { setRunDialogOpen(false); void startOwnedRun(workbench.session.key.profileId, workbench.session.id); }}>Start read-only review</Button></DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : null}
         </div>
       </section>,
       { kind: "workbench", sessionId: workbench.session.id },
     );
+  }
 
   if (workbench?.state === "completed" && dashboard !== undefined) {
     const draftView = workbench.draft as
