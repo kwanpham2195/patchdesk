@@ -31,6 +31,8 @@ type Projection = {
     readonly elapsedMs: number;
     readonly step: Projection["step"];
     readonly label: string;
+    readonly path?: string;
+    readonly findingId?: string;
   }>;
 };
 
@@ -178,18 +180,40 @@ function isProjection(value: unknown): value is Projection {
     typeof item.elapsedMs !== "number" ||
     typeof item.step !== "string"
   ) return false;
+  if (!isStatus(item.status) || !isStep(item.step) || !Number.isInteger(item.elapsedMs) || item.elapsedMs < 0) return false;
+  if (item.message !== undefined && (typeof item.message !== "string" || item.message.length > 160)) return false;
   if (item.activity === undefined) return true;
-  return Array.isArray(item.activity) && item.activity.length <= 40 && item.activity.every(isActivityEvent);
+  return Array.isArray(item.activity) && item.activity.length <= 40 && JSON.stringify(value).length <= 6_144 && item.activity.every(isActivityEvent);
 }
 
 function isActivityEvent(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const event = value as Record<string, unknown>;
   return typeof event.at === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(event.at) &&
     typeof event.elapsedMs === "number" &&
-    typeof event.step === "string" &&
+    Number.isInteger(event.elapsedMs) && event.elapsedMs >= 0 &&
+    isStep(event.step) &&
     typeof event.label === "string" &&
-    event.label.length <= 160;
+    event.label.length > 0 && event.label.length <= 160 &&
+    (event.path === undefined || isSafeRelativePath(event.path)) &&
+    (event.findingId === undefined || isSafeFindingId(event.findingId));
+}
+
+function isStatus(value: unknown): value is Projection["status"] {
+  return value === "queued" || value === "connecting" || value === "running" || value === "completed" || value === "failed" || value === "disconnected";
+}
+
+function isStep(value: unknown): value is Projection["step"] {
+  return value === "preparing" || value === "inspecting" || value === "validating" || value === "drafting" || value === "complete" || value === "failed";
+}
+
+function isSafeRelativePath(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0 && value.length <= 4_096 && !value.startsWith("/") && !value.includes("\0") && !value.split("/").includes("..");
+}
+
+function isSafeFindingId(value: unknown): boolean {
+  return typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
 }
 
 function stepLabel(step: Projection["step"]): string {

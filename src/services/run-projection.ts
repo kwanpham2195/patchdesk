@@ -1,5 +1,11 @@
 import * as v from "valibot";
 
+import {
+  parseFindingId,
+  parseRepoRelativePath,
+  type FindingId,
+  type RepoRelativePath,
+} from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 
 const ACTIVITY_LIMIT = 40;
@@ -19,6 +25,10 @@ export type ReviewActivityEvent = {
   readonly elapsedMs: number;
   readonly step: ReviewActivityStep;
   readonly label: string;
+  /** Optional, validated reference to evidence Patchdesk itself owns. */
+  readonly path?: RepoRelativePath;
+  /** Optional, validated reference to a structured finding. */
+  readonly findingId?: FindingId;
 };
 
 export type ReviewRunMetadata = {
@@ -43,6 +53,8 @@ const activitySchema = v.strictObject({
   elapsedMs: v.pipe(v.number(), v.integer(), v.minValue(0)),
   step: v.picklist(["preparing", "inspecting", "validating", "drafting", "complete", "failed"]),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(160)),
+  path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(4_096))),
+  findingId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
 });
 
 const metadataSchema = v.strictObject({
@@ -68,14 +80,43 @@ export function projectSafeRun(input: unknown): Result<SafeRunProjection, { read
   if (!parsed.success || JSON.stringify(input).length > ACTIVITY_BYTES_LIMIT) {
     return err({ _tag: "InvalidRunProjection" });
   }
+  const activity = parsed.output.activity === undefined
+    ? undefined
+    : parseActivity(parsed.output.activity);
+  if (activity?._tag === "err") return activity;
   return ok({
     status: parsed.output.status,
     elapsedMs: parsed.output.elapsedMs,
     step: parsed.output.step,
-    ...(parsed.output.activity === undefined ? {} : { activity: parsed.output.activity }),
+    ...(activity === undefined ? {} : { activity: activity.value }),
     ...(parsed.output.metadata === undefined ? {} : { metadata: parsed.output.metadata }),
     ...(parsed.output.message === undefined ? {} : { message: parsed.output.message }),
   });
+}
+
+function parseActivity(
+  events: ReadonlyArray<v.InferOutput<typeof activitySchema>>,
+): Result<ReadonlyArray<ReviewActivityEvent>, { readonly _tag: "InvalidRunProjection" }> {
+  const parsed: Array<ReviewActivityEvent> = [];
+  for (const event of events) {
+    const path = event.path === undefined ? undefined : parseRepoRelativePath(event.path);
+    const findingId = event.findingId === undefined ? undefined : parseFindingId(event.findingId);
+    if (
+      (path !== undefined && path._tag === "err") ||
+      (findingId !== undefined && findingId._tag === "err")
+    ) {
+      return err({ _tag: "InvalidRunProjection" });
+    }
+    parsed.push({
+      at: event.at,
+      elapsedMs: event.elapsedMs,
+      step: event.step,
+      label: event.label,
+      ...(path === undefined ? {} : { path: path.value }),
+      ...(findingId === undefined ? {} : { findingId: findingId.value }),
+    });
+  }
+  return ok(parsed);
 }
 
 export function appendRunActivity(

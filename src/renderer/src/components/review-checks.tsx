@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, CircleDashed, CircleX, ExternalLink, MinusCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, CircleX, ExternalLink, MinusCircle } from "lucide-react";
 
 import type { CheckRunSummary, CheckSummary } from "../../../domain/github-context";
 import { Badge } from "@/components/ui/badge";
@@ -17,23 +17,40 @@ export function ReviewChecks({
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const grouped = useMemo(() => groupChecks(checks.checks), [checks.checks]);
+  const visible = grouped.filter((check) => resultFor(check).kind !== "passed");
+  const passing = grouped.filter((check) => resultFor(check).kind === "passed");
+  const [showPassing, setShowPassing] = useState(passing.length <= 5);
+  const rows = showPassing ? grouped : visible;
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b">
       <div className="flex items-center justify-between gap-3 py-2">
         <CollapsibleTrigger render={<Button variant="ghost" size="sm" aria-label={`${open ? "Collapse" : "Expand"} checks`} />}>
           Checks
+          <ChevronDown data-icon="inline-end" className={open ? undefined : "-rotate-90"} aria-hidden="true" />
         </CollapsibleTrigger>
-        <Badge variant={checks.overall === "passing" ? "secondary" : "outline"}>{overallLabel(checks.overall)}</Badge>
+        <span className="text-xs text-muted-foreground" aria-label={`Checks overall: ${overallLabel(checks.overall)}`}>
+          {overallLabel(checks.overall)}
+        </span>
       </div>
       <CollapsibleContent>
         <p className="pb-2 text-xs text-muted-foreground">
           {freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}
         </p>
         {grouped.length === 0 ? <p className="pb-3 text-sm text-muted-foreground">No check details are available.</p> : (
-          <ul className="divide-y border-t" aria-label="Pull request checks">
-            {grouped.map((check) => <CheckRow key={check.key} check={check} />)}
+          <ul className="border-t py-2" aria-label="Pull request checks">
+            {rows.map((check) => <CheckRow key={check.key} check={check} />)}
           </ul>
         )}
+        {!showPassing && passing.length > 0 ? (
+          <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(true)}>
+            Show {passing.length} passing check{passing.length === 1 ? "" : "s"}
+          </Button>
+        ) : null}
+        {showPassing && passing.length > 5 ? (
+          <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(false)}>
+            Hide {passing.length} passing checks
+          </Button>
+        ) : null}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -48,22 +65,31 @@ function groupChecks(checks: ReadonlyArray<CheckRunSummary>): ReadonlyArray<Grou
     const current = grouped.get(key);
     grouped.set(key, current === undefined ? { ...check, key, count: 1 } : { ...current, count: current.count + 1 });
   }
-  return [...grouped.values()];
+  return [...grouped.values()].sort((left, right) => checkPriority(left) - checkPriority(right) || left.name.localeCompare(right.name));
 }
 
 function CheckRow({ check }: { readonly check: GroupedCheck }): React.JSX.Element {
   const result = resultFor(check);
   const Icon = result.kind === "passed" ? CheckCircle2 : result.kind === "failed" ? CircleX : result.kind === "pending" ? CircleDashed : MinusCircle;
   return (
-    <li className="flex min-w-0 items-center gap-2 py-2 text-sm">
+    <li className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
       <Icon className="size-4 shrink-0" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate" title={check.name}>{check.name}</span>
-      <span className="hidden text-xs text-muted-foreground min-[480px]:inline">{requirementLabel(check.required)}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">{result.label}</span>
+      <span className="sr-only">{requirementLabel(check.required)}</span>
+      <span className="shrink-0 text-sm text-muted-foreground">{result.label}</span>
       {check.count > 1 ? <Badge variant="outline">×{check.count}</Badge> : null}
       {check.url === undefined ? null : <Button variant="ghost" size="icon-xs" nativeButton={false} render={<a href={check.url} target="_blank" rel="noreferrer" aria-label={`Open ${check.name} in GitHub`} />}><ExternalLink /></Button>}
     </li>
   );
+}
+
+function checkPriority(check: CheckRunSummary): number {
+  const result = resultFor(check);
+  if (result.kind === "failed" && check.required === true) return 0;
+  if (result.kind === "failed") return 1;
+  if (result.kind === "pending") return 2;
+  if (check.required === true) return 3;
+  return 4;
 }
 
 function requirementLabel(required: CheckRunSummary["required"]): string {
