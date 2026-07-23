@@ -1536,8 +1536,8 @@ function InboxScreen({
         </Alert>
       )}
       <div className="border-b bg-muted/10 px-4 py-2">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-48 flex-1">
+        <div className="flex min-w-0 flex-wrap items-end gap-2">
+          <div className="min-w-0 flex-1 max-sm:basis-full">
             <Label className="sr-only" htmlFor="pr-reference">
               Pull request reference
             </Label>
@@ -1549,7 +1549,7 @@ function InboxScreen({
               onChange={(event) => onReference(event.target.value)}
             />
           </div>
-          <Button size="sm" className="text-xs" onClick={onPreview} disabled={state === "loading"}>
+          <Button size="sm" className="shrink-0 text-xs max-sm:w-full" onClick={onPreview} disabled={state === "loading"}>
             Preview pull request
           </Button>
         </div>
@@ -1647,8 +1647,8 @@ function Pending({
           </AlertDescription>
         </Alert>
       ) : null}
-      <Card className="mt-6 gap-4 py-4">
-        <CardContent className="flex flex-wrap items-end gap-3 px-4">
+      <Card className="mt-6">
+        <CardContent className="flex flex-wrap items-end gap-3">
           <div className="min-w-[15rem] flex-1">
             <Label htmlFor="pr-reference">Pull request reference</Label>
             <Input
@@ -1671,7 +1671,7 @@ function Pending({
         onSettings={onSettings}
       />
       <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="min-w-0 gap-0 py-0">
+        <Card className="min-w-0">
           <Table>
             <TableCaption className="sr-only">
               Pending pull requests in the active watchlist
@@ -1721,14 +1721,14 @@ function Pending({
             </TableBody>
           </Table>
         </Card>
-        <Card className="h-fit gap-4 py-5">
-          <CardHeader className="px-5">
+        <Card className="h-fit">
+          <CardHeader>
             <CardTitle>Review inspector</CardTitle>
             <CardDescription>
               Select a pull request to verify its exact identity before launch.
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-5">
+          <CardContent>
             {selected === undefined ? (
               <p className="text-sm text-muted-foreground">
                 No pull request selected.
@@ -2002,7 +2002,7 @@ function ReviewRecords({
       <div className="mt-6 space-y-3">
         {state === "loading" || state === "idle" ? (
           <Card role="status" aria-label="Loading local review records">
-            <CardContent className="space-y-3 py-6">
+            <CardContent className="space-y-3">
               <Skeleton className="h-5 w-2/3" />
               <Skeleton className="h-9 w-full" />
             </CardContent>
@@ -2034,14 +2034,14 @@ function ReviewRecords({
             )}
             {visible.length === 0 ? (
               <Card>
-                <CardContent className="py-6 text-sm text-muted-foreground">
+                <CardContent className="text-sm text-muted-foreground">
                   No matching local review records.
                 </CardContent>
               </Card>
             ) : (
               visible.map((record) => (
-                <Card key={record.id} className="gap-3 py-4">
-                  <CardContent className="flex flex-wrap items-center justify-between gap-4 px-4">
+                <Card key={record.id}>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">{record.state}</Badge>
@@ -2184,6 +2184,10 @@ function Settings({
               <Label htmlFor="active-profile">Active profile</Label>
               <Select
                 value={dashboard?.profile.id ?? profileDraft.id}
+                items={profiles.map((profile) => ({
+                  label: profile.label,
+                  value: profile.id,
+                }))}
                 onValueChange={(value) => {
                   if (value !== null) onSelectProfile(value);
                 }}
@@ -2395,8 +2399,8 @@ function Settings({
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         {dashboard?.dashboard.repos.map(({ repo }) => (
-          <Card key={key(repo)} className="gap-4 py-5">
-            <CardHeader className="px-5">
+          <Card key={key(repo)}>
+            <CardHeader>
               <CardTitle>
                 {repo.owner}/{repo.repo}
               </CardTitle>
@@ -2404,7 +2408,7 @@ function Settings({
                 {repo.archived ? "Archived repository" : "Active repository"}
               </CardDescription>
             </CardHeader>
-            <CardContent className="px-5">
+            <CardContent>
               <Label htmlFor={`path-${key(repo)}`}>
                 Local path for {repo.owner}/{repo.repo}
               </Label>

@@ -11,7 +11,7 @@ test("merge confirmation shows warnings and requires acknowledgement", async ({ 
     await expect(page.getByRole("alertdialog", { name: "Confirm merge" })).toBeVisible();
     await expect(page.getByText("request changes, high severity finding")).toBeVisible();
     await expect(page.getByText("centraldigital/patchdesk#42")).toBeVisible();
-    await page.getByLabel("I acknowledge the merge warnings.").check();
+    await page.getByRole("checkbox", { name: "I acknowledge the merge warnings." }).check();
     await page.getByRole("button", { name: "Confirm merge" }).click();
     await expect(page.getByText("Merged abcdef.")).toBeVisible();
     await page.screenshot({ path: "test-results/milestone-11-browser.png", fullPage: true });

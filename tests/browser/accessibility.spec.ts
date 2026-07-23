@@ -73,21 +73,32 @@ test("keyboard users can skip, navigate, and close quick navigation", async ({
   ).toBeHidden();
 });
 
-test("quick navigation scrolls results without obscuring them behind its footer", async ({
+test("quick navigation scrolls results through the final action", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 480 });
   await page.goto(origin(renderer));
-  await page.keyboard.press("Meta+K");
+  await page.getByRole("button", { name: /Navigate/ }).click();
 
   const dialog = page.getByRole("dialog", { name: "Navigate Patchdesk" });
   const list = dialog.locator('[data-slot="command-list"]');
-  const footer = dialog.getByText("to navigate").locator("..");
+  const selectedOption = dialog.locator(
+    '[data-slot="command-item"][data-selected="true"]',
+  );
+  const unselectedOption = dialog.locator(
+    '[data-slot="command-item"][data-selected="false"]',
+  ).first();
   const lastAction = dialog.getByRole("option", {
     name: "Open selected pull request",
   });
 
   await expect(list).toBeVisible();
+  await expect(selectedOption).toHaveCount(1);
+  expect(
+    await selectedOption.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).not.toEqual(
+    await unselectedOption.evaluate((element) => getComputedStyle(element).backgroundColor),
+  );
   expect(
     await list.evaluate((element) => element.scrollHeight > element.clientHeight),
   ).toBe(true);
@@ -95,19 +106,17 @@ test("quick navigation scrolls results without obscuring them behind its footer"
   await lastAction.scrollIntoViewIfNeeded();
   await expect(lastAction).toBeVisible();
 
-  const [listBox, footerBox, actionBox] = await Promise.all([
+  const [listBox, actionBox] = await Promise.all([
     list.boundingBox(),
-    footer.boundingBox(),
     lastAction.boundingBox(),
   ]);
   expect(listBox).not.toBeNull();
-  expect(footerBox).not.toBeNull();
   expect(actionBox).not.toBeNull();
-  if (listBox === null || footerBox === null || actionBox === null) {
-    throw new Error("quick navigation did not render its list, footer, and action");
+  if (listBox === null || actionBox === null) {
+    throw new Error("quick navigation did not render its list and final action");
   }
-  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(footerBox.y);
-  expect(footerBox.y).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
+  expect(actionBox.y).toBeGreaterThanOrEqual(listBox.y);
+  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(listBox.y + listBox.height);
 });
 
 test("forced colors and reduced motion preserve the workbench interaction surface", async ({

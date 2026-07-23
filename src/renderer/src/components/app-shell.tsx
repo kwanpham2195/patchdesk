@@ -25,6 +25,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
@@ -231,7 +232,7 @@ export function AppShell({
           aria-label="Workspace navigation"
           collapsible="icon"
         >
-          <SidebarHeader className="gap-1.5 px-2 py-2">
+          <SidebarHeader className="gap-1.5 px-2 py-2 group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel className="h-auto px-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               Workspace
             </SidebarGroupLabel>
@@ -242,11 +243,11 @@ export function AppShell({
               </p>
             </div>
           </SidebarHeader>
-          <SidebarContent>
+          <SidebarContent className="group-data-[collapsible=icon]:pt-2">
             <SidebarGroup className="p-0">
               <SidebarGroupContent>
                 <nav aria-label="Primary">
-                  <SidebarMenu>
+                  <SidebarMenu className="group-data-[collapsible=icon]:items-center">
                     {primaryDestinations.map((item) => {
                       const Icon = icons[item.kind];
                       const current = destination.kind === item.kind;
@@ -270,7 +271,7 @@ export function AppShell({
               </SidebarGroupContent>
             </SidebarGroup>
             {workspacePanel === undefined ? null : (
-              <SidebarGroup className="border-t px-2 pt-2">
+              <SidebarGroup className="border-t px-2 pt-2 group-data-[collapsible=icon]:hidden">
                 {workspacePanel}
               </SidebarGroup>
             )}
@@ -325,6 +326,7 @@ export function AppShell({
                 );
               })}
             </CommandGroup>
+            <CommandSeparator />
             <CommandGroup heading="Inbox">
               {inboxCommands.map(([id, label]) => (
                 <CommandItem key={id} value={label} onSelect={() => chooseInboxView(id)}>
@@ -338,13 +340,6 @@ export function AppShell({
               </CommandItem>
             </CommandGroup>
           </CommandList>
-          <div className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 text-[11px] text-muted-foreground">
-            <Kbd>↑↓</Kbd>
-            <span>to navigate</span>
-            <Kbd>↵</Kbd>
-            <span>to open</span>
-            <Kbd className="ml-auto">esc</Kbd>
-          </div>
         </Command>
       </CommandDialog>
       </div>

@@ -267,7 +267,7 @@ export function ReviewWorkbench(props: {
     <section
       aria-label="Completed review workbench"
       data-density={preferences.density}
-      className={`min-w-0 overflow-x-hidden ${preferences.density === "compact" ? "review-density-compact" : ""}`}
+      className="min-w-0 overflow-x-hidden"
     >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="min-w-0">

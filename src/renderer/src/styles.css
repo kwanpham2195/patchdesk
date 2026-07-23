@@ -1,60 +1,41 @@
 @import "tailwindcss";
+@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   color-scheme: dark;
   --radius: 0.625rem;
-  --pd-canvas: #010102;
-  --pd-surface-1: #0f1011;
-  --pd-surface-2: #141516;
-  --pd-surface-3: #18191a;
-  --pd-surface-4: #191a1b;
-  --pd-border-subtle: #23252a;
-  --pd-border-strong: #34343a;
-  --pd-border-hover: #3e3e44;
-  --pd-text: #f7f8f8;
-  --pd-text-muted: #a1a1aa;
-  --pd-text-subtle: #71717a;
-  --pd-accent: #5e6ad2;
-  --pd-accent-hover: #828fff;
-  --pd-focus: #5e69d1;
-  --background: var(--pd-canvas);
-  --foreground: var(--pd-text);
-  --card: var(--pd-surface-1);
-  --card-foreground: var(--pd-text);
-  --popover: var(--pd-surface-3);
-  --popover-foreground: var(--pd-text);
-  --primary: var(--pd-accent);
-  --primary-foreground: #ffffff;
-  --secondary: var(--pd-surface-3);
-  --secondary-foreground: var(--pd-text);
-  --muted: var(--pd-surface-2);
-  --muted-foreground: var(--pd-text-muted);
-  --accent: #202229;
-  --accent-foreground: var(--pd-text);
-  --destructive: #e5484d;
-  --border: var(--pd-border-subtle);
-  --input: var(--pd-border-strong);
-  --ring: var(--pd-focus);
-  font-family:
-    "SF Pro Display",
-    "SF Pro Text",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  --sidebar: var(--pd-surface-1);
-  --sidebar-foreground: var(--pd-text);
-  --sidebar-primary: var(--pd-accent);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #202229;
-  --sidebar-accent-foreground: var(--pd-text);
-  --sidebar-border: var(--pd-border-subtle);
-  --sidebar-ring: var(--pd-focus);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @theme inline {
+  --font-sans: "Geist Variable", sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -97,7 +78,7 @@ body {
   min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: var(--font-sans);
 }
 
 @layer base {
@@ -107,11 +88,6 @@ body {
   select {
     font: inherit;
   }
-}
-
-:focus-visible {
-  outline: 3px solid color-mix(in oklab, var(--ring) 55%, transparent);
-  outline-offset: 2px;
 }
 
 .skip-link {
@@ -137,7 +113,7 @@ body {
   justify-content: space-between;
   gap: 0.75rem;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in oklab, var(--pd-surface-1) 92%, transparent);
+  background: var(--background);
   padding: 0 0.875rem;
   -webkit-app-region: drag;
 }
@@ -159,7 +135,7 @@ body {
   min-width: 0;
   max-width: var(--sidebar-width);
   height: auto;
-  transition: flex-basis 160ms var(--pd-ease-out);
+  transition: flex-basis 160ms ease-out;
 }
 .app-frame > [data-slot="sidebar"][data-state="collapsed"] {
   flex-basis: var(--sidebar-width-icon);
@@ -176,46 +152,13 @@ body {
   width: 100%;
   height: auto;
   border-right: 1px solid var(--border);
-  transition: width 160ms var(--pd-ease-out);
+  transition: width 160ms ease-out;
 }
 .app-frame [data-slot="sidebar-inner"] {
   border-radius: 0;
 }
 .app-sidebar {
   background: var(--sidebar);
-}
-
-.review-density-compact {
-  font-size: 13px;
-}
-.review-density-compact
-  [data-slot="button"]:not([data-size="icon"]):not([data-size="icon-lg"]) {
-  font-size: 12px;
-}
-.review-density-compact [data-slot="badge"] {
-  font-size: 10px;
-}
-.review-density-compact [data-slot="tabs-trigger"] {
-  font-size: 12px;
-}
-
-@media (min-width: 1280px) {
-  :root[data-patchdesk-density="compact"] [data-slot="dialog-content"] {
-    gap: 0.75rem;
-    padding: 1rem;
-  }
-
-  :root[data-patchdesk-density="compact"] [data-slot="dialog-header"] {
-    gap: 0.25rem;
-  }
-
-  :root[data-patchdesk-density="compact"] [data-slot="sheet-content"] {
-    padding: 1rem;
-  }
-
-  :root[data-patchdesk-density="compact"] [data-slot="card-header"] {
-    gap: 0.25rem;
-  }
 }
 
 @media (max-width: 959px) {
@@ -311,15 +254,4 @@ body {
     background: Canvas;
     color: CanvasText;
   }
-}
-
-.dark {
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }

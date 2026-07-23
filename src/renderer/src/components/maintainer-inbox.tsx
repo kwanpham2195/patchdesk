@@ -274,12 +274,20 @@ export function MaintainerInbox({
     </div>
   );
 
+  const desktopGridColumns = queueOpen
+    ? inspectorOpen
+      ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]"
+      : "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]"
+    : inspectorOpen
+      ? "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)_21rem]"
+      : "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)]";
+
   return (
-    <div className="min-h-[calc(100vh-3rem)] bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem] min-[1280px]:overflow-hidden">
+    <div className={cn("min-h-[calc(100vh-3rem)] min-w-0 bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:overflow-hidden", desktopGridColumns)}>
       <QueueRail rows={rows} view={view} savedViews={savedViews} open={queueOpen} onSelect={selectView} onSelectSaved={selectSavedView} onSaveCurrent={() => setSaveViewOpen(true)} onDeleteSaved={setDeleteView} onToggle={toggleQueue} />
-      <ScrollArea className="min-w-0 min-[1280px]:h-full">{main}</ScrollArea>
-      <aside className={cn("hidden min-w-0 border-l min-[1280px]:block", !inspectorOpen && "min-[1280px]:hidden")} aria-label="Review details">
-        <ScrollArea className="h-full"><Inspector {...(selected === undefined ? {} : { row: selected })} freshness={freshness} onAction={() => selected === undefined ? undefined : requestAction(selected, onOpenReview, onOpenSession, setScopePreview)} /></ScrollArea>
+      <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">{main}</ScrollArea>
+      <aside className={cn("hidden min-w-0 overflow-hidden border-l min-[1280px]:block", !inspectorOpen && "min-[1280px]:hidden")} aria-label="Review details">
+        <ScrollArea className="h-full overflow-x-hidden"><Inspector {...(selected === undefined ? {} : { row: selected })} freshness={freshness} onAction={() => selected === undefined ? undefined : requestAction(selected, onOpenReview, onOpenSession, setScopePreview)} /></ScrollArea>
       </aside>
       <Sheet open={narrow && inspectorOpen && selected !== undefined} onOpenChange={(open) => { if (!open && narrow) toggleInspector(); }}>
         <SheetContent side="right" className="w-[min(24rem,calc(100vw-1rem))] p-0 min-[1280px]:hidden">
@@ -349,7 +357,7 @@ function Inspector({ row, freshness, onAction }: { readonly row?: InboxRow; read
   return <div className="space-y-3 p-3"><div><p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Review details</p><h2 className="mt-1.5 text-[13px] leading-5 font-semibold">#{row.identity.number} {row.title}</h2><p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={`${row.identity.owner}/${row.identity.repo}`}>{row.identity.owner}/{row.identity.repo}</p></div><Separator /><div className="space-y-1.5 text-[11px]"><Detail label="Author" value={row.author} /><Detail label="Branch" value={`${row.baseBranch} ← ${row.headBranch}`} /><Detail label="Current head" value={shortSha(row.currentHeadSha)} /><Detail label="Checks" value={row.checks.overall} /><Detail label="Changes" value={changeStats(row)} />{row.latestReview === undefined ? <Detail label="Last review" value="Not reviewed" /> : <><Detail label="Reviewed head" value={shortSha(row.latestReview.reviewedHeadSha)} /><Detail label="Local review" value={row.latestReview.state.replaceAll("_", " ")} /></>}</div>{reviewChanged ? <Card className="gap-1.5 border-primary/30 bg-primary/5 py-2.5"><CardHeader className="px-2.5"><CardTitle className="text-xs">Updates since your review</CardTitle><CardDescription className="text-[11px] leading-4">Current head differs from the exact saved review head.</CardDescription></CardHeader></Card> : null}{freshness === "cached" ? <Card className="gap-1.5 border-amber-500/30 bg-amber-500/5 py-2.5"><CardContent className="flex gap-2 px-2.5 text-[11px] leading-4 text-muted-foreground"><CircleAlert className="size-3.5 shrink-0 text-amber-500" />GitHub data is cached. Merge-oriented actions remain unavailable.</CardContent></Card> : null}<Button size="sm" className="h-8 w-full text-xs" onClick={onAction} disabled={freshness === "cached" && row.recommendedAction.kind === "open_merge_readiness"}>{actionIcon(row.recommendedAction.kind)}{row.recommendedAction.label}</Button><p className="text-[11px] leading-4 text-muted-foreground">Starting a review is read-only. Patchdesk requires a separate confirmation for every GitHub write.</p></div>;
 }
 
-function Detail({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element { return <div className="flex items-start justify-between gap-3"><span className="shrink-0 text-muted-foreground">{label}</span><span className="min-w-0 text-right font-medium break-words">{value}</span></div>; }
+function Detail({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element { return <div className="flex min-w-0 items-start justify-between gap-3"><span className="shrink-0 text-muted-foreground">{label}</span><span className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value}</span></div>; }
 function CheckBadge({ overall }: { readonly overall: InboxRow["checks"]["overall"] }): React.JSX.Element { const variant = overall === "failing" ? "destructive" : overall === "passing" ? "secondary" : "outline"; return <Badge variant={variant} className="h-4 px-1 text-[10px]">{overall}</Badge>; }
 function Reason({ row }: { readonly row: InboxRow }): React.JSX.Element { if (row.categories.includes("updated_since_review")) return <span>Updated since review</span>; if (row.categories.includes("needs_review")) return <span>Review requested</span>; if (row.categories.includes("checks_failing")) return <span className="text-destructive">Checks failing</span>; return <span>{row.recommendedAction.label}</span>; }
 function reasonText(row: InboxRow): string { if (row.categories.includes("updated_since_review")) return "Updated since review"; if (row.categories.includes("needs_review")) return "Review requested"; if (row.categories.includes("checks_failing")) return "Checks failing"; return row.recommendedAction.label; }
