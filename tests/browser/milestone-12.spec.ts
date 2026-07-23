@@ -38,7 +38,7 @@ test("normal dashboard opens a seeded completed workbench and writes one confirm
     if (started._tag !== "started") throw new Error("api"); api = started.server;
     await installTestDesktopBridge(page, api.url.toString(), "cap");
     await page.goto(origin(renderer)); await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1"); await page.getByRole("button", { name: "Preview pull request" }).click();
-    await expect(page.getByRole("main")).toContainText("Completed review"); await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
+    await expect(page.getByRole("main")).toContainText("Review complete"); await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
     await page.getByRole("button", { name: "Create pending review" }).click(); await page.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }).check(); await page.getByRole("button", { name: "Confirm pending review" }).click();
     await expect(page.getByText("Pending review 9001 created.")).toBeVisible(); expect(creates).toBe(1); await page.screenshot({ path: "test-results/milestone-12-completed-workbench.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }

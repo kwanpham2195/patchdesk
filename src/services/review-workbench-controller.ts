@@ -99,7 +99,12 @@ export class ReviewWorkbenchController {
     // model attempt is deliberately a separate explicit action.
     if (stored._tag === "ok") {
       const prepared = await readFile(stored.value.patchPath, "utf8").catch(() => undefined);
-      if (prepared !== undefined) return this.project(profile.value, stored.value);
+      // A saved result remains useful even if a previous local checkout or its
+      // patch has been cleaned up. Keep it readable; opening it must never
+      // silently rerun preparation or the model just to render the result.
+      if (prepared !== undefined || stored.value.state._tag === "ReviewCompleted") {
+        return this.project(profile.value, stored.value);
+      }
     }
     if (stored._tag === "err" && stored.error.reason !== "not_found") return err({ reason: "storage" });
     const requestedMode = field(input, "mode");

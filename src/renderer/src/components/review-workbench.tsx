@@ -799,7 +799,7 @@ function confidenceText(confidence: "high" | "medium" | "low"): string {
 }
 
 function SeverityBadge({ severity }: { readonly severity: "P0" | "P1" | "P2" | "P3" }): React.JSX.Element {
-  return <Badge variant="outline" className={severity === "P0" || severity === "P1" ? "border-destructive/60 text-destructive" : undefined} aria-label={severityLabel(severity)}>{severityLabel(severity)}</Badge>;
+  return <Badge variant="outline" className={severity === "P0" || severity === "P1" ? "border-destructive text-foreground" : undefined} aria-label={severityLabel(severity)}>{severityLabel(severity)}</Badge>;
 }
 
 function FindingList({

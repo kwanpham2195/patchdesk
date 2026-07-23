@@ -69,8 +69,8 @@ export function ChangedFileTree({
               <FileCode2 className="size-3.5 shrink-0" />
               <span className="min-w-0 flex-1 truncate" title={path}>{path}</span>
               <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums" aria-hidden="true" data-file-change-stats data-additions={stats.additions} data-deletions={stats.deletions}>
-                <span className="text-emerald-400">+{stats.additions}</span>
-                <span className="text-rose-400">-{stats.deletions}</span>
+                <span className="text-emerald-700 dark:text-emerald-400">+{stats.additions}</span>
+                <span className="text-rose-700 dark:text-rose-400">-{stats.deletions}</span>
               </span>
               <span id={descriptionId} className="sr-only">{stats.additions} additions, {stats.deletions} deletions</span>
             </Button>

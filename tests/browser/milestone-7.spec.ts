@@ -7,10 +7,10 @@ test("diff workbench", async ({ page }) => {
   const server = await serveRenderer();
   try {
     await page.goto(`${origin(server)}/#diff-fixture`);
-    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
     await expect
       .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme))
-      .toBe("dark");
+      .toBe("light");
     await expect(
       page.getByRole("region", { name: "Diff workbench" }),
     ).toBeVisible();

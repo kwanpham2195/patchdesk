@@ -152,6 +152,11 @@ export function ReviewDiffView({
   );
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
+  const [viewerRoot, setViewerRoot] = useState<HTMLDivElement | null>(null);
+  const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
+    viewerContainer.current = node;
+    setViewerRoot(node);
+  }, []);
   const nextItemIndex = useRef(1);
   const userScrollIntent = useRef(false);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
@@ -382,31 +387,74 @@ export function ReviewDiffView({
 
   useEffect(() => {
     if (!virtualized || preferences.fileMode !== "all") return;
-    const root = viewerContainer.current;
+    const root = viewerRoot;
     if (root === null) return;
-    const noteScrollIntent = (): void => {
+    const noteScrollIntent = (event: Event): void => {
       userScrollIntent.current = true;
+      if (!(event instanceof WheelEvent) || event.deltaY <= root.clientHeight) {
+        return;
+      }
+      const codeView = viewer.current?.getInstance();
+      if (codeView === undefined || nextItemIndex.current >= items.length) return;
+      // A high-resolution wheel gesture can be consumed by Pierre before its
+      // virtual scaffold emits a near-end scroll notification. Append one
+      // bounded batch and continue with Pierre's public scroll API; do not
+      // prevent the event or touch the outer workbench scroll position.
+      userScrollIntent.current = false;
+      appendVisibleBatch();
+      requestAnimationFrame(() => {
+        codeView.scrollTo({
+          type: "position",
+          position: codeView.getScrollHeight(),
+          behavior: "instant",
+        });
+      });
     };
-    root.addEventListener("wheel", noteScrollIntent, { passive: true });
+    const appendFromNativeScroll = (): void => {
+      if (
+        !userScrollIntent.current ||
+        root.scrollTop + root.clientHeight < root.scrollHeight - 200
+      ) {
+        return;
+      }
+      const codeView = viewer.current?.getInstance();
+      if (codeView === undefined) return;
+      userScrollIntent.current = false;
+      appendVisibleBatch();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          codeView.scrollTo({
+            type: "position",
+            position: root.scrollTop + 64,
+            behavior: "instant",
+          });
+        });
+      });
+    };
+    // Pierre handles wheel input inside its own virtual scroll implementation.
+    // Capture intent before that handler runs without changing native behavior.
+    root.addEventListener("wheel", noteScrollIntent, { passive: true, capture: true });
     root.addEventListener("touchmove", noteScrollIntent, { passive: true });
     root.addEventListener("pointerdown", noteScrollIntent);
     root.addEventListener("keydown", noteScrollIntent);
+    root.addEventListener("scroll", appendFromNativeScroll, { passive: true });
     return () => {
-      root.removeEventListener("wheel", noteScrollIntent);
+      root.removeEventListener("wheel", noteScrollIntent, { capture: true });
       root.removeEventListener("touchmove", noteScrollIntent);
       root.removeEventListener("pointerdown", noteScrollIntent);
       root.removeEventListener("keydown", noteScrollIntent);
+      root.removeEventListener("scroll", appendFromNativeScroll);
     };
-  }, [preferences.fileMode, viewerKey, virtualized]);
+  }, [appendVisibleBatch, preferences.fileMode, viewerKey, viewerRoot, virtualized]);
 
   const handleViewerScroll = useCallback(
-    (scrollTop: number, codeView: PierreCodeView): void => {
+    (_scrollTop: number, codeView: PierreCodeView): void => {
       const root = viewerContainer.current;
       if (
         !userScrollIntent.current ||
         root === null ||
         preferences.fileMode !== "all" ||
-        scrollTop + root.clientHeight < codeView.getScrollHeight() - 200
+        _scrollTop + root.clientHeight < codeView.getScrollHeight() - 200
       ) {
         return;
       }
@@ -414,10 +462,14 @@ export function ReviewDiffView({
       appendVisibleBatch();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // Keep a continuous wheel gesture moving into the first appended
-          // file. Without this nudge, a large wheel delta stops at the old
-          // boundary and leaves the next file below the viewport.
-          root.scrollBy({ top: 64, behavior: "instant" });
+          // Continue through the newly appended batch via Pierre's scroll
+          // owner. Do not nudge an outer DOM scroll container: Pierre owns
+          // virtual scroll state and keeps the logical offset coherent.
+          codeView.scrollTo({
+            type: "position",
+            position: root.scrollTop + 64,
+            behavior: "instant",
+          });
         });
       });
     },
@@ -639,7 +691,7 @@ export function ReviewDiffView({
             key={`${viewerKey}-${themeFamily}-${appearance}`}
             ref={viewer}
             initialItems={items.slice(0, 1)}
-            containerRef={viewerContainer}
+            containerRef={setViewerContainer}
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-hidden overflow-y-auto font-mono"
             style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
