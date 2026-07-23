@@ -230,15 +230,14 @@ describe("dashboard renderer API flow", () => {
     ).toBe(false);
   });
 
-  it("refreshes only the selected watchlist repository", async () => {
+  it("refreshes only the selected repository from Settings", async () => {
     const fetch = installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
 
-    await user.click(
-      screen.getByRole("button", { name: "Refresh centraldigital/patchdesk" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Refresh centraldigital/patchdesk" }));
 
     expect(
       fetch.mock.calls.some(

@@ -512,15 +512,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                         </Badge>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="mt-1"
-                      aria-label={`Refresh ${repo.owner}/${repo.repo}`}
-                      onClick={() => void refreshRepo(repo)}
-                    >
-                      Refresh
-                    </Button>
                   </div>
                 ))}
               </div>
