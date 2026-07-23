@@ -189,9 +189,11 @@ function ReviewDiffSurface({
   );
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
+  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const pendingAppendedScrollPath = useRef<string | undefined>(undefined);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
+    setViewerElement(node);
   }, []);
   const nextItemIndex = useRef(1);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
@@ -207,6 +209,42 @@ function ReviewDiffSurface({
     window.addEventListener("patchdesk:appearance", onAppearance);
     return () => window.removeEventListener("patchdesk:appearance", onAppearance);
   }, []);
+  useEffect(() => {
+    if (
+      viewerElement === null ||
+      window.localStorage.getItem("patchdesk.qa.scroll-diagnostics") !== "enabled"
+    ) return;
+
+    const capture = (event: WheelEvent): void => {
+      const outer = document.querySelector<HTMLElement>("[data-review-scroll-container]");
+      const target = event.target instanceof Element ? event.target : undefined;
+      const path = event.composedPath()
+        .filter((entry): entry is Element => entry instanceof Element)
+        .slice(0, 8)
+        .map((entry) => entry.tagName.toLowerCase() + (entry.id.length === 0 ? "" : `#${entry.id}`));
+      const qaWindow = window as Window & {
+        __patchdeskScrollDiagnostic?: Record<string, unknown>;
+      };
+      qaWindow.__patchdeskScrollDiagnostic = {
+        wheelTarget: target?.tagName.toLowerCase(),
+        composedPath: path,
+        viewer: {
+          scrollTop: viewerElement.scrollTop,
+          scrollHeight: viewerElement.scrollHeight,
+          clientHeight: viewerElement.clientHeight,
+          clientWidth: viewerElement.clientWidth,
+        },
+        outer: outer === null ? undefined : {
+          scrollTop: outer.scrollTop,
+          scrollHeight: outer.scrollHeight,
+          clientHeight: outer.clientHeight,
+        },
+        codeViewScrollHeight: viewer.current?.getInstance()?.getScrollHeight(),
+      };
+    };
+    viewerElement.addEventListener("wheel", capture, { capture: true, passive: true });
+    return () => viewerElement.removeEventListener("wheel", capture, true);
+  }, [viewerElement]);
   useEffect(() => {
     const onTheme = (event: Event): void => {
       setThemePreferences(
