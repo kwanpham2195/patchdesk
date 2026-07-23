@@ -66,6 +66,7 @@ const DARK_DIFF_STYLE = {
   "--diffs-fg-number-deletion-override": "#fb7185",
   fontSize: "13px",
   lineHeight: "20px",
+  fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
 
 const LIGHT_DIFF_STYLE = {
@@ -85,6 +86,7 @@ const LIGHT_DIFF_STYLE = {
   "--diffs-fg-number-deletion-override": "#be123c",
   fontSize: "13px",
   lineHeight: "20px",
+  fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
 
 export type SelectedDiffRange = {
@@ -686,6 +688,10 @@ function AccessiblePatch({
   return (
     <div
       className="h-[calc(100vh-12rem)] overflow-auto p-3 font-mono text-[13px] leading-5"
+      style={{
+        fontFamily:
+          '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+      }}
       role="region"
       aria-label="Plain text diff"
       tabIndex={0}
