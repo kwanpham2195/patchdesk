@@ -39,7 +39,7 @@ test("compact Pierre controls persist and collapsed finding targets reopen", asy
     await page.goto(`${origin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
 
-    await page.getByRole("button", { name: "Collapse", exact: true }).click();
+    await page.getByRole("button", { name: "Collapse files", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Expand file src/a.ts" }),
     ).toBeVisible();

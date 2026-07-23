@@ -22,7 +22,7 @@ describe("review workbench", () => {
       />,
     );
     await user.click(screen.getByLabelText("Fix queue status for Protect guard"));
-    await user.click(screen.getByRole("option", { name: "Investigating" }));
+    await user.click(await screen.findByRole("option", { name: "Investigating" }));
     expect(window.localStorage.getItem("patchdesk.fix-queue.v1.fix-queue.abcdef")).toContain('"guard":"investigating"');
   });
 

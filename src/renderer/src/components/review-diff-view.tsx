@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -59,6 +60,8 @@ const DARK_DIFF_STYLE = {
   "--diffs-fg-number-override": "#78869a",
   "--diffs-fg-number-addition-override": "#63d68b",
   "--diffs-fg-number-deletion-override": "#fb7185",
+  "--patchdesk-diff-addition-token": "#bbf7d0",
+  "--patchdesk-diff-deletion-token": "#fecdd3",
   fontSize: "13px",
   lineHeight: "20px",
   fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -79,10 +82,26 @@ const LIGHT_DIFF_STYLE = {
   "--diffs-fg-number-override": "#64748b",
   "--diffs-fg-number-addition-override": "#15803d",
   "--diffs-fg-number-deletion-override": "#be123c",
+  "--patchdesk-diff-addition-token": "#166534",
+  "--patchdesk-diff-deletion-token": "#881337",
   fontSize: "13px",
   lineHeight: "20px",
   fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
+
+// Pierre renders code in a shadow root, so the safety rule must travel through
+// its documented `unsafeCSS` seam rather than the application stylesheet. The
+// semantic diff backgrounds stay Pierre-native; this only ensures syntax tokens
+// on added and deleted lines remain readable in the selected light/dark pair.
+const ACCESSIBLE_CHANGED_LINE_TOKENS = `
+  [data-line-type="change-addition"] span {
+    color: var(--patchdesk-diff-addition-token) !important;
+  }
+
+  [data-line-type="change-deletion"] span {
+    color: var(--patchdesk-diff-deletion-token) !important;
+  }
+`;
 
 export type SelectedDiffRange = {
   readonly start: number;
@@ -126,7 +145,24 @@ function FileChangeCounts({
   );
 }
 
-export function ReviewDiffView({
+type ReviewDiffViewProps = {
+  readonly patch: string;
+  readonly parsedFiles: ReadonlyArray<FileDiffMetadata>;
+  readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
+  readonly selectedPath?: string | undefined;
+  readonly selectedRange?: SelectedDiffRange;
+  readonly preferences: ReviewViewPreferences;
+  readonly collapsedPaths: ReadonlySet<string>;
+  readonly onPreferencesChange: (
+    update: Partial<ReviewViewPreferences>,
+  ) => void;
+  readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
+  /** Optional main-process-only source seam used to hydrate omitted hunk context. */
+  readonly sourceSession?: DiffSourceSession;
+  readonly virtualized?: boolean;
+};
+
+function ReviewDiffSurface({
   patch,
   parsedFiles,
   fileStatsByPath,
@@ -138,22 +174,7 @@ export function ReviewDiffView({
   onCollapsedPathsChange,
   sourceSession,
   virtualized = true,
-}: {
-  readonly patch: string;
-  readonly parsedFiles: ReadonlyArray<FileDiffMetadata>;
-  readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
-  readonly selectedPath?: string;
-  readonly selectedRange?: SelectedDiffRange;
-  readonly preferences: ReviewViewPreferences;
-  readonly collapsedPaths: ReadonlySet<string>;
-  readonly onPreferencesChange: (
-    update: Partial<ReviewViewPreferences>,
-  ) => void;
-  readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
-  /** Optional main-process-only source seam used to hydrate omitted hunk context. */
-  readonly sourceSession?: DiffSourceSession;
-  readonly virtualized?: boolean;
-}): React.JSX.Element {
+}: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [hydratedFiles, setHydratedFiles] = useState<
     ReadonlyMap<string, FileDiffMetadata>
@@ -168,11 +189,16 @@ export function ReviewDiffView({
   );
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
+  const pendingAppendedScrollPath = useRef<string | undefined>(undefined);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
   }, []);
   const nextItemIndex = useRef(1);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
+  const rawPatchesByPath = useMemo(
+    () => indexPatchPaths(rawFilePatches),
+    [rawFilePatches],
+  );
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       const value = (event as CustomEvent<ResolvedAppearance>).detail;
@@ -193,8 +219,8 @@ export function ReviewDiffView({
     return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
   const selectedPatch = useMemo(
-    () => selectPatch(rawFilePatches, patch, selectedPath),
-    [patch, rawFilePatches, selectedPath],
+    () => selectPatch(rawPatchesByPath, rawFilePatches, patch, selectedPath),
+    [patch, rawFilePatches, rawPatchesByPath, selectedPath],
   );
   const files = useMemo(
     () =>
@@ -214,10 +240,10 @@ export function ReviewDiffView({
         id: file.name,
         type: "diff",
         fileDiff: file,
-        collapsed: false,
-        version: 0,
+        collapsed: collapsedPaths.has(file.name),
+        version: collapsedPaths.has(file.name) ? 1 : 0,
       })),
-    [visibleFiles],
+    [collapsedPaths, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -243,7 +269,7 @@ export function ReviewDiffView({
   const browserSupportsPierre =
     typeof CSSStyleSheet !== "undefined" &&
     "replaceSync" in CSSStyleSheet.prototype;
-  const viewerKey = `${preferences.fileMode}:${preferences.fileMode === "selected" ? (selectedPath ?? "none") : "all"}`;
+  const viewerKey = preferences.fileMode;
   const sourceProfileId = sourceSession?.profileId;
   const sourceSessionId = sourceSession?.sessionId;
 
@@ -261,7 +287,12 @@ export function ReviewDiffView({
       setContextStatus("ready");
       return;
     }
-    const rawFilePatch = selectPatch(rawFilePatches, patch, selectedPath);
+    const rawFilePatch = selectPatch(
+      rawPatchesByPath,
+      rawFilePatches,
+      patch,
+      selectedPath,
+    );
     if (!rawFilePatch.startsWith("diff --git ")) {
       setContextStatus("unavailable");
       return;
@@ -309,6 +340,7 @@ export function ReviewDiffView({
     hydratedFiles,
     patch,
     rawFilePatches,
+    rawPatchesByPath,
     selectedPath,
     sourceProfileId,
     sourceSessionId,
@@ -317,54 +349,62 @@ export function ReviewDiffView({
   useEffect(() => {
     nextItemIndex.current = 1;
     setLoadedCount(1);
-  }, [viewerKey]);
+  }, [preferences.fileMode]);
 
   const appendItemsThrough = useCallback(
     (lastIndex: number): void => {
       const start = nextItemIndex.current;
       const end = Math.min(lastIndex + 1, items.length);
-      if (start >= end || viewer.current === null) return;
-      const batch = items
-        .slice(start, end)
-        .filter((item) => viewer.current?.getItem(item.id) === undefined)
-        .map((item) => ({
-          ...item,
-          collapsed: collapsedPaths.has(item.id),
-        }));
-      if (batch.length > 0) viewer.current.addItems(batch);
+      if (start >= end) return;
       nextItemIndex.current = end;
       setLoadedCount(end);
     },
-    [collapsedPaths, items],
+    [items],
   );
 
-  const appendVisibleBatch = useCallback((): void => {
+  const appendVisibleBatch = useCallback((followAppendedFile = false): void => {
     const start = nextItemIndex.current;
     if (start >= items.length) return;
+    const nextFile = items[start];
+    if (followAppendedFile && nextFile !== undefined) {
+      pendingAppendedScrollPath.current = nextFile.id;
+    }
     appendItemsThrough(start + 4);
-  }, [appendItemsThrough, items.length]);
+  }, [appendItemsThrough, items]);
 
   useEffect(() => {
-    for (const file of visibleFiles) {
-      const item = viewer.current?.getItem(file.name);
-      if (item === undefined || item.type !== "diff") continue;
-      const collapsed = collapsedPaths.has(file.name);
-      if (item.collapsed === collapsed) continue;
-      viewer.current?.updateItem({
-        ...item,
-        collapsed,
-        version: (item.version ?? 0) + 1,
-      });
-    }
-  }, [collapsedPaths, visibleFiles]);
+    const path = pendingAppendedScrollPath.current;
+    if (path === undefined) return;
+    pendingAppendedScrollPath.current = undefined;
+    // The controlled item list reaches Pierre during its layout effect. Run
+    // afterward so a bottom scroll can continue into the appended file.
+    const frame = requestAnimationFrame(() => {
+      viewer.current?.scrollTo({ type: "item", id: path, align: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loadedCount]);
 
   useEffect(() => {
     if (selectedPath === undefined) return;
+    let secondFrame: number | undefined;
+    let continuationFrame: number | undefined;
     const scrollToSelection = (): void => {
       const targetIndex = items.findIndex((item) => item.id === selectedPath);
       if (targetIndex === -1) return;
+      // DiffWorkbench promotes exceptionally deep direct selections to its
+      // explicit selected-file mode. Do not spend a frame materializing a
+      // large all-files stream while that controlled preference update is in
+      // flight.
+      if (preferences.fileMode === "all" && targetIndex > 128) return;
       if (viewer.current?.getItem(selectedPath) === undefined) {
-        appendItemsThrough(targetIndex);
+        // Keep direct navigation responsive for large all-files patches. The
+        // selected path is committed before this progressive CodeView work,
+        // then files are materialized in small animation-frame batches.
+        appendItemsThrough(
+          Math.min(targetIndex, nextItemIndex.current + 127),
+        );
+        continuationFrame = requestAnimationFrame(scrollToSelection);
+        return;
       }
       if (selectedLines === null) {
         viewer.current?.scrollTo({
@@ -385,9 +425,13 @@ export function ReviewDiffView({
     // hunk. Scroll on the following frame so the target range uses those
     // expanded metrics rather than the previous virtual window.
     const firstFrame = requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToSelection);
+      secondFrame = requestAnimationFrame(scrollToSelection);
     });
-    return () => cancelAnimationFrame(firstFrame);
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
+      if (continuationFrame !== undefined) cancelAnimationFrame(continuationFrame);
+    };
   }, [
     appendItemsThrough,
     items,
@@ -423,6 +467,7 @@ export function ReviewDiffView({
       stickyHeaders: true,
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
+      unsafeCSS: ACCESSIBLE_CHANGED_LINE_TOKENS,
     }),
     [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow, themePreferences],
   );
@@ -484,43 +529,13 @@ export function ReviewDiffView({
       ) {
         return;
       }
-      appendVisibleBatch();
+      appendVisibleBatch(true);
     },
     [appendVisibleBatch, preferences.fileMode],
   );
 
-  useEffect(() => {
-    if (
-      !virtualized ||
-      preferences.fileMode !== "all" ||
-      loadedCount >= items.length
-    ) {
-      return;
-    }
-    const frame = requestAnimationFrame(() => {
-      const root = viewerContainer.current;
-      if (root !== null && root.scrollHeight <= root.clientHeight + 1) {
-        appendVisibleBatch();
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [
-    appendVisibleBatch,
-    items.length,
-    loadedCount,
-    preferences.fileMode,
-    viewerKey,
-    virtualized,
-  ]);
-
   return (
-    <section
-      aria-label="Review diff"
-      data-selected-path={selectedPath}
-      data-diff-style={preferences.diffStyle}
-      data-file-mode={preferences.fileMode}
-      className="relative flex min-h-0 flex-1 flex-col"
-    >
+    <>
       <div
         data-review-diff-toolbar
         className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
@@ -639,6 +654,7 @@ export function ReviewDiffView({
             expandUnchanged: expandUnchanged || expandSelectedRange,
             lineDiffType: "word-alt",
             diffIndicators: "bars",
+            unsafeCSS: ACCESSIBLE_CHANGED_LINE_TOKENS,
           }}
           selectedLines={selectedLines?.range ?? null}
           renderCustomHeader={renderPatchHeader}
@@ -648,7 +664,7 @@ export function ReviewDiffView({
           <CodeView
             key={`${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`}
             ref={viewer}
-            initialItems={items.slice(0, 1)}
+            items={items.slice(0, loadedCount)}
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-hidden overflow-y-auto font-mono"
@@ -663,7 +679,7 @@ export function ReviewDiffView({
                 variant="secondary"
                 size="xs"
                 className="pointer-events-auto shadow-lg"
-                onClick={appendVisibleBatch}
+                onClick={() => appendVisibleBatch()}
               >
                 Load more files ({items.length - loadedCount} remaining)
               </Button>
@@ -671,8 +687,48 @@ export function ReviewDiffView({
           ) : null}
         </div>
       )}
+    </>
+  );
+}
+
+const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
+
+export function ReviewDiffView(props: ReviewDiffViewProps): React.JSX.Element {
+  // A navigator click should acknowledge selection before Pierre performs its
+  // expensive virtual-file replacement. For extraordinarily large patches we
+  // wait briefly for a burst of navigator changes to settle; normal reviews
+  // still switch the rendered file synchronously.
+  const deferredSelectedPath = useLargeDiffSelection(
+    props.selectedPath,
+    props.parsedFiles.length > 256,
+  );
+  return (
+    <section
+      aria-label="Review diff"
+      data-selected-path={props.selectedPath}
+      data-diff-style={props.preferences.diffStyle}
+      data-file-mode={props.preferences.fileMode}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
+      <MemoizedReviewDiffSurface {...props} selectedPath={deferredSelectedPath} />
     </section>
   );
+}
+
+function useLargeDiffSelection(
+  selectedPath: string | undefined,
+  deferReplacement: boolean,
+): string | undefined {
+  const [renderedPath, setRenderedPath] = useState(selectedPath);
+  useEffect(() => {
+    if (!deferReplacement || selectedPath === undefined) {
+      setRenderedPath(selectedPath);
+      return;
+    }
+    const timer = window.setTimeout(() => setRenderedPath(selectedPath), 150);
+    return () => window.clearTimeout(timer);
+  }, [deferReplacement, selectedPath]);
+  return renderedPath;
 }
 
 type AccessibleLine = {
@@ -788,16 +844,29 @@ function splitPatch(patch: string): ReadonlyArray<string> {
     .filter((value) => value.startsWith("diff --git "));
 }
 
+function indexPatchPaths(
+  patches: ReadonlyArray<string>,
+): ReadonlyMap<string, string> {
+  const indexed = new Map<string, string>();
+  for (const patch of patches) {
+    const header = /^diff --git a\/(.+) b\/(.+)$/m.exec(patch);
+    if (header === null) continue;
+    const oldPath = header[1];
+    const newPath = header[2];
+    if (oldPath !== undefined) indexed.set(oldPath, patch);
+    if (newPath !== undefined) indexed.set(newPath, patch);
+  }
+  return indexed;
+}
+
 function selectPatch(
+  patchesByPath: ReadonlyMap<string, string>,
   files: ReadonlyArray<string>,
   patch: string,
   selectedPath: string | undefined,
 ): string {
   return (
-    files.find(
-      (value) =>
-        selectedPath !== undefined && value.includes(` b/${selectedPath}`),
-    ) ??
+    (selectedPath === undefined ? undefined : patchesByPath.get(selectedPath)) ??
     files[0] ??
     patch
   );

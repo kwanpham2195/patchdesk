@@ -72,7 +72,9 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByLabel("GitHub account").fill("enterprise-user");
   await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByLabel("Active profile").click();
-  await page.getByRole("option", { name: "Enterprise" }).click();
+  const enterpriseOption = page.getByRole("option", { name: "Enterprise" });
+  await expect(enterpriseOption).toBeVisible();
+  await enterpriseOption.click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByLabel("Active profile")).toContainText("Enterprise updated");
@@ -90,7 +92,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
     page.getByRole("button", { name: "Restore" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Pending PRs" }).click();
+  await page.getByRole("button", { name: "Inbox" }).click();
   await page.getByLabel("Pull request reference").fill("acme/service#3");
   await page.getByRole("button", { name: "Preview pull request" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Could not open review" })).toContainText("Could not prepare acme/service#3.");

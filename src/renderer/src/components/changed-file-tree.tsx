@@ -15,22 +15,27 @@ export function ChangedFileTree({
   files,
   selectedPath,
   onSelect,
+  maxVisibleItems,
 }: {
   readonly files: ReadonlyArray<ChangedFileTreeItem>;
   readonly selectedPath?: string;
   readonly onSelect: (path: string) => void;
+  /** Keeps exceptionally large unfiltered navigators responsive. */
+  readonly maxVisibleItems?: number;
 }): React.JSX.Element {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const typeahead = useRef("");
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const visibleFiles =
+    maxVisibleItems === undefined ? files : files.slice(0, maxVisibleItems);
 
   useEffect(() => {
-    setFocusedIndex((current) => Math.min(current, Math.max(0, files.length - 1)));
-  }, [files.length]);
+    setFocusedIndex((current) => Math.min(current, Math.max(0, visibleFiles.length - 1)));
+  }, [visibleFiles.length]);
 
   const move = (index: number): void => {
-    const bounded = Math.max(0, Math.min(files.length - 1, index));
+    const bounded = Math.max(0, Math.min(visibleFiles.length - 1, index));
     setFocusedIndex(bounded);
     buttons.current[bounded]?.focus();
   };
@@ -38,8 +43,13 @@ export function ChangedFileTree({
   return (
     <div>
       <p className="mb-2 px-2 text-xs text-muted-foreground" role="status">{files.length} changed {files.length === 1 ? "file" : "files"}</p>
+      {visibleFiles.length < files.length ? (
+        <p className="mb-2 px-2 text-xs text-muted-foreground">
+          Showing the first {visibleFiles.length}. Filter to locate the rest.
+        </p>
+      ) : null}
       <div role="tree" aria-label="Changed files" className="space-y-0.5">
-        {files.map(({ path, stats }, index) => {
+        {visibleFiles.map(({ path, stats }, index) => {
           const descriptionId = `changed-file-stats-${index}`;
           return (
             <Button
@@ -61,7 +71,7 @@ export function ChangedFileTree({
                 if (event.key.length !== 1 || event.metaKey || event.ctrlKey || event.altKey) return;
                 clearTimeout(typeaheadTimer.current);
                 typeahead.current += event.key.toLowerCase();
-                const match = files.findIndex((candidate) => candidate.path.toLowerCase().startsWith(typeahead.current));
+                const match = visibleFiles.findIndex((candidate) => candidate.path.toLowerCase().startsWith(typeahead.current));
                 if (match >= 0) move(match);
                 typeaheadTimer.current = setTimeout(() => { typeahead.current = ""; }, 600);
               }}

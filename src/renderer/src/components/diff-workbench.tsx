@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LocateFixed, Search } from "lucide-react";
 
 import {
@@ -57,21 +57,75 @@ export function DiffWorkbench({
     ...DEFAULT_REVIEW_VIEW_PREFERENCES,
     fileMode: "all",
   });
+  const [pendingLargeFileMode, setPendingLargeFileMode] = useState<string>();
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const visibleFiles = files
-    .map((file) => ({
+  const updatePreferences = useCallback(
+    (update: Partial<ReviewViewPreferences>): void => {
+      if (update.fileMode !== undefined) setPendingLargeFileMode(undefined);
+      setPreferences((current) => ({ ...current, ...update }));
+    },
+    [],
+  );
+  useEffect(() => {
+    if (pendingLargeFileMode === undefined) return;
+    // Do not let a single deep selection synchronously reconstruct a 10 MB
+    // virtual surface. A brief quiet period still opens the requested file,
+    // while quick navigator movement remains responsive.
+    const timer = window.setTimeout(() => {
+      setPreferences((current) =>
+        current.fileMode === "selected"
+          ? current
+          : { ...current, fileMode: "selected" },
+      );
+      setPendingLargeFileMode(undefined);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [pendingLargeFileMode]);
+  const selectFile = useCallback(
+    (path: string): void => {
+      setSelectedPath(path);
+      const targetIndex = files.findIndex((file) => file.newPath === path);
+      // A direct jump deep into an exceptionally large stream would require
+      // synchronously materializing hundreds of file metrics. Switch to the
+      // explicit selected-file view instead; the toolbar keeps All files one
+      // click away, and ordinary review-sized streams retain their continuous
+      // all-files navigation.
+      if (files.length > 256 && targetIndex > 128) {
+        setPendingLargeFileMode(path);
+      } else {
+        setPendingLargeFileMode(undefined);
+      }
+    },
+    [files],
+  );
+  const fileRows = useMemo(
+    () =>
+      files.map((file) => ({
       path: file.newPath,
       stats: parsedDiff.statsByPath.get(file.newPath) ?? {
         path: file.newPath,
         additions: 0,
         deletions: 0,
       },
-    }))
-    .filter((file) => file.path.toLowerCase().includes(query.toLowerCase()));
+      })),
+    [files, parsedDiff.statsByPath],
+  );
+  const visibleFiles = useMemo(
+    () =>
+      fileRows.filter((file) =>
+        file.path.toLowerCase().includes(query.toLowerCase()),
+      ),
+    [fileRows, query],
+  );
+  const navigatorWindow = query.length === 0 && visibleFiles.length > 200
+    ? 20
+    : undefined;
   const mapped =
     finding === undefined ? undefined : mapFindingLocation(files, finding);
+  const mappedPath =
+    mapped?.mappingStatus === "mapped" ? mapped.path : undefined;
   return (
     <section
       aria-label="Diff workbench"
@@ -109,24 +163,27 @@ export function DiffWorkbench({
             <ChangedFileTree
               files={visibleFiles}
               {...(selectedPath === undefined ? {} : { selectedPath })}
-              onSelect={setSelectedPath}
+              onSelect={selectFile}
+              {...(navigatorWindow === undefined
+                ? {}
+                : { maxVisibleItems: navigatorWindow })}
             />
           </TabsContent>
           <TabsContent
             value="findings"
             className="mt-3 text-sm text-muted-foreground"
           >
-            {mapped?.mappingStatus === "mapped" && mapped.path !== undefined ? (
+            {mappedPath === undefined ? (
+              "No mapped finding selected."
+            ) : (
               <Button
                 variant="outline"
                 className="w-full justify-start"
-                onClick={() => setSelectedPath(mapped.path)}
+                onClick={() => selectFile(mappedPath)}
               >
                 <LocateFixed />
                 Go to mapped finding
               </Button>
-            ) : (
-              "No mapped finding selected."
             )}
           </TabsContent>
         </Tabs>
@@ -185,30 +242,32 @@ export function DiffWorkbench({
                           ? {}
                           : { selectedPath })}
                         onSelect={(path) => {
-                          setSelectedPath(path);
+                          selectFile(path);
                           setNavigationOpen(false);
                         }}
+                        {...(navigatorWindow === undefined
+                          ? {}
+                          : { maxVisibleItems: navigatorWindow })}
                       />
                     </TabsContent>
                     <TabsContent
                       value="findings"
                       className="mt-3 text-sm text-muted-foreground"
                     >
-                      {mapped?.mappingStatus === "mapped" &&
-                      mapped.path !== undefined ? (
+                      {mappedPath === undefined ? (
+                        "No mapped finding selected."
+                      ) : (
                         <Button
                           variant="outline"
                           className="w-full justify-start"
                           onClick={() => {
-                            setSelectedPath(mapped.path);
+                            selectFile(mappedPath);
                             setNavigationOpen(false);
                           }}
                         >
                           <LocateFixed />
                           Go to mapped finding
                         </Button>
-                      ) : (
-                        "No mapped finding selected."
                       )}
                     </TabsContent>
                   </Tabs>
@@ -255,9 +314,7 @@ export function DiffWorkbench({
           {...(selectedPath === undefined ? {} : { selectedPath })}
           preferences={preferences}
           collapsedPaths={collapsedPaths}
-          onPreferencesChange={(update) =>
-            setPreferences((current) => ({ ...current, ...update }))
-          }
+          onPreferencesChange={updatePreferences}
           onCollapsedPathsChange={setCollapsedPaths}
           {...(sourceSession === undefined ? {} : { sourceSession })}
         />
