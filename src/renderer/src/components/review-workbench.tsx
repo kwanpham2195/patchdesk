@@ -274,13 +274,17 @@ export function ReviewWorkbench(props: {
           <div className="flex flex-wrap items-center gap-2">
             <Badge>
               <CheckCircle2 />
-              Completed review
+              Review complete
             </Badge>
             <Badge variant="outline">{props.result.verdict}</Badge>
             <Badge
               variant={freshness === "fresh" ? "secondary" : "destructive"}
             >
-              {freshness}
+              {freshness === "fresh"
+                ? "GitHub: Current"
+                : freshness === "stale"
+                  ? "GitHub: Changed since review"
+                  : "GitHub: Unavailable"}
             </Badge>
             {props.reviewScope?.kind === "incremental" ? (
               <Badge variant="outline">Incremental review</Badge>
