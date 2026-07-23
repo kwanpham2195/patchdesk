@@ -859,13 +859,13 @@ function FindingList({
           <Button
             key={finding.id}
             variant="ghost"
-            className="h-auto w-full items-start justify-start gap-2 whitespace-normal px-2 py-2 text-left"
+            className="h-auto w-full justify-start whitespace-normal px-2 py-2 text-left"
             aria-pressed={selectedFinding?.id === finding.id}
             onClick={() => onSelect(finding)}
           >
-            <span className="mt-0.5 shrink-0"><SeverityBadge severity={finding.severity} /></span>
-            <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 block leading-5">
+            <span className="block min-w-0">
+              <span className="block"><SeverityBadge severity={finding.severity} /></span>
+              <span className="mt-1 block line-clamp-2 leading-5">
                 {finding.title}
               </span>
               <span
