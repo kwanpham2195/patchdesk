@@ -49,4 +49,6 @@ export type DesktopResponse = {
 export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   onNavigate(listener: (destination: DesktopDestination) => void): () => void;
+  /** QA-only structural diagnostics are enabled by a main-process argument. */
+  readonly qaScrollDiagnosticsEnabled: boolean;
 };

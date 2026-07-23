@@ -8,6 +8,10 @@ import {
   type PatchdeskDesktopApi,
 } from "./ipc-contract";
 
+const qaScrollDiagnosticsEnabled = process.argv.includes(
+  "--patchdesk-qa-scroll-diagnostics=1",
+);
+
 const desktopApi: PatchdeskDesktopApi = Object.freeze({
   async request(input: DesktopRequest) {
     return await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, input);
@@ -17,6 +21,7 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
     ipcRenderer.on(DESKTOP_NAVIGATE_CHANNEL, handler);
     return () => ipcRenderer.off(DESKTOP_NAVIGATE_CHANNEL, handler);
   },
+  qaScrollDiagnosticsEnabled,
 });
 
 contextBridge.exposeInMainWorld("patchdesk", desktopApi);

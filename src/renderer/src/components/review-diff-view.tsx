@@ -161,7 +161,7 @@ function ReviewDiffSurface({
   useEffect(() => {
     if (
       viewerElement === null ||
-      window.localStorage.getItem("patchdesk.qa.scroll-diagnostics") !== "enabled"
+      !window.patchdesk.qaScrollDiagnosticsEnabled
     ) return;
 
     const capture = (event: WheelEvent): void => {

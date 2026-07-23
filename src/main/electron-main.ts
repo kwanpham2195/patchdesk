@@ -207,6 +207,13 @@ async function createWorkbenchWindow(
     minWidth: 960,
     minHeight: 640,
     webPreferences: {
+      additionalArguments: [
+        `--patchdesk-qa-scroll-diagnostics=${
+          !app.isPackaged || process.argv.includes("--patchdesk-qa-scroll-diagnostics")
+            ? "1"
+            : "0"
+        }`,
+      ],
       allowRunningInsecureContent: false,
       contextIsolation: true,
       navigateOnDragDrop: false,
