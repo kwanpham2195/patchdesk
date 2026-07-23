@@ -155,7 +155,7 @@ async function runningReview() {
 function result() {
   return {
     changeSummary: "Protect the write boundary",
-    verdict: "comment",
+    verdict: "request_changes",
     summary: "One mapped finding needs a local draft.",
     findings: [{ id: "mapped", severity: "P1", title: "Protect the guard", file: "src/review.ts", lineStart: 12, diffSide: "new", explanation: "Keep the current-head check.", confidence: "high" }],
     validationPlan: ["pnpm test"],

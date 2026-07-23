@@ -37,6 +37,7 @@
     "cmdk": "^1.1.1",
     "hono": "^4.8.3",
     "lucide-react": "^1.25.0",
+    "marked": "18.0.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "tailwind-merge": "3.6.0",

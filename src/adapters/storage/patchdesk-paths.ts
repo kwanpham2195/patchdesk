@@ -84,6 +84,35 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "patch.diff");
   }
 
+  /** Immutable prepared inputs shared by every attempt for this exact PR head. */
+  preparedDirectory(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "prepared");
+  }
+
+  preparedContextFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.preparedDirectory(profileId, sessionId), "context.json");
+  }
+
+  preparedReviewInputFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.preparedDirectory(profileId, sessionId), "review-input.md");
+  }
+
+  preparedDebugFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.preparedDirectory(profileId, sessionId), "debug.json");
+  }
+
   comparisonPatchFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

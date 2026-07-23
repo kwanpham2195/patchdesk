@@ -201,7 +201,7 @@ describe("Patchdesk review domain", () => {
   it("rejects invalid verdicts and accepts a Patchdesk-computed final mapping status", () => {
     const result = parseReviewResult({
       changeSummary: "Adds strict review parsing.",
-      verdict: "approve",
+      verdict: "comment",
       summary: "No blocking findings.",
       findings: [
         {
@@ -217,7 +217,7 @@ describe("Patchdesk review domain", () => {
       assumptions: [],
     });
 
-    expect(result).toMatchObject({ _tag: "ok", value: { verdict: "approve" } });
+    expect(result).toMatchObject({ _tag: "ok", value: { verdict: "comment" } });
     expect(
       parseReviewResult({
         changeSummary: "Adds strict review parsing.",

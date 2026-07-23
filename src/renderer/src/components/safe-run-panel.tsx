@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { CircleAlert, RotateCcw } from "lucide-react";
+import { ChevronDown, CircleAlert, RotateCcw } from "lucide-react";
 
 import { requestJson } from "@/api-client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -46,6 +51,7 @@ export function SafeRunPanel({
 }): React.JSX.Element {
   const [projection, setProjection] = useState<Projection>();
   const [starting, setStarting] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     if (runId === undefined) return;
@@ -134,21 +140,30 @@ export function SafeRunPanel({
           </dl>
         )}
         {current.activity === undefined || current.activity.length === 0 ? null : (
-          <details className="border-t px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium">
-              Activity ({current.activity.length})
-            </summary>
-            <ol className="mt-3 space-y-2 text-sm" aria-label="Review activity">
-              {current.activity.map((event, index) => (
-                <li key={`${event.step}-${event.elapsedMs}-${index}`}>
-                  <span className="font-medium">{event.label}</span>
-                  <span className="ml-2 text-muted-foreground">
-                    {formatElapsed(event.elapsedMs)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </details>
+          <Collapsible open={activityOpen} onOpenChange={setActivityOpen}>
+            <div className="border-t px-4 py-3">
+              <CollapsibleTrigger
+                render={(
+                  <Button variant="ghost" size="sm" className="w-full justify-between" />
+                )}
+              >
+                Activity ({current.activity.length})
+                <ChevronDown data-icon="inline-end" aria-hidden="true" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ol className="mt-3 flex flex-col gap-2 text-sm" aria-label="Review activity">
+                  {current.activity.map((event, index) => (
+                    <li key={`${event.step}-${event.elapsedMs}-${index}`} className="flex items-baseline gap-2">
+                      <span className="font-medium">{event.label}</span>
+                      <span className="text-muted-foreground">
+                        {formatElapsed(event.elapsedMs)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         )}
       </CardContent>
     </Card>

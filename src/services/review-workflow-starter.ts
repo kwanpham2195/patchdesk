@@ -26,7 +26,11 @@ export type ReviewWorkflowInput = {
 };
 
 export type ReviewWorkflowInvoker = {
-  invoke(input: ReviewWorkflowInput): Promise<Result<{ readonly runId: string }, { readonly reason: "unavailable" | "failed" }>>;
+  /**
+   * A provider may expose a durable run ID. Patchdesk never invents one when it
+   * does not: the attempt remains Starting until it completes or fails.
+   */
+  invoke(input: ReviewWorkflowInput): Promise<Result<{ readonly runId?: string }, { readonly reason: "unavailable" | "failed" }>>;
 };
 
 export type ReviewWorkflowStartFailure = {
@@ -40,7 +44,7 @@ export class ReviewWorkflowStarter {
     private readonly invoker: ReviewWorkflowInvoker,
   ) {}
 
-  async start(input: unknown): Promise<Result<{ readonly runId: string }, ReviewWorkflowStartFailure>> {
+  async start(input: unknown): Promise<Result<{ readonly runId?: string }, ReviewWorkflowStartFailure>> {
     const profileId = parseWorkspaceProfileId(field(input, "profileId"));
     const sessionId = parseReviewSessionId(field(input, "sessionId"));
     const attemptId = parseReviewAttemptId(field(input, "attemptId"));

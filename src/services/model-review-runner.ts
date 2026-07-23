@@ -9,6 +9,7 @@ import { parsePriorFindingEvidence, type PriorFindingEvidence } from "../domain/
 import { parseRevisionComparison, type RevisionComparison, type ReviewScope } from "../domain/review-comparison";
 import { ReviewInspector } from "./review-inspector";
 import { createReviewInspectorTools } from "./review-inspector-tools";
+import { composeReviewPrompt } from "./review-rubric";
 
 export type ReviewModelSession = {
   prompt(text: string, options: {
@@ -55,7 +56,7 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
     debugPath: input.debugPath,
     gitShow: input.gitShow,
   });
-  const response = await input.session.prompt(reviewPrompt({
+  const response = await input.session.prompt(composeReviewPrompt({
     reviewInput,
     context,
     fullPatch,
@@ -100,43 +101,6 @@ function changedFiles(context: string): ReadonlyArray<string> {
   } catch {
     return [];
   }
-}
-
-function reviewPrompt(input: {
-  readonly reviewInput: string;
-  readonly context: string;
-  readonly fullPatch: string;
-  readonly incremental?: { readonly patch: string; readonly comparison: RevisionComparison; readonly priorFindings: ReadonlyArray<PriorFindingEvidence> };
-}): string {
-  if (input.incremental !== undefined) {
-    return [
-      "Review this incremental pull request update for concrete, evidence-backed issues.",
-      "The comparison patch is the primary evidence. Report only newly introduced concrete issues as findings; do not relabel a known unchanged issue as new.",
-      "Assess every supplied opaque prior-finding token as still_present, resolved, or unverified. A resolved claim requires evidence in the comparison. Do not include mappingStatus, lifecycle state, posting state, or rawNotes.",
-      "Prepared review input:",
-      input.reviewInput,
-      "Prepared metadata:",
-      input.context,
-      "Exact revision comparison metadata:",
-      JSON.stringify(input.incremental.comparison),
-      "Prior finding evidence:",
-      JSON.stringify(input.incremental.priorFindings),
-      "Prepared incremental patch:",
-      input.incremental.patch,
-      "The complete current PR patch is retained by Patchdesk for final GitHub coordinate mapping and is intentionally not duplicated here.",
-    ].join("\n\n");
-  }
-  return [
-    "Review this pull request for concrete, evidence-backed issues.",
-    "Use the prepared unified patch below as the primary repository evidence. Use the supplied read-only inspection tools only when they are available; do not infer files or line locations beyond inspected evidence.",
-    "Return the required structured result. Do not include mappingStatus or rawNotes.",
-    "Prepared review input:",
-    input.reviewInput,
-    "Prepared metadata:",
-    input.context,
-    "Prepared unified patch:",
-    input.fullPatch,
-  ].join("\n\n");
 }
 
 async function readIncrementalEvidence(scope: Extract<ReviewScope, { readonly kind: "incremental" }>): Promise<{

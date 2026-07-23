@@ -1,23 +1,23 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
   parseAbsolutePath,
   parseContentHash,
-  parseReviewAttemptId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type IsoTimestamp,
+  type ReviewAttemptId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import type { ReviewAttempt } from "../domain/review-attempt";
-import { startNextAttempt } from "../domain/review-session";
+import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
+import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import type { ReviewRunMetadata } from "./run-projection";
-import { prepareAllocatedAttemptArtifacts } from "./review-attempt-artifacts";
+import { prepareAttemptArtifacts } from "./review-attempt-artifacts";
+import { contentHash } from "./review-artifact-hash";
 
 export const REVIEW_REASONING_LEVELS = ["low", "medium", "high"] as const;
 export type ReviewReasoningLevel = (typeof REVIEW_REASONING_LEVELS)[number];
@@ -28,6 +28,7 @@ export type ReviewExecutionFailure = {
     | "not_found"
     | "not_runnable"
     | "unsupported_model"
+    | "catalog_unavailable"
     | "profile_not_found"
     | "github_read"
     | "head_changed"
@@ -66,8 +67,9 @@ export class ReviewExecutionService {
       model.length === 0 ||
       reasoning === undefined
     ) return err({ reason: "invalid_input" });
-    const supportedModels = await this.modelCatalog.list();
-    if (!supportedModels.some((candidate) => candidate.id === model)) {
+    const catalog = await this.modelCatalog.get();
+    if (catalog._tag === "err") return err({ reason: "catalog_unavailable" });
+    if (!catalog.value.models.some((candidate) => candidate.id === model)) {
       return err({ reason: "unsupported_model" });
     }
 
@@ -83,64 +85,85 @@ export class ReviewExecutionService {
       if (verified._tag === "err") return err(verified.error);
     }
 
-    const previous = await this.sessions.listAttempts(profileId.value, sessionId.value);
-    if (previous._tag === "err") return err({ reason: "storage" });
-    const started = startNextAttempt(session.value, previous.value.map((attempt) => attempt.id));
-    if (started._tag === "err") return err({ reason: "not_runnable" });
-
-    const preparedAttempt = parseReviewAttemptId("001");
-    if (preparedAttempt._tag === "err") return err({ reason: "storage" });
-    const artifacts = await prepareAllocatedAttemptArtifacts({
-      paths: this.paths,
+    const startedAt = this.now();
+    const persisted = await this.sessions.beginAttempt({
       profileId: profileId.value,
       sessionId: sessionId.value,
-      attemptId: started.value.attemptId,
-      sourceAttemptId: preparedAttempt.value,
+      updatedAt: startedAt,
+      createAttempt: async (freshSession, attemptId) => this.createAttempt({
+        profileId: profileId.value,
+        session: freshSession,
+        attemptId,
+        model,
+        reasoning,
+        startedAt,
+      }),
     });
-    if (artifacts._tag === "err") return err({ reason: "storage" });
+    if (persisted._tag === "err") {
+      return err({ reason: persisted.error._tag === "BeginAttemptRejected" ? "not_runnable" : "storage" });
+    }
+    return ok({
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+      attemptId: persisted.value.id,
+      model,
+      reasoning,
+      metadata: {
+        agent: "Patchdesk review agent",
+        model,
+        reasoning,
+        mode: persisted.value.reviewMode ?? "Full review",
+        access: "Read-only repository inspection",
+      },
+    });
+  }
+
+  private async createAttempt(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly session: ReviewSession;
+    readonly attemptId: ReviewAttemptId;
+    readonly model: string;
+    readonly reasoning: ReviewReasoningLevel;
+    readonly startedAt: IsoTimestamp;
+  }): Promise<Result<ReviewAttempt, StorageFailure>> {
+    const artifacts = await prepareAttemptArtifacts({
+      paths: this.paths,
+      profileId: input.profileId,
+      sessionId: input.session.id,
+      attemptId: input.attemptId,
+    });
+    if (artifacts._tag === "err") return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     const [contextHash, fullPatchHash, comparisonHash] = await Promise.all([
       contentHash(artifacts.value.contextPath),
-      contentHash(session.value.patchPath),
-      session.value.scope.kind === "incremental"
-        ? contentHash(session.value.scope.comparisonPatchPath)
+      contentHash(input.session.patchPath),
+      input.session.scope.kind === "incremental"
+        ? contentHash(input.session.scope.comparisonPatchPath)
         : Promise.resolve(undefined),
     ]);
     const parsedContextHash = parseContentHash(contextHash);
     const parsedFullPatchHash = parseContentHash(fullPatchHash);
-    const parsedComparisonHash = comparisonHash === undefined
-      ? undefined
-      : parseContentHash(comparisonHash);
+    const parsedComparisonHash = comparisonHash === undefined ? undefined : parseContentHash(comparisonHash);
     const contextPath = parseAbsolutePath(artifacts.value.contextPath);
     const reviewInputPath = parseAbsolutePath(artifacts.value.reviewInputPath);
     const debugPath = parseAbsolutePath(artifacts.value.debugPath);
     const skillHash = parseContentHash("0".repeat(64));
     if (
-      parsedContextHash._tag === "err" ||
-      parsedFullPatchHash._tag === "err" ||
+      parsedContextHash._tag === "err" || parsedFullPatchHash._tag === "err" ||
       (parsedComparisonHash !== undefined && parsedComparisonHash._tag === "err") ||
-      contextPath._tag === "err" ||
-      reviewInputPath._tag === "err" ||
-      debugPath._tag === "err" ||
-      skillHash._tag === "err"
-    ) return err({ reason: "storage" });
-
-    const scope = session.value.scope.kind === "incremental" && parsedComparisonHash !== undefined
-      ? {
-          scopeKind: "incremental" as const,
-          baseSessionId: session.value.scope.baseSessionId,
-          comparisonContentHash: parsedComparisonHash.value,
-        }
+      contextPath._tag === "err" || reviewInputPath._tag === "err" ||
+      debugPath._tag === "err" || skillHash._tag === "err"
+    ) return err({ _tag: "StorageFailure", operation: "write", reason: "invalid_stored_value" });
+    const scope = input.session.scope.kind === "incremental" && parsedComparisonHash !== undefined
+      ? { scopeKind: "incremental" as const, baseSessionId: input.session.scope.baseSessionId, comparisonContentHash: parsedComparisonHash.value }
       : { scopeKind: "full" as const };
-    const attempt: ReviewAttempt = {
-      id: started.value.attemptId,
-      sessionId: session.value.id,
-      // The CLI only returns a provider run ID after the finite workflow has
-      // completed. Never claim a placeholder is a real Flue run identifier.
+    return ok({
+      id: input.attemptId,
+      sessionId: input.session.id,
       state: { _tag: "Starting" },
-      model,
-      reasoning,
+      model: input.model,
+      reasoning: input.reasoning,
       agentIdentity: "Patchdesk review agent",
-      reviewMode: session.value.scope.kind === "incremental" ? "Review updates" : "Full review",
+      reviewMode: input.session.scope.kind === "incremental" ? "Review updates" : "Full review",
       accessScope: "Read-only repository inspection",
       ...scope,
       fullPatchHash: parsedFullPatchHash.value,
@@ -149,31 +172,7 @@ export class ReviewExecutionService {
       contextPath: contextPath.value,
       reviewInputPath: reviewInputPath.value,
       debugPath: debugPath.value,
-      startedAt: this.now(),
-    };
-    const startedSession = {
-      ...started.value.session,
-      updatedAt: this.now(),
-    };
-    const persisted = await this.sessions.beginAttempt({
-      profileId: profileId.value,
-      session: startedSession,
-      attempt,
-    });
-    if (persisted._tag === "err") return err({ reason: "storage" });
-    return ok({
-      profileId: profileId.value,
-      sessionId: sessionId.value,
-      attemptId: started.value.attemptId,
-      model,
-      reasoning,
-      metadata: {
-        agent: "Patchdesk review agent",
-        model,
-        reasoning,
-        mode: attempt.reviewMode ?? "Full review",
-        access: "Read-only repository inspection",
-      },
+      startedAt: input.startedAt,
     });
   }
 }
@@ -188,9 +187,4 @@ function field(value: unknown, name: string): unknown {
   return typeof value === "object" && value !== null && name in value
     ? (value as Record<string, unknown>)[name]
     : undefined;
-}
-
-async function contentHash(path: string): Promise<string> {
-  const content = await readFile(path, "utf8").catch(() => undefined);
-  return content === undefined ? "" : createHash("sha256").update(content).digest("hex");
 }

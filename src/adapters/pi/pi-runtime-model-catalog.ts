@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
+import { err, ok, type Result } from "../../domain/result";
+
 /** A renderer-safe description of a Pi model enabled for this local runtime. */
 export type PiRuntimeModel = {
   readonly id: string;
@@ -11,7 +13,16 @@ export type PiRuntimeModel = {
 };
 
 export type PiRuntimeModelCatalog = {
-  list(): Promise<ReadonlyArray<PiRuntimeModel>>;
+  get(): Promise<Result<PiRuntimeModelCatalogSnapshot, PiRuntimeModelCatalogUnavailable>>;
+};
+
+export type PiRuntimeModelCatalogSnapshot = {
+  readonly models: ReadonlyArray<PiRuntimeModel>;
+  readonly defaultModel?: string;
+};
+
+export type PiRuntimeModelCatalogUnavailable = {
+  readonly _tag: "PiRuntimeModelCatalogUnavailable";
 };
 
 const settingsSchema = v.object({
@@ -26,29 +37,40 @@ const settingsSchema = v.object({
 export class LocalPiRuntimeModelCatalog implements PiRuntimeModelCatalog {
   constructor(
     private readonly settingsPath = join(homedir(), ".pi", "agent", "settings.json"),
-    private readonly fallback: ReadonlyArray<string> = ["opencode-go/deepseek-v4-flash"],
   ) {}
 
-  async list(): Promise<ReadonlyArray<PiRuntimeModel>> {
+  async get(): Promise<Result<PiRuntimeModelCatalogSnapshot, PiRuntimeModelCatalogUnavailable>> {
     const raw = await readFile(this.settingsPath, "utf8").catch(() => undefined);
-    if (raw === undefined) return projectModels(this.fallback);
+    if (raw === undefined) return unavailable();
     let decoded: unknown;
     try {
       decoded = JSON.parse(raw);
     } catch {
-      return projectModels(this.fallback);
+      return unavailable();
     }
     const parsed = v.safeParse(settingsSchema, decoded);
-    if (!parsed.success) return projectModels(this.fallback);
+    if (!parsed.success) return unavailable();
     const enabled = parsed.output.enabledModels ?? [];
     const defaultModel = parsed.output.defaultModel;
     const selected = defaultModel !== undefined && enabled.includes(defaultModel)
       ? [defaultModel, ...enabled.filter((model) => model !== defaultModel)]
       : enabled;
-    return projectModels(selected.length === 0 ? this.fallback : selected);
+    const models = projectModels(selected);
+    return models.length === 0
+      ? unavailable()
+      : ok({
+          models,
+          ...(defaultModel !== undefined && models.some((model) => model.id === defaultModel)
+            ? { defaultModel }
+            : {}),
+        });
   }
 }
 
 function projectModels(models: ReadonlyArray<string>): ReadonlyArray<PiRuntimeModel> {
   return [...new Set(models)].map((id) => ({ id, label: id }));
+}
+
+function unavailable(): Result<never, PiRuntimeModelCatalogUnavailable> {
+  return err({ _tag: "PiRuntimeModelCatalogUnavailable" });
 }

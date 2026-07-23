@@ -20,6 +20,23 @@ export type FindingCategory =
   | "maintainability"
   | "docs";
 export type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
+export type ReviewConfidence = "high" | "medium" | "low";
+export type ReviewCalloutCategory =
+  | "migration"
+  | "dependency"
+  | "dependency_change"
+  | "authentication"
+  | "compatibility"
+  | "destructive_operation"
+  | "feature_flag"
+  | "configuration";
+
+export type ReviewCallout = {
+  readonly category: ReviewCalloutCategory;
+  readonly title: string;
+  readonly detail: string;
+  readonly path?: RepoRelativePath;
+};
 
 export type ModelReviewFinding = {
   readonly id: FindingId;
@@ -31,8 +48,11 @@ export type ModelReviewFinding = {
   readonly diffSide?: "new" | "old";
   readonly explanation: string;
   readonly suggestedComment?: string;
-  readonly confidence: "high" | "medium" | "low";
+  readonly confidence: ReviewConfidence;
   readonly category?: FindingCategory;
+  readonly affectedScenario?: string;
+  readonly whyItMatters?: string;
+  readonly suggestedChange?: string;
 };
 
 export type ModelReviewResult = {
@@ -42,8 +62,11 @@ export type ModelReviewResult = {
   readonly findings: ReadonlyArray<ModelReviewFinding>;
   readonly validationPlan: ReadonlyArray<string>;
   readonly assumptions: ReadonlyArray<string>;
+  readonly coverage?: ReviewConfidence;
+  readonly overallConfidence?: ReviewConfidence;
+  readonly unresolvedItems?: ReadonlyArray<string>;
+  readonly callouts?: ReadonlyArray<ReviewCallout>;
   readonly priorFindingAssessments?: ReadonlyArray<ModelPriorFindingAssessment>;
-  readonly rawNotes?: string;
 };
 
 export type ReviewFinding = ModelReviewFinding & {
@@ -73,23 +96,45 @@ const findingSchema = {
   category: v.optional(
     v.picklist(["bug", "security", "test", "performance", "maintainability", "docs"]),
   ),
+  affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
+  whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(900))),
+  suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
 } as const;
+
+const calloutSchema = v.strictObject({
+  category: v.picklist([
+    "migration",
+    "dependency",
+    "dependency_change",
+    "authentication",
+    "compatibility",
+    "destructive_operation",
+    "feature_flag",
+    "configuration",
+  ]),
+  title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
+  detail: v.pipe(v.string(), v.minLength(1), v.maxLength(500)),
+  path: v.optional(v.pipe(v.string(), v.minLength(1))),
+});
 
 /** Schema for model output, deliberately excluding Patchdesk-controlled mapping status. */
 export const modelReviewResultSchema = v.strictObject({
   changeSummary: v.pipe(v.string(), v.minLength(1)),
   verdict: v.picklist(["approve", "comment", "request_changes"]),
   summary: v.pipe(v.string(), v.minLength(1)),
-  findings: v.array(v.strictObject(findingSchema)),
-  validationPlan: v.array(v.pipe(v.string(), v.minLength(1))),
-  assumptions: v.array(v.string()),
+  findings: v.pipe(v.array(v.strictObject(findingSchema)), v.maxLength(50)),
+  validationPlan: v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))), v.maxLength(20)),
+  assumptions: v.pipe(v.array(v.pipe(v.string(), v.maxLength(500))), v.maxLength(20)),
+  coverage: v.optional(v.picklist(["high", "medium", "low"])),
+  overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
+  unresolvedItems: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))), v.maxLength(10))),
+  callouts: v.optional(v.pipe(v.array(calloutSchema), v.maxLength(12))),
   priorFindingAssessments: v.optional(v.array(v.strictObject({
     priorFindingToken: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
     disposition: v.picklist(["still_present", "resolved", "unverified"]),
     explanation: v.pipe(v.string(), v.minLength(1)),
     currentFindingId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }))),
-  rawNotes: v.optional(v.string()),
 });
 
 /** Schema for Patchdesk's validated and location-mapped final review result. */
@@ -103,9 +148,12 @@ export const reviewResultSchema = v.strictObject({
       mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
     }),
   ),
-  validationPlan: v.array(v.pipe(v.string(), v.minLength(1))),
-  assumptions: v.array(v.string()),
-  rawNotes: v.optional(v.string()),
+  validationPlan: v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))), v.maxLength(20)),
+  assumptions: v.pipe(v.array(v.pipe(v.string(), v.maxLength(500))), v.maxLength(20)),
+  coverage: v.optional(v.picklist(["high", "medium", "low"])),
+  overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
+  unresolvedItems: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))), v.maxLength(10))),
+  callouts: v.optional(v.pipe(v.array(calloutSchema), v.maxLength(12))),
 });
 
 /** Parse model output before Patchdesk owns and computes each finding's mapping state. */
@@ -114,6 +162,10 @@ export function parseModelReviewResult(
 ): Result<ModelReviewResult, InvalidModelReviewResult> {
   const parsed = v.safeParse(modelReviewResultSchema, input);
   if (!parsed.success) {
+    return err({ _tag: "InvalidModelReviewResult" });
+  }
+
+  if (!hasConsistentVerdict(parsed.output.verdict, parsed.output.findings)) {
     return err({ _tag: "InvalidModelReviewResult" });
   }
 
@@ -127,6 +179,12 @@ export function parseModelReviewResult(
   if (assessments !== undefined && assessments._tag === "err") {
     return err({ _tag: "InvalidModelReviewResult" });
   }
+  const callouts = parsed.output.callouts === undefined
+    ? undefined
+    : parseCallouts(parsed.output.callouts);
+  if (callouts !== undefined && callouts._tag === "err") {
+    return err({ _tag: "InvalidModelReviewResult" });
+  }
 
   return ok({
     changeSummary: parsed.output.changeSummary,
@@ -135,8 +193,11 @@ export function parseModelReviewResult(
     findings: findings.value,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
+    ...(parsed.output.coverage === undefined ? {} : { coverage: parsed.output.coverage }),
+    ...(parsed.output.overallConfidence === undefined ? {} : { overallConfidence: parsed.output.overallConfidence }),
+    ...(parsed.output.unresolvedItems === undefined ? {} : { unresolvedItems: parsed.output.unresolvedItems }),
+    ...(callouts === undefined ? {} : { callouts: callouts.value }),
     ...(assessments === undefined ? {} : { priorFindingAssessments: assessments.value }),
-    ...(parsed.output.rawNotes === undefined ? {} : { rawNotes: parsed.output.rawNotes }),
   });
 }
 
@@ -181,6 +242,13 @@ export function parseReviewResult(
     findings.push({ ...projected.value, mappingStatus: finding.mappingStatus });
   }
 
+  const callouts = parsed.output.callouts === undefined
+    ? undefined
+    : parseStoredCallouts(parsed.output.callouts);
+  if (callouts !== undefined && callouts._tag === "err") {
+    return err({ _tag: "InvalidReviewResult" });
+  }
+
   return ok({
     changeSummary: parsed.output.changeSummary,
     verdict: parsed.output.verdict,
@@ -188,8 +256,45 @@ export function parseReviewResult(
     findings,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
-    ...(parsed.output.rawNotes === undefined ? {} : { rawNotes: parsed.output.rawNotes }),
+    ...(parsed.output.coverage === undefined ? {} : { coverage: parsed.output.coverage }),
+    ...(parsed.output.overallConfidence === undefined ? {} : { overallConfidence: parsed.output.overallConfidence }),
+    ...(parsed.output.unresolvedItems === undefined ? {} : { unresolvedItems: parsed.output.unresolvedItems }),
+    ...(callouts === undefined ? {} : { callouts: callouts.value }),
   });
+}
+
+function parseStoredCallouts(
+  callouts: ReadonlyArray<v.InferOutput<typeof calloutSchema>>,
+): Result<ReadonlyArray<ReviewCallout>, InvalidReviewResult> {
+  const values: Array<ReviewCallout> = [];
+  for (const callout of callouts) {
+    const path = callout.path === undefined ? undefined : parseRepoRelativePath(callout.path);
+    if (path !== undefined && path._tag === "err") return err({ _tag: "InvalidReviewResult" });
+    values.push({
+      category: callout.category,
+      title: callout.title,
+      detail: callout.detail,
+      ...(path === undefined ? {} : { path: path.value }),
+    });
+  }
+  return ok(values);
+}
+
+function parseCallouts(
+  callouts: ReadonlyArray<v.InferOutput<typeof calloutSchema>>,
+): Result<ReadonlyArray<ReviewCallout>, InvalidModelReviewResult> {
+  const values: Array<ReviewCallout> = [];
+  for (const callout of callouts) {
+    const path = callout.path === undefined ? undefined : parseRepoRelativePath(callout.path);
+    if (path !== undefined && path._tag === "err") return err({ _tag: "InvalidModelReviewResult" });
+    values.push({
+      category: callout.category,
+      title: callout.title,
+      detail: callout.detail,
+      ...(path === undefined ? {} : { path: path.value }),
+    });
+  }
+  return ok(values);
 }
 
 function parseModelFindings(
@@ -216,6 +321,16 @@ function projectFinding(
   if (id._tag === "err" || (file !== undefined && file._tag === "err")) {
     return err({ _tag: "InvalidModelReviewResult" });
   }
+  if (
+    finding.lineStart !== undefined &&
+    finding.lineEnd !== undefined &&
+    finding.lineEnd < finding.lineStart
+  ) return err({ _tag: "InvalidModelReviewResult" });
+  if (
+    finding.lineStart !== undefined &&
+    finding.lineEnd !== undefined &&
+    finding.lineEnd - finding.lineStart > 9
+  ) return err({ _tag: "InvalidModelReviewResult" });
 
   return ok({
     id: id.value,
@@ -231,5 +346,18 @@ function projectFinding(
       : { suggestedComment: finding.suggestedComment }),
     confidence: finding.confidence,
     ...(finding.category === undefined ? {} : { category: finding.category }),
+    ...(finding.affectedScenario === undefined ? {} : { affectedScenario: finding.affectedScenario }),
+    ...(finding.whyItMatters === undefined ? {} : { whyItMatters: finding.whyItMatters }),
+    ...(finding.suggestedChange === undefined ? {} : { suggestedChange: finding.suggestedChange }),
   });
+}
+
+function hasConsistentVerdict(
+  verdict: ReviewVerdict,
+  findings: ReadonlyArray<{ readonly severity: FindingSeverity }>,
+): boolean {
+  const hasBlocking = findings.some((finding) => finding.severity === "P0" || finding.severity === "P1");
+  if (hasBlocking) return verdict === "request_changes";
+  if (findings.length > 0) return verdict === "comment";
+  return verdict === "approve";
 }

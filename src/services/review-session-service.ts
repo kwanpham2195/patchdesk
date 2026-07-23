@@ -11,7 +11,7 @@ import type { PullRequestRef } from "../domain/pull-request";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
 import type { ManagedWorktree, MetadataOnlyReview, ReviewWorktreeService } from "./review-worktree-service";
-import { preparedAttemptArtifacts } from "./review-attempt-artifacts";
+import { preparedReviewArtifacts } from "./review-attempt-artifacts";
 
 export type StartReviewFailure = { readonly _tag: "StartReviewFailed" };
 type StartReviewInput = { readonly profileId: WorkspaceProfileId; readonly host: GitHubHost; readonly owner: GitHubOwner; readonly repo: GitHubRepoName; readonly number: PullRequestNumber; readonly headSha: GitSha; readonly isDraft: boolean; readonly isOpen: boolean; readonly prContext?: ReviewSession["prContext"]; readonly profile?: WorkspaceProfileConfig; readonly localPath?: string; readonly scope?: ReviewScope };
@@ -64,8 +64,7 @@ export class ReviewSessionService {
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err") return err({ _tag: "StartReviewFailed" });
     try { await mkdir(dirname(session.patchPath), { recursive: true }); await writeFile(session.patchPath, diff.value, "utf8"); } catch { return err({ _tag: "StartReviewFailed" }); }
-    const initialAttempt = "001" as never;
-    const artifacts = preparedAttemptArtifacts(this.paths, input.profileId, session.id, initialAttempt);
+    const artifacts = preparedReviewArtifacts(this.paths, input.profileId, session.id);
     const context = await this.dependencies.context.prepare({ worktreePath, attemptDirectory: dirname(artifacts.contextPath), pr: { title: `${input.owner}/${input.repo}#${input.number}`, headSha: input.headSha }, comments: comments.value, checks: checks.value, changedFiles: parseChangedFiles(diff.value), patch: { path: session.patchPath, sha256: "0".repeat(64) }, rulePaths: input.profile.rulePaths });
     return context._tag === "ok" ? context : err({ _tag: "StartReviewFailed" });
   }

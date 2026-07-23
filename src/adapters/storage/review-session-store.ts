@@ -17,6 +17,7 @@ import {
   type ReviewAttemptId,
   type ReviewSessionId,
   type WorkspaceProfileId,
+  type IsoTimestamp,
 } from "../../domain/ids";
 import type {
   ReviewAttempt,
@@ -28,6 +29,7 @@ import type {
   ReviewSession,
   ReviewSessionState,
 } from "../../domain/review-session";
+import { startNextAttempt } from "../../domain/review-session";
 import { parseReviewScope } from "../../domain/review-comparison";
 import { err, ok, type Result } from "../../domain/result";
 import {
@@ -212,8 +214,24 @@ const debugEventSchema = v.strictObject({
 
 export type DebugTraceEvent = v.InferOutput<typeof debugEventSchema>;
 
+export type BeginAttemptFailure =
+  | StorageFailure
+  | { readonly _tag: "BeginAttemptRejected"; readonly reason: "not_runnable" };
+
+export type BeginAttemptInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
+  readonly updatedAt: IsoTimestamp;
+  readonly createAttempt: (
+    session: ReviewSession,
+    attemptId: ReviewAttemptId,
+  ) => Promise<Result<ReviewAttempt, StorageFailure>>;
+};
+
 /** Owns durable session and attempt artifacts; debug JSONL is never read as state. */
 export class ReviewSessionStore {
+  private readonly beginLocks = new Map<string, Promise<void>>();
+
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async save(session: unknown): Promise<Result<void, StorageFailure>> {
@@ -261,30 +279,60 @@ export class ReviewSessionStore {
   }
 
   /**
-   * Persist the session transition before its attempt. If the second write cannot
-   * complete, leave a visible stale session rather than a runnable session with
-   * no durable attempt.
+   * Allocates and persists one attempt under a session-owned critical section.
+   * A failed second write leaves a visible stale session instead of an invisible
+   * runnable transition. The caller supplies artifact preparation because only it
+   * owns the prepared-input policy; it receives the freshly loaded session and ID.
    */
-  async beginAttempt(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly session: ReviewSession;
-    readonly attempt: ReviewAttempt;
-  }): Promise<Result<void, StorageFailure>> {
-    const sessionSaved = await this.save(input.session);
-    if (sessionSaved._tag === "err") return sessionSaved;
+  async beginAttempt(
+    input: BeginAttemptInput,
+  ): Promise<Result<ReviewAttempt, BeginAttemptFailure>> {
+    return this.withBeginLock(input.profileId, input.sessionId, async () => {
+      const session = await this.load(input.profileId, input.sessionId);
+      if (session._tag === "err") return session;
+      if (
+        session.value.state._tag === "Running" ||
+        session.value.state._tag === "Merged" ||
+        session.value.state._tag === "Stale"
+      ) {
+        return err({ _tag: "BeginAttemptRejected", reason: "not_runnable" });
+      }
 
-    const attemptSaved = await this.saveAttempt(
-      input.profileId,
-      input.session.id,
-      input.attempt,
-    );
-    if (attemptSaved._tag === "ok") return attemptSaved;
+      const attempts = await this.listAttempts(input.profileId, input.sessionId);
+      if (attempts._tag === "err") return attempts;
+      const started = startNextAttempt(session.value, attempts.value.map((attempt) => attempt.id));
+      if (started._tag === "err") {
+        return err({ _tag: "BeginAttemptRejected", reason: "not_runnable" });
+      }
 
-    await this.save({
-      ...input.session,
-      state: { _tag: "Stale", reason: "orphaned_run" },
+      const attempt = await input.createAttempt(session.value, started.value.attemptId);
+      if (attempt._tag === "err") return attempt;
+      if (attempt.value.id !== started.value.attemptId || attempt.value.sessionId !== session.value.id) {
+        return invalidWrite();
+      }
+
+      const startedSession: ReviewSession = {
+        ...started.value.session,
+        updatedAt: input.updatedAt,
+      };
+      const sessionSaved = await this.save(startedSession);
+      if (sessionSaved._tag === "err") return sessionSaved;
+
+      const attemptSaved = await this.saveAttempt(
+        input.profileId,
+        startedSession.id,
+        attempt.value,
+      );
+      if (attemptSaved._tag === "ok") return ok(attempt.value);
+
+      // Best effort compensation: if it too fails, startup reconciliation still
+      // converts the persisted Running-without-attempt pair into an interruption.
+      await this.save({
+        ...startedSession,
+        state: { _tag: "Stale", reason: "orphaned_run" },
+      });
+      return attemptSaved;
     });
-    return attemptSaved;
   }
 
   async loadAttempt(
@@ -364,6 +412,27 @@ export class ReviewSessionStore {
       this.paths.debugTraceFile(profileId, sessionId),
       parsed.value,
     );
+  }
+
+  private async withBeginLock<T>(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const key = `${profileId}:${sessionId}`;
+    const predecessor = this.beginLocks.get(key);
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.beginLocks.set(key, current);
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release?.();
+      if (this.beginLocks.get(key) === current) this.beginLocks.delete(key);
+    }
   }
 }
 

@@ -18,7 +18,7 @@ export class ReviewCompletionService {
   async complete(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
     const profileId = parseWorkspaceProfileId(field(input, "profileId")); const sessionId = parseReviewSessionId(field(input, "sessionId")); const attemptId = parseReviewAttemptId(field(input, "attemptId"));
     const modelResult = parseModelReviewResult(field(input, "result"));
-    if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err" || modelResult._tag === "err" || modelResult.value.rawNotes !== undefined) return err({ reason: "invalid_result" });
+    if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err" || modelResult._tag === "err") return err({ reason: "invalid_result" });
     const store = new ReviewSessionStore(this.paths); const [session, attempt] = await Promise.all([store.load(profileId.value, sessionId.value), store.loadAttempt(profileId.value, sessionId.value, attemptId.value)]);
     if (session._tag === "err" || attempt._tag === "err") return err({ reason: "not_found" });
     const patch = await readFile(session.value.patchPath, "utf8").catch(() => undefined);

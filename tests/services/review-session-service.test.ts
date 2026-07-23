@@ -35,7 +35,7 @@ describe("ReviewSessionService", () => {
       expect(result).toMatchObject({ _tag: "ok", value: { outcome: { mode: "worktree" } } }); if (result._tag === "err") return;
       expect(result.value.session).toMatchObject({ state: { _tag: "Created" } });
       expect(await readFile(result.value.session.patchPath, "utf8")).toContain("src/a.ts");
-      expect(await readFile(paths.attemptContextFile(profile.id, result.value.session.id, "001" as never), "utf8")).toContain("src/a.ts");
+      expect(await readFile(paths.preparedContextFile(profile.id, result.value.session.id), "utf8")).toContain("src/a.ts");
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
@@ -48,7 +48,7 @@ describe("ReviewSessionService", () => {
       const result = await service.startReview({ profileId: profile.id, host, owner, repo, number, headSha: sha, isDraft: false, isOpen: true, profile });
       expect(result).toMatchObject({ _tag: "ok", value: { outcome: { mode: "metadata_only" } } }); if (result._tag === "err") return;
       expect(await readFile(result.value.session.patchPath, "utf8")).toContain("src/a.ts");
-      expect(await readFile(paths.attemptContextFile(profile.id, result.value.session.id, "001" as never), "utf8")).toContain("missing");
+      expect(await readFile(paths.preparedContextFile(profile.id, result.value.session.id), "utf8")).toContain("missing");
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

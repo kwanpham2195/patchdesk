@@ -109,7 +109,9 @@ function createWorkflowInvoker() {
         result: result.value,
       });
       if (persisted._tag === "err") return err({ reason: "failed" as const });
-      return ok({ runId: `flue:${input.sessionId}:${input.attemptId}` });
+      // The Flue CLI returns the completed structured result, not a durable
+      // provider run identifier. Do not fabricate one from Patchdesk IDs.
+      return ok({});
     },
   };
 }

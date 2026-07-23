@@ -195,9 +195,13 @@ export async function startLocalApiServer(
       ? undefined
       : new ReviewWorkflowStarter(sessions, configuration.workflowInvoker);
   const modelCatalog: PiRuntimeModelCatalog = configuration.modelCatalog ?? {
-    async list() {
-      return (configuration.supportedReviewModels ?? ["opencode-go/deepseek-v4-flash"])
+    async get() {
+      const models = (configuration.supportedReviewModels ?? [])
+        .filter((id) => id.length > 0)
         .map((id) => ({ id, label: id }));
+      return models.length === 0
+        ? err({ _tag: "PiRuntimeModelCatalogUnavailable" as const })
+        : ok({ models, ...(models[0] === undefined ? {} : { defaultModel: models[0].id }) });
     },
   };
   const reviewExecution = new ReviewExecutionService(
@@ -335,11 +339,12 @@ export async function startLocalApiServer(
     return context.json(run, 202);
   });
   app.get("/v1/reviews/models", async (context) => {
-    const models = await modelCatalog.list();
+    const catalog = await modelCatalog.get();
+    if (catalog._tag === "err") return context.json({ error: "catalog_unavailable" }, 503);
     return context.json({
-      models,
+      models: catalog.value.models,
       reasoning: REVIEW_REASONING_LEVELS,
-      defaultModel: models[0]?.id,
+      defaultModel: catalog.value.defaultModel,
       defaultReasoning: "medium",
     });
   });
@@ -354,7 +359,7 @@ export async function startLocalApiServer(
         ? 404
         : started.error.reason === "head_changed"
           ? 409
-          : started.error.reason === "github_read" || started.error.reason === "storage"
+          : started.error.reason === "github_read" || started.error.reason === "storage" || started.error.reason === "catalog_unavailable"
             ? 503
             : 400;
       return context.json({ error: started.error.reason }, status);

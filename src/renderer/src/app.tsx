@@ -70,6 +70,11 @@ import {
   saveDiffThemeFamily,
   type DiffThemeFamily,
 } from "./diff-theme-preferences";
+import {
+  loadReviewExecutionPreference,
+  saveReviewExecutionPreference,
+  type ReviewReasoningPreference,
+} from "./review-execution-preferences";
 
 export type DashboardScreenState =
   | "empty"
@@ -243,11 +248,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [diffThemeFamily, setDiffThemeFamily] = useState<DiffThemeFamily>(() =>
     loadDiffThemeFamily(),
   );
-  const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([
-    { id: "opencode-go/deepseek-v4-flash", label: "opencode-go/deepseek-v4-flash" },
-  ]);
-  const [reviewModel, setReviewModel] = useState("opencode-go/deepseek-v4-flash");
-  const [reviewReasoning, setReviewReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
+  const [reviewModel, setReviewModel] = useState<string>();
+  const [reviewReasoning, setReviewReasoning] = useState<ReviewReasoningPreference>("medium");
+  const [reviewCatalogUnavailable, setReviewCatalogUnavailable] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [runError, setRunError] = useState<string>();
   useEffect(() => {
@@ -306,7 +310,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     let active = true;
     void api("/v1/reviews/models")
       .then((value) => {
-        if (!active || !record(value) || !Array.isArray(value.models)) return;
+        if (!active || !record(value) || !Array.isArray(value.models)) {
+          setReviewModels([]);
+          setReviewModel(undefined);
+          setReviewCatalogUnavailable(true);
+          return;
+        }
         const models = value.models.flatMap((candidate) =>
           record(candidate) && typeof candidate.id === "string" && candidate.id.length > 0
             ? [{ id: candidate.id, label: typeof candidate.label === "string" ? candidate.label : candidate.id }]
@@ -314,17 +323,30 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               ? [{ id: candidate, label: candidate }]
               : [],
         );
-        if (models.length === 0) return;
+        if (models.length === 0) {
+          setReviewModels([]);
+          setReviewModel(undefined);
+          setReviewCatalogUnavailable(true);
+          return;
+        }
         const profileId = dashboard?.profile.id;
         const saved = profileId === undefined ? undefined : loadReviewExecutionPreference(profileId);
         const selected = saved?.model !== undefined && models.some((model) => model.id === saved.model)
           ? saved.model
-          : models[0]?.id;
+          : typeof value.defaultModel === "string" && models.some((model) => model.id === value.defaultModel)
+            ? value.defaultModel
+            : models[0]?.id;
         setReviewModels(models);
-        setReviewModel(selected ?? models[0]?.id ?? "opencode-go/deepseek-v4-flash");
+        setReviewModel(selected);
         setReviewReasoning(saved?.reasoning ?? "medium");
+        setReviewCatalogUnavailable(false);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!active) return;
+        setReviewModels([]);
+        setReviewModel(undefined);
+        setReviewCatalogUnavailable(true);
+      });
     return () => { active = false; };
   }, [dashboard?.profile.id]);
   const loadCompletedWorkbench = useCallback(
@@ -830,7 +852,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                 </DialogHeader>
                 <div className="grid gap-3 py-2">
                   <Label className="grid gap-1.5">Model
-                    <Select value={reviewModel} onValueChange={(value) => { if (value !== null) setReviewModel(value); }}>
+                    <Select value={reviewModel} onValueChange={(value) => { if (value !== null) setReviewModel(value); }} disabled={reviewModels.length === 0}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{reviewModels.map((model) => <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>)}</SelectContent>
                     </Select>
@@ -841,8 +863,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                       <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
                     </Select>
                   </Label>
+                  {reviewCatalogUnavailable ? <p className="text-sm text-muted-foreground">No enabled Pi model is currently available. Patchdesk will not start a review until the runtime configuration is available.</p> : null}
                 </div>
-                <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button onClick={() => { setRunDialogOpen(false); void startOwnedRun(workbench.session.key.profileId, workbench.session.id); }}>Start read-only review</Button></DialogFooter>
+                <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button disabled={reviewModel === undefined} onClick={() => { setRunDialogOpen(false); void startOwnedRun(workbench.session.key.profileId, workbench.session.id); }}>Start read-only review</Button></DialogFooter>
               </DialogContent>
             </Dialog>
           ) : null}
@@ -1124,6 +1147,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     profileId: string,
     sessionId: string,
   ): Promise<string | undefined> {
+    if (reviewModel === undefined) {
+      setRunError(
+        "No enabled Pi review model is available. Update the active Pi runtime settings, then try again.",
+      );
+      return undefined;
+    }
     try {
       setRunError(undefined);
       saveReviewExecutionPreference(profileId, {
@@ -1464,27 +1493,6 @@ function RunFixturePanel(): React.JSX.Element {
       }}
     />
   );
-}
-
-type ReviewExecutionPreference = {
-  readonly model: string;
-  readonly reasoning: "low" | "medium" | "high";
-};
-
-function loadReviewExecutionPreference(profileId: string): ReviewExecutionPreference | undefined {
-  try {
-    const value: unknown = JSON.parse(window.localStorage.getItem(`patchdesk.review-execution.v1.${profileId}`) ?? "null");
-    if (!record(value) || typeof value.model !== "string") return undefined;
-    return value.reasoning === "low" || value.reasoning === "medium" || value.reasoning === "high"
-      ? { model: value.model, reasoning: value.reasoning }
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function saveReviewExecutionPreference(profileId: string, preference: ReviewExecutionPreference): void {
-  window.localStorage.setItem(`patchdesk.review-execution.v1.${profileId}`, JSON.stringify(preference));
 }
 
 const fixturePatch = buildFixturePatch();
