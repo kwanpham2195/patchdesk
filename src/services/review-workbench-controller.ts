@@ -34,7 +34,17 @@ import { parseRevisionComparison, type RevisionComparison } from "../domain/revi
 
 export type ReviewWorkbenchFailure = { readonly reason: "invalid_input" | "not_found" | "github_read" | "head_changed" | "storage" };
 export type ReviewWorkbenchProjection =
-  | { readonly state: "review_started"; readonly session: ReviewSession }
+  | {
+      readonly state: "review_started";
+      readonly session: ReviewSession;
+      readonly fullPatch?: string;
+      readonly pullRequest?: PullRequestSummary;
+      readonly reviewedHeadSha: string;
+      readonly currentHeadSha?: string;
+      readonly freshness: "fresh" | "stale" | "unavailable";
+      readonly refreshedAt: string;
+      readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>> extends { readonly value: infer T } ? T : never;
+    }
   | {
       readonly state: "completed";
       readonly session: ReviewSession;
@@ -146,7 +156,7 @@ export class ReviewWorkbenchController {
   }
 
   private async project(profile: WorkspaceProfileConfig, session: ReviewSession): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    if (session.visibleResult === undefined || session.draftContent === undefined) return ok({ state: "review_started", session });
+    if (session.visibleResult === undefined || session.draftContent === undefined) return this.projectPrepared(profile, session);
     const pr = { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber };
     const [fullPatch, rawComparison, comparisonPatch, rawLifecycle, comments, checks, current, attempts] = await Promise.all([
       readFile(session.patchPath, "utf8").catch(() => undefined),
@@ -223,6 +233,27 @@ export class ReviewWorkbenchController {
       checks: safeChecks as never,
       history: attempts.value.map((attempt) => ({ id: attempt.id, state: attempt.state._tag, startedAt: attempt.startedAt })),
       mergeReadiness,
+    });
+  }
+
+  private async projectPrepared(profile: WorkspaceProfileConfig, session: ReviewSession): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const pr = { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber };
+    const [fullPatch, checks, current] = await Promise.all([
+      readFile(session.patchPath, "utf8").catch(() => undefined),
+      this.github.getPullRequestChecks({ profile, pr, headSha: session.key.headSha }),
+      this.github.getPullRequest({ profile, pr }),
+    ]);
+    const currentHeadSha = current._tag === "ok" ? current.value.headSha : undefined;
+    return ok({
+      state: "review_started",
+      session,
+      ...(fullPatch === undefined ? {} : { fullPatch }),
+      ...(current._tag === "ok" ? { pullRequest: current.value } : {}),
+      reviewedHeadSha: session.key.headSha,
+      ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
+      freshness: currentHeadSha === undefined ? "unavailable" : currentHeadSha === session.key.headSha ? "fresh" : "stale",
+      refreshedAt: this.now(),
+      checks: checks._tag === "ok" ? checks.value as never : { overall: "unknown" as const, checks: [] } as never,
     });
   }
 

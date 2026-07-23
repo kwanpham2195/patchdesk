@@ -115,6 +115,13 @@ const workbenchProjectionSchema = v.variant("state", [
   v.strictObject({
     state: v.literal("review_started"),
     session: workbenchSessionSchema,
+    fullPatch: v.optional(v.string()),
+    pullRequest: v.optional(v.unknown()),
+    reviewedHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
+    currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
+    freshness: v.optional(v.picklist(["fresh", "stale", "unavailable"])),
+    refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+    checks: v.optional(v.unknown()),
   }),
   v.strictObject({
     state: v.literal("completed"),

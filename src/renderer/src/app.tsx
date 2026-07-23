@@ -274,6 +274,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     ghAccount: "",
     workspaceRoot: "",
   });
+  useEffect(() => {
+    if (preview !== undefined) keepProfileButton.current?.focus();
+  }, [preview]);
   const loadEnvironment = useCallback(async (): Promise<void> => {
     const value = await api("/v1/environment");
     if (record(value)) {
@@ -706,6 +709,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           <p className="mt-3 text-sm text-muted-foreground">
             Session {workbench.session.id}
           </p>
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Read-only inspection actions">
+            <Button variant={destination.kind === "workbench" && destination.initialSection === "diff" ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "diff" })}>View diff</Button>
+            <Button variant={destination.kind === "workbench" && destination.initialSection === "checks" ? "secondary" : "outline"} size="sm" onClick={() => navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection: "checks" })}>Inspect failing checks</Button>
+          </div>
+          {destination.kind === "workbench" && destination.initialSection === "checks" ? <PreparedChecks checks={workbench.checks} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /> : null}
+          {destination.kind === "workbench" && destination.initialSection === "diff" && workbench.fullPatch !== undefined ? <div className="mt-4"><DiffWorkbench patch={workbench.fullPatch} /></div> : null}
           {workbench.session.currentAttemptId === undefined ? (
             <div className="mt-4 space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -1296,7 +1305,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       >
         {preview === undefined ? null : (
           <DialogContent
-            initialFocus={keepProfileButton}
+            initialFocus={() => keepProfileButton.current}
             finalFocus={previewTrigger}
           >
             <DialogHeader>
@@ -2208,6 +2217,17 @@ function ReviewRecords({
       </div>
     </div>
   );
+}
+
+function PreparedChecks({ checks, freshness }: { readonly checks: unknown; readonly freshness?: "fresh" | "stale" | "unavailable" }): React.JSX.Element {
+  const value = record(checks) ? checks : {};
+  const overall = typeof value.overall === "string" ? value.overall : "unknown";
+  const entries = Array.isArray(value.checks) ? value.checks.filter(record) : [];
+  return <section className="mt-4 rounded-lg border p-4" aria-label="Pull request checks">
+    <h2 className="text-sm font-semibold">Checks · {overall}</h2>
+    <p className="mt-1 text-xs text-muted-foreground">{freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}</p>
+    {entries.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No check details are available.</p> : <ul className="mt-3 space-y-2">{entries.map((check, index) => <li key={`${typeof check.name === "string" ? check.name : "check"}-${index}`} className="rounded-md border p-2 text-sm"><span className="font-medium">{typeof check.name === "string" ? check.name : "Unnamed check"}</span><span className="ml-2 text-muted-foreground">{typeof check.conclusion === "string" ? check.conclusion : typeof check.status === "string" ? check.status : "Unknown status"}</span></li>)}</ul>}
+  </section>;
 }
 
 function Settings({
