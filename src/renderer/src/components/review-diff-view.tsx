@@ -33,8 +33,11 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
+import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+
+registerPierreThemeLoaders();
 
 const DARK_DIFF_STYLE = {
   "--diffs-dark-bg": "#080d15",
