@@ -460,14 +460,8 @@ describe("GitHubAdapter read boundary", () => {
     expect(executor.requests).toEqual([await golden("get-diff")]);
   });
 
-  it("uses git diff only after explicit fetched-ref evidence", async () => {
+  it("uses the immutable managed refs when fetched-ref evidence is supplied", async () => {
     const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "pull request diff unavailable",
-      },
       {
         _tag: "Exited",
         exitCode: 0,
@@ -508,7 +502,6 @@ describe("GitHubAdapter read boundary", () => {
       value: "diff --git a/fallback.ts b/fallback.ts\n",
     });
     expect(executor.requests).toEqual([
-      await golden("get-diff"),
       [
         "git",
         "-C",
@@ -554,12 +547,6 @@ describe("GitHubAdapter read boundary", () => {
 
   it("does not run git diff when an expected fetched ref is absent", async () => {
     const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "pull request diff unavailable",
-      },
       { _tag: "Exited", exitCode: 1, stdout: "", stderr: "unknown revision" },
     ]);
     const adapter = new GitHubAdapter(new CommandRunner(executor));
@@ -583,7 +570,6 @@ describe("GitHubAdapter read boundary", () => {
       error: { _tag: "GitHubReadFailed", operation: "get_diff" },
     });
     expect(executor.requests).toEqual([
-      await golden("get-diff"),
       [
         "git",
         "-C",
@@ -599,12 +585,6 @@ describe("GitHubAdapter read boundary", () => {
 
   it("does not run git diff when a managed fetched ref resolves to the wrong commit", async () => {
     const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "pull request diff unavailable",
-      },
       { _tag: "Exited", exitCode: 0, stdout: `${headSha}\n`, stderr: "" },
     ]);
     const adapter = new GitHubAdapter(new CommandRunner(executor));
@@ -627,7 +607,7 @@ describe("GitHubAdapter read boundary", () => {
       _tag: "err",
       error: { _tag: "GitHubReadFailed", operation: "get_diff" },
     });
-    expect(executor.requests).toHaveLength(2);
+    expect(executor.requests).toHaveLength(1);
   });
 
   it("classifies a successful status for a different gh account as github_auth", async () => {

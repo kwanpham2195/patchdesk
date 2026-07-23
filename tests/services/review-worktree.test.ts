@@ -27,11 +27,12 @@ const ids = {
   owner: must(parseGitHubOwner("centraldigital")),
   repo: must(parseGitHubRepoName("patchdesk")),
   number: must(parsePullRequestNumber(42)),
+  baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
   sha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
 };
 
 describe("ReviewWorktreeService", () => {
-  it("records a dirty primary checkout, fetches a managed ref, and never changes that checkout", async () => {
+  it("records a dirty primary checkout, fetches immutable managed refs, and never changes that checkout", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
     try {
       const local = join(root, "repo");
@@ -41,6 +42,7 @@ describe("ReviewWorktreeService", () => {
       const prepared = await service.prepare({ ...ids, sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never, localPath: local });
 
       expect(prepared).toMatchObject({ _tag: "ok", value: { mode: "worktree", dirty: { tracked: true, untracked: true } } });
+      expect(git.calls.some((argv) => argv.slice(3).join(" ") === `fetch origin ${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab/base --no-tags`)).toBe(true);
       expect(git.calls.some((argv) => argv.slice(3).join(" ") === `fetch origin ${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab/head --no-tags`)).toBe(true);
       expect(git.calls.flat()).not.toContain("pull");
       expect(git.calls.flat()).not.toContain("checkout");

@@ -1,20 +1,18 @@
 import { readFile } from "node:fs/promises";
 
-import type {
-  GitHubReader,
-} from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
-  type GitSha,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../domain/ids";
 import { parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSession } from "../domain/review-session";
+import type { GitReadExecutor } from "./review-worktree-service";
+
+const maxHydratedFileBytes = 1024 * 1024;
 
 export type ReviewDiffSource =
   | {
@@ -39,17 +37,15 @@ export type ReviewDiffSourceFailure = {
 };
 
 /**
- * Reads the exact base/head blobs needed by Pierre to expand omitted hunk
- * context. It never runs a shell command and only returns bounded text.
+ * Reads the exact managed base/head blobs needed by Pierre to expand omitted
+ * hunk context. It only uses main-process argv-array Git reads and returns
+ * bounded text that matches the immutable saved patch.
  */
 export class ReviewDiffSourceService {
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
-    private readonly github: Pick<
-      GitHubReader,
-      "getFileContents" | "getPullRequest"
-    >,
+    private readonly git: GitReadExecutor,
   ) {}
 
   async load(input: unknown): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
@@ -93,44 +89,32 @@ export class ReviewDiffSourceService {
       return ok({ state: "unavailable", reason: "path_unavailable" });
     }
 
-    const baseSha = await this.resolveBaseSha(profile.value, session.value);
-    if (baseSha._tag === "err") return ok(baseSha.error);
+    if (session.value.pr.baseSha === undefined) {
+      return ok({ state: "unavailable", reason: "legacy_snapshot" });
+    }
 
     const oldPath = parseRepoRelativePath(file.oldPath);
     const newPath = parseRepoRelativePath(file.newPath);
     if (oldPath._tag === "err" || newPath._tag === "err") {
       return ok({ state: "unavailable", reason: "path_unavailable" });
     }
-    const pr = {
-      host: session.value.key.host,
-      owner: session.value.key.owner,
-      repo: session.value.key.repo,
-      number: session.value.key.prNumber,
-    };
     const oldAbsent = /^--- \/dev\/null$/m.test(rawFilePatch);
     const newAbsent = /^\+\+\+ \/dev\/null$/m.test(rawFilePatch);
     const [oldResult, newResult] = await Promise.all([
       oldAbsent
         ? Promise.resolve(undefined)
-        : this.github.getFileContents({
-            profile: profile.value,
-            pr,
-            sha: baseSha.value,
-            path: oldPath.value,
-          }),
+        : this.readBlob(session.value, "base", oldPath.value),
       newAbsent
         ? Promise.resolve(undefined)
-        : this.github.getFileContents({
-            profile: profile.value,
-            pr,
-            sha: session.value.key.headSha,
-            path: newPath.value,
-          }),
+        : this.readBlob(session.value, "head", newPath.value),
     ]);
     const unavailable = unavailableReason(oldResult) ?? unavailableReason(newResult);
     if (unavailable !== undefined) return ok(unavailable);
     const oldContents = sourceContents(oldResult);
     const newContents = sourceContents(newResult);
+    if (!matchesPatch(rawFilePatch, oldContents, newContents)) {
+      return ok({ state: "unavailable", reason: "patch_unavailable" });
+    }
     return ok({
       state: "ready",
       ...(oldResult === undefined
@@ -142,35 +126,31 @@ export class ReviewDiffSourceService {
     });
   }
 
-  private async resolveBaseSha(
-    profile: WorkspaceProfileConfig,
+  private async readBlob(
     session: ReviewSession,
-  ): Promise<Result<GitSha, ReviewDiffSource>> {
-    if (session.pr.baseSha !== undefined) return ok(session.pr.baseSha);
-    const current = await this.github.getPullRequest({
-      profile,
-      pr: {
-        host: session.key.host,
-        owner: session.key.owner,
-        repo: session.key.repo,
-        number: session.key.prNumber,
-      },
-    });
-    if (current._tag === "err") {
-      return err({ state: "unavailable", reason: "github_read" });
-    }
-    if (current.value.headSha !== session.key.headSha) {
-      return err({ state: "unavailable", reason: "head_changed" });
-    }
-    if (current.value.baseSha === undefined) {
-      return err({ state: "unavailable", reason: "legacy_snapshot" });
-    }
-    return ok(current.value.baseSha);
+    side: "base" | "head",
+    path: string,
+  ): Promise<Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }>> {
+    const ref = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/${side}`;
+    const blob = await this.git.run([
+      "git",
+      "-C",
+      session.worktree.path,
+      "show",
+      "--no-textconv",
+      "--end-of-options",
+      `${ref}:${path}`,
+    ]);
+    if (blob._tag === "err") return err({ reason: "github_read" });
+    const bytes = Buffer.byteLength(blob.value.stdout, "utf8");
+    if (bytes > maxHydratedFileBytes) return ok({ state: "too_large" });
+    if (blob.value.stdout.includes("\0")) return ok({ state: "binary" });
+    return ok({ state: "available", contents: blob.value.stdout });
   }
 }
 
 function sourceContents(
-  result: Awaited<ReturnType<GitHubReader["getFileContents"]>> | undefined,
+  result: Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }> | undefined,
 ): string {
   if (
     result === undefined ||
@@ -183,7 +163,7 @@ function sourceContents(
 }
 
 function unavailableReason(
-  result: Awaited<ReturnType<GitHubReader["getFileContents"]>> | undefined,
+  result: Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }> | undefined,
 ): Extract<ReviewDiffSource, { readonly state: "unavailable" }> | undefined {
   if (result === undefined) return undefined;
   if (result._tag === "err") {
@@ -196,6 +176,53 @@ function unavailableReason(
     return { state: "unavailable", reason: "too_large" };
   }
   return undefined;
+}
+
+/**
+ * The hydrated source must describe the exact immutable patch. Without this
+ * check a moving PR diff and an older SHA can make Pierre calculate impossible
+ * trailing context, which is both misleading and a virtualizer crash.
+ */
+function matchesPatch(
+  rawPatch: string,
+  oldContents: string,
+  newContents: string,
+): boolean {
+  const oldLines = splitLines(oldContents);
+  const newLines = splitLines(newContents);
+  let oldIndex = 0;
+  let newIndex = 0;
+  let inHunk = false;
+  for (const rawLine of rawPatch.replaceAll("\r\n", "\n").split("\n")) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
+    if (header !== null) {
+      oldIndex = Number(header[1]) - 1;
+      newIndex = Number(header[2]) - 1;
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk || rawLine.startsWith("\\ No newline at end of file")) continue;
+    const content = rawLine.slice(1);
+    if (rawLine.startsWith(" ")) {
+      if (oldLines[oldIndex] !== content || newLines[newIndex] !== content) return false;
+      oldIndex += 1;
+      newIndex += 1;
+    } else if (rawLine.startsWith("-")) {
+      if (oldLines[oldIndex] !== content) return false;
+      oldIndex += 1;
+    } else if (rawLine.startsWith("+")) {
+      if (newLines[newIndex] !== content) return false;
+      newIndex += 1;
+    }
+  }
+  return true;
+}
+
+function splitLines(contents: string): ReadonlyArray<string> {
+  const normalized = contents.replaceAll("\r\n", "\n");
+  const lines = normalized.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
 }
 
 function patchForPath(patch: string, path: string): string | undefined {

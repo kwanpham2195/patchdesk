@@ -194,7 +194,7 @@ export async function startLocalApiServer(
   const reviewDiffSources = new ReviewDiffSourceService(
     profiles,
     sessions,
-    github,
+    readOnlyGit,
   );
   const workflowStarter =
     configuration.workflowInvoker === undefined

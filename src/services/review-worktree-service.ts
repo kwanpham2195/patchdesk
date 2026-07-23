@@ -12,7 +12,8 @@ export type GitReadExecutor = {
 export type ManagedWorktree = {
   readonly mode: "worktree";
   readonly path: string;
-  readonly ref: string;
+  readonly baseRef: string;
+  readonly headRef: string;
   readonly dirty: { readonly tracked: boolean; readonly untracked: boolean };
 };
 export type MetadataOnlyReview = { readonly mode: "metadata_only"; readonly warning: "missing_local_path" };
@@ -25,6 +26,7 @@ type WorktreeInput = {
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
   readonly number: PullRequestNumber;
+  readonly baseSha: GitSha;
   readonly sha: GitSha;
   readonly sessionId: ReviewSessionId;
   readonly localPath?: string;
@@ -34,7 +36,7 @@ type WorktreeInput = {
 export class ReviewWorktreeService {
   constructor(private readonly paths: PatchdeskPaths, private readonly git: GitReadExecutor) {}
 
-  /** Fetch one immutable PR SHA into a managed ref and create an isolated detached worktree. */
+/** Fetch immutable PR base/head SHAs into managed refs and create a detached head worktree. */
   async prepare(input: WorktreeInput): Promise<Result<ManagedWorktree | MetadataOnlyReview, WorktreeFailure>> {
     if (input.localPath === undefined) return ok({ mode: "metadata_only", warning: "missing_local_path" });
     let repositoryPath: string;
@@ -45,19 +47,22 @@ export class ReviewWorktreeService {
       tracked: status.value.stdout.split("\n").some((line) => line.startsWith(" ") || /^[MADRCU]/.test(line)),
       untracked: status.value.stdout.split("\n").some((line) => line.startsWith("?? ")),
     };
-    const ref = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/head`;
-    const fetched = await this.git.run(["git", "-C", repositoryPath, "fetch", "origin", `${input.sha}:${ref}`, "--no-tags"]);
-    if (fetched._tag === "err") return err({ _tag: "GitWorktreeFailed" });
+    const baseRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/base`;
+    const headRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/head`;
+    const fetchedBase = await this.git.run(["git", "-C", repositoryPath, "fetch", "origin", `${input.baseSha}:${baseRef}`, "--no-tags"]);
+    if (fetchedBase._tag === "err") return err({ _tag: "GitWorktreeFailed" });
+    const fetchedHead = await this.git.run(["git", "-C", repositoryPath, "fetch", "origin", `${input.sha}:${headRef}`, "--no-tags"]);
+    if (fetchedHead._tag === "err") return err({ _tag: "GitWorktreeFailed" });
     const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
     const existing = await this.matchesMetadata(path, input.profileId, input.sessionId);
     if (!existing) {
       await mkdir(dirname(path), { recursive: true });
-      const added = await this.git.run(["git", "-C", repositoryPath, "worktree", "add", "--detach", path, ref]);
+      const added = await this.git.run(["git", "-C", repositoryPath, "worktree", "add", "--detach", path, headRef]);
       if (added._tag === "err") return err({ _tag: "GitWorktreeFailed" });
       await mkdir(path, { recursive: true });
-      await writeFile(joinMetadata(path), JSON.stringify({ profileId: input.profileId, sessionId: input.sessionId, ref }), "utf8");
+      await writeFile(joinMetadata(path), JSON.stringify({ profileId: input.profileId, sessionId: input.sessionId, baseRef, headRef }), "utf8");
     }
-    return ok({ mode: "worktree", path, ref, dirty });
+    return ok({ mode: "worktree", path, baseRef, headRef, dirty });
   }
 
   /** Remove only a verified Patchdesk-owned worktree; no broad filesystem deletion is allowed. */

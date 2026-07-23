@@ -513,6 +513,26 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly pr: PullRequestRef;
     readonly fetchedRefs?: FetchedDiffRefs;
   }): Promise<Result<string, GitHubReadFailure>> {
+    if (input.fetchedRefs !== undefined) {
+      const fetchedRefs = await this.verifyFetchedRefs(input.fetchedRefs);
+      if (fetchedRefs._tag === "err") return fetchedRefs;
+
+      const exact = await this.commands.runText({
+        argv: [
+          "git",
+          "-C",
+          input.fetchedRefs.repositoryPath,
+          "diff",
+          "--no-ext-diff",
+          `${input.fetchedRefs.baseRef}...${input.fetchedRefs.headRef}`,
+        ],
+        timeoutMs: commandTimeoutMs,
+      });
+      return exact._tag === "ok"
+        ? exact
+        : commandFailure("get_diff", exact.error);
+    }
+
     const response = await this.commands.runText({
       argv: [
         "gh",
@@ -532,26 +552,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     ) {
       return commandFailure("get_diff", response.error);
     }
-    if (input.fetchedRefs === undefined)
-      return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
-
-    const fetchedRefs = await this.verifyFetchedRefs(input.fetchedRefs);
-    if (fetchedRefs._tag === "err") return fetchedRefs;
-
-    const fallback = await this.commands.runText({
-      argv: [
-        "git",
-        "-C",
-        input.fetchedRefs.repositoryPath,
-        "diff",
-        "--no-ext-diff",
-        `${input.fetchedRefs.baseRef}...${input.fetchedRefs.headRef}`,
-      ],
-      timeoutMs: commandTimeoutMs,
-    });
-    return fallback._tag === "ok"
-      ? fallback
-      : commandFailure("get_diff", fallback.error);
+    return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
 
   async getFileContents(input: {
