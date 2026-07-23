@@ -1,11 +1,8 @@
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { Result } from "../domain/result";
-import type { MaintainerInbox } from "./maintainer-inbox-service";
+import type { MaintainerInbox, MaintainerInboxService } from "./maintainer-inbox-service";
 
-type ReadOnlyInbox = Pick<
-  import("./maintainer-inbox-service").MaintainerInboxService,
-  "list"
->;
+type ReadOnlyInbox = Pick<MaintainerInboxService, "list">;
 
 /**
  * Coalesces concurrent inbox scans for one profile. Its narrow dependency is

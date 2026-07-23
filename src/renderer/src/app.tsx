@@ -62,6 +62,7 @@ import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
 import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "./renderer-contracts";
+import { InboxRefreshScheduler, inboxFreshnessLabel } from "./inbox-refresh-scheduler";
 import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
 import {
   DIFF_THEME_FAMILIES,
@@ -227,6 +228,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
   const [inbox, setInbox] = useState<InboxResponse | undefined>();
+  const [inboxRefreshing, setInboxRefreshing] = useState(false);
+  const [inboxPaused, setInboxPaused] = useState(false);
+  const [inboxRefreshFailed, setInboxRefreshFailed] = useState(false);
   const [state, setState] = useState<DashboardScreenState>(
     initialState ?? "loading",
   );
@@ -269,6 +273,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   >("idle");
   const [invalidReviewRecordCount, setInvalidReviewRecordCount] = useState(0);
   const restoredSessionId = useRef<string | undefined>(undefined);
+  const activeInboxProfileId = useRef<string | undefined>(undefined);
+  const inboxRefreshGeneration = useRef(0);
+  const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(undefined);
+  const inboxSchedulerInitialized = useRef(false);
   const [navigationState, setNavigationState] = useState<
     "clear" | "dirty_draft" | "write_pending"
   >("clear");
@@ -385,8 +393,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         : undefined
       : dashboardFromInbox(loadedInbox);
     if (compatibleDashboard !== undefined) {
-      if (loadedInbox !== undefined) setInbox(loadedInbox);
+      if (loadedInbox !== undefined) {
+        setInbox(loadedInbox);
+        setInboxRefreshFailed(false);
+      }
       setDashboard(compatibleDashboard);
+      activeInboxProfileId.current = compatibleDashboard.profile.id;
       if (options.preserveProfileDraft !== true) {
         setProfileDraft({
           id: compatibleDashboard.profile.id,
@@ -415,9 +427,77 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       );
     } else if (initialState === undefined) setState("empty");
   };
+  const refreshInbox = useCallback(async (): Promise<"success" | "failure"> => {
+    const profileId = activeInboxProfileId.current;
+    if (profileId === undefined) return "failure";
+    const generation = ++inboxRefreshGeneration.current;
+    setInboxRefreshing(true);
+    setInboxPaused(false);
+    try {
+      const payload = await api("/v1/inbox");
+      const refreshed = parseInboxResponse(payload);
+      if (refreshed === undefined || refreshed.profile.id !== profileId)
+        throw new Error("Invalid inbox refresh response");
+      if (generation !== inboxRefreshGeneration.current) return "success";
+      const nextDashboard = dashboardFromInbox(refreshed);
+      setInbox(refreshed);
+      setDashboard(nextDashboard);
+      setInboxRefreshFailed(false);
+      setState(screenStateForDashboard(nextDashboard));
+      return "success";
+    } catch {
+      if (generation === inboxRefreshGeneration.current)
+        setInboxRefreshFailed(true);
+      return "failure";
+    } finally {
+      if (generation === inboxRefreshGeneration.current)
+        setInboxRefreshing(false);
+    }
+  }, []);
   useEffect(() => {
     if (!fixtureMode) void load();
   }, [fixtureMode]);
+  useEffect(() => {
+    if (fixtureMode || destination.kind !== "dashboard" || dashboard === undefined)
+      return;
+    const scheduler = new InboxRefreshScheduler(refreshInbox);
+    inboxRefreshScheduler.current = scheduler;
+    const visible = document.visibilityState !== "hidden";
+    setInboxPaused(!visible);
+    if (visible) {
+      if (inboxSchedulerInitialized.current) scheduler.activate();
+      else {
+        inboxSchedulerInitialized.current = true;
+        scheduler.activateAfterSuccessfulResponse();
+      }
+    }
+
+    const foreground = (): void => {
+      if (document.visibilityState === "hidden") return;
+      setInboxPaused(false);
+      scheduler.setForeground(true);
+    };
+    const background = (): void => {
+      setInboxPaused(true);
+      scheduler.setForeground(false);
+    };
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") background();
+      else foreground();
+    };
+    window.addEventListener("focus", foreground);
+    window.addEventListener("blur", background);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      scheduler.deactivate();
+      if (inboxRefreshScheduler.current === scheduler)
+        inboxRefreshScheduler.current = undefined;
+      window.removeEventListener("focus", foreground);
+      window.removeEventListener("blur", background);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      setInboxPaused(true);
+    };
+  }, [dashboard?.profile.id, destination.kind, fixtureMode, refreshInbox]);
   useEffect(() => {
     if (
       (destination.kind !== "drafts" && destination.kind !== "history") ||
@@ -853,6 +933,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const select = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
     if (selected !== undefined) {
+      // Prevent an older profile's read-only response from replacing the newly
+      // selected profile while its own inbox request is still in transit.
+      activeInboxProfileId.current = selected.id;
+      inboxRefreshGeneration.current += 1;
       setProfileDraft({
         id: selected.id,
         label: selected.label,
@@ -868,15 +952,26 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await load({ preserveProfileDraft: true });
   };
   const refreshDashboard = async (): Promise<void> => {
-    await api("/v1/inbox/refresh", { method: "POST" });
+    const scheduler = inboxRefreshScheduler.current;
+    if (scheduler !== undefined) {
+      await scheduler.refreshManual();
+      return;
+    }
     await load();
   };
   const refreshRepo = async (repo: Repo): Promise<void> => {
-    await api("/v1/dashboard/refresh/repository", {
+    const refreshed = await api("/v1/dashboard/refresh/repository", {
       method: "POST",
       body: repo,
     });
-    await load();
+    if (!isDashboardList(refreshed)) return;
+    setDashboard((current) => {
+      if (current === undefined) return current;
+      return {
+        ...current,
+        dashboard: mergeDashboardRepository(current.dashboard, refreshed, repo),
+      };
+    });
   };
   const saveProfile = async (): Promise<void> => {
     const exists = profiles.some((profile) => profile.id === profileDraft.id);
@@ -1209,6 +1304,17 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             state={state}
             inbox={inbox}
             dashboard={dashboard}
+            refreshStatus={inboxFreshnessLabel({
+              ...(inbox.inbox.snapshot?.state === undefined
+                ? {}
+                : { remote: inbox.inbox.snapshot.state }),
+              refreshing: inboxRefreshing,
+              paused: inboxPaused,
+              refreshFailed: inboxRefreshFailed,
+              ...(inbox.inbox.snapshot?.refreshedAt === undefined
+                ? {}
+                : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
+            })}
             reference={reference}
             onReference={setReference}
             onPreview={() => void previewEntry()}
@@ -1648,6 +1754,7 @@ function InboxScreen({
   onReference,
   onPreview,
   onRefresh,
+  refreshStatus,
   onSettings,
   onOpenReview,
   onOpenSession,
@@ -1661,6 +1768,7 @@ function InboxScreen({
   readonly onReference: (value: string) => void;
   readonly onPreview: () => void;
   readonly onRefresh: () => void;
+  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onSettings: () => void;
   readonly onOpenReview: (
     row: InboxResponse["inbox"]["rows"][number],
@@ -1717,7 +1825,7 @@ function InboxScreen({
           rows={inbox.inbox.rows}
           freshness={inbox.inbox.dataFreshness}
           {...(inbox.inbox.snapshot === undefined ? {} : { snapshot: inbox.inbox.snapshot })}
-          loading={state === "loading"}
+          refreshStatus={refreshStatus}
           onRefresh={onRefresh}
           onOpenReview={onOpenReview}
           onOpenSession={onOpenSession}
@@ -2857,6 +2965,44 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
         state: outcome.state,
       })),
     },
+  };
+}
+
+function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
+  const outcomes = dashboard.dashboard.repos.map((item) => item.state);
+  if (outcomes.includes("github_auth") || outcomes.includes("github_read"))
+    return "error";
+  if (outcomes.includes("archived")) return "archived";
+  if (outcomes.includes("no_open_prs") && dashboard.dashboard.rows.length === 0)
+    return "no_open_prs";
+  if (outcomes.includes("missing_local_path")) return "degraded";
+  return dashboard.dashboard.rows.length === 0 ? "empty" : "success";
+}
+
+function isDashboardList(value: unknown): value is Dashboard["dashboard"] {
+  return record(value) && Array.isArray(value.rows) && Array.isArray(value.repos);
+}
+
+function mergeDashboardRepository(
+  current: Dashboard["dashboard"],
+  refreshed: Dashboard["dashboard"],
+  target: Repo,
+): Dashboard["dashboard"] {
+  const sameRepository = (repo: Repo): boolean =>
+    repo.host === target.host && repo.owner === target.owner && repo.repo === target.repo;
+  return {
+    rows: [
+      ...current.rows.filter(
+        (row) =>
+          row.summary.ref.owner !== target.owner ||
+          row.summary.ref.repo !== target.repo,
+      ),
+      ...refreshed.rows,
+    ],
+    repos: [
+      ...current.repos.filter((outcome) => !sameRepository(outcome.repo)),
+      ...refreshed.repos,
+    ],
   };
 }
 function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {

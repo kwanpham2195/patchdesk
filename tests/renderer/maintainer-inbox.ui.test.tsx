@@ -80,6 +80,26 @@ afterEach(() => {
 });
 
 describe("MaintainerInbox", () => {
+  it("retains rows while showing an in-flight refresh with an explanatory disabled action", () => {
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={rows}
+        freshness="fresh"
+        refreshStatus="Refreshing"
+        onRefresh={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenSession={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("GitHub: Refreshing")).toBeTruthy();
+    expect(screen.getByRole("option", { name: /#42/ })).toBeTruthy();
+    const refresh = screen.getByRole("button", { name: "Refresh all — refresh already running" });
+    expect(refresh).toHaveProperty("disabled", true);
+  });
+
   it("shows a persisted active review as progress instead of a second run action", () => {
     render(
       <MaintainerInbox
@@ -87,7 +107,7 @@ describe("MaintainerInbox", () => {
         profileLabel="CFW"
         rows={[runningRow]}
         freshness="fresh"
-        loading={false}
+        refreshStatus="Current"
         onRefresh={() => undefined}
         onOpenReview={() => undefined}
         onOpenSession={() => undefined}
@@ -107,7 +127,7 @@ describe("MaintainerInbox", () => {
         profileLabel="CFW"
         rows={rows}
         freshness="fresh"
-        loading={false}
+        refreshStatus="Current"
         onRefresh={() => undefined}
         onOpenReview={(row, mode) => openedReviews.push({ number: row.identity.number, mode })}
         onOpenSession={(sessionId) => openedSessions.push(sessionId)}
@@ -142,7 +162,7 @@ describe("MaintainerInbox", () => {
         profileLabel="CFW"
         rows={rows}
         freshness="fresh"
-        loading={false}
+        refreshStatus="Current"
         onRefresh={() => undefined}
         onOpenReview={() => undefined}
         onOpenSession={() => undefined}
@@ -163,7 +183,7 @@ describe("MaintainerInbox", () => {
         profileLabel="CFW"
         rows={rows}
         freshness="fresh"
-        loading={false}
+        refreshStatus="Current"
         onRefresh={() => undefined}
         onOpenReview={() => undefined}
         onOpenSession={() => undefined}

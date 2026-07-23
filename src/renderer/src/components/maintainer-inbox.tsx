@@ -67,7 +67,7 @@ export function MaintainerInbox({
   rows,
   freshness,
   snapshot,
-  loading,
+  refreshStatus,
   onRefresh,
   onOpenReview,
   onOpenSession,
@@ -77,7 +77,7 @@ export function MaintainerInbox({
   readonly rows: ReadonlyArray<InboxRow>;
   readonly freshness: "fresh" | "cached";
   readonly snapshot?: { readonly state: "current" | "partial" | "failed_cached" | "unavailable"; readonly refreshedAt?: string | undefined };
-  readonly loading: boolean;
+  readonly refreshStatus: "Refreshing" | "Current" | "Aged" | "Partial" | "Cached after refresh failure" | "Unavailable" | "Paused";
   readonly onRefresh: () => void;
   readonly onOpenReview: (row: InboxRow, mode: ReviewStartMode, initialSection?: ReviewInitialSection) => void;
   readonly onOpenSession: (sessionId: string) => void;
@@ -235,9 +235,9 @@ export function MaintainerInbox({
           <p className="mt-0.5 text-xs leading-4 text-muted-foreground">Open pull requests that need your next decision.</p>
         </div>
         <div className="flex items-center gap-2">
-          <InboxFreshness freshness={freshness} {...(snapshot === undefined ? {} : { snapshot })} />
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onRefresh} disabled={loading}>
-            {loading ? <LoaderCircle className="animate-spin" /> : <Clock3 />}
+          <InboxFreshness status={refreshStatus} {...(snapshot === undefined ? {} : { snapshot })} />
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onRefresh} disabled={refreshStatus === "Refreshing"} aria-label={refreshStatus === "Refreshing" ? "Refresh all — refresh already running" : "Refresh all watched repositories"}>
+            {refreshStatus === "Refreshing" ? <LoaderCircle className="animate-spin" /> : <Clock3 />}
             Refresh all
           </Button>
         </div>
@@ -329,10 +329,9 @@ export function MaintainerInbox({
   );
 }
 
-function InboxFreshness({ snapshot, freshness }: { readonly snapshot?: { readonly state: "current" | "partial" | "failed_cached" | "unavailable"; readonly refreshedAt?: string | undefined }; readonly freshness: "fresh" | "cached" }): React.JSX.Element {
-  const state = snapshot?.state ?? (freshness === "fresh" ? "current" : "failed_cached");
-  const label = state === "current" ? "GitHub: Current" : state === "partial" ? "GitHub: Partial" : state === "failed_cached" ? "GitHub: Cached after refresh failure" : "GitHub: Unavailable";
-  return <Badge variant={state === "current" ? "secondary" : "outline"} className="h-5 max-w-full px-1.5 text-[10px]" title={snapshot?.refreshedAt}>{label}</Badge>;
+function InboxFreshness({ snapshot, status }: { readonly snapshot?: { readonly state: "current" | "partial" | "failed_cached" | "unavailable"; readonly refreshedAt?: string | undefined }; readonly status: "Refreshing" | "Current" | "Aged" | "Partial" | "Cached after refresh failure" | "Unavailable" | "Paused" }): React.JSX.Element {
+  const stable = status === "Current";
+  return <Badge variant={stable ? "secondary" : "outline"} className="h-5 max-w-full px-1.5 text-[10px]" title={snapshot?.refreshedAt}>GitHub: {status}</Badge>;
 }
 
 function QueueRail({ rows, view, savedViews, open, onSelect, onSelectSaved, onSaveCurrent, onDeleteSaved, onToggle }: { readonly rows: ReadonlyArray<InboxRow>; readonly view: InboxView; readonly savedViews: ReadonlyArray<SavedInboxView>; readonly open: boolean; readonly onSelect: (view: InboxView) => void; readonly onSelectSaved: (view: SavedInboxView) => void; readonly onSaveCurrent: () => void; readonly onDeleteSaved: (view: SavedInboxView) => void; readonly onToggle: () => void }): React.JSX.Element {

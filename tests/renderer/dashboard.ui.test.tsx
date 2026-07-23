@@ -235,6 +235,9 @@ describe("dashboard renderer API flow", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
+    const inboxReadsBefore = fetch.mock.calls.filter(
+      ([input]) => new URL(String(input)).pathname === "/v1/inbox",
+    ).length;
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("button", { name: "Refresh centraldigital/patchdesk" }));
@@ -247,6 +250,30 @@ describe("dashboard renderer API flow", () => {
           String((init as RequestInit).body).includes("patchdesk"),
       ),
     ).toBe(true);
+    expect(
+      fetch.mock.calls.filter(
+        ([input]) => new URL(String(input)).pathname === "/v1/inbox",
+      ),
+    ).toHaveLength(inboxReadsBefore);
+  });
+
+  it("refreshes Inbox once from the visible action without using the removed endpoint", async () => {
+    const fetch = installApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+    const inboxReadsBefore = fetch.mock.calls.filter(
+      ([input]) => new URL(String(input)).pathname === "/v1/inbox",
+    ).length;
+
+    await user.click(screen.getByRole("button", { name: "Refresh all watched repositories" }));
+
+    await waitFor(() => expect(fetch.mock.calls.filter(
+      ([input]) => new URL(String(input)).pathname === "/v1/inbox",
+    )).toHaveLength(inboxReadsBefore + 1));
+    expect(fetch.mock.calls.some(([input]) =>
+      new URL(String(input)).pathname === "/v1/inbox/refresh",
+    )).toBe(false);
   });
 
   it("uses the native directory picker before saving a repository path", async () => {
