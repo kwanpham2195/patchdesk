@@ -570,7 +570,45 @@ export function ReviewWorkbench(props: {
                   <ul className="mt-2 space-y-1.5">
                     {props.result.findings.map((finding) => {
                       const status = fixQueue[finding.id] ?? "todo";
-                      return <li key={finding.id} className="rounded-md border p-2 text-sm"><div className="flex items-center gap-2"><SeverityBadge severity={finding.severity} /><span className="font-medium">{finding.title}</span></div><p className="mt-1 text-xs text-muted-foreground">{finding.mappingStatus === "mapped" ? `Mapped evidence · ${confidenceText(finding.confidence)}` : "Unmapped evidence — inspect before drafting a comment"}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Local status</span><Select value={status} onValueChange={(value) => { if (FIX_QUEUE_STATUSES.includes(value as FixQueueStatus)) updateFixQueue(finding.id, value as FixQueueStatus); }}><SelectTrigger size="sm" className="h-7 w-32 text-xs" aria-label={`Fix queue status for ${finding.title}`}><SelectValue /></SelectTrigger><SelectContent>{FIX_QUEUE_STATUSES.map((value) => <SelectItem key={value} value={value} className="text-xs">{fixQueueStatusLabel(value)}</SelectItem>)}</SelectContent></Select></div></li>;
+                      return (
+                        <li key={finding.id} className="rounded-md border p-2 text-sm">
+                          <div>
+                            <SeverityBadge severity={finding.severity} />
+                            <p className="mt-1 font-medium">{finding.title}</p>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {finding.mappingStatus === "mapped"
+                              ? `Mapped evidence · ${confidenceText(finding.confidence)}`
+                              : "Unmapped evidence — inspect before drafting a comment"}
+                          </p>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">Local status</span>
+                            <Select
+                              value={status}
+                              onValueChange={(value) => {
+                                if (FIX_QUEUE_STATUSES.includes(value as FixQueueStatus)) {
+                                  updateFixQueue(finding.id, value as FixQueueStatus);
+                                }
+                              }}
+                            >
+                              <SelectTrigger
+                                size="sm"
+                                className="h-7 w-32 text-xs"
+                                aria-label={`Fix queue status for ${finding.title}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FIX_QUEUE_STATUSES.map((value) => (
+                                  <SelectItem key={value} value={value} className="text-xs">
+                                    {fixQueueStatusLabel(value)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </li>
+                      );
                     })}
                   </ul>
                 </section>
