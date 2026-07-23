@@ -11,6 +11,21 @@ afterEach(() => {
 });
 
 describe("review workbench", () => {
+  it("keeps Fix queue statuses local to the reviewed revision", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbench
+        profileId="fix-queue"
+        reviewedHeadSha="abcdef"
+        result={{ changeSummary: "Fix queue.", verdict: "comment", summary: "Fix queue.", findings: [{ id: "guard", severity: "P1", title: "Protect guard", file: "src/a.ts", lineStart: 1, diffSide: "new", explanation: "Protect it.", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } as never}
+        draft={{ summaryBody: "", comments: [] }} comments={{ threads: [] }} checks={{ overall: "unknown", checks: [] }} history={[]} debugHref="/debug"
+      />,
+    );
+    await user.click(screen.getByLabelText("Fix queue status for Protect guard"));
+    await user.click(screen.getByRole("option", { name: "Investigating" }));
+    expect(window.localStorage.getItem("patchdesk.fix-queue.v1.fix-queue.abcdef")).toContain('"guard":"investigating"');
+  });
+
   it("persists compact Pierre controls and collapses both workbench rails", async () => {
     const user = userEvent.setup();
     render(

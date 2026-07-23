@@ -40,6 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -69,6 +70,9 @@ export type ReviewHistoryItem = {
   readonly state: string;
   readonly startedAt?: string;
 };
+
+type FixQueueStatus = "todo" | "investigating" | "resolved";
+const FIX_QUEUE_STATUSES: ReadonlyArray<FixQueueStatus> = ["todo", "investigating", "resolved"];
 
 export function ReviewWorkbench(props: {
   readonly profileId?: string;
@@ -131,6 +135,16 @@ export function ReviewWorkbench(props: {
     ) => Promise<{ readonly mergeCommitSha?: string }>;
   };
 }): React.JSX.Element {
+  const fixQueueKey = `patchdesk.fix-queue.v1.${props.profileId ?? "local"}.${props.reviewedHeadSha ?? props.result.summary}`;
+  const [fixQueue, setFixQueue] = useState<Record<string, FixQueueStatus>>(() => loadFixQueue(fixQueueKey));
+  useEffect(() => setFixQueue(loadFixQueue(fixQueueKey)), [fixQueueKey]);
+  const updateFixQueue = (findingId: string, status: FixQueueStatus): void => {
+    setFixQueue((current) => {
+      const next = { ...current, [findingId]: status };
+      saveFixQueue(fixQueueKey, next);
+      return next;
+    });
+  };
   const [diffSurface, setDiffSurface] = useState<"updates" | "full">(
     props.reviewScope?.kind === "incremental" && props.comparisonPatch !== undefined
       ? "updates"
@@ -554,7 +568,10 @@ export function ReviewWorkbench(props: {
                   <h2 className="font-semibold">Fix queue</h2>
                   <p className="mt-1 text-xs text-muted-foreground">Local next steps only. Patchdesk never applies changes or writes to GitHub automatically.</p>
                   <ul className="mt-2 space-y-1.5">
-                    {props.result.findings.map((finding) => <li key={finding.id} className="rounded-md border p-2 text-sm"><div className="flex items-center gap-2"><SeverityBadge severity={finding.severity} /><span className="font-medium">{finding.title}</span></div><p className="mt-1 text-xs text-muted-foreground">{finding.mappingStatus === "mapped" ? `Mapped evidence · ${confidenceText(finding.confidence)}` : "Unmapped evidence — inspect before drafting a comment"}</p></li>)}
+                    {props.result.findings.map((finding) => {
+                      const status = fixQueue[finding.id] ?? "todo";
+                      return <li key={finding.id} className="rounded-md border p-2 text-sm"><div className="flex items-center gap-2"><SeverityBadge severity={finding.severity} /><span className="font-medium">{finding.title}</span></div><p className="mt-1 text-xs text-muted-foreground">{finding.mappingStatus === "mapped" ? `Mapped evidence · ${confidenceText(finding.confidence)}` : "Unmapped evidence — inspect before drafting a comment"}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Local status</span><Select value={status} onValueChange={(value) => { if (FIX_QUEUE_STATUSES.includes(value as FixQueueStatus)) updateFixQueue(finding.id, value as FixQueueStatus); }}><SelectTrigger size="sm" className="h-7 w-32 text-xs" aria-label={`Fix queue status for ${finding.title}`}><SelectValue /></SelectTrigger><SelectContent>{FIX_QUEUE_STATUSES.map((value) => <SelectItem key={value} value={value} className="text-xs">{fixQueueStatusLabel(value)}</SelectItem>)}</SelectContent></Select></div></li>;
+                    })}
                   </ul>
                 </section>
                 {props.reviewScope?.kind !== "incremental" ? null : (
@@ -800,6 +817,24 @@ function confidenceText(confidence: "high" | "medium" | "low"): string {
 
 function SeverityBadge({ severity }: { readonly severity: "P0" | "P1" | "P2" | "P3" }): React.JSX.Element {
   return <Badge variant="outline" className={severity === "P0" || severity === "P1" ? "border-destructive text-foreground" : undefined} aria-label={severityLabel(severity)}>{severityLabel(severity)}</Badge>;
+}
+
+function fixQueueStatusLabel(status: FixQueueStatus): string {
+  return status === "todo" ? "To do" : status === "investigating" ? "Investigating" : "Resolved";
+}
+
+function loadFixQueue(key: string): Record<string, FixQueueStatus> {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, FixQueueStatus] => FIX_QUEUE_STATUSES.includes(entry[1] as FixQueueStatus)));
+  } catch {
+    return {};
+  }
+}
+
+function saveFixQueue(key: string, statuses: Record<string, FixQueueStatus>): void {
+  window.localStorage.setItem(key, JSON.stringify(statuses));
 }
 
 function FindingList({
