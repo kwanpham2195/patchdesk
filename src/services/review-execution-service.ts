@@ -17,6 +17,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import type { ReviewRunMetadata } from "./run-projection";
+import { prepareAllocatedAttemptArtifacts } from "./review-attempt-artifacts";
 
 export const REVIEW_REASONING_LEVELS = ["low", "medium", "high"] as const;
 export type ReviewReasoningLevel = (typeof REVIEW_REASONING_LEVELS)[number];
@@ -87,13 +88,18 @@ export class ReviewExecutionService {
     const started = startNextAttempt(session.value, previous.value.map((attempt) => attempt.id));
     if (started._tag === "err") return err({ reason: "not_runnable" });
 
-    // Session preparation currently writes one immutable context artifact. The
-    // execution attempt receives its own debug path but reads that prepared
-    // snapshot until context preparation is moved to allocated attempts.
     const preparedAttempt = parseReviewAttemptId("001");
     if (preparedAttempt._tag === "err") return err({ reason: "storage" });
+    const artifacts = await prepareAllocatedAttemptArtifacts({
+      paths: this.paths,
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+      attemptId: started.value.attemptId,
+      sourceAttemptId: preparedAttempt.value,
+    });
+    if (artifacts._tag === "err") return err({ reason: "storage" });
     const [contextHash, fullPatchHash, comparisonHash] = await Promise.all([
-      contentHash(this.paths.attemptContextFile(profileId.value, sessionId.value, preparedAttempt.value)),
+      contentHash(artifacts.value.contextPath),
       contentHash(session.value.patchPath),
       session.value.scope.kind === "incremental"
         ? contentHash(session.value.scope.comparisonPatchPath)
@@ -104,9 +110,9 @@ export class ReviewExecutionService {
     const parsedComparisonHash = comparisonHash === undefined
       ? undefined
       : parseContentHash(comparisonHash);
-    const contextPath = parseAbsolutePath(this.paths.attemptContextFile(profileId.value, sessionId.value, preparedAttempt.value));
-    const reviewInputPath = parseAbsolutePath(this.paths.attemptReviewInputFile(profileId.value, sessionId.value, preparedAttempt.value));
-    const debugPath = parseAbsolutePath(this.paths.attemptDebugFile(profileId.value, sessionId.value, started.value.attemptId));
+    const contextPath = parseAbsolutePath(artifacts.value.contextPath);
+    const reviewInputPath = parseAbsolutePath(artifacts.value.reviewInputPath);
+    const debugPath = parseAbsolutePath(artifacts.value.debugPath);
     const skillHash = parseContentHash("0".repeat(64));
     if (
       parsedContextHash._tag === "err" ||
