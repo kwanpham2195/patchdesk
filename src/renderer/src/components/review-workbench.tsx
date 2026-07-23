@@ -612,9 +612,9 @@ export function ReviewWorkbench(props: {
                       const status = fixQueue[finding.id] ?? "todo";
                       return (
                         <li key={finding.id} className="rounded-md border p-2 text-sm">
-                          <div>
+                          <div className="flex items-start gap-2">
                             <SeverityBadge severity={finding.severity} />
-                            <p className="mt-1 font-medium">{finding.title}</p>
+                            <p className="min-w-0 font-medium">{finding.title}</p>
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {finding.mappingStatus === "mapped"
@@ -963,9 +963,11 @@ function FindingList({
             onClick={() => onSelect(finding)}
           >
             <span className="flex min-w-0 flex-col items-start">
-              <SeverityBadge severity={finding.severity} />
-              <span className="mt-1 block line-clamp-2 leading-5">
-                {finding.title}
+              <span className="flex min-w-0 items-start gap-1.5">
+                <SeverityBadge severity={finding.severity} />
+                <span className="min-w-0 line-clamp-2 leading-5">
+                  {finding.title}
+                </span>
               </span>
               <span
                 className="mt-0.5 block truncate text-xs text-muted-foreground"

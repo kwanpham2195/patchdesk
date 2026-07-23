@@ -31,7 +31,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-/** Read-only three-pane diff workbench with deterministic file and finding navigation. */
+/** Read-only diff workbench with deterministic file and finding navigation. */
 export function DiffWorkbench({
   patch,
   finding,
@@ -77,7 +77,7 @@ export function DiffWorkbench({
       aria-label="Diff workbench"
       data-patch-bytes={patch.length}
       className={cn(
-        "grid min-w-0 grid-cols-[15rem_minmax(0,1fr)_18rem] max-[1099px]:grid-cols-1",
+        "grid min-w-0 grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1",
         fillViewport ? "min-h-[calc(100vh-3.5rem)]" : "h-full min-h-0",
         className,
       )}
@@ -141,9 +141,11 @@ export function DiffWorkbench({
               Stored unified patch · read only
             </p>
           </div>
-          <div className="hidden shrink-0 gap-2 max-[1099px]:flex">
+          <div className="flex shrink-0 gap-2">
             <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-              <SheetTrigger render={<Button variant="outline" size="sm" />}>
+              <SheetTrigger
+                render={<Button variant="outline" size="sm" className="max-[1099px]:inline-flex min-[1100px]:hidden" />}
+              >
                 Files and findings
               </SheetTrigger>
               <SheetContent side="left">
@@ -260,26 +262,6 @@ export function DiffWorkbench({
           {...(sourceSession === undefined ? {} : { sourceSession })}
         />
       </div>
-      <aside
-        aria-label="Review context"
-        className="border-l bg-card p-4 max-[1099px]:hidden"
-      >
-        <h2 className="font-semibold">Review context</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The diff is local and read-only. Findings must map to a verified line
-          before they can enter a GitHub draft.
-        </p>
-        {mapped === undefined ? null : (
-          <div className="mt-4 rounded-lg border p-3 text-sm">
-            <p className="font-medium">Finding location</p>
-            <p className="mt-1 text-muted-foreground">
-              {mapped.mappingStatus === "mapped"
-                ? `${mapped.path}:${mapped.line ?? "hunk"}`
-                : "Unmapped and not postable"}
-            </p>
-          </div>
-        )}
-      </aside>
     </section>
   );
 }
