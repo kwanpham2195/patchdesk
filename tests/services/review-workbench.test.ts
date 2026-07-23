@@ -90,6 +90,7 @@ describe("review workbench", () => {
           author: "fixture",
           headBranch: "feature/review",
           baseBranch: "sit",
+          baseSha: "0123456789abcdef0123456789abcdef01234567",
           headSha: "abcdef1234567890abcdef1234567890abcdef12",
           isDraft: false,
           isOpen: true,
