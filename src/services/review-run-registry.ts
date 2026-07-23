@@ -16,6 +16,7 @@ export class ReviewRunRegistry {
         status: "queued" as const,
         elapsedMs: 0,
         step: "preparing" as const,
+        activity: [{ elapsedMs: 0, step: "preparing" as const, label: "Preparing review snapshot" }],
       },
     };
     this.runs.set(run.runId, run);
@@ -24,6 +25,10 @@ export class ReviewRunRegistry {
 
   find(owner: RunOwnership): OwnedRun | undefined {
     return this.runs.get(ownedRunId(owner));
+  }
+
+  findByRunId(runId: string): OwnedRun | undefined {
+    return this.runs.get(runId);
   }
 
   update(runId: string, projection: SafeRunProjection): void { const run = this.runs.get(runId); if (run !== undefined) this.runs.set(runId, { ...run, projection }); }

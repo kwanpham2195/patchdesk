@@ -91,13 +91,18 @@ describe("review run coordinator", () => {
     now = 35;
 
     await vi.waitFor(() => {
-      expect(coordinator.observe({ ...input, runId: run.runId })).toEqual({
+      expect(coordinator.observe({ ...input, runId: run.runId })).toMatchObject({
         _tag: "ok",
         value: {
           status: "failed",
           elapsedMs: 25,
           step: "failed",
           message: "Review run failed",
+          activity: [
+            { step: "preparing", label: "Preparing review snapshot" },
+            { step: "inspecting", label: "Inspecting changed files" },
+            { step: "failed", label: "Review stopped" },
+          ],
         },
       });
     });

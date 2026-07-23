@@ -5,7 +5,7 @@ import {
   type OwnedRun,
   type RunOwnership,
 } from "./review-run-registry";
-import type { SafeRunProjection } from "./run-projection";
+import { appendRunActivity, type SafeRunProjection } from "./run-projection";
 
 export type ReviewRunStartInput = RunOwnership & {
   readonly profileId: string;
@@ -65,11 +65,16 @@ export class ReviewRunCoordinator {
     run: OwnedRun,
     input: ReviewRunStartInput,
   ): Promise<void> {
-    this.runs.update(run.runId, {
+    this.runs.update(run.runId, appendRunActivity({
+      ...run.projection,
       status: "running",
       elapsedMs: this.elapsed(run.runId),
       step: "inspecting",
-    });
+    }, {
+      elapsedMs: this.elapsed(run.runId),
+      step: "inspecting",
+      label: "Inspecting changed files",
+    }));
 
     try {
       const result = await this.workflow.start(input);
@@ -78,23 +83,37 @@ export class ReviewRunCoordinator {
         return;
       }
 
-      this.runs.update(run.runId, {
+      const current = this.runs.get(run.runId, run);
+      if (current._tag === "err") return;
+      this.runs.update(run.runId, appendRunActivity({
+        ...current.value.projection,
         status: "completed",
         elapsedMs: this.elapsed(run.runId),
         step: "complete",
-      });
+      }, {
+        elapsedMs: this.elapsed(run.runId),
+        step: "complete",
+        label: "Review result is ready",
+      }));
     } catch {
       this.fail(run.runId);
     }
   }
 
   private fail(runId: string): void {
-    this.runs.update(runId, {
+    const current = this.runs.findByRunId(runId);
+    if (current === undefined) return;
+    this.runs.update(runId, appendRunActivity({
+      ...current.projection,
       status: "failed",
       elapsedMs: this.elapsed(runId),
       step: "failed",
       message: "Review run failed",
-    });
+    }, {
+      elapsedMs: this.elapsed(runId),
+      step: "failed",
+      label: "Review stopped",
+    }));
   }
 
   private withCurrentElapsed(run: OwnedRun): SafeRunProjection {

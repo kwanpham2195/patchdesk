@@ -14,6 +14,11 @@ type Projection = {
   readonly elapsedMs: number;
   readonly step: "preparing" | "inspecting" | "validating" | "drafting" | "complete" | "failed";
   readonly message?: string;
+  readonly activity?: ReadonlyArray<{
+    readonly elapsedMs: number;
+    readonly step: Projection["step"];
+    readonly label: string;
+  }>;
 };
 
 export function SafeRunPanel({
@@ -111,6 +116,23 @@ export function SafeRunPanel({
             <AlertDescription>{current.message}</AlertDescription>
           </Alert>
         )}
+        {current.activity === undefined || current.activity.length === 0 ? null : (
+          <details className="border-t px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Activity ({current.activity.length})
+            </summary>
+            <ol className="mt-3 space-y-2 text-sm" aria-label="Review activity">
+              {current.activity.map((event, index) => (
+                <li key={`${event.step}-${event.elapsedMs}-${index}`}>
+                  <span className="font-medium">{event.label}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {formatElapsed(event.elapsedMs)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
       </CardContent>
     </Card>
   );
@@ -119,7 +141,22 @@ export function SafeRunPanel({
 function isProjection(value: unknown): value is Projection {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Record<string, unknown>;
-  return typeof item.status === "string" && typeof item.elapsedMs === "number" && typeof item.step === "string";
+  if (
+    typeof item.status !== "string" ||
+    typeof item.elapsedMs !== "number" ||
+    typeof item.step !== "string"
+  ) return false;
+  if (item.activity === undefined) return true;
+  return Array.isArray(item.activity) && item.activity.length <= 8 && item.activity.every(isActivityEvent);
+}
+
+function isActivityEvent(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const event = value as Record<string, unknown>;
+  return typeof event.elapsedMs === "number" &&
+    typeof event.step === "string" &&
+    typeof event.label === "string" &&
+    event.label.length <= 160;
 }
 
 function stepLabel(step: Projection["step"]): string {
