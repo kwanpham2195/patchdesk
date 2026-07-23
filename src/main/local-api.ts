@@ -246,9 +246,6 @@ export async function startLocalApiServer(
   app.get("/v1/dashboard", async (context) =>
     response(context, await dashboard.dashboardForActiveProfile()),
   );
-  app.post("/v1/dashboard/refresh", async (context) =>
-    response(context, await dashboard.dashboardForActiveProfile()),
-  );
   app.post("/v1/dashboard/refresh/repository", async (context) =>
     response(
       context,
