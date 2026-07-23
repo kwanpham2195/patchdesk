@@ -59,7 +59,7 @@ const schema = v.strictObject({
   step: v.picklist(["preparing", "inspecting", "validating", "drafting", "complete", "failed"]),
   message: v.optional(v.pipe(v.string(), v.maxLength(160))),
   metadata: v.optional(metadataSchema),
-  activity: v.pipe(v.array(activitySchema), v.maxLength(ACTIVITY_LIMIT)),
+  activity: v.optional(v.pipe(v.array(activitySchema), v.maxLength(ACTIVITY_LIMIT))),
 });
 
 /** Drop raw Flue events and expose only bounded renderer-safe lifecycle state. */
@@ -72,7 +72,7 @@ export function projectSafeRun(input: unknown): Result<SafeRunProjection, { read
     status: parsed.output.status,
     elapsedMs: parsed.output.elapsedMs,
     step: parsed.output.step,
-    activity: parsed.output.activity,
+    ...(parsed.output.activity === undefined ? {} : { activity: parsed.output.activity }),
     ...(parsed.output.metadata === undefined ? {} : { metadata: parsed.output.metadata }),
     ...(parsed.output.message === undefined ? {} : { message: parsed.output.message }),
   });
