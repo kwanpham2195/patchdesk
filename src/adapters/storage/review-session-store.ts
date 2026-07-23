@@ -144,6 +144,7 @@ const reviewSessionSchema = v.strictObject({
 });
 
 const attemptStateSchema = v.variant("_tag", [
+  v.strictObject({ _tag: v.literal("Starting") }),
   v.strictObject({
     _tag: v.literal("Running"),
     flueRunId: v.pipe(v.string(), v.minLength(1)),
@@ -664,7 +665,7 @@ function parseMergeDecision(input: {
 function parseAttemptState(
   input: v.InferOutput<typeof attemptStateSchema>,
 ): Result<ReviewAttemptState, StorageFailure> {
-  if (input._tag === "Running" || input._tag === "Failed") return ok(input);
+  if (input._tag === "Starting" || input._tag === "Running" || input._tag === "Failed") return ok(input);
   if (input._tag === "Completed") {
     const resultPath = parseAbsolutePath(input.resultPath);
     return resultPath._tag === "err"

@@ -60,7 +60,7 @@ export class ReviewWorkflowStarter {
       session.value.currentAttemptId !== attemptId.value ||
       session.value.state._tag !== "Running" ||
       session.value.state.attemptId !== attemptId.value ||
-      attempt.value.state._tag !== "Running"
+      (attempt.value.state._tag !== "Starting" && attempt.value.state._tag !== "Running")
     ) {
       return err({ reason: "not_current" });
     }

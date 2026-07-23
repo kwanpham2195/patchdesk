@@ -174,14 +174,14 @@ describe("review workbench", () => {
     });
   });
 
-  it("discards a running attempt locally without signaling an external workflow", () => {
+  it("discards a starting attempt locally without signaling an external workflow", () => {
     const running = {
       ...session,
       state: { _tag: "Running", attemptId: "001" },
     } as ReviewSession;
     const discarded = discardWorkbenchAttempt({
       session: running,
-      attempt: { ...attempt, state: { _tag: "Running", flueRunId: "local-run" } } as ReviewAttempt,
+      attempt: { ...attempt, state: { _tag: "Starting" } } as ReviewAttempt,
       discardedAt: "2026-07-16T00:03:00.000Z" as never,
     });
 
@@ -194,14 +194,14 @@ describe("review workbench", () => {
     });
   });
 
-  it("marks an orphaned running attempt stale and failed after Patchdesk restarts", () => {
+  it("marks an orphaned starting attempt stale and failed after Patchdesk restarts", () => {
     const running = {
       ...session,
       state: { _tag: "Running", attemptId: "001" },
     } as ReviewSession;
     const recovered = recoverOrphanedWorkbenchAttempt({
       session: running,
-      attempt: { ...attempt, state: { _tag: "Running", flueRunId: "local-run" } } as ReviewAttempt,
+      attempt: { ...attempt, state: { _tag: "Starting" } } as ReviewAttempt,
       recoveredAt: "2026-07-16T00:04:00.000Z" as never,
     });
 

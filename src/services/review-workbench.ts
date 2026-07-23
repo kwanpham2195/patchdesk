@@ -115,7 +115,10 @@ export function recoverOrphanedWorkbenchAttempt(input: {
 > {
   if (input.session.currentAttemptId !== input.attempt.id)
     return err({ _tag: "AttemptNotCurrent" });
-  if (input.session.state._tag !== "Running" || input.attempt.state._tag !== "Running")
+  if (
+    input.session.state._tag !== "Running" ||
+    (input.attempt.state._tag !== "Starting" && input.attempt.state._tag !== "Running")
+  )
     return err({ _tag: "AttemptNotRunning" });
   return ok({
     session: {

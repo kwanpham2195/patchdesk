@@ -22,6 +22,8 @@ export type ReviewFailureSummary = {
 };
 
 export type ReviewAttemptState =
+  /** Durable local preparation. A Flue run ID has not been observed yet. */
+  | { readonly _tag: "Starting" }
   | { readonly _tag: "Running"; readonly flueRunId: string }
   | { readonly _tag: "Completed"; readonly resultPath: AbsolutePath }
   | { readonly _tag: "Failed"; readonly error: ReviewFailureSummary }

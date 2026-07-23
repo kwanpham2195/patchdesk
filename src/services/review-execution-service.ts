@@ -118,8 +118,9 @@ export class ReviewExecutionService {
     const attempt: ReviewAttempt = {
       id: started.value.attemptId,
       sessionId: session.value.id,
-      state: { _tag: "Running", flueRunId: "prepared" },
-      flueRunId: "prepared",
+      // The CLI only returns a provider run ID after the finite workflow has
+      // completed. Never claim a placeholder is a real Flue run identifier.
+      state: { _tag: "Starting" },
       model,
       reasoning,
       ...scope,

@@ -171,7 +171,7 @@ export function completeAttempt(
     session.state._tag !== "Running" ||
     session.state.attemptId !== attempt.id ||
     session.currentAttemptId !== attempt.id ||
-    attempt.state._tag !== "Running"
+    (attempt.state._tag !== "Starting" && attempt.state._tag !== "Running")
   ) {
     const reason =
       session.state._tag === "Discarded" || attempt.state._tag === "Discarded"
