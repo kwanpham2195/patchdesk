@@ -2,7 +2,7 @@ import * as v from "valibot";
 
 import { err, ok, type Result } from "../domain/result";
 
-const ACTIVITY_LIMIT = 8;
+const ACTIVITY_LIMIT = 40;
 const ACTIVITY_BYTES_LIMIT = 6_144;
 
 export type ReviewActivityStep =
@@ -14,9 +14,19 @@ export type ReviewActivityStep =
   | "failed";
 
 export type ReviewActivityEvent = {
+  /** Server-issued timestamp; provider event timing never crosses this boundary. */
+  readonly at: string;
   readonly elapsedMs: number;
   readonly step: ReviewActivityStep;
   readonly label: string;
+};
+
+export type ReviewRunMetadata = {
+  readonly agent: "Patchdesk review agent" | "Unknown agent";
+  readonly model: string;
+  readonly reasoning: "low" | "medium" | "high" | "Unknown reasoning level";
+  readonly mode: "Full review" | "Review updates";
+  readonly access: "Read-only repository inspection";
 };
 
 export type SafeRunProjection = {
@@ -24,13 +34,23 @@ export type SafeRunProjection = {
   readonly elapsedMs: number;
   readonly step: ReviewActivityStep;
   readonly message?: string;
+  readonly metadata?: ReviewRunMetadata;
   readonly activity?: ReadonlyArray<ReviewActivityEvent>;
 };
 
 const activitySchema = v.strictObject({
+  at: v.pipe(v.string(), v.isoTimestamp()),
   elapsedMs: v.pipe(v.number(), v.integer(), v.minValue(0)),
   step: v.picklist(["preparing", "inspecting", "validating", "drafting", "complete", "failed"]),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(160)),
+});
+
+const metadataSchema = v.strictObject({
+  agent: v.picklist(["Patchdesk review agent", "Unknown agent"]),
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: v.picklist(["low", "medium", "high", "Unknown reasoning level"]),
+  mode: v.picklist(["Full review", "Review updates"]),
+  access: v.literal("Read-only repository inspection"),
 });
 
 const schema = v.strictObject({
@@ -38,6 +58,7 @@ const schema = v.strictObject({
   elapsedMs: v.pipe(v.number(), v.integer(), v.minValue(0)),
   step: v.picklist(["preparing", "inspecting", "validating", "drafting", "complete", "failed"]),
   message: v.optional(v.pipe(v.string(), v.maxLength(160))),
+  metadata: v.optional(metadataSchema),
   activity: v.pipe(v.array(activitySchema), v.maxLength(ACTIVITY_LIMIT)),
 });
 
@@ -52,6 +73,7 @@ export function projectSafeRun(input: unknown): Result<SafeRunProjection, { read
     elapsedMs: parsed.output.elapsedMs,
     step: parsed.output.step,
     activity: parsed.output.activity,
+    ...(parsed.output.metadata === undefined ? {} : { metadata: parsed.output.metadata }),
     ...(parsed.output.message === undefined ? {} : { message: parsed.output.message }),
   });
 }

@@ -42,6 +42,10 @@ export type ReviewAttempt = {
   readonly model: string;
   /** The exact per-call reasoning effort, retained with the local attempt only. */
   readonly reasoning: "low" | "medium" | "high";
+  /** Immutable safe provenance for maintainer-facing run status. */
+  readonly agentIdentity?: "Patchdesk review agent";
+  readonly reviewMode?: "Full review" | "Review updates";
+  readonly accessScope?: "Read-only repository inspection";
   readonly patchdeskVersion?: string;
   /** Scope provenance records the immutable artifact set inspected by the model. */
   readonly scopeKind?: "full" | "incremental";

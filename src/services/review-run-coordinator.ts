@@ -5,10 +5,11 @@ import {
   type OwnedRun,
   type RunOwnership,
 } from "./review-run-registry";
-import { appendRunActivity, type SafeRunProjection } from "./run-projection";
+import { appendRunActivity, type ReviewRunMetadata, type SafeRunProjection } from "./run-projection";
 
 export type ReviewRunStartInput = RunOwnership & {
   readonly profileId: string;
+  readonly metadata?: ReviewRunMetadata;
 };
 
 export type ReviewRunObservation = RunOwnership & {
@@ -35,6 +36,7 @@ export class ReviewRunCoordinator {
     private readonly workflow: WorkflowStarter,
     private readonly runs = new ReviewRunRegistry(),
     private readonly now: () => number = Date.now,
+    private readonly nowIso: () => string = () => new Date().toISOString(),
   ) {}
 
   start(input: ReviewRunStartInput): OwnedRun {
@@ -42,7 +44,7 @@ export class ReviewRunCoordinator {
     const existing = this.runs.find(owner);
     if (existing !== undefined) return existing;
 
-    const run = this.runs.create(owner);
+    const run = this.runs.create(owner, input.metadata);
     this.startedAt.set(run.runId, this.now());
     void this.execute(run, input);
     return this.runs.find(owner) ?? run;
@@ -71,6 +73,7 @@ export class ReviewRunCoordinator {
       elapsedMs: this.elapsed(run.runId),
       step: "inspecting",
     }, {
+      at: this.nowIso(),
       elapsedMs: this.elapsed(run.runId),
       step: "inspecting",
       label: "Inspecting changed files",
@@ -91,6 +94,7 @@ export class ReviewRunCoordinator {
         elapsedMs: this.elapsed(run.runId),
         step: "complete",
       }, {
+        at: this.nowIso(),
         elapsedMs: this.elapsed(run.runId),
         step: "complete",
         label: "Review result is ready",
@@ -110,6 +114,7 @@ export class ReviewRunCoordinator {
       step: "failed",
       message: "Review run failed",
     }, {
+      at: this.nowIso(),
       elapsedMs: this.elapsed(runId),
       step: "failed",
       label: "Review stopped",

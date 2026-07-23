@@ -166,6 +166,9 @@ const reviewAttemptSchema = v.strictObject({
   flueRunId: v.optional(v.string()),
   model: v.pipe(v.string(), v.minLength(1)),
   reasoning: v.optional(v.picklist(["low", "medium", "high"])),
+  agentIdentity: v.optional(v.literal("Patchdesk review agent")),
+  reviewMode: v.optional(v.picklist(["Full review", "Review updates"])),
+  accessScope: v.optional(v.literal("Read-only repository inspection")),
   patchdeskVersion: v.optional(v.pipe(v.string(), v.minLength(1))),
   scopeKind: v.optional(v.picklist(["full", "incremental"])),
   baseSessionId: v.optional(v.string()),
@@ -596,6 +599,9 @@ export function parseStoredReviewAttempt(
     ...(flueRunId === undefined ? {} : { flueRunId }),
     model: raw.output.model,
     reasoning: raw.output.reasoning ?? "medium",
+    ...(raw.output.agentIdentity === undefined ? {} : { agentIdentity: raw.output.agentIdentity }),
+    ...(raw.output.reviewMode === undefined ? {} : { reviewMode: raw.output.reviewMode }),
+    ...(raw.output.accessScope === undefined ? {} : { accessScope: raw.output.accessScope }),
     ...(raw.output.patchdeskVersion === undefined
       ? {}
       : { patchdeskVersion: raw.output.patchdeskVersion }),

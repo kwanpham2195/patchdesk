@@ -16,6 +16,7 @@ import { startNextAttempt } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import type { ReviewRunMetadata } from "./run-projection";
 
 export const REVIEW_REASONING_LEVELS = ["low", "medium", "high"] as const;
 export type ReviewReasoningLevel = (typeof REVIEW_REASONING_LEVELS)[number];
@@ -51,6 +52,7 @@ export class ReviewExecutionService {
     readonly attemptId: string;
     readonly model: string;
     readonly reasoning: ReviewReasoningLevel;
+    readonly metadata: ReviewRunMetadata;
   }, ReviewExecutionFailure>> {
     const profileId = parseWorkspaceProfileId(field(input, "profileId"));
     const sessionId = parseReviewSessionId(field(input, "sessionId"));
@@ -131,6 +133,9 @@ export class ReviewExecutionService {
       state: { _tag: "Starting" },
       model,
       reasoning,
+      agentIdentity: "Patchdesk review agent",
+      reviewMode: session.value.scope.kind === "incremental" ? "Review updates" : "Full review",
+      accessScope: "Read-only repository inspection",
       ...scope,
       fullPatchHash: parsedFullPatchHash.value,
       reviewSkillVersion: skillHash.value,
@@ -156,6 +161,13 @@ export class ReviewExecutionService {
       attemptId: started.value.attemptId,
       model,
       reasoning,
+      metadata: {
+        agent: "Patchdesk review agent",
+        model,
+        reasoning,
+        mode: attempt.reviewMode ?? "Full review",
+        access: "Read-only repository inspection",
+      },
     });
   }
 }

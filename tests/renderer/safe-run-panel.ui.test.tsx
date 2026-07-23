@@ -13,3 +13,12 @@ describe("review completion", () => {
     expect(completed).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("review run metadata", () => {
+  it("renders the safe attempt provenance without provider details", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "running", elapsedMs: 12, step: "inspecting", metadata: { agent: "Patchdesk review agent", model: "opencode-go/deepseek-v4-flash", reasoning: "medium", mode: "Full review", access: "Read-only repository inspection" } } }) } });
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />);
+    expect(await screen.findByText("Patchdesk review agent")).toBeTruthy();
+    expect(screen.getByText("Read-only repository inspection")).toBeTruthy();
+  });
+});

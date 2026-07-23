@@ -7,6 +7,13 @@ const input = {
   profileId: "cfw",
   sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456",
   attemptId: "001",
+  metadata: {
+    agent: "Patchdesk review agent" as const,
+    model: "opencode-go/deepseek-v4-flash",
+    reasoning: "medium" as const,
+    mode: "Full review" as const,
+    access: "Read-only repository inspection" as const,
+  },
 };
 
 describe("review run coordinator", () => {
@@ -30,7 +37,7 @@ describe("review run coordinator", () => {
     expect(workflow.start).toHaveBeenCalledTimes(1);
     expect(coordinator.observe({ ...input, runId: first.runId })).toMatchObject({
       _tag: "ok",
-      value: { status: "running", step: "inspecting" },
+      value: { status: "running", step: "inspecting", metadata: input.metadata },
     });
 
     finish?.();

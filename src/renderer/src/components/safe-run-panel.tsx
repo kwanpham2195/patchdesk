@@ -14,7 +14,15 @@ type Projection = {
   readonly elapsedMs: number;
   readonly step: "preparing" | "inspecting" | "validating" | "drafting" | "complete" | "failed";
   readonly message?: string;
+  readonly metadata?: {
+    readonly agent: string;
+    readonly model: string;
+    readonly reasoning: string;
+    readonly mode: string;
+    readonly access: string;
+  };
   readonly activity?: ReadonlyArray<{
+    readonly at: string;
     readonly elapsedMs: number;
     readonly step: Projection["step"];
     readonly label: string;
@@ -116,6 +124,15 @@ export function SafeRunPanel({
             <AlertDescription>{current.message}</AlertDescription>
           </Alert>
         )}
+        {current.metadata === undefined ? null : (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t px-4 py-3 text-xs">
+            <div><dt className="text-muted-foreground">Agent</dt><dd>{current.metadata.agent}</dd></div>
+            <div><dt className="text-muted-foreground">Model</dt><dd className="truncate" title={current.metadata.model}>{current.metadata.model}</dd></div>
+            <div><dt className="text-muted-foreground">Reasoning</dt><dd>{current.metadata.reasoning}</dd></div>
+            <div><dt className="text-muted-foreground">Mode</dt><dd>{current.metadata.mode}</dd></div>
+            <div className="col-span-2"><dt className="text-muted-foreground">Access</dt><dd>{current.metadata.access}</dd></div>
+          </dl>
+        )}
         {current.activity === undefined || current.activity.length === 0 ? null : (
           <details className="border-t px-4 py-3">
             <summary className="cursor-pointer text-sm font-medium">
@@ -147,13 +164,14 @@ function isProjection(value: unknown): value is Projection {
     typeof item.step !== "string"
   ) return false;
   if (item.activity === undefined) return true;
-  return Array.isArray(item.activity) && item.activity.length <= 8 && item.activity.every(isActivityEvent);
+  return Array.isArray(item.activity) && item.activity.length <= 40 && item.activity.every(isActivityEvent);
 }
 
 function isActivityEvent(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const event = value as Record<string, unknown>;
-  return typeof event.elapsedMs === "number" &&
+  return typeof event.at === "string" &&
+    typeof event.elapsedMs === "number" &&
     typeof event.step === "string" &&
     typeof event.label === "string" &&
     event.label.length <= 160;
