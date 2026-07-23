@@ -72,6 +72,7 @@ describe("maintainer inbox service", () => {
           schemaVersion: 2,
         }]);
       },
+      async loadAttempt() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },
     }, {
       async read() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },
       async save() { return ok(undefined); },
@@ -109,6 +110,7 @@ describe("maintainer inbox service", () => {
     };
     const service = new MaintainerInboxService(new FakeGitHubAdapter({}), {
       async listSessions() { return ok([]); },
+      async loadAttempt() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },
     }, {
       async read() { return ok(cache); },
       async save() { return ok(undefined); },

@@ -58,12 +58,45 @@ const rows: ReadonlyArray<InboxRow> = [
   },
 ];
 
+const draftRow = rows.find((row) => row.identity.number === 42);
+if (draftRow === undefined) throw new Error("missing running review fixture");
+
+const runningRow: InboxRow = {
+  ...draftRow,
+  latestReview: {
+    sessionId: "review-running",
+    reviewedHeadSha: "fedcba1234567890abcdef1234567890abcdef12",
+    state: "starting",
+    updatedAt: "2026-07-18T10:00:00.000Z",
+    matchesCurrentHead: true,
+  },
+  categories: ["running"],
+  recommendedAction: { kind: "continue_review", label: "View review progress", sessionId: "review-running" },
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
 });
 
 describe("MaintainerInbox", () => {
+  it("shows a persisted active review as progress instead of a second run action", () => {
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={[runningRow]}
+        freshness="fresh"
+        loading={false}
+        onRefresh={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenSession={() => undefined}
+      />,
+    );
+
+    expect(screen.getAllByText("Review starting").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /View review progress/ })).toBeTruthy();
+  });
   it("filters queues, moves selection by keyboard, and starts only the selected recommended action", async () => {
     const openedReviews: Array<{ readonly number: number; readonly mode: string }> = [];
     const openedSessions: Array<string> = [];

@@ -15,7 +15,7 @@ const checkSchema = v.strictObject({
 const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
   v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("Continue review"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
+  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
   v.strictObject({ kind: v.literal("edit_draft"), label: v.literal("Edit review draft"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
   v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
   v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
@@ -42,7 +42,7 @@ const inboxRowSchema = v.strictObject({
   latestReview: v.optional(v.strictObject({
     sessionId: v.pipe(v.string(), v.minLength(1)),
     reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
-    state: v.picklist(["running", "completed", "failed", "draft", "submitted", "merged"]),
+    state: v.picklist(["starting", "running", "completed", "failed", "draft", "submitted", "merged"]),
     updatedAt: v.pipe(v.string(), v.isoTimestamp()),
     matchesCurrentHead: v.boolean(),
   })),

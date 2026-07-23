@@ -49,7 +49,7 @@ describe("maintainer inbox", () => {
       dataFreshness: "fresh",
     });
     expect(row.categories).toContain("running");
-    expect(row.recommendedAction).toEqual({ kind: "continue_review", label: "Continue review", sessionId });
+    expect(row.recommendedAction).toEqual({ kind: "continue_review", label: "View review progress", sessionId });
   });
 
   it("offers review updates for a completed prior head before an ordinary full review", () => {

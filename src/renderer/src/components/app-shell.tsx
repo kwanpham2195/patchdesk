@@ -16,6 +16,7 @@ import {
   primaryDestinations,
 } from "@/routes";
 import { BrandMark } from "@/components/brand-mark";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -76,6 +77,7 @@ export function AppShell({
   profileId,
   profileLabel,
   repositoryCount,
+  activeReviewCount = 0,
   workspacePanel,
   navigationBlocked = false,
   onNavigate,
@@ -85,6 +87,7 @@ export function AppShell({
   readonly profileId: string;
   readonly profileLabel: string;
   readonly repositoryCount: number;
+  readonly activeReviewCount?: number;
   readonly workspacePanel?: React.ReactNode;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
@@ -256,12 +259,14 @@ export function AppShell({
                           <SidebarMenuButton
                             isActive={current}
                             size="sm"
-                            tooltip={item.label}
+                            tooltip={item.kind === "dashboard" && activeReviewCount > 0 ? `${item.label}: ${activeReviewCount} review${activeReviewCount === 1 ? "" : "s"} in progress` : item.label}
+                            aria-label={item.kind === "dashboard" && activeReviewCount > 0 ? `${item.label}, ${activeReviewCount} review${activeReviewCount === 1 ? "" : "s"} in progress` : item.label}
                             aria-current={current ? "page" : undefined}
                             onClick={() => go({ kind: item.kind })}
                           >
                             <Icon />
                             <span>{item.label}</span>
+                            {item.kind === "dashboard" && activeReviewCount > 0 ? <Badge variant="secondary" className="ml-auto h-4 min-w-4 justify-center px-1 text-[10px] group-data-[collapsible=icon]:hidden">{activeReviewCount}</Badge> : null}
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );

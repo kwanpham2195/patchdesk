@@ -8,6 +8,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { PullRequestSummary } from "../domain/github-context";
 import type { IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
+import type { ReviewAttempt } from "../domain/review-attempt";
 import {
   projectMaintainerInboxRow,
   type InboxReviewSummary,
@@ -32,7 +33,7 @@ export type MaintainerInbox = {
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
 
-type SessionReader = Pick<ReviewSessionStore, "listSessions">;
+type SessionReader = Pick<ReviewSessionStore, "listSessions" | "loadAttempt">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
 
 /** Reads watched repositories concurrently, enriches them with local review state, and falls back to parsed cache data. */
@@ -79,8 +80,8 @@ export class MaintainerInboxService {
   ): Promise<{ readonly rows: ReadonlyArray<MaintainerInboxRow>; readonly repository: MaintainerInboxRepository }> {
     const listed = await this.github.listMaintainerPullRequests({ profile, repo: { host: repo.host, owner: repo.owner, repo: repo.repo, number: 1 as never } });
     if (listed._tag === "err") return { rows: [], repository: { repo, state: listed.error._tag === "GitHubAuthenticationFailed" ? "github_auth" : "github_read", complete: false } };
-    const rows = listed.value.pullRequests.map(({ summary, checks }) => {
-      const latestReview = latestReviewFor(summary, sessions);
+    const rows = await Promise.all(listed.value.pullRequests.map(async ({ summary, checks }) => {
+      const latestReview = await latestReviewFor(summary, sessions, this.sessions, profile.id);
       return projectMaintainerInboxRow({
         summary,
         checks,
@@ -88,7 +89,7 @@ export class MaintainerInboxService {
         ...(latestReview === undefined ? {} : { latestReview }),
         dataFreshness: "fresh",
       });
-    });
+    }));
     return {
       rows,
       repository: { repo, state: listed.value.pullRequests.length === 0 ? "no_open_prs" : repo.localPath === undefined ? "missing_local_path" : "ready", complete: listed.value.complete },
@@ -112,12 +113,32 @@ export class MaintainerInboxService {
   }
 }
 
-function latestReviewFor(summary: PullRequestSummary, sessions: ReadonlyArray<ReviewSession>): InboxReviewSummary | undefined {
+async function latestReviewFor(
+  summary: PullRequestSummary,
+  sessions: ReadonlyArray<ReviewSession>,
+  store: SessionReader,
+  profileId: WorkspaceProfileConfig["id"],
+): Promise<InboxReviewSummary | undefined> {
   const session = sessions.find((candidate) => candidate.key.host === summary.ref.host && candidate.key.owner === summary.ref.owner && candidate.key.repo === summary.ref.repo && candidate.key.prNumber === summary.ref.number);
   if (session === undefined) return undefined;
   const draft = session.draftContent?.state._tag;
-  const state = session.state._tag === "Running" ? "running" : session.state._tag === "Merged" ? "merged" : draft === "LocalDraft" || draft === "PendingGitHubReview" ? "draft" : draft === "SubmittedGitHubReview" ? "submitted" : session.state._tag === "ReviewCompleted" ? "completed" : "failed";
+  const attempt = session.state._tag === "Running" && session.currentAttemptId !== undefined
+    ? await store.loadAttempt(profileId, session.id, session.currentAttemptId)
+    : undefined;
+  const state = reviewState(session, draft, attempt?._tag === "ok" ? attempt.value : undefined);
   return { sessionId: session.id, reviewedHeadSha: session.key.headSha, state, updatedAt: session.updatedAt, matchesCurrentHead: session.key.headSha === summary.headSha };
+}
+
+function reviewState(
+  session: ReviewSession,
+  draft: "LocalDraft" | "PendingGitHubReview" | "SubmittedGitHubReview" | "DraftFailed" | undefined,
+  attempt: ReviewAttempt | undefined,
+): InboxReviewSummary["state"] {
+  if (session.state._tag === "Running") return attempt?.state._tag === "Starting" ? "starting" : "running";
+  if (session.state._tag === "Merged") return "merged";
+  if (draft === "LocalDraft" || draft === "PendingGitHubReview") return "draft";
+  if (draft === "SubmittedGitHubReview") return "submitted";
+  return session.state._tag === "ReviewCompleted" ? "completed" : "failed";
 }
 
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {

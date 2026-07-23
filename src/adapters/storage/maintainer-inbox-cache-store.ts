@@ -53,7 +53,7 @@ const checkSchema = v.strictObject({
 const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
   v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.string() }),
-  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("Continue review"), sessionId: v.string() }),
+  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("edit_draft"), label: v.literal("Edit review draft"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
   v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.string() }),
@@ -76,7 +76,7 @@ const rowSchema = v.strictObject({
   latestReview: v.optional(v.strictObject({
     sessionId: v.string(),
     reviewedHeadSha: v.string(),
-    state: v.picklist(["running", "completed", "failed", "draft", "submitted", "merged"]),
+    state: v.picklist(["starting", "running", "completed", "failed", "draft", "submitted", "merged"]),
     updatedAt: v.string(),
     matchesCurrentHead: v.boolean(),
   })),

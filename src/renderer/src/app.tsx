@@ -481,6 +481,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         profileId={dashboard?.profile.id ?? "default"}
         profileLabel={dashboard?.profile.label ?? "Local workspace"}
         repositoryCount={dashboard?.dashboard.repos.length ?? 0}
+        activeReviewCount={inbox?.inbox.rows.filter((row) => row.categories.includes("running")).length ?? 0}
         navigationBlocked={navigationState !== "clear"}
         onNavigate={navigate}
         workspacePanel={
