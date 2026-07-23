@@ -2730,6 +2730,12 @@ function Settings({
               Discover
             </Button>
           </div>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Discovery searches only your configured workspace roots, up to four
+            directory levels, with five-second local command limits. It runs in
+            Patchdesk’s main process and offers local paths only in this Settings
+            suggestion list; it never sends them to GitHub.
+          </p>
           {discoveryFeedback === undefined ? null : (
             <p role="status" aria-live="polite" className="mt-3 text-sm text-muted-foreground">
               {discoveryFeedback}

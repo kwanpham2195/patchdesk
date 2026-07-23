@@ -109,6 +109,8 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText(/searches only your configured workspace roots/i)).toBeTruthy();
+    expect(screen.getByText(/never sends them to GitHub/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Discover" }));
 
     expect(
