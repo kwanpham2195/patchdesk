@@ -43,7 +43,12 @@ test("renderer uses the protected loopback API for profile and watchlist control
     }),
     origins: {
       async findOrigins() {
-        return ["https://github.example.test/acme/discovered.git"];
+        return [
+          {
+            origin: "https://github.example.test/acme/discovered.git",
+            localPath: "/workspace/discovered",
+          },
+        ];
       },
     },
   });
@@ -74,7 +79,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
 
   await page.getByRole("button", { name: "Test GitHub access" }).click();
   await expect(page.getByText("GitHub access: available")).toBeVisible();
-  await page.getByRole("button", { name: "Discover workspace repositories" }).click();
+  await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await page.getByRole("button", { name: "Add suggestion" }).click();
   await expect(

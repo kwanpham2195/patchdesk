@@ -38,6 +38,8 @@ export type ReviewAttempt = {
   readonly state: ReviewAttemptState;
   readonly flueRunId?: string;
   readonly model: string;
+  /** The exact per-call reasoning effort, retained with the local attempt only. */
+  readonly reasoning: "low" | "medium" | "high";
   readonly patchdeskVersion?: string;
   /** Scope provenance records the immutable artifact set inspected by the model. */
   readonly scopeKind?: "full" | "incremental";

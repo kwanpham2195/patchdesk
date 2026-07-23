@@ -36,6 +36,7 @@ import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
 import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
+import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 
 const rendererOrigin = getRendererOrigin();
 let runningLocalApi: LocalApiServer | undefined;
@@ -62,6 +63,7 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(),
+        modelCatalog: new LocalPiRuntimeModelCatalog(),
       });
       if (startup._tag === "started") {
         runningLocalApi = startup.server;

@@ -1,6 +1,9 @@
 import { dirname } from "node:path";
 
-import type { OriginFinder } from "../../services/dashboard-service";
+import type {
+  DiscoveredWorkspaceOrigin,
+  OriginFinder,
+} from "../../services/dashboard-service";
 import type { CommandRunner } from "./command-runner";
 
 /** Main-process-only discovery of Git remotes below explicitly configured workspace roots. */
@@ -9,8 +12,8 @@ export class WorkspaceOriginFinder implements OriginFinder {
 
   async findOrigins(
     roots: ReadonlyArray<string>,
-  ): Promise<ReadonlyArray<string>> {
-    const origins = new Set<string>();
+  ): Promise<ReadonlyArray<DiscoveredWorkspaceOrigin>> {
+    const origins = new Map<string, string>();
     for (const root of roots) {
       const gitDirectories = await this.commands.runText({
         argv: [
@@ -40,10 +43,11 @@ export class WorkspaceOriginFinder implements OriginFinder {
           ],
           timeoutMs: 5_000,
         });
-        if (origin._tag === "ok" && origin.value.trim().length > 0)
-          origins.add(origin.value.trim());
+        const value = origin._tag === "ok" ? origin.value.trim() : "";
+        if (value.length > 0 && !origins.has(value))
+          origins.set(value, dirname(gitDirectory));
       }
     }
-    return [...origins];
+    return [...origins].map(([origin, localPath]) => ({ origin, localPath }));
   }
 }

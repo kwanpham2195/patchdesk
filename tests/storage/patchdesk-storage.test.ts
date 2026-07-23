@@ -214,6 +214,7 @@ describe("Patchdesk storage", () => {
       state: { _tag: "Running" as const, flueRunId: "run-fixture" },
       flueRunId: "run-fixture",
       model: "fixture-model",
+      reasoning: "medium",
       reviewSkillVersion: mustParse(parseContentHash("a".repeat(64))),
       contextHash: mustParse(parseContentHash("b".repeat(64))),
       contextPath: mustParse(

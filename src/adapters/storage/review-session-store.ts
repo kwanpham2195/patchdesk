@@ -164,6 +164,7 @@ const reviewAttemptSchema = v.strictObject({
   state: attemptStateSchema,
   flueRunId: v.optional(v.string()),
   model: v.pipe(v.string(), v.minLength(1)),
+  reasoning: v.optional(v.picklist(["low", "medium", "high"])),
   patchdeskVersion: v.optional(v.pipe(v.string(), v.minLength(1))),
   scopeKind: v.optional(v.picklist(["full", "incremental"])),
   baseSessionId: v.optional(v.string()),
@@ -566,6 +567,7 @@ export function parseStoredReviewAttempt(
     state: state.value,
     ...(flueRunId === undefined ? {} : { flueRunId }),
     model: raw.output.model,
+    reasoning: raw.output.reasoning ?? "medium",
     ...(raw.output.patchdeskVersion === undefined
       ? {}
       : { patchdeskVersion: raw.output.patchdeskVersion }),

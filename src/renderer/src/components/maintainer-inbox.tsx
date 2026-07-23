@@ -58,6 +58,7 @@ const views: ReadonlyArray<{ readonly id: InboxView; readonly label: string; rea
 ];
 
 export type ReviewStartMode = "full" | "incremental";
+export type ReviewInitialSection = "overview" | "diff" | "checks";
 
 /** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
 export function MaintainerInbox({
@@ -76,7 +77,7 @@ export function MaintainerInbox({
   readonly freshness: "fresh" | "cached";
   readonly loading: boolean;
   readonly onRefresh: () => void;
-  readonly onOpenReview: (row: InboxRow, mode: ReviewStartMode) => void;
+  readonly onOpenReview: (row: InboxRow, mode: ReviewStartMode, initialSection?: ReviewInitialSection) => void;
   readonly onOpenSession: (sessionId: string) => void;
 }): React.JSX.Element {
   const preferences = useMemo(() => loadInboxViewPreferences(profileId), [profileId]);
@@ -235,7 +236,7 @@ export function MaintainerInbox({
           {freshness === "cached" ? <Badge variant="outline" className="h-5 px-1.5 text-[10px]">Cached data</Badge> : null}
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onRefresh} disabled={loading}>
             {loading ? <LoaderCircle className="animate-spin" /> : <Clock3 />}
-            Refresh
+            Refresh all
           </Button>
         </div>
       </header>
@@ -331,7 +332,7 @@ function QueueRail({ rows, view, savedViews, open, onSelect, onSelectSaved, onSa
   return <aside className="border-r bg-muted/10 max-[1279px]:border-b min-[1280px]:min-h-0" aria-label="Inbox queues">
     <div className="flex items-center justify-between px-3 py-2"><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Queues</p><Button className="hidden min-[1280px]:inline-flex" size="icon-sm" variant="ghost" onClick={onToggle} aria-label="Hide inbox queues"><PanelLeftClose /></Button></div>
     <nav className="flex gap-0.5 overflow-x-auto px-2 pb-1.5 min-[1280px]:flex-col" aria-label="Inbox views">
-      {views.map((item) => <Button key={item.id} variant={view === item.id ? "secondary" : "ghost"} size="sm" className="h-7 justify-between whitespace-nowrap text-xs min-[1280px]:w-full" onClick={() => onSelect(item.id)}><span>{item.label}</span><Badge variant="outline" className="ml-2 h-4 min-w-4 px-1 text-[10px]">{viewCount(rows, item.id)}</Badge></Button>)}
+      {views.map((item) => <Button key={item.id} variant={view === item.id ? "secondary" : "ghost"} size="sm" className="h-7 justify-between whitespace-nowrap text-xs min-[1280px]:w-full" onClick={() => onSelect(item.id)}><span className="flex min-w-0 items-center gap-2"><Badge variant="ghost" aria-hidden="true" className={cn("size-1.5 min-w-1.5 shrink-0 rounded-full border-0 p-0", queueIndicatorClass(item.id))} />{item.label}</span><Badge variant="outline" className="ml-2 h-4 min-w-4 px-1 text-[10px]">{viewCount(rows, item.id)}</Badge></Button>)}
     </nav>
     <Separator className="my-1.5" />
     <div className="flex items-center justify-between px-3"><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Saved views</p><Button size="icon-sm" variant="ghost" onClick={onSaveCurrent} aria-label="Save current view"><Save /></Button></div>
@@ -341,7 +342,7 @@ function QueueRail({ rows, view, savedViews, open, onSelect, onSelectSaved, onSa
 
 function InboxRowItem({ row, selected, onSelect, onAction }: { readonly row: InboxRow; readonly selected: boolean; readonly onSelect: () => void; readonly onAction: () => void }): React.JSX.Element {
   const key = inboxIdentityKey(row);
-  return <button id={`inbox-row-${key}`} type="button" role="option" aria-selected={selected} onClick={onSelect} onDoubleClick={onAction} className={cn("block w-full content-auto border-l-2 border-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", selected && "border-l-primary bg-primary/8")}>
+  return <button id={`inbox-row-${key}`} type="button" role="option" aria-selected={selected} onClick={() => { onSelect(); onAction(); }} className={cn("block w-full content-auto border-l-2 border-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", selected && "border-l-primary bg-primary/8")}>
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(0,1fr)_8rem_2.5rem]">
       <div className="flex min-w-0 items-start gap-2"><GitPullRequest className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /><div className="min-w-0"><div className="flex min-w-0 items-center gap-1.5"><p className="truncate text-[13px] leading-5 font-medium" title={`#${row.identity.number} ${row.title}`}>#{row.identity.number} {row.title}</p>{row.isDraft ? <Badge variant="outline" className="h-4 px-1 text-[10px]">Draft</Badge> : null}</div><p className="truncate text-[11px] leading-4 text-muted-foreground" title={`${row.identity.owner}/${row.identity.repo}`}>{row.identity.owner}/{row.identity.repo}<span className="hidden min-[1440px]:inline"> · {row.author}</span></p></div></div>
       <div className="hidden min-w-0 min-[1280px]:flex min-[1280px]:items-center min-[1280px]:gap-1.5"><CheckBadge overall={row.checks.overall} /><span className="truncate text-[11px] text-muted-foreground" title={reasonText(row)}><Reason row={row} /></span></div>
@@ -362,11 +363,12 @@ function CheckBadge({ overall }: { readonly overall: InboxRow["checks"]["overall
 function Reason({ row }: { readonly row: InboxRow }): React.JSX.Element { if (row.categories.includes("updated_since_review")) return <span>Updated since review</span>; if (row.categories.includes("needs_review")) return <span>Review requested</span>; if (row.categories.includes("checks_failing")) return <span className="text-destructive">Checks failing</span>; return <span>{row.recommendedAction.label}</span>; }
 function reasonText(row: InboxRow): string { if (row.categories.includes("updated_since_review")) return "Updated since review"; if (row.categories.includes("needs_review")) return "Review requested"; if (row.categories.includes("checks_failing")) return "Checks failing"; return row.recommendedAction.label; }
 function viewCount(rows: ReadonlyArray<InboxRow>, view: InboxView): number { return filterRows(rows, view, "").length; }
+function queueIndicatorClass(view: InboxView): string { switch (view) { case "my_inbox": case "updated": return "bg-status-info"; case "needs_review": return "bg-status-warning"; case "waiting": return "bg-muted-foreground/60"; case "checks_failing": return "bg-destructive"; case "ready_to_merge": return "bg-status-success"; case "all_open": return "bg-muted-foreground"; } }
 function filterRows(rows: ReadonlyArray<InboxRow>, view: InboxView, search: string): ReadonlyArray<InboxRow> { const needle = search.trim().toLocaleLowerCase(); return rows.filter((row) => matchesView(row, view) && (needle.length === 0 || `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`.toLocaleLowerCase().includes(needle))); }
 function matchesView(row: InboxRow, view: InboxView): boolean { switch (view) { case "all_open": return true; case "my_inbox": return row.categories.some((category) => category === "needs_review" || category === "updated_since_review" || category === "has_local_draft" || category === "running"); case "updated": return row.categories.includes("updated_since_review"); case "needs_review": return row.categories.includes("needs_review"); case "waiting": return row.categories.includes("waiting_for_author"); case "checks_failing": return row.categories.includes("checks_failing"); case "ready_to_merge": return row.categories.includes("ready_to_merge"); } }
 function sortRows(rows: ReadonlyArray<InboxRow>, sort: InboxSort): ReadonlyArray<InboxRow> { return [...rows].sort((left, right) => sort === "updated" ? right.updatedAt.localeCompare(left.updatedAt) : sort === "repository" ? inboxIdentityKey(left).localeCompare(inboxIdentityKey(right)) : priority(left) - priority(right) || right.updatedAt.localeCompare(left.updatedAt) || inboxIdentityKey(left).localeCompare(inboxIdentityKey(right))); }
 function priority(row: InboxRow): number { if (row.categories.includes("running") || row.categories.includes("has_local_draft")) return 0; if (row.categories.includes("updated_since_review")) return 1; if (row.categories.includes("needs_review")) return 2; if (row.categories.includes("waiting_for_author")) return 3; if (row.categories.includes("checks_failing")) return 4; if (row.categories.includes("ready_to_merge")) return 5; return 6; }
-function requestAction(row: InboxRow, onOpenReview: (row: InboxRow, mode: ReviewStartMode) => void, onOpenSession: (sessionId: string) => void, setScopePreview: (row: InboxRow | undefined) => void): void { switch (row.recommendedAction.kind) { case "run_review": onOpenReview(row, "full"); return; case "review_updates": setScopePreview(row); return; case "continue_review": case "edit_draft": case "open_merge_readiness": case "open_discussion": onOpenSession(row.recommendedAction.sessionId); return; case "inspect_checks": return; } }
+function requestAction(row: InboxRow, onOpenReview: (row: InboxRow, mode: ReviewStartMode, initialSection?: ReviewInitialSection) => void, onOpenSession: (sessionId: string) => void, setScopePreview: (row: InboxRow | undefined) => void): void { switch (row.recommendedAction.kind) { case "run_review": onOpenReview(row, "full"); return; case "review_updates": setScopePreview(row); return; case "continue_review": case "edit_draft": case "open_merge_readiness": case "open_discussion": onOpenSession(row.recommendedAction.sessionId); return; case "inspect_checks": onOpenReview(row, "full", "checks"); return; } }
 function actionIcon(kind: InboxRow["recommendedAction"]["kind"]): React.JSX.Element { return kind === "review_updates" ? <Clock3 /> : kind === "inspect_checks" ? <ShieldAlert /> : kind === "continue_review" ? <LoaderCircle /> : <CheckCircle2 />; }
 function shortSha(value: string): string { return value.slice(0, 12); }
 function changeStats(row: InboxRow): string { const { additions, deletions, changedFiles } = row.changeStats; const parts = [changedFiles === undefined ? undefined : `${changedFiles} files`, additions === undefined ? undefined : `+${additions}`, deletions === undefined ? undefined : `-${deletions}`].filter((value): value is string => value !== undefined); return parts.length === 0 ? "Not available" : parts.join(" · "); }

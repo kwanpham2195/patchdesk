@@ -69,7 +69,7 @@ const result = {
 } as unknown as ReviewResult;
 
 describe("review workbench", () => {
-  it("prepares a persisted running attempt when opening a new direct review", async () => {
+  it("prepares a persisted session without starting a model attempt when opening a new direct review", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-workbench-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -135,7 +135,7 @@ describe("review workbench", () => {
 
       expect(opened).toMatchObject({
         _tag: "ok",
-        value: { state: "review_started", session: { state: { _tag: "Running", attemptId: "001" } } },
+        value: { state: "review_started", session: { state: { _tag: "Created" } } },
       });
       if (opened._tag === "err") return;
       expect(await readFile(opened.value.session.patchPath, "utf8")).toContain("src/review.ts");

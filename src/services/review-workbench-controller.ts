@@ -85,7 +85,12 @@ export class ReviewWorkbenchController {
     const stored = await this.sessions.load(profileId.value, sessionId);
     // Older metadata-only sessions have no attempt/artifacts, so they must be prepared
     // before the workbench can honestly present a runnable review.
-    if (stored._tag === "ok" && stored.value.state._tag !== "Created") return this.project(profile.value, stored.value);
+    // Opening a PR creates or resumes its immutable, read-only session. Starting a
+    // model attempt is deliberately a separate explicit action.
+    if (stored._tag === "ok") {
+      const prepared = await readFile(stored.value.patchPath, "utf8").catch(() => undefined);
+      if (prepared !== undefined) return this.project(profile.value, stored.value);
+    }
     if (stored._tag === "err" && stored.error.reason !== "not_found") return err({ reason: "storage" });
     const requestedMode = field(input, "mode");
     if (requestedMode !== undefined && requestedMode !== "full" && requestedMode !== "incremental") return err({ reason: "invalid_input" });

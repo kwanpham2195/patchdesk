@@ -14,6 +14,8 @@ export type ReviewModelSession = {
   prompt(text: string, options: {
     readonly result: typeof modelReviewResultSchema;
     readonly tools: ReadonlyArray<ToolDefinition>;
+    readonly model?: string;
+    readonly thinkingLevel?: "low" | "medium" | "high";
   }): Promise<{ readonly data: WorkflowModelReviewResult }>;
 };
 
@@ -27,6 +29,8 @@ type RunModelReviewInput = {
   readonly patchPath: string;
   readonly debugPath: string;
   readonly scope?: ReviewScope;
+  readonly model?: string;
+  readonly reasoning?: "low" | "medium" | "high";
   readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
 };
 
@@ -59,6 +63,8 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
   }), {
     result: modelReviewResultSchema,
     tools: createReviewInspectorTools(inspector),
+    ...(input.model === undefined ? {} : { model: input.model }),
+    ...(input.reasoning === undefined ? {} : { thinkingLevel: input.reasoning }),
   });
   return response.data;
 }

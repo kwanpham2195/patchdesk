@@ -4,9 +4,11 @@ import type {
 } from "../adapters/github/github-adapter";
 import type { PullRequestSummary } from "../domain/github-context";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  type AbsolutePath,
 } from "../domain/ids";
 import type {
   WatchedRepoConfig,
@@ -43,9 +45,17 @@ export type DashboardPrList = {
   readonly repos: ReadonlyArray<DashboardRepo>;
   readonly directEntryAvailable: true;
 };
-export type DiscoveredRepo = WatchedRepoRef;
+export type DiscoveredRepo = WatchedRepoRef & {
+  readonly localPath: AbsolutePath;
+};
+export type DiscoveredWorkspaceOrigin = {
+  readonly origin: string;
+  readonly localPath: string;
+};
 export type OriginFinder = {
-  findOrigins(roots: ReadonlyArray<string>): Promise<ReadonlyArray<string>>;
+  findOrigins(
+    roots: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<DiscoveredWorkspaceOrigin>>;
 };
 
 /** Presents only watchlisted GitHub reads and turns dependency failure into row-level dashboard state. */
@@ -129,7 +139,7 @@ export class DashboardService {
     const values = await this.origins.findOrigins(profile.workspaceRoots);
     const discovered: DiscoveredRepo[] = [];
     for (const value of values) {
-      const parsed = parseGitOrigin(value);
+      const parsed = parseGitOrigin(value.origin, value.localPath);
       if (
         parsed === undefined ||
         profile.repos.some((repo) => sameRepo(repo, parsed)) ||
@@ -181,15 +191,22 @@ function mapFailure(failure: GitHubReadFailure): DashboardRepoState {
     : "github_read";
 }
 
-function parseGitOrigin(value: string): DiscoveredRepo | undefined {
+function parseGitOrigin(
+  value: string,
+  localPath: string,
+): DiscoveredRepo | undefined {
   const match =
     /^(?:https:\/\/|git@)([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(value);
   if (match === null) return undefined;
   const host = parseGitHubHost(match[1]);
   const owner = parseGitHubOwner(match[2]);
   const repo = parseGitHubRepoName(match[3]);
-  return host._tag === "ok" && owner._tag === "ok" && repo._tag === "ok"
-    ? { host: host.value, owner: owner.value, repo: repo.value }
+  const path = parseAbsolutePath(localPath);
+  return host._tag === "ok" &&
+    owner._tag === "ok" &&
+    repo._tag === "ok" &&
+    path._tag === "ok"
+    ? { host: host.value, owner: owner.value, repo: repo.value, localPath: path.value }
     : undefined;
 }
 

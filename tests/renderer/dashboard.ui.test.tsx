@@ -103,6 +103,21 @@ describe("dashboard renderer API flow", () => {
     ).toBeTruthy();
   });
 
+  it("explains when Discover finds no new repositories", async () => {
+    installApi({ suggestionsValue: [] });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Discover" }));
+
+    expect(
+      await screen.findByText(
+        "No new repositories found in the configured workspace roots.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("recovers a failed dashboard load through the visible retry action", async () => {
     const fetch = installApi({ dashboardFailures: 1 });
     const user = userEvent.setup();
@@ -743,6 +758,7 @@ function installApi(
     readonly dashboardPending?: boolean;
     readonly dashboardFailures?: number;
     readonly dashboardValue?: unknown;
+    readonly suggestionsValue?: unknown;
     readonly environmentValue?: unknown;
     readonly selectedDirectory?: string;
     readonly removeResponse?: Promise<Response>;
@@ -834,7 +850,9 @@ function installApi(
       ? (options.loadedWorkbench ?? {})
       : path.includes("v1/reviews?")
         ? { sessions: options.reviewRecords ?? [] }
-        : path.includes("v1/environment")
+        : path.includes("v1/watchlist/suggestions")
+          ? (options.suggestionsValue ?? [])
+          : path.includes("v1/environment")
           ? (options.environmentValue ?? {
               productName: "Patchdesk",
               version: "0.1.0",

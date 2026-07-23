@@ -38,6 +38,9 @@ import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewComparisonService } from "../services/review-comparison-service";
+import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
+import { ReviewHeadVerifier } from "../services/review-head-verifier";
+import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
   ReviewWorkflowStarter,
   type ReviewWorkflowInvoker,
@@ -86,6 +89,10 @@ export type LocalApiConfiguration = {
   readonly paths?: PatchdeskPaths;
   /** Main-process-owned finite Flue invocation; renderer requests never provide workflow paths. */
   readonly workflowInvoker?: ReviewWorkflowInvoker;
+  /** Models advertised by the active Flue/Pi runtime. Model identifiers stay main-process owned. */
+  readonly supportedReviewModels?: ReadonlyArray<string>;
+  /** Main-process-only source of currently enabled Pi models. */
+  readonly modelCatalog?: PiRuntimeModelCatalog;
   /** Test-only adapter; production never accepts mutable run state over HTTP. */
   readonly runProjection?: (input: {
     readonly runId: string;
@@ -187,6 +194,15 @@ export async function startLocalApiServer(
     configuration.workflowInvoker === undefined
       ? undefined
       : new ReviewWorkflowStarter(sessions, configuration.workflowInvoker);
+  const supportedReviewModels = (await configuration.modelCatalog?.list() ?? configuration.supportedReviewModels ?? ["opencode-go/deepseek-v4-flash"])
+    .map((model) => typeof model === "string" ? model : model.id);
+  const reviewExecution = new ReviewExecutionService(
+    sessions,
+    paths,
+    supportedReviewModels,
+    () => new Date().toISOString() as never,
+    new ReviewHeadVerifier(profiles, sessions, github, () => new Date().toISOString()),
+  );
   const runCoordinator =
     workflowStarter === undefined
       ? undefined
@@ -325,6 +341,32 @@ export async function startLocalApiServer(
     const run =
       runCoordinator?.start(parsed.output) ?? runs.create(parsed.output);
     return context.json(run, 202);
+  });
+  app.get("/v1/reviews/models", (context) =>
+    context.json({
+      models: supportedReviewModels.map((id) => ({ id, label: id })),
+      reasoning: REVIEW_REASONING_LEVELS,
+      defaultModel: supportedReviewModels[0],
+      defaultReasoning: "medium",
+    }),
+  );
+  app.post("/v1/reviews/run", async (context) => {
+    if (runCoordinator === undefined) {
+      return context.json({ error: "workflow_unavailable" }, 503);
+    }
+    const body = await jsonBody(context);
+    const started = await reviewExecution.start(body);
+    if (started._tag === "err") {
+      const status = started.error.reason === "not_found" ? 404 : started.error.reason === "head_changed" ? 409 : started.error.reason === "github_read" ? 503 : 400;
+      return context.json({ error: started.error.reason }, status);
+    }
+    const run = runCoordinator.start(started.value);
+    return context.json({
+      runId: run.runId,
+      attemptId: started.value.attemptId,
+      model: started.value.model,
+      reasoning: started.value.reasoning,
+    }, 202);
   });
   app.post("/v1/reviews/pending", async (context) =>
     reviewWrites === undefined

@@ -13,7 +13,7 @@ const reviewAgent = defineAgent(() => ({
   instructions:
     "Review one prepared pull request through the supplied read-only inspection tools. Inspect exact source lines for every suspected issue, discard anything speculative or intentional, and finish with the required structured result after at most eight inspection calls. An approve verdict with zero findings is valid. Return only schema-backed findings supported by evidence.",
   model: "opencode-go/deepseek-v4-flash",
-  thinkingLevel: "low",
+  thinkingLevel: "medium",
   skills: [patchdeskCodeReview],
 }));
 
@@ -26,6 +26,8 @@ const reviewPrFixtureInput = v.strictObject({
   patchPath: v.pipe(v.string(), v.minLength(1)),
   worktreePath: v.pipe(v.string(), v.minLength(1)),
   scope: v.optional(reviewScopeSchema),
+  model: v.pipe(v.string(), v.minLength(1)),
+  reasoning: v.picklist(["low", "medium", "high"]),
 });
 
 /**
@@ -51,6 +53,8 @@ export default defineWorkflow({
       patchPath: input.patchPath,
       debugPath: join(dirname(input.contextPath), "debug.json"),
       scope: "_tag" in scope ? scope.value : scope,
+      model: input.model,
+      reasoning: input.reasoning,
       async gitShow(argv) {
         const result = await commands.runText({ argv, timeoutMs: 15_000 });
         return result._tag === "ok" ? result.value : "";

@@ -1,6 +1,6 @@
 export type AppDestination =
   | { readonly kind: "dashboard" }
-  | { readonly kind: "workbench"; readonly sessionId: string }
+  | { readonly kind: "workbench"; readonly sessionId: string; readonly initialSection?: "overview" | "diff" | "checks" }
   | { readonly kind: "drafts" }
   | { readonly kind: "history" }
   | { readonly kind: "settings" };
@@ -14,7 +14,7 @@ export const primaryDestinations = [
 
 export function destinationKey(destination: AppDestination): string {
   return destination.kind === "workbench"
-    ? `workbench:${destination.sessionId}`
+    ? `workbench:${destination.sessionId}:${destination.initialSection ?? "overview"}`
     : destination.kind;
 }
 
@@ -35,8 +35,8 @@ export function destinationTitle(destination: AppDestination): string {
 
 export function parseDestination(value: string | null): AppDestination {
   if (value?.startsWith("workbench:")) {
-    const sessionId = value.slice("workbench:".length).trim();
-    if (sessionId.length > 0) return { kind: "workbench", sessionId };
+    const [sessionId, section] = value.slice("workbench:".length).trim().split(":", 2);
+    if (sessionId !== undefined && sessionId.length > 0) return { kind: "workbench", sessionId, ...(section === "diff" || section === "checks" ? { initialSection: section } : {}) };
   }
   if (value === "drafts" || value === "history" || value === "settings") {
     return { kind: value };

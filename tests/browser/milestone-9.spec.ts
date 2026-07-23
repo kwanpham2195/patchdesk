@@ -3,6 +3,33 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
+test("review navigator stacks its tabs and file list vertically", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+
+    const navigation = page.getByRole("complementary", {
+      name: "Review navigation",
+    });
+    const tabsList = navigation.getByRole("tablist");
+    const fileCount = navigation.getByRole("status");
+    const tabsBox = await tabsList.boundingBox();
+    const fileCountBox = await fileCount.boundingBox();
+    if (tabsBox === null || fileCountBox === null) {
+      throw new Error("Review navigator controls were not visible");
+    }
+
+    expect(fileCountBox.y).toBeGreaterThanOrEqual(
+      tabsBox.y + tabsBox.height - 1,
+    );
+  } finally {
+    await close(server);
+  }
+});
+
 test("compact Pierre controls persist and collapsed finding targets reopen", async ({
   page,
 }) => {

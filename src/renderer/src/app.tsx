@@ -3,6 +3,7 @@ import { DiffWorkbench } from "./components/diff-workbench";
 import { AppShell } from "./components/app-shell";
 import {
   MaintainerInbox,
+  type ReviewInitialSection,
   type ReviewStartMode,
 } from "./components/maintainer-inbox";
 import { ReviewWorkbench } from "./components/review-workbench";
@@ -61,6 +62,7 @@ import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
 import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "./renderer-contracts";
+import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
 
 export type DashboardScreenState =
   | "empty"
@@ -227,10 +229,27 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [openedPr, setOpenedPr] = useState<string | undefined>();
   const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
+  const [appearance, setAppearance] = useState<AppearancePreference>(() => loadAppearancePreference());
+  const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([
+    { id: "opencode-go/deepseek-v4-flash", label: "opencode-go/deepseek-v4-flash" },
+  ]);
+  const [reviewModel, setReviewModel] = useState("opencode-go/deepseek-v4-flash");
+  const [reviewReasoning, setReviewReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [runError, setRunError] = useState<string>();
+  useEffect(() => {
+    const apply = (): void => { applyAppearance(appearance); };
+    apply();
+    if (typeof window.matchMedia !== "function") return undefined;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [appearance]);
   const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [pathFeedback, setPathFeedback] = useState<string>();
   const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
+  const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string | undefined>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
   const [reviewRecords, setReviewRecords] = useState<
@@ -267,6 +286,31 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       );
     }
   }, []);
+  useEffect(() => {
+    let active = true;
+    void api("/v1/reviews/models")
+      .then((value) => {
+        if (!active || !record(value) || !Array.isArray(value.models)) return;
+        const models = value.models.flatMap((candidate) =>
+          record(candidate) && typeof candidate.id === "string" && candidate.id.length > 0
+            ? [{ id: candidate.id, label: typeof candidate.label === "string" ? candidate.label : candidate.id }]
+            : typeof candidate === "string" && candidate.length > 0
+              ? [{ id: candidate, label: candidate }]
+              : [],
+        );
+        if (models.length === 0) return;
+        const profileId = dashboard?.profile.id;
+        const saved = profileId === undefined ? undefined : loadReviewExecutionPreference(profileId);
+        const selected = saved?.model !== undefined && models.some((model) => model.id === saved.model)
+          ? saved.model
+          : models[0]?.id;
+        setReviewModels(models);
+        setReviewModel(selected ?? models[0]?.id ?? "opencode-go/deepseek-v4-flash");
+        setReviewReasoning(saved?.reasoning ?? "medium");
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [dashboard?.profile.id]);
   const loadCompletedWorkbench = useCallback(
     async (profileId: string, sessionId: string): Promise<void> => {
       const value = await api("/v1/reviews/load", {
@@ -450,12 +494,14 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                       <span className="min-w-0 truncate font-medium">
                         {repo.owner}/{repo.repo}
                       </span>
-                      <Badge
-                        variant={outcome === "ready" ? "secondary" : "outline"}
-                        className="shrink-0"
-                      >
-                        {outcome.replaceAll("_", " ")}
-                      </Badge>
+                      {outcome === "no_open_prs" ? null : (
+                        <Badge
+                          variant={outcome === "ready" ? "secondary" : "outline"}
+                          className="shrink-0"
+                        >
+                          {outcome.replaceAll("_", " ")}
+                        </Badge>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -464,7 +510,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                       aria-label={`Refresh ${repo.owner}/${repo.repo}`}
                       onClick={() => void refreshRepo(repo)}
                     >
-                      Refresh repo
+                      Refresh
                     </Button>
                   </div>
                 ))}
@@ -661,10 +707,45 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             Session {workbench.session.id}
           </p>
           {workbench.session.currentAttemptId === undefined ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              The review has been recorded locally and will appear here when its
-              result is complete.
-            </p>
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                This session is prepared locally. Run review starts read-only
+                analysis; Patchdesk will never write to GitHub automatically.
+              </p>
+              <Button onClick={() => setRunDialogOpen(true)}>Run review</Button>
+              {runError === undefined ? null : (
+                <Alert variant="destructive" className="mt-3">
+                  <AlertTitle>Review was not started</AlertTitle>
+                  <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
+                    {runError}
+                    <Button variant="outline" size="sm" onClick={() => void openPullRequest({ host: dashboard?.profile.githubHost ?? "github.com", owner: workbench.session.key.owner, repo: workbench.session.key.repo, number: workbench.session.key.prNumber }, "full")}>Refresh and reopen review</Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
+                <DialogContent aria-describedby="run-review-description">
+                  <DialogHeader>
+                    <DialogTitle>Run local review</DialogTitle>
+                    <DialogDescription id="run-review-description">Patchdesk will inspect the prepared snapshot read-only. It will not write to GitHub.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-3 py-2">
+                    <Label className="grid gap-1.5">Model
+                      <Select value={reviewModel} onValueChange={(value) => { if (value !== null) setReviewModel(value); }}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{reviewModels.map((model) => <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </Label>
+                    <Label className="grid gap-1.5">Reasoning
+                      <Select value={reviewReasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") setReviewReasoning(value); }}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
+                      </Select>
+                    </Label>
+                  </div>
+                  <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button onClick={() => { setRunDialogOpen(false); void startOwnedRun(workbench.session.key.profileId, workbench.session.id); }}>Start read-only review</Button></DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           ) : (
             <SafeRunPanel
               profileId={workbench.session.key.profileId}
@@ -677,7 +758,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                 startOwnedRun(
                   workbench.session.key.profileId,
                   workbench.session.id,
-                  workbench.session.currentAttemptId ?? "",
+                  workbench.session.currentAttemptId,
                 )
               }
               onCompleted={loadCompletedWorkbench}
@@ -854,8 +935,22 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await load();
   };
   const discover = async (): Promise<void> => {
-    const value = await api("/v1/watchlist/suggestions");
-    if (Array.isArray(value)) setSuggestions(value.filter(isRepo));
+    setDiscoveryFeedback("Discovering repositories...");
+    try {
+      const value = await api("/v1/watchlist/suggestions");
+      const discovered = Array.isArray(value) ? value.filter(isRepo) : [];
+      setSuggestions(discovered);
+      setDiscoveryFeedback(
+        discovered.length === 0
+          ? "No new repositories found in the configured workspace roots."
+          : `Found ${discovered.length} new ${discovered.length === 1 ? "repository" : "repositories"}.`,
+      );
+    } catch {
+      setSuggestions([]);
+      setDiscoveryFeedback(
+        "Could not discover repositories. Check the workspace root in Settings.",
+      );
+    }
   };
   const addSuggestion = async (repo: Repo): Promise<void> => {
     await api("/v1/watchlist", { method: "POST", body: repo });
@@ -898,6 +993,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   async function openPullRequest(
     pr: Preview["pr"],
     mode: ReviewStartMode = "full",
+    initialSection?: ReviewInitialSection,
     baseSessionId?: string,
   ): Promise<void> {
     setOpenedPr(undefined);
@@ -919,23 +1015,51 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       });
       if (!isWorkbenchPayload(value))
         throw new Error("invalid workbench projection");
-      const runId =
-        value.state === "review_started" &&
-        value.session.currentAttemptId !== undefined
-          ? await startRun(
-              value.session.key.profileId,
-              value.session.id,
-              value.session.currentAttemptId,
-            )
-          : undefined;
       setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-      setWorkbench(runId === undefined ? value : { ...value, runId });
-      navigate({ kind: "workbench", sessionId: value.session.id });
+      setWorkbench(value);
+      navigate({ kind: "workbench", sessionId: value.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
     } catch {
       setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
     }
   }
   async function startRun(
+    profileId: string,
+    sessionId: string,
+  ): Promise<string | undefined> {
+    try {
+      setRunError(undefined);
+      saveReviewExecutionPreference(profileId, {
+        model: reviewModel,
+        reasoning: reviewReasoning,
+      });
+      const value = await api("/v1/reviews/run", {
+        method: "POST",
+        body: { profileId, sessionId, model: reviewModel, reasoning: reviewReasoning },
+      });
+      return record(value) && typeof value.runId === "string"
+        ? value.runId
+        : undefined;
+    } catch (cause: unknown) {
+      setRunError(cause instanceof PatchdeskApiError && cause.status === 409
+        ? "GitHub changed after this snapshot was prepared. Refresh and reopen before running a review."
+        : "Patchdesk could not start this read-only review.");
+      return undefined;
+    }
+  }
+  async function startOwnedRun(
+    profileId: string,
+    sessionId: string,
+    attemptId?: string,
+  ): Promise<void> {
+    const runId = attemptId === undefined
+      ? await startRun(profileId, sessionId)
+      : await resumePreparedRun(profileId, sessionId, attemptId);
+    if (runId !== undefined)
+      setWorkbench((current) =>
+        current === undefined ? current : { ...current, runId },
+      );
+  }
+  async function resumePreparedRun(
     profileId: string,
     sessionId: string,
     attemptId: string,
@@ -945,24 +1069,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         method: "POST",
         body: { profileId, sessionId, attemptId },
       });
-      return record(value) && typeof value.runId === "string"
-        ? value.runId
-        : undefined;
+      return record(value) && typeof value.runId === "string" ? value.runId : undefined;
     } catch {
       return undefined;
     }
-  }
-  async function startOwnedRun(
-    profileId: string,
-    sessionId: string,
-    attemptId: string,
-  ): Promise<void> {
-    if (attemptId.length === 0) return;
-    const runId = await startRun(profileId, sessionId, attemptId);
-    if (runId !== undefined)
-      setWorkbench((current) =>
-        current === undefined ? current : { ...current, runId },
-      );
   }
   async function openStoredSession(record: ReviewRecord): Promise<void> {
     await openStoredSessionById(record.profileId, record.id);
@@ -1101,10 +1211,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             onPreview={() => void previewEntry()}
             onRefresh={() => void refreshDashboard()}
             onSettings={() => navigate({ kind: "settings" })}
-            onOpenReview={(row, mode) =>
+            onOpenReview={(row, mode, initialSection) =>
               void openPullRequest(
                 row.identity,
                 mode,
+                initialSection,
                 row.recommendedAction.kind === "review_updates"
                   ? row.recommendedAction.baseSessionId
                   : undefined,
@@ -1140,7 +1251,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           setNewRepo={setNewRepo}
           profileDraft={profileDraft}
           setProfileDraft={setProfileDraft}
+          appearance={appearance}
+          onAppearanceChange={(next) => {
+            setAppearance(next);
+            saveAppearancePreference(next);
+          }}
           suggestions={suggestions}
+          discoveryFeedback={discoveryFeedback}
           profiles={profiles}
           {...(githubAccess === undefined ? {} : { githubAccess })}
           {...(environment === undefined ? {} : { environment })}
@@ -1230,6 +1347,27 @@ function RunFixturePanel(): React.JSX.Element {
       }}
     />
   );
+}
+
+type ReviewExecutionPreference = {
+  readonly model: string;
+  readonly reasoning: "low" | "medium" | "high";
+};
+
+function loadReviewExecutionPreference(profileId: string): ReviewExecutionPreference | undefined {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(`patchdesk.review-execution.v1.${profileId}`) ?? "null");
+    if (!record(value) || typeof value.model !== "string") return undefined;
+    return value.reasoning === "low" || value.reasoning === "medium" || value.reasoning === "high"
+      ? { model: value.model, reasoning: value.reasoning }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveReviewExecutionPreference(profileId: string, preference: ReviewExecutionPreference): void {
+  window.localStorage.setItem(`patchdesk.review-execution.v1.${profileId}`, JSON.stringify(preference));
 }
 
 const fixturePatch = buildFixturePatch();
@@ -1516,6 +1654,7 @@ function InboxScreen({
   readonly onOpenReview: (
     row: InboxResponse["inbox"]["rows"][number],
     mode: ReviewStartMode,
+    initialSection?: ReviewInitialSection,
   ) => void;
   readonly onOpenSession: (sessionId: string) => void;
   readonly openedPr?: string;
@@ -1905,7 +2044,9 @@ function Outcome({
   return (
     <section className="mt-6 space-y-2">
       {repos
-        .filter((repo) => repo.state !== "ready")
+        .filter(
+          (repo) => repo.state !== "ready" && repo.state !== "no_open_prs",
+        )
         .map(({ repo, state: outcome }) => (
           <Alert
             key={key(repo)}
@@ -1919,17 +2060,15 @@ function Outcome({
               {repo.owner}/{repo.repo}
             </AlertTitle>
             <AlertDescription>
-              {outcome === "no_open_prs"
-                ? "No pending pull requests were found. Refresh when you expect new work."
-                : outcome === "github_auth"
-                  ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local drafts and history remain available."
-                  : outcome === "github_read"
-                    ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                    : outcome === "archived"
-                      ? "Archived repository. It is hidden from the active queue and can be restored in Settings."
-                      : outcome === "missing_local_path"
-                        ? "Choose a local checkout path before running a repository-aware review."
-                        : outcome}
+              {outcome === "github_auth"
+                ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local drafts and history remain available."
+                : outcome === "github_read"
+                  ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
+                  : outcome === "archived"
+                    ? "Archived repository. It is hidden from the active queue and can be restored in Settings."
+                    : outcome === "missing_local_path"
+                      ? "Choose a local checkout path before running a repository-aware review."
+                      : outcome}
               {outcome === "github_read" ? (
                 <div>
                   <Button className="mt-3" variant="outline" onClick={onRetry}>
@@ -2079,7 +2218,10 @@ function Settings({
   setNewRepo,
   profileDraft,
   setProfileDraft,
+  appearance,
+  onAppearanceChange,
   suggestions,
+  discoveryFeedback,
   profiles,
   githubAccess,
   environment,
@@ -2120,7 +2262,10 @@ function Settings({
       workspaceRoot: string;
     }>
   >;
+  readonly appearance: AppearancePreference;
+  readonly onAppearanceChange: (value: AppearancePreference) => void;
   readonly suggestions: ReadonlyArray<Repo>;
+  readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly githubAccess?: string;
   readonly environment?: Record<string, string>;
@@ -2172,6 +2317,26 @@ function Settings({
         </p>
       </header>
       <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Appearance</CardTitle>
+            <CardDescription>
+              Follow the system setting, or keep Patchdesk in light or dark mode.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={appearance} onValueChange={(value) => {
+              if (value === "system" || value === "light" || value === "dark") onAppearanceChange(value);
+            }}>
+              <SelectTrigger aria-label="Appearance"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Workspace profile</CardTitle>
@@ -2362,9 +2527,14 @@ function Settings({
             </div>
             <Button onClick={onAdd}>Add repository</Button>
             <Button variant="outline" onClick={onDiscover}>
-              Discover workspace repositories
+              Discover
             </Button>
           </div>
+          {discoveryFeedback === undefined ? null : (
+            <p role="status" aria-live="polite" className="mt-3 text-sm text-muted-foreground">
+              {discoveryFeedback}
+            </p>
+          )}
           {suggestions.length === 0 ? null : (
             <div className="mt-4 space-y-2">
               {suggestions.map((repo) => (

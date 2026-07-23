@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
+import type { ResolvedAppearance } from "@/appearance-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +62,25 @@ const DARK_DIFF_STYLE = {
   lineHeight: "20px",
 } as CSSProperties;
 
+const LIGHT_DIFF_STYLE = {
+  "--diffs-light-bg": "#ffffff",
+  "--diffs-bg-context-override": "#ffffff",
+  "--diffs-bg-context-gutter-override": "#f8fafc",
+  "--diffs-bg-addition-override": "#ecfdf3",
+  "--diffs-bg-addition-number-override": "#d8f8e4",
+  "--diffs-bg-deletion-override": "#fff1f2",
+  "--diffs-bg-deletion-number-override": "#ffe1e5",
+  "--diffs-bg-selection-override": "#eef0ff",
+  "--diffs-bg-selection-number-override": "#dfe3ff",
+  "--diffs-bg-separator-override": "#f1f3f5",
+  "--diffs-bg-hover-override": "#f6f7fb",
+  "--diffs-fg-number-override": "#64748b",
+  "--diffs-fg-number-addition-override": "#15803d",
+  "--diffs-fg-number-deletion-override": "#be123c",
+  fontSize: "13px",
+  lineHeight: "20px",
+} as CSSProperties;
+
 export type SelectedDiffRange = {
   readonly start: number;
   readonly end: number;
@@ -84,8 +104,8 @@ function FileChangeCounts({
       data-deletions={stats.deletions}
       aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
     >
-      <span className="text-emerald-400">+{stats.additions}</span>
-      <span className="text-rose-400">-{stats.deletions}</span>
+      <span className="text-emerald-700 dark:text-emerald-400">+{stats.additions}</span>
+      <span className="text-rose-700 dark:text-rose-400">-{stats.deletions}</span>
     </span>
   );
 }
@@ -118,11 +138,20 @@ export function ReviewDiffView({
   const [accessible, setAccessible] = useState(false);
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [loadedCount, setLoadedCount] = useState(1);
+  const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const nextItemIndex = useRef(1);
   const userScrollIntent = useRef(false);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
+  useEffect(() => {
+    const onAppearance = (event: Event): void => {
+      const value = (event as CustomEvent<ResolvedAppearance>).detail;
+      if (value === "light" || value === "dark") setAppearance(value);
+    };
+    window.addEventListener("patchdesk:appearance", onAppearance);
+    return () => window.removeEventListener("patchdesk:appearance", onAppearance);
+  }, []);
   const selectedPatch = useMemo(
     () => selectPatch(rawFilePatches, patch, selectedPath),
     [patch, rawFilePatches, selectedPath],
@@ -271,8 +300,8 @@ export function ReviewDiffView({
   );
   const codeViewOptions = useMemo(
     () => ({
-      theme: "github-dark-high-contrast" as const,
-      themeType: "dark" as const,
+      theme: appearance === "dark" ? "github-dark-high-contrast" : "github-light",
+      themeType: appearance,
       disableBackground: false,
       diffStyle: preferences.diffStyle,
       overflow: preferences.overflow,
@@ -282,7 +311,7 @@ export function ReviewDiffView({
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
     }),
-    [expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow],
+    [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow],
   );
   const renderFileChangeCounts = useCallback(
     (path: string) => {
@@ -548,10 +577,10 @@ export function ReviewDiffView({
           patch={selectedPatch}
           disableWorkerPool
           className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
-          style={DARK_DIFF_STYLE}
+          style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
           options={{
-            theme: "github-dark-high-contrast",
-            themeType: "dark",
+            theme: appearance === "dark" ? "github-dark-high-contrast" : "github-light",
+            themeType: appearance,
             disableBackground: false,
             diffStyle: preferences.diffStyle,
             overflow: preferences.overflow,
@@ -572,7 +601,7 @@ export function ReviewDiffView({
             containerRef={viewerContainer}
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-hidden overflow-y-auto font-mono"
-            style={DARK_DIFF_STYLE}
+            style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
             onScroll={handleViewerScroll}

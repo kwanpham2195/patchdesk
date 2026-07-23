@@ -21,6 +21,8 @@ export type ReviewWorkflowInput = {
   readonly patchPath: AbsolutePath;
   readonly worktreePath: AbsolutePath;
   readonly scope?: ReviewScope;
+  readonly model?: string;
+  readonly reasoning?: "low" | "medium" | "high";
 };
 
 export type ReviewWorkflowInvoker = {
@@ -72,6 +74,8 @@ export class ReviewWorkflowStarter {
       patchPath: session.value.patchPath,
       worktreePath: session.value.worktree.path,
       scope: session.value.scope,
+      model: attempt.value.model,
+      reasoning: attempt.value.reasoning,
     });
     return invoked._tag === "ok" ? ok(invoked.value) : err({ reason: invoked.error.reason });
   }

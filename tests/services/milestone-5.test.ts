@@ -297,19 +297,30 @@ describe("Milestone 5 dashboard service", () => {
     expect(restored.value.repos[0]?.archived).toBeUndefined();
   });
 
-  it("discovers git-origin suggestions without modifying the watchlist", async () => {
+  it("discovers git-origin suggestions with their local checkout paths", async () => {
     const service = new DashboardService(new FakeGitHubAdapter({}), {
       async findOrigins() {
         return [
-          "https://github.com/centraldigital/discovered.git",
-          "git@github.com:centraldigital/patchdesk.git",
+          {
+            origin: "https://github.com/centraldigital/discovered.git",
+            localPath: "/workspace/discovered",
+          },
+          {
+            origin: "git@github.com:centraldigital/patchdesk.git",
+            localPath: "/workspace/patchdesk",
+          },
         ];
       },
     });
     expect(await service.discoverWorkspaceRepos(profile)).toEqual({
       _tag: "ok",
       value: [
-        { host: "github.com", owner: "centraldigital", repo: "discovered" },
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "discovered",
+          localPath: "/workspace/discovered",
+        },
       ],
     });
   });

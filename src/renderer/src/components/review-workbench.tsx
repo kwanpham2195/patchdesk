@@ -538,6 +538,20 @@ export function ReviewWorkbench(props: {
                   <p className="mt-2 break-words text-sm text-muted-foreground">
                     {props.result.summary}
                   </p>
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Freshness</dt><dd className="mt-1 font-medium">{freshness === "fresh" ? "Current head confirmed" : freshness === "stale" ? "Head changed" : "Current head unavailable"}</dd></div>
+                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Evidence</dt><dd className="mt-1 font-medium">{props.result.findings.length} mapped finding{props.result.findings.length === 1 ? "" : "s"}</dd></div>
+                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Reviewed SHA</dt><dd className="mt-1 font-mono">{(props.reviewedHeadSha ?? "unavailable").slice(0, 12)}</dd></div>
+                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Lifecycle</dt><dd className="mt-1 font-medium">Local only until you confirm a GitHub write</dd></div>
+                  </dl>
+                </section>
+                <Separator />
+                <section>
+                  <h2 className="font-semibold">Fix queue</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Local next steps only. Patchdesk never applies changes or writes to GitHub automatically.</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {props.result.findings.map((finding) => <li key={finding.id} className="rounded-md border p-2 text-sm"><div className="flex items-center gap-2"><SeverityBadge severity={finding.severity} /><span className="font-medium">{finding.title}</span></div><p className="mt-1 text-xs text-muted-foreground">{finding.mappingStatus === "mapped" ? `Mapped evidence · ${confidenceText(finding.confidence)}` : "Unmapped evidence — inspect before drafting a comment"}</p></li>)}
+                  </ul>
                 </section>
                 {props.reviewScope?.kind !== "incremental" ? null : (
                   <>
@@ -764,12 +778,24 @@ function SeverityCounts({
           variant="outline"
           className="px-1.5 py-0 text-[10px]"
         >
-          {severity}{" "}
+          {severityLabel(severity)} · {" "}
           {findings.filter((finding) => finding.severity === severity).length}
         </Badge>
       ))}
     </div>
   );
+}
+
+function severityLabel(severity: "P0" | "P1" | "P2" | "P3"): string {
+  return `${severity} ${severity === "P0" ? "Critical" : severity === "P1" ? "High" : severity === "P2" ? "Medium" : "Low"}`;
+}
+
+function confidenceText(confidence: "high" | "medium" | "low"): string {
+  return `${confidence} confidence`;
+}
+
+function SeverityBadge({ severity }: { readonly severity: "P0" | "P1" | "P2" | "P3" }): React.JSX.Element {
+  return <Badge variant="outline" className={severity === "P0" || severity === "P1" ? "border-destructive/60 text-destructive" : undefined} aria-label={severityLabel(severity)}>{severityLabel(severity)}</Badge>;
 }
 
 function FindingList({
@@ -798,16 +824,7 @@ function FindingList({
             aria-pressed={selectedFinding?.id === finding.id}
             onClick={() => onSelect(finding)}
           >
-            <Badge
-              variant={
-                finding.severity === "P0" || finding.severity === "P1"
-                  ? "destructive"
-                  : "secondary"
-              }
-              className="mt-0.5 shrink-0"
-            >
-              {finding.severity}
-            </Badge>
+            <span className="mt-0.5 shrink-0"><SeverityBadge severity={finding.severity} /></span>
             <span className="min-w-0 flex-1">
               <span className="line-clamp-2 block leading-5">
                 {finding.title}
@@ -818,6 +835,7 @@ function FindingList({
               >
                 {location}
               </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{confidenceText(finding.confidence)} · {finding.mappingStatus === "mapped" ? "mapped evidence" : "unmapped evidence"}</span>
             </span>
           </Button>
         );

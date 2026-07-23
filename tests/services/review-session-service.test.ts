@@ -33,9 +33,8 @@ describe("ReviewSessionService", () => {
       const service = new ReviewSessionService(paths, () => updatedAt, { github: new FakeGitHubAdapter({ pullRequest: summary, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, diff: "+++ b/src/a.ts\n+line\n" }), worktrees: new ReviewWorktreeService(paths, git), context: new ReviewContextService() });
       const result = await service.startReview({ profileId: profile.id, host, owner, repo, number, headSha: sha, isDraft: false, isOpen: true, profile, localPath: local });
       expect(result).toMatchObject({ _tag: "ok", value: { outcome: { mode: "worktree" } } }); if (result._tag === "err") return;
-      expect(result.value.session).toMatchObject({ state: { _tag: "Running", attemptId: "001" }, currentAttemptId: "001" });
+      expect(result.value.session).toMatchObject({ state: { _tag: "Created" } });
       expect(await readFile(result.value.session.patchPath, "utf8")).toContain("src/a.ts");
-      expect(await readFile(paths.attemptFile(profile.id, result.value.session.id, "001" as never), "utf8")).toContain("\"id\":\"001\"");
       expect(await readFile(paths.attemptContextFile(profile.id, result.value.session.id, "001" as never), "utf8")).toContain("src/a.ts");
     } finally { await rm(root, { recursive: true, force: true }); }
   });

@@ -12,7 +12,11 @@ import {
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
-import { DashboardService, type DashboardPrList } from "./dashboard-service";
+import {
+  DashboardService,
+  type DashboardPrList,
+  type DiscoveredRepo,
+} from "./dashboard-service";
 import { MaintainerInboxService, type MaintainerInbox } from "./maintainer-inbox-service";
 import {
   addWatchedRepo,
@@ -247,7 +251,7 @@ export class DashboardController {
   }
 
   async discoverWorkspaceRepos(): Promise<
-    Result<ReadonlyArray<WatchedRepoRef>, DashboardControllerFailure>
+    Result<ReadonlyArray<DiscoveredRepo>, DashboardControllerFailure>
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;

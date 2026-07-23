@@ -1,8 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { parseAbsolutePath, parseContentHash, type GitHubHost, type GitHubOwner, type GitHubRepoName, type GitSha, type IsoTimestamp, type PullRequestNumber, type WorkspaceProfileId } from "../domain/ids";
-import { createReviewSession, startNextAttempt, type ReviewSession } from "../domain/review-session";
+import { parseAbsolutePath, type GitHubHost, type GitHubOwner, type GitHubRepoName, type GitSha, type IsoTimestamp, type PullRequestNumber, type WorkspaceProfileId } from "../domain/ids";
+import { createReviewSession, type ReviewSession } from "../domain/review-session";
 import type { ReviewScope } from "../domain/review-comparison";
 import { err, ok, type Result } from "../domain/result";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -40,23 +39,9 @@ export class ReviewSessionService {
     if (prepared._tag === "err") return prepared;
     const artifacts = await this.writePatchAndContext(input, exact, prepared.value.mode === "worktree" ? prepared.value.path : exact.worktree.path);
     if (artifacts._tag === "err") return artifacts;
-    const started = startNextAttempt(exact, []);
-    if (started._tag === "err") return err({ _tag: "StartReviewFailed" });
-    const contextPath = parseAbsolutePath(artifacts.value.contextPath); const reviewInputPath = parseAbsolutePath(artifacts.value.reviewInputPath); const debugPath = parseAbsolutePath(artifacts.value.debugPath); const contextHash = parseContentHash(artifacts.value.contextHash); const skillHash = parseContentHash("0".repeat(64));
-    if (contextPath._tag === "err" || reviewInputPath._tag === "err" || debugPath._tag === "err" || contextHash._tag === "err" || skillHash._tag === "err") return err({ _tag: "StartReviewFailed" });
-    const fullPatchHash = parseContentHash(await contentHash(exact.patchPath));
-    const comparisonContentHash = input.scope?.kind === "incremental"
-      ? parseContentHash(await contentHash(input.scope.comparisonPatchPath))
-      : undefined;
-    if (fullPatchHash._tag === "err" || (comparisonContentHash !== undefined && comparisonContentHash._tag === "err")) return err({ _tag: "StartReviewFailed" });
-    const scopeProvenance = input.scope?.kind === "incremental" && comparisonContentHash !== undefined
-      ? { scopeKind: "incremental" as const, baseSessionId: input.scope.baseSessionId, comparisonContentHash: comparisonContentHash.value }
-      : { scopeKind: "full" as const };
-    const attempt = { id: started.value.attemptId, sessionId: exact.id, state: { _tag: "Running" as const, flueRunId: "prepared" }, flueRunId: "prepared", model: "not-started", ...scopeProvenance, fullPatchHash: fullPatchHash.value, reviewSkillVersion: skillHash.value, contextHash: contextHash.value, contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, debugPath: debugPath.value, startedAt: this.now() };
     const store = new ReviewSessionStore(this.paths);
-    const attemptStored = await store.saveAttempt(input.profileId, exact.id, attempt);
-    const sessionStored = attemptStored._tag === "ok" ? await store.save(started.value.session) : attemptStored;
-    return sessionStored._tag === "ok" ? ok({ session: started.value.session, outcome: prepared.value }) : err({ _tag: "StartReviewFailed" });
+    const sessionStored = await store.save(exact);
+    return sessionStored._tag === "ok" ? ok({ session: exact, outcome: prepared.value }) : err({ _tag: "StartReviewFailed" });
   }
 
   private async prepareReadOnlyInput(input: StartReviewInput, sessionId: ReviewSession["id"]): Promise<Result<ManagedWorktree | MetadataOnlyReview, StartReviewFailure>> {
@@ -84,8 +69,3 @@ export class ReviewSessionService {
 }
 
 function parseChangedFiles(diff: string): ReadonlyArray<string> { return diff.split("\n").flatMap((line) => line.startsWith("+++ b/") ? [line.slice(6)] : []); }
-
-async function contentHash(path: string): Promise<string> {
-  const content = await readFile(path, "utf8").catch(() => undefined);
-  return content === undefined ? "" : createHash("sha256").update(content).digest("hex");
-}
