@@ -176,6 +176,7 @@ function ReviewDiffSurface({
   useEffect(() => {
     if (
       viewerElement === null ||
+      !("patchdesk" in window) ||
       !window.patchdesk.qaScrollDiagnosticsEnabled
     ) return;
 
