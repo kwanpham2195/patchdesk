@@ -35,6 +35,7 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
+import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -74,6 +75,9 @@ type DiffSourceResponse =
 type PierreCodeView = NonNullable<
   ReturnType<CodeViewHandle<undefined>["getInstance"]>
 >;
+
+const HYDRATION_CONCURRENCY = 2;
+const VIRTUAL_FILE_BATCH_SIZE = 5;
 
 function FileChangeCounts({
   stats,
@@ -140,6 +144,14 @@ function ReviewDiffSurface({
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const pendingAppendedScrollPath = useRef<string | undefined>(undefined);
+  const hydrationRequests = useRef(
+    new Map<string, { readonly token: symbol; readonly promise: Promise<boolean> }>(),
+  );
+  const hydratedFilesRef = useRef(hydratedFiles);
+  const unavailableHydrationPaths = useRef(new Set<string>());
+  const hydrationGeneration = useRef(0);
+  const isAppendingBatch = useRef(false);
+  const streamGeneration = useRef(0);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
     setViewerElement(node);
@@ -150,6 +162,9 @@ function ReviewDiffSurface({
     () => indexPatchPaths(rawFilePatches),
     [rawFilePatches],
   );
+  useEffect(() => {
+    hydratedFilesRef.current = hydratedFiles;
+  }, [hydratedFiles]);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       const value = (event as CustomEvent<ResolvedAppearance>).detail;
@@ -228,9 +243,16 @@ function ReviewDiffSurface({
         type: "diff",
         fileDiff: file,
         collapsed: collapsedPaths.has(file.name),
-        version: collapsedPaths.has(file.name) ? 1 : 0,
+        // Pierre deliberately reuses a controlled item with the same ID and
+        // version. Hydration swaps the partial raw-patch metadata for exact
+        // base/head metadata, so bump its version to let native hunk controls
+        // see the replacement.
+        version: reviewDiffItemVersion({
+          collapsed: collapsedPaths.has(file.name),
+          hydrated: hydratedFiles.has(file.name),
+        }),
       })),
-    [collapsedPaths, visibleFiles],
+    [collapsedPaths, hydratedFiles, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -261,8 +283,109 @@ function ReviewDiffSurface({
   const sourceSessionId = sourceSession?.sessionId;
 
   useEffect(() => {
+    hydrationGeneration.current += 1;
+    streamGeneration.current += 1;
+    isAppendingBatch.current = false;
+    pendingAppendedScrollPath.current = undefined;
+    hydrationRequests.current.clear();
+    unavailableHydrationPaths.current.clear();
+    hydratedFilesRef.current = new Map();
+    setHydratedFiles(new Map());
+    setContextStatus("idle");
+  }, [patch, sourceProfileId, sourceSessionId]);
+
+  const hydrateFile = useCallback(
+    (path: string): Promise<boolean> => {
+      if (hydratedFilesRef.current.has(path)) return Promise.resolve(true);
+      if (unavailableHydrationPaths.current.has(path)) {
+        return Promise.resolve(false);
+      }
+      const existing = hydrationRequests.current.get(path);
+      if (existing !== undefined) return existing.promise;
+
+      const rawFilePatch = selectPatch(
+        rawPatchesByPath,
+        rawFilePatches,
+        patch,
+        path,
+      );
+      if (
+        sourceProfileId === undefined ||
+        sourceSessionId === undefined ||
+        !rawFilePatch.startsWith("diff --git ")
+      ) {
+        unavailableHydrationPaths.current.add(path);
+        return Promise.resolve(false);
+      }
+
+      const generation = hydrationGeneration.current;
+      const token = Symbol(path);
+      const request = requestJson("/v1/reviews/diff-file", {
+        method: "POST",
+        body: {
+          profileId: sourceProfileId,
+          sessionId: sourceSessionId,
+          path,
+        },
+      })
+        .then((value) => {
+          if (generation !== hydrationGeneration.current) return false;
+          const source = parseDiffSourceResponse(value);
+          if (source?.state !== "ready") {
+            unavailableHydrationPaths.current.add(path);
+            return false;
+          }
+          const hydrated = processFile(rawFilePatch, {
+            ...(source.oldFile === undefined ? {} : { oldFile: source.oldFile }),
+            ...(source.newFile === undefined ? {} : { newFile: source.newFile }),
+          });
+          if (hydrated === undefined) {
+            unavailableHydrationPaths.current.add(path);
+            return false;
+          }
+          const next = new Map(hydratedFilesRef.current);
+          next.set(path, hydrated);
+          hydratedFilesRef.current = next;
+          setHydratedFiles(next);
+          return true;
+        })
+        .catch(() => {
+          if (generation === hydrationGeneration.current) {
+            unavailableHydrationPaths.current.add(path);
+          }
+          return false;
+        })
+        .finally(() => {
+          if (hydrationRequests.current.get(path)?.token === token) {
+            hydrationRequests.current.delete(path);
+          }
+        });
+      hydrationRequests.current.set(path, { token, promise: request });
+      return request;
+    },
+    [patch, rawFilePatches, rawPatchesByPath, sourceProfileId, sourceSessionId],
+  );
+
+  const hydrateFiles = useCallback(
+    async (paths: ReadonlyArray<string>): Promise<void> => {
+      const pending = [...new Set(paths)].filter(
+        (path) =>
+          !hydratedFilesRef.current.has(path) &&
+          !unavailableHydrationPaths.current.has(path),
+      );
+      for (let start = 0; start < pending.length; start += HYDRATION_CONCURRENCY) {
+        await Promise.all(
+          pending
+            .slice(start, start + HYDRATION_CONCURRENCY)
+            .map(async (path) => await hydrateFile(path)),
+        );
+      }
+    },
+    [hydrateFile],
+  );
+
+  useEffect(() => {
     if (
-      !expandUnchanged ||
       selectedPath === undefined ||
       sourceProfileId === undefined ||
       sourceSessionId === undefined
@@ -270,73 +393,40 @@ function ReviewDiffSurface({
       setContextStatus("idle");
       return;
     }
-    if (hydratedFiles.has(selectedPath)) {
+    if (hydratedFilesRef.current.has(selectedPath)) {
       setContextStatus("ready");
-      return;
-    }
-    const rawFilePatch = selectPatch(
-      rawPatchesByPath,
-      rawFilePatches,
-      patch,
-      selectedPath,
-    );
-    if (!rawFilePatch.startsWith("diff --git ")) {
-      setContextStatus("unavailable");
       return;
     }
     let active = true;
     setContextStatus("loading");
-    void requestJson("/v1/reviews/diff-file", {
-      method: "POST",
-      body: {
-        profileId: sourceProfileId,
-        sessionId: sourceSessionId,
-        path: selectedPath,
-      },
-    })
-      .then((value) => {
-        if (!active) return;
-        const source = parseDiffSourceResponse(value);
-        if (source?.state !== "ready") {
-          setContextStatus("unavailable");
-          return;
-        }
-        const hydrated = processFile(rawFilePatch, {
-          ...(source.oldFile === undefined ? {} : { oldFile: source.oldFile }),
-          ...(source.newFile === undefined ? {} : { newFile: source.newFile }),
-        });
-        if (hydrated === undefined) {
-          setContextStatus("unavailable");
-          return;
-        }
-        setHydratedFiles((current) => {
-          const next = new Map(current);
-          next.set(selectedPath, hydrated);
-          return next;
-        });
-        setContextStatus("ready");
-      })
-      .catch(() => {
-        if (active) setContextStatus("unavailable");
-      });
+    void hydrateFile(selectedPath).then((hydrated) => {
+      if (!active) return;
+      setContextStatus(hydrated ? "ready" : "unavailable");
+    });
     return () => {
       active = false;
     };
   }, [
-    expandUnchanged,
-    hydratedFiles,
-    patch,
-    rawFilePatches,
-    rawPatchesByPath,
+    hydrateFile,
     selectedPath,
     sourceProfileId,
     sourceSessionId,
   ]);
 
   useEffect(() => {
+    streamGeneration.current += 1;
+    isAppendingBatch.current = false;
     nextItemIndex.current = 1;
     setLoadedCount(1);
   }, [preferences.fileMode]);
+
+  useEffect(() => {
+    // The first visible item and every appended batch hydrate through the
+    // same bounded path. Raw patches remain visible while their exact
+    // base/head source is read, but every successful replacement is a native
+    // Pierre file with real separator controls rather than simulated rows.
+    void hydrateFiles(items.slice(0, loadedCount).map((item) => item.id));
+  }, [hydrateFiles, items, loadedCount]);
 
   const appendItemsThrough = useCallback(
     (lastIndex: number): void => {
@@ -350,14 +440,27 @@ function ReviewDiffSurface({
   );
 
   const appendVisibleBatch = useCallback((followAppendedFile = false): void => {
+    if (isAppendingBatch.current) return;
     const start = nextItemIndex.current;
     if (start >= items.length) return;
     const nextFile = items[start];
     if (followAppendedFile && nextFile !== undefined) {
       pendingAppendedScrollPath.current = nextFile.id;
     }
-    appendItemsThrough(start + 4);
-  }, [appendItemsThrough, items]);
+    const appendedPaths = items
+      .slice(start, Math.min(start + VIRTUAL_FILE_BATCH_SIZE, items.length))
+      .map((item) => item.id);
+    const generation = streamGeneration.current;
+    isAppendingBatch.current = true;
+    void hydrateFiles(appendedPaths).finally(() => {
+      if (generation !== streamGeneration.current) {
+        isAppendingBatch.current = false;
+        return;
+      }
+      appendItemsThrough(start + VIRTUAL_FILE_BATCH_SIZE - 1);
+      isAppendingBatch.current = false;
+    });
+  }, [appendItemsThrough, hydrateFiles, items]);
 
   useEffect(() => {
     const path = pendingAppendedScrollPath.current;
@@ -588,15 +691,21 @@ function ReviewDiffSurface({
             variant={expandUnchanged ? "secondary" : "ghost"}
             size="xs"
             aria-pressed={expandUnchanged}
+            aria-label={
+              expandUnchanged
+                ? "Collapse unchanged context"
+                : "Expand unchanged context"
+            }
+            title={
+              expandUnchanged
+                ? "Collapse unchanged context"
+                : "Expand unchanged context"
+            }
             disabled={contextStatus === "loading"}
             onClick={() => setExpandUnchanged((current) => !current)}
           >
             {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
-            {contextStatus === "loading"
-              ? "Loading context"
-              : expandUnchanged
-                ? "Context"
-                : "Collapsed context"}
+            {contextStatus === "loading" ? "Loading context" : "Context"}
           </Button>
           <Button
             className={virtualized ? undefined : "hidden"}
