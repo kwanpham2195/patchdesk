@@ -65,7 +65,6 @@ export function saveDiffThemePreferences(value: DiffThemePreferences): void {
 
 export function diffThemeFor(
   preferences: DiffThemePreferences,
-  appearance: "light" | "dark",
-): string {
-  return appearance === "light" ? preferences.light : preferences.dark;
+): DiffThemePreferences {
+  return preferences;
 }

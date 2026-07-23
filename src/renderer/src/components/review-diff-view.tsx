@@ -315,7 +315,7 @@ export function ReviewDiffView({
   );
   const codeViewOptions = useMemo(
     () => ({
-      theme: diffThemeFor(themePreferences, appearance),
+      theme: diffThemeFor(themePreferences),
       themeType: appearance,
       disableBackground: false,
       diffStyle: preferences.diffStyle,
@@ -517,7 +517,7 @@ export function ReviewDiffView({
           className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
           style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
           options={{
-            theme: diffThemeFor(themePreferences, appearance),
+            theme: diffThemeFor(themePreferences),
             themeType: appearance,
             disableBackground: false,
             diffStyle: preferences.diffStyle,
