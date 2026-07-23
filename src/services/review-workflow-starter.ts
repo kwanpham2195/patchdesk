@@ -10,6 +10,7 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
+import type { ReviewActivityStep } from "./run-projection";
 
 /** The only workflow input Patchdesk admits; all paths come from persisted attempt state. */
 export type ReviewWorkflowInput = {
@@ -30,7 +31,10 @@ export type ReviewWorkflowInvoker = {
    * A provider may expose a durable run ID. Patchdesk never invents one when it
    * does not: the attempt remains Starting until it completes or fails.
    */
-  invoke(input: ReviewWorkflowInput): Promise<Result<{ readonly runId?: string }, { readonly reason: "unavailable" | "failed" }>>;
+  invoke(
+    input: ReviewWorkflowInput,
+    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+  ): Promise<Result<{ readonly runId?: string }, { readonly reason: "unavailable" | "failed" }>>;
 };
 
 export type ReviewWorkflowStartFailure = {
@@ -44,7 +48,10 @@ export class ReviewWorkflowStarter {
     private readonly invoker: ReviewWorkflowInvoker,
   ) {}
 
-  async start(input: unknown): Promise<Result<{ readonly runId?: string }, ReviewWorkflowStartFailure>> {
+  async start(
+    input: unknown,
+    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+  ): Promise<Result<{ readonly runId?: string }, ReviewWorkflowStartFailure>> {
     const profileId = parseWorkspaceProfileId(field(input, "profileId"));
     const sessionId = parseReviewSessionId(field(input, "sessionId"));
     const attemptId = parseReviewAttemptId(field(input, "attemptId"));
@@ -80,7 +87,7 @@ export class ReviewWorkflowStarter {
       scope: session.value.scope,
       model: attempt.value.model,
       reasoning: attempt.value.reasoning,
-    });
+    }, options);
     return invoked._tag === "ok" ? ok(invoked.value) : err({ reason: invoked.error.reason });
   }
 }

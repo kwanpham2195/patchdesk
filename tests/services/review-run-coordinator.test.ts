@@ -68,6 +68,32 @@ describe("review run coordinator", () => {
     expect(workflow.start).toHaveBeenCalledTimes(1);
   });
 
+  it("reports only owned workflow milestones without forwarding provider output", async () => {
+    const coordinator = new ReviewRunCoordinator({
+      start: async (_input, options) => {
+        options?.onActivity?.("validating");
+        options?.onActivity?.("drafting");
+        return ok({});
+      },
+    });
+    const run = coordinator.start(input);
+
+    await vi.waitFor(() => {
+      expect(coordinator.observe({ ...input, runId: run.runId })).toMatchObject({
+        value: {
+          status: "completed",
+          activity: [
+            { step: "preparing", label: "Preparing review snapshot" },
+            { step: "inspecting", label: "Inspecting changed files" },
+            { step: "validating", label: "Validating findings" },
+            { step: "drafting", label: "Drafting review result" },
+            { step: "complete", label: "Review result is ready" },
+          ],
+        },
+      });
+    });
+  });
+
   it("rejects observation by another owner", () => {
     const coordinator = new ReviewRunCoordinator({
       start: async () => new Promise(() => undefined),

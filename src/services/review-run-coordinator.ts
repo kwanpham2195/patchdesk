@@ -5,7 +5,12 @@ import {
   type OwnedRun,
   type RunOwnership,
 } from "./review-run-registry";
-import { appendRunActivity, type ReviewRunMetadata, type SafeRunProjection } from "./run-projection";
+import {
+  appendRunActivity,
+  type ReviewActivityStep,
+  type ReviewRunMetadata,
+  type SafeRunProjection,
+} from "./run-projection";
 
 export type ReviewRunStartInput = RunOwnership & {
   readonly profileId: string;
@@ -67,20 +72,12 @@ export class ReviewRunCoordinator {
     run: OwnedRun,
     input: ReviewRunStartInput,
   ): Promise<void> {
-    this.runs.update(run.runId, appendRunActivity({
-      ...run.projection,
-      status: "running",
-      elapsedMs: this.elapsed(run.runId),
-      step: "inspecting",
-    }, {
-      at: this.nowIso(),
-      elapsedMs: this.elapsed(run.runId),
-      step: "inspecting",
-      label: "Inspecting changed files",
-    }));
+    this.recordActivity(run.runId, "inspecting");
 
     try {
-      const result = await this.workflow.start(input);
+      const result = await this.workflow.start(input, {
+        onActivity: (step) => this.recordActivity(run.runId, step),
+      });
       if (result._tag === "err") {
         this.fail(run.runId);
         return;
@@ -118,6 +115,32 @@ export class ReviewRunCoordinator {
       elapsedMs: this.elapsed(runId),
       step: "failed",
       label: "Review stopped",
+    }));
+  }
+
+  private recordActivity(
+    runId: string,
+    step: Exclude<ReviewActivityStep, "complete" | "failed">,
+  ): void {
+    const current = this.runs.findByRunId(runId);
+    if (current === undefined || current.projection.step === step) return;
+    const label = step === "preparing"
+      ? "Preparing review snapshot"
+      : step === "inspecting"
+        ? "Inspecting changed files"
+        : step === "validating"
+          ? "Validating findings"
+          : "Drafting review result";
+    this.runs.update(runId, appendRunActivity({
+      ...current.projection,
+      status: "running",
+      elapsedMs: this.elapsed(runId),
+      step,
+    }, {
+      at: this.nowIso(),
+      elapsedMs: this.elapsed(runId),
+      step,
+      label,
     }));
   }
 

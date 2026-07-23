@@ -4,6 +4,7 @@ import type { CommandRunner } from "../adapters/github/command-runner";
 import { parseModelReviewResult, type ModelReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewWorkflowInput } from "./review-workflow-starter";
+import type { ReviewActivityStep } from "./run-projection";
 
 export type FlueCliReviewFailure = { readonly reason: "execution_failed" | "invalid_result" };
 
@@ -16,7 +17,11 @@ export class FlueCliReviewInvoker {
     private readonly cliPath = join(projectRoot, "node_modules/@flue/cli/bin/flue.mjs"),
   ) {}
 
-  async invoke(input: ReviewWorkflowInput): Promise<Result<ModelReviewResult, FlueCliReviewFailure>> {
+  async invoke(
+    input: ReviewWorkflowInput,
+    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+  ): Promise<Result<ModelReviewResult, FlueCliReviewFailure>> {
+    options?.onActivity?.("inspecting");
     const output = await this.commands.runJson({
       argv: [this.runtimeExecutable, this.cliPath, "run", "workflow:review-pr", "--input", JSON.stringify(input)],
       cwd: this.projectRoot,
@@ -24,6 +29,7 @@ export class FlueCliReviewInvoker {
       environment: { ELECTRON_RUN_AS_NODE: "1" },
     });
     if (output._tag === "err") return err({ reason: "execution_failed" });
+    options?.onActivity?.("validating");
     const parsed = parseModelReviewResult(output.value);
     return parsed._tag === "ok" ? ok(parsed.value) : err({ reason: "invalid_result" });
   }

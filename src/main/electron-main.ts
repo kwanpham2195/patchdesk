@@ -99,9 +99,13 @@ function createWorkflowInvoker() {
     resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd()),
   );
   return {
-    async invoke(input: Parameters<FlueCliReviewInvoker["invoke"]>[0]) {
-      const result = await flue.invoke(input);
+    async invoke(
+      input: Parameters<FlueCliReviewInvoker["invoke"]>[0],
+      options?: Parameters<FlueCliReviewInvoker["invoke"]>[1],
+    ) {
+      const result = await flue.invoke(input, options);
       if (result._tag === "err") return err({ reason: "failed" as const });
+      options?.onActivity?.("drafting");
       const persisted = await completion.complete({
         profileId: input.profileId,
         sessionId: input.sessionId,
