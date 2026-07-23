@@ -74,6 +74,13 @@ export type ReviewHistoryItem = {
 
 type FixQueueStatus = "todo" | "investigating" | "resolved";
 const FIX_QUEUE_STATUSES: ReadonlyArray<FixQueueStatus> = ["todo", "investigating", "resolved"];
+type FindingFilter = {
+  readonly severity: "all" | "P0" | "P1" | "P2" | "P3";
+  readonly confidence: "all" | "high" | "medium" | "low";
+  readonly mapping: "all" | "mapped" | "unmapped";
+  readonly category: "all" | "bug" | "security" | "test" | "performance" | "maintainability" | "docs";
+};
+const DEFAULT_FINDING_FILTER: FindingFilter = { severity: "all", confidence: "all", mapping: "all", category: "all" };
 
 export function ReviewWorkbench(props: {
   readonly profileId?: string;
@@ -177,6 +184,7 @@ export function ReviewWorkbench(props: {
   );
   const [selectedFinding, setSelectedFinding] =
     useState<ReviewResult["findings"][number]>();
+  const [findingFilter, setFindingFilter] = useState<FindingFilter>(DEFAULT_FINDING_FILTER);
   const [selectedAttempt, setSelectedAttempt] = useState<string>();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -225,14 +233,23 @@ export function ReviewWorkbench(props: {
   const updatePreferences = (update: Partial<ReviewViewPreferences>): void => {
     setPreferences(saveReviewViewPreferences(preferenceProfileId, update));
   };
+  const filteredFindings = useMemo(
+    () => props.result.findings.filter((finding) =>
+      (findingFilter.severity === "all" || finding.severity === findingFilter.severity) &&
+      (findingFilter.confidence === "all" || finding.confidence === findingFilter.confidence) &&
+      (findingFilter.mapping === "all" || (findingFilter.mapping === "mapped" ? finding.mappingStatus === "mapped" : finding.mappingStatus !== "mapped")) &&
+      (findingFilter.category === "all" || finding.category === findingFilter.category),
+    ),
+    [findingFilter, props.result.findings],
+  );
   const selectedFindingIndex =
     selectedFinding === undefined
       ? -1
-      : props.result.findings.findIndex(
+      : filteredFindings.findIndex(
           (finding) => finding.id === selectedFinding.id,
         );
   const navigateFinding = (offset: -1 | 1): void => {
-    const next = props.result.findings[selectedFindingIndex + offset];
+    const next = filteredFindings[selectedFindingIndex + offset];
     if (next !== undefined) selectFinding(next);
   };
   const selectedRange =
@@ -378,8 +395,9 @@ export function ReviewWorkbench(props: {
                 />
               </TabsContent>
               <TabsContent value="findings" className="mt-3">
+                <FindingFilters value={findingFilter} onChange={setFindingFilter} />
                 <FindingList
-                  findings={props.result.findings}
+                  findings={filteredFindings}
                   selectedFinding={selectedFinding}
                   onSelect={selectFinding}
                 />
@@ -450,7 +468,7 @@ export function ReviewWorkbench(props: {
                 aria-label="Next finding"
                 disabled={
                   selectedFindingIndex < 0 ||
-                  selectedFindingIndex >= props.result.findings.length - 1
+                  selectedFindingIndex >= filteredFindings.length - 1
                 }
                 onClick={() => navigateFinding(1)}
               >
@@ -507,8 +525,9 @@ export function ReviewWorkbench(props: {
                       </TabsContent>
                       <TabsContent value="findings" className="mt-3">
                         <SeverityCounts findings={props.result.findings} />
+                        <FindingFilters value={findingFilter} onChange={setFindingFilter} />
                         <FindingList
-                          findings={props.result.findings}
+                          findings={filteredFindings}
                           selectedFinding={selectedFinding}
                           onSelect={(finding) => {
                             selectFinding(finding);
@@ -564,6 +583,22 @@ export function ReviewWorkbench(props: {
                     <div className="rounded-md border p-2"><dt className="text-muted-foreground">Lifecycle</dt><dd className="mt-1 font-medium">Local only until you confirm a GitHub write</dd></div>
                   </dl>
                 </section>
+                {selectedFinding === undefined ? null : (
+                  <>
+                    <Separator />
+                    <section aria-label="Selected finding detail">
+                      <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={selectedFinding.severity} /><h2 className="font-semibold">{selectedFinding.title}</h2></div>
+                      <p className="mt-2 text-sm text-muted-foreground">{selectedFinding.explanation}</p>
+                      <dl className="mt-3 grid gap-2 text-sm">
+                        <div><dt className="text-xs text-muted-foreground">Evidence</dt><dd>{selectedFinding.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined ? `${selectedFinding.file} · ${selectedFinding.diffSide === "old" ? "old" : "new"} lines ${selectedFinding.lineStart}–${selectedFinding.lineEnd ?? selectedFinding.lineStart}` : "Unmapped evidence — inspect before drafting a comment"}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">Confidence</dt><dd>{confidenceText(selectedFinding.confidence)}</dd></div>
+                        {selectedFinding.affectedScenario === undefined ? null : <div><dt className="text-xs text-muted-foreground">Affected scenario</dt><dd>{selectedFinding.affectedScenario}</dd></div>}
+                        {selectedFinding.whyItMatters === undefined ? null : <div><dt className="text-xs text-muted-foreground">Why it matters</dt><dd>{selectedFinding.whyItMatters}</dd></div>}
+                        {selectedFinding.suggestedChange === undefined ? null : <div><dt className="text-xs text-muted-foreground">Suggested change</dt><dd>{selectedFinding.suggestedChange}</dd></div>}
+                      </dl>
+                    </section>
+                  </>
+                )}
                 <Separator />
                 <section>
                   <h2 className="font-semibold">Fix queue</h2>
@@ -636,6 +671,21 @@ export function ReviewWorkbench(props: {
                     </section>
                   </>
                 )}
+                <Separator />
+                <section>
+                  <h2 className="font-semibold">Assumptions and unresolved items</h2>
+                  <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    {props.result.assumptions.length === 0 ? <li>Not provided by this review.</li> : props.result.assumptions.map((item) => <li key={item}>Assumption: {item}</li>)}
+                    {props.result.unresolvedItems === undefined || props.result.unresolvedItems.length === 0 ? null : props.result.unresolvedItems.map((item) => <li key={item}>Unresolved: {item}</li>)}
+                  </ul>
+                </section>
+                {props.result.callouts === undefined || props.result.callouts.length === 0 ? null : <>
+                  <Separator />
+                  <section>
+                    <h2 className="font-semibold">Human callouts</h2>
+                    <ul className="mt-2 space-y-2 text-sm">{props.result.callouts.map((callout) => <li key={`${callout.category}-${callout.title}`} className="rounded-md border p-2"><Badge variant="outline">{callout.category.replaceAll("_", " ")}</Badge><p className="mt-1 font-medium">{callout.title}</p><p className="mt-1 text-muted-foreground">{callout.detail}</p>{callout.path === undefined ? null : <p className="mt-1 font-mono text-xs text-muted-foreground">{callout.path}</p>}</li>)}</ul>
+                  </section>
+                </>}
                 <Separator />
                 <section>
                   <h2 className="font-semibold">Draft and GitHub writes</h2>
@@ -820,6 +870,38 @@ function SeverityCounts({
   );
 }
 
+function FindingFilters({
+  value,
+  onChange,
+}: {
+  readonly value: FindingFilter;
+  readonly onChange: (value: FindingFilter) => void;
+}): React.JSX.Element {
+  const update = <K extends keyof FindingFilter>(key: K, next: FindingFilter[K] | null): void => {
+    if (next !== null) onChange({ ...value, [key]: next });
+  };
+  return (
+    <div className="mt-2 grid gap-1" aria-label="Filter findings">
+      <Select value={value.severity} onValueChange={(next) => update("severity", next as FindingFilter["severity"])}>
+        <SelectTrigger size="sm" aria-label="Filter findings by severity"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All severities</SelectItem><SelectItem value="P0">P0 Critical</SelectItem><SelectItem value="P1">P1 High</SelectItem><SelectItem value="P2">P2 Medium</SelectItem><SelectItem value="P3">P3 Low</SelectItem></SelectContent>
+      </Select>
+      <Select value={value.confidence} onValueChange={(next) => update("confidence", next as FindingFilter["confidence"])}>
+        <SelectTrigger size="sm" aria-label="Filter findings by confidence"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All confidence</SelectItem><SelectItem value="high">High confidence</SelectItem><SelectItem value="medium">Medium confidence</SelectItem><SelectItem value="low">Low confidence</SelectItem></SelectContent>
+      </Select>
+      <Select value={value.mapping} onValueChange={(next) => update("mapping", next as FindingFilter["mapping"])}>
+        <SelectTrigger size="sm" aria-label="Filter findings by evidence mapping"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All evidence</SelectItem><SelectItem value="mapped">Mapped evidence</SelectItem><SelectItem value="unmapped">Unmapped evidence</SelectItem></SelectContent>
+      </Select>
+      <Select value={value.category} onValueChange={(next) => update("category", next as FindingFilter["category"])}>
+        <SelectTrigger size="sm" aria-label="Filter findings by category"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="bug">Bug</SelectItem><SelectItem value="security">Security</SelectItem><SelectItem value="test">Test</SelectItem><SelectItem value="performance">Performance</SelectItem><SelectItem value="maintainability">Maintainability</SelectItem><SelectItem value="docs">Docs</SelectItem></SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function severityLabel(severity: "P0" | "P1" | "P2" | "P3"): string {
   return `${severity} ${severity === "P0" ? "Critical" : severity === "P1" ? "High" : severity === "P2" ? "Medium" : "Low"}`;
 }
@@ -872,12 +954,12 @@ function FindingList({
           <Button
             key={finding.id}
             variant="ghost"
-            className="h-auto w-full justify-start whitespace-normal px-2 py-2 text-left"
+            className="h-auto w-full items-start justify-start whitespace-normal px-2 py-2 text-left"
             aria-pressed={selectedFinding?.id === finding.id}
             onClick={() => onSelect(finding)}
           >
-            <span className="block min-w-0">
-              <span className="block"><SeverityBadge severity={finding.severity} /></span>
+            <span className="flex min-w-0 flex-col items-start">
+              <SeverityBadge severity={finding.severity} />
               <span className="mt-1 block line-clamp-2 leading-5">
                 {finding.title}
               </span>
