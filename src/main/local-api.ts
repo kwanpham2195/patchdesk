@@ -258,15 +258,6 @@ export async function startLocalApiServer(
   app.get("/v1/inbox", async (context) =>
     response(context, await dashboard.inboxForActiveProfile()),
   );
-  app.post("/v1/inbox/refresh", async (context) =>
-    response(context, await dashboard.inboxForActiveProfile()),
-  );
-  app.post("/v1/inbox/refresh/repository", async (context) =>
-    response(
-      context,
-      await dashboard.refreshWatchlistRepo(await jsonBody(context)),
-    ),
-  );
   app.post("/v1/watchlist", async (context) =>
     response(
       context,

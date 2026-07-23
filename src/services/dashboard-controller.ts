@@ -18,6 +18,7 @@ import {
   type DiscoveredRepo,
 } from "./dashboard-service";
 import { MaintainerInboxService, type MaintainerInbox } from "./maintainer-inbox-service";
+import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
 import {
   addWatchedRepo,
   createDefaultCfwProfile,
@@ -44,6 +45,7 @@ export class DashboardController {
   private readonly settings: ProfileSettingsService;
   private readonly dashboard: DashboardService;
   private readonly inbox: MaintainerInboxService;
+  private readonly inboxRefresh: InboxRefreshCoordinator;
 
   constructor(
     private readonly profiles: ProfileStore,
@@ -59,6 +61,7 @@ export class DashboardController {
       new MaintainerInboxCacheStore(paths),
       { now: () => new Date().toISOString() as never },
     );
+    this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }
 
   async listProfiles(): Promise<
@@ -147,7 +150,7 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const inbox = await this.inbox.list(profile.value);
+    const inbox = await this.inboxRefresh.refresh(profile.value);
     if (inbox._tag === "err") return failure("storage");
     return ok({ profile: profile.value, inbox: inbox.value });
   }
