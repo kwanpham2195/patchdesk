@@ -73,6 +73,7 @@ export type ReviewSession = {
   readonly pr: PullRequestSnapshot;
   readonly prContext?: {
     readonly title: string;
+    readonly description?: string;
     readonly author: string;
     readonly headBranch: string;
     readonly baseBranch: string;

@@ -116,6 +116,7 @@ const reviewSessionSchema = v.strictObject({
   }),
   prContext: v.optional(v.strictObject({
     title: v.string(),
+    description: v.optional(v.pipe(v.string(), v.maxLength(65_536))),
     author: v.string(),
     headBranch: v.string(),
     baseBranch: v.string(),
@@ -553,6 +554,17 @@ export function parseStoredReviewSession(
     visibleResult?._tag === "err"
   )
     return invalidRead();
+  const prContext = raw.output.prContext === undefined
+    ? undefined
+    : {
+        title: raw.output.prContext.title,
+        ...(raw.output.prContext.description === undefined
+          ? {}
+          : { description: raw.output.prContext.description }),
+        author: raw.output.prContext.author,
+        headBranch: raw.output.prContext.headBranch,
+        baseBranch: raw.output.prContext.baseBranch,
+      };
 
   return ok({
     schemaVersion: 2,
@@ -570,7 +582,7 @@ export function parseStoredReviewSession(
       isDraft: raw.output.pr.isDraft,
       isOpen: raw.output.pr.isOpen,
     },
-    ...(raw.output.prContext === undefined ? {} : { prContext: raw.output.prContext }),
+    ...(prContext === undefined ? {} : { prContext }),
     patchPath: patchPath.value,
     scope: scope.value,
     worktree: { path: worktreePath.value, headSha: worktreeHeadSha.value },

@@ -36,6 +36,7 @@ const maintainerInboxQuery =
 const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
   title: v.string(),
+  body: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(65_536)))),
   state: v.picklist(["open", "closed"]),
   draft: v.boolean(),
   head: v.looseObject({ ref: v.string(), sha: v.string() }),
@@ -996,6 +997,9 @@ function parsePullRequest(
   const summary: PullRequestSummary = {
     ref: { host, owner, repo, number: number.value },
     title: parsed.output.title,
+    ...(parsed.output.body === undefined || parsed.output.body === null
+      ? {}
+      : { description: parsed.output.body }),
     author: parsed.output.user.login,
     headBranch: parsed.output.head.ref,
     baseBranch: parsed.output.base.ref,

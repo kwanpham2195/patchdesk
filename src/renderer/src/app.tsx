@@ -10,6 +10,7 @@ import { ReviewWorkbench } from "./components/review-workbench";
 import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
 import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
+import { PullRequestDescription } from "./components/pull-request-description";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
@@ -109,6 +110,7 @@ type PrRow = {
       readonly number: number;
     };
     readonly title: string;
+    readonly description?: string;
     readonly author: string;
     readonly checkSummary?: { readonly overall: string };
   };
@@ -168,6 +170,7 @@ type WorkbenchPayload = {
       readonly number: number;
     };
     readonly title: string;
+    readonly description?: string;
     readonly author: string;
     readonly headBranch: string;
     readonly baseBranch: string;
@@ -821,6 +824,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           {workbench.session.currentAttemptId === undefined ? (
             showingDiff || showingChecks ? null : (
               <div className="mt-4 space-y-3">
+                <PullRequestDescription {...(workbench.pullRequest?.description === undefined ? {} : { markdown: workbench.pullRequest.description })} />
                 <p className="text-sm text-muted-foreground">Inspect the saved diff and checks first. Run review starts read-only analysis; Patchdesk will never write to GitHub automatically.</p>
                 {runError === undefined ? null : (
                   <Alert variant="destructive">

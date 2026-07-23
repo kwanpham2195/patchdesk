@@ -48,6 +48,8 @@ export type PullRequestSnapshot = {
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;
   readonly title: string;
+  /** Markdown source from GitHub. Renderers must treat it as untrusted text. */
+  readonly description?: string;
   readonly author: string;
   readonly headBranch: string;
   readonly baseBranch: string;
