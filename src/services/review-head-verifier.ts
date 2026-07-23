@@ -5,6 +5,8 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 
 export type ReviewHeadVerificationFailure =
+  | { readonly reason: "profile_not_found" }
+  | { readonly reason: "storage" }
   | { readonly reason: "github_read" }
   | { readonly reason: "head_changed" };
 
@@ -19,7 +21,11 @@ export class ReviewHeadVerifier {
 
   async verify(session: ReviewSession): Promise<Result<void, ReviewHeadVerificationFailure>> {
     const profile = await this.profiles.load(session.key.profileId);
-    if (profile._tag === "err") return err({ reason: "github_read" });
+    if (profile._tag === "err") {
+      return err({
+        reason: profile.error.reason === "not_found" ? "profile_not_found" : "storage",
+      });
+    }
     const current = await this.github.getPullRequest({
       profile: profile.value,
       pr: { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber },
@@ -31,6 +37,6 @@ export class ReviewHeadVerifier {
       state: { _tag: "Stale", reason: "head_changed", currentHeadSha: current.value.headSha },
       updatedAt: this.now() as never,
     });
-    return persisted._tag === "err" ? err({ reason: "github_read" }) : err({ reason: "head_changed" });
+    return persisted._tag === "err" ? err({ reason: "storage" }) : err({ reason: "head_changed" });
   }
 }

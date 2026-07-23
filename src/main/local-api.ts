@@ -194,12 +194,16 @@ export async function startLocalApiServer(
     configuration.workflowInvoker === undefined
       ? undefined
       : new ReviewWorkflowStarter(sessions, configuration.workflowInvoker);
-  const supportedReviewModels = (await configuration.modelCatalog?.list() ?? configuration.supportedReviewModels ?? ["opencode-go/deepseek-v4-flash"])
-    .map((model) => typeof model === "string" ? model : model.id);
+  const modelCatalog: PiRuntimeModelCatalog = configuration.modelCatalog ?? {
+    async list() {
+      return (configuration.supportedReviewModels ?? ["opencode-go/deepseek-v4-flash"])
+        .map((id) => ({ id, label: id }));
+    },
+  };
   const reviewExecution = new ReviewExecutionService(
     sessions,
     paths,
-    supportedReviewModels,
+    modelCatalog,
     () => new Date().toISOString() as never,
     new ReviewHeadVerifier(profiles, sessions, github, () => new Date().toISOString()),
   );
@@ -342,14 +346,15 @@ export async function startLocalApiServer(
       runCoordinator?.start(parsed.output) ?? runs.create(parsed.output);
     return context.json(run, 202);
   });
-  app.get("/v1/reviews/models", (context) =>
-    context.json({
-      models: supportedReviewModels.map((id) => ({ id, label: id })),
+  app.get("/v1/reviews/models", async (context) => {
+    const models = await modelCatalog.list();
+    return context.json({
+      models,
       reasoning: REVIEW_REASONING_LEVELS,
-      defaultModel: supportedReviewModels[0],
+      defaultModel: models[0]?.id,
       defaultReasoning: "medium",
-    }),
-  );
+    });
+  });
   app.post("/v1/reviews/run", async (context) => {
     if (runCoordinator === undefined) {
       return context.json({ error: "workflow_unavailable" }, 503);
@@ -357,7 +362,13 @@ export async function startLocalApiServer(
     const body = await jsonBody(context);
     const started = await reviewExecution.start(body);
     if (started._tag === "err") {
-      const status = started.error.reason === "not_found" ? 404 : started.error.reason === "head_changed" ? 409 : started.error.reason === "github_read" ? 503 : 400;
+      const status = started.error.reason === "not_found" || started.error.reason === "profile_not_found"
+        ? 404
+        : started.error.reason === "head_changed"
+          ? 409
+          : started.error.reason === "github_read" || started.error.reason === "storage"
+            ? 503
+            : 400;
       return context.json({ error: started.error.reason }, status);
     }
     const run = runCoordinator.start(started.value);

@@ -257,6 +257,33 @@ export class ReviewSessionStore {
     );
   }
 
+  /**
+   * Persist the session transition before its attempt. If the second write cannot
+   * complete, leave a visible stale session rather than a runnable session with
+   * no durable attempt.
+   */
+  async beginAttempt(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly session: ReviewSession;
+    readonly attempt: ReviewAttempt;
+  }): Promise<Result<void, StorageFailure>> {
+    const sessionSaved = await this.save(input.session);
+    if (sessionSaved._tag === "err") return sessionSaved;
+
+    const attemptSaved = await this.saveAttempt(
+      input.profileId,
+      input.session.id,
+      input.attempt,
+    );
+    if (attemptSaved._tag === "ok") return attemptSaved;
+
+    await this.save({
+      ...input.session,
+      state: { _tag: "Stale", reason: "orphaned_run" },
+    });
+    return attemptSaved;
+  }
+
   async loadAttempt(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

@@ -15,6 +15,7 @@ import type { ReviewAttempt } from "../domain/review-attempt";
 import { startNextAttempt } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
+import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 
 export const REVIEW_REASONING_LEVELS = ["low", "medium", "high"] as const;
 export type ReviewReasoningLevel = (typeof REVIEW_REASONING_LEVELS)[number];
@@ -25,6 +26,7 @@ export type ReviewExecutionFailure = {
     | "not_found"
     | "not_runnable"
     | "unsupported_model"
+    | "profile_not_found"
     | "github_read"
     | "head_changed"
     | "storage";
@@ -38,7 +40,7 @@ export class ReviewExecutionService {
   constructor(
     private readonly sessions: ReviewSessionStore,
     private readonly paths: PatchdeskPaths,
-    private readonly supportedModels: ReadonlyArray<string>,
+    private readonly modelCatalog: PiRuntimeModelCatalog,
     private readonly now: () => IsoTimestamp,
     private readonly headVerifier?: ReviewHeadVerifier,
   ) {}
@@ -61,7 +63,10 @@ export class ReviewExecutionService {
       model.length === 0 ||
       reasoning === undefined
     ) return err({ reason: "invalid_input" });
-    if (!this.supportedModels.includes(model)) return err({ reason: "unsupported_model" });
+    const supportedModels = await this.modelCatalog.list();
+    if (!supportedModels.some((candidate) => candidate.id === model)) {
+      return err({ reason: "unsupported_model" });
+    }
 
     const session = await this.sessions.load(profileId.value, sessionId.value);
     if (session._tag === "err") {
@@ -80,6 +85,9 @@ export class ReviewExecutionService {
     const started = startNextAttempt(session.value, previous.value.map((attempt) => attempt.id));
     if (started._tag === "err") return err({ reason: "not_runnable" });
 
+    // Session preparation currently writes one immutable context artifact. The
+    // execution attempt receives its own debug path but reads that prepared
+    // snapshot until context preparation is moved to allocated attempts.
     const preparedAttempt = parseReviewAttemptId("001");
     if (preparedAttempt._tag === "err") return err({ reason: "storage" });
     const [contextHash, fullPatchHash, comparisonHash] = await Promise.all([
@@ -132,13 +140,16 @@ export class ReviewExecutionService {
       debugPath: debugPath.value,
       startedAt: this.now(),
     };
-    const savedAttempt = await this.sessions.saveAttempt(profileId.value, sessionId.value, attempt);
-    if (savedAttempt._tag === "err") return err({ reason: "storage" });
-    const savedSession = await this.sessions.save({
+    const startedSession = {
       ...started.value.session,
       updatedAt: this.now(),
+    };
+    const persisted = await this.sessions.beginAttempt({
+      profileId: profileId.value,
+      session: startedSession,
+      attempt,
     });
-    if (savedSession._tag === "err") return err({ reason: "storage" });
+    if (persisted._tag === "err") return err({ reason: "storage" });
     return ok({
       profileId: profileId.value,
       sessionId: sessionId.value,
