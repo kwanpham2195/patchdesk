@@ -67,10 +67,11 @@ import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "
 import { InboxRefreshScheduler, inboxFreshnessLabel } from "./inbox-refresh-scheduler";
 import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
 import {
-  DIFF_THEME_FAMILIES,
-  loadDiffThemeFamily,
-  saveDiffThemeFamily,
-  type DiffThemeFamily,
+  DIFF_DARK_THEMES,
+  DIFF_LIGHT_THEMES,
+  loadDiffThemePreferences,
+  saveDiffThemePreferences,
+  type DiffThemePreferences,
 } from "./diff-theme-preferences";
 import {
   loadReviewExecutionPreference,
@@ -249,8 +250,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [appearance, setAppearance] = useState<AppearancePreference>(() => loadAppearancePreference());
-  const [diffThemeFamily, setDiffThemeFamily] = useState<DiffThemeFamily>(() =>
-    loadDiffThemeFamily(),
+  const [diffThemePreferences, setDiffThemePreferences] = useState<DiffThemePreferences>(() =>
+    loadDiffThemePreferences(),
   );
   const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [reviewModel, setReviewModel] = useState<string>();
@@ -1399,10 +1400,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             setAppearance(next);
             saveAppearancePreference(next);
           }}
-          diffThemeFamily={diffThemeFamily}
+          diffThemePreferences={diffThemePreferences}
           onDiffThemeChange={(next) => {
-            setDiffThemeFamily(next);
-            saveDiffThemeFamily(next);
+            setDiffThemePreferences(next);
+            saveDiffThemePreferences(next);
           }}
           suggestions={suggestions}
           discoveryFeedback={discoveryFeedback}
@@ -2360,7 +2361,7 @@ function Settings({
   setProfileDraft,
   appearance,
   onAppearanceChange,
-  diffThemeFamily,
+  diffThemePreferences,
   onDiffThemeChange,
   suggestions,
   discoveryFeedback,
@@ -2406,8 +2407,8 @@ function Settings({
   >;
   readonly appearance: AppearancePreference;
   readonly onAppearanceChange: (value: AppearancePreference) => void;
-  readonly diffThemeFamily: DiffThemeFamily;
-  readonly onDiffThemeChange: (value: DiffThemeFamily) => void;
+  readonly diffThemePreferences: DiffThemePreferences;
+  readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly suggestions: ReadonlyArray<Repo>;
   readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
@@ -2485,27 +2486,51 @@ function Settings({
           <CardHeader>
             <CardTitle>Diff theme</CardTitle>
             <CardDescription>
-              Choose the paired Pierre theme used in light and dark appearance.
+              Choose one of every Pierre-supported light and dark theme. The
+              matching choice is used when the app appearance changes.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="diff-theme-light">Light appearance</Label>
             <Select
-              value={diffThemeFamily}
+              value={diffThemePreferences.light}
               onValueChange={(value) => {
-                if (value === "github" || value === "high_contrast") {
-                  onDiffThemeChange(value);
+                if (value !== null && DIFF_LIGHT_THEMES.some((theme) => theme.id === value)) {
+                  onDiffThemeChange({ ...diffThemePreferences, light: value });
                 }
               }}
             >
-              <SelectTrigger aria-label="Diff theme"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="diff-theme-light" aria-label="Light diff theme"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {DIFF_THEME_FAMILIES.map((theme) => (
+                {DIFF_LIGHT_THEMES.map((theme) => (
                   <SelectItem key={theme.id} value={theme.id}>
                     {theme.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="diff-theme-dark">Dark appearance</Label>
+              <Select
+                value={diffThemePreferences.dark}
+                onValueChange={(value) => {
+                  if (value !== null && DIFF_DARK_THEMES.some((theme) => theme.id === value)) {
+                    onDiffThemeChange({ ...diffThemePreferences, dark: value });
+                  }
+                }}
+              >
+                <SelectTrigger id="diff-theme-dark" aria-label="Dark diff theme"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DIFF_DARK_THEMES.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.id}>
+                      {theme.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
         <Card>
