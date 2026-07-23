@@ -28,6 +28,12 @@ import {
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type { ResolvedAppearance } from "@/appearance-preferences";
+import {
+  diffThemeFor,
+  loadDiffThemeFamily,
+  saveDiffThemeFamily,
+  type DiffThemeFamily,
+} from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
 import {
@@ -139,6 +145,9 @@ export function ReviewDiffView({
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [loadedCount, setLoadedCount] = useState(1);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
+  const [themeFamily, setThemeFamily] = useState<DiffThemeFamily>(() =>
+    loadDiffThemeFamily(),
+  );
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const nextItemIndex = useRef(1);
@@ -151,6 +160,14 @@ export function ReviewDiffView({
     };
     window.addEventListener("patchdesk:appearance", onAppearance);
     return () => window.removeEventListener("patchdesk:appearance", onAppearance);
+  }, []);
+  useEffect(() => {
+    const onTheme = (event: Event): void => {
+      const value = (event as CustomEvent<DiffThemeFamily>).detail;
+      if (value === "github" || value === "high_contrast") setThemeFamily(value);
+    };
+    window.addEventListener("patchdesk:diff-theme", onTheme);
+    return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
   const selectedPatch = useMemo(
     () => selectPatch(rawFilePatches, patch, selectedPath),
@@ -300,7 +317,7 @@ export function ReviewDiffView({
   );
   const codeViewOptions = useMemo(
     () => ({
-      theme: appearance === "dark" ? "github-dark-high-contrast" : "github-light",
+      theme: diffThemeFor(themeFamily, appearance),
       themeType: appearance,
       disableBackground: false,
       diffStyle: preferences.diffStyle,
@@ -311,7 +328,7 @@ export function ReviewDiffView({
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
     }),
-    [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow],
+    [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow, themeFamily],
   );
   const renderFileChangeCounts = useCallback(
     (path: string) => {
@@ -542,6 +559,28 @@ export function ReviewDiffView({
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={themeFamily === "github"}
+                  onCheckedChange={() => {
+                    saveDiffThemeFamily("github");
+                    setThemeFamily("github");
+                  }}
+                >
+                  GitHub
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={themeFamily === "high_contrast"}
+                  onCheckedChange={() => {
+                    saveDiffThemeFamily("high_contrast");
+                    setThemeFamily("high_contrast");
+                  }}
+                >
+                  High contrast
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
                 <DropdownMenuCheckboxItem
                   checked={preferences.overflow === "wrap"}
                   onCheckedChange={(checked) =>
@@ -579,7 +618,7 @@ export function ReviewDiffView({
           className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
           style={appearance === "dark" ? DARK_DIFF_STYLE : LIGHT_DIFF_STYLE}
           options={{
-            theme: appearance === "dark" ? "github-dark-high-contrast" : "github-light",
+            theme: diffThemeFor(themeFamily, appearance),
             themeType: appearance,
             disableBackground: false,
             diffStyle: preferences.diffStyle,
@@ -595,7 +634,7 @@ export function ReviewDiffView({
       ) : (
         <div className="relative min-h-0 flex-1">
           <CodeView
-            key={viewerKey}
+            key={`${viewerKey}-${themeFamily}-${appearance}`}
             ref={viewer}
             initialItems={items.slice(0, 1)}
             containerRef={viewerContainer}

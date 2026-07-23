@@ -63,6 +63,12 @@ import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
 import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "./renderer-contracts";
 import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
+import {
+  DIFF_THEME_FAMILIES,
+  loadDiffThemeFamily,
+  saveDiffThemeFamily,
+  type DiffThemeFamily,
+} from "./diff-theme-preferences";
 
 export type DashboardScreenState =
   | "empty"
@@ -230,6 +236,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [appearance, setAppearance] = useState<AppearancePreference>(() => loadAppearancePreference());
+  const [diffThemeFamily, setDiffThemeFamily] = useState<DiffThemeFamily>(() =>
+    loadDiffThemeFamily(),
+  );
   const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([
     { id: "opencode-go/deepseek-v4-flash", label: "opencode-go/deepseek-v4-flash" },
   ]);
@@ -265,7 +274,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   >("clear");
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
-  const keepProfileButton = useRef<HTMLButtonElement | null>(null);
   const previewTrigger = useRef<HTMLElement | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     id: "",
@@ -274,9 +282,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     ghAccount: "",
     workspaceRoot: "",
   });
-  useEffect(() => {
-    if (preview !== undefined) keepProfileButton.current?.focus();
-  }, [preview]);
   const loadEnvironment = useCallback(async (): Promise<void> => {
     const value = await api("/v1/environment");
     if (record(value)) {
@@ -1265,6 +1270,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             setAppearance(next);
             saveAppearancePreference(next);
           }}
+          diffThemeFamily={diffThemeFamily}
+          onDiffThemeChange={(next) => {
+            setDiffThemeFamily(next);
+            saveDiffThemeFamily(next);
+          }}
           suggestions={suggestions}
           discoveryFeedback={discoveryFeedback}
           profiles={profiles}
@@ -1305,7 +1315,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       >
         {preview === undefined ? null : (
           <DialogContent
-            initialFocus={() => keepProfileButton.current}
+            initialFocus={() =>
+              document.getElementById("keep-current-profile")
+            }
             finalFocus={previewTrigger}
           >
             <DialogHeader>
@@ -1317,7 +1329,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             </DialogHeader>
             <DialogFooter>
               <Button
-                ref={keepProfileButton}
+                id="keep-current-profile"
+                autoFocus
                 variant="outline"
                 onClick={() => setPreview(undefined)}
               >
@@ -2240,6 +2253,8 @@ function Settings({
   setProfileDraft,
   appearance,
   onAppearanceChange,
+  diffThemeFamily,
+  onDiffThemeChange,
   suggestions,
   discoveryFeedback,
   profiles,
@@ -2284,6 +2299,8 @@ function Settings({
   >;
   readonly appearance: AppearancePreference;
   readonly onAppearanceChange: (value: AppearancePreference) => void;
+  readonly diffThemeFamily: DiffThemeFamily;
+  readonly onDiffThemeChange: (value: DiffThemeFamily) => void;
   readonly suggestions: ReadonlyArray<Repo>;
   readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
@@ -2353,6 +2370,33 @@ function Settings({
                 <SelectItem value="system">System</SelectItem>
                 <SelectItem value="light">Light</SelectItem>
                 <SelectItem value="dark">Dark</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Diff theme</CardTitle>
+            <CardDescription>
+              Choose the paired Pierre theme used in light and dark appearance.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select
+              value={diffThemeFamily}
+              onValueChange={(value) => {
+                if (value === "github" || value === "high_contrast") {
+                  onDiffThemeChange(value);
+                }
+              }}
+            >
+              <SelectTrigger aria-label="Diff theme"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DIFF_THEME_FAMILIES.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </CardContent>
