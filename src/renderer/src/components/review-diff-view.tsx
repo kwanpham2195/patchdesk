@@ -13,7 +13,6 @@ import {
 } from "@pierre/diffs";
 import { CodeView, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
 import {
-  Accessibility,
   AlignJustify,
   ChevronsUpDown,
   Columns2,
@@ -22,7 +21,6 @@ import {
   Minimize2,
   MoveHorizontal,
   Rows3,
-  SlidersHorizontal,
   WrapText,
 } from "lucide-react";
 
@@ -31,20 +29,10 @@ import type { ResolvedAppearance } from "@/appearance-preferences";
 import {
   diffThemeFor,
   loadDiffThemeFamily,
-  saveDiffThemeFamily,
   type DiffThemeFamily,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ButtonGroup } from "@/components/ui/button-group";
 
 const DARK_DIFF_STYLE = {
@@ -143,7 +131,6 @@ export function ReviewDiffView({
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
   readonly virtualized?: boolean;
 }): React.JSX.Element {
-  const [accessible, setAccessible] = useState(false);
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [loadedCount, setLoadedCount] = useState(1);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
@@ -152,13 +139,10 @@ export function ReviewDiffView({
   );
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
-  const [viewerRoot, setViewerRoot] = useState<HTMLDivElement | null>(null);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
-    setViewerRoot(node);
   }, []);
   const nextItemIndex = useRef(1);
-  const userScrollIntent = useRef(false);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
@@ -385,93 +369,17 @@ export function ReviewDiffView({
     [renderFileChangeCounts],
   );
 
-  useEffect(() => {
-    if (!virtualized || preferences.fileMode !== "all") return;
-    const root = viewerRoot;
-    if (root === null) return;
-    const noteScrollIntent = (event: Event): void => {
-      userScrollIntent.current = true;
-      if (!(event instanceof WheelEvent) || event.deltaY <= root.clientHeight) {
-        return;
-      }
-      const codeView = viewer.current?.getInstance();
-      if (codeView === undefined || nextItemIndex.current >= items.length) return;
-      // A high-resolution wheel gesture can be consumed by Pierre before its
-      // virtual scaffold emits a near-end scroll notification. Append one
-      // bounded batch and continue with Pierre's public scroll API; do not
-      // prevent the event or touch the outer workbench scroll position.
-      userScrollIntent.current = false;
-      appendVisibleBatch();
-      requestAnimationFrame(() => {
-        codeView.scrollTo({
-          type: "position",
-          position: codeView.getScrollHeight(),
-          behavior: "instant",
-        });
-      });
-    };
-    const appendFromNativeScroll = (): void => {
-      if (
-        !userScrollIntent.current ||
-        root.scrollTop + root.clientHeight < root.scrollHeight - 200
-      ) {
-        return;
-      }
-      const codeView = viewer.current?.getInstance();
-      if (codeView === undefined) return;
-      userScrollIntent.current = false;
-      appendVisibleBatch();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          codeView.scrollTo({
-            type: "position",
-            position: root.scrollTop + 64,
-            behavior: "instant",
-          });
-        });
-      });
-    };
-    // Pierre handles wheel input inside its own virtual scroll implementation.
-    // Capture intent before that handler runs without changing native behavior.
-    root.addEventListener("wheel", noteScrollIntent, { passive: true, capture: true });
-    root.addEventListener("touchmove", noteScrollIntent, { passive: true });
-    root.addEventListener("pointerdown", noteScrollIntent);
-    root.addEventListener("keydown", noteScrollIntent);
-    root.addEventListener("scroll", appendFromNativeScroll, { passive: true });
-    return () => {
-      root.removeEventListener("wheel", noteScrollIntent, { capture: true });
-      root.removeEventListener("touchmove", noteScrollIntent);
-      root.removeEventListener("pointerdown", noteScrollIntent);
-      root.removeEventListener("keydown", noteScrollIntent);
-      root.removeEventListener("scroll", appendFromNativeScroll);
-    };
-  }, [appendVisibleBatch, preferences.fileMode, viewerKey, viewerRoot, virtualized]);
-
   const handleViewerScroll = useCallback(
     (_scrollTop: number, codeView: PierreCodeView): void => {
       const root = viewerContainer.current;
       if (
-        !userScrollIntent.current ||
         root === null ||
         preferences.fileMode !== "all" ||
         _scrollTop + root.clientHeight < codeView.getScrollHeight() - 200
       ) {
         return;
       }
-      userScrollIntent.current = false;
       appendVisibleBatch();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Continue through the newly appended batch via Pierre's scroll
-          // owner. Do not nudge an outer DOM scroll container: Pierre owns
-          // virtual scroll state and keeps the logical offset coherent.
-          codeView.scrollTo({
-            type: "position",
-            position: root.scrollTop + 64,
-            behavior: "instant",
-          });
-        });
-      });
     },
     [appendVisibleBatch, preferences.fileMode],
   );
@@ -571,96 +479,26 @@ export function ReviewDiffView({
           </Button>
           <Button
             className={virtualized ? undefined : "hidden"}
-            variant="ghost"
+            variant={expandUnchanged ? "secondary" : "ghost"}
             size="xs"
-            onClick={() => setAllCollapsed(true)}
+            aria-pressed={expandUnchanged}
+            onClick={() => setExpandUnchanged((current) => !current)}
           >
-            <Minimize2 /> Collapse
+            <ChevronsUpDown /> {expandUnchanged ? "Context" : "Collapsed context"}
           </Button>
           <Button
             className={virtualized ? undefined : "hidden"}
             variant="ghost"
             size="xs"
-            onClick={() => setAllCollapsed(false)}
+            aria-pressed={collapsedPaths.size === files.length && files.length > 0}
+            onClick={() => setAllCollapsed(!(collapsedPaths.size === files.length && files.length > 0))}
           >
-            <ChevronsUpDown /> Expand
+            {collapsedPaths.size === files.length && files.length > 0 ? <ChevronsUpDown /> : <Minimize2 />}
+            {collapsedPaths.size === files.length && files.length > 0 ? "Expand files" : "Collapse files"}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
-              <SlidersHorizontal /> Options
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Diff display</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={preferences.density === "compact"}
-                  onCheckedChange={(checked) =>
-                    onPreferencesChange({
-                      density: checked === true ? "compact" : "comfortable",
-                    })
-                  }
-                >
-                  Compact density
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={expandUnchanged}
-                  onCheckedChange={(checked) =>
-                    setExpandUnchanged(checked === true)
-                  }
-                >
-                  Show all unchanged lines
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Theme</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={themeFamily === "github"}
-                  onCheckedChange={() => {
-                    saveDiffThemeFamily("github");
-                    setThemeFamily("github");
-                  }}
-                >
-                  GitHub
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={themeFamily === "high_contrast"}
-                  onCheckedChange={() => {
-                    saveDiffThemeFamily("high_contrast");
-                    setThemeFamily("high_contrast");
-                  }}
-                >
-                  High contrast
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuCheckboxItem
-                  checked={preferences.overflow === "wrap"}
-                  onCheckedChange={(checked) =>
-                    onPreferencesChange({
-                      overflow: checked === true ? "wrap" : "scroll",
-                    })
-                  }
-                >
-                  Wrap long lines
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuCheckboxItem
-                  checked={accessible}
-                  onCheckedChange={(checked) => setAccessible(checked === true)}
-                >
-                  <Accessibility />
-                  Accessible text view
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
-      {accessible || !browserSupportsPierre ? (
+      {!browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
           {...(selectedRange === undefined ? {} : { selectedRange })}

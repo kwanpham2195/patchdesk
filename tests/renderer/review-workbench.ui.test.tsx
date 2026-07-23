@@ -145,10 +145,7 @@ describe("review workbench", () => {
     expect(
       screen.queryByRole("button", { name: "Accessible diff" }),
     ).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Options" }));
-    await user.click(
-      await screen.findByRole("menuitemcheckbox", { name: "Accessible text view" }),
-    );
+    expect(screen.queryByRole("button", { name: "Options" })).toBeNull();
     expect(
       document.querySelectorAll('[data-selected-line="true"]'),
     ).toHaveLength(2);
