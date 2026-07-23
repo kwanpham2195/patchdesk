@@ -11,6 +11,7 @@ import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
 import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
 import { PullRequestDescription } from "./components/pull-request-description";
+import { ReviewChecks } from "./components/review-checks";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
@@ -2344,13 +2345,9 @@ function ReviewRecords({
 
 function PreparedChecks({ checks, freshness }: { readonly checks: unknown; readonly freshness?: "fresh" | "stale" | "unavailable" }): React.JSX.Element {
   const value = record(checks) ? checks : {};
-  const overall = typeof value.overall === "string" ? value.overall : "unknown";
-  const entries = Array.isArray(value.checks) ? value.checks.filter(record) : [];
-  return <section className="mt-4 rounded-lg border p-4" aria-label="Pull request checks">
-    <h2 className="text-sm font-semibold">Checks · {overall}</h2>
-    <p className="mt-1 text-xs text-muted-foreground">{freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}</p>
-    {entries.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No check details are available.</p> : <ul className="mt-3 space-y-2">{entries.map((check, index) => <li key={`${typeof check.name === "string" ? check.name : "check"}-${index}`} className="rounded-md border p-2 text-sm"><span className="font-medium">{typeof check.name === "string" ? check.name : "Unnamed check"}</span><span className="ml-2 text-muted-foreground">{typeof check.conclusion === "string" ? check.conclusion : typeof check.status === "string" ? check.status : "Unknown status"}</span></li>)}</ul>}
-  </section>;
+  const overall = value.overall === "passing" || value.overall === "failing" || value.overall === "pending" || value.overall === "skipped" ? value.overall : "unknown";
+  const entries = Array.isArray(value.checks) ? value.checks.filter((check): check is { readonly name: string; readonly required: boolean | "unknown"; readonly status: "queued" | "in_progress" | "completed" | "unknown"; readonly conclusion?: "success" | "failure" | "cancelled" | "timed_out" | "skipped" | "neutral"; readonly url?: string } => record(check) && typeof check.name === "string" && (check.required === true || check.required === false || check.required === "unknown") && (check.status === "queued" || check.status === "in_progress" || check.status === "completed" || check.status === "unknown") && (check.conclusion === undefined || check.conclusion === "success" || check.conclusion === "failure" || check.conclusion === "cancelled" || check.conclusion === "timed_out" || check.conclusion === "skipped" || check.conclusion === "neutral") && (check.url === undefined || typeof check.url === "string")) : [];
+  return <section className="mt-4 px-1" aria-label="Pull request checks"><ReviewChecks checks={{ overall, checks: entries }} {...(freshness === undefined ? {} : { freshness })} /></section>;
 }
 
 function Settings({

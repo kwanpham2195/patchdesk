@@ -28,6 +28,7 @@ import type { RevisionComparison, ReviewScope } from "../../../domain/review-com
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import { ChangedFileTree } from "./changed-file-tree";
+import { ReviewChecks } from "./review-checks";
 import { ReviewDiffView } from "./review-diff-view";
 import { ReviewDraftSheet, type DraftSaveState } from "./review-draft-sheet";
 import { ReviewSubmissionDialog } from "./review-submission-dialog";
@@ -702,33 +703,7 @@ export function ReviewWorkbench(props: {
                 )}
                 <Separator />
                 <section>
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-semibold">Checks</h2>
-                    <Badge
-                      variant={
-                        props.checks.overall === "passing"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {props.checks.overall}
-                    </Badge>
-                  </div>
-                  <ul className="mt-2 space-y-2 text-sm">
-                    {props.checks.checks.map((check) => (
-                      <li key={check.name} className="rounded-md border p-2">
-                        <p className="break-words font-medium">
-                          {check.name} ·{" "}
-                          {check.required === true
-                            ? "Required"
-                            : check.required === false
-                              ? "Optional"
-                              : "Requirement unknown"}{" "}
-                          · {check.conclusion ?? check.status}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                  <ReviewChecks checks={props.checks} freshness={freshness} />
                 </section>
                 <Separator />
                 <section>

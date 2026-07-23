@@ -287,7 +287,9 @@ describe("review workbench", () => {
     await user.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.getByText("Unmapped — not postable")).toBeTruthy();
     expect(screen.getByText("Existing review comment")).toBeTruthy();
-    expect(screen.getByText("unit · Required · failure")).toBeTruthy();
+    expect(screen.getByText("unit")).toBeTruthy();
+    expect(screen.getByText("Required")).toBeTruthy();
+    expect(screen.getByText("Failed")).toBeTruthy();
     expect(screen.getByText("Attempt 002: Discarded")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /resolve|reply|apply/i }),
