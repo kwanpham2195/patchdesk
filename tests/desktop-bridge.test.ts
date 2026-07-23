@@ -14,6 +14,14 @@ describe("desktop request bridge", () => {
         method: "POST",
       }),
     ).toBe(true);
+    // The explicit, main-process-owned review flow needs both the current
+    // runtime catalog and the validated run-start route. These are not
+    // GitHub-write capabilities, but omitting either makes the dialog appear
+    // unavailable in packaged Electron builds.
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/models" })).toBe(true);
+    expect(
+      isAllowedDesktopRequest({ path: "/v1/reviews/run", method: "POST" }),
+    ).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/dashboard/refresh", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/inbox/refresh", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/inbox/refresh/repository", method: "POST" })).toBe(false);
