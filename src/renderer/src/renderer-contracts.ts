@@ -80,6 +80,10 @@ const inboxResponseSchema = v.strictObject({
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
     dataFreshness: v.picklist(["fresh", "cached"]),
+    snapshot: v.optional(v.strictObject({
+      state: v.picklist(["current", "partial", "failed_cached", "unavailable"]),
+      refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+    })),
   }),
 });
 

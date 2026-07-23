@@ -1728,6 +1728,7 @@ function InboxScreen({
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
           freshness={inbox.inbox.dataFreshness}
+          {...(inbox.inbox.snapshot === undefined ? {} : { snapshot: inbox.inbox.snapshot })}
           loading={state === "loading"}
           onRefresh={onRefresh}
           onOpenReview={onOpenReview}

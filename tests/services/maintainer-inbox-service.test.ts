@@ -52,8 +52,7 @@ describe("maintainer inbox service", () => {
   it("projects fresh remote rows and surfaces current merge readiness", async () => {
     const github = new FakeGitHubAdapter({
       authenticatedAccount: { host: "github.com", account: "maintainer" },
-      listOpenPullRequests: [summary],
-      checks: { overall: "passing", checks: [] },
+      maintainerPullRequests: { pullRequests: [{ summary, checks: { overall: "passing", checks: [] } }], complete: true },
     });
     const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
     const service = new MaintainerInboxService(github, {
@@ -81,8 +80,25 @@ describe("maintainer inbox service", () => {
     const inbox = await service.list(profile);
     expect(inbox).toMatchObject({
       _tag: "ok",
-      value: { dataFreshness: "fresh", rows: [{ categories: ["needs_review", "ready_to_merge"], recommendedAction: { kind: "open_merge_readiness" } }] },
+      value: { dataFreshness: "fresh", snapshot: { state: "current" }, rows: [{ categories: ["needs_review", "ready_to_merge"], recommendedAction: { kind: "open_merge_readiness" } }] },
     });
+  });
+
+  it("never presents an incomplete repository snapshot as current", async () => {
+    const github = new FakeGitHubAdapter({
+      authenticatedAccount: { host: "github.com", account: "maintainer" },
+      maintainerPullRequests: { pullRequests: [{ summary, checks: { overall: "passing", checks: [] } }], complete: false },
+    });
+    const service = new MaintainerInboxService(github, {
+      async listSessions() { return ok([]); },
+      async loadAttempt() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },
+    }, {
+      async read() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },
+      async save() { return ok(undefined); },
+    }, { now: () => now });
+
+    const inbox = await service.list(profile);
+    expect(inbox).toMatchObject({ _tag: "ok", value: { dataFreshness: "cached", snapshot: { state: "partial" } } });
   });
 
   it("returns cached rows with merge actions downgraded when authentication is unavailable", async () => {
@@ -116,6 +132,6 @@ describe("maintainer inbox service", () => {
       async save() { return ok(undefined); },
     }, { now: () => now });
     const inbox = await service.list(profile);
-    expect(inbox).toMatchObject({ _tag: "ok", value: { dataFreshness: "cached", rows: [{ recommendedAction: { kind: "run_review" } }] } });
+    expect(inbox).toMatchObject({ _tag: "ok", value: { dataFreshness: "cached", snapshot: { state: "failed_cached" }, rows: [{ recommendedAction: { kind: "run_review" } }] } });
   });
 });

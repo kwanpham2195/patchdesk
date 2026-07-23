@@ -28,6 +28,10 @@ export type MaintainerInbox = {
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
   readonly refreshedAt?: IsoTimestamp;
   readonly dataFreshness: "fresh" | "cached";
+  readonly snapshot: {
+    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly refreshedAt?: IsoTimestamp;
+  };
   readonly directEntryAvailable: true;
 };
 
@@ -58,7 +62,13 @@ export class MaintainerInboxService {
     const rows = results.flatMap((result) => result.rows).sort(compareRows);
     const repositories = [...archived, ...results.map((result) => result.repository)];
     const refreshedAt = this.clock.now();
-    const value: MaintainerInbox = { rows, repositories, refreshedAt, dataFreshness: "fresh", directEntryAvailable: true };
+    const complete = results.every((result) => result.repository.complete);
+    const dataFreshness = complete ? "fresh" as const : "cached" as const;
+    const snapshotState = complete ? "current" as const : "partial" as const;
+    const projectedRows = dataFreshness === "fresh"
+      ? rows
+      : rows.map(toCachedRow);
+    const value: MaintainerInbox = { rows: projectedRows, repositories, refreshedAt, dataFreshness, snapshot: { state: snapshotState, refreshedAt }, directEntryAvailable: true };
     const cached: MaintainerInboxCache = {
       schemaVersion: 1,
       refreshedAt,
@@ -69,7 +79,7 @@ export class MaintainerInboxService {
         complete,
       })),
     };
-    await this.cache.save(profile.id, cached);
+    if (complete) await this.cache.save(profile.id, cached);
     return ok(value);
   }
 
@@ -107,9 +117,10 @@ export class MaintainerInboxService {
       })),
       refreshedAt: cached.value.refreshedAt as IsoTimestamp,
       dataFreshness: "cached",
+      snapshot: { state: "failed_cached", refreshedAt: cached.value.refreshedAt as IsoTimestamp },
       directEntryAvailable: true,
     });
-    return ok({ rows: [], repositories: profile.repos.map((repo) => ({ repo, state: "github_auth", complete: false })), dataFreshness: "cached", directEntryAvailable: true });
+    return ok({ rows: [], repositories: profile.repos.map((repo) => ({ repo, state: "github_auth", complete: false })), dataFreshness: "cached", snapshot: { state: "unavailable" }, directEntryAvailable: true });
   }
 }
 
