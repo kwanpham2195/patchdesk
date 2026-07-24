@@ -104,7 +104,7 @@ One confirmation shows the exact saved batch:
 - resolve actions;
 - reopen actions.
 
-After confirmation, Patchdesk creates one pending GitHub review for new inline comments, then performs the approved replies and thread-state actions. Submitting the pending review is a separate confirmation.
+After confirmation, Patchdesk creates one pending GitHub review when the batch has new inline comments, then performs the approved replies and thread-state actions. A batch with only replies or thread-state actions skips pending-review creation. Submitting a created pending review is a separate confirmation.
 
 GitHub does not make this mixed batch atomic. If an action fails after another succeeds, Patchdesk records completed writes, retains unfinished local work, and does not retry automatically. It reports the exact outcome to the reviewer.
 
@@ -162,3 +162,4 @@ The existing 1,000-file selection ceiling remains below 200ms.
 - Remove the prepared-review screen and review-details sidebar.
 - Replace Review drafts and Review history with the overlapping Saved reviews inbox queue.
 - Keep only the latest review result for the current pull-request head and confirm before a rerun discards local drafts.
+- Skip pending-review creation when a confirmed batch contains only replies or thread-state actions.
