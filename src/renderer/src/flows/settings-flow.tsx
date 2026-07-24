@@ -49,13 +49,10 @@ export function SettingsFlow({
   onAppearanceChange,
   diffThemePreferences,
   onDiffThemeChange,
-  suggestions,
-  discoveryFeedback,
   profiles,
   pathFeedback,
   onAdd,
   onSaveProfile,
-  onDiscover,
   onAddSuggestion,
   onSelectProfile,
   onPath,
@@ -89,14 +86,11 @@ export function SettingsFlow({
   readonly onAppearanceChange: (value: AppearancePreference) => void;
   readonly diffThemePreferences: DiffThemePreferences;
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
-  readonly suggestions: ReadonlyArray<Repo>;
-  readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly pathFeedback?: string;
   readonly onAdd: () => void;
   readonly onSaveProfile: () => void;
-  readonly onDiscover: () => void;
-  readonly onAddSuggestion: (repo: Repo) => void;
+  readonly onAddSuggestion: (repo: Repo) => Promise<void>;
   readonly onSelectProfile: (id: string) => void;
   readonly onPath: (repo: Repo) => void;
   readonly onChoosePath: (repo: Repo) => void;
@@ -107,6 +101,8 @@ export function SettingsFlow({
   const [removalTarget, setRemovalTarget] = useState<Repo>();
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
+  const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
+  const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
   const loadEnvironment = async (): Promise<void> => {
@@ -123,6 +119,30 @@ export function SettingsFlow({
   useEffect(() => {
     void loadEnvironment();
   }, []);
+  const discover = async (): Promise<void> => {
+    setDiscoveryFeedback("Discovering repositories...");
+    try {
+      const value = await requestJson("/v1/watchlist/suggestions");
+      const discovered = Array.isArray(value) ? value.filter(isRepo) : [];
+      setSuggestions(discovered);
+      setDiscoveryFeedback(
+        discovered.length === 0
+          ? "No new repositories found in the configured workspace roots."
+          : `Found ${discovered.length} new ${discovered.length === 1 ? "repository" : "repositories"}.`,
+      );
+    } catch {
+      setSuggestions([]);
+      setDiscoveryFeedback(
+        "Could not discover repositories. Check the workspace root in Settings.",
+      );
+    }
+  };
+  const addSuggestion = async (repo: Repo): Promise<void> => {
+    await onAddSuggestion(repo);
+    setSuggestions((current) =>
+      current.filter((item) => key(item) !== key(repo)),
+    );
+  };
   const testGitHubAccess = async (): Promise<void> => {
     const value = await requestJson("/v1/github/access", { method: "POST" });
     if (record(value) && typeof value.state === "string")
@@ -445,7 +465,7 @@ export function SettingsFlow({
               />
             </div>
             <Button onClick={onAdd}>Add repository</Button>
-            <Button variant="outline" onClick={onDiscover}>
+            <Button variant="outline" onClick={() => void discover()}>
               Discover
             </Button>
           </div>
@@ -477,7 +497,7 @@ export function SettingsFlow({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => onAddSuggestion(repo)}
+                    onClick={() => void addSuggestion(repo)}
                   >
                     Add suggestion
                   </Button>
@@ -649,4 +669,13 @@ function key(repo: Repo): string {
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isRepo(value: unknown): value is Repo {
+  return (
+    record(value) &&
+    typeof value.host === "string" &&
+    typeof value.owner === "string" &&
+    typeof value.repo === "string"
+  );
 }

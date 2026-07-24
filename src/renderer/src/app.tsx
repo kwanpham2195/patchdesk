@@ -110,8 +110,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [pathFeedback, setPathFeedback] = useState<string>();
-  const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
-  const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [reviewRecords, setReviewRecords] = useState<
     ReadonlyArray<ReviewRecord>
   >([]);
@@ -631,29 +629,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     });
     await load();
   };
-  const discover = async (): Promise<void> => {
-    setDiscoveryFeedback("Discovering repositories...");
-    try {
-      const value = await api("/v1/watchlist/suggestions");
-      const discovered = Array.isArray(value) ? value.filter(isRepo) : [];
-      setSuggestions(discovered);
-      setDiscoveryFeedback(
-        discovered.length === 0
-          ? "No new repositories found in the configured workspace roots."
-          : `Found ${discovered.length} new ${discovered.length === 1 ? "repository" : "repositories"}.`,
-      );
-    } catch {
-      setSuggestions([]);
-      setDiscoveryFeedback(
-        "Could not discover repositories. Check the workspace root in Settings.",
-      );
-    }
-  };
   const addSuggestion = async (repo: Repo): Promise<void> => {
     await api("/v1/watchlist", { method: "POST", body: repo });
-    setSuggestions((current) =>
-      current.filter((item) => key(item) !== key(repo)),
-    );
     await load();
   };
   const previewEntry = async (): Promise<void> => {
@@ -811,14 +788,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             const saved = saveDiffThemePreferences(next);
             if (saved.saved) setDiffThemePreferences(saved.preferences);
           }}
-          suggestions={suggestions}
-          discoveryFeedback={discoveryFeedback}
           profiles={profiles}
           {...(pathFeedback === undefined ? {} : { pathFeedback })}
           onAdd={() => void addRepo()}
           onSaveProfile={() => void saveProfile()}
-          onDiscover={() => void discover()}
-          onAddSuggestion={(repo) => void addSuggestion(repo)}
+          onAddSuggestion={addSuggestion}
           onSelectProfile={(id) => void select(id)}
           onPath={editPath}
           onChoosePath={(repo) => void choosePath(repo)}
@@ -901,14 +875,6 @@ function isProfile(value: unknown): value is Profile {
     typeof value.label === "string" &&
     typeof value.githubHost === "string" &&
     typeof value.ghAccount === "string"
-  );
-}
-function isRepo(value: unknown): value is Repo {
-  return (
-    record(value) &&
-    typeof value.host === "string" &&
-    typeof value.owner === "string" &&
-    typeof value.repo === "string"
   );
 }
 function isReviewRecord(value: unknown): value is ReviewRecord {
