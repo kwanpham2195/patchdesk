@@ -826,11 +826,19 @@ function migrateLocalDraft(
   draft: ReviewDraft,
 ): Result<ReviewBatch, StorageFailure> {
   const items: ReviewBatch["items"][number][] = [];
+  const itemIds = new Set<string>();
   for (const comment of draft.comments) {
-    const itemId = parseLocalReviewItemId(comment.findingId);
+    let itemIdValue: string = comment.findingId;
+    let suffix = 2;
+    while (itemIds.has(itemIdValue)) {
+      itemIdValue = `${comment.findingId}-${suffix}`;
+      suffix += 1;
+    }
+    const itemId = parseLocalReviewItemId(itemIdValue);
     if (itemId._tag === "err") {
       return invalidRead();
     }
+    itemIds.add(itemId.value);
     items.push({
       _tag: "InlineComment",
       id: itemId.value,

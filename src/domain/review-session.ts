@@ -153,11 +153,15 @@ export function startNextAttempt(
   if (attemptId._tag === "err") {
     return err({ _tag: "CannotAllocateAttempt" });
   }
+  const sessionForNextAttempt =
+    session.batch?.state._tag === "Submitted"
+      ? withoutReviewBatch(session)
+      : session;
 
   return ok({
     attemptId: attemptId.value,
     session: {
-      ...session,
+      ...sessionForNextAttempt,
       currentAttemptId: attemptId.value,
       state: { _tag: "Running", attemptId: attemptId.value },
     },
@@ -169,6 +173,13 @@ export function discardBatchForRerun(
   session: ReviewSession,
   confirmedAt: IsoTimestamp,
 ): ReviewSession {
+  return {
+    ...withoutReviewBatch(session),
+    updatedAt: confirmedAt,
+  };
+}
+
+function withoutReviewBatch(session: ReviewSession): ReviewSession {
   const {
     batch: discardedBatch,
     batchContent: discardedBatchContent,
@@ -176,10 +187,7 @@ export function discardBatchForRerun(
   } = session;
   void discardedBatch;
   void discardedBatchContent;
-  return {
-    ...sessionWithoutBatch,
-    updatedAt: confirmedAt,
-  };
+  return sessionWithoutBatch;
 }
 
 /** Complete the current attempt, or make a late completion harmless and visible on that attempt. */

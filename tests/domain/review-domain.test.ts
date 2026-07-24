@@ -323,6 +323,122 @@ describe("Patchdesk review domain", () => {
     })._tag).toBe("ok");
   });
 
+  it.each([
+    {
+      name: "missing item",
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "Reply", itemId: "missing-item" },
+      },
+    },
+    {
+      name: "wrong item kind",
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "ThreadState", itemId: "reply-1" },
+      },
+    },
+  ])("rejects an applying operation with a $name", ({ state }) => {
+    expect(parseReviewBatch({
+      ...batchFixture(),
+      state,
+    })._tag).toBe("err");
+  });
+
+  it("rejects an applying operation for an excluded item", () => {
+    const fixture = batchFixture();
+
+    expect(parseReviewBatch({
+      ...fixture,
+      items: fixture.items.map((item) =>
+        item.id === "reply-1" ? { ...item, include: false } : item
+      ),
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "Reply", itemId: "reply-1" },
+      },
+    })._tag).toBe("err");
+  });
+
+  it.each([
+    {
+      name: "missing item",
+      receipt: {
+        _tag: "ReplyCreated",
+        itemId: "missing-item",
+        commentId: "comment-1",
+      },
+    },
+    {
+      name: "wrong item kind",
+      receipt: {
+        _tag: "ThreadStateChanged",
+        itemId: "reply-1",
+        state: "resolved",
+      },
+    },
+    {
+      name: "wrong resulting thread state",
+      receipt: {
+        _tag: "ThreadStateChanged",
+        itemId: "thread-state-1",
+        state: "open",
+      },
+    },
+  ])("rejects a remote write receipt with a $name", ({ receipt }) => {
+    expect(parseReviewBatch({
+      ...batchFixture(),
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "Reply", itemId: "reply-1" },
+      },
+      receipts: [receipt],
+    })._tag).toBe("err");
+  });
+
+  it.each([
+    {
+      name: "local state with a remote receipt",
+      state: { _tag: "Local" },
+      receipts: [{ _tag: "PendingReviewCreated", reviewId: "review-1" }],
+    },
+    {
+      name: "applying state whose operation already has a receipt",
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "Reply", itemId: "reply-1" },
+      },
+      receipts: [{
+        _tag: "ReplyCreated",
+        itemId: "reply-1",
+        commentId: "comment-1",
+      }],
+    },
+    {
+      name: "pending-review state without its creation receipt",
+      state: { _tag: "PendingReview", reviewId: "review-1" },
+      receipts: [],
+    },
+    {
+      name: "submitted state with a different creation receipt",
+      state: {
+        _tag: "Submitted",
+        reviewId: "review-1",
+        event: "COMMENT",
+      },
+      receipts: [{
+        _tag: "PendingReviewCreated",
+        reviewId: "review-2",
+      }],
+    },
+  ])("rejects a batch with $name", ({ state, receipts }) => {
+    expect(parseReviewBatch({
+      ...batchFixture(),
+      state,
+      receipts,
+    })._tag).toBe("err");
+  });
+
   it("blocks reruns until a local batch is explicitly discarded", () => {
     const session = createReviewSession({
       key: ids,

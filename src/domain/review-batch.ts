@@ -301,6 +301,9 @@ export function parseReviewBatch(
     }
     receipts.push(parsed.value);
   }
+  if (!hasCoherentRelationships(state.value, items, receipts)) {
+    return invalidReviewBatch();
+  }
 
   return ok({
     sessionId: sessionId.value,
@@ -451,6 +454,132 @@ function parseReceipt(
         itemId: itemId.value,
         state: receipt.state,
       });
+}
+
+function hasCoherentRelationships(
+  state: ReviewBatchState,
+  items: ReadonlyArray<ReviewBatchItem>,
+  receipts: ReadonlyArray<RemoteWriteReceipt>,
+): boolean {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  if (
+    (state._tag === "Applying" || state._tag === "PartialFailure") &&
+    !operationReferencesIncludedItems(state.operation, itemById)
+  ) {
+    return false;
+  }
+
+  const completedOperationKeys = new Set<string>();
+  for (const receipt of receipts) {
+    const key = receiptOperationKey(receipt, itemById);
+    if (key === undefined || completedOperationKeys.has(key)) {
+      return false;
+    }
+    completedOperationKeys.add(key);
+  }
+
+  if (state._tag === "Local") {
+    return receipts.length === 0;
+  }
+  if (state._tag === "Applying" || state._tag === "PartialFailure") {
+    return !completedOperationKeys.has(operationKey(state.operation));
+  }
+
+  const pendingReviewReceipt = receipts.find(
+    (receipt): receipt is Extract<
+      RemoteWriteReceipt,
+      { readonly _tag: "PendingReviewCreated" }
+    > => receipt._tag === "PendingReviewCreated",
+  );
+  if (
+    pendingReviewReceipt === undefined ||
+    pendingReviewReceipt.reviewId !== state.reviewId
+  ) {
+    return false;
+  }
+
+  const plannedOperationKeys = plannedOperationKeysFor(items);
+  return (
+    plannedOperationKeys.size > 0 &&
+    plannedOperationKeys.size === completedOperationKeys.size &&
+    [...plannedOperationKeys].every((key) => completedOperationKeys.has(key))
+  );
+}
+
+function operationReferencesIncludedItems(
+  operation: BatchOperation,
+  itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
+): boolean {
+  if (operation._tag === "CreatePendingReview") {
+    const uniqueIds = new Set(operation.itemIds);
+    return (
+      uniqueIds.size === operation.itemIds.length &&
+      operation.itemIds.every((itemId) => {
+        const item = itemById.get(itemId);
+        return item?._tag === "InlineComment" && item.include;
+      })
+    );
+  }
+
+  const item = itemById.get(operation.itemId);
+  return operation._tag === "Reply"
+    ? item?._tag === "ThreadReply" && item.include
+    : item?._tag === "ThreadState" && item.include;
+}
+
+function receiptOperationKey(
+  receipt: RemoteWriteReceipt,
+  itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
+): string | undefined {
+  if (receipt._tag === "PendingReviewCreated") {
+    return [...itemById.values()].some(
+      (item) => item._tag === "InlineComment" && item.include,
+    )
+      ? "pending-review"
+      : undefined;
+  }
+
+  const item = itemById.get(receipt.itemId);
+  if (receipt._tag === "ReplyCreated") {
+    return item?._tag === "ThreadReply" && item.include
+      ? `reply:${item.id}`
+      : undefined;
+  }
+  if (item?._tag !== "ThreadState" || !item.include) {
+    return undefined;
+  }
+  const expectedState = item.action === "resolve" ? "resolved" : "open";
+  return receipt.state === expectedState
+    ? `thread-state:${item.id}`
+    : undefined;
+}
+
+function operationKey(operation: BatchOperation): string {
+  if (operation._tag === "CreatePendingReview") {
+    return "pending-review";
+  }
+  return operation._tag === "Reply"
+    ? `reply:${operation.itemId}`
+    : `thread-state:${operation.itemId}`;
+}
+
+function plannedOperationKeysFor(
+  items: ReadonlyArray<ReviewBatchItem>,
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const item of items) {
+    if (!item.include) {
+      continue;
+    }
+    if (item._tag === "InlineComment") {
+      keys.add("pending-review");
+    } else if (item._tag === "ThreadReply") {
+      keys.add(`reply:${item.id}`);
+    } else {
+      keys.add(`thread-state:${item.id}`);
+    }
+  }
+  return keys;
 }
 
 function invalidReviewBatch(): Result<never, InvalidReviewBatch> {

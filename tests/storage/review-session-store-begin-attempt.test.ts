@@ -118,6 +118,97 @@ describe("ReviewSessionStore.beginAttempt", () => {
     }
   });
 
+  it("clears a submitted batch before persisting the next attempt", async () => {
+    const fixture = await createFixture();
+    const attemptId = must(parseReviewAttemptId("001"));
+    const previousAttempt = await okAttempt(
+      fixture.paths,
+      fixture.profileId,
+      fixture.session.id,
+      attemptId,
+    );
+    await fixture.store.saveAttempt(
+      fixture.profileId,
+      fixture.session.id,
+      previousAttempt.value,
+    );
+    const batchContent = must(parseReviewBatch({
+      sessionId: fixture.session.id,
+      attemptId,
+      state: {
+        _tag: "Submitted",
+        reviewId: "review-1",
+        event: "COMMENT",
+      },
+      summaryBody: "Submitted review.",
+      suggestedEvent: "COMMENT",
+      items: [{
+        _tag: "InlineComment",
+        id: "finding-1",
+        source: "finding",
+        findingId: "finding-1",
+        anchor: {
+          path: "src/example.ts",
+          startLine: 7,
+          line: 7,
+          side: "new",
+        },
+        body: "Keep this branch explicit.",
+        include: true,
+        postability: "postable",
+      }],
+      receipts: [{
+        _tag: "PendingReviewCreated",
+        reviewId: "review-1",
+      }],
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    }));
+    const sessionWithSubmittedBatch = {
+      ...fixture.session,
+      currentAttemptId: attemptId,
+      state: { _tag: "ReviewCompleted" as const, attemptId },
+      batch: { state: batchContent.state },
+      batchContent,
+      submittedReview: {
+        reviewId: "review-1",
+        event: "COMMENT" as const,
+        submittedAt: startedAt,
+      },
+    };
+    expect(await fixture.store.save(sessionWithSubmittedBatch)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+
+    await expect(fixture.store.beginAttempt({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      updatedAt: startedAt,
+      createAttempt: async (session, id) =>
+        okAttempt(fixture.paths, fixture.profileId, session.id, id),
+    })).resolves.toMatchObject({ _tag: "ok", value: { id: "002" } });
+
+    await expect(
+      fixture.store.load(fixture.profileId, fixture.session.id),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        currentAttemptId: "002",
+        state: { _tag: "Running", attemptId: "002" },
+        submittedReview: { reviewId: "review-1" },
+      },
+    });
+    const stored = await fixture.store.load(
+      fixture.profileId,
+      fixture.session.id,
+    );
+    if (stored._tag === "ok") {
+      expect(stored.value.batch).toBeUndefined();
+      expect(stored.value.batchContent).toBeUndefined();
+    }
+  });
+
   it("serializes duplicate starts and refuses stale sessions", async () => {
     const fixture = await createFixture();
     const input = {

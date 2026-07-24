@@ -241,6 +241,55 @@ describe("Patchdesk storage", () => {
     });
   });
 
+  it("migrates repeated v2 finding comments with deterministic unique item IDs", async () => {
+    const paths = await testPaths();
+    const session = sessionFor(paths);
+    const repeatedComment = {
+      findingId: "finding-1",
+      include: true,
+      originalSuggestedBody: "Original suggestion.",
+      body: "Keep the stored local edit.",
+      path: "src/example.ts",
+      line: 7,
+      lineEnd: 8,
+      diffSide: "new",
+      postability: "postable",
+    };
+
+    const migrated = parseStoredReviewSession({
+      ...session,
+      schemaVersion: 2,
+      currentAttemptId: "001",
+      draft: { state: { _tag: "LocalDraft" } },
+      draftContent: {
+        sessionId: session.id,
+        attemptId: "001",
+        state: { _tag: "LocalDraft" },
+        summaryBody: "Two comments for one finding.",
+        suggestedEvent: "COMMENT",
+        comments: [
+          repeatedComment,
+          {
+            ...repeatedComment,
+            body: "Keep this second local edit too.",
+            line: 12,
+            lineEnd: 12,
+          },
+        ],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    });
+
+    expect(migrated).toMatchObject({ _tag: "ok" });
+    if (migrated._tag === "ok") {
+      expect(migrated.value.batchContent?.items.map((item) => item.id)).toEqual([
+        "finding-1",
+        "finding-1-2",
+      ]);
+    }
+  });
+
   it("rejects malformed v2 draft migration records", async () => {
     const paths = await testPaths();
     const session = sessionFor(paths);
