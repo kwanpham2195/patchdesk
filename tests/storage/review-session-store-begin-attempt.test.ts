@@ -15,12 +15,17 @@ import {
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
+  parseReviewAttemptId,
   parseWorkspaceProfileId,
   type ReviewAttemptId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../src/domain/ids";
-import { createReviewSession } from "../../src/domain/review-session";
+import { parseReviewBatch } from "../../src/domain/review-batch";
+import {
+  createReviewSession,
+  discardBatchForRerun,
+} from "../../src/domain/review-session";
 import type { ReviewAttempt } from "../../src/domain/review-attempt";
 
 const roots: string[] = [];
@@ -31,6 +36,56 @@ afterEach(async () => {
 });
 
 describe("ReviewSessionStore.beginAttempt", () => {
+  it("requires the persisted local batch to be discarded before a rerun", async () => {
+    const fixture = await createFixture();
+    const attemptId = must(parseReviewAttemptId("001"));
+    const batchContent = must(parseReviewBatch({
+      sessionId: fixture.session.id,
+      attemptId,
+      state: { _tag: "Local" },
+      summaryBody: "Saved local work.",
+      suggestedEvent: "COMMENT",
+      items: [],
+      receipts: [],
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    }));
+    const sessionWithBatch = {
+      ...fixture.session,
+      currentAttemptId: attemptId,
+      state: { _tag: "ReviewCompleted" as const, attemptId },
+      batch: { state: { _tag: "Local" as const } },
+      batchContent,
+    };
+    expect(await fixture.store.save(sessionWithBatch)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+
+    const blocked = await fixture.store.beginAttempt({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      updatedAt: startedAt,
+      createAttempt: async (session, id) =>
+        okAttempt(fixture.paths, fixture.profileId, session.id, id),
+    });
+    expect(blocked).toMatchObject({
+      _tag: "err",
+      error: { _tag: "BeginAttemptRejected", reason: "not_runnable" },
+    });
+
+    await fixture.store.save(
+      discardBatchForRerun(sessionWithBatch, startedAt),
+    );
+    await expect(fixture.store.beginAttempt({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      updatedAt: startedAt,
+      createAttempt: async (session, id) =>
+        okAttempt(fixture.paths, fixture.profileId, session.id, id),
+    })).resolves.toMatchObject({ _tag: "ok", value: { id: "001" } });
+  });
+
   it("allocates retry artifacts from the real attempt ID", async () => {
     const fixture = await createFixture();
     const first = await fixture.store.beginAttempt({

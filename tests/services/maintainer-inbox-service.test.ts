@@ -68,7 +68,7 @@ describe("maintainer inbox service", () => {
           draft: { state: { _tag: "LocalDraft" } },
           createdAt: now,
           updatedAt: now,
-          schemaVersion: 2,
+          schemaVersion: 3,
         }]);
       },
       async loadAttempt() { return err({ _tag: "StorageFailure", operation: "read", reason: "not_found" }); },

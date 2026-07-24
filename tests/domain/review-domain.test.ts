@@ -8,10 +8,18 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseGitHubThreadId,
   parseIsoTimestamp,
+  parseLocalReviewItemId,
   parsePullRequestNumber,
+  parseReviewAttemptId,
+  parseRepoRelativePath,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
+import {
+  hasActiveReviewBatch,
+  parseReviewBatch,
+} from "../../src/domain/review-batch";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import {
   parseModelReviewResult,
@@ -20,6 +28,7 @@ import {
 import {
   completeAttempt,
   createReviewSession,
+  discardBatchForRerun,
   discardCurrentAttempt,
   markSessionMerged,
   startNextAttempt,
@@ -64,6 +73,60 @@ const sessionContext = {
     headSha: ids.headSha,
   },
 };
+
+function batchFixture(
+  anchor: { readonly startLine: number; readonly line: number } = {
+    startLine: 7,
+    line: 8,
+  },
+) {
+  const session = createReviewSession({
+    key: ids,
+    ...sessionContext,
+    createdAt: times.created,
+  });
+
+  return {
+    sessionId: session.id,
+    attemptId: mustParse(parseReviewAttemptId("001")),
+    state: { _tag: "Local" as const },
+    summaryBody: "One review note.",
+    suggestedEvent: "COMMENT" as const,
+    items: [
+      {
+        _tag: "InlineComment" as const,
+        id: mustParse(parseLocalReviewItemId("finding-1")),
+        source: "finding" as const,
+        findingId: "finding-1",
+        anchor: {
+          path: mustParse(parseRepoRelativePath("src/example.ts")),
+          ...anchor,
+          side: "new" as const,
+        },
+        body: "Keep this branch explicit.",
+        include: true,
+        postability: "postable" as const,
+      },
+      {
+        _tag: "ThreadReply" as const,
+        id: mustParse(parseLocalReviewItemId("reply-1")),
+        threadId: mustParse(parseGitHubThreadId("PRRT_kwDOAAABBB")),
+        body: "Fixed in the current patch.",
+        include: true,
+      },
+      {
+        _tag: "ThreadState" as const,
+        id: mustParse(parseLocalReviewItemId("thread-state-1")),
+        threadId: mustParse(parseGitHubThreadId("PRRT_kwDOCCCDDD")),
+        action: "resolve" as const,
+        include: true,
+      },
+    ],
+    receipts: [],
+    createdAt: times.created,
+    updatedAt: times.created,
+  };
+}
 
 describe("Patchdesk review domain", () => {
   it("parses a workspace profile and rejects unknown config keys", () => {
@@ -230,17 +293,91 @@ describe("Patchdesk review domain", () => {
     ).toMatchObject({ _tag: "err", error: { _tag: "InvalidReviewResult" } });
   });
 
-  it("blocks reruns while a local draft is active", () => {
+  it("accepts inline, reply, and thread-state batch items", () => {
+    expect(parseReviewBatch(batchFixture())._tag).toBe("ok");
+  });
+
+  it("rejects an invalid batch comment range", () => {
+    expect(
+      parseReviewBatch(batchFixture({ startLine: 8, line: 7 }))._tag,
+    ).toBe("err");
+  });
+
+  it("accepts each completed remote write receipt variant", () => {
+    expect(parseReviewBatch({
+      ...batchFixture(),
+      state: { _tag: "PendingReview", reviewId: "review-1" },
+      receipts: [
+        { _tag: "PendingReviewCreated", reviewId: "review-1" },
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    })._tag).toBe("ok");
+  });
+
+  it("blocks reruns until a local batch is explicitly discarded", () => {
     const session = createReviewSession({
       key: ids,
       ...sessionContext,
       createdAt: times.created,
-      draft: { state: { _tag: "LocalDraft" } },
+      batch: { state: { _tag: "Local" } },
     });
 
     expect(startNextAttempt(session, ["001"])).toMatchObject({
       _tag: "err",
-      error: { _tag: "ActiveDraftBlocksRerun" },
+      error: { _tag: "ActiveBatchBlocksRerun" },
+    });
+  });
+
+  it("discards only the batch before a rerun and preserves the visible result", () => {
+    const visibleResult = mustParse(
+      parseReviewResult({
+        changeSummary: "Preserve this completed review.",
+        verdict: "comment",
+        summary: "One note.",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+      }),
+    );
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      state: {
+        _tag: "ReviewCompleted" as const,
+        attemptId: mustParse(parseReviewAttemptId("001")),
+      },
+      currentAttemptId: mustParse(parseReviewAttemptId("001")),
+      batch: { state: { _tag: "Local" as const } },
+      batchContent: mustParse(parseReviewBatch(batchFixture())),
+      visibleResult,
+    };
+
+    expect(hasActiveReviewBatch(session.batch)).toBe(true);
+    const discarded = discardBatchForRerun(session, times.completed);
+    expect(discarded).toEqual({
+      ...session,
+      batch: undefined,
+      batchContent: undefined,
+      updatedAt: times.completed,
+    });
+    expect(startNextAttempt(discarded, ["001"])).toMatchObject({
+      _tag: "ok",
+      value: {
+        attemptId: "002",
+        session: { visibleResult },
+      },
     });
   });
 

@@ -161,18 +161,98 @@ describe("Patchdesk storage", () => {
     );
   });
 
-  it("normalizes a schema-v1 session to the v2 full-review scope without rewriting it", async () => {
+  it("rejects unsupported stored session versions", async () => {
     const paths = await testPaths();
     const session = sessionFor(paths);
-    const parsed = parseStoredReviewSession({
+    expect(parseStoredReviewSession({
       ...session,
       schemaVersion: 1,
       scope: undefined,
+    })).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
     });
+    expect(parseStoredReviewSession({
+      ...session,
+      schemaVersion: 4,
+    })).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
+    });
+  });
 
-    expect(parsed).toMatchObject({
+  it("migrates a valid v2 local draft to its v3 local batch", async () => {
+    const paths = await testPaths();
+    const session = sessionFor(paths);
+    const legacy = {
+      ...session,
+      schemaVersion: 2,
+      currentAttemptId: "001",
+      draft: { state: { _tag: "LocalDraft" } },
+      draftContent: {
+        sessionId: session.id,
+        attemptId: "001",
+        state: { _tag: "LocalDraft" },
+        summaryBody: "One local draft.",
+        suggestedEvent: "COMMENT",
+        comments: [{
+          findingId: "finding-1",
+          include: true,
+          originalSuggestedBody: "Original suggestion.",
+          body: "Keep the stored local edit.",
+          path: "src/example.ts",
+          line: 7,
+          lineEnd: 8,
+          diffSide: "new",
+          postability: "postable",
+        }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    };
+
+    expect(parseStoredReviewSession(legacy)).toMatchObject({
       _tag: "ok",
-      value: { schemaVersion: 2, scope: { kind: "full" } },
+      value: {
+        schemaVersion: 3,
+        batch: { state: { _tag: "Local" } },
+        batchContent: {
+          state: { _tag: "Local" },
+          summaryBody: "One local draft.",
+          suggestedEvent: "COMMENT",
+          items: [{
+            _tag: "InlineComment",
+            id: "finding-1",
+            source: "finding",
+            findingId: "finding-1",
+            anchor: {
+              path: "src/example.ts",
+              startLine: 7,
+              line: 8,
+              side: "new",
+            },
+            body: "Keep the stored local edit.",
+            include: true,
+            postability: "postable",
+          }],
+          receipts: [],
+        },
+      },
+    });
+  });
+
+  it("rejects malformed v2 draft migration records", async () => {
+    const paths = await testPaths();
+    const session = sessionFor(paths);
+
+    expect(parseStoredReviewSession({
+      ...session,
+      schemaVersion: 2,
+      draft: { state: { _tag: "LocalDraft" } },
+      draftContent: { state: { _tag: "LocalDraft" } },
+    })).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
     });
   });
 

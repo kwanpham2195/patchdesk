@@ -14,6 +14,10 @@ export type GitSha = Brand<string, "GitSha">;
 export type ReviewSessionId = Brand<string, "ReviewSessionId">;
 export type ReviewAttemptId = Brand<string, "ReviewAttemptId">;
 export type FindingId = Brand<string, "FindingId">;
+/** A stable identifier for one local review batch action. */
+export type LocalReviewItemId = Brand<string, "LocalReviewItemId">;
+/** An opaque GitHub GraphQL review-thread node identifier. */
+export type GitHubThreadId = Brand<string, "GitHubThreadId">;
 export type AbsolutePath = Brand<string, "AbsolutePath">;
 export type RepoRelativePath = Brand<string, "RepoRelativePath">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
@@ -96,6 +100,20 @@ export function parseFindingId(
   input: unknown,
 ): Result<FindingId, InvalidDomainValue> {
   return parseSafeSlug<"FindingId">(input, "findingId");
+}
+
+/** Parse the stable local identifier for one queued review batch item. */
+export function parseLocalReviewItemId(
+  input: unknown,
+): Result<LocalReviewItemId, InvalidDomainValue> {
+  return parseSafeSlug<"LocalReviewItemId">(input, "localReviewItemId");
+}
+
+/** Parse an opaque GitHub review-thread node identifier. */
+export function parseGitHubThreadId(
+  input: unknown,
+): Result<GitHubThreadId, InvalidDomainValue> {
+  return parseSafeSlug<"GitHubThreadId">(input, "githubThreadId");
 }
 
 /** Parse the path-safe deterministic session folder identifier. */

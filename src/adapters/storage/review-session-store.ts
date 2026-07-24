@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { readdir } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   createReviewSessionId,
@@ -9,6 +10,7 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseLocalReviewItemId,
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseReviewAttemptId,
@@ -23,7 +25,15 @@ import type {
   ReviewAttempt,
   ReviewAttemptState,
 } from "../../domain/review-attempt";
-import { parseReviewDraft, type ReviewDraftState } from "../../domain/review-draft";
+import {
+  parseReviewDraft,
+  type ReviewDraft,
+  type ReviewDraftState,
+} from "../../domain/review-draft";
+import {
+  parseReviewBatch,
+  type ReviewBatch,
+} from "../../domain/review-batch";
 import { parseReviewResult } from "../../domain/review-result";
 import type {
   ReviewSession,
@@ -99,7 +109,7 @@ const draftStateSchema = v.variant("_tag", [
 ]);
 
 const reviewSessionSchema = v.strictObject({
-  schemaVersion: v.optional(v.picklist([1, 2])),
+  schemaVersion: v.picklist([2, 3]),
   id: v.string(),
   key: v.strictObject({
     profileId: v.string(),
@@ -129,6 +139,8 @@ const reviewSessionSchema = v.strictObject({
   currentAttemptId: v.optional(v.string()),
   draft: v.optional(v.strictObject({ state: draftStateSchema })),
   draftContent: v.optional(v.unknown()),
+  batch: v.optional(v.strictObject({ state: v.unknown() })),
+  batchContent: v.optional(v.unknown()),
   submittedReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -461,9 +473,7 @@ export function parseStoredReviewSession(
   const headSha = parseGitSha(raw.output.key.headSha);
   const id = parseReviewSessionId(raw.output.id);
   const patchPath = parseAbsolutePath(raw.output.patchPath);
-  const scope = raw.output.schemaVersion === 2
-    ? parseReviewScope(raw.output.scope)
-    : ok({ kind: "full" } as const);
+  const scope = parseReviewScope(raw.output.scope);
   const worktreePath = parseAbsolutePath(raw.output.worktree.path);
   const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
   const prHeadSha = parseGitSha(raw.output.pr.headSha);
@@ -499,16 +509,8 @@ export function parseStoredReviewSession(
   if (currentAttemptId !== undefined && currentAttemptId._tag === "err")
     return invalidRead();
   const state = parseSessionState(raw.output.state);
-  const draft =
-    raw.output.draft === undefined
-      ? undefined
-      : parseDraftState(raw.output.draft.state);
-  const draftContent =
-    raw.output.draftContent === undefined
-      ? undefined
-      : parseReviewDraft(raw.output.draftContent);
-  if (state._tag === "err" || draft?._tag === "err" || draftContent?._tag === "err") return invalidRead();
-  if (draftContent !== undefined && (draft === undefined || draftContent.value.state._tag !== draft.value._tag)) return invalidRead();
+  const storedBatch = parseStoredBatch(raw.output);
+  if (state._tag === "err" || storedBatch._tag === "err") return invalidRead();
   if (
     state.value._tag === "Running" &&
     (currentAttemptId === undefined ||
@@ -530,6 +532,13 @@ export function parseStoredReviewSession(
   if (
     worktreeHeadSha.value !== headSha.value ||
     prHeadSha.value !== headSha.value
+  )
+    return invalidRead();
+  if (
+    storedBatch.value.batchContent !== undefined &&
+    (storedBatch.value.batchContent.sessionId !== id.value ||
+      currentAttemptId === undefined ||
+      storedBatch.value.batchContent.attemptId !== currentAttemptId.value)
   )
     return invalidRead();
 
@@ -573,7 +582,7 @@ export function parseStoredReviewSession(
       };
 
   return ok({
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: id.value,
     key: {
       profileId: profileId.value,
@@ -597,8 +606,12 @@ export function parseStoredReviewSession(
     ...(currentAttemptId === undefined
       ? {}
       : { currentAttemptId: currentAttemptId.value }),
-    ...(draft === undefined ? {} : { draft: { state: draft.value } }),
-    ...(draftContent === undefined ? {} : { draftContent: draftContent.value }),
+    ...(storedBatch.value.batch === undefined
+      ? {}
+      : { batch: storedBatch.value.batch }),
+    ...(storedBatch.value.batchContent === undefined
+      ? {}
+      : { batchContent: storedBatch.value.batchContent }),
     ...(submittedReview === undefined
       ? {}
       : { submittedReview: submittedReview.value }),
@@ -742,6 +755,111 @@ function parseSessionState(
       error: input.error,
     });
   return ok({ ...input, attemptId: attemptId.value });
+}
+
+function parseStoredBatch(
+  input: v.InferOutput<typeof reviewSessionSchema>,
+): Result<
+  {
+    readonly batch?: Pick<ReviewBatch, "state">;
+    readonly batchContent?: ReviewBatch;
+  },
+  StorageFailure
+> {
+  if (input.schemaVersion === 3) {
+    if (input.draft !== undefined || input.draftContent !== undefined) {
+      return invalidRead();
+    }
+    if (
+      (input.batch === undefined) !== (input.batchContent === undefined)
+    ) {
+      return invalidRead();
+    }
+    if (input.batchContent === undefined || input.batch === undefined) {
+      return ok({});
+    }
+
+    const batchContent = parseReviewBatch(input.batchContent);
+    if (
+      batchContent._tag === "err" ||
+      !isDeepStrictEqual(input.batch.state, batchContent.value.state)
+    ) {
+      return invalidRead();
+    }
+    return ok({
+      batch: { state: batchContent.value.state },
+      batchContent: batchContent.value,
+    });
+  }
+
+  if (input.batch !== undefined || input.batchContent !== undefined) {
+    return invalidRead();
+  }
+  if ((input.draft === undefined) !== (input.draftContent === undefined)) {
+    return invalidRead();
+  }
+  if (input.draft === undefined || input.draftContent === undefined) {
+    return ok({});
+  }
+
+  const draftState = parseDraftState(input.draft.state);
+  const draftContent = parseReviewDraft(input.draftContent);
+  if (
+    draftState._tag === "err" ||
+    draftContent._tag === "err" ||
+    draftState.value._tag !== "LocalDraft" ||
+    draftContent.value.state._tag !== draftState.value._tag
+  ) {
+    return invalidRead();
+  }
+
+  const migrated = migrateLocalDraft(draftContent.value);
+  return migrated._tag === "err"
+    ? invalidRead()
+    : ok({
+        batch: { state: migrated.value.state },
+        batchContent: migrated.value,
+      });
+}
+
+function migrateLocalDraft(
+  draft: ReviewDraft,
+): Result<ReviewBatch, StorageFailure> {
+  const items: ReviewBatch["items"][number][] = [];
+  for (const comment of draft.comments) {
+    const itemId = parseLocalReviewItemId(comment.findingId);
+    if (itemId._tag === "err") {
+      return invalidRead();
+    }
+    items.push({
+      _tag: "InlineComment",
+      id: itemId.value,
+      source: "finding",
+      findingId: comment.findingId,
+      anchor: {
+        path: comment.path,
+        startLine: comment.line,
+        line: comment.lineEnd ?? comment.line,
+        side: comment.diffSide,
+      },
+      body: comment.body,
+      include: comment.include,
+      postability: comment.postability,
+    });
+  }
+
+  const migrated = parseReviewBatch({
+    sessionId: draft.sessionId,
+    attemptId: draft.attemptId,
+    state: { _tag: "Local" },
+    summaryBody: draft.summaryBody,
+    suggestedEvent: draft.suggestedEvent,
+    items,
+    receipts: [],
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+  });
+  return migrated._tag === "err" ? invalidRead() : ok(migrated.value);
 }
 
 function parseDraftState(

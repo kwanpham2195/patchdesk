@@ -14,10 +14,11 @@ import {
 } from "./ids";
 import type { PullRequestSnapshot } from "./github-context";
 import {
-  hasActiveDraft,
+  hasActiveReviewBatch,
   type GitHubReviewEvent,
-  type ReviewDraft,
-} from "./review-draft";
+  type ReviewBatch,
+} from "./review-batch";
+import type { ReviewDraft } from "./review-draft";
 import type {
   ReviewAttempt,
   ReviewAttemptState,
@@ -67,7 +68,7 @@ export type MergeDecisionRef = {
 
 export type ReviewSession = {
   /** The in-memory representation is always normalized to the current schema. */
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
@@ -83,8 +84,18 @@ export type ReviewSession = {
   readonly worktree: ReviewWorktreeRef;
   readonly state: ReviewSessionState;
   readonly currentAttemptId?: ReviewAttemptId;
+  readonly batch?: Pick<ReviewBatch, "state">;
+  /** Full validated batch retained so interrupted GitHub writes are never guessed or replayed. */
+  readonly batchContent?: ReviewBatch;
+  /**
+   * @deprecated Temporary internal type bridge for legacy consumers being
+   * migrated in later workbench tasks. New v3 sessions never persist this field.
+   */
   readonly draft?: Pick<ReviewDraft, "state">;
-  /** Full validated draft retained locally so an interrupted/rejected GitHub write can be safely resumed. */
+  /**
+   * @deprecated Temporary internal type bridge for legacy consumers being
+   * migrated in later workbench tasks. New v3 sessions never persist this field.
+   */
   readonly draftContent?: ReviewDraft;
   readonly submittedReview?: SubmittedReviewRef;
   readonly mergeDecision?: MergeDecisionRef;
@@ -93,7 +104,7 @@ export type ReviewSession = {
   readonly updatedAt: IsoTimestamp;
 };
 
-export type ActiveDraftBlocksRerun = { readonly _tag: "ActiveDraftBlocksRerun" };
+export type ActiveBatchBlocksRerun = { readonly _tag: "ActiveBatchBlocksRerun" };
 export type SessionImmutable = { readonly _tag: "SessionImmutable" };
 export type CannotAllocateAttempt = { readonly _tag: "CannotAllocateAttempt" };
 export type AttemptNotCurrent = { readonly _tag: "AttemptNotCurrent" };
@@ -108,10 +119,10 @@ export function createReviewSession(input: {
   readonly scope?: ReviewScope;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
-  readonly draft?: Pick<ReviewDraft, "state">;
+  readonly batch?: Pick<ReviewBatch, "state">;
 }): ReviewSession {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,
@@ -120,22 +131,22 @@ export function createReviewSession(input: {
     scope: input.scope ?? { kind: "full" },
     worktree: input.worktree,
     state: { _tag: "Created" },
-    ...(input.draft === undefined ? {} : { draft: input.draft }),
+    ...(input.batch === undefined ? {} : { batch: input.batch }),
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
   };
 }
 
-/** Start a new current attempt unless a draft is active or the session is terminal. */
+/** Start a new current attempt unless a batch is active or the session is terminal. */
 export function startNextAttempt(
   session: ReviewSession,
   existingFolderNames: ReadonlyArray<string>,
-): Result<{ readonly session: ReviewSession; readonly attemptId: ReviewAttemptId }, ActiveDraftBlocksRerun | SessionImmutable | CannotAllocateAttempt> {
+): Result<{ readonly session: ReviewSession; readonly attemptId: ReviewAttemptId }, ActiveBatchBlocksRerun | SessionImmutable | CannotAllocateAttempt> {
   if (session.state._tag === "Merged") {
     return err({ _tag: "SessionImmutable" });
   }
-  if (session.draft !== undefined && hasActiveDraft(session.draft)) {
-    return err({ _tag: "ActiveDraftBlocksRerun" });
+  if (session.batch !== undefined && hasActiveReviewBatch(session.batch)) {
+    return err({ _tag: "ActiveBatchBlocksRerun" });
   }
 
   const attemptId = allocateNextReviewAttemptId(existingFolderNames);
@@ -151,6 +162,24 @@ export function startNextAttempt(
       state: { _tag: "Running", attemptId: attemptId.value },
     },
   });
+}
+
+/** Remove local batch work after explicit rerun confirmation without hiding the current result. */
+export function discardBatchForRerun(
+  session: ReviewSession,
+  confirmedAt: IsoTimestamp,
+): ReviewSession {
+  const {
+    batch: discardedBatch,
+    batchContent: discardedBatchContent,
+    ...sessionWithoutBatch
+  } = session;
+  void discardedBatch;
+  void discardedBatchContent;
+  return {
+    ...sessionWithoutBatch,
+    updatedAt: confirmedAt,
+  };
 }
 
 /** Complete the current attempt, or make a late completion harmless and visible on that attempt. */
