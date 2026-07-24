@@ -16,6 +16,7 @@ This is one release. It includes Pierre Tree, infinite diff streaming, inline fi
 - Existing GitHub review threads appear inline and support replies.
 - PR description, general discussion, checks, commits, and merge readiness are separate from the review workbench.
 - Saved local review work appears as an inbox queue, not separate Drafts or History screens.
+- Each pull request shows only its latest review result for the current head.
 - No GitHub write occurs without an explicit confirmation.
 
 ## Navigation and layout
@@ -39,7 +40,7 @@ Saved reviews is an action queue in the inbox. It shows pull requests with resum
 
 Queues overlap. My PRs means the current user authored the pull request. Saved reviews means Patchdesk has local review work. A pull request can match both queues. The inbox has one active queue at a time; a later saved view may combine queue rules.
 
-Completed and submitted reviews are not in Saved reviews. Patchdesk does not provide separate Review drafts or Review history screens in this release. A future saved view may provide an archive if it proves useful.
+Completed and submitted reviews are not in Saved reviews. Patchdesk does not provide separate Review drafts or Review history screens. It keeps only the latest result for the pull request's current head.
 
 ### File tree and diff navigation
 
@@ -92,6 +93,8 @@ Inspect failing checks opens this view on Checks. It is not a primary workbench 
 
 Local drafts, reply drafts, and queued resolve or reopen actions are stored separately from GitHub data. Refresh updates PR details and inline review threads without replacing local work.
 
+Running review again replaces the current analysis result. When local drafts exist, Patchdesk requires the reviewer to confirm their discard before it starts the new analysis. It does not keep a user-visible history of replaced results.
+
 Before GitHub writes, Patchdesk confirms the current pull-request head. If it changed, Patchdesk retains local work, explains that the diff is stale, and requires refresh and review before a write.
 
 One confirmation shows the exact saved batch:
@@ -105,6 +108,8 @@ After confirmation, Patchdesk creates one pending GitHub review for new inline c
 
 GitHub does not make this mixed batch atomic. If an action fails after another succeeds, Patchdesk records completed writes, retains unfinished local work, and does not retry automatically. It reports the exact outcome to the reviewer.
 
+Patchdesk retains only the minimal remote-write receipts needed to prevent duplicate writes and explain a partial failure. These receipts are not shown as review history.
+
 ## Boundaries
 
 This release does not include:
@@ -113,7 +118,7 @@ This release does not include:
 - unconfirmed GitHub writes;
 - writing general PR comments;
 - continuous tree-following while the diff scrolls;
-- a second findings rail, filters, Fix queue, prepared-review screen, review-details sidebar, Review drafts screen, or Review history screen.
+- a second findings rail, filters, Fix queue, prepared-review screen, review-details sidebar, Review drafts screen, Review history screen, or archive of replaced review results.
 
 ## Verification
 
@@ -126,6 +131,7 @@ Renderer tests cover:
 - thread display, replies, and resolved-thread visibility;
 - local-draft preservation across refresh;
 - mixed-batch confirmation, stale-head protection, partial-write reporting;
+- rerun confirmation before local drafts are discarded and replacement of the prior result;
 - Saved reviews queue membership, overlapping queue labels, and direct workbench opening;
 - removal of old screens and controls.
 
@@ -155,3 +161,4 @@ The existing 1,000-file selection ceiling remains below 200ms.
 - Automatically include mapped findings as local drafts, with remove and restore actions.
 - Remove the prepared-review screen and review-details sidebar.
 - Replace Review drafts and Review history with the overlapping Saved reviews inbox queue.
+- Keep only the latest review result for the current pull-request head and confirm before a rerun discards local drafts.
