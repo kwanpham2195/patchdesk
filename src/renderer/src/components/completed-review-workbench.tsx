@@ -58,14 +58,6 @@ import {
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
 
-type LocalDraftView = {
-  readonly summaryBody: string;
-  readonly comments: ReadonlyArray<{
-    readonly findingId: string;
-    readonly body: string;
-    readonly postability: "postable";
-  }>;
-};
 export type ReviewHistoryItem = {
   readonly id: string;
   readonly state: string;
@@ -82,69 +74,101 @@ type FindingFilter = {
 };
 const DEFAULT_FINDING_FILTER: FindingFilter = { severity: "all", confidence: "all", mapping: "all", category: "all" };
 
-export function ReviewWorkbench(props: {
-  readonly profileId?: string;
-  readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
+export type CompletedReviewWorkbenchModel = {
+  readonly source: { readonly profileId: string; readonly sessionId: string };
   readonly result: ReviewResult;
-  readonly reviewScope?: ReviewScopeProjection;
+  readonly reviewScope: ReviewScopeProjection;
   readonly fullPatch?: string;
   readonly comparison?: RevisionComparison;
   readonly comparisonPatch?: string;
   readonly lifecycle?: ReadonlyArray<FindingLifecycleEntry>;
-  readonly comparisonAvailability?: "available" | "not_requested" | "incomplete" | "missing";
+  readonly comparisonAvailability: "available" | "not_requested" | "incomplete" | "missing";
   readonly pullRequest?: PullRequestSummary;
-  readonly reviewedHeadSha?: string;
+  readonly reviewedHeadSha: string;
   readonly currentHeadSha?: string;
-  readonly freshness?: "fresh" | "stale" | "unavailable";
-  readonly refreshedAt?: string;
-  readonly draft: LocalDraftView;
+  readonly freshness: "fresh" | "stale" | "unavailable";
+  readonly refreshedAt: string;
+  readonly draft: ReviewDraft;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly history: ReadonlyArray<ReviewHistoryItem>;
-  readonly debugHref: string;
-  readonly staleHead?: boolean;
-  readonly canDiscard?: boolean;
-  readonly onNavigationStateChange?: (
+  readonly mergeReadiness?: MergeReadiness;
+};
+
+export type CompletedReviewWorkbenchActions = {
+  readonly saveDraft: (input: {
+    readonly expectedRevision: string;
+    readonly summaryBody: string;
+    readonly comments: ReadonlyArray<{
+      readonly findingId: string;
+      readonly include: boolean;
+      readonly body: string;
+    }>;
+  }) => Promise<{ readonly draft: ReviewDraft; readonly revision: string }>;
+  readonly createPendingReview: () => Promise<{ readonly reviewId: string }>;
+  readonly submitPendingReview: (
+    event: GitHubReviewEvent,
+    summaryBody: string,
+  ) => Promise<{ readonly reviewId: string }>;
+  readonly merge?: (
+    method: MergeMethod,
+    acknowledgedWarnings: boolean,
+  ) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
-  readonly draftEditor?: {
-    readonly draft: ReviewDraft;
-    readonly onSave: (input: {
-      readonly expectedRevision: string;
-      readonly summaryBody: string;
-      readonly comments: ReadonlyArray<{
-        readonly findingId: string;
-        readonly include: boolean;
-        readonly body: string;
-      }>;
-    }) => Promise<{ readonly draft: ReviewDraft; readonly revision: string }>;
-  };
-  readonly submission?: {
-    readonly draft: ReviewDraft;
-    readonly onCreatePending: () => Promise<{ readonly reviewId: string }>;
-    readonly onSubmitPending: (
-      event: GitHubReviewEvent,
-      summaryBody: string,
-    ) => Promise<{ readonly reviewId: string }>;
-  };
-  readonly merge?: {
-    readonly readiness: MergeReadiness;
-    readonly context: {
-      readonly repo: string;
-      readonly prNumber: number;
-      readonly title: string;
-      readonly base: string;
-      readonly head: string;
-      readonly headSha: string;
-    };
-    readonly methods: ReadonlyArray<MergeMethod>;
-    readonly onMerge: (
-      method: MergeMethod,
-      acknowledgedWarnings: boolean,
-    ) => Promise<{ readonly mergeCommitSha?: string }>;
-  };
+};
+
+/** Owns completed-review-local selection, filtering, draft safety, and view state. */
+export function CompletedReviewWorkbench({
+  model,
+  actions,
+}: {
+  readonly model: CompletedReviewWorkbenchModel;
+  readonly actions: CompletedReviewWorkbenchActions;
 }): React.JSX.Element {
-  const fixQueueKey = `patchdesk.fix-queue.v1.${props.profileId ?? "local"}.${props.reviewedHeadSha ?? props.result.summary}`;
+  const props = {
+    profileId: model.source.profileId,
+    sourceSession: model.source,
+    result: model.result,
+    reviewScope: model.reviewScope,
+    fullPatch: model.fullPatch,
+    comparison: model.comparison,
+    comparisonPatch: model.comparisonPatch,
+    lifecycle: model.lifecycle,
+    comparisonAvailability: model.comparisonAvailability,
+    pullRequest: model.pullRequest,
+    reviewedHeadSha: model.reviewedHeadSha,
+    currentHeadSha: model.currentHeadSha,
+    freshness: model.freshness,
+    refreshedAt: model.refreshedAt,
+    comments: model.comments,
+    checks: model.checks,
+    history: model.history,
+    onNavigationStateChange: actions.reportNavigationState,
+    draftEditor: { draft: model.draft, onSave: actions.saveDraft },
+    submission: {
+      draft: model.draft,
+      onCreatePending: actions.createPendingReview,
+      onSubmitPending: actions.submitPendingReview,
+    },
+    merge: model.mergeReadiness === undefined || model.pullRequest === undefined || actions.merge === undefined
+      ? undefined
+      : {
+          readiness: model.mergeReadiness,
+          context: {
+            repo: `${model.pullRequest.ref.owner}/${model.pullRequest.ref.repo}`,
+            prNumber: model.pullRequest.ref.number,
+            title: model.pullRequest.title,
+            base: model.pullRequest.baseBranch,
+            head: model.pullRequest.headBranch,
+            headSha: model.pullRequest.headSha,
+          },
+          methods: ["squash", "merge", "rebase"] as const,
+          onMerge: actions.merge,
+        },
+  };
+  const fixQueueKey = `patchdesk.fix-queue.v1.${props.profileId}.${props.reviewedHeadSha ?? props.result.summary}`;
   const [fixQueue, setFixQueue] = useState<Record<string, FixQueueStatus>>(() => loadFixQueue(fixQueueKey));
   useEffect(() => setFixQueue(loadFixQueue(fixQueueKey)), [fixQueueKey]);
   const updateFixQueue = (findingId: string, status: FixQueueStatus): void => {
@@ -205,8 +229,7 @@ export function ReviewWorkbench(props: {
   useEffect(() => {
     setPreferences(loadReviewViewPreferences(preferenceProfileId));
   }, [preferenceProfileId]);
-  const freshness =
-    props.staleHead === true ? "stale" : (props.freshness ?? "fresh");
+  const freshness = props.freshness;
   const writeBlocked = freshness !== "fresh" || draftSaveState !== "saved";
   const selectFinding = (finding: ReviewResult["findings"][number]): void => {
     setSelectedFinding(finding);

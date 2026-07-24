@@ -3,18 +3,67 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewWorkbench } from "../../src/renderer/src/components/review-workbench";
+import { CompletedReviewWorkbench } from "../../src/renderer/src/components/completed-review-workbench";
 
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
 });
 
-describe("review workbench", () => {
+/** Keeps older fixture literals terse while exercising the real compact boundary. */
+function ReviewWorkbenchFixture(props: {
+  readonly result: never;
+  readonly [key: string]: unknown;
+}): React.JSX.Element {
+  const profileId = typeof props.profileId === "string" ? props.profileId : "fixture";
+  const source = props.sourceSession as { readonly profileId: string; readonly sessionId: string } | undefined;
+  const modelSource = source ?? { profileId, sessionId: "fixture-session" };
+  const draft = {
+    sessionId: modelSource.sessionId,
+    attemptId: "001",
+    state: { _tag: "LocalDraft" },
+    summaryBody: "",
+    suggestedEvent: "COMMENT",
+    comments: [],
+    createdAt: "2026-07-18T00:00:00.000Z",
+    updatedAt: "2026-07-18T00:00:00.000Z",
+  } as never;
+  return (
+    <CompletedReviewWorkbench
+      model={{
+        source: modelSource,
+        result: props.result,
+        reviewScope: (props.reviewScope ?? { kind: "full" }) as never,
+        ...(typeof props.fullPatch === "string" ? { fullPatch: props.fullPatch } : {}),
+        ...(typeof props.comparisonPatch === "string" ? { comparisonPatch: props.comparisonPatch } : {}),
+        ...(props.comparison === undefined ? {} : { comparison: props.comparison as never }),
+        ...(props.lifecycle === undefined ? {} : { lifecycle: props.lifecycle as never }),
+        comparisonAvailability: (props.comparisonAvailability ?? "not_requested") as never,
+        ...(props.pullRequest === undefined ? {} : { pullRequest: props.pullRequest as never }),
+        reviewedHeadSha: (props.reviewedHeadSha ?? "a".repeat(40)) as never,
+        ...(props.currentHeadSha === undefined ? {} : { currentHeadSha: props.currentHeadSha as never }),
+        freshness: (props.staleHead === true ? "stale" : props.freshness ?? "fresh") as never,
+        refreshedAt: "2026-07-18T00:00:00.000Z" as never,
+        draft,
+        comments: (props.comments ?? { threads: [] }) as never,
+        checks: (props.checks ?? { overall: "unknown", checks: [] }) as never,
+        history: (props.history ?? []) as never,
+      }}
+      actions={{
+        saveDraft: async () => ({ draft, revision: "fixture" }),
+        createPendingReview: async () => ({ reviewId: "fixture" }),
+        submitPendingReview: async () => ({ reviewId: "fixture" }),
+        reportNavigationState: () => undefined,
+      }}
+    />
+  );
+}
+
+describe("completed review workbench", () => {
   it("keeps Fix queue statuses local to the reviewed revision", async () => {
     const user = userEvent.setup();
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         profileId="fix-queue"
         reviewedHeadSha="abcdef"
         result={{ changeSummary: "Fix queue.", verdict: "comment", summary: "Fix queue.", findings: [{ id: "guard", severity: "P1", title: "Protect guard", file: "src/a.ts", lineStart: 1, diffSide: "new", explanation: "Protect it.", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } as never}
@@ -29,7 +78,7 @@ describe("review workbench", () => {
   it("persists compact Pierre controls and collapses both workbench rails", async () => {
     const user = userEvent.setup();
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         profileId="compact-controls"
         result={
           {
@@ -95,7 +144,7 @@ describe("review workbench", () => {
       " context",
     ].join("\n");
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         result={
           {
             changeSummary: "Review exact evidence.",
@@ -169,10 +218,44 @@ describe("review workbench", () => {
     expect(screen.getByText("Finding mapped · new lines 7–8")).toBeTruthy();
   });
 
+  it("truthfully hides a selected finding when a filter excludes it and restores it when cleared", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbenchFixture
+        result={{
+          changeSummary: "Filter findings.",
+          verdict: "comment",
+          summary: "One finding per severity.",
+          findings: [
+            { id: "p1", severity: "P1", title: "High finding", explanation: "High.", confidence: "high", mappingStatus: "unmapped" },
+            { id: "p2", severity: "P2", title: "Medium finding", explanation: "Medium.", confidence: "medium", mappingStatus: "unmapped" },
+          ],
+          validationPlan: [],
+          assumptions: [],
+        } as never}
+        comments={{ threads: [] }}
+        checks={{ overall: "unknown", checks: [] }}
+        history={[]}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: /Findings/ }));
+    await user.click(screen.getByRole("button", { name: /High finding/ }));
+    expect(screen.getByText("Finding p1 · no mapped line")).toBeTruthy();
+
+    await user.click(screen.getByLabelText("Filter findings by severity"));
+    await user.click(await screen.findByRole("option", { name: "P2 Medium" }));
+    expect(screen.queryByRole("button", { name: /High finding/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Medium finding/ })).toBeTruthy();
+
+    await user.click(screen.getByLabelText("Filter findings by severity"));
+    await user.click(await screen.findByRole("option", { name: "All severities" }));
+    expect(screen.getByRole("button", { name: /High finding/ })).toBeTruthy();
+  });
+
   it("opens incremental reviews on Updates and preserves the full PR surface", async () => {
     const user = userEvent.setup();
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         reviewScope={{ kind: "incremental", baseSessionId: "base" as never, baseHeadSha: "a".repeat(40) as never, headSha: "b".repeat(40) as never }}
         comparisonAvailability="available"
         comparison={{ schemaVersion: 1, baseSessionId: "base" as never, baseHeadSha: "a".repeat(40) as never, headSha: "b".repeat(40) as never, ancestry: "fast_forward", source: "local_git", completeness: "complete", commits: [], files: [], additions: 1, deletions: 0, createdAt: "2026-07-18T00:00:00.000Z" as never }}
@@ -202,7 +285,7 @@ describe("review workbench", () => {
       value: { writeText: async () => undefined },
     });
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         result={
           {
             changeSummary: "Adds the completed-review workbench.",
@@ -303,7 +386,7 @@ describe("review workbench", () => {
 
   it("shows a stale-head warning instead of a GitHub write control", () => {
     render(
-      <ReviewWorkbench
+      <ReviewWorkbenchFixture
         result={
           {
             changeSummary: "",

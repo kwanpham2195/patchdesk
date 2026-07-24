@@ -6,7 +6,7 @@ import {
   type ReviewInitialSection,
   type ReviewStartMode,
 } from "./components/maintainer-inbox";
-import { ReviewWorkbench } from "./components/review-workbench";
+import { CompletedReviewWorkbench } from "./components/completed-review-workbench";
 import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
 import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
@@ -707,18 +707,24 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       ? longWorkbenchFixtureData
       : workbenchFixtureData;
     return shell(
-      <ReviewWorkbench
-        profileId="fixture"
-        result={fixture.result as never}
-        fullPatch={fixture.fullPatch}
-        pullRequest={fixture.pullRequest as never}
-        reviewedHeadSha="abcdef1234567890abcdef1234567890abcdef12"
-        freshness="fresh"
-        refreshedAt="2026-07-17T00:00:00.000Z"
-        draft={workbenchFixtureData.draft}
-        draftEditor={{
+      <CompletedReviewWorkbench
+        model={{
+          source: { profileId: "fixture", sessionId: "fixture-session" },
+          result: fixture.result as never,
+          reviewScope: { kind: "full" },
+          fullPatch: fixture.fullPatch,
+          comparisonAvailability: "not_requested",
+          pullRequest: fixture.pullRequest as never,
+          reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
+          freshness: "fresh",
+          refreshedAt: "2026-07-17T00:00:00.000Z",
           draft: workbenchFixtureData.editableDraft as never,
-          onSave: async (input) => {
+          comments: fixture.comments as never,
+          checks: fixture.checks,
+          history: workbenchFixtureData.history,
+        }}
+        actions={{
+          saveDraft: async (input) => {
             const draft = {
               ...workbenchFixtureData.editableDraft,
               summaryBody: input.summaryBody,
@@ -740,11 +746,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             };
             return { draft: draft as never, revision: draft.updatedAt };
           },
+          createPendingReview: async () => ({ reviewId: "fixture" }),
+          submitPendingReview: async () => ({ reviewId: "fixture" }),
+          reportNavigationState: setNavigationState,
         }}
-        comments={fixture.comments as never}
-        checks={fixture.checks}
-        history={workbenchFixtureData.history}
-        debugHref={workbenchFixtureData.debugHref}
       />,
       { kind: "workbench", sessionId: "fixture-session" },
     );
@@ -885,82 +890,38 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   }
 
   if (workbench?.state === "completed" && dashboard !== undefined) {
-    const draftView = workbench.draft as
-      | {
-          readonly summaryBody?: string;
-          readonly comments?: ReadonlyArray<{
-            readonly findingId: string;
-            readonly body: string;
-            readonly postability: "postable";
-          }>;
-        }
-      | undefined;
-    const merge =
-      workbench.pullRequest === undefined ||
-      workbench.mergeReadiness === undefined
-        ? undefined
-        : {
-            readiness: workbench.mergeReadiness as never,
-            context: {
-              repo: `${workbench.pullRequest.ref.owner}/${workbench.pullRequest.ref.repo}`,
-              prNumber: workbench.pullRequest.ref.number,
-              title: workbench.pullRequest.title,
-              base: workbench.pullRequest.baseBranch,
-              head: workbench.pullRequest.headBranch,
-              headSha: workbench.pullRequest.headSha,
-            },
-            methods: ["squash", "merge", "rebase"] as const,
-            onMerge: async (
-              method: "squash" | "merge" | "rebase",
-              acknowledgedWarnings: boolean,
-            ) => mergeReview(method, acknowledgedWarnings),
-          };
     return shell(
-      <ReviewWorkbench
-        profileId={workbench.session.key.profileId}
-        sourceSession={{
-          profileId: workbench.session.key.profileId,
-          sessionId: workbench.session.id,
-        }}
-        result={workbench.result as never}
-        {...(workbench.reviewScope === undefined ? {} : { reviewScope: workbench.reviewScope as never })}
-        {...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch })}
-        {...(workbench.comparison === undefined ? {} : { comparison: workbench.comparison as never })}
-        {...(workbench.comparisonPatch === undefined ? {} : { comparisonPatch: workbench.comparisonPatch })}
-        {...(workbench.lifecycle === undefined ? {} : { lifecycle: workbench.lifecycle as never })}
-        {...(workbench.comparisonAvailability === undefined ? {} : { comparisonAvailability: workbench.comparisonAvailability })}
-        {...(workbench.pullRequest === undefined
-          ? {}
-          : { pullRequest: workbench.pullRequest as never })}
-        {...(workbench.reviewedHeadSha === undefined
-          ? {}
-          : { reviewedHeadSha: workbench.reviewedHeadSha })}
-        {...(workbench.currentHeadSha === undefined
-          ? {}
-          : { currentHeadSha: workbench.currentHeadSha })}
-        {...(workbench.freshness === undefined
-          ? {}
-          : { freshness: workbench.freshness })}
-        {...(workbench.refreshedAt === undefined
-          ? {}
-          : { refreshedAt: workbench.refreshedAt })}
-        draft={{
-          summaryBody: draftView?.summaryBody ?? "",
-          comments: draftView?.comments ?? [],
-        }}
-        comments={workbench.comments as never}
-        checks={workbench.checks as never}
-        history={(workbench.history as never) ?? []}
-        debugHref={`/debug/${workbench.session.id}`}
-        onNavigationStateChange={setNavigationState}
-        draftEditor={{ draft: workbench.draft as never, onSave: saveDraft }}
-        submission={{
+      <CompletedReviewWorkbench
+        model={{
+          source: {
+            profileId: workbench.session.key.profileId,
+            sessionId: workbench.session.id,
+          },
+          result: workbench.result as never,
+          reviewScope: workbench.reviewScope as never,
+          ...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch }),
+          ...(workbench.comparison === undefined ? {} : { comparison: workbench.comparison as never }),
+          ...(workbench.comparisonPatch === undefined ? {} : { comparisonPatch: workbench.comparisonPatch }),
+          ...(workbench.lifecycle === undefined ? {} : { lifecycle: workbench.lifecycle as never }),
+          comparisonAvailability: workbench.comparisonAvailability as never,
+          ...(workbench.pullRequest === undefined ? {} : { pullRequest: workbench.pullRequest as never }),
+          reviewedHeadSha: workbench.reviewedHeadSha as never,
+          ...(workbench.currentHeadSha === undefined ? {} : { currentHeadSha: workbench.currentHeadSha }),
+          freshness: workbench.freshness as never,
+          refreshedAt: workbench.refreshedAt as never,
           draft: workbench.draft as never,
-          onCreatePending: async () => reviewWrite("/v1/reviews/pending"),
-          onSubmitPending: async (event) =>
-            reviewWrite("/v1/reviews/submit", { event }),
+          comments: workbench.comments as never,
+          checks: workbench.checks as never,
+          history: (workbench.history as never) ?? [],
+          ...(workbench.mergeReadiness === undefined ? {} : { mergeReadiness: workbench.mergeReadiness as never }),
         }}
-        {...(merge === undefined ? {} : { merge })}
+        actions={{
+          saveDraft,
+          createPendingReview: async () => reviewWrite("/v1/reviews/pending"),
+          submitPendingReview: async (event) => reviewWrite("/v1/reviews/submit", { event }),
+          merge: mergeReview,
+          reportNavigationState: setNavigationState,
+        }}
       />,
       { kind: "workbench", sessionId: workbench.session.id },
     );
