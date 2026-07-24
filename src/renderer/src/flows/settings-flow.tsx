@@ -1,4 +1,5 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { requestJson } from "../api-client";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
@@ -52,14 +53,12 @@ export function SettingsFlow({
   discoveryFeedback,
   profiles,
   githubAccess,
-  environment,
   pathFeedback,
   onAdd,
   onSaveProfile,
   onDiscover,
   onAddSuggestion,
   onTestGitHubAccess,
-  onCheckEnvironment,
   onSelectProfile,
   onPath,
   onChoosePath,
@@ -96,14 +95,12 @@ export function SettingsFlow({
   readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly githubAccess?: string;
-  readonly environment?: Record<string, string>;
   readonly pathFeedback?: string;
   readonly onAdd: () => void;
   readonly onSaveProfile: () => void;
   readonly onDiscover: () => void;
   readonly onAddSuggestion: (repo: Repo) => void;
   readonly onTestGitHubAccess: () => void;
-  readonly onCheckEnvironment: () => void;
   readonly onSelectProfile: (id: string) => void;
   readonly onPath: (repo: Repo) => void;
   readonly onChoosePath: (repo: Repo) => void;
@@ -114,6 +111,21 @@ export function SettingsFlow({
   const [removalTarget, setRemovalTarget] = useState<Repo>();
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
+  const [environment, setEnvironment] = useState<Record<string, string>>();
+  const loadEnvironment = async (): Promise<void> => {
+    const value = await requestJson("/v1/environment");
+    if (!record(value)) return;
+    setEnvironment(
+      Object.fromEntries(
+        Object.entries(value).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    );
+  };
+  useEffect(() => {
+    void loadEnvironment();
+  }, []);
   const setupSteps =
     environment === undefined ? [] : environmentSetupSteps(environment);
 
@@ -316,7 +328,7 @@ export function SettingsFlow({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={onCheckEnvironment}>
+              <Button variant="outline" onClick={() => void loadEnvironment()}>
                 {setupSteps.length === 0
                   ? "Check environment"
                   : "Recheck environment"}
@@ -631,4 +643,8 @@ function environmentSetupSteps(
 
 function key(repo: Repo): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

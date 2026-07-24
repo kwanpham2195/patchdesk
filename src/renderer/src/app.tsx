@@ -113,7 +113,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
   const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string | undefined>();
-  const [environment, setEnvironment] = useState<Record<string, string>>();
   const [reviewRecords, setReviewRecords] = useState<
     ReadonlyArray<ReviewRecord>
   >([]);
@@ -141,18 +140,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     ghAccount: "",
     workspaceRoot: "",
   });
-  const loadEnvironment = useCallback(async (): Promise<void> => {
-    const value = await api("/v1/environment");
-    if (record(value)) {
-      setEnvironment(
-        Object.fromEntries(
-          Object.entries(value).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string",
-          ),
-        ),
-      );
-    }
-  }, []);
   const loadCompletedWorkbench = useCallback(
     async (profileId: string, sessionId: string): Promise<void> => {
       const value = await api("/v1/reviews/load", {
@@ -337,9 +324,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       return;
     void loadReviewRecords(dashboard.profile.id);
   }, [dashboard, destination.kind, loadReviewRecords]);
-  useEffect(() => {
-    if (destination.kind === "settings") void loadEnvironment();
-  }, [destination.kind, loadEnvironment]);
   useEffect(() => {
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     void window.patchdesk
@@ -678,9 +662,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     if (record(value) && typeof value.state === "string")
       setGithubAccess(value.state);
   };
-  const checkEnvironment = async (): Promise<void> => {
-    await loadEnvironment();
-  };
   const previewEntry = async (): Promise<void> => {
     previewTrigger.current =
       document.activeElement instanceof HTMLElement
@@ -840,14 +821,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           discoveryFeedback={discoveryFeedback}
           profiles={profiles}
           {...(githubAccess === undefined ? {} : { githubAccess })}
-          {...(environment === undefined ? {} : { environment })}
           {...(pathFeedback === undefined ? {} : { pathFeedback })}
           onAdd={() => void addRepo()}
           onSaveProfile={() => void saveProfile()}
           onDiscover={() => void discover()}
           onAddSuggestion={(repo) => void addSuggestion(repo)}
           onTestGitHubAccess={() => void testGitHubAccess()}
-          onCheckEnvironment={() => void checkEnvironment()}
           onSelectProfile={(id) => void select(id)}
           onPath={editPath}
           onChoosePath={(repo) => void choosePath(repo)}
