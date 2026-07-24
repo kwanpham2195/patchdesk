@@ -42,7 +42,7 @@ import type {
   PrRow,
   RepoOutcome,
   ReviewRecord,
-} from "../app";
+} from "../renderer-models";
 import type { InboxResponse } from "../renderer-contracts";
 
 export function InboxScreen({

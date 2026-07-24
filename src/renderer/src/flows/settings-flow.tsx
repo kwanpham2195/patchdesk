@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { Dashboard, Profile, Repo } from "../app";
+import type { Dashboard, Profile, Repo } from "../renderer-models";
 
 export function SettingsFlow({
   dashboard,

@@ -10,6 +10,15 @@ import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxScreen, Pending, ReviewRecords } from "./flows/inbox-flow";
 import { SettingsFlow } from "./flows/settings-flow";
+import type {
+  Dashboard,
+  DashboardScreenState,
+  Preview,
+  Profile,
+  Repo,
+  ReviewRecord,
+  WorkbenchPayload,
+} from "./renderer-models";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,123 +64,7 @@ import {
   type DiffThemePreferences,
 } from "./diff-theme-preferences";
 
-export type DashboardScreenState =
-  | "empty"
-  | "loading"
-  | "success"
-  | "degraded"
-  | "error"
-  | "archived"
-  | "no_open_prs";
 export type AppProps = { readonly initialState?: DashboardScreenState };
-export type Profile = {
-  readonly id: string;
-  readonly label: string;
-  readonly githubHost: string;
-  readonly ghAccount: string;
-  readonly workspaceRoots?: ReadonlyArray<string>;
-};
-export type Repo = {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly localPath?: string;
-  readonly archived?: boolean;
-};
-export type RepoOutcome = { readonly repo: Repo; readonly state: string };
-export type PrRow = {
-  readonly summary: {
-    readonly ref: {
-      readonly host: string;
-      readonly owner: string;
-      readonly repo: string;
-      readonly number: number;
-    };
-    readonly title: string;
-    readonly description?: string;
-    readonly author: string;
-    readonly checkSummary?: { readonly overall: string };
-  };
-  readonly priority: string;
-  readonly badges: ReadonlyArray<string>;
-};
-export type Dashboard = {
-  readonly profile: Profile;
-  readonly dashboard: {
-    readonly rows: ReadonlyArray<PrRow>;
-    readonly repos: ReadonlyArray<RepoOutcome>;
-  };
-};
-export type Preview = {
-  readonly pr: {
-    readonly host?: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly number: number;
-  };
-  readonly confirmation: {
-    readonly required: boolean;
-    readonly targetProfileId?: string;
-  };
-};
-type WorkbenchPayload = {
-  readonly state: "review_started" | "completed";
-  readonly session: {
-    readonly id: string;
-    readonly key: {
-      readonly profileId: string;
-      readonly host: string;
-      readonly owner: string;
-      readonly repo: string;
-      readonly prNumber: number;
-      readonly headSha: string;
-    };
-    readonly currentAttemptId?: string;
-  };
-  readonly result?: unknown;
-  readonly draft?: unknown;
-  readonly comments?: unknown;
-  readonly checks?: unknown;
-  readonly history?: unknown;
-  readonly mergeReadiness?: unknown;
-  readonly runId?: string;
-  readonly reviewScope?: unknown;
-  readonly fullPatch?: string;
-  readonly comparison?: unknown;
-  readonly comparisonPatch?: string;
-  readonly lifecycle?: unknown;
-  readonly comparisonAvailability?:
-    "available" | "not_requested" | "incomplete" | "missing";
-  readonly pullRequest?: {
-    readonly ref: {
-      readonly host?: string;
-      readonly owner: string;
-      readonly repo: string;
-      readonly number: number;
-    };
-    readonly title: string;
-    readonly description?: string;
-    readonly author: string;
-    readonly headBranch: string;
-    readonly baseBranch: string;
-    readonly headSha: string;
-  };
-  readonly reviewedHeadSha?: string;
-  readonly currentHeadSha?: string;
-  readonly freshness?: "fresh" | "stale" | "unavailable";
-  readonly refreshedAt?: string;
-};
-export type ReviewRecord = {
-  readonly id: string;
-  readonly profileId: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly prNumber: number;
-  readonly title?: string;
-  readonly state: string;
-  readonly draftState?: string;
-  readonly updatedAt: string;
-};
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
 export function App({ initialState }: AppProps): React.JSX.Element {
