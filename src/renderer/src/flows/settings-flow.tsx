@@ -41,8 +41,6 @@ export function SettingsFlow({
   dashboard,
   paths,
   setPaths,
-  newRepo,
-  setNewRepo,
   profileDraft,
   setProfileDraft,
   appearance,
@@ -51,9 +49,9 @@ export function SettingsFlow({
   onDiffThemeChange,
   profiles,
   pathFeedback,
-  onAdd,
   onSaveProfile,
   onAddSuggestion,
+  onWorkspaceReload,
   onSelectProfile,
   onPath,
   onChoosePath,
@@ -64,8 +62,6 @@ export function SettingsFlow({
   readonly dashboard?: Dashboard;
   readonly paths: Record<string, string>;
   readonly setPaths: Dispatch<SetStateAction<Record<string, string>>>;
-  readonly newRepo: string;
-  readonly setNewRepo: (value: string) => void;
   readonly profileDraft: {
     readonly id: string;
     readonly label: string;
@@ -88,9 +84,9 @@ export function SettingsFlow({
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
   readonly pathFeedback?: string;
-  readonly onAdd: () => void;
   readonly onSaveProfile: () => void;
   readonly onAddSuggestion: (repo: Repo) => Promise<void>;
+  readonly onWorkspaceReload: () => Promise<void>;
   readonly onSelectProfile: (id: string) => void;
   readonly onPath: (repo: Repo) => void;
   readonly onChoosePath: (repo: Repo) => void;
@@ -101,6 +97,7 @@ export function SettingsFlow({
   const [removalTarget, setRemovalTarget] = useState<Repo>();
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
+  const [newRepo, setNewRepo] = useState("");
   const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
   const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string>();
@@ -119,6 +116,20 @@ export function SettingsFlow({
   useEffect(() => {
     void loadEnvironment();
   }, []);
+  const addRepo = async (): Promise<void> => {
+    const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
+    if (match === null) return;
+    await requestJson("/v1/watchlist", {
+      method: "POST",
+      body: {
+        host: dashboard?.profile.githubHost ?? "github.com",
+        owner: match[1],
+        repo: match[2],
+      },
+    });
+    setNewRepo("");
+    await onWorkspaceReload();
+  };
   const discover = async (): Promise<void> => {
     setDiscoveryFeedback("Discovering repositories...");
     try {
@@ -464,7 +475,7 @@ export function SettingsFlow({
                 placeholder="owner/repo"
               />
             </div>
-            <Button onClick={onAdd}>Add repository</Button>
+            <Button onClick={() => void addRepo()}>Add repository</Button>
             <Button variant="outline" onClick={() => void discover()}>
               Discover
             </Button>

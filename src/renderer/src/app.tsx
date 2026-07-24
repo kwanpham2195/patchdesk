@@ -107,7 +107,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [appearance]);
-  const [newRepo, setNewRepo] = useState("");
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [pathFeedback, setPathFeedback] = useState<string>();
   const [reviewRecords, setReviewRecords] = useState<
@@ -584,20 +583,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     });
     await load();
   };
-  const addRepo = async (): Promise<void> => {
-    const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
-    if (match === null) return;
-    await api("/v1/watchlist", {
-      method: "POST",
-      body: {
-        host: dashboard?.profile.githubHost ?? "github.com",
-        owner: match[1],
-        repo: match[2],
-      },
-    });
-    setNewRepo("");
-    await load();
-  };
   const editPath = async (repo: Repo): Promise<void> => {
     await api("/v1/watchlist/path", {
       method: "PATCH",
@@ -774,8 +759,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           {...(dashboard === undefined ? {} : { dashboard })}
           paths={paths}
           setPaths={setPaths}
-          newRepo={newRepo}
-          setNewRepo={setNewRepo}
           profileDraft={profileDraft}
           setProfileDraft={setProfileDraft}
           appearance={appearance}
@@ -790,9 +773,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           }}
           profiles={profiles}
           {...(pathFeedback === undefined ? {} : { pathFeedback })}
-          onAdd={() => void addRepo()}
           onSaveProfile={() => void saveProfile()}
           onAddSuggestion={addSuggestion}
+          onWorkspaceReload={load}
           onSelectProfile={(id) => void select(id)}
           onPath={editPath}
           onChoosePath={(repo) => void choosePath(repo)}
