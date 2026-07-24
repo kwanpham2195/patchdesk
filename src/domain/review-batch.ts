@@ -100,7 +100,8 @@ export type ReviewBatchState =
       readonly _tag: "Submitted";
       readonly reviewId: string;
       readonly event: GitHubReviewEvent;
-    };
+    }
+  | { readonly _tag: "Completed" };
 
 /** A durable receipt proving one remote write completed successfully. */
 export type RemoteWriteReceipt =
@@ -187,6 +188,7 @@ const stateSchema = v.variant("_tag", [
     reviewId: v.pipe(v.string(), v.minLength(1)),
     event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
   }),
+  v.strictObject({ _tag: v.literal("Completed") }),
 ]);
 
 const itemSchema = v.variant("_tag", [
@@ -324,7 +326,7 @@ export function parseReviewBatch(
 export function hasActiveReviewBatch(
   batch: Pick<ReviewBatch, "state">,
 ): boolean {
-  return batch.state._tag !== "Submitted";
+  return batch.state._tag !== "Submitted" && batch.state._tag !== "Completed";
 }
 
 function parseItem(
@@ -392,7 +394,8 @@ function parseState(
   if (
     state._tag === "Local" ||
     state._tag === "PendingReview" ||
-    state._tag === "Submitted"
+    state._tag === "Submitted" ||
+    state._tag === "Completed"
   ) {
     return ok(state);
   }
@@ -499,6 +502,16 @@ function hasCoherentRelationships(
     return !completedOperationKeys.has(operationKey(state.operation));
   }
 
+  const plannedOperationKeys = plannedOperationKeysFor(items);
+  if (state._tag === "Completed") {
+    return (
+      plannedOperationKeys.size > 0 &&
+      !plannedOperationKeys.has("pending-review") &&
+      plannedOperationKeys.size === completedOperationKeys.size &&
+      [...plannedOperationKeys].every((key) => completedOperationKeys.has(key))
+    );
+  }
+
   const pendingReviewReceipt = receipts.find(
     (receipt): receipt is Extract<
       RemoteWriteReceipt,
@@ -512,7 +525,6 @@ function hasCoherentRelationships(
     return false;
   }
 
-  const plannedOperationKeys = plannedOperationKeysFor(items);
   return (
     plannedOperationKeys.size > 0 &&
     plannedOperationKeys.size === completedOperationKeys.size &&

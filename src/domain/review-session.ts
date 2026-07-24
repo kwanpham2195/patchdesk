@@ -154,7 +154,8 @@ export function startNextAttempt(
     return err({ _tag: "CannotAllocateAttempt" });
   }
   const sessionForNextAttempt =
-    session.batch?.state._tag === "Submitted"
+    session.batch?.state._tag === "Submitted" ||
+    session.batch?.state._tag === "Completed"
       ? withoutReviewBatch(session)
       : session;
 

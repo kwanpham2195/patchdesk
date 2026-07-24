@@ -327,6 +327,123 @@ describe("Patchdesk review domain", () => {
     })._tag).toBe("ok");
   });
 
+  it("accepts a receipt-complete reply and thread-state batch without a GitHub review", () => {
+    const fixture = batchFixture();
+    const parsed = parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Completed" },
+      items: fixture.items.filter((item) => item._tag !== "InlineComment"),
+      receipts: [
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    });
+
+    expect(parsed).toMatchObject({ _tag: "ok", value: { state: { _tag: "Completed" } } });
+    if (parsed._tag === "ok") {
+      expect(parsed.value.state).toEqual({ _tag: "Completed" });
+    }
+  });
+
+  it("rejects a completed batch that carries a GitHub review ID", () => {
+    const fixture = batchFixture();
+
+    expect(parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Completed", reviewId: "review-1" },
+      items: fixture.items.filter((item) => item._tag !== "InlineComment"),
+      receipts: [
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    })._tag).toBe("err");
+  });
+
+  it.each([
+    {
+      name: "included inline comment",
+      items: batchFixture().items,
+      receipts: [
+        {
+          _tag: "PendingReviewCreated",
+          reviewId: "review-1",
+          itemIds: ["finding-1"],
+        },
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    },
+    {
+      name: "missing reply receipt",
+      items: batchFixture().items.filter((item) => item._tag !== "InlineComment"),
+      receipts: [{
+        _tag: "ThreadStateChanged",
+        itemId: "thread-state-1",
+        state: "resolved",
+      }],
+    },
+  ])("rejects a completed batch with $name", ({ items, receipts }) => {
+    expect(parseReviewBatch({
+      ...batchFixture(),
+      state: { _tag: "Completed" },
+      items,
+      receipts,
+    })._tag).toBe("err");
+  });
+
+  it("preserves Submitted for a pending review that was separately submitted", () => {
+    const parsed = parseReviewBatch({
+      ...batchFixture(),
+      state: { _tag: "Submitted", reviewId: "review-1", event: "COMMENT" },
+      receipts: [
+        {
+          _tag: "PendingReviewCreated",
+          reviewId: "review-1",
+          itemIds: ["finding-1"],
+        },
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    });
+
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "Submitted", reviewId: "review-1" } },
+    });
+  });
+
   it.each([
     {
       name: "missing item",
@@ -524,6 +641,53 @@ describe("Patchdesk review domain", () => {
       _tag: "err",
       error: { _tag: "ActiveBatchBlocksRerun" },
     });
+  });
+
+  it("clears a completed reply and thread-state batch before a rerun", () => {
+    const fixture = batchFixture();
+    const completedBatch = mustParse(parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Completed" },
+      items: fixture.items.filter((item) => item._tag !== "InlineComment"),
+      receipts: [
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    }));
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      state: {
+        _tag: "ReviewCompleted" as const,
+        attemptId: completedBatch.attemptId,
+      },
+      currentAttemptId: completedBatch.attemptId,
+      batch: { state: completedBatch.state },
+      batchContent: completedBatch,
+    };
+
+    expect(hasActiveReviewBatch(completedBatch)).toBe(false);
+    const started = mustParse(startNextAttempt(session, ["001"]));
+    expect(started).toMatchObject({
+      attemptId: "002",
+      session: {
+        currentAttemptId: "002",
+        state: { _tag: "Running", attemptId: "002" },
+      },
+    });
+    expect(started.session.batch).toBeUndefined();
+    expect(started.session.batchContent).toBeUndefined();
   });
 
   it("discards only the batch before a rerun and preserves the visible result", () => {
