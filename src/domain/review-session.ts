@@ -108,7 +108,7 @@ export type ActiveBatchBlocksRerun = { readonly _tag: "ActiveBatchBlocksRerun" }
 /** An incomplete remote write must be inspected instead of discarded for rerun. */
 export type ReviewBatchRemediationRequired = {
   readonly _tag: "ReviewBatchRemediationRequired";
-  readonly batchState: "Applying" | "PartialFailure";
+  readonly batchState: "Applying" | "PartialFailure" | "Conflicting";
 };
 export type SessionImmutable = { readonly _tag: "SessionImmutable" };
 export type CannotAllocateAttempt = { readonly _tag: "CannotAllocateAttempt" };
@@ -150,8 +150,11 @@ export function startNextAttempt(
   if (session.state._tag === "Merged") {
     return err({ _tag: "SessionImmutable" });
   }
-  const batchState = currentBatchState(session);
-  if (batchState !== undefined && hasActiveReviewBatch({ state: batchState })) {
+  const batchEvidence = currentBatchStates(session);
+  if (
+    !batchEvidence.consistent ||
+    batchEvidence.states.some((state) => hasActiveReviewBatch({ state }))
+  ) {
     return err({ _tag: "ActiveBatchBlocksRerun" });
   }
 
@@ -160,8 +163,8 @@ export function startNextAttempt(
     return err({ _tag: "CannotAllocateAttempt" });
   }
   const sessionForNextAttempt =
-    batchState?._tag === "Submitted" ||
-    batchState?._tag === "Completed"
+    batchEvidence.states[0]?._tag === "Submitted" ||
+    batchEvidence.states[0]?._tag === "Completed"
       ? withoutReviewBatch(session)
       : session;
 
@@ -183,15 +186,20 @@ export function discardBatchForRerun(
   session: ReviewSession,
   confirmedAt: IsoTimestamp,
 ): Result<ReviewSession, ReviewBatchRemediationRequired> {
-  const batchState = currentBatchState(session);
-  if (
-    batchState?._tag === "Applying" ||
-    (batchState?._tag === "PartialFailure" &&
-      batchState.failure.category === "outcome_unknown")
-  ) {
+  const batchEvidence = currentBatchStates(session);
+  const remediationState = batchEvidence.states.find(
+    requiresBatchRemediation,
+  );
+  if (remediationState !== undefined) {
     return err({
       _tag: "ReviewBatchRemediationRequired",
-      batchState: batchState._tag,
+      batchState: remediationState._tag,
+    });
+  }
+  if (!batchEvidence.consistent) {
+    return err({
+      _tag: "ReviewBatchRemediationRequired",
+      batchState: "Conflicting",
     });
   }
 
@@ -201,10 +209,84 @@ export function discardBatchForRerun(
   });
 }
 
-function currentBatchState(
+function currentBatchStates(
   session: Pick<ReviewSession, "batch" | "batchContent">,
-): ReviewBatch["state"] | undefined {
-  return session.batchContent?.state ?? session.batch?.state;
+): {
+  readonly states: ReadonlyArray<ReviewBatch["state"]>;
+  readonly consistent: boolean;
+} {
+  const summary = session.batch?.state;
+  const content = session.batchContent?.state;
+  if (summary !== undefined && content !== undefined) {
+    return {
+      states: [summary, content],
+      consistent: sameBatchState(summary, content),
+    };
+  }
+  if (summary !== undefined) {
+    return { states: [summary], consistent: true };
+  }
+  if (content !== undefined) return { states: [content], consistent: true };
+  return { states: [], consistent: true };
+}
+
+function sameBatchState(
+  left: ReviewBatch["state"],
+  right: ReviewBatch["state"],
+): boolean {
+  switch (left._tag) {
+    case "Local":
+    case "Completed":
+      return right._tag === left._tag;
+    case "PendingReview":
+      return right._tag === "PendingReview" && left.reviewId === right.reviewId;
+    case "Submitted":
+      return (
+        right._tag === "Submitted" &&
+        left.reviewId === right.reviewId &&
+        left.event === right.event
+      );
+    case "Applying":
+      return (
+        right._tag === "Applying" &&
+        sameBatchOperation(left.operation, right.operation)
+      );
+    case "PartialFailure":
+      return (
+        right._tag === "PartialFailure" &&
+        sameBatchOperation(left.operation, right.operation) &&
+        left.failure.category === right.failure.category &&
+        left.failure.message === right.failure.message
+      );
+  }
+}
+
+function sameBatchOperation(
+  left: Extract<ReviewBatch["state"], { readonly operation: unknown }>["operation"],
+  right: Extract<ReviewBatch["state"], { readonly operation: unknown }>["operation"],
+): boolean {
+  switch (left._tag) {
+    case "CreatePendingReview":
+      return (
+        right._tag === "CreatePendingReview" &&
+        left.itemIds.length === right.itemIds.length &&
+        left.itemIds.every((itemId, index) => itemId === right.itemIds[index])
+      );
+    case "Reply":
+      return right._tag === "Reply" && left.itemId === right.itemId;
+    case "ThreadState":
+      return right._tag === "ThreadState" && left.itemId === right.itemId;
+  }
+}
+
+function requiresBatchRemediation(
+  state: ReviewBatch["state"],
+): state is Extract<ReviewBatch["state"], { readonly _tag: "Applying" | "PartialFailure" }> {
+  return (
+    state._tag === "Applying" ||
+    (state._tag === "PartialFailure" &&
+      state.failure.category === "outcome_unknown")
+  );
 }
 
 function withoutReviewBatch(session: ReviewSession): ReviewSession {

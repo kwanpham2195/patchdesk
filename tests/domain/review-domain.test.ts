@@ -862,6 +862,59 @@ describe("Patchdesk review domain", () => {
     });
   });
 
+  it("does not let terminal batch content hide an applying summary during rerun", () => {
+    const batchContent = mustParse(parseReviewBatch({
+      ...batchFixture(),
+      state: { _tag: "Submitted", reviewId: "review-1", event: "COMMENT" },
+      receipts: [
+        {
+          _tag: "PendingReviewCreated",
+          reviewId: "review-1",
+          itemIds: ["finding-1"],
+        },
+        {
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        },
+        {
+          _tag: "ThreadStateChanged",
+          itemId: "thread-state-1",
+          state: "resolved",
+        },
+      ],
+    }));
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      batch: {
+        state: {
+          _tag: "Applying" as const,
+          operation: {
+            _tag: "CreatePendingReview" as const,
+            itemIds: [mustParse(parseLocalReviewItemId("finding-1"))],
+          },
+        },
+      },
+      batchContent,
+    };
+
+    expect(startNextAttempt(session, ["001"])).toMatchObject({
+      _tag: "err",
+      error: { _tag: "ActiveBatchBlocksRerun" },
+    });
+    expect(discardBatchForRerun(session, times.completed)).toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "ReviewBatchRemediationRequired",
+        batchState: "Applying",
+      },
+    });
+  });
+
   it("allows an explicitly confirmed discard after a known rejected write", () => {
     const batchContent = mustParse(parseReviewBatch({
       ...batchFixture(),
