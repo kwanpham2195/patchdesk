@@ -15,6 +15,7 @@ This is one release. It includes Pierre Tree, infinite diff streaming, inline fi
 - Reviewers can write a comment on one changed line or a selected range.
 - Existing GitHub review threads appear inline and support replies.
 - PR description, general discussion, checks, commits, and merge readiness are separate from the review workbench.
+- Saved local review work appears as an inbox queue, not separate Drafts or History screens.
 - No GitHub write occurs without an explicit confirmation.
 
 ## Navigation and layout
@@ -31,6 +32,14 @@ At desktop widths, the workbench has:
 - a contextual inspector.
 
 The old prepared-review screen, review-details sidebar, findings list, filters, and Fix queue are removed. The compact sheet remains available at narrower widths.
+
+### Saved reviews queue
+
+Saved reviews is an action queue in the inbox. It shows pull requests with resumable local work: local drafts, a pending review, or a review that failed and needs attention. Selecting it filters the normal inbox list. Opening a row goes directly to the workbench.
+
+Queues overlap. My PRs means the current user authored the pull request. Saved reviews means Patchdesk has local review work. A pull request can match both queues. The inbox has one active queue at a time; a later saved view may combine queue rules.
+
+Completed and submitted reviews are not in Saved reviews. Patchdesk does not provide separate Review drafts or Review history screens in this release. A future saved view may provide an archive if it proves useful.
 
 ### File tree and diff navigation
 
@@ -104,7 +113,7 @@ This release does not include:
 - unconfirmed GitHub writes;
 - writing general PR comments;
 - continuous tree-following while the diff scrolls;
-- a second findings rail, filters, Fix queue, prepared-review screen, or review-details sidebar.
+- a second findings rail, filters, Fix queue, prepared-review screen, review-details sidebar, Review drafts screen, or Review history screen.
 
 ## Verification
 
@@ -117,6 +126,7 @@ Renderer tests cover:
 - thread display, replies, and resolved-thread visibility;
 - local-draft preservation across refresh;
 - mixed-batch confirmation, stale-head protection, partial-write reporting;
+- Saved reviews queue membership, overlapping queue labels, and direct workbench opening;
 - removal of old screens and controls.
 
 Browser tests cover:
@@ -144,3 +154,4 @@ The existing 1,000-file selection ceiling remains below 200ms.
 - Keep general PR discussion read-only.
 - Automatically include mapped findings as local drafts, with remove and restore actions.
 - Remove the prepared-review screen and review-details sidebar.
+- Replace Review drafts and Review history with the overlapping Saved reviews inbox queue.
