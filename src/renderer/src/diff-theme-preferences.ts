@@ -19,6 +19,11 @@ export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
 };
 
 const storageKey = "patchdesk.diff-theme.v2";
+const legacyStorageKey = "patchdesk.diff-theme.v1";
+
+export type SaveDiffThemePreferencesResult =
+  | { readonly saved: true; readonly preferences: DiffThemePreferences }
+  | { readonly saved: false; readonly preferences: DiffThemePreferences };
 
 function hasTheme(
   themes: ReadonlyArray<DiffThemeOption>,
@@ -44,27 +49,68 @@ export function parseDiffThemePreferences(value: unknown): DiffThemePreferences 
 
 export function loadDiffThemePreferences(): DiffThemePreferences {
   if (typeof window === "undefined") return DEFAULT_DIFF_THEME_PREFERENCES;
-  const serialized = window.localStorage.getItem(storageKey);
-  if (serialized === null) return DEFAULT_DIFF_THEME_PREFERENCES;
   try {
-    return parseDiffThemePreferences(JSON.parse(serialized));
+    const serialized = window.localStorage.getItem(storageKey);
+    if (serialized !== null) return parseDiffThemePreferences(JSON.parse(serialized));
+
+    const legacy = parseLegacyDiffThemePreference(window.localStorage.getItem(legacyStorageKey));
+    if (legacy === undefined) return DEFAULT_DIFF_THEME_PREFERENCES;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(legacy));
+      window.localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // Keep v1 intact when storage is unavailable. The current render can
+      // still use its valid migrated pair without pretending it was saved.
+    }
+    return legacy;
   } catch {
     return DEFAULT_DIFF_THEME_PREFERENCES;
   }
 }
 
-export function saveDiffThemePreferences(value: DiffThemePreferences): void {
+export function saveDiffThemePreferences(value: DiffThemePreferences): SaveDiffThemePreferencesResult {
   const preferences = parseDiffThemePreferences(value);
-  window.localStorage.setItem(storageKey, JSON.stringify(preferences));
-  window.dispatchEvent(
-    new CustomEvent<DiffThemePreferences>("patchdesk:diff-theme", {
-      detail: preferences,
-    }),
-  );
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(preferences));
+    window.dispatchEvent(
+      new CustomEvent<DiffThemePreferences>("patchdesk:diff-theme", {
+        detail: preferences,
+      }),
+    );
+    return { saved: true, preferences };
+  } catch {
+    return { saved: false, preferences };
+  }
 }
 
 export function diffThemeFor(
   preferences: DiffThemePreferences,
 ): DiffThemePreferences {
   return preferences;
+}
+
+function parseLegacyDiffThemePreference(value: string | null): DiffThemePreferences | undefined {
+  if (value === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === "github") return { light: "github-light", dark: "github-dark" };
+    if (parsed === "high_contrast") {
+      return {
+        light: "github-light-high-contrast",
+        dark: "github-dark-high-contrast",
+      };
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const family = (parsed as Record<string, unknown>).family;
+    if (family === "github") return { light: "github-light", dark: "github-dark" };
+    if (family === "high_contrast") {
+      return {
+        light: "github-light-high-contrast",
+        dark: "github-dark-high-contrast",
+      };
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }

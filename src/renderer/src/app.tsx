@@ -64,6 +64,7 @@ import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
 import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "./renderer-contracts";
+import { parsePullRequestInput, type PullRequestRef } from "../../domain/pull-request";
 import { InboxRefreshScheduler, inboxFreshnessLabel } from "./inbox-refresh-scheduler";
 import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
 import {
@@ -167,6 +168,7 @@ type WorkbenchPayload = {
   readonly comparisonAvailability?: "available" | "not_requested" | "incomplete" | "missing";
   readonly pullRequest?: {
     readonly ref: {
+      readonly host?: string;
       readonly owner: string;
       readonly repo: string;
       readonly number: number;
@@ -802,6 +804,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     const showingChecks = destination.kind === "workbench" && destination.initialSection === "checks";
     const prLabel = `${workbench.session.key.owner}/${workbench.session.key.repo}#${workbench.session.key.prNumber}`;
     const snapshotLabel = workbench.reviewedHeadSha ?? workbench.session.key.headSha;
+    const pullRequestRef = pullRequestRefFromWorkbench(workbench.pullRequest);
 
     return shell(
       <section
@@ -821,12 +824,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
               {workbench.session.currentAttemptId === undefined ? <Button size="sm" onClick={() => setRunDialogOpen(true)}>Run review</Button> : null}
             </div>
           </header>
-          {showingChecks ? <div className="p-4"><PreparedChecks checks={workbench.checks} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /></div> : null}
+          {showingChecks ? <div className="p-4"><PreparedChecks checks={workbench.checks} {...(pullRequestRef === undefined ? {} : { pullRequest: pullRequestRef })} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /></div> : null}
           {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} sourceSession={{ profileId: workbench.session.key.profileId, sessionId: workbench.session.id }} className="min-h-0 flex-1" fillViewport={false} /> : null}
           {workbench.session.currentAttemptId === undefined ? (
             showingDiff || showingChecks ? null : (
               <div className="mt-4 space-y-3">
-                <PullRequestDescription {...(workbench.pullRequest?.description === undefined ? {} : { markdown: workbench.pullRequest.description })} />
+                <PullRequestDescription {...(pullRequestRef === undefined ? {} : { pullRequest: pullRequestRef })} {...(workbench.pullRequest?.description === undefined ? {} : { markdown: workbench.pullRequest.description })} />
                 <p className="text-sm text-muted-foreground">Inspect the saved diff and checks first. Run review starts read-only analysis; Patchdesk will never write to GitHub automatically.</p>
                 {runError === undefined ? null : (
                   <Alert variant="destructive">
@@ -1406,8 +1409,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           }}
           diffThemePreferences={diffThemePreferences}
           onDiffThemeChange={(next) => {
-            setDiffThemePreferences(next);
-            saveDiffThemePreferences(next);
+            const saved = saveDiffThemePreferences(next);
+            if (saved.saved) setDiffThemePreferences(saved.preferences);
           }}
           suggestions={suggestions}
           discoveryFeedback={discoveryFeedback}
@@ -2348,11 +2351,11 @@ function ReviewRecords({
   );
 }
 
-function PreparedChecks({ checks, freshness }: { readonly checks: unknown; readonly freshness?: "fresh" | "stale" | "unavailable" }): React.JSX.Element {
+function PreparedChecks({ checks, freshness, pullRequest }: { readonly checks: unknown; readonly freshness?: "fresh" | "stale" | "unavailable"; readonly pullRequest?: PullRequestRef }): React.JSX.Element {
   const value = record(checks) ? checks : {};
   const overall = value.overall === "passing" || value.overall === "failing" || value.overall === "pending" || value.overall === "skipped" ? value.overall : "unknown";
   const entries = Array.isArray(value.checks) ? value.checks.filter((check): check is { readonly name: string; readonly required: boolean | "unknown"; readonly status: "queued" | "in_progress" | "completed" | "unknown"; readonly conclusion?: "success" | "failure" | "cancelled" | "timed_out" | "skipped" | "neutral"; readonly url?: string } => record(check) && typeof check.name === "string" && (check.required === true || check.required === false || check.required === "unknown") && (check.status === "queued" || check.status === "in_progress" || check.status === "completed" || check.status === "unknown") && (check.conclusion === undefined || check.conclusion === "success" || check.conclusion === "failure" || check.conclusion === "cancelled" || check.conclusion === "timed_out" || check.conclusion === "skipped" || check.conclusion === "neutral") && (check.url === undefined || typeof check.url === "string")) : [];
-  return <section className="mt-4 px-1" aria-label="Pull request checks"><ReviewChecks checks={{ overall, checks: entries }} {...(freshness === undefined ? {} : { freshness })} /></section>;
+  return <section className="mt-4 px-1" aria-label="Pull request checks"><ReviewChecks checks={{ overall, checks: entries }} {...(pullRequest === undefined ? {} : { pullRequest })} {...(freshness === undefined ? {} : { freshness })} /></section>;
 }
 
 function Settings({
@@ -3061,6 +3064,18 @@ function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {
       typeof value.session.id === "string")
   );
 }
+
+/** Re-parse the local API projection before using it for external navigation. */
+function pullRequestRefFromWorkbench(
+  pullRequest: WorkbenchPayload["pullRequest"] | undefined,
+): PullRequestRef | undefined {
+  if (pullRequest?.ref.host === undefined) return undefined;
+  const parsed = parsePullRequestInput(
+    `https://${pullRequest.ref.host}/${pullRequest.ref.owner}/${pullRequest.ref.repo}/pull/${pullRequest.ref.number}`,
+  );
+  return parsed._tag === "ok" ? parsed.value : undefined;
+}
+
 function isWorkbenchWrite(value: unknown): value is {
   readonly session: unknown;
   readonly draft: { readonly state: unknown };

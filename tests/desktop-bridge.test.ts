@@ -35,13 +35,14 @@ describe("desktop request bridge", () => {
     };
     const selectDirectory = vi.fn(async () => "/workspace/patchdesk");
     const setNavigationState = vi.fn();
+    const openExternalHttps = vi.fn(async () => true);
 
     installDesktopRequestBridge(
       ipc as never,
       17,
       { url: new URL("http://127.0.0.1:4000/"), capability: "test-capability" } as never,
       "http://localhost:5173",
-      { selectDirectory, setNavigationState },
+      { selectDirectory, setNavigationState, openExternalHttps },
     );
 
     if (handler === undefined) throw new Error("Expected the desktop request handler");
@@ -63,5 +64,26 @@ describe("desktop request bridge", () => {
 
     await expect(handler({ sender: { id: 99 } }, { operation: "setNavigationState", state: "clear" })).resolves.toMatchObject({ ok: false, status: 400 });
     expect(setNavigationState).toHaveBeenCalledTimes(1);
+
+    await expect(handler({ sender: { id: 17 } }, { operation: "openExternalHttps", url: "https://github.com/centraldigital/patchdesk/pull/42" })).resolves.toMatchObject({
+      ok: true,
+      status: 200,
+      body: { opened: true },
+    });
+    expect(openExternalHttps).toHaveBeenCalledWith("https://github.com/centraldigital/patchdesk/pull/42");
+
+    await expect(
+      handler(
+        { sender: { id: 17 } },
+        { operation: "openExternalHttps", url: "https://github.com/".padEnd(2_049, "x") },
+      ),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
+    await expect(
+      handler(
+        { sender: { id: 99 } },
+        { operation: "openExternalHttps", url: "https://github.com/centraldigital/patchdesk/pull/42" },
+      ),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
+    expect(openExternalHttps).toHaveBeenCalledTimes(1);
   });
 });

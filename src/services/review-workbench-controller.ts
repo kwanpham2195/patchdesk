@@ -31,6 +31,7 @@ import type { ReviewComparisonService } from "./review-comparison-service";
 import type { PriorFindingEvidence } from "../domain/finding-lifecycle";
 import type { FindingLifecycleEntry } from "../domain/finding-lifecycle";
 import { parseRevisionComparison, type RevisionComparison } from "../domain/review-comparison";
+import { readObjectField } from "./read-object-field";
 
 export type ReviewWorkbenchFailure = { readonly reason: "invalid_input" | "not_found" | "github_read" | "head_changed" | "storage" };
 export type ReviewWorkbenchProjection =
@@ -80,11 +81,11 @@ export class ReviewWorkbenchController {
   ) {}
 
   async open(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const host = parseGitHubHost(field(input, "host"));
-    const owner = parseGitHubOwner(field(input, "owner"));
-    const repo = parseGitHubRepoName(field(input, "repo"));
-    const number = parsePullRequestNumber(field(input, "number"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const host = parseGitHubHost(readObjectField(input, "host"));
+    const owner = parseGitHubOwner(readObjectField(input, "owner"));
+    const repo = parseGitHubRepoName(readObjectField(input, "repo"));
+    const number = parsePullRequestNumber(readObjectField(input, "number"));
     if (profileId._tag === "err" || host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return err({ reason: "invalid_input" });
     const profile = await this.profiles.load(profileId.value);
     if (profile._tag === "err") return err({ reason: profile.error.reason === "not_found" ? "not_found" : "storage" });
@@ -107,12 +108,12 @@ export class ReviewWorkbenchController {
       }
     }
     if (stored._tag === "err" && stored.error.reason !== "not_found") return err({ reason: "storage" });
-    const requestedMode = field(input, "mode");
+    const requestedMode = readObjectField(input, "mode");
     if (requestedMode !== undefined && requestedMode !== "full" && requestedMode !== "incremental") return err({ reason: "invalid_input" });
     const incremental = requestedMode === "incremental";
     let scope: ReviewSession["scope"] | undefined;
     if (incremental) {
-      const baseSessionId = parseReviewSessionId(field(input, "baseSessionId"));
+      const baseSessionId = parseReviewSessionId(readObjectField(input, "baseSessionId"));
       if (baseSessionId._tag === "err" || this.comparisons === undefined) return err({ reason: "invalid_input" });
       const base = await this.sessions.load(profileId.value, baseSessionId.value);
       if (base._tag === "err" || base.value.key.host !== host.value || base.value.key.owner !== owner.value || base.value.key.repo !== repo.value || base.value.key.prNumber !== number.value || base.value.visibleResult === undefined) return err({ reason: "not_found" });
@@ -152,8 +153,8 @@ export class ReviewWorkbenchController {
   }
 
   async load(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     if (profileId._tag === "err" || sessionId._tag === "err") return err({ reason: "invalid_input" });
     const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
     if (profile._tag === "err" || session._tag === "err") return err({ reason: "not_found" });
@@ -279,9 +280,6 @@ export class ReviewWorkbenchController {
   }
 }
 
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value ? (value as Record<string, unknown>)[name] : undefined;
-}
 
 function priorFindings(session: ReviewSession): ReadonlyArray<PriorFindingEvidence> {
   const result = session.visibleResult;

@@ -8,7 +8,6 @@ import {
   type CSSProperties,
 } from "react";
 import {
-  processFile,
   type CodeViewDiffItem,
   type CodeViewItem,
   type FileDiffMetadata,
@@ -38,13 +37,18 @@ import type { FileChangeStats } from "@/review-diff-data";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import {
   reviewContextControl,
-  type ReviewContextStatus,
 } from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
+import {
+  selectPatch,
+  useReviewDiffHydration,
+  type ReviewDiffSourceSession,
+} from "@/hooks/use-review-diff-hydration";
+import { useReviewDiffQaScrollDiagnostics } from "@/hooks/use-review-diff-qa-scroll-diagnostics";
+import { useProgressiveReviewDiffStream } from "@/hooks/use-progressive-review-diff-stream";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
-import { requestJson } from "@/api-client";
 
 registerPierreThemeLoaders();
 
@@ -63,25 +67,6 @@ export type SelectedDiffRange = {
   readonly side: "new" | "old";
 };
 
-type DiffSourceSession = {
-  readonly profileId: string;
-  readonly sessionId: string;
-};
-
-type DiffSourceResponse =
-  | {
-      readonly state: "ready";
-      readonly oldFile?: { readonly name: string; readonly contents: string };
-      readonly newFile?: { readonly name: string; readonly contents: string };
-    }
-  | { readonly state: "unavailable"; readonly reason: string };
-
-type PierreCodeView = NonNullable<
-  ReturnType<CodeViewHandle<undefined>["getInstance"]>
->;
-
-const HYDRATION_CONCURRENCY = 2;
-const VIRTUAL_FILE_BATCH_SIZE = 5;
 
 function FileChangeCounts({
   stats,
@@ -115,7 +100,7 @@ type ReviewDiffViewProps = {
   ) => void;
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
-  readonly sourceSession?: DiffSourceSession;
+  readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
 };
 
@@ -133,12 +118,6 @@ function ReviewDiffSurface({
   virtualized = true,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
-  const [hydratedFiles, setHydratedFiles] = useState<
-    ReadonlyMap<string, FileDiffMetadata>
-  >(() => new Map());
-  const [contextStatus, setContextStatus] =
-    useState<ReviewContextStatus>("idle");
-  const [loadedCount, setLoadedCount] = useState(1);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
   const [themePreferences, setThemePreferences] = useState<DiffThemePreferences>(() =>
     loadDiffThemePreferences(),
@@ -146,28 +125,21 @@ function ReviewDiffSurface({
   const viewer = useRef<CodeViewHandle<undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
-  const pendingAppendedScrollPath = useRef<string | undefined>(undefined);
-  const hydrationRequests = useRef(
-    new Map<string, { readonly token: symbol; readonly promise: Promise<boolean> }>(),
-  );
-  const hydratedFilesRef = useRef(hydratedFiles);
-  const unavailableHydrationPaths = useRef(new Set<string>());
-  const hydrationGeneration = useRef(0);
-  const isAppendingBatch = useRef(false);
-  const streamGeneration = useRef(0);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
     setViewerElement(node);
   }, []);
-  const nextItemIndex = useRef(1);
-  const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
-  const rawPatchesByPath = useMemo(
-    () => indexPatchPaths(rawFilePatches),
-    [rawFilePatches],
-  );
-  useEffect(() => {
-    hydratedFilesRef.current = hydratedFiles;
-  }, [hydratedFiles]);
+  const {
+    hydratedFiles,
+    contextStatus,
+    rawFilePatches,
+    rawPatchesByPath,
+    hydrateFiles,
+  } = useReviewDiffHydration({
+    patch,
+    ...(selectedPath === undefined ? {} : { selectedPath }),
+    ...(sourceSession === undefined ? {} : { sourceSession }),
+  });
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       const value = (event as CustomEvent<ResolvedAppearance>).detail;
@@ -176,43 +148,7 @@ function ReviewDiffSurface({
     window.addEventListener("patchdesk:appearance", onAppearance);
     return () => window.removeEventListener("patchdesk:appearance", onAppearance);
   }, []);
-  useEffect(() => {
-    if (
-      viewerElement === null ||
-      !("patchdesk" in window) ||
-      !window.patchdesk.qaScrollDiagnosticsEnabled
-    ) return;
-
-    const capture = (event: WheelEvent): void => {
-      const outer = document.querySelector<HTMLElement>("[data-review-scroll-container]");
-      const target = event.target instanceof Element ? event.target : undefined;
-      const path = event.composedPath()
-        .filter((entry): entry is Element => entry instanceof Element)
-        .slice(0, 8)
-        .map((entry) => entry.tagName.toLowerCase() + (entry.id.length === 0 ? "" : `#${entry.id}`));
-      const qaWindow = window as Window & {
-        __patchdeskScrollDiagnostic?: Record<string, unknown>;
-      };
-      qaWindow.__patchdeskScrollDiagnostic = {
-        wheelTarget: target?.tagName.toLowerCase(),
-        composedPath: path,
-        viewer: {
-          scrollTop: viewerElement.scrollTop,
-          scrollHeight: viewerElement.scrollHeight,
-          clientHeight: viewerElement.clientHeight,
-          clientWidth: viewerElement.clientWidth,
-        },
-        outer: outer === null ? undefined : {
-          scrollTop: outer.scrollTop,
-          scrollHeight: outer.scrollHeight,
-          clientHeight: outer.clientHeight,
-        },
-        codeViewScrollHeight: viewer.current?.getInstance()?.getScrollHeight(),
-      };
-    };
-    viewerElement.addEventListener("wheel", capture, { capture: true, passive: true });
-    return () => viewerElement.removeEventListener("wheel", capture, true);
-  }, [viewerElement]);
+  useReviewDiffQaScrollDiagnostics(viewerElement, viewer);
   useEffect(() => {
     const onTheme = (event: Event): void => {
       setThemePreferences(
@@ -285,198 +221,19 @@ function ReviewDiffSurface({
   const viewerKey = preferences.fileMode;
   const sourceProfileId = sourceSession?.profileId;
   const sourceSessionId = sourceSession?.sessionId;
-
-  useEffect(() => {
-    hydrationGeneration.current += 1;
-    streamGeneration.current += 1;
-    isAppendingBatch.current = false;
-    pendingAppendedScrollPath.current = undefined;
-    hydrationRequests.current.clear();
-    unavailableHydrationPaths.current.clear();
-    hydratedFilesRef.current = new Map();
-    setHydratedFiles(new Map());
-    setContextStatus("idle");
-  }, [patch, sourceProfileId, sourceSessionId]);
-
-  const hydrateFile = useCallback(
-    (path: string): Promise<boolean> => {
-      if (hydratedFilesRef.current.has(path)) return Promise.resolve(true);
-      if (unavailableHydrationPaths.current.has(path)) {
-        return Promise.resolve(false);
-      }
-      const existing = hydrationRequests.current.get(path);
-      if (existing !== undefined) return existing.promise;
-
-      const rawFilePatch = selectPatch(
-        rawPatchesByPath,
-        rawFilePatches,
-        patch,
-        path,
-      );
-      if (
-        sourceProfileId === undefined ||
-        sourceSessionId === undefined ||
-        !rawFilePatch.startsWith("diff --git ")
-      ) {
-        unavailableHydrationPaths.current.add(path);
-        return Promise.resolve(false);
-      }
-
-      const generation = hydrationGeneration.current;
-      const token = Symbol(path);
-      const request = requestJson("/v1/reviews/diff-file", {
-        method: "POST",
-        body: {
-          profileId: sourceProfileId,
-          sessionId: sourceSessionId,
-          path,
-        },
-      })
-        .then((value) => {
-          if (generation !== hydrationGeneration.current) return false;
-          const source = parseDiffSourceResponse(value);
-          if (source?.state !== "ready") {
-            unavailableHydrationPaths.current.add(path);
-            return false;
-          }
-          const hydrated = processFile(rawFilePatch, {
-            ...(source.oldFile === undefined ? {} : { oldFile: source.oldFile }),
-            ...(source.newFile === undefined ? {} : { newFile: source.newFile }),
-          });
-          if (hydrated === undefined) {
-            unavailableHydrationPaths.current.add(path);
-            return false;
-          }
-          const next = new Map(hydratedFilesRef.current);
-          next.set(path, hydrated);
-          hydratedFilesRef.current = next;
-          setHydratedFiles(next);
-          return true;
-        })
-        .catch(() => {
-          if (generation === hydrationGeneration.current) {
-            unavailableHydrationPaths.current.add(path);
-          }
-          return false;
-        })
-        .finally(() => {
-          if (hydrationRequests.current.get(path)?.token === token) {
-            hydrationRequests.current.delete(path);
-          }
-        });
-      hydrationRequests.current.set(path, { token, promise: request });
-      return request;
-    },
-    [patch, rawFilePatches, rawPatchesByPath, sourceProfileId, sourceSessionId],
-  );
-
-  const hydrateFiles = useCallback(
-    async (paths: ReadonlyArray<string>): Promise<void> => {
-      const pending = [...new Set(paths)].filter(
-        (path) =>
-          !hydratedFilesRef.current.has(path) &&
-          !unavailableHydrationPaths.current.has(path),
-      );
-      for (let start = 0; start < pending.length; start += HYDRATION_CONCURRENCY) {
-        await Promise.all(
-          pending
-            .slice(start, start + HYDRATION_CONCURRENCY)
-            .map(async (path) => await hydrateFile(path)),
-        );
-      }
-    },
-    [hydrateFile],
-  );
-
-  useEffect(() => {
-    if (
-      selectedPath === undefined ||
-      sourceProfileId === undefined ||
-      sourceSessionId === undefined
-    ) {
-      setContextStatus("idle");
-      return;
-    }
-    if (hydratedFilesRef.current.has(selectedPath)) {
-      setContextStatus("ready");
-      return;
-    }
-    let active = true;
-    setContextStatus("loading");
-    void hydrateFile(selectedPath).then((hydrated) => {
-      if (!active) return;
-      setContextStatus(hydrated ? "ready" : "unavailable");
-    });
-    return () => {
-      active = false;
-    };
-  }, [
-    hydrateFile,
-    selectedPath,
-    sourceProfileId,
-    sourceSessionId,
-  ]);
-
-  useEffect(() => {
-    streamGeneration.current += 1;
-    isAppendingBatch.current = false;
-    nextItemIndex.current = 1;
-    setLoadedCount(1);
-  }, [preferences.fileMode]);
-
-  useEffect(() => {
-    // The first visible item and every appended batch hydrate through the
-    // same bounded path. Raw patches remain visible while their exact
-    // base/head source is read, but every successful replacement is a native
-    // Pierre file with real separator controls rather than simulated rows.
-    void hydrateFiles(items.slice(0, loadedCount).map((item) => item.id));
-  }, [hydrateFiles, items, loadedCount]);
-
-  const appendItemsThrough = useCallback(
-    (lastIndex: number): void => {
-      const start = nextItemIndex.current;
-      const end = Math.min(lastIndex + 1, items.length);
-      if (start >= end) return;
-      nextItemIndex.current = end;
-      setLoadedCount(end);
-    },
-    [items],
-  );
-
-  const appendVisibleBatch = useCallback((followAppendedFile = false): void => {
-    if (isAppendingBatch.current) return;
-    const start = nextItemIndex.current;
-    if (start >= items.length) return;
-    const nextFile = items[start];
-    if (followAppendedFile && nextFile !== undefined) {
-      pendingAppendedScrollPath.current = nextFile.id;
-    }
-    const appendedPaths = items
-      .slice(start, Math.min(start + VIRTUAL_FILE_BATCH_SIZE, items.length))
-      .map((item) => item.id);
-    const generation = streamGeneration.current;
-    isAppendingBatch.current = true;
-    void hydrateFiles(appendedPaths).finally(() => {
-      if (generation !== streamGeneration.current) {
-        isAppendingBatch.current = false;
-        return;
-      }
-      appendItemsThrough(start + VIRTUAL_FILE_BATCH_SIZE - 1);
-      isAppendingBatch.current = false;
-    });
-  }, [appendItemsThrough, hydrateFiles, items]);
-
-  useEffect(() => {
-    const path = pendingAppendedScrollPath.current;
-    if (path === undefined) return;
-    pendingAppendedScrollPath.current = undefined;
-    // The controlled item list reaches Pierre during its layout effect. Run
-    // afterward so a bottom scroll can continue into the appended file.
-    const frame = requestAnimationFrame(() => {
-      viewer.current?.scrollTo({ type: "item", id: path, align: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [loadedCount]);
+  const {
+    loadedCount,
+    nextItemIndex,
+    appendItemsThrough,
+    appendVisibleBatch,
+    handleViewerScroll,
+  } = useProgressiveReviewDiffStream({
+    items,
+    fileMode: preferences.fileMode,
+    hydrateFiles,
+    viewer,
+    viewerContainer,
+  });
 
   useEffect(() => {
     if (selectedPath === undefined) return;
@@ -529,6 +286,7 @@ function ReviewDiffSurface({
   }, [
     appendItemsThrough,
     items,
+    nextItemIndex,
     preferences.diffStyle,
     preferences.fileMode,
     selectedLines,
@@ -628,21 +386,6 @@ function ReviewDiffSurface({
       </div>
     ),
     [renderFileChangeCounts],
-  );
-
-  const handleViewerScroll = useCallback(
-    (_scrollTop: number, codeView: PierreCodeView): void => {
-      const root = viewerContainer.current;
-      if (
-        root === null ||
-        preferences.fileMode !== "all" ||
-        _scrollTop + root.clientHeight < codeView.getScrollHeight() - 200
-      ) {
-        return;
-      }
-      appendVisibleBatch(true);
-    },
-    [appendVisibleBatch, preferences.fileMode],
   );
 
   return (
@@ -944,68 +687,4 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
     newLine += 1;
     return line;
   });
-}
-
-function splitPatch(patch: string): ReadonlyArray<string> {
-  return patch
-    .split(/(?=^diff --git )/m)
-    .filter((value) => value.startsWith("diff --git "));
-}
-
-function indexPatchPaths(
-  patches: ReadonlyArray<string>,
-): ReadonlyMap<string, string> {
-  const indexed = new Map<string, string>();
-  for (const patch of patches) {
-    const header = /^diff --git a\/(.+) b\/(.+)$/m.exec(patch);
-    if (header === null) continue;
-    const oldPath = header[1];
-    const newPath = header[2];
-    if (oldPath !== undefined) indexed.set(oldPath, patch);
-    if (newPath !== undefined) indexed.set(newPath, patch);
-  }
-  return indexed;
-}
-
-function selectPatch(
-  patchesByPath: ReadonlyMap<string, string>,
-  files: ReadonlyArray<string>,
-  patch: string,
-  selectedPath: string | undefined,
-): string {
-  return (
-    (selectedPath === undefined ? undefined : patchesByPath.get(selectedPath)) ??
-    files[0] ??
-    patch
-  );
-}
-
-function parseDiffSourceResponse(value: unknown): DiffSourceResponse | undefined {
-  if (typeof value !== "object" || value === null || !("state" in value)) {
-    return undefined;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (candidate.state === "unavailable" && typeof candidate.reason === "string") {
-    return { state: "unavailable", reason: candidate.reason };
-  }
-  if (candidate.state !== "ready") return undefined;
-  const parseFile = (
-    input: unknown,
-  ): { readonly name: string; readonly contents: string } | undefined =>
-    typeof input === "object" &&
-    input !== null &&
-    "name" in input &&
-    "contents" in input &&
-    typeof input.name === "string" &&
-    typeof input.contents === "string"
-      ? { name: input.name, contents: input.contents }
-      : undefined;
-  const oldFile = parseFile(candidate.oldFile);
-  const newFile = parseFile(candidate.newFile);
-  if (oldFile === undefined && newFile === undefined) return undefined;
-  return {
-    state: "ready",
-    ...(oldFile === undefined ? {} : { oldFile }),
-    ...(newFile === undefined ? {} : { newFile }),
-  };
 }

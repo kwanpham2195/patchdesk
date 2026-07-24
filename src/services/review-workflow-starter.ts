@@ -11,6 +11,7 @@ import {
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewActivityStep } from "./run-projection";
+import { readObjectField } from "./read-object-field";
 
 /** The only workflow input Patchdesk admits; all paths come from persisted attempt state. */
 export type ReviewWorkflowInput = {
@@ -52,9 +53,9 @@ export class ReviewWorkflowStarter {
     input: unknown,
     options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
   ): Promise<Result<{ readonly runId?: string }, ReviewWorkflowStartFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const attemptId = parseReviewAttemptId(field(input, "attemptId"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const attemptId = parseReviewAttemptId(readObjectField(input, "attemptId"));
     if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err") {
       return err({ reason: "invalid_input" });
     }
@@ -90,10 +91,4 @@ export class ReviewWorkflowStarter {
     }, options);
     return invoked._tag === "ok" ? ok(invoked.value) : err({ reason: invoked.error.reason });
   }
-}
-
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value
-    ? (value as Record<string, unknown>)[name]
-    : undefined;
 }

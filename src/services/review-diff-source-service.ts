@@ -11,6 +11,7 @@ import { parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitReadExecutor } from "./review-worktree-service";
+import { readObjectField } from "./read-object-field";
 
 const maxHydratedFileBytes = 1024 * 1024;
 
@@ -49,9 +50,9 @@ export class ReviewDiffSourceService {
   ) {}
 
   async load(input: unknown): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const requestedPath = parseRepoRelativePath(field(input, "path"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const requestedPath = parseRepoRelativePath(readObjectField(input, "path"));
     if (
       profileId._tag === "err" ||
       sessionId._tag === "err" ||
@@ -233,10 +234,4 @@ function patchForPath(patch: string, path: string): string | undefined {
         candidate.startsWith("diff --git ") &&
         (candidate.includes(` a/${path} b/`) || candidate.includes(` b/${path}\n`)),
     );
-}
-
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value
-    ? (value as Record<string, unknown>)[name]
-    : undefined;
 }

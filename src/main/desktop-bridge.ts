@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IpcMain } from "electron";
-import { literal, optional, picklist, safeParse, strictObject, string, union, unknown } from "valibot";
+import { literal, maxLength, minLength, optional, picklist, pipe, safeParse, strictObject, string, union, unknown } from "valibot";
 
 import {
   APP_CAPABILITY_HEADER,
@@ -24,6 +24,10 @@ const requestSchema = union([
   strictObject({
     operation: literal("setNavigationState"),
     state: picklist(["clear", "dirty_draft", "write_pending"]),
+  }),
+  strictObject({
+    operation: literal("openExternalHttps"),
+    url: pipe(string(), minLength(1), maxLength(2_048)),
   }),
 ]);
 
@@ -74,6 +78,7 @@ export function installDesktopRequestBridge(
   operations: {
     readonly selectDirectory: (input: { readonly defaultPath?: string }) => Promise<string | undefined>;
     readonly setNavigationState: (state: "clear" | "dirty_draft" | "write_pending") => void;
+    readonly openExternalHttps: (url: string) => Promise<boolean>;
   },
 ): void {
   ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
@@ -85,7 +90,9 @@ export function installDesktopRequestBridge(
       : "operation" in parsed.output
         ? parsed.output.operation === "setNavigationState"
           ? { operation: parsed.output.operation, state: parsed.output.state }
-          : {
+          : parsed.output.operation === "openExternalHttps"
+            ? { operation: parsed.output.operation, url: parsed.output.url }
+            : {
               operation: parsed.output.operation,
               ...(parsed.output.defaultPath === undefined ? {} : { defaultPath: parsed.output.defaultPath }),
             }
@@ -102,6 +109,14 @@ export function installDesktopRequestBridge(
       if (request.operation === "setNavigationState") {
         operations.setNavigationState(request.state);
         return { ok: true, status: 200, body: {}, correlationId };
+      }
+      if (request.operation === "openExternalHttps") {
+        try {
+          const opened = await operations.openExternalHttps(request.url);
+          return { ok: true, status: 200, body: { opened }, correlationId };
+        } catch {
+          return { ok: false, status: 500, body: { error: "external_open_failed" }, correlationId };
+        }
       }
       try {
         const path = await operations.selectDirectory(

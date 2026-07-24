@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, ChevronDown, CircleDashed, CircleX, ExternalLink, MinusCircle } from "lucide-react";
 
 import type { CheckRunSummary, CheckSummary } from "../../../domain/github-context";
+import type { PullRequestRef } from "../../../domain/pull-request";
+import { openPullRequestExternalUrl, resolvePullRequestExternalUrl } from "@/external-links";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -9,10 +11,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 export function ReviewChecks({
   checks,
   freshness,
+  pullRequest,
   defaultOpen = true,
 }: {
   readonly checks: CheckSummary;
   readonly freshness?: "fresh" | "stale" | "unavailable";
+  readonly pullRequest?: PullRequestRef;
   readonly defaultOpen?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
@@ -38,7 +42,7 @@ export function ReviewChecks({
         </p>
         {grouped.length === 0 ? <p className="pb-3 text-sm text-muted-foreground">No check details are available.</p> : (
           <ul className="border-t py-2" aria-label="Pull request checks">
-            {rows.map((check) => <CheckRow key={check.key} check={check} />)}
+            {rows.map((check) => <CheckRow key={check.key} check={check} {...(pullRequest === undefined ? {} : { pullRequest })} />)}
           </ul>
         )}
         {!showPassing && passing.length > 0 ? (
@@ -68,8 +72,12 @@ function groupChecks(checks: ReadonlyArray<CheckRunSummary>): ReadonlyArray<Grou
   return [...grouped.values()].sort((left, right) => checkPriority(left) - checkPriority(right) || left.name.localeCompare(right.name));
 }
 
-function CheckRow({ check }: { readonly check: GroupedCheck }): React.JSX.Element {
+function CheckRow({ check, pullRequest }: { readonly check: GroupedCheck; readonly pullRequest?: PullRequestRef }): React.JSX.Element {
   const result = resultFor(check);
+  const externalUrl =
+    check.url === undefined
+      ? undefined
+      : resolvePullRequestExternalUrl(check.url, pullRequest);
   const Icon = result.kind === "passed" ? CheckCircle2 : result.kind === "failed" ? CircleX : result.kind === "pending" ? CircleDashed : MinusCircle;
   return (
     <li className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
@@ -78,7 +86,7 @@ function CheckRow({ check }: { readonly check: GroupedCheck }): React.JSX.Elemen
       <span className="sr-only">{requirementLabel(check.required)}</span>
       <span className="shrink-0 text-sm text-muted-foreground">{result.label}</span>
       {check.count > 1 ? <Badge variant="outline">×{check.count}</Badge> : null}
-      {check.url === undefined ? null : <Button variant="ghost" size="icon-xs" nativeButton={false} render={<a href={check.url} target="_blank" rel="noreferrer" aria-label={`Open ${check.name} in GitHub`} />}><ExternalLink /></Button>}
+      {externalUrl === undefined ? null : <Button variant="ghost" size="icon-xs" aria-label={`Open ${check.name} in GitHub`} onClick={() => void openPullRequestExternalUrl(externalUrl, pullRequest)}><ExternalLink /></Button>}
     </li>
   );
 }

@@ -7,6 +7,7 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { createPendingReview, submitPendingReview } from "./review-submission-service";
+import { readObjectField } from "./read-object-field";
 
 export type ReviewWriteResponse = {
   readonly session: unknown;
@@ -39,7 +40,7 @@ export class ReviewWriteController {
   }
 
   async submitPending(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
-    const event = field(input, "event");
+    const event = readObjectField(input, "event");
     if (!isReviewEvent(event)) return err({ reason: "invalid_input" });
     return this.withLoaded(input, async ({ profile, session, draft }) => {
       const submitted = await submitPendingReview({ profile, session, draft, event, summaryBody: draft.summaryBody, gateway: this.github, now: this.now() });
@@ -56,10 +57,10 @@ export class ReviewWriteController {
     input: unknown,
     operation: (value: { readonly profile: WorkspaceProfileConfig; readonly session: ReviewSession; readonly draft: ReviewDraft }) => Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>>,
   ): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const expectedRevision = parseIsoTimestamp(field(input, "expectedRevision"));
-    if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err" || field(input, "acknowledgement") !== true) return err({ reason: "invalid_input" });
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const expectedRevision = parseIsoTimestamp(readObjectField(input, "expectedRevision"));
+    if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err" || readObjectField(input, "acknowledgement") !== true) return err({ reason: "invalid_input" });
     const key = `${profileId.value}:${sessionId.value}`;
     if (this.inFlight.has(key)) return err({ reason: "review_write_in_progress" });
     this.inFlight.add(key);
@@ -84,9 +85,6 @@ export class ReviewWriteController {
   }
 }
 
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value ? (value as Record<string, unknown>)[name] : undefined;
-}
 
 function isReviewEvent(value: unknown): value is GitHubReviewEvent {
   return value === "APPROVE" || value === "COMMENT" || value === "REQUEST_CHANGES";

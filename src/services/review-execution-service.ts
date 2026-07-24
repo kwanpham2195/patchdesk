@@ -18,6 +18,7 @@ import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import type { ReviewRunMetadata } from "./run-projection";
 import { prepareAttemptArtifacts } from "./review-attempt-artifacts";
 import { contentHash } from "./review-artifact-hash";
+import { readObjectField } from "./read-object-field";
 
 export const REVIEW_REASONING_LEVELS = ["low", "medium", "high"] as const;
 export type ReviewReasoningLevel = (typeof REVIEW_REASONING_LEVELS)[number];
@@ -56,10 +57,10 @@ export class ReviewExecutionService {
     readonly reasoning: ReviewReasoningLevel;
     readonly metadata: ReviewRunMetadata;
   }, ReviewExecutionFailure>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const model = field(input, "model");
-    const reasoning = parseReasoning(field(input, "reasoning"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const model = readObjectField(input, "model");
+    const reasoning = parseReasoning(readObjectField(input, "reasoning"));
     if (
       profileId._tag === "err" ||
       sessionId._tag === "err" ||
@@ -180,11 +181,5 @@ export class ReviewExecutionService {
 function parseReasoning(value: unknown): ReviewReasoningLevel | undefined {
   return value === "low" || value === "medium" || value === "high"
     ? value
-    : undefined;
-}
-
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value
-    ? (value as Record<string, unknown>)[name]
     : undefined;
 }

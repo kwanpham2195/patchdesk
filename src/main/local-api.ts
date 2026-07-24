@@ -41,6 +41,7 @@ import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
+import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
   ReviewWorkflowStarter,
@@ -250,7 +251,7 @@ export async function startLocalApiServer(
   app.post("/v1/profiles/select", async (context) =>
     response(
       context,
-      await dashboard.selectProfile(field(await jsonBody(context), "id")),
+      await dashboard.selectProfile(readObjectField(await jsonBody(context), "id")),
     ),
   );
   app.get("/v1/dashboard", async (context) =>
@@ -528,11 +529,6 @@ async function jsonBody(context: Context): Promise<unknown> {
   }
 }
 
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value
-    ? (value as Record<string, unknown>)[name]
-    : undefined;
-}
 
 function modelConfigurationState(): "configured" | "missing" {
   return [

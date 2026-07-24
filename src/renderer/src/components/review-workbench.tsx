@@ -757,7 +757,7 @@ export function ReviewWorkbench(props: {
                 )}
                 <Separator />
                 <section>
-                  <ReviewChecks checks={props.checks} freshness={freshness} />
+                  <ReviewChecks checks={props.checks} freshness={freshness} {...(props.pullRequest === undefined ? {} : { pullRequest: props.pullRequest.ref })} />
                 </section>
                 <Separator />
                 <section>

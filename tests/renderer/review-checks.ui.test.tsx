@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { ReviewChecks } from "../../src/renderer/src/components/review-checks";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+});
 
 describe("review checks", () => {
   it("groups duplicates, keeps failures first, and collapses a long passing list", async () => {
@@ -55,5 +59,40 @@ describe("review checks", () => {
     expect(screen.queryByRole("list", { name: "Pull request checks" })).toBeNull();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("list", { name: "Pull request checks" })).toBeTruthy();
+  });
+
+  it("opens a same-host check URL through the desktop bridge instead of a native anchor", async () => {
+    const user = userEvent.setup();
+    const parsed = parsePullRequestInput(
+      "https://github.com/centraldigital/patchdesk/pull/42",
+    );
+    if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
+    const openExternalHttps = vi.fn(async () => true);
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { openExternalHttps },
+    });
+
+    render(
+      <ReviewChecks
+        pullRequest={parsed.value}
+        checks={{
+          overall: "passing",
+          checks: [{
+            name: "unit",
+            required: true,
+            status: "completed",
+            conclusion: "success",
+            url: "/centraldigital/patchdesk/actions/runs/1",
+          }],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Open unit in GitHub" }));
+    expect(openExternalHttps).toHaveBeenCalledWith(
+      "https://github.com/centraldigital/patchdesk/actions/runs/1",
+    );
   });
 });

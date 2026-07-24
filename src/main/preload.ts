@@ -16,6 +16,16 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   async request(input: DesktopRequest) {
     return await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, input);
   },
+  async openExternalHttps(url: string): Promise<boolean> {
+    const response = await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, {
+      operation: "openExternalHttps",
+      url,
+    } satisfies DesktopRequest);
+    if (!response.ok || typeof response.body !== "object" || response.body === null) {
+      return false;
+    }
+    return "opened" in response.body && response.body.opened === true;
+  },
   onNavigate(listener: (destination: DesktopDestination) => void) {
     const handler = (_event: Electron.IpcRendererEvent, destination: DesktopDestination): void => listener(destination);
     ipcRenderer.on(DESKTOP_NAVIGATE_CHANNEL, handler);

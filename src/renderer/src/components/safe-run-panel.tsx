@@ -13,28 +13,12 @@ import {
 } from "@/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  parseSafeRunProjection,
+  type SafeRunProjection,
+} from "../../../domain/safe-run-projection";
 
-type Projection = {
-  readonly status: "queued" | "connecting" | "running" | "completed" | "failed" | "disconnected";
-  readonly elapsedMs: number;
-  readonly step: "preparing" | "inspecting" | "validating" | "drafting" | "complete" | "failed";
-  readonly message?: string;
-  readonly metadata?: {
-    readonly agent: string;
-    readonly model: string;
-    readonly reasoning: string;
-    readonly mode: string;
-    readonly access: string;
-  };
-  readonly activity?: ReadonlyArray<{
-    readonly at: string;
-    readonly elapsedMs: number;
-    readonly step: Projection["step"];
-    readonly label: string;
-    readonly path?: string;
-    readonly findingId?: string;
-  }>;
-};
+type Projection = SafeRunProjection;
 
 export function SafeRunPanel({
   profileId,
@@ -65,14 +49,15 @@ export function SafeRunPanel({
           const value = await requestJson(
             `/v1/runs/${encodeURIComponent(runId)}?sessionId=${encodeURIComponent(sessionId)}&attemptId=${encodeURIComponent(attemptId)}`,
           );
-          if (!isProjection(value)) throw new Error("invalid projection");
+          const parsed = parseSafeRunProjection(value);
+          if (parsed._tag === "err") throw new Error("invalid projection");
           if (cancelled) return;
-          setProjection(value);
-          if (value.status === "completed") {
+          setProjection(parsed.value);
+          if (parsed.value.status === "completed") {
             if (onCompleted !== undefined) await onCompleted(profileId, sessionId);
             return;
           }
-          if (value.status === "failed") return;
+          if (parsed.value.status === "failed") return;
           delayMs = 300;
         } catch {
           if (!cancelled) setProjection({ status: "disconnected", elapsedMs: 0, step: "inspecting", message: "Patchdesk lost its local run connection. The review was not restarted." });
@@ -170,50 +155,6 @@ export function SafeRunPanel({
       </CardContent>
     </Card>
   );
-}
-
-function isProjection(value: unknown): value is Projection {
-  if (typeof value !== "object" || value === null) return false;
-  const item = value as Record<string, unknown>;
-  if (
-    typeof item.status !== "string" ||
-    typeof item.elapsedMs !== "number" ||
-    typeof item.step !== "string"
-  ) return false;
-  if (!isStatus(item.status) || !isStep(item.step) || !Number.isInteger(item.elapsedMs) || item.elapsedMs < 0) return false;
-  if (item.message !== undefined && (typeof item.message !== "string" || item.message.length > 160)) return false;
-  if (item.activity === undefined) return true;
-  return Array.isArray(item.activity) && item.activity.length <= 40 && JSON.stringify(value).length <= 6_144 && item.activity.every(isActivityEvent);
-}
-
-function isActivityEvent(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const event = value as Record<string, unknown>;
-  return typeof event.at === "string" &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(event.at) &&
-    typeof event.elapsedMs === "number" &&
-    Number.isInteger(event.elapsedMs) && event.elapsedMs >= 0 &&
-    isStep(event.step) &&
-    typeof event.label === "string" &&
-    event.label.length > 0 && event.label.length <= 160 &&
-    (event.path === undefined || isSafeRelativePath(event.path)) &&
-    (event.findingId === undefined || isSafeFindingId(event.findingId));
-}
-
-function isStatus(value: unknown): value is Projection["status"] {
-  return value === "queued" || value === "connecting" || value === "running" || value === "completed" || value === "failed" || value === "disconnected";
-}
-
-function isStep(value: unknown): value is Projection["step"] {
-  return value === "preparing" || value === "inspecting" || value === "validating" || value === "drafting" || value === "complete" || value === "failed";
-}
-
-function isSafeRelativePath(value: unknown): boolean {
-  return typeof value === "string" && value.length > 0 && value.length <= 4_096 && !value.startsWith("/") && !value.includes("\0") && !value.split("/").includes("..");
-}
-
-function isSafeFindingId(value: unknown): boolean {
-  return typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
 }
 
 function stepLabel(step: Projection["step"]): string {

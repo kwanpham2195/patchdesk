@@ -11,13 +11,14 @@ import type { RepoRelativePath } from "../domain/ids";
 import { parseRevisionComparison } from "../domain/review-comparison";
 import { err, ok, type Result } from "../domain/result";
 import { createLocalDraft } from "./review-workbench";
+import { readObjectField } from "./read-object-field";
 
 /** Persists only validated structured review output; it has no shell, model, or GitHub write capability. */
 export class ReviewCompletionService {
   constructor(private readonly paths: PatchdeskPaths, private readonly now: () => IsoTimestamp) {}
   async complete(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId")); const sessionId = parseReviewSessionId(field(input, "sessionId")); const attemptId = parseReviewAttemptId(field(input, "attemptId"));
-    const modelResult = parseModelReviewResult(field(input, "result"));
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId")); const sessionId = parseReviewSessionId(readObjectField(input, "sessionId")); const attemptId = parseReviewAttemptId(readObjectField(input, "attemptId"));
+    const modelResult = parseModelReviewResult(readObjectField(input, "result"));
     if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err" || modelResult._tag === "err") return err({ reason: "invalid_result" });
     const store = new ReviewSessionStore(this.paths); const [session, attempt] = await Promise.all([store.load(profileId.value, sessionId.value), store.loadAttempt(profileId.value, sessionId.value, attemptId.value)]);
     if (session._tag === "err" || attempt._tag === "err") return err({ reason: "not_found" });
@@ -88,4 +89,3 @@ export class ReviewCompletionService {
     return lifecycle._tag === "ok" ? ok(lifecycle.value) : err({ reason: "invalid_result" });
   }
 }
-function field(value: unknown, name: string): unknown { return typeof value === "object" && value !== null && name in value ? (value as Record<string, unknown>)[name] : undefined; }

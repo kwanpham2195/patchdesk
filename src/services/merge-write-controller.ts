@@ -4,6 +4,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import { parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
+import { readObjectField } from "./read-object-field";
 
 /** Main-process merge boundary; the renderer supplies only an already-confirmed method and acknowledgement. */
 export class MergeWriteController {
@@ -16,10 +17,10 @@ export class MergeWriteController {
   ) {}
 
   async merge(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
-    const profileId = parseWorkspaceProfileId(field(input, "profileId"));
-    const sessionId = parseReviewSessionId(field(input, "sessionId"));
-    const method = field(input, "method");
-    const acknowledgedWarnings = field(input, "acknowledgedWarnings");
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const method = readObjectField(input, "method");
+    const acknowledgedWarnings = readObjectField(input, "acknowledgedWarnings");
     if (profileId._tag === "err" || sessionId._tag === "err" || !isMethod(method) || typeof acknowledgedWarnings !== "boolean") return err({ reason: "invalid_input" });
     const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
     if (profile._tag === "err" || session._tag === "err" || session.value.visibleResult === undefined) return err({ reason: "not_found" });
@@ -30,6 +31,5 @@ export class MergeWriteController {
   }
 }
 
-function field(value: unknown, name: string): unknown { return typeof value === "object" && value !== null && name in value ? (value as Record<string, unknown>)[name] : undefined; }
 function isMethod(value: unknown): value is MergeMethod { return value === "merge" || value === "squash" || value === "rebase"; }
 function mergeReason(tag: string): string { return tag === "MergeBlocked" ? "merge_blocked" : tag === "MergeAcknowledgementRequired" ? "merge_acknowledgement_required" : tag === "StaleHeadBlocksMerge" ? "stale_head" : "merge_failed"; }

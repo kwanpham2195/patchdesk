@@ -3,14 +3,22 @@ import { describe, expect, it } from "vitest";
 import { projectSafeRun } from "../../src/services/run-projection";
 
 describe("safe Flue run projection", () => {
-  it("exposes only whitelisted live state", () => {
+  it("projects unknown provider fields away from the renderer contract", () => {
     expect(projectSafeRun({
       status: "running",
       elapsedMs: 4,
       step: "inspecting",
       message: "Reading changed files",
       prompt: "secret",
-    })).toEqual({ _tag: "err", error: { _tag: "InvalidRunProjection" } });
+    })).toEqual({
+      _tag: "ok",
+      value: {
+        status: "running",
+        elapsedMs: 4,
+        step: "inspecting",
+        message: "Reading changed files",
+      },
+    });
     expect(projectSafeRun({ status: "disconnected", elapsedMs: 4, step: "inspecting" })).toMatchObject({ _tag: "ok" });
   });
 
@@ -40,6 +48,40 @@ describe("safe Flue run projection", () => {
         label: "Invalid path",
         path: "/private/file",
       }],
+    })).toEqual({ _tag: "err", error: { _tag: "InvalidRunProjection" } });
+  });
+
+  it("rejects malformed bounded metadata and activity before it reaches the renderer", () => {
+    expect(projectSafeRun({
+      status: "running",
+      elapsedMs: 0,
+      step: "inspecting",
+      metadata: {
+        agent: "Patchdesk review agent",
+        model: "model",
+        reasoning: "medium",
+        mode: "Full review",
+        access: "write access",
+      },
+    })).toEqual({ _tag: "err", error: { _tag: "InvalidRunProjection" } });
+
+    expect(projectSafeRun({
+      status: "running",
+      elapsedMs: 0,
+      step: "inspecting",
+      activity: [{
+        at: "not-a-time",
+        elapsedMs: 0,
+        step: "inspecting",
+        label: "Inspecting files",
+      }],
+    })).toEqual({ _tag: "err", error: { _tag: "InvalidRunProjection" } });
+
+    expect(projectSafeRun({
+      status: "running",
+      elapsedMs: 0,
+      step: "inspecting",
+      ignoredProviderPayload: "é".repeat(7_000),
     })).toEqual({ _tag: "err", error: { _tag: "InvalidRunProjection" } });
   });
 });

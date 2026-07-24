@@ -20,6 +20,7 @@ import { preloadScriptPath } from "./electron-paths";
 import {
   installWebContentsSecurity,
   normalizeExternalHosts,
+  openAllowedExternalUrl,
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
 import { DESKTOP_NAVIGATE_CHANNEL } from "./ipc-contract";
@@ -252,6 +253,11 @@ async function createWorkbenchWindow(
     {
       setNavigationState(state) {
         rendererNavigationState = state;
+      },
+      async openExternalHttps(url) {
+        return await openAllowedExternalUrl(url, allowedHosts, async (candidate) => {
+          await shell.openExternal(candidate);
+        });
       },
       async selectDirectory(input) {
         const result = await dialog.showOpenDialog(window, {

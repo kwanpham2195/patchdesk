@@ -32,11 +32,18 @@ export type SetNavigationStateDesktopRequest = {
   readonly state: "clear" | "dirty_draft" | "write_pending";
 };
 
+/** Opens a validated HTTPS URL outside the isolated renderer. */
+export type OpenExternalHttpsDesktopRequest = {
+  readonly operation: "openExternalHttps";
+  readonly url: string;
+};
+
 /** Closed renderer-to-main request union. */
 export type DesktopRequest =
   | LocalApiDesktopRequest
   | SelectDirectoryDesktopRequest
-  | SetNavigationStateDesktopRequest;
+  | SetNavigationStateDesktopRequest
+  | OpenExternalHttpsDesktopRequest;
 
 export type DesktopResponse = {
   readonly ok: boolean;
@@ -48,6 +55,7 @@ export type DesktopResponse = {
 /** The renderer-visible API contains operations, never loopback credentials. */
 export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
+  openExternalHttps(url: string): Promise<boolean>;
   onNavigate(listener: (destination: DesktopDestination) => void): () => void;
   /** QA-only structural diagnostics are enabled by a main-process argument. */
   readonly qaScrollDiagnosticsEnabled: boolean;

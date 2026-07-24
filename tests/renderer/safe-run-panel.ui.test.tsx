@@ -21,4 +21,11 @@ describe("review run metadata", () => {
     expect(await screen.findByText("Patchdesk review agent")).toBeTruthy();
     expect(screen.getByText("Read-only repository inspection")).toBeTruthy();
   });
+
+  it("falls back to the disconnected state when metadata is malformed", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "running", elapsedMs: 12, step: "inspecting", metadata: { agent: "provider event", model: "model", reasoning: "medium", mode: "Full review", access: "Read-only repository inspection" } } }) } });
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />);
+    expect(await screen.findByText("Run status: disconnected")).toBeTruthy();
+    expect(screen.queryByText("provider event")).toBeNull();
+  });
 });
