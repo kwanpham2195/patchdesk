@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DiffWorkbench } from "./components/diff-workbench";
 import { AppShell } from "./components/app-shell";
 import {
   MaintainerInbox,
   type ReviewInitialSection,
   type ReviewStartMode,
 } from "./components/maintainer-inbox";
-import { CompletedReviewWorkbench } from "./components/completed-review-workbench";
 import { PreparedReviewFlow } from "./flows/prepared-review-flow";
 import { CompletedReviewFlow } from "./flows/completed-review-flow";
-import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
-import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
-import { SafeRunPanel } from "./components/safe-run-panel";
+import { AppFixtureContent } from "./flows/app-fixtures";
+import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
@@ -63,9 +60,21 @@ import {
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
-import { parseInboxResponse, parseWorkbenchResponse, type InboxResponse } from "./renderer-contracts";
-import { InboxRefreshScheduler, inboxFreshnessLabel } from "./inbox-refresh-scheduler";
-import { applyAppearance, loadAppearancePreference, saveAppearancePreference, type AppearancePreference } from "./appearance-preferences";
+import {
+  parseInboxResponse,
+  parseWorkbenchResponse,
+  type InboxResponse,
+} from "./renderer-contracts";
+import {
+  InboxRefreshScheduler,
+  inboxFreshnessLabel,
+} from "./inbox-refresh-scheduler";
+import {
+  applyAppearance,
+  loadAppearancePreference,
+  saveAppearancePreference,
+  type AppearancePreference,
+} from "./appearance-preferences";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
@@ -159,7 +168,8 @@ type WorkbenchPayload = {
   readonly comparison?: unknown;
   readonly comparisonPatch?: string;
   readonly lifecycle?: unknown;
-  readonly comparisonAvailability?: "available" | "not_requested" | "incomplete" | "missing";
+  readonly comparisonAvailability?:
+    "available" | "not_requested" | "incomplete" | "missing";
   readonly pullRequest?: {
     readonly ref: {
       readonly host?: string;
@@ -193,37 +203,8 @@ type ReviewRecord = {
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
 export function App({ initialState }: AppProps): React.JSX.Element {
-  const diffFixture =
-    typeof window !== "undefined" && window.location.hash === "#diff-fixture";
-  const runFixture =
-    typeof window !== "undefined" && window.location.hash === "#run-fixture";
-  const workbenchFixture =
-    typeof window !== "undefined" &&
-    ["#workbench-fixture", "#long-workbench-fixture"].includes(
-      window.location.hash,
-    );
-  const longWorkbenchFixture =
-    typeof window !== "undefined" &&
-    window.location.hash === "#long-workbench-fixture";
-  const performanceFixture =
-    typeof window !== "undefined" &&
-    window.location.hash === "#performance-fixture";
-  const submissionFixture =
-    typeof window !== "undefined" &&
-    window.location.hash === "#submission-fixture";
-  const submissionRejectionFixture =
-    typeof window !== "undefined" &&
-    window.location.hash === "#submission-rejection-fixture";
-  const mergeFixture =
-    typeof window !== "undefined" && window.location.hash === "#merge-fixture";
-  const fixtureMode =
-    diffFixture ||
-    runFixture ||
-    workbenchFixture ||
-    performanceFixture ||
-    submissionFixture ||
-    submissionRejectionFixture ||
-    mergeFixture;
+  const fixtureHash = typeof window === "undefined" ? "" : window.location.hash;
+  const fixtureMode = isFixtureHash(fixtureHash);
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
       typeof window === "undefined"
@@ -245,13 +226,16 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [openedPr, setOpenedPr] = useState<string | undefined>();
   const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
-  const [appearance, setAppearance] = useState<AppearancePreference>(() => loadAppearancePreference());
-  const [diffThemePreferences, setDiffThemePreferences] = useState<DiffThemePreferences>(() =>
-    loadDiffThemePreferences(),
+  const [appearance, setAppearance] = useState<AppearancePreference>(() =>
+    loadAppearancePreference(),
   );
+  const [diffThemePreferences, setDiffThemePreferences] =
+    useState<DiffThemePreferences>(() => loadDiffThemePreferences());
 
   useEffect(() => {
-    const apply = (): void => { applyAppearance(appearance); };
+    const apply = (): void => {
+      applyAppearance(appearance);
+    };
     apply();
     if (typeof window.matchMedia !== "function") return undefined;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -275,7 +259,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const restoredSessionId = useRef<string | undefined>(undefined);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
   const inboxRefreshGeneration = useRef(0);
-  const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(undefined);
+  const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(
+    undefined,
+  );
   const inboxSchedulerInitialized = useRef(false);
   const [navigationState, setNavigationState] = useState<
     "clear" | "dirty_draft" | "write_pending"
@@ -362,11 +348,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     if (Array.isArray(profilePayload))
       setProfiles(profilePayload.filter(isProfile));
     const loadedInbox = parseInboxResponse(dashboardPayload);
-    const compatibleDashboard = loadedInbox === undefined
-      ? isDashboard(dashboardPayload)
-        ? dashboardPayload
-        : undefined
-      : dashboardFromInbox(loadedInbox);
+    const compatibleDashboard =
+      loadedInbox === undefined
+        ? isDashboard(dashboardPayload)
+          ? dashboardPayload
+          : undefined
+        : dashboardFromInbox(loadedInbox);
     if (compatibleDashboard !== undefined) {
       if (loadedInbox !== undefined) {
         setInbox(loadedInbox);
@@ -433,7 +420,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     if (!fixtureMode) void load();
   }, [fixtureMode]);
   useEffect(() => {
-    if (fixtureMode || destination.kind !== "dashboard" || dashboard === undefined)
+    if (
+      fixtureMode ||
+      destination.kind !== "dashboard" ||
+      dashboard === undefined
+    )
       return;
     const scheduler = new InboxRefreshScheduler(refreshInbox);
     inboxRefreshScheduler.current = scheduler;
@@ -536,7 +527,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         profileId={dashboard?.profile.id ?? "default"}
         profileLabel={dashboard?.profile.label ?? "Local workspace"}
         repositoryCount={dashboard?.dashboard.repos.length ?? 0}
-        activeReviewCount={inbox?.inbox.rows.filter((row) => row.categories.includes("running")).length ?? 0}
+        activeReviewCount={
+          inbox?.inbox.rows.filter((row) => row.categories.includes("running"))
+            .length ?? 0
+        }
         navigationBlocked={navigationState !== "clear"}
         onNavigate={navigate}
         workspacePanel={
@@ -560,7 +554,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
                       </span>
                       {outcome === "no_open_prs" ? null : (
                         <Badge
-                          variant={outcome === "ready" ? "secondary" : "outline"}
+                          variant={
+                            outcome === "ready" ? "secondary" : "outline"
+                          }
                           className="shrink-0"
                         >
                           {outcome.replaceAll("_", " ")}
@@ -621,153 +617,48 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     </TooltipProvider>
   );
 
-  if (diffFixture)
+  if (fixtureMode)
     return shell(
-      <DiffWorkbench
-        patch={fixturePatch}
-        finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }}
+      <AppFixtureContent
+        hash={fixtureHash}
+        onNavigationStateChange={setNavigationState}
       />,
-      { kind: "workbench", sessionId: "fixture" },
-    );
-  if (performanceFixture)
-    return shell(
-      <DiffWorkbench
-        patch={buildLargePatchFixture()}
-        finding={{
-          file: "src/generated/file-0999.ts",
-          lineStart: 1,
-          diffSide: "new",
-        }}
-      />,
-      { kind: "workbench", sessionId: "performance-fixture" },
-    );
-  if (runFixture)
-    return shell(
-      <div className="p-6">
-        <RunFixturePanel />
-      </div>,
-      { kind: "workbench", sessionId: "fixture-session" },
-    );
-  if (workbenchFixture) {
-    const fixture = longWorkbenchFixture
-      ? longWorkbenchFixtureData
-      : workbenchFixtureData;
-    return shell(
-      <CompletedReviewWorkbench
-        model={{
-          source: { profileId: "fixture", sessionId: "fixture-session" },
-          result: fixture.result as never,
-          reviewScope: { kind: "full" },
-          fullPatch: fixture.fullPatch,
-          comparisonAvailability: "not_requested",
-          pullRequest: fixture.pullRequest as never,
-          reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
-          freshness: "fresh",
-          refreshedAt: "2026-07-17T00:00:00.000Z",
-          draft: workbenchFixtureData.editableDraft as never,
-          comments: fixture.comments as never,
-          checks: fixture.checks,
-          history: workbenchFixtureData.history,
-        }}
-        actions={{
-          saveDraft: async (input) => {
-            const draft = {
-              ...workbenchFixtureData.editableDraft,
-              summaryBody: input.summaryBody,
-              comments: workbenchFixtureData.editableDraft.comments.map(
-                (comment) => {
-                  const edited = input.comments.find(
-                    (candidate) => candidate.findingId === comment.findingId,
-                  );
-                  return edited === undefined
-                    ? comment
-                    : {
-                        ...comment,
-                        include: edited.include,
-                        body: edited.body,
-                      };
-                },
-              ),
-              updatedAt: "2026-07-17T00:00:01.000Z",
-            };
-            return { draft: draft as never, revision: draft.updatedAt };
-          },
-          reportNavigationState: setNavigationState,
-        }}
-      />,
-      { kind: "workbench", sessionId: "fixture-session" },
-    );
-  }
-  if (submissionFixture)
-    return shell(
-      <div className="mx-auto max-w-3xl p-6">
-        <ReviewSubmissionDialog
-          draft={submissionFixtureData.draft as never}
-          findings={submissionFixtureData.findings as never}
-          onCreatePending={async () => ({ reviewId: "9001" })}
-          onSubmitPending={async () => ({ reviewId: "9001" })}
-        />
-      </div>,
-      { kind: "workbench", sessionId: "fixture-session" },
-    );
-  if (submissionRejectionFixture)
-    return shell(
-      <div className="mx-auto max-w-3xl p-6">
-        <ReviewSubmissionDialog
-          draft={submissionFixtureData.draft as never}
-          findings={submissionFixtureData.findings as never}
-          onCreatePending={async () => {
-            throw new Error("fixture rejection");
-          }}
-          onSubmitPending={async () => ({ reviewId: "9001" })}
-        />
-      </div>,
-      { kind: "workbench", sessionId: "fixture-session" },
-    );
-  if (mergeFixture)
-    return shell(
-      <div className="mx-auto max-w-3xl p-6">
-        <MergeConfirmationDialog
-          readiness={{
-            _tag: "NeedsAcknowledgement",
-            blockers: [],
-            warnings: ["request_changes", "high_severity_finding"],
-          }}
-          context={{
-            repo: "centraldigital/patchdesk",
-            prNumber: 42,
-            title: "Protect review writes",
-            base: "sit",
-            head: "feat/review",
-            headSha: "abcdef1234567890",
-          }}
-          methods={["squash", "merge"]}
-          onMerge={async () => ({ mergeCommitSha: "abcdef" })}
-        />
-      </div>,
-      { kind: "workbench", sessionId: "fixture-session" },
+      fixtureDestination(fixtureHash),
     );
 
   if (workbench?.state === "review_started") {
     return shell(
       <PreparedReviewFlow
         workbench={workbench as never}
-        {...(destination.kind === "workbench" && (destination.initialSection === "diff" || destination.initialSection === "checks")
+        {...(destination.kind === "workbench" &&
+        (destination.initialSection === "diff" ||
+          destination.initialSection === "checks")
           ? { initialSection: destination.initialSection }
           : {})}
         onNavigate={(initialSection) =>
-          navigate({ kind: "workbench", sessionId: workbench.session.id, initialSection })
+          navigate({
+            kind: "workbench",
+            sessionId: workbench.session.id,
+            initialSection,
+          })
         }
         onWorkbenchPatch={(patch) =>
-          setWorkbench((current) => current === undefined ? current : { ...current, ...patch })
+          setWorkbench((current) =>
+            current === undefined ? current : { ...current, ...patch },
+          )
         }
         onWorkbenchReplace={(next) => setWorkbench(next as WorkbenchPayload)}
-        onRefresh={() => openPullRequest({
-          host: workbench.session.key.host,
-          owner: workbench.session.key.owner,
-          repo: workbench.session.key.repo,
-          number: workbench.session.key.prNumber,
-        }, "full")}
+        onRefresh={() =>
+          openPullRequest(
+            {
+              host: workbench.session.key.host,
+              owner: workbench.session.key.owner,
+              repo: workbench.session.key.repo,
+              number: workbench.session.key.prNumber,
+            },
+            "full",
+          )
+        }
       />,
       { kind: "workbench", sessionId: workbench.session.id },
     );
@@ -778,7 +669,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       <CompletedReviewFlow
         workbench={workbench as never}
         onWorkbenchPatch={(patch) =>
-          setWorkbench((current) => current === undefined ? current : { ...current, ...(patch as Partial<WorkbenchPayload>) })
+          setWorkbench((current) =>
+            current === undefined
+              ? current
+              : { ...current, ...(patch as Partial<WorkbenchPayload>) },
+          )
         }
         onNavigationStateChange={setNavigationState}
       />,
@@ -959,7 +854,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           profileId:
             dashboard?.profile.id ||
             (profileDraft.id.trim().length === 0 ? undefined : profileDraft.id),
-          host: pr.host ?? dashboard?.profile.githubHost ?? profileDraft.githubHost,
+          host:
+            pr.host ?? dashboard?.profile.githubHost ?? profileDraft.githubHost,
           owner: pr.owner,
           repo: pr.repo,
           number: pr.number,
@@ -971,7 +867,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         throw new Error("invalid workbench projection");
       setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
       setWorkbench(value);
-      navigate({ kind: "workbench", sessionId: value.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
+      navigate({
+        kind: "workbench",
+        sessionId: value.session.id,
+        ...(initialSection === undefined ? {} : { initialSection }),
+      });
     } catch {
       setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
     }
@@ -992,7 +892,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     navigate({ kind: "workbench", sessionId });
   }
   return shell(
-    <div className={destination.kind === "dashboard" || destination.kind === "workbench" ? "flex min-h-0 flex-1 flex-col" : "p-3 min-[1280px]:p-4"}>
+    <div
+      className={
+        destination.kind === "dashboard" || destination.kind === "workbench"
+          ? "flex min-h-0 flex-1 flex-col"
+          : "p-3 min-[1280px]:p-4"
+      }
+    >
       {destination.kind === "dashboard" || destination.kind === "workbench" ? (
         inbox !== undefined && dashboard !== undefined ? (
           <InboxScreen
@@ -1032,19 +938,19 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             {...(openError === undefined ? {} : { openError })}
           />
         ) : (
-        <Pending
-          state={state}
-          {...(dashboard === undefined ? {} : { dashboard })}
-          {...(inbox === undefined ? {} : { inbox })}
-          reference={reference}
-          onReference={setReference}
-          onPreview={() => void previewEntry()}
-          onRefresh={() => void refreshDashboard()}
-          onSettings={() => navigate({ kind: "settings" })}
-          onOpenRow={(pr) => void openPullRequest(pr)}
-          {...(openedPr === undefined ? {} : { openedPr })}
-          {...(openError === undefined ? {} : { openError })}
-        />
+          <Pending
+            state={state}
+            {...(dashboard === undefined ? {} : { dashboard })}
+            {...(inbox === undefined ? {} : { inbox })}
+            reference={reference}
+            onReference={setReference}
+            onPreview={() => void previewEntry()}
+            onRefresh={() => void refreshDashboard()}
+            onSettings={() => navigate({ kind: "settings" })}
+            onOpenRow={(pr) => void openPullRequest(pr)}
+            {...(openedPr === undefined ? {} : { openedPr })}
+            {...(openError === undefined ? {} : { openError })}
+          />
         )
       ) : destination.kind === "settings" ? (
         <Settings
@@ -1105,9 +1011,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       >
         {preview === undefined ? null : (
           <DialogContent
-            initialFocus={() =>
-              document.getElementById("keep-current-profile")
-            }
+            initialFocus={() => document.getElementById("keep-current-profile")}
             finalFocus={previewTrigger}
           >
             <DialogHeader>
@@ -1136,289 +1040,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     </div>,
   );
 }
-
-function RunFixturePanel(): React.JSX.Element {
-  const [runId, setRunId] = useState<string>();
-  return (
-    <SafeRunPanel
-      profileId="fixture"
-      sessionId="fixture-session"
-      attemptId="001"
-      {...(runId === undefined ? {} : { runId })}
-      onStart={async () => {
-        const value = await requestJson("/v1/runs/review-pr", {
-          method: "POST",
-          body: {
-            profileId: "fixture",
-            sessionId: "fixture-session",
-            attemptId: "001",
-          },
-        });
-        if (record(value) && typeof value.runId === "string")
-          setRunId(value.runId);
-      }}
-    />
-  );
-}
-
-const fixturePatch = buildFixturePatch();
-
-function buildFixturePatch(): string {
-  const changedLines = Array.from(
-    { length: 48 },
-    (_, index) => `-old-${index + 1}\n+new-${index + 1}`,
-  ).join("\n");
-  return `diff --git a/src/a.ts b/src/a.ts
---- a/src/a.ts
-+++ b/src/a.ts
-@@ -1,48 +1,48 @@
-${changedLines}
-diff --git a/src/b.ts b/src/b.ts
---- a/src/b.ts
-+++ b/src/b.ts
-@@ -1 +1 @@
--old
-+new
-`;
-}
-
-function buildLargePatchFixture(): string {
-  const files: Array<string> = [];
-  const oldLine = `-${"old-value-".padEnd(79, "x")}`;
-  const newLine = `+${"new-value-".padEnd(79, "y")}`;
-  for (let index = 0; index < 1_000; index += 1) {
-    const number = String(index).padStart(4, "0");
-    const path = `src/generated/file-${number}.ts`;
-    const changes: Array<string> = [];
-    for (let line = 0; line < 64; line += 1) changes.push(oldLine, newLine);
-    files.push(
-      `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,64 +1,64 @@\n${changes.join("\n")}\n`,
-    );
-  }
-  return files.join("");
-}
-
-const workbenchFixtureData = {
-  fullPatch: fixturePatch,
-  pullRequest: {
-    ref: {
-      host: "github.com",
-      owner: "centraldigital",
-      repo: "patchdesk",
-      number: 42,
-    },
-    title: "Protect review writes",
-    author: "fixture",
-    headBranch: "feat/review",
-    baseBranch: "sit",
-    headSha: "abcdef1234567890abcdef1234567890abcdef12",
-    isOpen: true,
-    isDraft: false,
-    reviewState: "none",
-    mergeability: "mergeable",
-    labels: [],
-    updatedAt: "2026-07-17T00:00:00.000Z",
-  },
-  result: {
-    changeSummary: "Review completed for Patchdesk workbench",
-    verdict: "comment",
-    summary: "One mapped finding and one finding that needs manual placement.",
-    findings: [
-      {
-        id: "mapped",
-        severity: "P1",
-        title: "Keep writes behind the stale-head check",
-        file: "src/b.ts",
-        lineStart: 1,
-        diffSide: "new",
-        explanation:
-          "A GitHub adapter must never bypass the current head check.",
-        suggestedComment: "Keep the stale-head check at the write boundary.",
-        confidence: "high",
-        mappingStatus: "mapped",
-      },
-      {
-        id: "unmapped",
-        severity: "P2",
-        title: "Document the manual placement",
-        explanation: "This review point has no verified diff coordinate.",
-        confidence: "medium",
-        mappingStatus: "unmapped",
-      },
-    ],
-    validationPlan: [
-      "pnpm test -- --run review-workbench",
-      "pnpm test:e2e -- --grep completed-review",
-    ],
-    assumptions: [
-      "The head SHA remains current while this local draft is edited.",
-    ],
-  },
-  draft: {
-    summaryBody:
-      "One mapped finding and one finding that needs manual placement.",
-    comments: [
-      {
-        findingId: "mapped",
-        body: "Keep the stale-head check at the write boundary.",
-        postability: "postable" as const,
-      },
-    ],
-  },
-  editableDraft: {
-    sessionId: "fixture-session",
-    attemptId: "001",
-    state: { _tag: "LocalDraft" },
-    summaryBody:
-      "One mapped finding and one finding that needs manual placement.",
-    suggestedEvent: "COMMENT",
-    comments: [
-      {
-        findingId: "mapped",
-        include: true,
-        originalSuggestedBody:
-          "Keep the stale-head check at the write boundary.",
-        body: "Keep the stale-head check at the write boundary.",
-        path: "src/b.ts",
-        line: 1,
-        diffSide: "new",
-        postability: "postable",
-      },
-    ],
-    createdAt: "2026-07-17T00:00:00.000Z",
-    updatedAt: "2026-07-17T00:00:00.000Z",
-  },
-  comments: {
-    threads: [
-      {
-        id: "thread-1",
-        state: "open" as const,
-        location: { path: "src/b.ts", line: 1 },
-        comments: [
-          {
-            id: "comment-1",
-            author: "reviewer",
-            body: "Existing GitHub review comment.",
-            createdAt: "2026-07-16T00:00:00.000Z" as never,
-            url: "https://github.com/centraldigital/patchdesk/pull/1#discussion_r1",
-          },
-        ],
-      },
-    ],
-  },
-  checks: {
-    overall: "failing" as const,
-    checks: [
-      {
-        name: "unit",
-        required: true as const,
-        status: "completed" as const,
-        conclusion: "failure" as const,
-        url: "https://github.com/centraldigital/patchdesk/actions/runs/1",
-      },
-      { name: "docs", required: false as const, status: "queued" as const },
-    ],
-  },
-  history: [
-    { id: "001", state: "ReviewCompleted" as const },
-    { id: "002", state: "ReviewFailed" as const },
-    { id: "003", state: "Stale" as const },
-    { id: "004", state: "Discarded" as const },
-    { id: "005", state: "Merged" as const },
-    { id: "006", state: "IgnoredLateResult" as const },
-  ],
-  debugHref: "/debug/fixture-session",
-};
-
-const longFixturePath =
-  "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
-const longFixtureTitle =
-  "Protect the authoritative review write boundary when a pull request title contains localized text, identifiers, and enough detail to exceed the available header width";
-const longWorkbenchFixtureData = {
-  ...workbenchFixtureData,
-  fullPatch: `diff --git a/${longFixturePath} b/${longFixturePath}\n--- a/${longFixturePath}\n+++ b/${longFixturePath}\n@@ -1 +1 @@\n-old\n+new\n`,
-  pullRequest: {
-    ...workbenchFixtureData.pullRequest,
-    ref: {
-      ...workbenchFixtureData.pullRequest.ref,
-      owner: "centraldigital-platform-engineering-maintainers",
-      repo: "patchdesk-desktop-review-workbench-with-a-long-repository-name",
-    },
-    title: longFixtureTitle,
-    author: "reviewer-with-a-long-github-handle-for-layout-validation",
-    headBranch:
-      "feat/CFW-1234-preserve-authoritative-review-coordination-across-desktop-restarts",
-    baseBranch: "release/2026-07-operational-readiness-and-accessibility",
-  },
-  result: {
-    ...workbenchFixtureData.result,
-    findings: workbenchFixtureData.result.findings.map((finding, index) =>
-      index === 0
-        ? {
-            ...finding,
-            file: longFixturePath,
-            title:
-              "Keep every pending GitHub write attached to the exact authoritative revision even when the finding title is unusually descriptive",
-            explanation:
-              "This deliberately long explanation proves that detailed review guidance wraps without making the action rail or navigation pane wider than the viewport.",
-          }
-        : finding,
-    ),
-    validationPlan: [
-      "pnpm test -- --run tests/services/review-write-controller-with-authoritative-revision-and-recovery.test.ts",
-      "pnpm test:e2e -- --grep completed-review-long-localized-content-and-responsive-navigation",
-      "authoritativeReviewWriteCoordinationAndRecoverySurfaceWithoutNaturalBreakpointsMustRemainReadableInsideTheInspector",
-    ],
-  },
-  comments: {
-    threads: workbenchFixtureData.comments.threads.map((thread) => ({
-      ...thread,
-      location: { path: longFixturePath, line: 1 },
-      comments: thread.comments.map((comment) => ({
-        ...comment,
-        author: "reviewer-with-a-long-github-handle-for-layout-validation",
-        body: "Existing GitHub review comment with enough detail to wrap across several lines while retaining the complete author, timestamp, and discussion content for assistive technology.",
-      })),
-    })),
-  },
-  checks: {
-    ...workbenchFixtureData.checks,
-    checks: workbenchFixtureData.checks.checks.map((check, index) =>
-      index === 0
-        ? {
-            ...check,
-            name: "required-review-workbench-authoritative-write-and-restart-recovery-validation",
-          }
-        : check,
-    ),
-  },
-};
-
-const submissionFixtureData = {
-  draft: {
-    state: { _tag: "LocalDraft" },
-    summaryBody: "Request changes before merge.",
-    comments: [
-      {
-        findingId: "p1",
-        include: true,
-        path: "src/services/review-submission-service.ts",
-        line: 34,
-        body: "Keep the stale-head check at the write boundary.",
-        postability: "postable",
-      },
-      {
-        findingId: "unmapped",
-        include: true,
-        path: "src/services/review-submission-service.ts",
-        line: 55,
-        body: "This has no verified GitHub location.",
-        postability: "invalid_line",
-      },
-    ],
-  },
-  findings: [{ id: "p1", severity: "P1" }],
-};
 
 function InboxScreen({
   state,
@@ -1481,7 +1102,12 @@ function InboxScreen({
               onChange={(event) => onReference(event.target.value)}
             />
           </div>
-          <Button size="sm" className="shrink-0 text-xs max-sm:w-full" onClick={onPreview} disabled={state === "loading"}>
+          <Button
+            size="sm"
+            className="shrink-0 text-xs max-sm:w-full"
+            onClick={onPreview}
+            disabled={state === "loading"}
+          >
             Preview pull request
           </Button>
         </div>
@@ -1498,7 +1124,9 @@ function InboxScreen({
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
           freshness={inbox.inbox.dataFreshness}
-          {...(inbox.inbox.snapshot === undefined ? {} : { snapshot: inbox.inbox.snapshot })}
+          {...(inbox.inbox.snapshot === undefined
+            ? {}
+            : { snapshot: inbox.inbox.snapshot })}
           refreshStatus={refreshStatus}
           onRefresh={onRefresh}
           onOpenReview={onOpenReview}
@@ -2119,14 +1747,21 @@ function Settings({
           <CardHeader>
             <CardTitle>Appearance</CardTitle>
             <CardDescription>
-              Follow the system setting, or keep Patchdesk in light or dark mode.
+              Follow the system setting, or keep Patchdesk in light or dark
+              mode.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Select value={appearance} onValueChange={(value) => {
-              if (value === "system" || value === "light" || value === "dark") onAppearanceChange(value);
-            }}>
-              <SelectTrigger aria-label="Appearance"><SelectValue /></SelectTrigger>
+            <Select
+              value={appearance}
+              onValueChange={(value) => {
+                if (value === "system" || value === "light" || value === "dark")
+                  onAppearanceChange(value);
+              }}
+            >
+              <SelectTrigger aria-label="Appearance">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="system">System</SelectItem>
                 <SelectItem value="light">Light</SelectItem>
@@ -2146,35 +1781,54 @@ function Settings({
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="diff-theme-light">Light appearance</Label>
-            <Select
-              value={diffThemePreferences.light}
-              onValueChange={(value) => {
-                if (value !== null && DIFF_LIGHT_THEMES.some((theme) => theme.id === value)) {
-                  onDiffThemeChange({ ...diffThemePreferences, light: value });
-                }
-              }}
-            >
-              <SelectTrigger id="diff-theme-light" aria-label="Light diff theme"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {DIFF_LIGHT_THEMES.map((theme) => (
-                  <SelectItem key={theme.id} value={theme.id}>
-                    {theme.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select
+                value={diffThemePreferences.light}
+                onValueChange={(value) => {
+                  if (
+                    value !== null &&
+                    DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
+                  ) {
+                    onDiffThemeChange({
+                      ...diffThemePreferences,
+                      light: value,
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger
+                  id="diff-theme-light"
+                  aria-label="Light diff theme"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DIFF_LIGHT_THEMES.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.id}>
+                      {theme.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="diff-theme-dark">Dark appearance</Label>
               <Select
                 value={diffThemePreferences.dark}
                 onValueChange={(value) => {
-                  if (value !== null && DIFF_DARK_THEMES.some((theme) => theme.id === value)) {
+                  if (
+                    value !== null &&
+                    DIFF_DARK_THEMES.some((theme) => theme.id === value)
+                  ) {
                     onDiffThemeChange({ ...diffThemePreferences, dark: value });
                   }
                 }}
               >
-                <SelectTrigger id="diff-theme-dark" aria-label="Dark diff theme"><SelectValue /></SelectTrigger>
+                <SelectTrigger
+                  id="diff-theme-dark"
+                  aria-label="Dark diff theme"
+                >
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {DIFF_DARK_THEMES.map((theme) => (
                     <SelectItem key={theme.id} value={theme.id}>
@@ -2382,11 +2036,15 @@ function Settings({
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             Discovery searches only your configured workspace roots, up to four
             directory levels, with five-second local command limits. It runs in
-            Patchdesk’s main process and offers local paths only in this Settings
-            suggestion list; it never sends them to GitHub.
+            Patchdesk’s main process and offers local paths only in this
+            Settings suggestion list; it never sends them to GitHub.
           </p>
           {discoveryFeedback === undefined ? null : (
-            <p role="status" aria-live="polite" className="mt-3 text-sm text-muted-foreground">
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-3 text-sm text-muted-foreground"
+            >
               {discoveryFeedback}
             </p>
           )}
@@ -2673,7 +2331,9 @@ function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
 }
 
 function isDashboardList(value: unknown): value is Dashboard["dashboard"] {
-  return record(value) && Array.isArray(value.rows) && Array.isArray(value.repos);
+  return (
+    record(value) && Array.isArray(value.rows) && Array.isArray(value.repos)
+  );
 }
 
 function mergeDashboardRepository(
@@ -2682,7 +2342,9 @@ function mergeDashboardRepository(
   target: Repo,
 ): Dashboard["dashboard"] {
   const sameRepository = (repo: Repo): boolean =>
-    repo.host === target.host && repo.owner === target.owner && repo.repo === target.repo;
+    repo.host === target.host &&
+    repo.owner === target.owner &&
+    repo.repo === target.repo;
   return {
     rows: [
       ...current.rows.filter(
