@@ -14,7 +14,7 @@
 - Parse renderer commands, stored records, and GitHub responses. Expected failures are typed values.
 - Keep one current review result for the current PR head. Rerun requires explicit discard of active local work.
 - Preserve existing local drafts during the v2-to-v3 session migration; reject malformed records and every unsupported schema version.
-- The `ReviewDraft` module may remain as a temporary internal type bridge only while Tasks 2, 4, 5, 8, and 9 migrate its consumers. New v3 storage never writes draft fields; delete the bridge and module once its last consumer is removed.
+- The `ReviewDraft` module and `ReviewDraftController` may remain as temporary internal bridges only while Tasks 2, 4, 5, 8, and 9 migrate their consumers. New v3 storage never writes draft fields; delete both bridges and their old local API route once the renderer moves to batch commands.
 - Refresh upstream PR and thread data only when the user asks. Refresh never replaces local batch items.
 - Every GitHub write requires confirmation, expected revision, and a head check immediately before the first write.
 - Persist an operation state before each remote call and a receipt after each success. Never retry an ambiguous write.
@@ -131,7 +131,7 @@ git commit -m "refactor: model review work as a local batch"
 **Interfaces:**
 - Produces `createReviewBatch` and `ReviewBatchController.update(input)`.
 
-- [ ] **Step 1: Write failing tests for automatic mapped items, manual ranges, replies, and discard confirmation.**
+- [x] **Step 1: Write failing tests for automatic mapped items, manual ranges, replies, and discard confirmation.**
 
 ```ts
 it("creates included items only for mapped findings", () => {
@@ -149,17 +149,17 @@ it("rejects an unacknowledged discard command", async () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused tests.**
+- [x] **Step 2: Run the focused tests.**
 
 Run: `pnpm test -- --run tests/services/review-workbench.test.ts tests/services/review-completion-service.test.ts tests/services/review-batch-controller.test.ts`
 
 Expected: FAIL because batch derivation and commands are missing.
 
-- [ ] **Step 3: Derive mapped findings into stable local items.**
+- [x] **Step 3: Derive mapped findings into stable local items.**
 
 Use a deterministic local item ID derived from `FindingId`. Populate body from suggested comment or explanation, set `include: true`, and preserve parsed anchor and side. Keep repository-level findings out of the batch.
 
-- [ ] **Step 4: Implement strict editable commands.**
+- [x] **Step 4: Implement strict editable commands.**
 
 ```ts
 type ReviewBatchUpdate =
@@ -173,13 +173,13 @@ type ReviewBatchUpdate =
 
 Parse the command, lock by profile/session, compare `expectedRevision` with `batch.updatedAt`, apply one pure transition, save, reload, and return the canonical batch. Reject empty bodies, duplicate queued thread actions, foreign attempt IDs, unknown item IDs, and edits after applying or submission.
 
-- [ ] **Step 5: Run focused tests and remove old imports.**
+- [x] **Step 5: Run focused tests and remove old imports.**
 
 Run: `pnpm test -- --run tests/services/review-workbench.test.ts tests/services/review-completion-service.test.ts tests/services/review-batch-controller.test.ts && rg -n "ReviewDraft|review-draft-controller|createLocalDraft" src tests`
 
-Expected: tests PASS; search finds no production references.
+Expected: tests PASS; new batch services have no production references to the draft model. The temporary legacy controller route remains until Task 8 moves the renderer to batch commands.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/services/review-workbench.ts src/services/review-completion-service.ts src/services/review-batch-controller.ts tests/services/review-workbench.test.ts tests/services/review-completion-service.test.ts tests/services/review-batch-controller.test.ts
