@@ -692,8 +692,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             };
             return { draft: draft as never, revision: draft.updatedAt };
           },
-          createPendingReview: async () => ({ reviewId: "fixture" }),
-          submitPendingReview: async () => ({ reviewId: "fixture" }),
           reportNavigationState: setNavigationState,
         }}
       />,

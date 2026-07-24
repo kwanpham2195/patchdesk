@@ -51,8 +51,6 @@ function ReviewWorkbenchFixture(props: {
       }}
       actions={{
         saveDraft: async () => ({ draft, revision: "fixture" }),
-        createPendingReview: async () => ({ reviewId: "fixture" }),
-        submitPendingReview: async () => ({ reviewId: "fixture" }),
         reportNavigationState: () => undefined,
       }}
     />

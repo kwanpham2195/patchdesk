@@ -105,8 +105,8 @@ export type CompletedReviewWorkbenchActions = {
       readonly body: string;
     }>;
   }) => Promise<{ readonly draft: ReviewDraft; readonly revision: string }>;
-  readonly createPendingReview: () => Promise<{ readonly reviewId: string }>;
-  readonly submitPendingReview: (
+  readonly createPendingReview?: () => Promise<{ readonly reviewId: string }>;
+  readonly submitPendingReview?: (
     event: GitHubReviewEvent,
     summaryBody: string,
   ) => Promise<{ readonly reviewId: string }>;
@@ -147,11 +147,13 @@ export function CompletedReviewWorkbench({
     history: model.history,
     onNavigationStateChange: actions.reportNavigationState,
     draftEditor: { draft: model.draft, onSave: actions.saveDraft },
-    submission: {
-      draft: model.draft,
-      onCreatePending: actions.createPendingReview,
-      onSubmitPending: actions.submitPendingReview,
-    },
+    submission: actions.createPendingReview === undefined || actions.submitPendingReview === undefined
+      ? undefined
+      : {
+          draft: model.draft,
+          onCreatePending: actions.createPendingReview,
+          onSubmitPending: actions.submitPendingReview,
+        },
     merge: model.mergeReadiness === undefined || model.pullRequest === undefined || actions.merge === undefined
       ? undefined
       : {
