@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe("ReviewCompletionService", () => {
-  it("validates, persists, and exposes a completed result with a local mapped draft", async () => {
+  it("validates, persists, and exposes a completed result with a local mapped batch", async () => {
     const fixture = await runningReview();
     const completed = await fixture.service.complete({
       profileId: fixture.profileId,
@@ -40,12 +40,26 @@ describe("ReviewCompletionService", () => {
       _tag: "ok",
       value: {
         session: { state: { _tag: "ReviewCompleted", attemptId: "001" } },
-        draft: { state: { _tag: "LocalDraft" }, comments: [{ findingId: "mapped", postability: "postable" }] },
+        batch: {
+          state: { _tag: "Local" },
+          items: [
+            {
+              _tag: "InlineComment",
+              findingId: "mapped",
+              postability: "postable",
+            },
+          ],
+        },
       },
     });
     expect(await fixture.store.load(fixture.profileId, fixture.session.id)).toMatchObject({
       _tag: "ok",
-      value: { visibleResult: { changeSummary: "Protect the write boundary" }, draftContent: { comments: [{ findingId: "mapped" }] } },
+      value: {
+        visibleResult: { changeSummary: "Protect the write boundary" },
+        batchContent: {
+          items: [{ _tag: "InlineComment", findingId: "mapped" }],
+        },
+      },
     });
     expect(await fixture.store.loadAttempt(fixture.profileId, fixture.session.id, fixture.attempt.id)).toMatchObject({
       _tag: "ok",
@@ -93,7 +107,21 @@ describe("ReviewCompletionService", () => {
       },
     });
 
-    expect(completed).toMatchObject({ _tag: "ok", value: { draft: { comments: [{ findingId: "mapped", include: false, postability: "already_reported" }] } } });
+    expect(completed).toMatchObject({
+      _tag: "ok",
+      value: {
+        batch: {
+          items: [
+            {
+              _tag: "InlineComment",
+              findingId: "mapped",
+              include: false,
+              postability: "already_reported",
+            },
+          ],
+        },
+      },
+    });
     expect(JSON.parse(await readFile(scope.lifecyclePath, "utf8"))).toMatchObject([{ status: "still_present", draftPostability: "already_reported" }]);
   });
 });

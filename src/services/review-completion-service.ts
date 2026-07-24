@@ -10,7 +10,7 @@ import { parsePriorFindingEvidence, projectFindingLifecycle, type FindingLifecyc
 import type { RepoRelativePath } from "../domain/ids";
 import { parseRevisionComparison } from "../domain/review-comparison";
 import { err, ok, type Result } from "../domain/result";
-import { createLocalDraft } from "./review-workbench";
+import { createReviewBatch } from "./review-workbench";
 import { readObjectField } from "./read-object-field";
 
 /** Persists only validated structured review output; it has no shell, model, or GitHub write capability. */
@@ -51,8 +51,8 @@ export class ReviewCompletionService {
     const alreadyReportedFindingIds = lifecycle.value === undefined
       ? undefined
       : new Set(lifecycle.value.flatMap((entry) => entry.draftPostability === "already_reported" && entry.currentFindingId !== undefined ? [entry.currentFindingId] : []));
-    const draft = createLocalDraft({ session: completed.value.session, attempt: completedAttempt, result: result.value, createdAt: completedAt, ...(alreadyReportedFindingIds === undefined ? {} : { alreadyReportedFindingIds }) }); if (draft._tag === "err") return err({ reason: "not_current" });
-    const next = { ...completed.value.session, draft: { state: draft.value.draft.state }, draftContent: draft.value.draft, updatedAt: this.now() };
+    const batch = createReviewBatch({ session: completed.value.session, attempt: completedAttempt, result: result.value, createdAt: completedAt, ...(alreadyReportedFindingIds === undefined ? {} : { alreadyReportedFindingIds }) }); if (batch._tag === "err") return err({ reason: "not_current" });
+    const next = { ...completed.value.session, batch: { state: batch.value.batch.state }, batchContent: batch.value.batch, updatedAt: this.now() };
     const savedResult = await writeAtomicJson(resultPath.value, result.value);
     if (savedResult._tag === "err") return err({ reason: savedResult.error.reason === "sensitive_value" ? "invalid_result" : "storage_failed" });
     const savedLifecycle = lifecycle.value === undefined || session.value.scope.kind !== "incremental"
@@ -60,7 +60,7 @@ export class ReviewCompletionService {
       : await writeAtomicJson(session.value.scope.lifecyclePath, lifecycle.value);
     if (savedLifecycle._tag === "err") return err({ reason: "storage_failed" });
     const savedAttempt = await store.saveAttempt(profileId.value, sessionId.value, completedAttempt); const savedSession = savedAttempt._tag === "ok" ? await store.save(next) : savedAttempt;
-    return savedSession._tag === "ok" ? ok({ session: next, draft: draft.value.draft }) : err({ reason: "storage_failed" });
+    return savedSession._tag === "ok" ? ok({ session: next, batch: batch.value.batch }) : err({ reason: "storage_failed" });
   }
 
   private async projectLifecycle(

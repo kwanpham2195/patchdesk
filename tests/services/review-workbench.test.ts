@@ -9,7 +9,7 @@ import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import {
-  createLocalDraft,
+  createReviewBatch,
   discardWorkbenchAttempt,
   draftWriteBlocker,
   recoverOrphanedWorkbenchAttempt,
@@ -150,24 +150,44 @@ describe("review workbench", () => {
     }
   });
 
-  it("creates an editable local draft only for mapped locations and keeps unmapped findings visible", () => {
-    const draft = createLocalDraft({
+  it("creates included batch items only for mapped findings and keeps repository findings visible", () => {
+    const batch = createReviewBatch({
       session,
       attempt,
       result,
       createdAt: "2026-07-16T00:02:00.000Z" as never,
     });
 
-    expect(draft).toMatchObject({
+    expect(batch).toMatchObject({
       _tag: "ok",
       value: {
-        draft: {
-          state: { _tag: "LocalDraft" },
-          comments: [{ findingId: "mapped-finding", postability: "postable", body: "Use the safe path." }],
+        batch: {
+          state: { _tag: "Local" },
+          items: [
+            {
+              _tag: "InlineComment",
+              id: "mapped-finding",
+              source: "finding",
+              findingId: "mapped-finding",
+              anchor: {
+                path: "src/review.ts",
+                startLine: 12,
+                line: 12,
+                side: "new",
+              },
+              include: true,
+              postability: "postable",
+              body: "Use the safe path.",
+            },
+          ],
         },
       },
     });
-    if (draft._tag === "ok") expect(draft.value.unmappedFindings.map((finding) => finding.id)).toEqual(["unmapped-finding"]);
+    if (batch._tag === "ok") {
+      expect(batch.value.repositoryFindings.map((finding) => finding.id)).toEqual([
+        "unmapped-finding",
+      ]);
+    }
   });
 
   it("blocks every future write path when the session head is stale", () => {
