@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "./components/app-shell";
-import {
-  MaintainerInbox,
-  type ReviewInitialSection,
-  type ReviewStartMode,
+import type {
+  ReviewInitialSection,
+  ReviewStartMode,
 } from "./components/maintainer-inbox";
 import { PreparedReviewFlow } from "./flows/prepared-review-flow";
 import { CompletedReviewFlow } from "./flows/completed-review-flow";
 import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
+import { InboxScreen, Pending, ReviewRecords } from "./flows/inbox-flow";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
@@ -40,16 +40,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./components/ui/alert-dialog";
-import { Skeleton } from "./components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./components/ui/table";
 import {
   Select,
   SelectContent,
@@ -99,15 +89,15 @@ type Profile = {
   readonly ghAccount: string;
   readonly workspaceRoots?: ReadonlyArray<string>;
 };
-type Repo = {
+export type Repo = {
   readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly localPath?: string;
   readonly archived?: boolean;
 };
-type RepoOutcome = { readonly repo: Repo; readonly state: string };
-type PrRow = {
+export type RepoOutcome = { readonly repo: Repo; readonly state: string };
+export type PrRow = {
   readonly summary: {
     readonly ref: {
       readonly host: string;
@@ -123,14 +113,14 @@ type PrRow = {
   readonly priority: string;
   readonly badges: ReadonlyArray<string>;
 };
-type Dashboard = {
+export type Dashboard = {
   readonly profile: Profile;
   readonly dashboard: {
     readonly rows: ReadonlyArray<PrRow>;
     readonly repos: ReadonlyArray<RepoOutcome>;
   };
 };
-type Preview = {
+export type Preview = {
   readonly pr: {
     readonly host?: string;
     readonly owner: string;
@@ -189,7 +179,7 @@ type WorkbenchPayload = {
   readonly freshness?: "fresh" | "stale" | "unavailable";
   readonly refreshedAt?: string;
 };
-type ReviewRecord = {
+export type ReviewRecord = {
   readonly id: string;
   readonly profileId: string;
   readonly owner: string;
@@ -1038,597 +1028,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         )}
       </Dialog>
     </div>,
-  );
-}
-
-function InboxScreen({
-  state,
-  inbox,
-  dashboard,
-  reference,
-  onReference,
-  onPreview,
-  onRefresh,
-  refreshStatus,
-  onSettings,
-  onOpenReview,
-  onOpenSession,
-  openedPr,
-  openError,
-}: {
-  readonly state: DashboardScreenState;
-  readonly inbox: InboxResponse;
-  readonly dashboard: Dashboard;
-  readonly reference: string;
-  readonly onReference: (value: string) => void;
-  readonly onPreview: () => void;
-  readonly onRefresh: () => void;
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
-  readonly onSettings: () => void;
-  readonly onOpenReview: (
-    row: InboxResponse["inbox"]["rows"][number],
-    mode: ReviewStartMode,
-    initialSection?: ReviewInitialSection,
-  ) => void;
-  readonly onOpenSession: (sessionId: string) => void;
-  readonly openedPr?: string;
-  readonly openError?: string;
-}): React.JSX.Element {
-  return (
-    <div className="flex min-h-full min-w-0 flex-col">
-      {openedPr === undefined ? null : (
-        <Alert className="mx-4 mt-4">
-          <AlertTitle>Review opened</AlertTitle>
-          <AlertDescription>{openedPr}</AlertDescription>
-        </Alert>
-      )}
-      {openError === undefined ? null : (
-        <Alert variant="destructive" className="mx-4 mt-4">
-          <AlertTitle>Could not open review</AlertTitle>
-          <AlertDescription>{openError}</AlertDescription>
-        </Alert>
-      )}
-      <div className="border-b bg-muted/10 px-4 py-2">
-        <div className="flex min-w-0 flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-1 max-sm:basis-full">
-            <Label className="sr-only" htmlFor="pr-reference">
-              Pull request reference
-            </Label>
-            <Input
-              id="pr-reference"
-              className="h-8 text-xs"
-              placeholder="owner/repository#123"
-              value={reference}
-              onChange={(event) => onReference(event.target.value)}
-            />
-          </div>
-          <Button
-            size="sm"
-            className="shrink-0 text-xs max-sm:w-full"
-            onClick={onPreview}
-            disabled={state === "loading"}
-          >
-            Preview pull request
-          </Button>
-        </div>
-      </div>
-      <Outcome
-        state={state}
-        repos={dashboard.dashboard.repos}
-        onRetry={onRefresh}
-        onSettings={onSettings}
-      />
-      <div className="min-h-0 flex-1">
-        <MaintainerInbox
-          profileId={inbox.profile.id}
-          profileLabel={inbox.profile.label}
-          rows={inbox.inbox.rows}
-          freshness={inbox.inbox.dataFreshness}
-          {...(inbox.inbox.snapshot === undefined
-            ? {}
-            : { snapshot: inbox.inbox.snapshot })}
-          refreshStatus={refreshStatus}
-          onRefresh={onRefresh}
-          onOpenReview={onOpenReview}
-          onOpenSession={onOpenSession}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Pending({
-  state,
-  dashboard,
-  inbox,
-  reference,
-  onReference,
-  onPreview,
-  onRefresh,
-  onSettings,
-  onOpenRow,
-  openedPr,
-  openError,
-}: {
-  readonly state: DashboardScreenState;
-  readonly dashboard?: Dashboard;
-  readonly inbox?: InboxResponse;
-  readonly reference: string;
-  readonly onReference: (value: string) => void;
-  readonly onPreview: () => void;
-  readonly onRefresh: () => void;
-  readonly onSettings: () => void;
-  readonly onOpenRow: (pr: Preview["pr"]) => void;
-  readonly openedPr?: string;
-  readonly openError?: string;
-}): React.JSX.Element {
-  const [selected, setSelected] = useState<PrRow | undefined>();
-  const [launchOpen, setLaunchOpen] = useState(false);
-  return (
-    <div className="mx-auto max-w-[112rem]">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {dashboard?.profile.label ?? "First run"}
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Maintainer inbox
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Review requests, updates since your last review, checks, and local
-            draft state across the active watchlist.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={onRefresh}
-          disabled={state === "loading"}
-        >
-          Refresh
-        </Button>
-      </header>
-      {openedPr ? (
-        <Alert className="mt-4">
-          <AlertTitle>Review opened</AlertTitle>
-          <AlertDescription>{openedPr}</AlertDescription>
-        </Alert>
-      ) : null}
-      {openError ? (
-        <Alert variant="destructive" className="mt-4">
-          <AlertTitle>Could not open review</AlertTitle>
-          <AlertDescription>{openError}</AlertDescription>
-        </Alert>
-      ) : null}
-      {inbox?.inbox.dataFreshness === "cached" ? (
-        <Alert className="mt-4">
-          <AlertTitle>Cached inbox data</AlertTitle>
-          <AlertDescription>
-            GitHub could not be refreshed. Merge-oriented actions stay disabled
-            until current data is available.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      <Card className="mt-6">
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[15rem] flex-1">
-            <Label htmlFor="pr-reference">Pull request reference</Label>
-            <Input
-              id="pr-reference"
-              className="mt-1.5"
-              placeholder="owner/repository#123 or GitHub URL"
-              value={reference}
-              onChange={(event) => onReference(event.target.value)}
-            />
-          </div>
-          <Button onClick={onPreview} disabled={dashboard === undefined}>
-            Preview pull request
-          </Button>
-        </CardContent>
-      </Card>
-      <Outcome
-        state={state}
-        repos={dashboard?.dashboard.repos ?? []}
-        onRetry={onRefresh}
-        onSettings={onSettings}
-      />
-      <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="min-w-0">
-          <Table>
-            <TableCaption className="sr-only">
-              Pending pull requests in the active watchlist
-            </TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pull request</TableHead>
-                <TableHead>Repository</TableHead>
-                <TableHead>Author</TableHead>
-                <TableHead>Checks</TableHead>
-                <TableHead>Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboard?.dashboard.rows.map((row) => (
-                <TableRow
-                  key={`${row.summary.ref.owner}/${row.summary.ref.repo}#${row.summary.ref.number}`}
-                  data-state={selected === row ? "selected" : undefined}
-                  className="cursor-pointer"
-                  onClick={() => setSelected(row)}
-                >
-                  <TableCell>
-                    <Button
-                      variant="link"
-                      className="h-auto min-h-6 justify-start p-0 text-left"
-                      onClick={() => setSelected(row)}
-                    >
-                      #{row.summary.ref.number} {row.summary.title}
-                    </Button>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.summary.ref.owner}/{row.summary.ref.repo}
-                  </TableCell>
-                  <TableCell>{row.summary.author}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {row.summary.checkSummary?.overall ?? "unknown"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {row.badges[0] ?? row.priority}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Review inspector</CardTitle>
-            <CardDescription>
-              Select a pull request to verify its exact identity before launch.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selected === undefined ? (
-              <p className="text-sm text-muted-foreground">
-                No pull request selected.
-              </p>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Pull request
-                  </p>
-                  <p className="mt-1 font-medium">
-                    {selected.summary.ref.owner}/{selected.summary.ref.repo}#
-                    {selected.summary.ref.number}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Title
-                  </p>
-                  <p className="mt-1">{selected.summary.title}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selected.badges.map((badge) => (
-                    <Badge key={badge} variant="secondary">
-                      {badge}
-                    </Badge>
-                  ))}
-                </div>
-                <Button className="w-full" onClick={() => setLaunchOpen(true)}>
-                  Run review
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Read-only analysis starts locally. GitHub writes remain
-                  separately confirmed.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <Dialog open={launchOpen} onOpenChange={setLaunchOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Run local review</DialogTitle>
-            <DialogDescription>
-              Confirm the exact pull request. This starts read-only analysis and
-              does not write to GitHub.
-            </DialogDescription>
-          </DialogHeader>
-          {selected === undefined ? null : (
-            <div className="rounded-lg border bg-muted p-4 text-sm">
-              <p className="font-medium">
-                {selected.summary.ref.owner}/{selected.summary.ref.repo}#
-                {selected.summary.ref.number}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                {selected.summary.title}
-              </p>
-              <p className="mt-3">Profile: {dashboard?.profile.label}</p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLaunchOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (selected !== undefined) onOpenRow(selected.summary.ref);
-                setLaunchOpen(false);
-              }}
-            >
-              Start review
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-function Outcome({
-  state,
-  repos,
-  onRetry,
-  onSettings,
-}: {
-  readonly state: DashboardScreenState;
-  readonly repos: ReadonlyArray<RepoOutcome>;
-  readonly onRetry: () => void;
-  readonly onSettings: () => void;
-}): React.JSX.Element {
-  if (state === "loading")
-    return (
-      <div className="mt-6 space-y-2" aria-label="Loading dashboard">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-3/4" />
-      </div>
-    );
-  if (state === "empty")
-    return (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>
-            <h2>Set up Patchdesk</h2>
-          </CardTitle>
-          <CardDescription>
-            Complete these local checks once, then Patchdesk can load pending
-            pull requests.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ol className="space-y-3 text-sm">
-            <li>
-              <span className="font-medium">1. Confirm GitHub access</span>
-              <p className="text-muted-foreground">
-                Choose the GitHub account Patchdesk should use for read-only
-                discovery.
-              </p>
-            </li>
-            <li>
-              <span className="font-medium">2. Check local tools</span>
-              <p className="text-muted-foreground">
-                Verify Git, GitHub CLI, and the bundled review runtime without
-                exposing credentials.
-              </p>
-            </li>
-            <li>
-              <span className="font-medium">3. Add your first repository</span>
-              <p className="text-muted-foreground">
-                Select a local checkout so reviews can use repository context.
-              </p>
-            </li>
-          </ol>
-          <Button className="mt-5" onClick={onSettings}>
-            Open Settings to finish setup
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  if (state === "error" && repos.length === 0)
-    return (
-      <Alert variant="destructive" className="mt-6">
-        <AlertTitle>Dashboard could not be loaded</AlertTitle>
-        <AlertDescription>
-          Patchdesk could not read the active profile or GitHub dashboard. Local
-          drafts and history remain on this Mac.
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="outline" onClick={onRetry}>
-              Retry dashboard
-            </Button>
-            <Button variant="outline" onClick={onSettings}>
-              Open Settings
-            </Button>
-          </div>
-        </AlertDescription>
-      </Alert>
-    );
-  if (state === "degraded")
-    return (
-      <Alert className="mt-6">
-        <AlertTitle>Some repositories need attention</AlertTitle>
-        <AlertDescription>
-          A local checkout path is missing, so repository-aware review is
-          blocked only for those repositories. Healthy repositories remain
-          available.
-          <div>
-            <Button className="mt-3" variant="outline" onClick={onSettings}>
-              Open Settings to choose a local path
-            </Button>
-          </div>
-        </AlertDescription>
-      </Alert>
-    );
-  return (
-    <section className="mt-6 space-y-2">
-      {repos
-        .filter(
-          (repo) => repo.state !== "ready" && repo.state !== "no_open_prs",
-        )
-        .map(({ repo, state: outcome }) => (
-          <Alert
-            key={key(repo)}
-            variant={
-              outcome === "github_auth" || outcome === "github_read"
-                ? "destructive"
-                : "default"
-            }
-          >
-            <AlertTitle>
-              {repo.owner}/{repo.repo}
-            </AlertTitle>
-            <AlertDescription>
-              {outcome === "github_auth"
-                ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local drafts and history remain available."
-                : outcome === "github_read"
-                  ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                  : outcome === "archived"
-                    ? "Archived repository. It is hidden from the active queue and can be restored in Settings."
-                    : outcome === "missing_local_path"
-                      ? "Choose a local checkout path before running a repository-aware review."
-                      : outcome}
-              {outcome === "github_read" ? (
-                <div>
-                  <Button className="mt-3" variant="outline" onClick={onRetry}>
-                    Retry GitHub read
-                  </Button>
-                </div>
-              ) : outcome === "github_auth" ? (
-                <div>
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    onClick={onSettings}
-                  >
-                    Open Settings for GitHub access
-                  </Button>
-                </div>
-              ) : outcome === "missing_local_path" || outcome === "archived" ? (
-                <div>
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    onClick={onSettings}
-                  >
-                    Open repository Settings
-                  </Button>
-                </div>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        ))}
-    </section>
-  );
-}
-function ReviewRecords({
-  records,
-  state,
-  invalidCount,
-  draftsOnly,
-  onRetry,
-  onOpen,
-}: {
-  readonly records: ReadonlyArray<ReviewRecord>;
-  readonly state: "idle" | "loading" | "ready" | "error";
-  readonly invalidCount: number;
-  readonly draftsOnly: boolean;
-  readonly onRetry: () => void;
-  readonly onOpen: (record: ReviewRecord) => void;
-}): React.JSX.Element {
-  const visible = draftsOnly
-    ? records.filter(
-        (record) =>
-          record.draftState !== undefined &&
-          record.draftState !== "SubmittedGitHubReview",
-      )
-    : records;
-  return (
-    <div className="mx-auto max-w-5xl">
-      <header>
-        <p className="text-xs font-medium uppercase tracking-[.14em] text-primary">
-          Local review records
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">
-          {draftsOnly ? "Review drafts" : "Review history"}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Saved sessions are reopened from durable local state; opening one
-          never restarts its workflow.
-        </p>
-      </header>
-      <div className="mt-6 space-y-3">
-        {state === "loading" || state === "idle" ? (
-          <Card role="status" aria-label="Loading local review records">
-            <CardContent className="space-y-3">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-9 w-full" />
-            </CardContent>
-          </Card>
-        ) : state === "error" ? (
-          <Alert variant="destructive">
-            <AlertTitle>Local review records could not be loaded</AlertTitle>
-            <AlertDescription className="mt-2">
-              Your saved data remains on this Mac. Retry the local read without
-              starting a review.
-              <div>
-                <Button className="mt-3" variant="outline" onClick={onRetry}>
-                  Retry loading local review records
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <>
-            {invalidCount === 0 ? null : (
-              <Alert>
-                <AlertTitle>Some local records were skipped</AlertTitle>
-                <AlertDescription>
-                  {invalidCount} local review{" "}
-                  {invalidCount === 1 ? "record" : "records"} could not be read.
-                  Healthy records remain available.
-                </AlertDescription>
-              </Alert>
-            )}
-            {visible.length === 0 ? (
-              <Card>
-                <CardContent className="text-sm text-muted-foreground">
-                  No matching local review records.
-                </CardContent>
-              </Card>
-            ) : (
-              visible.map((record) => (
-                <Card key={record.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{record.state}</Badge>
-                        {record.draftState === undefined ? null : (
-                          <Badge variant="secondary">{record.draftState}</Badge>
-                        )}
-                      </div>
-                      <h2 className="mt-2 font-semibold">
-                        {record.owner}/{record.repo}#{record.prNumber} ·{" "}
-                        {record.title ?? "Stored pull request"}
-                      </h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Updated {record.updatedAt}
-                      </p>
-                    </div>
-                    <Button variant="outline" onClick={() => onOpen(record)}>
-                      Open saved review
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 
