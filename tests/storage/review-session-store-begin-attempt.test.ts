@@ -75,7 +75,7 @@ describe("ReviewSessionStore.beginAttempt", () => {
     });
 
     await fixture.store.save(
-      discardBatchForRerun(sessionWithBatch, startedAt),
+      must(discardBatchForRerun(sessionWithBatch, startedAt)),
     );
     await expect(fixture.store.beginAttempt({
       profileId: fixture.profileId,

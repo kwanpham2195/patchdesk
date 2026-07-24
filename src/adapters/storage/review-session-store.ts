@@ -569,6 +569,15 @@ export function parseStoredReviewSession(
     visibleResult?._tag === "err"
   )
     return invalidRead();
+  const batchState = storedBatch.value.batchContent?.state;
+  if (
+    batchState?._tag === "Submitted" &&
+    (submittedReview === undefined ||
+      submittedReview.value.reviewId !== batchState.reviewId ||
+      submittedReview.value.event !== batchState.event)
+  ) {
+    return invalidRead();
+  }
   const prContext = raw.output.prContext === undefined
     ? undefined
     : {

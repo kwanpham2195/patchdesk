@@ -486,29 +486,38 @@ function hasCoherentRelationships(
     return false;
   }
 
-  const completedOperationKeys = new Set<string>();
+  const completedOperationKeys: string[] = [];
+  const uniqueCompletedOperationKeys = new Set<string>();
   for (const receipt of receipts) {
     const key = receiptOperationKey(receipt, itemById);
-    if (key === undefined || completedOperationKeys.has(key)) {
+    if (key === undefined || uniqueCompletedOperationKeys.has(key)) {
       return false;
     }
-    completedOperationKeys.add(key);
+    uniqueCompletedOperationKeys.add(key);
+    completedOperationKeys.push(key);
   }
 
   if (state._tag === "Local") {
     return receipts.length === 0;
   }
+  const plannedOperationKeys = plannedOperationKeysFor(items);
   if (state._tag === "Applying" || state._tag === "PartialFailure") {
-    return !completedOperationKeys.has(operationKey(state.operation));
+    const currentOperationIndex = plannedOperationKeys.indexOf(
+      operationKey(state.operation),
+    );
+    return (
+      currentOperationIndex === completedOperationKeys.length &&
+      completedOperationKeys.every(
+        (key, index) => plannedOperationKeys[index] === key,
+      )
+    );
   }
 
-  const plannedOperationKeys = plannedOperationKeysFor(items);
   if (state._tag === "Completed") {
     return (
-      plannedOperationKeys.size > 0 &&
-      !plannedOperationKeys.has("pending-review") &&
-      plannedOperationKeys.size === completedOperationKeys.size &&
-      [...plannedOperationKeys].every((key) => completedOperationKeys.has(key))
+      plannedOperationKeys.length > 0 &&
+      !plannedOperationKeys.includes("pending-review") &&
+      isExactCompletedPlan(plannedOperationKeys, completedOperationKeys)
     );
   }
 
@@ -526,9 +535,20 @@ function hasCoherentRelationships(
   }
 
   return (
-    plannedOperationKeys.size > 0 &&
-    plannedOperationKeys.size === completedOperationKeys.size &&
-    [...plannedOperationKeys].every((key) => completedOperationKeys.has(key))
+    plannedOperationKeys.length > 0 &&
+    isExactCompletedPlan(plannedOperationKeys, completedOperationKeys)
+  );
+}
+
+function isExactCompletedPlan(
+  plannedOperationKeys: ReadonlyArray<string>,
+  completedOperationKeys: ReadonlyArray<string>,
+): boolean {
+  return (
+    plannedOperationKeys.length === completedOperationKeys.length &&
+    plannedOperationKeys.every(
+      (key, index) => completedOperationKeys[index] === key,
+    )
   );
 }
 
@@ -600,18 +620,21 @@ function operationKey(operation: BatchOperation): string {
 
 function plannedOperationKeysFor(
   items: ReadonlyArray<ReviewBatchItem>,
-): ReadonlySet<string> {
-  const keys = new Set<string>();
+): ReadonlyArray<string> {
+  const keys: string[] = [];
+  if (
+    items.some((item) => item._tag === "InlineComment" && item.include)
+  ) {
+    keys.push("pending-review");
+  }
   for (const item of items) {
     if (!item.include) {
       continue;
     }
-    if (item._tag === "InlineComment") {
-      keys.add("pending-review");
-    } else if (item._tag === "ThreadReply") {
-      keys.add(`reply:${item.id}`);
-    } else {
-      keys.add(`thread-state:${item.id}`);
+    if (item._tag === "ThreadReply") {
+      keys.push(`reply:${item.id}`);
+    } else if (item._tag === "ThreadState") {
+      keys.push(`thread-state:${item.id}`);
     }
   }
   return keys;

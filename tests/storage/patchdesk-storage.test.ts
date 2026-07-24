@@ -32,6 +32,7 @@ import {
   createReviewSession,
   type ReviewSession,
 } from "../../src/domain/review-session";
+import { parseReviewBatch } from "../../src/domain/review-batch";
 import { parsePatchdeskConfig } from "../../src/domain/contracts";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
@@ -305,6 +306,40 @@ describe("Patchdesk storage", () => {
     });
   });
 
+  it.each([
+    {
+      name: "missing session submission receipt",
+      submittedReview: undefined,
+    },
+    {
+      name: "mismatched review ID",
+      submittedReview: {
+        reviewId: "review-2",
+        event: "COMMENT",
+        submittedAt: timestamp,
+      },
+    },
+    {
+      name: "mismatched review event",
+      submittedReview: {
+        reviewId: "review-1",
+        event: "APPROVE",
+        submittedAt: timestamp,
+      },
+    },
+  ] as const)("rejects a submitted batch with $name", async ({ submittedReview }) => {
+    const paths = await testPaths();
+    const session = submittedBatchSessionFor(paths);
+
+    expect(parseStoredReviewSession({
+      ...session,
+      submittedReview,
+    })).toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
+    });
+  });
+
   it("round-trips profiles, sessions, and attempts with atomic file replacement", async () => {
     const paths = await testPaths();
     const profiles = new ProfileStore(paths);
@@ -547,3 +582,53 @@ describe("Patchdesk storage", () => {
     );
   });
 });
+
+function submittedBatchSessionFor(paths: PatchdeskPaths): ReviewSession {
+  const session = sessionFor(paths);
+  const batchContent = mustParse(parseReviewBatch({
+    sessionId: session.id,
+    attemptId,
+    state: {
+      _tag: "Submitted",
+      reviewId: "review-1",
+      event: "COMMENT",
+    },
+    summaryBody: "Submitted review.",
+    suggestedEvent: "COMMENT",
+    items: [{
+      _tag: "InlineComment",
+      id: "finding-1",
+      source: "finding",
+      findingId: "finding-1",
+      anchor: {
+        path: "src/example.ts",
+        startLine: 7,
+        line: 7,
+        side: "new",
+      },
+      body: "Keep this branch explicit.",
+      include: true,
+      postability: "postable",
+    }],
+    receipts: [{
+      _tag: "PendingReviewCreated",
+      reviewId: "review-1",
+      itemIds: ["finding-1"],
+    }],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }));
+
+  return {
+    ...session,
+    currentAttemptId: attemptId,
+    state: { _tag: "ReviewCompleted", attemptId },
+    batch: { state: batchContent.state },
+    batchContent,
+    submittedReview: {
+      reviewId: "review-1",
+      event: "COMMENT",
+      submittedAt: timestamp,
+    },
+  };
+}

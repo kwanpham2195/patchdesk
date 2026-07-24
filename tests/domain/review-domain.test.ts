@@ -629,6 +629,74 @@ describe("Patchdesk review domain", () => {
     })._tag).toBe("err");
   });
 
+  it.each(["Applying", "PartialFailure"] as const)(
+    "rejects a %s batch with a receipt for an operation after the current operation",
+    (stateTag) => {
+      expect(parseReviewBatch({
+        ...batchFixture(),
+        state: stateTag === "Applying"
+          ? {
+              _tag: "Applying",
+              operation: {
+                _tag: "CreatePendingReview",
+                itemIds: ["finding-1"],
+              },
+            }
+          : {
+              _tag: "PartialFailure",
+              operation: {
+                _tag: "CreatePendingReview",
+                itemIds: ["finding-1"],
+              },
+              failure: {
+                _tag: "SafeWriteFailure",
+                category: "outcome_unknown",
+                message: "The pending-review outcome is unknown.",
+              },
+            },
+        receipts: [{
+          _tag: "ReplyCreated",
+          itemId: "reply-1",
+          commentId: "comment-1",
+        }],
+      })._tag).toBe("err");
+    },
+  );
+
+  it("requires applying receipts to be the exact ordered prefix before the current operation", () => {
+    const fixture = batchFixture();
+    const currentOperation = {
+      _tag: "ThreadState" as const,
+      itemId: "thread-state-1",
+    };
+    const pendingReceipt = {
+      _tag: "PendingReviewCreated" as const,
+      reviewId: "review-1",
+      itemIds: ["finding-1"],
+    };
+    const replyReceipt = {
+      _tag: "ReplyCreated" as const,
+      itemId: "reply-1",
+      commentId: "comment-1",
+    };
+
+    expect(parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Applying", operation: currentOperation },
+      receipts: [replyReceipt],
+    })._tag).toBe("err");
+    expect(parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Applying", operation: currentOperation },
+      receipts: [replyReceipt, pendingReceipt],
+    })._tag).toBe("err");
+    expect(parseReviewBatch({
+      ...fixture,
+      state: { _tag: "Applying", operation: currentOperation },
+      receipts: [pendingReceipt, replyReceipt],
+    })._tag).toBe("ok");
+  });
+
   it("blocks reruns until a local batch is explicitly discarded", () => {
     const session = createReviewSession({
       key: ids,
@@ -718,7 +786,7 @@ describe("Patchdesk review domain", () => {
     };
 
     expect(hasActiveReviewBatch(session.batch)).toBe(true);
-    const discarded = discardBatchForRerun(session, times.completed);
+    const discarded = mustParse(discardBatchForRerun(session, times.completed));
     expect(discarded).toEqual({
       ...session,
       batch: undefined,
@@ -732,6 +800,98 @@ describe("Patchdesk review domain", () => {
         session: { visibleResult },
       },
     });
+  });
+
+  it.each([
+    {
+      name: "applying",
+      state: {
+        _tag: "Applying",
+        operation: {
+          _tag: "CreatePendingReview",
+          itemIds: ["finding-1"],
+        },
+      },
+    },
+    {
+      name: "partial-failure",
+      state: {
+        _tag: "PartialFailure",
+        operation: {
+          _tag: "CreatePendingReview",
+          itemIds: ["finding-1"],
+        },
+        failure: {
+          _tag: "SafeWriteFailure",
+          category: "outcome_unknown",
+          message: "The pending-review outcome is unknown.",
+        },
+      },
+    },
+  ] as const)("keeps $name remote-write evidence and requires remediation before rerun", ({ state }) => {
+    const batchContent = mustParse(parseReviewBatch({
+      ...batchFixture(),
+      state,
+    }));
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      state: {
+        _tag: "ReviewCompleted" as const,
+        attemptId: batchContent.attemptId,
+      },
+      currentAttemptId: batchContent.attemptId,
+      batch: { state: batchContent.state },
+      batchContent,
+    };
+
+    expect(discardBatchForRerun(session, times.completed)).toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "ReviewBatchRemediationRequired",
+        batchState: state._tag,
+      },
+    });
+    expect(session.batchContent).toBe(batchContent);
+    expect(startNextAttempt(session, ["001"])).toMatchObject({
+      _tag: "err",
+      error: { _tag: "ActiveBatchBlocksRerun" },
+    });
+  });
+
+  it("allows an explicitly confirmed discard after a known rejected write", () => {
+    const batchContent = mustParse(parseReviewBatch({
+      ...batchFixture(),
+      state: {
+        _tag: "PartialFailure",
+        operation: {
+          _tag: "CreatePendingReview",
+          itemIds: ["finding-1"],
+        },
+        failure: {
+          _tag: "SafeWriteFailure",
+          category: "rejected",
+          message: "GitHub rejected the pending review.",
+        },
+      },
+    }));
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      batch: { state: batchContent.state },
+      batchContent,
+    };
+
+    const discarded = mustParse(discardBatchForRerun(session, times.completed));
+    expect(discarded.updatedAt).toBe(times.completed);
+    expect(discarded.batch).toBeUndefined();
+    expect(discarded.batchContent).toBeUndefined();
   });
 
   it("ignores a late result from a non-current attempt without changing the session result", () => {

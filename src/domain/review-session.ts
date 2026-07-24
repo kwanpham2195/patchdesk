@@ -105,6 +105,11 @@ export type ReviewSession = {
 };
 
 export type ActiveBatchBlocksRerun = { readonly _tag: "ActiveBatchBlocksRerun" };
+/** An incomplete remote write must be inspected instead of discarded for rerun. */
+export type ReviewBatchRemediationRequired = {
+  readonly _tag: "ReviewBatchRemediationRequired";
+  readonly batchState: "Applying" | "PartialFailure";
+};
 export type SessionImmutable = { readonly _tag: "SessionImmutable" };
 export type CannotAllocateAttempt = { readonly _tag: "CannotAllocateAttempt" };
 export type AttemptNotCurrent = { readonly _tag: "AttemptNotCurrent" };
@@ -145,7 +150,8 @@ export function startNextAttempt(
   if (session.state._tag === "Merged") {
     return err({ _tag: "SessionImmutable" });
   }
-  if (session.batch !== undefined && hasActiveReviewBatch(session.batch)) {
+  const batchState = currentBatchState(session);
+  if (batchState !== undefined && hasActiveReviewBatch({ state: batchState })) {
     return err({ _tag: "ActiveBatchBlocksRerun" });
   }
 
@@ -154,8 +160,8 @@ export function startNextAttempt(
     return err({ _tag: "CannotAllocateAttempt" });
   }
   const sessionForNextAttempt =
-    session.batch?.state._tag === "Submitted" ||
-    session.batch?.state._tag === "Completed"
+    batchState?._tag === "Submitted" ||
+    batchState?._tag === "Completed"
       ? withoutReviewBatch(session)
       : session;
 
@@ -169,15 +175,36 @@ export function startNextAttempt(
   });
 }
 
-/** Remove local batch work after explicit rerun confirmation without hiding the current result. */
+/**
+ * Remove discardable batch work after explicit rerun confirmation.
+ * Applying and outcome-unknown failures require remediation so remote evidence survives.
+ */
 export function discardBatchForRerun(
   session: ReviewSession,
   confirmedAt: IsoTimestamp,
-): ReviewSession {
-  return {
+): Result<ReviewSession, ReviewBatchRemediationRequired> {
+  const batchState = currentBatchState(session);
+  if (
+    batchState?._tag === "Applying" ||
+    (batchState?._tag === "PartialFailure" &&
+      batchState.failure.category === "outcome_unknown")
+  ) {
+    return err({
+      _tag: "ReviewBatchRemediationRequired",
+      batchState: batchState._tag,
+    });
+  }
+
+  return ok({
     ...withoutReviewBatch(session),
     updatedAt: confirmedAt,
-  };
+  });
+}
+
+function currentBatchState(
+  session: Pick<ReviewSession, "batch" | "batchContent">,
+): ReviewBatch["state"] | undefined {
+  return session.batchContent?.state ?? session.batch?.state;
 }
 
 function withoutReviewBatch(session: ReviewSession): ReviewSession {
