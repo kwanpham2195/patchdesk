@@ -129,7 +129,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       if (initialState === undefined) setState("empty");
       return;
     }
-    if (loadedInbox !== undefined) setInbox(loadedInbox);
+    if (loadedInbox !== undefined) {
+      setInbox(loadedInbox);
+      setInboxRefreshFailed(false);
+    }
     setDashboard(compatibleDashboard);
     activeInboxProfileId.current = compatibleDashboard.profile.id;
     setState(screenStateForDashboard(compatibleDashboard));
