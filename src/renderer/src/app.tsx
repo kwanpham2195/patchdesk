@@ -112,7 +112,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [pathFeedback, setPathFeedback] = useState<string>();
   const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
   const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
-  const [githubAccess, setGithubAccess] = useState<string | undefined>();
   const [reviewRecords, setReviewRecords] = useState<
     ReadonlyArray<ReviewRecord>
   >([]);
@@ -657,11 +656,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     );
     await load();
   };
-  const testGitHubAccess = async (): Promise<void> => {
-    const value = await api("/v1/github/access", { method: "POST" });
-    if (record(value) && typeof value.state === "string")
-      setGithubAccess(value.state);
-  };
   const previewEntry = async (): Promise<void> => {
     previewTrigger.current =
       document.activeElement instanceof HTMLElement
@@ -820,13 +814,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           suggestions={suggestions}
           discoveryFeedback={discoveryFeedback}
           profiles={profiles}
-          {...(githubAccess === undefined ? {} : { githubAccess })}
           {...(pathFeedback === undefined ? {} : { pathFeedback })}
           onAdd={() => void addRepo()}
           onSaveProfile={() => void saveProfile()}
           onDiscover={() => void discover()}
           onAddSuggestion={(repo) => void addSuggestion(repo)}
-          onTestGitHubAccess={() => void testGitHubAccess()}
           onSelectProfile={(id) => void select(id)}
           onPath={editPath}
           onChoosePath={(repo) => void choosePath(repo)}

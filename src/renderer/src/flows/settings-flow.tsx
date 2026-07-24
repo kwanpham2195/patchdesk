@@ -52,13 +52,11 @@ export function SettingsFlow({
   suggestions,
   discoveryFeedback,
   profiles,
-  githubAccess,
   pathFeedback,
   onAdd,
   onSaveProfile,
   onDiscover,
   onAddSuggestion,
-  onTestGitHubAccess,
   onSelectProfile,
   onPath,
   onChoosePath,
@@ -94,13 +92,11 @@ export function SettingsFlow({
   readonly suggestions: ReadonlyArray<Repo>;
   readonly discoveryFeedback: string | undefined;
   readonly profiles: ReadonlyArray<Profile>;
-  readonly githubAccess?: string;
   readonly pathFeedback?: string;
   readonly onAdd: () => void;
   readonly onSaveProfile: () => void;
   readonly onDiscover: () => void;
   readonly onAddSuggestion: (repo: Repo) => void;
-  readonly onTestGitHubAccess: () => void;
   readonly onSelectProfile: (id: string) => void;
   readonly onPath: (repo: Repo) => void;
   readonly onChoosePath: (repo: Repo) => void;
@@ -111,6 +107,7 @@ export function SettingsFlow({
   const [removalTarget, setRemovalTarget] = useState<Repo>();
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
+  const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
   const loadEnvironment = async (): Promise<void> => {
     const value = await requestJson("/v1/environment");
@@ -126,6 +123,11 @@ export function SettingsFlow({
   useEffect(() => {
     void loadEnvironment();
   }, []);
+  const testGitHubAccess = async (): Promise<void> => {
+    const value = await requestJson("/v1/github/access", { method: "POST" });
+    if (record(value) && typeof value.state === "string")
+      setGithubAccess(value.state);
+  };
   const setupSteps =
     environment === undefined ? [] : environmentSetupSteps(environment);
 
@@ -333,7 +335,7 @@ export function SettingsFlow({
                   ? "Check environment"
                   : "Recheck environment"}
               </Button>
-              <Button variant="outline" onClick={onTestGitHubAccess}>
+              <Button variant="outline" onClick={() => void testGitHubAccess()}>
                 Test GitHub access
               </Button>
             </div>
