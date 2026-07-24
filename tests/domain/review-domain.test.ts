@@ -308,7 +308,11 @@ describe("Patchdesk review domain", () => {
       ...batchFixture(),
       state: { _tag: "PendingReview", reviewId: "review-1" },
       receipts: [
-        { _tag: "PendingReviewCreated", reviewId: "review-1" },
+        {
+          _tag: "PendingReviewCreated",
+          reviewId: "review-1",
+          itemIds: ["finding-1"],
+        },
         {
           _tag: "ReplyCreated",
           itemId: "reply-1",
@@ -361,6 +365,70 @@ describe("Patchdesk review domain", () => {
   });
 
   it.each([
+    { name: "missing item", itemIds: ["finding-1"] },
+    { name: "extra item", itemIds: ["finding-1", "finding-2", "missing-item"] },
+  ])("rejects a pending-review operation with a $name", ({ itemIds }) => {
+    const fixture = batchFixture();
+    const firstInline = fixture.items.find(
+      (item) => item._tag === "InlineComment",
+    );
+    if (firstInline === undefined) {
+      throw new Error("Batch fixture must include an inline comment");
+    }
+
+    expect(parseReviewBatch({
+      ...fixture,
+      items: [
+        ...fixture.items,
+        {
+          ...firstInline,
+          id: "finding-2",
+          findingId: "finding-2",
+          body: "Keep the fallback explicit.",
+        },
+      ],
+      state: {
+        _tag: "Applying",
+        operation: { _tag: "CreatePendingReview", itemIds },
+      },
+    })._tag).toBe("err");
+  });
+
+  it.each([
+    { _tag: "PendingReview", reviewId: "review-1" },
+    { _tag: "Submitted", reviewId: "review-1", event: "COMMENT" },
+  ] as const)("rejects a $_tag batch when its pending-review receipt omits an eligible inline comment", (state) => {
+    const fixture = batchFixture();
+    const firstInline = fixture.items.find(
+      (item) => item._tag === "InlineComment",
+    );
+    if (firstInline === undefined) {
+      throw new Error("Batch fixture must include an inline comment");
+    }
+
+    expect(parseReviewBatch({
+      ...fixture,
+      items: [
+        ...fixture.items.map((item) =>
+          item._tag === "InlineComment" ? item : { ...item, include: false },
+        ),
+        {
+          ...firstInline,
+          id: "finding-2",
+          findingId: "finding-2",
+          body: "Keep the fallback explicit.",
+        },
+      ],
+      state,
+      receipts: [{
+        _tag: "PendingReviewCreated",
+        reviewId: "review-1",
+        itemIds: ["finding-1"],
+      }],
+    })._tag).toBe("err");
+  });
+
+  it.each([
     {
       name: "missing item",
       receipt: {
@@ -400,7 +468,11 @@ describe("Patchdesk review domain", () => {
     {
       name: "local state with a remote receipt",
       state: { _tag: "Local" },
-      receipts: [{ _tag: "PendingReviewCreated", reviewId: "review-1" }],
+      receipts: [{
+        _tag: "PendingReviewCreated",
+        reviewId: "review-1",
+        itemIds: ["finding-1"],
+      }],
     },
     {
       name: "applying state whose operation already has a receipt",
@@ -429,6 +501,7 @@ describe("Patchdesk review domain", () => {
       receipts: [{
         _tag: "PendingReviewCreated",
         reviewId: "review-2",
+        itemIds: ["finding-1"],
       }],
     },
   ])("rejects a batch with $name", ({ state, receipts }) => {

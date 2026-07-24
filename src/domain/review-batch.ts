@@ -107,6 +107,7 @@ export type RemoteWriteReceipt =
   | {
       readonly _tag: "PendingReviewCreated";
       readonly reviewId: string;
+      readonly itemIds: ReadonlyArray<LocalReviewItemId>;
     }
   | {
       readonly _tag: "ReplyCreated";
@@ -230,6 +231,7 @@ const receiptSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("PendingReviewCreated"),
     reviewId: v.pipe(v.string(), v.minLength(1)),
+    itemIds: v.array(localReviewItemIdSchema),
   }),
   v.strictObject({
     _tag: v.literal("ReplyCreated"),
@@ -436,7 +438,19 @@ function parseReceipt(
   receipt: v.InferOutput<typeof receiptSchema>,
 ): Result<RemoteWriteReceipt, InvalidReviewBatch> {
   if (receipt._tag === "PendingReviewCreated") {
-    return ok(receipt);
+    const itemIds: LocalReviewItemId[] = [];
+    for (const value of receipt.itemIds) {
+      const itemId = parseLocalReviewItemId(value);
+      if (itemId._tag === "err") {
+        return invalidReviewBatch();
+      }
+      itemIds.push(itemId.value);
+    }
+    return ok({
+      _tag: "PendingReviewCreated",
+      reviewId: receipt.reviewId,
+      itemIds,
+    });
   }
 
   const itemId = parseLocalReviewItemId(receipt.itemId);
@@ -511,14 +525,7 @@ function operationReferencesIncludedItems(
   itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
 ): boolean {
   if (operation._tag === "CreatePendingReview") {
-    const uniqueIds = new Set(operation.itemIds);
-    return (
-      uniqueIds.size === operation.itemIds.length &&
-      operation.itemIds.every((itemId) => {
-        const item = itemById.get(itemId);
-        return item?._tag === "InlineComment" && item.include;
-      })
-    );
+    return referencesExactlyIncludedInlineComments(operation.itemIds, itemById);
   }
 
   const item = itemById.get(operation.itemId);
@@ -532,9 +539,7 @@ function receiptOperationKey(
   itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
 ): string | undefined {
   if (receipt._tag === "PendingReviewCreated") {
-    return [...itemById.values()].some(
-      (item) => item._tag === "InlineComment" && item.include,
-    )
+    return referencesExactlyIncludedInlineComments(receipt.itemIds, itemById)
       ? "pending-review"
       : undefined;
   }
@@ -552,6 +557,24 @@ function receiptOperationKey(
   return receipt.state === expectedState
     ? `thread-state:${item.id}`
     : undefined;
+}
+
+function referencesExactlyIncludedInlineComments(
+  itemIds: ReadonlyArray<LocalReviewItemId>,
+  itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
+): boolean {
+  const includedInlineItemIds = new Set(
+    [...itemById.values()].flatMap((item) =>
+      item._tag === "InlineComment" && item.include ? [item.id] : [],
+    ),
+  );
+  const referencedItemIds = new Set(itemIds);
+  return (
+    includedInlineItemIds.size > 0 &&
+    referencedItemIds.size === itemIds.length &&
+    referencedItemIds.size === includedInlineItemIds.size &&
+    [...includedInlineItemIds].every((itemId) => referencedItemIds.has(itemId))
+  );
 }
 
 function operationKey(operation: BatchOperation): string {

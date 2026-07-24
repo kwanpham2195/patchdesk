@@ -160,6 +160,7 @@ describe("ReviewSessionStore.beginAttempt", () => {
       receipts: [{
         _tag: "PendingReviewCreated",
         reviewId: "review-1",
+        itemIds: ["finding-1"],
       }],
       createdAt: startedAt,
       updatedAt: startedAt,
