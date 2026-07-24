@@ -389,13 +389,13 @@ export function CompletedReviewWorkbench({
         </Alert>
       ) : null}
       <div
-        className={`grid min-h-[calc(100vh-8.5rem)] min-w-0 grid-cols-1 min-[1100px]:h-[calc(100vh-8.5rem)] ${reviewRailOpen ? "min-[1100px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1100px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1200px]:grid-cols-[13rem_minmax(0,1fr)_20rem]" : inspectorOpen ? "min-[1200px]:grid-cols-[minmax(0,1fr)_20rem]" : ""}`}
+        className={`grid min-h-[calc(100vh-8.5rem)] min-w-0 grid-cols-1 min-[1280px]:h-[calc(100vh-8.5rem)] ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
       >
         {reviewRailOpen ? (
           <aside
             id="review-navigation"
             aria-label="Review navigation"
-            className="min-w-0 overflow-auto border-r bg-card p-2 max-[1099px]:hidden"
+            className="min-w-0 overflow-auto border-r bg-card p-2 max-[1279px]:hidden"
           >
             <Tabs defaultValue="files">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -443,7 +443,7 @@ export function CompletedReviewWorkbench({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="max-[1099px]:hidden"
+                className="max-[1279px]:hidden"
                 aria-label={
                   reviewRailOpen
                     ? "Hide review navigator"
@@ -518,7 +518,7 @@ export function CompletedReviewWorkbench({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="hidden max-[1099px]:inline-flex"
+                      className="hidden max-[1279px]:inline-flex"
                     />
                   }
                 >
@@ -596,9 +596,9 @@ export function CompletedReviewWorkbench({
           <aside
             id="review-inspector"
             aria-label="Review result and actions"
-            className="min-w-0 overflow-hidden border-t bg-card min-[1100px]:col-span-2 min-[1200px]:col-span-1 min-[1200px]:border-l min-[1200px]:border-t-0"
+            className="min-w-0 overflow-hidden border-t bg-card min-[1280px]:col-span-1 min-[1280px]:border-l min-[1280px]:border-t-0"
           >
-            <ScrollArea className="h-auto min-[1200px]:h-[calc(100vh-8.5rem)]">
+            <ScrollArea className="h-auto min-[1280px]:h-[calc(100vh-8.5rem)]">
               <div className="min-w-0 space-y-5 p-4 [overflow-wrap:anywhere] [&_*]:min-w-0">
                 <section>
                   <h2 className="font-semibold">Review result</h2>
