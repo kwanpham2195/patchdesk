@@ -24,7 +24,7 @@ import type {
 } from "../../../domain/review-draft";
 import type { ReviewResult } from "../../../domain/review-result";
 import type { FindingLifecycleEntry } from "../../../domain/finding-lifecycle";
-import type { RevisionComparison, ReviewScope } from "../../../domain/review-comparison";
+import type { RevisionComparison, ReviewScopeProjection } from "../../../domain/review-comparison";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import { ChangedFileTree } from "./changed-file-tree";
@@ -86,7 +86,7 @@ export function ReviewWorkbench(props: {
   readonly profileId?: string;
   readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
   readonly result: ReviewResult;
-  readonly reviewScope?: ReviewScope;
+  readonly reviewScope?: ReviewScopeProjection;
   readonly fullPatch?: string;
   readonly comparison?: RevisionComparison;
   readonly comparisonPatch?: string;

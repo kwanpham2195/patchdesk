@@ -15,7 +15,10 @@ import {
   recoverOrphanedWorkbenchAttempt,
 } from "../../src/services/review-workbench";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
-import { ReviewSessionService } from "../../src/services/review-session-service";
+import { ReviewSessionPreparation } from "../../src/services/review-session-preparation";
+import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+import { ReviewContextService } from "../../src/services/review-context-service";
 import type { ReviewAttempt } from "../../src/domain/review-attempt";
 import type { ReviewResult } from "../../src/domain/review-result";
 import type { ReviewSession } from "../../src/domain/review-session";
@@ -104,26 +107,22 @@ describe("review workbench", () => {
         diff: "+++ b/src/review.ts\n+new line\n",
       });
       await new ProfileStore(paths).save(profile);
-      const metadataOnly = await new ReviewSessionService(
-        paths,
-        () => "2026-07-16T00:00:00.000Z" as never,
-      ).startReview({
-        profileId: profile.id,
-        host: profile.githubHost,
-        owner: "centraldigital" as never,
-        repo: "patchdesk" as never,
-        number: 42 as never,
-        headSha: "abcdef1234567890abcdef1234567890abcdef12" as never,
-        isDraft: false,
-        isOpen: true,
-      });
-      expect(metadataOnly).toMatchObject({ _tag: "ok", value: { session: { state: { _tag: "Created" } } } });
       const controller = new ReviewWorkbenchController(
-        new ProfileStore(paths),
-        new ReviewSessionStore(paths),
-        github,
-        paths,
-        () => "2026-07-16T00:00:00.000Z" as never,
+        new ReviewSessionPreparation({
+          profiles: new ProfileStore(paths),
+          sessions: new ReviewSessionStore(paths),
+          github,
+          paths,
+          now: () => "2026-07-16T00:00:00.000Z" as never,
+          worktrees: new ReviewWorktreeService(paths, { async run() { return { _tag: "err" as const, error: { _tag: "GitReadFailed" as const } }; } }),
+          context: new ReviewContextService(),
+        }),
+        new ReviewWorkbenchProjectionService(
+          new ProfileStore(paths),
+          new ReviewSessionStore(paths),
+          github,
+          () => "2026-07-16T00:00:00.000Z" as never,
+        ),
       );
 
       const opened = await controller.open({
@@ -136,10 +135,16 @@ describe("review workbench", () => {
 
       expect(opened).toMatchObject({
         _tag: "ok",
-        value: { state: "review_started", session: { state: { _tag: "Created" } } },
+        value: { state: "review_started" },
       });
       if (opened._tag === "err") return;
-      expect(await readFile(opened.value.session.patchPath, "utf8")).toContain("src/review.ts");
+      // The projection is renderer-safe: no patch, worktree, or artifact paths cross.
+      const serialized = JSON.stringify(opened.value);
+      expect(serialized).not.toContain("patchPath");
+      expect(serialized).not.toContain("worktree");
+      expect(serialized).not.toContain(root);
+      const patchPath = paths.patchFile(profile.id, opened.value.session.id);
+      expect(await readFile(patchPath, "utf8")).toContain("src/review.ts");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

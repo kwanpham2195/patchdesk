@@ -173,7 +173,7 @@ describe("review workbench", () => {
     const user = userEvent.setup();
     render(
       <ReviewWorkbench
-        reviewScope={{ kind: "incremental", baseSessionId: "base" as never, baseHeadSha: "a".repeat(40) as never, headSha: "b".repeat(40) as never, comparisonPatchPath: "/tmp/comparison.diff" as never, comparisonMetadataPath: "/tmp/comparison.json" as never, previousFindingsPath: "/tmp/previous.json" as never, lifecyclePath: "/tmp/lifecycle.json" as never }}
+        reviewScope={{ kind: "incremental", baseSessionId: "base" as never, baseHeadSha: "a".repeat(40) as never, headSha: "b".repeat(40) as never }}
         comparisonAvailability="available"
         comparison={{ schemaVersion: 1, baseSessionId: "base" as never, baseHeadSha: "a".repeat(40) as never, headSha: "b".repeat(40) as never, ancestry: "fast_forward", source: "local_git", completeness: "complete", commits: [], files: [], additions: 1, deletions: 0, createdAt: "2026-07-18T00:00:00.000Z" as never }}
         comparisonPatch={"diff --git a/src/updates.ts b/src/updates.ts\n--- a/src/updates.ts\n+++ b/src/updates.ts\n@@ -1 +1 @@\n-old\n+update\n"}

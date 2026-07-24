@@ -102,17 +102,20 @@ export function inboxIdentityKey(row: InboxRow): string {
   return `${row.identity.host}/${row.identity.owner}/${row.identity.repo}#${row.identity.number}`;
 }
 
+// The main process projects a renderer-safe Session identity only. Patch,
+// worktree, and comparison artifact paths never cross this boundary; the strict
+// objects below reject any response that still carries them.
 const workbenchSessionSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   key: v.strictObject({
     profileId: v.pipe(v.string(), v.minLength(1)),
+    host: v.pipe(v.string(), v.minLength(1)),
     owner: v.pipe(v.string(), v.minLength(1)),
     repo: v.pipe(v.string(), v.minLength(1)),
     prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
   }),
   currentAttemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
-  draftContent: v.optional(v.unknown()),
 });
 
 const workbenchProjectionSchema = v.variant("state", [
@@ -143,10 +146,6 @@ const workbenchProjectionSchema = v.variant("state", [
         baseSessionId: v.pipe(v.string(), v.minLength(1)),
         baseHeadSha: v.pipe(v.string(), v.minLength(7)),
         headSha: v.pipe(v.string(), v.minLength(7)),
-        comparisonPatchPath: v.pipe(v.string(), v.minLength(1)),
-        comparisonMetadataPath: v.pipe(v.string(), v.minLength(1)),
-        previousFindingsPath: v.pipe(v.string(), v.minLength(1)),
-        lifecyclePath: v.pipe(v.string(), v.minLength(1)),
       }),
     ]),
     fullPatch: v.optional(v.string()),

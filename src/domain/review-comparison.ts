@@ -26,6 +26,28 @@ export type ReviewScope =
       readonly lifecyclePath: AbsolutePath;
     };
 
+/** Renderer-safe scope identity. Artifact paths never leave the main process. */
+export type ReviewScopeProjection =
+  | { readonly kind: "full" }
+  | {
+      readonly kind: "incremental";
+      readonly baseSessionId: ReviewSessionId;
+      readonly baseHeadSha: GitSha;
+      readonly headSha: GitSha;
+    };
+
+/** Drops every artifact path from a persisted scope before it crosses the local API. */
+export function projectReviewScope(scope: ReviewScope): ReviewScopeProjection {
+  return scope.kind === "full"
+    ? { kind: "full" }
+    : {
+        kind: "incremental",
+        baseSessionId: scope.baseSessionId,
+        baseHeadSha: scope.baseHeadSha,
+        headSha: scope.headSha,
+      };
+}
+
 export type ComparedCommit = {
   readonly sha: GitSha;
   readonly subject: string;

@@ -727,6 +727,7 @@ const completedWorkbench = {
     id: "session-123",
     key: {
       profileId: "cfw",
+      host: "github.com",
       owner: "centraldigital",
       repo: "patchdesk",
       prNumber: 42,

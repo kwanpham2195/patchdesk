@@ -48,6 +48,8 @@ export class ReviewComparisonService {
     readonly headSha: GitSha;
     readonly localPath?: string;
     readonly previousFindings: ReadonlyArray<PriorFindingEvidence>;
+    /** Journal-owned staging directory; finals stay untouched until the caller promotes. */
+    readonly stagingDirectory?: string;
   }): Promise<Result<PreparedComparison, ComparisonFailure>> {
     if (input.localPath === undefined)
       return err({ _tag: "ReviewComparisonFailed", reason: "missing_local_path" });
@@ -100,6 +102,7 @@ export class ReviewComparisonService {
       comparison,
       patch: patch.value.stdout,
       previousFindings: input.previousFindings,
+      ...(input.stagingDirectory === undefined ? {} : { stagingDirectory: input.stagingDirectory }),
     });
   }
 
@@ -110,12 +113,16 @@ export class ReviewComparisonService {
     readonly comparison: RevisionComparison;
     readonly patch: string;
     readonly previousFindings: ReadonlyArray<PriorFindingEvidence>;
+    /** Journal-owned staging directory; finals stay untouched until the caller promotes. */
+    readonly stagingDirectory?: string;
   }): Promise<Result<PreparedComparison, ComparisonFailure>> {
     if (input.comparison.completeness !== "complete") return failure("git_read");
-    const comparisonPatchPath = this.paths.comparisonPatchFile(input.profileId, input.targetSessionId);
-    const comparisonMetadataPath = this.paths.comparisonMetadataFile(input.profileId, input.targetSessionId);
-    const previousFindingsPath = this.paths.previousFindingsFile(input.profileId, input.targetSessionId);
-    const lifecyclePath = this.paths.findingLifecycleFile(input.profileId, input.targetSessionId);
+    const stage = (finalPath: string): string =>
+      input.stagingDirectory === undefined ? finalPath : join(input.stagingDirectory, basename(finalPath));
+    const comparisonPatchPath = stage(this.paths.comparisonPatchFile(input.profileId, input.targetSessionId));
+    const comparisonMetadataPath = stage(this.paths.comparisonMetadataFile(input.profileId, input.targetSessionId));
+    const previousFindingsPath = stage(this.paths.previousFindingsFile(input.profileId, input.targetSessionId));
+    const lifecyclePath = stage(this.paths.findingLifecycleFile(input.profileId, input.targetSessionId));
     const writtenPatch = await writeAtomicText(comparisonPatchPath, input.patch);
     const writes = writtenPatch ? await Promise.all([
       writeAtomicJson(comparisonMetadataPath, input.comparison),

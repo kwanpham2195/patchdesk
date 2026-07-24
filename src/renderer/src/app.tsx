@@ -145,13 +145,13 @@ type WorkbenchPayload = {
     readonly id: string;
     readonly key: {
       readonly profileId: string;
+      readonly host: string;
       readonly owner: string;
       readonly repo: string;
       readonly prNumber: number;
       readonly headSha: string;
     };
     readonly currentAttemptId?: string;
-    readonly draftContent?: unknown;
   };
   readonly result?: unknown;
   readonly draft?: unknown;
@@ -3053,16 +3053,9 @@ function mergeDashboardRepository(
   };
 }
 function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {
-  // Completed v1 sessions are still legitimate local history. Keep the
-  // renderer boundary strict for new rich projections, but permit the
-  // pre-Phase-2 shape while the main process normalizes it on reopen.
-  return (
-    parseWorkbenchResponse(value) !== undefined ||
-    (record(value) &&
-      typeof value.state === "string" &&
-      record(value.session) &&
-      typeof value.session.id === "string")
-  );
+  // The main process always emits the strict renderer-safe projection; there
+  // is no legacy fallback shape at this boundary.
+  return parseWorkbenchResponse(value) !== undefined;
 }
 
 /** Re-parse the local API projection before using it for external navigation. */

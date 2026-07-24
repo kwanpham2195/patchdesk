@@ -29,6 +29,9 @@ import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewDraftController } from "../services/review-draft-controller";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
+import { ReviewSessionPreparation } from "../services/review-session-preparation";
+import { ReviewWorkbenchProjectionService } from "../services/review-workbench-projection";
+import { ReviewPreparationJournal } from "../services/review-preparation-journal";
 import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { projectSafeRun } from "../services/run-projection";
@@ -145,6 +148,10 @@ export async function startLocalApiServer(
     sessions,
     () => new Date().toISOString() as never,
   ).reconcile();
+  await ReviewPreparationJournal.recover(
+    paths,
+    new ReviewWorktreeService(paths, readOnlyGit),
+  );
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -172,19 +179,24 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
   );
   const reviewWorkbench = new ReviewWorkbenchController(
-    profiles,
-    sessions,
-    github,
-    paths,
-    () => new Date().toISOString() as never,
-    {
+    new ReviewSessionPreparation({
+      profiles,
+      sessions,
       github,
+      paths,
+      now: () => new Date().toISOString() as never,
       worktrees: new ReviewWorktreeService(paths, readOnlyGit),
       context: new ReviewContextService(),
-    },
-    new ReviewComparisonService(
-      paths,
-      readOnlyGit,
+      comparisons: new ReviewComparisonService(
+        paths,
+        readOnlyGit,
+        () => new Date().toISOString() as never,
+      ),
+    }),
+    new ReviewWorkbenchProjectionService(
+      profiles,
+      sessions,
+      github,
       () => new Date().toISOString() as never,
     ),
   );

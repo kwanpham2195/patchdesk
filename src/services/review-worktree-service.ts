@@ -20,6 +20,13 @@ export type MetadataOnlyReview = { readonly mode: "metadata_only"; readonly warn
 export type WorktreeFailure = { readonly _tag: "GitWorktreeFailed" };
 export type UnsafeWorktreeCleanup = { readonly _tag: "UnsafeWorktreeCleanup" };
 
+export type WorktreeCleanupInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
+  readonly localPath?: string;
+  readonly targetPath: string;
+};
+
 type WorktreeInput = {
   readonly profileId: WorkspaceProfileId;
   readonly host: GitHubHost;
@@ -66,7 +73,7 @@ export class ReviewWorktreeService {
   }
 
   /** Remove only a verified Patchdesk-owned worktree; no broad filesystem deletion is allowed. */
-  async cleanup(input: WorktreeInput & { readonly targetPath: string }): Promise<Result<void, UnsafeWorktreeCleanup | WorktreeFailure>> {
+  async cleanup(input: WorktreeCleanupInput): Promise<Result<void, UnsafeWorktreeCleanup | WorktreeFailure>> {
     const expected = this.paths.worktreeDirectory(input.profileId, input.sessionId);
     if (resolve(input.targetPath) !== resolve(expected)) return err({ _tag: "UnsafeWorktreeCleanup" });
     let root: string;
