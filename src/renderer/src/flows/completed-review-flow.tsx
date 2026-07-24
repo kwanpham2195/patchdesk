@@ -1,0 +1,165 @@
+import { CompletedReviewWorkbench } from "../components/completed-review-workbench";
+import { requestJson } from "../api-client";
+
+export type CompletedReviewFlowWorkbench = {
+  readonly state: "completed";
+  readonly session: {
+    readonly id: string;
+    readonly key: { readonly profileId: string };
+  };
+  readonly result?: unknown;
+  readonly reviewScope?: unknown;
+  readonly fullPatch?: string;
+  readonly comparison?: unknown;
+  readonly comparisonPatch?: string;
+  readonly lifecycle?: unknown;
+  readonly comparisonAvailability?: unknown;
+  readonly pullRequest?: unknown;
+  readonly reviewedHeadSha?: string;
+  readonly currentHeadSha?: string;
+  readonly freshness?: unknown;
+  readonly refreshedAt?: string;
+  readonly draft?: unknown;
+  readonly comments?: unknown;
+  readonly checks?: unknown;
+  readonly history?: unknown;
+  readonly mergeReadiness?: unknown;
+};
+
+export type CompletedReviewFlowProps = {
+  readonly workbench: CompletedReviewFlowWorkbench;
+  readonly onWorkbenchPatch: (patch: { readonly session?: unknown; readonly draft?: unknown }) => void;
+  readonly onNavigationStateChange: (state: "clear" | "dirty_draft" | "write_pending") => void;
+};
+
+/** Owns completed-review API calls and passes one model/action boundary to the interaction surface. */
+export function CompletedReviewFlow({
+  workbench,
+  onWorkbenchPatch,
+  onNavigationStateChange,
+}: CompletedReviewFlowProps): React.JSX.Element {
+  const profileId = workbench.session.key.profileId;
+  const sessionId = workbench.session.id;
+  const draft = workbench.draft as { readonly updatedAt?: unknown } | undefined;
+
+  const saveDraft = async (input: {
+    readonly expectedRevision: string;
+    readonly summaryBody: string;
+    readonly comments: ReadonlyArray<{
+      readonly findingId: string;
+      readonly include: boolean;
+      readonly body: string;
+    }>;
+  }): Promise<{ readonly draft: never; readonly revision: string }> => {
+    const value = await requestJson("/v1/reviews/draft", {
+      method: "POST",
+      body: { profileId, sessionId, ...input },
+    });
+    if (!isDraftWrite(value)) throw new Error("Draft save was rejected");
+    onWorkbenchPatch({ session: value.session, draft: value.draft });
+    return { draft: value.draft as never, revision: value.revision };
+  };
+
+  const reviewWrite = async (
+    path: "/v1/reviews/pending" | "/v1/reviews/submit",
+    extra: Record<string, unknown> = {},
+  ): Promise<{ readonly reviewId: string }> => {
+    if (typeof draft?.updatedAt !== "string") {
+      throw new Error("The saved draft revision is unavailable");
+    }
+    const value = await requestJson(path, {
+      method: "POST",
+      body: {
+        profileId,
+        sessionId,
+        expectedRevision: draft.updatedAt,
+        acknowledgement: true,
+        ...extra,
+      },
+    });
+    if (!isReviewWrite(value)) throw new Error("Review write was rejected");
+    onWorkbenchPatch({ session: value.session, draft: value.draft });
+    const state = value.draft.state as { readonly pendingReviewId?: unknown; readonly reviewId?: unknown };
+    return {
+      reviewId:
+        typeof state.reviewId === "string"
+          ? state.reviewId
+          : typeof state.pendingReviewId === "string"
+            ? state.pendingReviewId
+            : "review",
+    };
+  };
+
+  const merge = async (
+    method: "merge" | "squash" | "rebase",
+    acknowledgedWarnings: boolean,
+  ): Promise<{ readonly mergeCommitSha?: string }> => {
+    const value = await requestJson("/v1/reviews/merge", {
+      method: "POST",
+      body: { profileId, sessionId, method, acknowledgedWarnings },
+    });
+    if (!isMergeWrite(value)) throw new Error("Merge was rejected");
+    onWorkbenchPatch({ session: value.session });
+    const decision = value.session.mergeDecision;
+    return typeof decision?.mergeCommitSha === "string"
+      ? { mergeCommitSha: decision.mergeCommitSha }
+      : {};
+  };
+
+  return (
+    <CompletedReviewWorkbench
+      model={{
+        source: { profileId, sessionId },
+        result: workbench.result as never,
+        reviewScope: workbench.reviewScope as never,
+        ...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch }),
+        ...(workbench.comparison === undefined ? {} : { comparison: workbench.comparison as never }),
+        ...(workbench.comparisonPatch === undefined ? {} : { comparisonPatch: workbench.comparisonPatch }),
+        ...(workbench.lifecycle === undefined ? {} : { lifecycle: workbench.lifecycle as never }),
+        comparisonAvailability: workbench.comparisonAvailability as never,
+        ...(workbench.pullRequest === undefined ? {} : { pullRequest: workbench.pullRequest as never }),
+        reviewedHeadSha: workbench.reviewedHeadSha as never,
+        ...(workbench.currentHeadSha === undefined ? {} : { currentHeadSha: workbench.currentHeadSha }),
+        freshness: workbench.freshness as never,
+        refreshedAt: workbench.refreshedAt as never,
+        draft: workbench.draft as never,
+        comments: workbench.comments as never,
+        checks: workbench.checks as never,
+        history: (workbench.history as never) ?? [],
+        ...(workbench.mergeReadiness === undefined ? {} : { mergeReadiness: workbench.mergeReadiness as never }),
+      }}
+      actions={{
+        saveDraft,
+        createPendingReview: async () => reviewWrite("/v1/reviews/pending"),
+        submitPendingReview: async (event) => reviewWrite("/v1/reviews/submit", { event }),
+        merge,
+        reportNavigationState: onNavigationStateChange,
+      }}
+    />
+  );
+}
+
+function isDraftWrite(value: unknown): value is {
+  readonly session: unknown;
+  readonly draft: unknown;
+  readonly revision: string;
+} {
+  return isRecord(value) && isRecord(value.session) && isRecord(value.draft) && typeof value.revision === "string";
+}
+
+function isReviewWrite(value: unknown): value is {
+  readonly session: unknown;
+  readonly draft: { readonly state: unknown };
+} {
+  return isRecord(value) && isRecord(value.session) && isRecord(value.draft) && "state" in value.draft;
+}
+
+function isMergeWrite(value: unknown): value is {
+  readonly session: { readonly mergeDecision?: { readonly mergeCommitSha?: unknown } };
+} {
+  return isRecord(value) && isRecord(value.session);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}

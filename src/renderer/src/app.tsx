@@ -8,6 +8,7 @@ import {
 } from "./components/maintainer-inbox";
 import { CompletedReviewWorkbench } from "./components/completed-review-workbench";
 import { PreparedReviewFlow } from "./flows/prepared-review-flow";
+import { CompletedReviewFlow } from "./flows/completed-review-flow";
 import { ReviewSubmissionDialog } from "./components/review-submission-dialog";
 import { MergeConfirmationDialog } from "./components/merge-confirmation-dialog";
 import { SafeRunPanel } from "./components/safe-run-panel";
@@ -776,37 +777,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
 
   if (workbench?.state === "completed" && dashboard !== undefined) {
     return shell(
-      <CompletedReviewWorkbench
-        model={{
-          source: {
-            profileId: workbench.session.key.profileId,
-            sessionId: workbench.session.id,
-          },
-          result: workbench.result as never,
-          reviewScope: workbench.reviewScope as never,
-          ...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch }),
-          ...(workbench.comparison === undefined ? {} : { comparison: workbench.comparison as never }),
-          ...(workbench.comparisonPatch === undefined ? {} : { comparisonPatch: workbench.comparisonPatch }),
-          ...(workbench.lifecycle === undefined ? {} : { lifecycle: workbench.lifecycle as never }),
-          comparisonAvailability: workbench.comparisonAvailability as never,
-          ...(workbench.pullRequest === undefined ? {} : { pullRequest: workbench.pullRequest as never }),
-          reviewedHeadSha: workbench.reviewedHeadSha as never,
-          ...(workbench.currentHeadSha === undefined ? {} : { currentHeadSha: workbench.currentHeadSha }),
-          freshness: workbench.freshness as never,
-          refreshedAt: workbench.refreshedAt as never,
-          draft: workbench.draft as never,
-          comments: workbench.comments as never,
-          checks: workbench.checks as never,
-          history: (workbench.history as never) ?? [],
-          ...(workbench.mergeReadiness === undefined ? {} : { mergeReadiness: workbench.mergeReadiness as never }),
-        }}
-        actions={{
-          saveDraft,
-          createPendingReview: async () => reviewWrite("/v1/reviews/pending"),
-          submitPendingReview: async (event) => reviewWrite("/v1/reviews/submit", { event }),
-          merge: mergeReview,
-          reportNavigationState: setNavigationState,
-        }}
+      <CompletedReviewFlow
+        workbench={workbench as never}
+        onWorkbenchPatch={(patch) =>
+          setWorkbench((current) => current === undefined ? current : { ...current, ...(patch as Partial<WorkbenchPayload>) })
+        }
+        onNavigationStateChange={setNavigationState}
       />,
       { kind: "workbench", sessionId: workbench.session.id },
     );
@@ -1017,115 +993,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     setWorkbench(value);
     navigate({ kind: "workbench", sessionId });
   }
-  async function reviewWrite(
-    path: string,
-    extra: Record<string, unknown> = {},
-  ): Promise<{ readonly reviewId: string }> {
-    if (
-      workbench === undefined ||
-      dashboard === undefined ||
-      workbench.draft === undefined
-    )
-      throw new Error("Review workbench is unavailable");
-    const revision =
-      record(workbench.draft) && typeof workbench.draft.updatedAt === "string"
-        ? workbench.draft.updatedAt
-        : undefined;
-    if (revision === undefined)
-      throw new Error("The saved draft revision is unavailable");
-    const value = await api(path, {
-      method: "POST",
-      body: {
-        profileId: dashboard.profile.id,
-        sessionId: workbench.session.id,
-        expectedRevision: revision,
-        acknowledgement: true,
-        ...extra,
-      },
-    });
-    if (!isWorkbenchWrite(value)) throw new Error("Review write was rejected");
-    setWorkbench((current) =>
-      current === undefined
-        ? current
-        : {
-            ...current,
-            session: value.session as WorkbenchPayload["session"],
-            draft: value.draft,
-          },
-    );
-    const state = value.draft.state as {
-      readonly pendingReviewId?: string;
-      readonly reviewId?: string;
-    };
-    return { reviewId: state.reviewId ?? state.pendingReviewId ?? "review" };
-  }
-  async function saveDraft(input: {
-    readonly expectedRevision: string;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<{
-      readonly findingId: string;
-      readonly include: boolean;
-      readonly body: string;
-    }>;
-  }): Promise<{ readonly draft: never; readonly revision: string }> {
-    if (workbench === undefined || dashboard === undefined)
-      throw new Error("Review workbench is unavailable");
-    const value = await api("/v1/reviews/draft", {
-      method: "POST",
-      body: {
-        profileId: dashboard.profile.id,
-        sessionId: workbench.session.id,
-        ...input,
-      },
-    });
-    if (
-      !record(value) ||
-      !record(value.session) ||
-      !record(value.draft) ||
-      typeof value.revision !== "string"
-    )
-      throw new Error("Draft save was rejected");
-    setWorkbench((current) =>
-      current === undefined
-        ? current
-        : {
-            ...current,
-            session: value.session as WorkbenchPayload["session"],
-            draft: value.draft,
-          },
-    );
-    return { draft: value.draft as never, revision: value.revision };
-  }
-  async function mergeReview(
-    method: "merge" | "squash" | "rebase",
-    acknowledgedWarnings: boolean,
-  ): Promise<{ readonly mergeCommitSha?: string }> {
-    if (workbench === undefined || dashboard === undefined)
-      throw new Error("Review workbench is unavailable");
-    const value = await api("/v1/reviews/merge", {
-      method: "POST",
-      body: {
-        profileId: dashboard.profile.id,
-        sessionId: workbench.session.id,
-        method,
-        acknowledgedWarnings,
-      },
-    });
-    if (!record(value) || !record(value.session))
-      throw new Error("Merge was rejected");
-    setWorkbench((current) =>
-      current === undefined
-        ? current
-        : { ...current, session: value.session as WorkbenchPayload["session"] },
-    );
-    const mergeCommitSha =
-      record(value.session.mergeDecision) &&
-      typeof value.session.mergeDecision.mergeCommitSha === "string"
-        ? value.session.mergeDecision.mergeCommitSha
-        : undefined;
-    return mergeCommitSha === undefined ? {} : { mergeCommitSha };
-  }
-
   return shell(
     <div className={destination.kind === "dashboard" || destination.kind === "workbench" ? "flex min-h-0 flex-1 flex-col" : "p-3 min-[1280px]:p-4"}>
       {destination.kind === "dashboard" || destination.kind === "workbench" ? (
@@ -2839,17 +2706,6 @@ function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {
   return parseWorkbenchResponse(value) !== undefined;
 }
 
-function isWorkbenchWrite(value: unknown): value is {
-  readonly session: unknown;
-  readonly draft: { readonly state: unknown };
-} {
-  return (
-    record(value) &&
-    "session" in value &&
-    record(value.draft) &&
-    "state" in value.draft
-  );
-}
 function isPreview(value: unknown): value is Preview {
   return (
     record(value) &&
