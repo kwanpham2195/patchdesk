@@ -13,6 +13,8 @@
 - Keep `nodeIntegration: false`, `contextIsolation: true`, and shell, filesystem, and GitHub work in the main process.
 - Parse renderer commands, stored records, and GitHub responses. Expected failures are typed values.
 - Keep one current review result for the current PR head. Rerun requires explicit discard of active local work.
+- Preserve existing local drafts during the v2-to-v3 session migration; reject malformed records and every unsupported schema version.
+- The `ReviewDraft` module may remain as a temporary internal type bridge only while Tasks 2, 4, 5, 8, and 9 migrate its consumers. New v3 storage never writes draft fields; delete the bridge and module once its last consumer is removed.
 - Refresh upstream PR and thread data only when the user asks. Refresh never replaces local batch items.
 - Every GitHub write requires confirmation, expected revision, and a head check immediately before the first write.
 - Persist an operation state before each remote call and a receipt after each success. Never retry an ambiguous write.
@@ -50,7 +52,7 @@
 **Interfaces:**
 - Produces `ReviewBatch`, `ReviewBatchItem`, `ReviewBatchState`, `RemoteWriteReceipt`, `parseReviewBatch`, `hasActiveReviewBatch`, and `discardBatchForRerun`.
 
-- [ ] **Step 1: Write failing tests for batch parsing and rerun blocking.**
+- [x] **Step 1: Write failing tests for batch parsing and rerun blocking.**
 
 ```ts
 it("accepts inline, reply, and thread-state items", () => {
@@ -68,13 +70,13 @@ it("blocks a rerun until its local batch is discarded", () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused tests.**
+- [x] **Step 2: Run the focused tests.**
 
 Run: `pnpm test -- --run tests/domain/review-domain.test.ts tests/storage/patchdesk-storage.test.ts tests/storage/review-session-store-begin-attempt.test.ts`
 
 Expected: FAIL because `ReviewBatch` and its transitions do not exist.
 
-- [ ] **Step 3: Implement the exact domain variants.**
+- [x] **Step 3: Implement the exact domain variants.**
 
 ```ts
 export type ReviewAnchor = {
@@ -94,22 +96,23 @@ export type ReviewBatchState =
   | { readonly _tag: "Applying"; readonly operation: BatchOperation }
   | { readonly _tag: "PartialFailure"; readonly operation: BatchOperation; readonly failure: SafeWriteFailure }
   | { readonly _tag: "PendingReview"; readonly reviewId: string }
-  | { readonly _tag: "Submitted"; readonly reviewId: string; readonly event: GitHubReviewEvent };
+  | { readonly _tag: "Submitted"; readonly reviewId: string; readonly event: GitHubReviewEvent }
+  | { readonly _tag: "Completed" };
 ```
 
-Add strict Valibot variants, branded item and thread IDs, and receipt variants. Replace `draft` and `draftContent` in `ReviewSession` with `batch` and `batchContent`. Persist schema version 3 and reject unsupported stored versions instead of guessing a migration.
+Add strict Valibot variants, branded item and thread IDs, and receipt variants. Replace `draft` and `draftContent` in `ReviewSession` with `batch` and `batchContent`. Persist schema version 3; explicitly migrate a valid v2 local draft once into its equivalent local batch, and reject malformed records or every other unsupported version instead of guessing a migration. A reply-only or thread-state-only batch reaches `Completed` after its recorded operations succeed; it never invents a GitHub review ID.
 
-- [ ] **Step 4: Make discard-for-rerun a pure legal transition.**
+- [x] **Step 4: Make discard-for-rerun a pure legal transition.**
 
 `discardBatchForRerun(session, confirmedAt)` removes only the batch fields, preserves the current result until a new result completes, and advances the session timestamp. `startNextAttempt` accepts a session only after that transition.
 
-- [ ] **Step 5: Run focused tests and typecheck.**
+- [x] **Step 5: Run focused tests and typecheck.**
 
 Run: `pnpm test -- --run tests/domain/review-domain.test.ts tests/storage/patchdesk-storage.test.ts tests/storage/review-session-store-begin-attempt.test.ts && pnpm typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/domain/review-batch.ts src/domain/ids.ts src/domain/review-session.ts src/adapters/storage/review-session-store.ts tests/domain/review-domain.test.ts tests/storage/patchdesk-storage.test.ts tests/storage/review-session-store-begin-attempt.test.ts
