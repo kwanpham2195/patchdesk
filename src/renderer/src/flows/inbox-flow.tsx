@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MaintainerInbox,
   type ReviewInitialSection,
@@ -34,6 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import { requestJson } from "../api-client";
+import { parseWorkbenchResponse } from "../renderer-contracts";
 import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
 import type {
   Dashboard,
@@ -42,8 +44,196 @@ import type {
   PrRow,
   RepoOutcome,
   ReviewRecord,
+  WorkbenchPayload,
 } from "../renderer-models";
 import type { InboxResponse } from "../renderer-contracts";
+
+export function InboxFlow({
+  destination,
+  sessionId,
+  dashboard,
+  inbox,
+  state,
+  refreshStatus,
+  onRefresh,
+  onSettings,
+  onWorkspaceReload,
+  onOpenWorkbench,
+}: {
+  readonly destination: "dashboard" | "drafts" | "history" | "workbench";
+  readonly sessionId?: string;
+  readonly dashboard?: Dashboard;
+  readonly inbox?: InboxResponse;
+  readonly state: DashboardScreenState;
+  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly onRefresh: () => void;
+  readonly onSettings: () => void;
+  readonly onWorkspaceReload: () => Promise<void>;
+  readonly onOpenWorkbench: (
+    workbench: WorkbenchPayload,
+    initialSection?: ReviewInitialSection,
+  ) => void;
+}): React.JSX.Element {
+  const [reference, setReference] = useState("");
+  const [preview, setPreview] = useState<Preview>();
+  const [openedPr, setOpenedPr] = useState<string>();
+  const [openError, setOpenError] = useState<string>();
+  const [records, setRecords] = useState<ReadonlyArray<ReviewRecord>>([]);
+  const [recordsState, setRecordsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [invalidRecordCount, setInvalidRecordCount] = useState(0);
+  const previewTrigger = useRef<HTMLElement | null>(null);
+  async function loadRecords(): Promise<void> {
+    if (dashboard === undefined) return;
+    setRecordsState("loading");
+    setInvalidRecordCount(0);
+    try {
+      const value = await requestJson(`/v1/reviews?profileId=${encodeURIComponent(dashboard.profile.id)}`);
+      if (!isRecord(value) || !Array.isArray(value.sessions)) throw new Error("Invalid local review response");
+      const valid = value.sessions.filter(isReviewRecord);
+      setRecords(valid);
+      setInvalidRecordCount(value.sessions.length - valid.length);
+      setRecordsState("ready");
+    } catch {
+      setRecordsState("error");
+    }
+  }
+
+  useEffect(() => {
+    if (destination === "drafts" || destination === "history") void loadRecords();
+  }, [dashboard?.profile.id, destination]);
+  useEffect(() => {
+    if (destination !== "workbench" || dashboard === undefined || sessionId === undefined) return;
+    let active = true;
+    void openStoredSessionById(dashboard.profile.id, sessionId, () => active);
+    return () => { active = false; };
+  }, [dashboard?.profile.id, destination, sessionId]);
+
+  const openPullRequest = async (
+    pr: Preview["pr"],
+    mode: ReviewStartMode = "full",
+    initialSection?: ReviewInitialSection,
+    baseSessionId?: string,
+    profileId = dashboard?.profile.id,
+  ): Promise<void> => {
+    setOpenedPr(undefined);
+    setOpenError(undefined);
+    try {
+      const value = await requestJson("/v1/reviews/open", {
+        method: "POST",
+        body: {
+          profileId,
+          host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
+          owner: pr.owner,
+          repo: pr.repo,
+          number: pr.number,
+          mode,
+          ...(baseSessionId === undefined ? {} : { baseSessionId }),
+        },
+      });
+      const parsed = parseWorkbenchResponse(value);
+      if (parsed === undefined) throw new Error("Invalid workbench projection");
+      setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
+      onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
+    } catch {
+      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
+    }
+  };
+
+  const previewEntry = async (): Promise<void> => {
+    previewTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    try {
+      const value = await requestJson("/v1/direct-entry/preview", {
+        method: "POST",
+        body: { reference },
+      });
+      if (!isPreview(value)) return;
+      if (value.confirmation.required) setPreview(value);
+      else await openPullRequest(value.pr);
+    } catch {
+      setOpenError("Could not preview that pull request.");
+    }
+  };
+
+  const confirmEntry = async (): Promise<void> => {
+    if (preview === undefined) return;
+    const targetProfileId = preview.confirmation.targetProfileId;
+    if (targetProfileId !== undefined) {
+      try {
+        await requestJson("/v1/profiles/select", { method: "POST", body: { id: targetProfileId } });
+        await onWorkspaceReload();
+      } catch {
+        setOpenError("Could not switch workspace profile.");
+        return;
+      }
+    }
+    await openPullRequest(preview.pr, "full", undefined, undefined, targetProfileId);
+    setPreview(undefined);
+  };
+
+  async function openStoredSessionById(profileId: string, sessionId: string, isActive: () => boolean = () => true): Promise<void> {
+    try {
+      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, sessionId } });
+      const parsed = parseWorkbenchResponse(value);
+      if (parsed === undefined || !isActive()) return;
+      onOpenWorkbench(parsed as unknown as WorkbenchPayload);
+    } catch {
+      setOpenError("Could not open the saved review.");
+    }
+  }
+
+  if (destination === "drafts" || destination === "history") {
+    return <ReviewRecords records={records} state={recordsState} invalidCount={invalidRecordCount} draftsOnly={destination === "drafts"} onRetry={() => void loadRecords()} onOpen={(record) => void openStoredSessionById(record.profileId, record.id)} />;
+  }
+
+  const referenceProps = {
+    reference,
+    onReference: setReference,
+    onPreview: () => void previewEntry(),
+    onRefresh,
+    onSettings,
+  };
+  const content = inbox !== undefined && dashboard !== undefined ? (
+    <InboxScreen
+      state={state}
+      inbox={inbox}
+      dashboard={dashboard}
+      refreshStatus={refreshStatus}
+      {...referenceProps}
+      {...(openedPr === undefined ? {} : { openedPr })}
+      {...(openError === undefined ? {} : { openError })}
+      onOpenReview={(row, mode, initialSection) => void openPullRequest(row.identity, mode, initialSection, row.recommendedAction.kind === "review_updates" ? row.recommendedAction.baseSessionId : undefined)}
+      onOpenSession={(sessionId) => void openStoredSessionById(dashboard.profile.id, sessionId)}
+    />
+  ) : (
+    <Pending
+      state={state}
+      {...(dashboard === undefined ? {} : { dashboard })}
+      {...(inbox === undefined ? {} : { inbox })}
+      {...referenceProps}
+      {...(openedPr === undefined ? {} : { openedPr })}
+      {...(openError === undefined ? {} : { openError })}
+      onOpenRow={(pr) => void openPullRequest(pr)}
+    />
+  );
+
+  return <>
+    {content}
+    <Dialog open={preview?.confirmation.required === true} onOpenChange={(open) => { if (!open) setPreview(undefined); }}>
+      {preview === undefined ? null : (
+        <DialogContent initialFocus={() => document.getElementById("keep-current-profile")} finalFocus={previewTrigger}>
+          <DialogHeader>
+            <DialogTitle>Switch workspace profile</DialogTitle>
+            <DialogDescription>Use the suggested profile before opening {preview.pr.owner}/{preview.pr.repo}#{preview.pr.number}.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button id="keep-current-profile" autoFocus variant="outline" onClick={() => setPreview(undefined)}>Keep current profile</Button>
+            <Button onClick={() => void confirmEntry()}>Switch profile and open pull request</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  </>;
+}
 
 export function InboxScreen({
   state,
@@ -634,6 +824,18 @@ export function ReviewRecords({
       </div>
     </div>
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isReviewRecord(value: unknown): value is ReviewRecord {
+  return isRecord(value) && typeof value.id === "string" && typeof value.profileId === "string" && typeof value.owner === "string" && typeof value.repo === "string" && typeof value.prNumber === "number" && typeof value.state === "string" && typeof value.updatedAt === "string";
+}
+
+function isPreview(value: unknown): value is Preview {
+  return isRecord(value) && isRecord(value.pr) && typeof value.pr.owner === "string" && typeof value.pr.repo === "string" && typeof value.pr.number === "number" && isRecord(value.confirmation) && typeof value.confirmation.required === "boolean";
 }
 
 function key(repo: {

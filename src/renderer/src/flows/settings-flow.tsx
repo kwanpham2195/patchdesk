@@ -1,5 +1,5 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import { requestJson } from "../api-client";
+import { useEffect, useState } from "react";
+import { requestJson, selectDirectory } from "../api-client";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
@@ -39,62 +39,27 @@ import type { Dashboard, Profile, Repo } from "../renderer-models";
 
 export function SettingsFlow({
   dashboard,
-  paths,
-  setPaths,
-  profileDraft,
-  setProfileDraft,
   appearance,
   onAppearanceChange,
   diffThemePreferences,
   onDiffThemeChange,
   profiles,
-  pathFeedback,
-  onSaveProfile,
-  onAddSuggestion,
   onWorkspaceReload,
-  onSelectProfile,
-  onPath,
-  onChoosePath,
-  onRemove,
-  onArchive,
-  onRefreshRepo,
+  onRepositoryRefresh,
 }: {
   readonly dashboard?: Dashboard;
-  readonly paths: Record<string, string>;
-  readonly setPaths: Dispatch<SetStateAction<Record<string, string>>>;
-  readonly profileDraft: {
-    readonly id: string;
-    readonly label: string;
-    readonly githubHost: string;
-    readonly ghAccount: string;
-    readonly workspaceRoot: string;
-  };
-  readonly setProfileDraft: Dispatch<
-    SetStateAction<{
-      id: string;
-      label: string;
-      githubHost: string;
-      ghAccount: string;
-      workspaceRoot: string;
-    }>
-  >;
   readonly appearance: AppearancePreference;
   readonly onAppearanceChange: (value: AppearancePreference) => void;
   readonly diffThemePreferences: DiffThemePreferences;
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
-  readonly pathFeedback?: string;
-  readonly onSaveProfile: () => void;
-  readonly onAddSuggestion: (repo: Repo) => Promise<void>;
   readonly onWorkspaceReload: () => Promise<void>;
-  readonly onSelectProfile: (id: string) => void;
-  readonly onPath: (repo: Repo) => void;
-  readonly onChoosePath: (repo: Repo) => void;
-  readonly onRemove: (repo: Repo) => Promise<void>;
-  readonly onArchive: (repo: Repo) => void;
-  readonly onRefreshRepo: (repo: Repo) => void;
+  readonly onRepositoryRefresh: (value: unknown, repo: Repo) => void;
 }): React.JSX.Element {
   const [removalTarget, setRemovalTarget] = useState<Repo>();
+  const [paths, setPaths] = useState<Record<string, string>>({});
+  const [pathFeedback, setPathFeedback] = useState<string>();
+  const [profileDraft, setProfileDraft] = useState(() => profileDraftFor(dashboard?.profile));
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
   const [newRepo, setNewRepo] = useState("");
@@ -102,6 +67,10 @@ export function SettingsFlow({
   const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
+  useEffect(() => {
+    if (dashboard !== undefined && dashboard.profile.id !== profileDraft.id)
+      setProfileDraft(profileDraftFor(dashboard.profile));
+  }, [dashboard?.profile.id]);
   const loadEnvironment = async (): Promise<void> => {
     const value = await requestJson("/v1/environment");
     if (!record(value)) return;
@@ -149,15 +118,56 @@ export function SettingsFlow({
     }
   };
   const addSuggestion = async (repo: Repo): Promise<void> => {
-    await onAddSuggestion(repo);
-    setSuggestions((current) =>
-      current.filter((item) => key(item) !== key(repo)),
-    );
+    await requestJson("/v1/watchlist", { method: "POST", body: repo });
+    setSuggestions((current) => current.filter((item) => key(item) !== key(repo)));
+    await onWorkspaceReload();
   };
   const testGitHubAccess = async (): Promise<void> => {
     const value = await requestJson("/v1/github/access", { method: "POST" });
     if (record(value) && typeof value.state === "string")
       setGithubAccess(value.state);
+  };
+  const saveProfile = async (): Promise<void> => {
+    const exists = profiles.some((profile) => profile.id === profileDraft.id);
+    await requestJson("/v1/profiles", {
+      method: exists ? "PUT" : "POST",
+      body: {
+        ...profileDraft,
+        workspaceRoots: profileDraft.workspaceRoot.trim().length === 0 ? [] : [profileDraft.workspaceRoot.trim()],
+      },
+    });
+    await onWorkspaceReload();
+  };
+  const selectProfile = async (id: string): Promise<void> => {
+    const selected = profiles.find((profile) => profile.id === id);
+    if (selected !== undefined) setProfileDraft(profileDraftFor(selected));
+    await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
+    await onWorkspaceReload();
+  };
+  const editPath = async (repo: Repo): Promise<void> => {
+    await requestJson("/v1/watchlist/path", { method: "PATCH", body: { ...repo, localPath: paths[key(repo)] ?? repo.localPath ?? "" } });
+    await onWorkspaceReload();
+  };
+  const choosePath = async (repo: Repo): Promise<void> => {
+    const selected = await selectDirectory(paths[key(repo)] ?? repo.localPath);
+    if (selected === undefined) {
+      setPathFeedback("Folder selection cancelled. The existing repository path was not changed.");
+      return;
+    }
+    setPaths((current) => ({ ...current, [key(repo)]: selected }));
+    setPathFeedback(`Selected ${selected} for ${repo.owner}/${repo.repo}. Save the path to apply it.`);
+  };
+  const remove = async (repo: Repo): Promise<void> => {
+    await requestJson("/v1/watchlist", { method: "DELETE", body: repo });
+    await onWorkspaceReload();
+  };
+  const archive = async (repo: Repo): Promise<void> => {
+    await requestJson("/v1/watchlist/archive", { method: "PATCH", body: { ...repo, archived: repo.archived !== true } });
+    await onWorkspaceReload();
+  };
+  const refreshRepo = async (repo: Repo): Promise<void> => {
+    const value = await requestJson("/v1/dashboard/refresh/repository", { method: "POST", body: repo });
+    onRepositoryRefresh(value, repo);
   };
   const setupSteps =
     environment === undefined ? [] : environmentSetupSteps(environment);
@@ -167,7 +177,7 @@ export function SettingsFlow({
     setRemoving(true);
     setRemoveError(undefined);
     try {
-      await onRemove(removalTarget);
+      await remove(removalTarget);
       setRemovalTarget(undefined);
     } catch (cause: unknown) {
       setRemoveError(
@@ -304,7 +314,7 @@ export function SettingsFlow({
                   value: profile.id,
                 }))}
                 onValueChange={(value) => {
-                  if (value !== null) onSelectProfile(value);
+                  if (value !== null) void selectProfile(value);
                 }}
               >
                 <SelectTrigger id="active-profile" className="mt-1.5">
@@ -348,7 +358,7 @@ export function SettingsFlow({
                 />
               </div>
             ))}
-            <Button onClick={onSaveProfile}>Save profile</Button>
+            <Button onClick={() => void saveProfile()}>Save profile</Button>
           </CardContent>
         </Card>
         <Card>
@@ -556,7 +566,7 @@ export function SettingsFlow({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => onChoosePath(repo)}
+                  onClick={() => void choosePath(repo)}
                   aria-label={`Choose folder for ${repo.owner}/${repo.repo}`}
                 >
                   Choose folder
@@ -565,7 +575,7 @@ export function SettingsFlow({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => onPath(repo)}
+                  onClick={() => void editPath(repo)}
                   aria-label={`Save path for ${repo.owner}/${repo.repo}`}
                 >
                   Save path
@@ -573,7 +583,7 @@ export function SettingsFlow({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onRefreshRepo(repo)}
+                  onClick={() => void refreshRepo(repo)}
                   aria-label={`Refresh ${repo.owner}/${repo.repo}`}
                 >
                   Refresh
@@ -581,7 +591,7 @@ export function SettingsFlow({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onArchive(repo)}
+                  onClick={() => void archive(repo)}
                   aria-label={`${repo.archived ? "Restore" : "Archive"} ${repo.owner}/${repo.repo}`}
                 >
                   {repo.archived ? "Restore" : "Archive"}
@@ -672,6 +682,22 @@ function environmentSetupSteps(
       "Configure a model provider before running a review; local history remains readable without it.",
     );
   return steps;
+}
+
+function profileDraftFor(profile: Profile | undefined): {
+  readonly id: string;
+  readonly label: string;
+  readonly githubHost: string;
+  readonly ghAccount: string;
+  readonly workspaceRoot: string;
+} {
+  return {
+    id: profile?.id ?? "",
+    label: profile?.label ?? "",
+    githubHost: profile?.githubHost ?? "github.com",
+    ghAccount: profile?.ghAccount ?? "",
+    workspaceRoot: profile?.workspaceRoots?.[0] ?? "",
+  };
 }
 
 function key(repo: Repo): string {

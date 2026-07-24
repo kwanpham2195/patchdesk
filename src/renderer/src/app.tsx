@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "./components/app-shell";
-import type {
-  ReviewInitialSection,
-  ReviewStartMode,
-} from "./components/maintainer-inbox";
 import { PreparedReviewFlow } from "./flows/prepared-review-flow";
 import { CompletedReviewFlow } from "./flows/completed-review-flow";
 import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
-import { InboxScreen, Pending, ReviewRecords } from "./flows/inbox-flow";
+import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsFlow } from "./flows/settings-flow";
 import type {
   Dashboard,
   DashboardScreenState,
-  Preview,
   Profile,
   Repo,
-  ReviewRecord,
   WorkbenchPayload,
 } from "./renderer-models";
 import {
@@ -29,25 +23,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./components/ui/dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
-import { PatchdeskApiError, requestJson, selectDirectory } from "./api-client";
-import {
-  parseInboxResponse,
-  parseWorkbenchResponse,
-  type InboxResponse,
-} from "./renderer-contracts";
+import { PatchdeskApiError, requestJson } from "./api-client";
+import { parseInboxResponse, type InboxResponse } from "./renderer-contracts";
 import {
   InboxRefreshScheduler,
   inboxFreshnessLabel,
@@ -86,10 +67,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [state, setState] = useState<DashboardScreenState>(
     initialState ?? "loading",
   );
-  const [reference, setReference] = useState("");
-  const [preview, setPreview] = useState<Preview | undefined>();
-  const [openedPr, setOpenedPr] = useState<string | undefined>();
-  const [openError, setOpenError] = useState<string | undefined>();
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
     loadAppearancePreference(),
@@ -107,17 +84,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [appearance]);
-  const [paths, setPaths] = useState<Record<string, string>>({});
-  const [pathFeedback, setPathFeedback] = useState<string>();
-  const [reviewRecords, setReviewRecords] = useState<
-    ReadonlyArray<ReviewRecord>
-  >([]);
-  const [reviewRecordsState, setReviewRecordsState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [invalidReviewRecordCount, setInvalidReviewRecordCount] = useState(0);
-  const restoredSessionId = useRef<string | undefined>(undefined);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
+  const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
   const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(
     undefined,
@@ -128,48 +96,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   >("clear");
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
-  const previewTrigger = useRef<HTMLElement | null>(null);
-  const [profileDraft, setProfileDraft] = useState({
-    id: "",
-    label: "",
-    githubHost: "github.com",
-    ghAccount: "",
-    workspaceRoot: "",
-  });
-  const loadCompletedWorkbench = useCallback(
-    async (profileId: string, sessionId: string): Promise<void> => {
-      const value = await api("/v1/reviews/load", {
-        method: "POST",
-        body: { profileId, sessionId },
-      });
-      if (isWorkbenchPayload(value)) setWorkbench(value);
-    },
-    [],
-  );
-  const loadReviewRecords = useCallback(
-    async (profileId: string): Promise<void> => {
-      setReviewRecordsState("loading");
-      setInvalidReviewRecordCount(0);
-      try {
-        const value = await api(
-          `/v1/reviews?profileId=${encodeURIComponent(profileId)}`,
-        );
-        if (!record(value) || !Array.isArray(value.sessions))
-          throw new Error("Invalid local review response");
-        const valid = value.sessions.filter(isReviewRecord);
-        setReviewRecords(valid);
-        setInvalidReviewRecordCount(value.sessions.length - valid.length);
-        setReviewRecordsState("ready");
-      } catch {
-        setReviewRecordsState("error");
-      }
-    },
-    [],
-  );
-
-  const load = async (
-    options: { readonly preserveProfileDraft?: boolean } = {},
-  ): Promise<void> => {
+  const loadWorkspace = useCallback(async (): Promise<void> => {
+    const generation = ++workspaceGeneration.current;
+    inboxRefreshGeneration.current += 1;
     if (typeof window === "undefined" || !("patchdesk" in window)) {
       setState(initialState ?? "empty");
       return;
@@ -182,61 +111,29 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       try {
         dashboardPayload = await api("/v1/inbox");
       } catch (error: unknown) {
-        // Compatibility is intentionally limited to an older main process
-        // that does not expose the inbox endpoint. A real inbox failure must
-        // remain visible and retryable instead of showing stale dashboard data.
         if (!(error instanceof PatchdeskApiError) || error.status !== 404)
           throw error;
         dashboardPayload = await api("/v1/dashboard");
       }
     } catch {
-      setState("error");
+      if (generation === workspaceGeneration.current) setState("error");
       return;
     }
-    if (Array.isArray(profilePayload))
-      setProfiles(profilePayload.filter(isProfile));
+    if (generation !== workspaceGeneration.current) return;
+    if (Array.isArray(profilePayload)) setProfiles(profilePayload.filter(isProfile));
     const loadedInbox = parseInboxResponse(dashboardPayload);
-    const compatibleDashboard =
-      loadedInbox === undefined
-        ? isDashboard(dashboardPayload)
-          ? dashboardPayload
-          : undefined
-        : dashboardFromInbox(loadedInbox);
-    if (compatibleDashboard !== undefined) {
-      if (loadedInbox !== undefined) {
-        setInbox(loadedInbox);
-        setInboxRefreshFailed(false);
-      }
-      setDashboard(compatibleDashboard);
-      activeInboxProfileId.current = compatibleDashboard.profile.id;
-      if (options.preserveProfileDraft !== true) {
-        setProfileDraft({
-          id: compatibleDashboard.profile.id,
-          label: compatibleDashboard.profile.label,
-          githubHost: compatibleDashboard.profile.githubHost,
-          ghAccount: compatibleDashboard.profile.ghAccount,
-          workspaceRoot: compatibleDashboard.profile.workspaceRoots?.[0] ?? "",
-        });
-      }
-      const outcomes = compatibleDashboard.dashboard.repos.map(
-        (item) => item.state,
-      );
-      setState(
-        outcomes.includes("github_auth") || outcomes.includes("github_read")
-          ? "error"
-          : outcomes.includes("archived")
-            ? "archived"
-            : outcomes.includes("no_open_prs") &&
-                compatibleDashboard.dashboard.rows.length === 0
-              ? "no_open_prs"
-              : outcomes.includes("missing_local_path")
-                ? "degraded"
-                : compatibleDashboard.dashboard.rows.length === 0
-                  ? "empty"
-                  : "success",
-      );
-    } else if (initialState === undefined) setState("empty");
-  };
+    const compatibleDashboard = loadedInbox === undefined
+      ? isDashboard(dashboardPayload) ? dashboardPayload : undefined
+      : dashboardFromInbox(loadedInbox);
+    if (compatibleDashboard === undefined) {
+      if (initialState === undefined) setState("empty");
+      return;
+    }
+    if (loadedInbox !== undefined) setInbox(loadedInbox);
+    setDashboard(compatibleDashboard);
+    activeInboxProfileId.current = compatibleDashboard.profile.id;
+    setState(screenStateForDashboard(compatibleDashboard));
+  }, [initialState]);
   const refreshInbox = useCallback(async (): Promise<"success" | "failure"> => {
     const profileId = activeInboxProfileId.current;
     if (profileId === undefined) return "failure";
@@ -265,8 +162,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     }
   }, []);
   useEffect(() => {
-    if (!fixtureMode) void load();
-  }, [fixtureMode]);
+    if (!fixtureMode) void loadWorkspace();
+  }, [fixtureMode, loadWorkspace]);
   useEffect(() => {
     if (
       fixtureMode ||
@@ -313,30 +210,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     };
   }, [dashboard?.profile.id, destination.kind, fixtureMode, refreshInbox]);
   useEffect(() => {
-    if (
-      (destination.kind !== "drafts" && destination.kind !== "history") ||
-      dashboard === undefined
-    )
-      return;
-    void loadReviewRecords(dashboard.profile.id);
-  }, [dashboard, destination.kind, loadReviewRecords]);
-  useEffect(() => {
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     void window.patchdesk
       .request({ operation: "setNavigationState", state: navigationState })
       .catch(() => undefined);
   }, [fixtureMode, navigationState]);
-  useEffect(() => {
-    if (
-      destination.kind !== "workbench" ||
-      dashboard === undefined ||
-      workbench !== undefined ||
-      restoredSessionId.current === destination.sessionId
-    )
-      return;
-    restoredSessionId.current = destination.sessionId;
-    void loadCompletedWorkbench(dashboard.profile.id, destination.sessionId);
-  }, [dashboard, destination, loadCompletedWorkbench, workbench]);
 
   const performNavigation = useCallback((next: AppDestination): void => {
     if (next.kind !== "workbench") setWorkbench(undefined);
@@ -362,6 +240,14 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     });
   }, [fixtureMode, navigate]);
 
+  const refreshDashboard = async (): Promise<void> => {
+    const scheduler = inboxRefreshScheduler.current;
+    if (scheduler !== undefined) {
+      await scheduler.refreshManual();
+      return;
+    }
+    await loadWorkspace();
+  };
   const shell = (
     content: React.ReactNode,
     next: AppDestination = destination,
@@ -493,17 +379,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           )
         }
         onWorkbenchReplace={(next) => setWorkbench(next as WorkbenchPayload)}
-        onRefresh={() =>
-          openPullRequest(
-            {
-              host: workbench.session.key.host,
-              owner: workbench.session.key.owner,
-              repo: workbench.session.key.repo,
-              number: workbench.session.key.prNumber,
-            },
-            "full",
-          )
-        }
       />,
       { kind: "workbench", sessionId: workbench.session.id },
     );
@@ -513,323 +388,52 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     return shell(
       <CompletedReviewFlow
         workbench={workbench as never}
-        onWorkbenchPatch={(patch) =>
-          setWorkbench((current) =>
-            current === undefined
-              ? current
-              : { ...current, ...(patch as Partial<WorkbenchPayload>) },
-          )
-        }
+        onWorkbenchPatch={(patch) => setWorkbench((current) => current === undefined ? current : { ...current, ...(patch as Partial<WorkbenchPayload>) })}
         onNavigationStateChange={setNavigationState}
       />,
       { kind: "workbench", sessionId: workbench.session.id },
     );
   }
 
-  const select = async (id: string): Promise<void> => {
-    const selected = profiles.find((profile) => profile.id === id);
-    if (selected !== undefined) {
-      // Prevent an older profile's read-only response from replacing the newly
-      // selected profile while its own inbox request is still in transit.
-      activeInboxProfileId.current = selected.id;
-      inboxRefreshGeneration.current += 1;
-      setProfileDraft({
-        id: selected.id,
-        label: selected.label,
-        githubHost: selected.githubHost,
-        ghAccount: selected.ghAccount,
-        workspaceRoot: selected.workspaceRoots?.[0] ?? "",
-      });
-      setDashboard((current) =>
-        current === undefined ? current : { ...current, profile: selected },
-      );
-    }
-    await api("/v1/profiles/select", { method: "POST", body: { id } });
-    await load({ preserveProfileDraft: true });
-  };
-  const refreshDashboard = async (): Promise<void> => {
-    const scheduler = inboxRefreshScheduler.current;
-    if (scheduler !== undefined) {
-      await scheduler.refreshManual();
-      return;
-    }
-    await load();
-  };
-  const refreshRepo = async (repo: Repo): Promise<void> => {
-    const refreshed = await api("/v1/dashboard/refresh/repository", {
-      method: "POST",
-      body: repo,
-    });
-    if (!isDashboardList(refreshed)) return;
-    setDashboard((current) => {
-      if (current === undefined) return current;
-      return {
-        ...current,
-        dashboard: mergeDashboardRepository(current.dashboard, refreshed, repo),
-      };
-    });
-  };
-  const saveProfile = async (): Promise<void> => {
-    const exists = profiles.some((profile) => profile.id === profileDraft.id);
-    await api("/v1/profiles", {
-      method: exists ? "PUT" : "POST",
-      body: {
-        ...profileDraft,
-        workspaceRoots:
-          profileDraft.workspaceRoot.trim().length === 0
-            ? []
-            : [profileDraft.workspaceRoot.trim()],
-      },
-    });
-    await load();
-  };
-  const editPath = async (repo: Repo): Promise<void> => {
-    await api("/v1/watchlist/path", {
-      method: "PATCH",
-      body: { ...repo, localPath: paths[key(repo)] ?? repo.localPath ?? "" },
-    });
-    await load();
-  };
-  const choosePath = async (repo: Repo): Promise<void> => {
-    const selected = await selectDirectory(paths[key(repo)] ?? repo.localPath);
-    if (selected === undefined) {
-      setPathFeedback(
-        "Folder selection cancelled. The existing repository path was not changed.",
-      );
-      return;
-    }
-    setPaths((current) => ({ ...current, [key(repo)]: selected }));
-    setPathFeedback(
-      `Selected ${selected} for ${repo.owner}/${repo.repo}. Save the path to apply it.`,
-    );
-  };
-  const remove = async (repo: Repo): Promise<void> => {
-    await api("/v1/watchlist", { method: "DELETE", body: repo });
-    await load();
-  };
-  const archive = async (repo: Repo): Promise<void> => {
-    await api("/v1/watchlist/archive", {
-      method: "PATCH",
-      body: { ...repo, archived: repo.archived !== true },
-    });
-    await load();
-  };
-  const addSuggestion = async (repo: Repo): Promise<void> => {
-    await api("/v1/watchlist", { method: "POST", body: repo });
-    await load();
-  };
-  const previewEntry = async (): Promise<void> => {
-    previewTrigger.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const value = await api("/v1/direct-entry/preview", {
-      method: "POST",
-      body: { reference },
-    });
-    if (!isPreview(value)) return;
-    if (value.confirmation.required) {
-      setPreview(value);
-      return;
-    }
-    await openPullRequest(value.pr);
-  };
-  const confirmEntry = async (): Promise<void> => {
-    if (preview === undefined) return;
-    if (preview.confirmation.targetProfileId !== undefined)
-      await select(preview.confirmation.targetProfileId);
-    await openPullRequest(preview.pr);
-    setPreview(undefined);
-  };
-  async function openPullRequest(
-    pr: Preview["pr"],
-    mode: ReviewStartMode = "full",
-    initialSection?: ReviewInitialSection,
-    baseSessionId?: string,
-  ): Promise<void> {
-    setOpenedPr(undefined);
-    setOpenError(undefined);
-    try {
-      const value = await api("/v1/reviews/open", {
-        method: "POST",
-        body: {
-          profileId:
-            dashboard?.profile.id ||
-            (profileDraft.id.trim().length === 0 ? undefined : profileDraft.id),
-          host:
-            pr.host ?? dashboard?.profile.githubHost ?? profileDraft.githubHost,
-          owner: pr.owner,
-          repo: pr.repo,
-          number: pr.number,
-          mode,
-          ...(baseSessionId === undefined ? {} : { baseSessionId }),
-        },
-      });
-      if (!isWorkbenchPayload(value))
-        throw new Error("invalid workbench projection");
-      setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-      setWorkbench(value);
-      navigate({
-        kind: "workbench",
-        sessionId: value.session.id,
-        ...(initialSection === undefined ? {} : { initialSection }),
-      });
-    } catch {
-      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
-    }
-  }
-  async function openStoredSession(record: ReviewRecord): Promise<void> {
-    await openStoredSessionById(record.profileId, record.id);
-  }
-  async function openStoredSessionById(
-    profileId: string,
-    sessionId: string,
-  ): Promise<void> {
-    const value = await api("/v1/reviews/load", {
-      method: "POST",
-      body: { profileId, sessionId },
-    });
-    if (!isWorkbenchPayload(value)) return;
-    setWorkbench(value);
-    navigate({ kind: "workbench", sessionId });
-  }
   return shell(
-    <div
-      className={
-        destination.kind === "dashboard" || destination.kind === "workbench"
-          ? "flex min-h-0 flex-1 flex-col"
-          : "p-3 min-[1280px]:p-4"
-      }
-    >
-      {destination.kind === "dashboard" || destination.kind === "workbench" ? (
-        inbox !== undefined && dashboard !== undefined ? (
-          <InboxScreen
-            state={state}
-            inbox={inbox}
-            dashboard={dashboard}
-            refreshStatus={inboxFreshnessLabel({
-              ...(inbox.inbox.snapshot?.state === undefined
-                ? {}
-                : { remote: inbox.inbox.snapshot.state }),
-              refreshing: inboxRefreshing,
-              paused: inboxPaused,
-              refreshFailed: inboxRefreshFailed,
-              ...(inbox.inbox.snapshot?.refreshedAt === undefined
-                ? {}
-                : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
-            })}
-            reference={reference}
-            onReference={setReference}
-            onPreview={() => void previewEntry()}
-            onRefresh={() => void refreshDashboard()}
-            onSettings={() => navigate({ kind: "settings" })}
-            onOpenReview={(row, mode, initialSection) =>
-              void openPullRequest(
-                row.identity,
-                mode,
-                initialSection,
-                row.recommendedAction.kind === "review_updates"
-                  ? row.recommendedAction.baseSessionId
-                  : undefined,
-              )
-            }
-            onOpenSession={(sessionId) =>
-              void openStoredSessionById(dashboard.profile.id, sessionId)
-            }
-            {...(openedPr === undefined ? {} : { openedPr })}
-            {...(openError === undefined ? {} : { openError })}
-          />
-        ) : (
-          <Pending
-            state={state}
-            {...(dashboard === undefined ? {} : { dashboard })}
-            {...(inbox === undefined ? {} : { inbox })}
-            reference={reference}
-            onReference={setReference}
-            onPreview={() => void previewEntry()}
-            onRefresh={() => void refreshDashboard()}
-            onSettings={() => navigate({ kind: "settings" })}
-            onOpenRow={(pr) => void openPullRequest(pr)}
-            {...(openedPr === undefined ? {} : { openedPr })}
-            {...(openError === undefined ? {} : { openError })}
-          />
-        )
-      ) : destination.kind === "settings" ? (
+    <div className={destination.kind === "dashboard" || destination.kind === "workbench" ? "flex min-h-0 flex-1 flex-col" : "p-3 min-[1280px]:p-4"}>
+      {destination.kind === "settings" ? (
         <SettingsFlow
           {...(dashboard === undefined ? {} : { dashboard })}
-          paths={paths}
-          setPaths={setPaths}
-          profileDraft={profileDraft}
-          setProfileDraft={setProfileDraft}
           appearance={appearance}
-          onAppearanceChange={(next) => {
-            setAppearance(next);
-            saveAppearancePreference(next);
-          }}
+          onAppearanceChange={(next) => { setAppearance(next); saveAppearancePreference(next); }}
           diffThemePreferences={diffThemePreferences}
-          onDiffThemeChange={(next) => {
-            const saved = saveDiffThemePreferences(next);
-            if (saved.saved) setDiffThemePreferences(saved.preferences);
-          }}
+          onDiffThemeChange={(next) => { const saved = saveDiffThemePreferences(next); if (saved.saved) setDiffThemePreferences(saved.preferences); }}
           profiles={profiles}
-          {...(pathFeedback === undefined ? {} : { pathFeedback })}
-          onSaveProfile={() => void saveProfile()}
-          onAddSuggestion={addSuggestion}
-          onWorkspaceReload={load}
-          onSelectProfile={(id) => void select(id)}
-          onPath={editPath}
-          onChoosePath={(repo) => void choosePath(repo)}
-          onRemove={remove}
-          onArchive={archive}
-          onRefreshRepo={refreshRepo}
+          onWorkspaceReload={loadWorkspace}
+          onRepositoryRefresh={(value, repo) => {
+            if (!isDashboardList(value)) return;
+            setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
+          }}
         />
       ) : (
-        <ReviewRecords
-          records={reviewRecords}
-          state={reviewRecordsState}
-          invalidCount={invalidReviewRecordCount}
-          draftsOnly={destination.kind === "drafts"}
-          onRetry={() => {
-            if (dashboard !== undefined)
-              void loadReviewRecords(dashboard.profile.id);
+        <InboxFlow
+          destination={destination.kind}
+          {...(destination.kind === "workbench" ? { sessionId: destination.sessionId } : {})}
+          {...(dashboard === undefined ? {} : { dashboard })}
+          {...(inbox === undefined ? {} : { inbox })}
+          state={state}
+          refreshStatus={inboxFreshnessLabel({
+            ...(inbox?.inbox.snapshot?.state === undefined ? {} : { remote: inbox.inbox.snapshot.state }),
+            refreshing: inboxRefreshing,
+            paused: inboxPaused,
+            refreshFailed: inboxRefreshFailed,
+            ...(inbox?.inbox.snapshot?.refreshedAt === undefined ? {} : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
+          })}
+          onRefresh={() => void refreshDashboard()}
+          onSettings={() => navigate({ kind: "settings" })}
+          onWorkspaceReload={loadWorkspace}
+          onOpenWorkbench={(next, initialSection) => {
+            setWorkbench(next);
+            navigate({ kind: "workbench", sessionId: next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
           }}
-          onOpen={(record) => void openStoredSession(record)}
         />
       )}
-      <Dialog
-        open={preview?.confirmation.required === true}
-        onOpenChange={(open) => {
-          if (!open) setPreview(undefined);
-        }}
-      >
-        {preview === undefined ? null : (
-          <DialogContent
-            initialFocus={() => document.getElementById("keep-current-profile")}
-            finalFocus={previewTrigger}
-          >
-            <DialogHeader>
-              <DialogTitle>Switch workspace profile</DialogTitle>
-              <DialogDescription>
-                Use the suggested profile before opening {preview.pr.owner}/
-                {preview.pr.repo}#{preview.pr.number}.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                id="keep-current-profile"
-                autoFocus
-                variant="outline"
-                onClick={() => setPreview(undefined)}
-              >
-                Keep current profile
-              </Button>
-              <Button onClick={() => void confirmEntry()}>
-                Switch profile and open pull request
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
     </div>,
   );
 }
@@ -848,6 +452,7 @@ async function api(
 function key(repo: Repo): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }
+
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -858,18 +463,6 @@ function isProfile(value: unknown): value is Profile {
     typeof value.label === "string" &&
     typeof value.githubHost === "string" &&
     typeof value.ghAccount === "string"
-  );
-}
-function isReviewRecord(value: unknown): value is ReviewRecord {
-  return (
-    record(value) &&
-    typeof value.id === "string" &&
-    typeof value.profileId === "string" &&
-    typeof value.owner === "string" &&
-    typeof value.repo === "string" &&
-    typeof value.prNumber === "number" &&
-    typeof value.state === "string" &&
-    typeof value.updatedAt === "string"
   );
 }
 function isDashboard(value: unknown): value is Dashboard {
@@ -919,6 +512,22 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
   };
 }
 
+function isDashboardList(value: unknown): value is Dashboard["dashboard"] {
+  return record(value) && Array.isArray(value.rows) && Array.isArray(value.repos);
+}
+
+function mergeDashboardRepository(
+  current: Dashboard["dashboard"],
+  refreshed: Dashboard["dashboard"],
+  target: Repo,
+): Dashboard["dashboard"] {
+  const sameRepository = (repo: Repo): boolean => repo.host === target.host && repo.owner === target.owner && repo.repo === target.repo;
+  return {
+    rows: [...current.rows.filter((row) => row.summary.ref.owner !== target.owner || row.summary.ref.repo !== target.repo), ...refreshed.rows],
+    repos: [...current.repos.filter((outcome) => !sameRepository(outcome.repo)), ...refreshed.repos],
+  };
+}
+
 function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
   const outcomes = dashboard.dashboard.repos.map((item) => item.state);
   if (outcomes.includes("github_auth") || outcomes.includes("github_read"))
@@ -928,52 +537,4 @@ function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
     return "no_open_prs";
   if (outcomes.includes("missing_local_path")) return "degraded";
   return dashboard.dashboard.rows.length === 0 ? "empty" : "success";
-}
-
-function isDashboardList(value: unknown): value is Dashboard["dashboard"] {
-  return (
-    record(value) && Array.isArray(value.rows) && Array.isArray(value.repos)
-  );
-}
-
-function mergeDashboardRepository(
-  current: Dashboard["dashboard"],
-  refreshed: Dashboard["dashboard"],
-  target: Repo,
-): Dashboard["dashboard"] {
-  const sameRepository = (repo: Repo): boolean =>
-    repo.host === target.host &&
-    repo.owner === target.owner &&
-    repo.repo === target.repo;
-  return {
-    rows: [
-      ...current.rows.filter(
-        (row) =>
-          row.summary.ref.owner !== target.owner ||
-          row.summary.ref.repo !== target.repo,
-      ),
-      ...refreshed.rows,
-    ],
-    repos: [
-      ...current.repos.filter((outcome) => !sameRepository(outcome.repo)),
-      ...refreshed.repos,
-    ],
-  };
-}
-function isWorkbenchPayload(value: unknown): value is WorkbenchPayload {
-  // The main process always emits the strict renderer-safe projection; there
-  // is no legacy fallback shape at this boundary.
-  return parseWorkbenchResponse(value) !== undefined;
-}
-
-function isPreview(value: unknown): value is Preview {
-  return (
-    record(value) &&
-    record(value.pr) &&
-    typeof value.pr.owner === "string" &&
-    typeof value.pr.repo === "string" &&
-    typeof value.pr.number === "number" &&
-    record(value.confirmation) &&
-    typeof value.confirmation.required === "boolean"
-  );
 }

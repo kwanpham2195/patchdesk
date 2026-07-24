@@ -62,7 +62,6 @@ export type PreparedReviewFlowProps = {
   readonly onNavigate: (section: "diff" | "checks") => void;
   readonly onWorkbenchPatch: (patch: { readonly runId?: string }) => void;
   readonly onWorkbenchReplace: (workbench: unknown) => void;
-  readonly onRefresh: () => Promise<void>;
 };
 
 /** Owns prepared-review model selection, run dialog state, and review API sequencing. */
@@ -72,7 +71,6 @@ export function PreparedReviewFlow({
   onNavigate,
   onWorkbenchPatch,
   onWorkbenchReplace,
-  onRefresh,
 }: PreparedReviewFlowProps): React.JSX.Element {
   const [reviewModels, setReviewModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [reviewModel, setReviewModel] = useState<string>();
@@ -156,6 +154,26 @@ export function PreparedReviewFlow({
     if (runId !== undefined) onWorkbenchPatch({ runId });
   };
 
+  const refreshPrepared = async (): Promise<void> => {
+    try {
+      const value = await requestJson("/v1/reviews/open", {
+        method: "POST",
+        body: {
+          profileId,
+          host: workbench.session.key.host,
+          owner: workbench.session.key.owner,
+          repo: workbench.session.key.repo,
+          number: workbench.session.key.prNumber,
+          mode: "full",
+        },
+      });
+      const parsed = parseWorkbenchResponse(value);
+      if (parsed !== undefined) onWorkbenchReplace(parsed);
+    } catch {
+      setRunError("Patchdesk could not refresh this prepared review.");
+    }
+  };
+
   const loadCompleted = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/load", {
       method: "POST",
@@ -201,7 +219,7 @@ export function PreparedReviewFlow({
                   <AlertTitle>Review was not started</AlertTitle>
                   <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
                     {runError}
-                    <Button variant="outline" size="sm" onClick={() => void onRefresh()}>Refresh and reopen review</Button>
+                    <Button variant="outline" size="sm" onClick={() => void refreshPrepared()}>Refresh and reopen review</Button>
                   </AlertDescription>
                 </Alert>
               )}
