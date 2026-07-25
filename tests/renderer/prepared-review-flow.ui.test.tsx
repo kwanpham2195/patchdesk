@@ -82,7 +82,23 @@ describe("prepared review run start", () => {
   });
 });
 
-describe("run dialog starting state", () => {
+it("shows the previous run failure above the ready card", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      throw new Error(`unexpected ${request.path}`);
+    });
+    const failedWorkbench: PreparedReviewFlowWorkbench = {
+      ...workbench,
+      session: { ...workbench.session, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." },
+    };
+    render(<PreparedReviewFlow workbench={failedWorkbench} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    expect(await screen.findByText("Previous review run failed")).toBeTruthy();
+    expect(screen.getByText(/The review workflow did not complete./)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run review" })).toBeTruthy();
+  });
+
+  describe("run dialog starting state", () => {
   it("keeps the dialog open with a busy confirm button while the start is in flight", async () => {
     mockApi((request) => {
       if (request.path === "/v1/reviews/models") return ok200(models);

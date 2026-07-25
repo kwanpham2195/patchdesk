@@ -196,7 +196,7 @@ export function PreparedReviewFlow({
     }
   };
 
-  const loadCompleted = async (): Promise<void> => {
+  const reloadAfterSettle = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/load", {
       method: "POST",
       body: { profileId, sessionId: workbench.session.id },
@@ -233,6 +233,12 @@ export function PreparedReviewFlow({
         {workbench.session.currentAttemptId === undefined ? (
           showingDiff || showingChecks ? null : (
             <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+              {workbench.session.lastRunFailure === undefined ? null : (
+                <Alert variant="destructive" className="mb-3">
+                  <AlertTitle>Previous review run failed</AlertTitle>
+                  <AlertDescription>{workbench.session.lastRunFailure} You can start a new run.</AlertDescription>
+                </Alert>
+              )}
               <h2 className="font-semibold">Ready to review</h2>
               <p className="mt-1 text-sm text-muted-foreground">The saved snapshot is ready. Starting analysis is read-only and never writes to GitHub.</p>
               {runError === undefined ? null : (
@@ -260,7 +266,7 @@ export function PreparedReviewFlow({
               const started = await startOwnedRun();
               if (!started) setRunError("Patchdesk could not start this review run.");
             }}
-            onCompleted={loadCompleted}
+            onSettled={reloadAfterSettle}
           />
         )}
         {workbench.session.currentAttemptId === undefined ? (

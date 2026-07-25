@@ -29,7 +29,7 @@ export function SafeRunPanel({
   recoveryActionLabel,
   startError,
   onStart,
-  onCompleted,
+  onSettled,
 }: {
   readonly profileId: string;
   readonly sessionId: string;
@@ -39,23 +39,23 @@ export function SafeRunPanel({
   readonly recoveryActionLabel?: string;
   readonly startError?: string;
   readonly onStart?: () => Promise<void>;
-  readonly onCompleted?: (profileId: string, sessionId: string) => Promise<void>;
+  readonly onSettled?: (profileId: string, sessionId: string) => Promise<void>;
 }): React.JSX.Element {
   const [projection, setProjection] = useState<Projection>();
   const [starting, setStarting] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [settling, setSettling] = useState(false);
+  const [settling, setSettling] = useState<"completed" | "failed" | undefined>(undefined);
   const [settleError, setSettleError] = useState(false);
   const [pollNonce, setPollNonce] = useState(0);
 
-  const settle = async (): Promise<void> => {
-    if (onCompleted === undefined) return;
-    setSettling(true);
+  const settle = async (status: "completed" | "failed"): Promise<void> => {
+    if (onSettled === undefined) return;
+    setSettling(status);
     try {
-      await onCompleted(profileId, sessionId);
-      setSettling(false);
+      await onSettled(profileId, sessionId);
+      setSettling(undefined);
     } catch {
-      setSettling(false);
+      setSettling(undefined);
       setSettleError(true);
     }
   };
@@ -74,11 +74,10 @@ export function SafeRunPanel({
           if (parsed._tag === "err") throw new Error("invalid projection");
           if (cancelled) return;
           setProjection(parsed.value);
-          if (parsed.value.status === "completed") {
-            await settle();
+          if (parsed.value.status === "completed" || parsed.value.status === "failed") {
+            await settle(parsed.value.status);
             return;
           }
-          if (parsed.value.status === "failed") return;
           delayMs = 300;
         } catch {
           if (!cancelled) setProjection({ status: "disconnected", elapsedMs: 0, step: "inspecting", message: "Lost the local run connection — retrying automatically." });
@@ -89,7 +88,7 @@ export function SafeRunPanel({
     };
     void observe();
     return () => { cancelled = true; };
-  }, [attemptId, onCompleted, pollNonce, profileId, runId, sessionId]);
+  }, [attemptId, onSettled, pollNonce, profileId, runId, sessionId]);
 
   const start = async (): Promise<void> => {
     if (onStart === undefined || starting) return;
@@ -122,7 +121,7 @@ export function SafeRunPanel({
         <AlertTitle>Could not load the review outcome</AlertTitle>
         <AlertDescription className="mt-2">
           The run finished, but the workbench could not be updated.
-          <Button size="sm" className="mt-3 block" onClick={() => { setSettleError(false); void settle(); }}>Retry</Button>
+          <Button size="sm" className="mt-3 block" onClick={() => { setSettleError(false); void settle(projection?.status === "failed" ? "failed" : "completed"); }}>Retry</Button>
         </AlertDescription>
       </Alert>
     );
@@ -134,8 +133,8 @@ export function SafeRunPanel({
         <CardContent className="p-0">
           <Item className="rounded-b-none border-0 p-4">
             <ItemContent>
-              <ItemTitle>Finalizing review…</ItemTitle>
-              <p className="text-xs text-muted-foreground">Saving results</p>
+              <ItemTitle>{settling === "completed" ? "Finalizing review…" : "Recording the outcome…"}</ItemTitle>
+              <p className="text-xs text-muted-foreground">{settling === "completed" ? "Saving results" : "Updating the workbench"}</p>
             </ItemContent>
             <ItemActions><Badge variant="secondary"><Spinner />saving</Badge></ItemActions>
           </Item>

@@ -40,6 +40,19 @@ const summary = {
 const passingChecks = { overall: "passing" as const, checks: [] };
 
 describe("maintainer inbox", () => {
+  it("offers a fresh run instead of progress for a failed current-head review", () => {
+    const row = projectMaintainerInboxRow({
+      summary,
+      checks: passingChecks,
+      activeAccount: "maintainer",
+      latestReview: { sessionId, reviewedHeadSha: sha, state: "failed", updatedAt, matchesCurrentHead: true },
+      dataFreshness: "fresh",
+    });
+    expect(row.categories).not.toContain("running");
+    expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
+  });
+
+
   it("prioritizes a running current-head review above every remote category", () => {
     const row = projectMaintainerInboxRow({
       summary,

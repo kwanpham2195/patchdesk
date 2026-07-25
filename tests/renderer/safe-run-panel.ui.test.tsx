@@ -28,7 +28,7 @@ describe("review completion", () => {
   it("reloads the persisted workbench after the owned run reaches completion", async () => {
     Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "completed", elapsedMs: 12, step: "complete" } }) } });
     const completed = vi.fn();
-    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onCompleted={completed} />);
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onSettled={completed} />);
     expect(await screen.findByText("Run status: completed")).toBeTruthy();
     expect(completed).toHaveBeenCalledTimes(1);
   });
@@ -54,7 +54,7 @@ describe("settling the finished run", () => {
   it("shows a finalizing state while the workbench reloads", async () => {
     Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "completed", elapsedMs: 12, step: "complete" } }) } });
     const completed = vi.fn(() => new Promise<void>(() => {}));
-    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onCompleted={completed} />);
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onSettled={completed} />);
 
     expect(await screen.findByText("Finalizing review…")).toBeTruthy();
     expect(completed).toHaveBeenCalledTimes(1);
@@ -65,7 +65,7 @@ describe("settling the finished run", () => {
     const completed = vi.fn()
       .mockRejectedValueOnce(new Error("load failed"))
       .mockResolvedValueOnce(undefined);
-    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onCompleted={completed} />);
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onSettled={completed} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
 
@@ -73,7 +73,15 @@ describe("settling the finished run", () => {
   });
 });
 
-describe("disconnected polling", () => {
+it("settles the workbench when the run fails", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "failed", elapsedMs: 30, step: "failed", message: "Review run failed" } }) } });
+    const settled = vi.fn();
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onSettled={settled} />);
+
+    await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+  });
+
+  describe("disconnected polling", () => {
   it("retries immediately when the user asks for a check", async () => {
     const request = vi.fn()
       .mockRejectedValueOnce(new Error("down"))
