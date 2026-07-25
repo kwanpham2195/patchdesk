@@ -54,7 +54,7 @@ const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
   v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.string() }),
   v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.string() }),
-  v.strictObject({ kind: v.literal("edit_draft"), label: v.literal("Edit review draft"), sessionId: v.string() }),
+  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open saved review"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
   v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("open_discussion"), label: v.literal("Review author response"), sessionId: v.string() }),
@@ -80,7 +80,7 @@ const rowSchema = v.strictObject({
     updatedAt: v.string(),
     matchesCurrentHead: v.boolean(),
   })),
-  categories: v.array(v.picklist(["needs_review", "updated_since_review", "waiting_for_author", "checks_failing", "checks_pending", "ready_to_merge", "draft", "authored", "running", "has_local_draft"])),
+  categories: v.array(v.picklist(["needs_review", "updated_since_review", "waiting_for_author", "checks_failing", "checks_pending", "ready_to_merge", "draft", "authored", "running", "saved_review"])),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(["fresh", "cached"]),
 });

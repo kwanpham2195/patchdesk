@@ -34,7 +34,7 @@ const rows: ReadonlyArray<InboxRow> = [
   },
   {
     identity: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
-    title: "Handle current review draft",
+    title: "Open saved local review",
     author: "reviewer",
     baseBranch: "main",
     headBranch: "fix/draft",
@@ -52,8 +52,8 @@ const rows: ReadonlyArray<InboxRow> = [
       updatedAt: "2026-07-17T10:00:00.000Z",
       matchesCurrentHead: true,
     },
-    categories: ["has_local_draft", "checks_failing"],
-    recommendedAction: { kind: "edit_draft", label: "Edit review draft", sessionId: "review-42" },
+    categories: ["saved_review", "checks_failing"],
+    recommendedAction: { kind: "open_saved_review", label: "Open saved review", sessionId: "review-42" },
     dataFreshness: "fresh",
   },
 ];
@@ -170,7 +170,7 @@ describe("MaintainerInbox", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Checks failing/ }));
-    await user.type(screen.getByLabelText("Filter pull requests"), "draft");
+    await user.type(screen.getByLabelText("Filter pull requests"), "saved");
     expect(window.localStorage.getItem("patchdesk.inbox-view.v1.cfw")).toContain("checks_failing");
     expect(screen.getByRole("option", { name: /#42/ })).toBeTruthy();
   });
