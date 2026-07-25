@@ -1,4 +1,4 @@
-import type { GitSha, IsoTimestamp, RepoRelativePath } from "./ids";
+import type { GitHubThreadId, GitSha, IsoTimestamp, RepoRelativePath } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
 export type DiffLocation = {
@@ -19,7 +19,7 @@ export type GitHubComment = {
 };
 
 export type GitHubConversationThread = {
-  readonly id: string;
+  readonly id: GitHubThreadId;
   readonly state: "open" | "resolved" | "outdated" | "unknown";
   readonly comments: ReadonlyArray<GitHubComment>;
   readonly location?: DiffLocation;

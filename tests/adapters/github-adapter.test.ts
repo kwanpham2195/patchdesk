@@ -356,6 +356,7 @@ describe("GitHubAdapter read boundary", () => {
           {
             id: "thread-1",
             state: "open",
+            location: { path: "src/review.ts", line: 7 },
             comments: [
               expect.objectContaining({
                 id: "comment-1",

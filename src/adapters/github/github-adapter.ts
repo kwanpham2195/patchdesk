@@ -11,11 +11,13 @@ import type {
 } from "../../domain/github-context";
 import {
   parseGitSha,
+  parseGitHubThreadId,
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseRepoRelativePath,
   type AbsolutePath,
   type GitSha,
+  type GitHubThreadId,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
@@ -33,7 +35,7 @@ const commandTimeoutMs = 15_000;
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line originalLine } } } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line startLine side startSide originalLine } } } } } } }";
 const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 
@@ -106,6 +108,9 @@ const threadResponseSchema = v.looseObject({
                         v.pipe(v.number(), v.integer(), v.minValue(1)),
                       ),
                     ),
+                    startLine: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+                    side: v.optional(v.nullable(v.string())),
+                    startSide: v.optional(v.nullable(v.string())),
                   }),
                 ),
               }),
@@ -253,6 +258,8 @@ export interface GitHubReviewWriter {
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
+  createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
+  setReviewThreadState?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>>;
 }
 
 export interface GitHubMergeWriter {
@@ -473,14 +480,18 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
         if (comment._tag === "err") return invalid("get_comments");
         comments.push(comment.value);
       }
+      const threadId = parseGitHubThreadId(rawThread.id);
+      if (threadId._tag === "err") return invalid("get_comments");
+      const root = comments[0];
       threads.push({
-        id: rawThread.id,
+        id: threadId.value,
         state: rawThread.isResolved
           ? "resolved"
           : rawThread.isOutdated
             ? "outdated"
             : "open",
         comments,
+        ...(root?.location === undefined ? {} : { location: root.location }),
       });
     }
     return ok({ threads });
@@ -715,6 +726,19 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     return reviewId === undefined
       ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a submitted review ID." })
       : ok({ reviewId });
+  }
+
+  async createThreadReply(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id}}}", "-F", `threadId=${input.threadId}`, "-f", `body=${input.body}`], timeoutMs: commandTimeoutMs });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    const commentId = nestedString(response.value, ["data", "addPullRequestReviewThreadReply", "comment", "id"]);
+    return typeof commentId === "string" && commentId.length > 0 ? ok({ commentId }) : err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a reply ID." });
+  }
+
+  async setReviewThreadState(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>> {
+    const mutation = input.state === "resolved" ? "resolveReviewThread" : "unresolveReviewThread";
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=mutation($threadId:ID!){${mutation}(input:{threadId:$threadId}){thread{id}}}`, "-F", `threadId=${input.threadId}`], timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
   }
 
   async mergePullRequest(input: {
@@ -1058,6 +1082,15 @@ function readSha(input: unknown): GitSha | undefined {
 
 function isObject(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null;
+}
+
+function nestedString(input: unknown, keys: ReadonlyArray<string>): string | undefined {
+  let value: unknown = input;
+  for (const key of keys) {
+    if (!isObject(value)) return undefined;
+    value = value[key];
+  }
+  return typeof value === "string" ? value : undefined;
 }
 
 function isNonNegativeInteger(input: unknown): input is number {
