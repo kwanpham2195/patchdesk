@@ -20,6 +20,7 @@ export type CompletedReviewFlowWorkbench = {
   readonly freshness?: unknown;
   readonly refreshedAt?: string;
   readonly draft?: unknown;
+  readonly batch?: unknown;
   readonly comments?: unknown;
   readonly checks?: unknown;
   readonly history?: unknown;
@@ -28,7 +29,7 @@ export type CompletedReviewFlowWorkbench = {
 
 export type CompletedReviewFlowProps = {
   readonly workbench: CompletedReviewFlowWorkbench;
-  readonly onWorkbenchPatch: (patch: { readonly session?: unknown; readonly draft?: unknown }) => void;
+  readonly onWorkbenchPatch: (patch: { readonly session?: unknown; readonly draft?: unknown; readonly batch?: unknown }) => void;
   readonly onNavigationStateChange: (state: "clear" | "dirty_draft" | "write_pending") => void;
 };
 
@@ -41,6 +42,7 @@ export function CompletedReviewFlow({
   const profileId = workbench.session.key.profileId;
   const sessionId = workbench.session.id;
   const draft = workbench.draft as { readonly updatedAt?: unknown } | undefined;
+  const batch = workbench.batch as { readonly updatedAt?: unknown } | undefined;
 
   const saveDraft = async (input: {
     readonly expectedRevision: string;
@@ -61,10 +63,11 @@ export function CompletedReviewFlow({
   };
 
   const reviewWrite = async (
-    path: "/v1/reviews/pending" | "/v1/reviews/submit",
+    path: "/v1/reviews/pending" | "/v1/reviews/submit" | "/v1/reviews/apply-batch",
     extra: Record<string, unknown> = {},
   ): Promise<{ readonly reviewId: string }> => {
-    if (typeof draft?.updatedAt !== "string") {
+    const revision = typeof batch?.updatedAt === "string" ? batch.updatedAt : draft?.updatedAt;
+    if (typeof revision !== "string") {
       throw new Error("The saved draft revision is unavailable");
     }
     const value = await requestJson(path, {
@@ -72,14 +75,16 @@ export function CompletedReviewFlow({
       body: {
         profileId,
         sessionId,
-        expectedRevision: draft.updatedAt,
+        expectedRevision: revision,
         acknowledgement: true,
         ...extra,
       },
     });
     if (!isReviewWrite(value)) throw new Error("Review write was rejected");
-    onWorkbenchPatch({ session: value.session, draft: value.draft });
-    const state = value.draft.state as { readonly pendingReviewId?: unknown; readonly reviewId?: unknown };
+    onWorkbenchPatch({ session: value.session, ...(value.draft === undefined ? {} : { draft: value.draft }), ...(value.batch === undefined ? {} : { batch: value.batch }) });
+    const writeModel = value.batch ?? value.draft;
+    if (writeModel === undefined) throw new Error("Review write returned no batch");
+    const state = writeModel.state as { readonly pendingReviewId?: unknown; readonly reviewId?: unknown };
     return {
       reviewId:
         typeof state.reviewId === "string"
@@ -123,6 +128,7 @@ export function CompletedReviewFlow({
         freshness: workbench.freshness as never,
         refreshedAt: workbench.refreshedAt as never,
         draft: workbench.draft as never,
+        ...(workbench.batch === undefined ? {} : { batch: workbench.batch as never }),
         comments: workbench.comments as never,
         checks: workbench.checks as never,
         history: (workbench.history as never) ?? [],
@@ -149,9 +155,10 @@ function isDraftWrite(value: unknown): value is {
 
 function isReviewWrite(value: unknown): value is {
   readonly session: unknown;
-  readonly draft: { readonly state: unknown };
+  readonly draft?: { readonly state: unknown };
+  readonly batch?: { readonly state: unknown };
 } {
-  return isRecord(value) && isRecord(value.session) && isRecord(value.draft) && "state" in value.draft;
+  return isRecord(value) && isRecord(value.session) && ((isRecord(value.draft) && "state" in value.draft) || (isRecord(value.batch) && "state" in value.batch));
 }
 
 function isMergeWrite(value: unknown): value is {
