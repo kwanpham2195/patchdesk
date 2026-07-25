@@ -6,6 +6,7 @@ import type { ReviewSession } from "../../src/domain/review-session";
 import {
   createPendingReview,
   planBatchOperations,
+  applyReviewBatch,
   submitSummaryOnlyPendingReview,
   submitPendingReview,
 } from "../../src/services/review-submission-service";
@@ -58,6 +59,13 @@ const profile = { githubHost: "github.com", ghAccount: "pmquan2cfw" } as never;
 const now = "2026-07-16T00:01:00.000Z" as never;
 
 describe("review submission service", () => {
+  it("completes a reply-only batch without creating a pending review", async () => {
+    const writes: string[] = [];
+    const batch = { sessionId: session.id, attemptId: "001" as never, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [{ _tag: "ThreadReply" as const, id: "reply" as never, threadId: "thread-1" as never, body: "Fixed.", include: true }], receipts: [], createdAt: now, updatedAt: now };
+    const result = await applyReviewBatch({ profile, session, batch: batch as never, now, persist: async () => true, gateway: { async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; }, async createPendingReview() { writes.push("create"); return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; }, async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; }, async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } }; } } as never });
+    expect(result).toMatchObject({ _tag: "ok", value: { batch: { state: { _tag: "Completed" }, receipts: [{ _tag: "ReplyCreated" }] } } });
+    expect(writes).toEqual(["reply"]);
+  });
   it("plans one pending review before saved replies and thread actions", () => {
     expect(planBatchOperations({
       sessionId: session.id,
