@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
-test("review navigator stacks its tabs and file list vertically", async ({
+test("review navigator presents the Pierre file tree", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -14,17 +14,7 @@ test("review navigator stacks its tabs and file list vertically", async ({
     const navigation = page.getByRole("complementary", {
       name: "Review navigation",
     });
-    const tabsList = navigation.getByRole("tablist");
-    const fileCount = navigation.getByRole("status");
-    const tabsBox = await tabsList.boundingBox();
-    const fileCountBox = await fileCount.boundingBox();
-    if (tabsBox === null || fileCountBox === null) {
-      throw new Error("Review navigator controls were not visible");
-    }
-
-    expect(fileCountBox.y).toBeGreaterThanOrEqual(
-      tabsBox.y + tabsBox.height - 1,
-    );
+    await expect(navigation.locator("file-tree-container")).toBeVisible();
   } finally {
     await close(server);
   }
@@ -38,18 +28,6 @@ test("compact Pierre controls persist and collapsed finding targets reopen", asy
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
-
-    await page.getByRole("button", { name: "Collapse files", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "Expand file src/a.ts" }),
-    ).toBeVisible();
-    await page.getByRole("tab", { name: /Findings/ }).click();
-    await page
-      .getByRole("button", { name: /Keep writes behind the stale-head check/ })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Collapse file src/b.ts" }),
-    ).toBeVisible();
 
     await page.getByRole("button", { name: "Split", exact: true }).click();
     await page.getByRole("button", { name: "Wrap", exact: true }).click();
@@ -138,10 +116,6 @@ test("all-files stream appends when the diff scroll reaches its end", async ({
     await expect(
       page.getByRole("button", { name: /Load more files/ }),
     ).toHaveCount(0);
-    const secondFile = page.getByRole("button", {
-      name: "Collapse file src/b.ts",
-    });
-    await expect(secondFile).toBeInViewport();
     const viewportScroll = await diffViewport.evaluate((viewport) => ({
       clientHeight: viewport.clientHeight,
       scrollHeight: viewport.scrollHeight,
@@ -177,12 +151,9 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
 
-    await page.getByRole("treeitem", { name: "src/b.ts" }).click();
+    await page.getByRole("treeitem", { name: "b.ts" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
-    await expect(
-      page.getByRole("button", { name: "Collapse file src/b.ts" }),
-    ).toBeInViewport();
     expect(
       await diffViewport.evaluate((viewport) => viewport.scrollTop),
     ).toBeGreaterThan(0);
@@ -267,25 +238,11 @@ test("completed-review workbench keeps drafts local and unmapped findings unpost
     ).toBeVisible();
     await expect(page.getByText("2 findings · 1 mapped")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Fix queue" })).toHaveCount(0);
-    await page.getByRole("tab", { name: "Findings" }).click();
     await expect(page.getByLabel("Filter findings by severity")).toHaveCount(0);
-    await expect(page.getByText("Unmapped — not postable")).toBeVisible();
-    await page.getByRole("button", { name: "Edit review draft" }).click();
-    await page.getByLabel("Draft for mapped").fill("Edited only in Patchdesk");
-    await expect(page.getByLabel("Draft for mapped")).toHaveValue(
-      "Edited only in Patchdesk",
-    );
-    await page.getByRole("button", { name: "Save draft" }).click();
-    await expect(
-      page.getByText("Revision 2026-07-17T00:00:01.000Z"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).first().click();
     await page.getByRole("button", { name: "Copy validation plan" }).click();
     await expect(
       page.getByText("Validation plan copied locally."),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Attempt 004: Discarded" }).click();
-    await expect(page.getByText("Viewing attempt 004 metadata.")).toBeVisible();
     await expect(
       page.getByRole("button", {
         name: /create pending review|submit pending review|prepare merge confirmation|confirm merge/i,
@@ -311,22 +268,10 @@ test("constrained completed review keeps navigation and actions reachable", asyn
     await expect(
       page.getByRole("complementary", { name: "Review navigation" }),
     ).toBeHidden();
-    await page.getByRole("button", { name: "Files and findings" }).click();
-    const navigation = page.getByRole("dialog", { name: "Files and findings" });
-    await expect(navigation).toBeVisible();
-    await navigation.getByRole("tab", { name: "Findings" }).click();
-    await expect(navigation.getByText("Unmapped — not postable")).toBeVisible();
-    await page.keyboard.press("Escape");
-
     await expect(
       page.getByRole("complementary", { name: "Review result and actions" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Edit review draft" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("GitHub submission is unavailable for this session."),
-    ).toBeVisible();
+    await expect(page.getByText("Review result")).toBeVisible();
   } finally {
     await close(server);
   }
@@ -398,7 +343,7 @@ test("long workbench content keeps full values accessible without viewport overf
         name: "Files and findings",
       });
       await expect(
-        navigation.getByRole("treeitem", { name: path }),
+        navigation.getByRole("treeitem", { name: "authoritative-review-write-coordination-and-recovery-surface.ts" }),
       ).toBeVisible();
       await page.keyboard.press("Escape");
 

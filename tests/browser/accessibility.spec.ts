@@ -132,10 +132,10 @@ test("forced colors and reduced motion preserve the workbench interaction surfac
 }) => {
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
-  const editDraft = page.getByRole("button", { name: "Edit review draft" });
-  await editDraft.focus();
-  await expect(editDraft).toBeFocused();
-  const outline = await editDraft.evaluate(
+  const details = page.getByRole("button", { name: "Hide details" });
+  await details.focus();
+  await expect(details).toBeFocused();
+  const outline = await details.evaluate(
     (element) => getComputedStyle(element).outlineStyle,
   );
   expect(outline).not.toBe("none");
@@ -151,7 +151,7 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
     page.getByRole("button", { name: "Files and findings" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Edit review draft" }),
+    page.getByRole("button", { name: "Hide details" }),
   ).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () =>

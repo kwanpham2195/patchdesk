@@ -34,8 +34,8 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
       const suffix = String(index).padStart(4, "0");
       const path = `src/generated/file-${suffix}.ts`;
       const filterStarted = performance.now();
-      await page.getByLabel("Search changed files").fill(`file-${suffix}`);
-      const treeItem = page.getByRole("treeitem", { name: path });
+      await page.locator("[data-file-tree-search-input]").fill(`file-${suffix}`);
+      const treeItem = page.getByRole("treeitem", { name: `file-${suffix}.ts` });
       await expect(treeItem).toBeVisible();
       filterDurations.push(performance.now() - filterStarted);
 
