@@ -230,7 +230,6 @@ function ReviewDiffSurface({
     items,
     fileMode: preferences.fileMode,
     hydrateFiles,
-    viewer,
     viewerContainer,
   });
 

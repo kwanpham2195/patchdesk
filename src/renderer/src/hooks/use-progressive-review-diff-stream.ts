@@ -13,7 +13,7 @@ export type ProgressiveReviewDiffStream = {
   /** Current exclusive item index; selection reads it without restarting the scroll effect. */
   readonly nextItemIndex: RefObject<number>;
   readonly appendItemsThrough: (lastIndex: number) => void;
-  readonly appendVisibleBatch: (followAppendedFile?: boolean) => void;
+  readonly appendVisibleBatch: () => void;
   readonly handleViewerScroll: (
     scrollTop: number,
     codeView: PierreCodeView,
@@ -28,17 +28,14 @@ export function useProgressiveReviewDiffStream({
   items,
   fileMode,
   hydrateFiles,
-  viewer,
   viewerContainer,
 }: {
   readonly items: ReadonlyArray<CodeViewDiffItem>;
   readonly fileMode: "all" | "selected";
   readonly hydrateFiles: (paths: ReadonlyArray<string>) => Promise<void>;
-  readonly viewer: RefObject<CodeViewHandle<undefined> | null>;
   readonly viewerContainer: RefObject<HTMLDivElement | null>;
 }): ProgressiveReviewDiffStream {
   const [loadedCount, setLoadedCount] = useState(1);
-  const pendingAppendedScrollPath = useRef<string | undefined>(undefined);
   const isAppendingBatch = useRef(false);
   const streamGeneration = useRef(0);
   const nextItemIndex = useRef(1);
@@ -47,7 +44,6 @@ export function useProgressiveReviewDiffStream({
     streamGeneration.current += 1;
     isAppendingBatch.current = false;
     nextItemIndex.current = 1;
-    pendingAppendedScrollPath.current = undefined;
     setLoadedCount(1);
   }, [fileMode]);
 
@@ -67,14 +63,10 @@ export function useProgressiveReviewDiffStream({
   );
 
   const appendVisibleBatch = useCallback(
-    (followAppendedFile = false): void => {
+    (): void => {
       if (isAppendingBatch.current) return;
       const start = nextItemIndex.current;
       if (start >= items.length) return;
-      const nextFile = items[start];
-      if (followAppendedFile && nextFile !== undefined) {
-        pendingAppendedScrollPath.current = nextFile.id;
-      }
       const appendedPaths = items
         .slice(start, Math.min(start + VIRTUAL_FILE_BATCH_SIZE, items.length))
         .map((item) => item.id);
@@ -92,16 +84,6 @@ export function useProgressiveReviewDiffStream({
     [appendItemsThrough, hydrateFiles, items],
   );
 
-  useEffect(() => {
-    const path = pendingAppendedScrollPath.current;
-    if (path === undefined) return;
-    pendingAppendedScrollPath.current = undefined;
-    const frame = requestAnimationFrame(() => {
-      viewer.current?.scrollTo({ type: "item", id: path, align: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [loadedCount, viewer]);
-
   const handleViewerScroll = useCallback(
     (scrollTop: number, codeView: PierreCodeView): void => {
       const root = viewerContainer.current;
@@ -112,7 +94,7 @@ export function useProgressiveReviewDiffStream({
       ) {
         return;
       }
-      appendVisibleBatch(true);
+      appendVisibleBatch();
     },
     [appendVisibleBatch, fileMode, viewerContainer],
   );
