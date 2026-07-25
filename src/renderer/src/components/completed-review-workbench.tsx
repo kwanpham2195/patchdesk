@@ -34,6 +34,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -660,6 +661,14 @@ export function CompletedReviewWorkbench({
                               </p>
                             </div>
                           ))}
+                          {props.batchActions === undefined || props.batch?.state._tag !== "Local" ? null : (
+                            <ThreadBatchActions
+                              threadId={thread.id}
+                              state={thread.state}
+                              onReply={async (body) => { await props.batchActions?.addThreadReply(thread.id, body); }}
+                              onState={async (action) => { await props.batchActions?.setThreadState(thread.id, action); }}
+                            />
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -730,6 +739,21 @@ export function CompletedReviewWorkbench({
       </div>
     </section>
   );
+}
+
+function ThreadBatchActions({
+  threadId,
+  state,
+  onReply,
+  onState,
+}: {
+  readonly threadId: string;
+  readonly state: "open" | "resolved" | "outdated" | "unknown";
+  readonly onReply: (body: string) => Promise<void>;
+  readonly onState: (action: "resolve" | "reopen") => Promise<void>;
+}): React.JSX.Element {
+  const [body, setBody] = useState("");
+  return <div className="mt-2 border-t pt-2"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => { void onReply(body).then(() => setBody("")); }}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void onState(state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
 }
 
 function SeverityCounts({

@@ -142,6 +142,8 @@ export function CompletedReviewFlow({
         batchActions: {
           addInlineComment: async ({ path, startLine, line, side, body }) => updateBatch({ _tag: "AddInlineComment", anchor: { path, startLine, line, side }, body }),
           removeItem: async (itemId) => updateBatch({ _tag: "RemoveItem", itemId }),
+          addThreadReply: async (threadId, body) => updateBatch({ _tag: "AddThreadReply", threadId, body }),
+          setThreadState: async (threadId, action) => updateBatch({ _tag: "SetThreadState", threadId, action }),
           apply: async () => { await reviewWrite("/v1/reviews/apply-batch"); },
         },
         refreshRemote,

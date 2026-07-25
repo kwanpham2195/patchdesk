@@ -24,6 +24,8 @@ export type ReviewBatchPanelActions = {
     readonly body: string;
   }) => Promise<void>;
   readonly removeItem: (itemId: string) => Promise<void>;
+  readonly addThreadReply: (threadId: string, body: string) => Promise<void>;
+  readonly setThreadState: (threadId: string, action: "resolve" | "reopen") => Promise<void>;
   readonly apply: () => Promise<void>;
 };
 
