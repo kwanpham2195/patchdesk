@@ -268,12 +268,12 @@ describe("completed review workbench", () => {
         debugHref="/debug"
       />,
     );
-    expect(screen.getAllByText("src/updates.ts").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/updates.ts");
     expect(screen.getByText("Prior guard")).toBeTruthy();
     await user.click(screen.getByRole("tab", { name: "Full PR" }));
-    expect(screen.getAllByText("src/full.ts").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/full.ts");
     await user.click(screen.getByRole("tab", { name: "Updates" }));
-    expect(screen.getAllByText("src/updates.ts").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/updates.ts");
   });
 
   it("keeps unmapped findings visible and exposes only read-only review context", async () => {

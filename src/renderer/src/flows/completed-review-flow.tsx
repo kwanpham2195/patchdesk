@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { CompletedReviewWorkbench } from "../components/completed-review-workbench";
 import { requestJson } from "../api-client";
 
@@ -39,10 +41,21 @@ export function CompletedReviewFlow({
   onWorkbenchPatch,
   onNavigationStateChange,
 }: CompletedReviewFlowProps): React.JSX.Element {
-  const profileId = workbench.session.key.profileId;
-  const sessionId = workbench.session.id;
-  const draft = workbench.draft as { readonly updatedAt?: unknown } | undefined;
-  const batch = workbench.batch as { readonly updatedAt?: unknown } | undefined;
+  const [remoteContext, setRemoteContext] = useState<Partial<CompletedReviewFlowWorkbench>>({});
+  const currentWorkbench = { ...workbench, ...remoteContext };
+  const profileId = currentWorkbench.session.key.profileId;
+  const sessionId = currentWorkbench.session.id;
+  const draft = currentWorkbench.draft as { readonly updatedAt?: unknown } | undefined;
+  const batch = currentWorkbench.batch as { readonly updatedAt?: unknown } | undefined;
+
+  const refreshRemote = async (): Promise<void> => {
+    const value = await requestJson("/v1/reviews/refresh", {
+      method: "POST",
+      body: { profileId, sessionId },
+    });
+    if (!isRemoteReviewContext(value)) throw new Error("Review refresh was rejected");
+    setRemoteContext(value);
+  };
 
   const saveDraft = async (input: {
     readonly expectedRevision: string;
@@ -115,29 +128,30 @@ export function CompletedReviewFlow({
     <CompletedReviewWorkbench
       model={{
         source: { profileId, sessionId },
-        result: workbench.result as never,
-        reviewScope: workbench.reviewScope as never,
-        ...(workbench.fullPatch === undefined ? {} : { fullPatch: workbench.fullPatch }),
-        ...(workbench.comparison === undefined ? {} : { comparison: workbench.comparison as never }),
-        ...(workbench.comparisonPatch === undefined ? {} : { comparisonPatch: workbench.comparisonPatch }),
-        ...(workbench.lifecycle === undefined ? {} : { lifecycle: workbench.lifecycle as never }),
-        comparisonAvailability: workbench.comparisonAvailability as never,
-        ...(workbench.pullRequest === undefined ? {} : { pullRequest: workbench.pullRequest as never }),
-        reviewedHeadSha: workbench.reviewedHeadSha as never,
-        ...(workbench.currentHeadSha === undefined ? {} : { currentHeadSha: workbench.currentHeadSha }),
-        freshness: workbench.freshness as never,
-        refreshedAt: workbench.refreshedAt as never,
-        draft: workbench.draft as never,
-        ...(workbench.batch === undefined ? {} : { batch: workbench.batch as never }),
-        comments: workbench.comments as never,
-        checks: workbench.checks as never,
-        history: (workbench.history as never) ?? [],
-        ...(workbench.mergeReadiness === undefined ? {} : { mergeReadiness: workbench.mergeReadiness as never }),
+        result: currentWorkbench.result as never,
+        reviewScope: currentWorkbench.reviewScope as never,
+        ...(currentWorkbench.fullPatch === undefined ? {} : { fullPatch: currentWorkbench.fullPatch }),
+        ...(currentWorkbench.comparison === undefined ? {} : { comparison: currentWorkbench.comparison as never }),
+        ...(currentWorkbench.comparisonPatch === undefined ? {} : { comparisonPatch: currentWorkbench.comparisonPatch }),
+        ...(currentWorkbench.lifecycle === undefined ? {} : { lifecycle: currentWorkbench.lifecycle as never }),
+        comparisonAvailability: currentWorkbench.comparisonAvailability as never,
+        ...(currentWorkbench.pullRequest === undefined ? {} : { pullRequest: currentWorkbench.pullRequest as never }),
+        reviewedHeadSha: currentWorkbench.reviewedHeadSha as never,
+        ...(currentWorkbench.currentHeadSha === undefined ? {} : { currentHeadSha: currentWorkbench.currentHeadSha }),
+        freshness: currentWorkbench.freshness as never,
+        refreshedAt: currentWorkbench.refreshedAt as never,
+        draft: currentWorkbench.draft as never,
+        ...(currentWorkbench.batch === undefined ? {} : { batch: currentWorkbench.batch as never }),
+        comments: currentWorkbench.comments as never,
+        checks: currentWorkbench.checks as never,
+        history: (currentWorkbench.history as never) ?? [],
+        ...(currentWorkbench.mergeReadiness === undefined ? {} : { mergeReadiness: currentWorkbench.mergeReadiness as never }),
       }}
       actions={{
         saveDraft,
         createPendingReview: async () => reviewWrite("/v1/reviews/pending"),
         submitPendingReview: async (event) => reviewWrite("/v1/reviews/submit", { event }),
+        refreshRemote,
         merge,
         reportNavigationState: onNavigationStateChange,
       }}
@@ -165,6 +179,10 @@ function isMergeWrite(value: unknown): value is {
   readonly session: { readonly mergeDecision?: { readonly mergeCommitSha?: unknown } };
 } {
   return isRecord(value) && isRecord(value.session);
+}
+
+function isRemoteReviewContext(value: unknown): value is Partial<CompletedReviewFlowWorkbench> {
+  return isRecord(value) && typeof value.freshness === "string" && typeof value.refreshedAt === "string";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

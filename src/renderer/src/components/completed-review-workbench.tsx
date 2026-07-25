@@ -103,6 +103,7 @@ export type CompletedReviewWorkbenchActions = {
     method: MergeMethod,
     acknowledgedWarnings: boolean,
   ) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly refreshRemote?: () => Promise<void>;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -116,6 +117,7 @@ export function CompletedReviewWorkbench({
   readonly model: CompletedReviewWorkbenchModel;
   readonly actions: CompletedReviewWorkbenchActions;
 }): React.JSX.Element {
+  const refreshRemote = actions.refreshRemote;
   const props = {
     profileId: model.source.profileId,
     sourceSession: model.source,
@@ -332,7 +334,13 @@ export function CompletedReviewWorkbench({
               : `${props.pullRequest.ref.owner}/${props.pullRequest.ref.repo}#${props.pullRequest.ref.number} · ${props.pullRequest.baseBranch} ← ${props.pullRequest.headBranch}`}
           </p>
         </div>
-        <div className="text-right text-xs text-muted-foreground">
+        <div className="flex items-start gap-2 text-right text-xs text-muted-foreground">
+          {refreshRemote === undefined ? null : (
+            <Button variant="outline" size="sm" onClick={() => void refreshRemote()}>
+              Refresh
+            </Button>
+          )}
+          <div>
           <p>Reviewed head</p>
           <code className="text-foreground">
             {(
@@ -344,6 +352,7 @@ export function CompletedReviewWorkbench({
           {props.refreshedAt === undefined ? null : (
             <p className="mt-1">Refreshed {props.refreshedAt}</p>
           )}
+          </div>
         </div>
       </header>
       {freshness !== "fresh" ? (
@@ -443,7 +452,12 @@ export function CompletedReviewWorkbench({
             </div>
             <div className="ml-auto flex items-center gap-1">
               {props.reviewScope?.kind === "incremental" ? (
-                <Tabs value={diffSurface} onValueChange={(value) => setDiffSurface(value === "updates" ? "updates" : "full")}>
+                <Tabs value={diffSurface} onValueChange={(value) => {
+                  const nextSurface = value === "updates" ? "updates" : "full";
+                  const nextPatch = nextSurface === "updates" ? props.comparisonPatch : props.fullPatch;
+                  setDiffSurface(nextSurface);
+                  setSelectedPath(nextPatch === undefined ? undefined : parseUnifiedPatch(nextPatch)[0]?.newPath);
+                }}>
                   <TabsList>
                     <TabsTrigger value="updates" disabled={props.comparisonPatch === undefined}>Updates</TabsTrigger>
                     <TabsTrigger value="full">Full PR</TabsTrigger>
