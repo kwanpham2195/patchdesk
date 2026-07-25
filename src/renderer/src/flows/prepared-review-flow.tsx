@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import { parsePullRequestInput, type PullRequestRef } from "../../../domain/pull-request";
 import { DiffWorkbench } from "../components/diff-workbench";
-import { PullRequestDescription } from "../components/pull-request-description";
 import { ReviewChecks } from "../components/review-checks";
 import { SafeRunPanel } from "../components/safe-run-panel";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -211,9 +210,9 @@ export function PreparedReviewFlow({
         {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} sourceSession={{ profileId, sessionId: workbench.session.id }} className="min-h-0 flex-1" fillViewport={false} /> : null}
         {workbench.session.currentAttemptId === undefined ? (
           showingDiff || showingChecks ? null : (
-            <div className="mt-4 space-y-3">
-              <PullRequestDescription {...(pullRequest === undefined ? {} : { pullRequest })} {...(workbench.pullRequest?.description === undefined ? {} : { markdown: workbench.pullRequest.description })} />
-              <p className="text-sm text-muted-foreground">Inspect the saved diff and checks first. Run review starts read-only analysis; Patchdesk will never write to GitHub automatically.</p>
+            <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+              <h2 className="font-semibold">Ready to review</h2>
+              <p className="mt-1 text-sm text-muted-foreground">The saved snapshot is ready. Starting analysis is read-only and never writes to GitHub.</p>
               {runError === undefined ? null : (
                 <Alert variant="destructive">
                   <AlertTitle>Review was not started</AlertTitle>
