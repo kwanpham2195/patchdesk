@@ -80,6 +80,7 @@ export function PreparedReviewFlow({
   const [reviewCatalogUnavailable, setReviewCatalogUnavailable] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [runError, setRunError] = useState<string>();
+  const [starting, setStarting] = useState(false);
   const profileId = workbench.session.key.profileId;
 
   useEffect(() => {
@@ -161,6 +162,16 @@ export function PreparedReviewFlow({
       session: { ...workbench.session, currentAttemptId: started.attemptId },
     });
     return true;
+  };
+
+  const confirmStart = async (): Promise<void> => {
+    setStarting(true);
+    try {
+      const started = await startOwnedRun();
+      if (started) setRunDialogOpen(false);
+    } finally {
+      setStarting(false);
+    }
   };
 
   const refreshPrepared = async (): Promise<void> => {
@@ -265,7 +276,16 @@ export function PreparedReviewFlow({
                 </Label>
                 {reviewCatalogUnavailable ? <p className="text-sm text-muted-foreground">No enabled Pi model is currently available. Patchdesk will not start a review until the runtime configuration is available.</p> : null}
               </div>
-              <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button disabled={reviewModel === undefined} onClick={() => { setRunDialogOpen(false); void startOwnedRun(); }}>Start read-only review</Button></DialogFooter>
+              {runError === undefined ? null : (
+                <Alert variant="destructive">
+                  <AlertTitle>Review was not started</AlertTitle>
+                  <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
+                    {runError}
+                    <Button variant="outline" size="sm" onClick={() => void refreshPrepared()}>Refresh and reopen review</Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button disabled={reviewModel === undefined || starting} onClick={() => void confirmStart()}>{starting ? "Starting…" : "Start read-only review"}</Button></DialogFooter>
             </DialogContent>
           </Dialog>
         ) : null}

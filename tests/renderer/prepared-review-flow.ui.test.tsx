@@ -81,3 +81,42 @@ describe("prepared review run start", () => {
     expect((await screen.findAllByText("GitHub changed after this snapshot was prepared. Refresh and reopen before running a review.")).length).toBeGreaterThan(0);
   });
 });
+
+describe("run dialog starting state", () => {
+  it("keeps the dialog open with a busy confirm button while the start is in flight", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/run") {
+        return { ok: true as const, status: 200, body: new Promise(() => {}) };
+      }
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<PreparedReviewFlow workbench={workbench} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run review" }));
+    const confirm = await screen.findByRole("button", { name: "Start read-only review" });
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(confirm);
+
+    const busy = await screen.findByRole("button", { name: "Starting…" });
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Start read-only review" })).toBeNull();
+  });
+
+  it("shows start errors inside the dialog when opened from the checks section", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/run") return { ok: false as const, status: 503, body: { error: "storage" } };
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<PreparedReviewFlow workbench={workbench} initialSection="checks" onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run review" }));
+    const confirm = await screen.findByRole("button", { name: "Start read-only review" });
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(confirm);
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(dialog.textContent).toContain("Patchdesk could not start this read-only review."));
+  });
+});
