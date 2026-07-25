@@ -36,6 +36,7 @@ import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
 import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
+import { ReviewFailureService } from "../services/review-failure-service";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 
@@ -95,6 +96,10 @@ function createWorkflowInvoker() {
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
   );
+  const failure = new ReviewFailureService(
+    PatchdeskPaths.default(),
+    () => new Date().toISOString() as never,
+  );
   const flue = new FlueCliReviewInvoker(
     new CommandRunner(),
     resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd()),
@@ -105,7 +110,17 @@ function createWorkflowInvoker() {
       options?: Parameters<FlueCliReviewInvoker["invoke"]>[1],
     ) {
       const result = await flue.invoke(input, options);
-      if (result._tag === "err") return err({ reason: "failed" as const });
+      if (result._tag === "err") {
+        // Best effort: if this write fails, startup reconciliation is the backstop.
+        await failure.fail({
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          attemptId: input.attemptId,
+          category: "flue",
+          message: "The review workflow did not complete.",
+        });
+        return err({ reason: "failed" as const });
+      }
       options?.onActivity?.("drafting");
       const persisted = await completion.complete({
         profileId: input.profileId,
@@ -113,7 +128,16 @@ function createWorkflowInvoker() {
         attemptId: input.attemptId,
         result: result.value,
       });
-      if (persisted._tag === "err") return err({ reason: "failed" as const });
+      if (persisted._tag === "err") {
+        await failure.fail({
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          attemptId: input.attemptId,
+          category: "unknown",
+          message: "The review result could not be saved.",
+        });
+        return err({ reason: "failed" as const });
+      }
       // The Flue CLI returns the completed structured result, not a durable
       // provider run identifier. Do not fabricate one from Patchdesk IDs.
       return ok({});

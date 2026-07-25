@@ -125,7 +125,7 @@ export function discardWorkbenchAttempt(input: {
   });
 }
 
-/** Recover conservatively after restart: no ownership-safe run handle remains, so it is stale rather than resumed. */
+/** Recover after restart: no ownership-safe run handle remains, so mark the interruption visibly failed and make the session runnable again instead of relaunching or stalling. */
 export function recoverOrphanedWorkbenchAttempt(input: {
   readonly session: ReviewSession;
   readonly attempt: ReviewAttempt;
@@ -141,10 +141,19 @@ export function recoverOrphanedWorkbenchAttempt(input: {
     (input.attempt.state._tag !== "Starting" && input.attempt.state._tag !== "Running")
   )
     return err({ _tag: "AttemptNotRunning" });
+  const { currentAttemptId: _cleared, ...sessionRest } = input.session;
+  void _cleared;
   return ok({
     session: {
-      ...input.session,
-      state: { _tag: "Stale", reason: "orphaned_run" },
+      ...sessionRest,
+      state: {
+        _tag: "ReviewFailed",
+        attemptId: input.attempt.id,
+        error: {
+          category: "flue",
+          message: "Patchdesk restarted before this review run completed.",
+        },
+      },
       updatedAt: input.recoveredAt,
     },
     attempt: {
