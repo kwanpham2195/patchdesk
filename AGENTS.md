@@ -1,35 +1,70 @@
 # Patchdesk rules
 
-- Keep the Electron renderer isolated: `nodeIntegration: false`, `contextIsolation: true`, and expose privileged data only from preload.
-- Never store GitHub tokens or other credentials in Patchdesk files, local storage, logs, or telemetry.
-- The renderer must never execute raw shell commands; privileged work belongs behind explicit main-process boundaries.
+## Hard rules
+
 - Do not use broad git cleanup commands (`git clean`, `git reset --hard`, bulk restores) from Patchdesk.
-- Do not automatically create GitHub reviews, comments, merges, pushes, or other remote writes; require an explicit user confirmation flow.
-- Parse all local API and IPC boundary inputs, return typed expected failures from product modules, and keep capability values out of output and diagnostics.
-- External navigation is privileged: renderer content must use `window.patchdesk.openExternalHttps` and the main-process configured-GitHub-host allowlist. Never add `target="_blank"`, `shell.openExternal`, or a broader URL scheme in the renderer.
-- Treat pull-request Markdown and review-run data as untrusted. Keep Markdown token-rendered (no raw HTML or images); unknown or unsafe links stay inert. Parse `SafeRunProjection` through the shared bounded contract only; provider events, prompts, tool output, credentials, and hidden reasoning never reach the renderer.
-- Review inspection is read-only until the user explicitly starts a review. Preserve the real attempt lifecycle and provider ID; never synthesize an ID, restart an incomplete attempt, or let inbox refresh mutate sessions or attempts.
-- `patchdesk.diff-theme.v2` is renderer-local. Keep the default `pierre-light`/`pierre-dark` pair unwritten until the user chooses a preference; migrate valid v1 values only after a successful v2 write, and retain the currently applied pair if storage fails.
-- Desktop maintainer-surface geometry is a product contract at `min-width: 1280px`: 48px title bar, 232px application rail (48px collapsed), 208px queue rail, and 336px inspector. Compact through local surface classes and shadcn size variants; do not change shadcn primitive defaults or Pierre code font, colors, or line spacing globally.
-- Source renderer primitives from the current shadcn Base Nova registry. Keep local wrapper styling close to generated defaults; a Base UI adapter or local class needs a demonstrated Patchdesk behavior or layout contract, and polymorphic consumers use Base `render`, never Radix `asChild`.
-- Keep Pierre behavior scoped to the diff boundary: `JetBrains Mono, Fira Code, monospace` at 13px/20px, selected-line navigation, native wheel/trackpad and keyboard scrolling, hunk expansion, and progressive all-files streaming. Do not add wheel/touch `preventDefault`, append-time scroll nudges, or global Pierre style overrides. Keep the QA-only passive diagnostics in the dedicated review-diff hook.
-- Keep review-diff concerns in their hooks: immutable context hydration/de-duplication, progressive stream batching/cancellation, and QA scroll diagnostics. Do not fold them back into `ReviewDiffView`.
-- For renderer layout changes, prove the real packaged Electron surface through `agent-browser` over CDP as well as browser tests. Check the saved customer-management PR #118, rail restoration, command palette, console/page errors, and page-level horizontal overflow; do not enter a GitHub write confirmation during QA.
-- For every live app, browser, or packaged-Electron verification, the primary agent must spawn a dedicated tester subagent. The tester owns interactive QA and returns screenshots plus concrete evidence; use `agent-browser` over CDP by default and Computer Use only when native macOS interaction is required. The primary agent may run static checks and test suites, but must not perform the live UI steps itself.
-- UI verification commands: run `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`, and `pnpm exec playwright test`; then run `pnpm package:mac` and `pnpm test:package-smoke`. Launch an isolated packaged app with a distinct user-data directory and CDP port, e.g. `./release/mac-arm64/Patchdesk.app/Contents/MacOS/Patchdesk --user-data-dir=/tmp/patchdesk-qa --remote-debugging-port=9233`. Connect per command with `agent-browser --session patchdesk-qa --cdp 9233 snapshot -i` and capture `agent-browser --session patchdesk-qa --cdp 9233 screenshot /tmp/patchdesk-qa.png`; this avoids stale persistent CDP connections. Use a distinct port if 9233 is occupied.
-- Common `agent-browser` QA loop: first load `agent-browser skills get core` and `agent-browser skills get electron`; then use `snapshot -i` before every interaction, `errors` and `console` after each route or workflow, `eval` to assert `document.documentElement.scrollWidth - document.documentElement.clientWidth === 0`, and `screenshot` for evidence. Re-snapshot after every click because accessibility refs become stale.
+- Do not create GitHub reviews, comments, merges, pushes, or any other remote writes automatically; require explicit user confirmation.
+- For every live app, browser, or packaged-Electron verification, the primary agent must spawn a dedicated tester subagent. The tester owns interactive QA and returns screenshots plus concrete evidence; use `agent-browser` over CDP by default, and Computer Use only when native macOS interaction is required. The primary agent may run static checks and test suites, but must not perform live UI steps itself.
 - Keep `tests/browser/performance.spec.ts`'s 1,000-file selection ceiling at `<200ms` unless profiling demonstrates a deliberate, reviewed replacement; do not loosen it to accommodate a slow local run.
+
+## Architecture (don't break these)
+
+- Electron app: privileged `main` + sandboxed `preload` (CJS) + isolated `renderer`. Renderer has no Node.js access. `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true` — do not relax.
+- The main process starts a Hono loopback API on `127.0.0.1` with a random port and waits for an authenticated health check before opening the workbench. Every route requires a per-launch capability passed only through preload, with a matching renderer origin; cross-site / navigation-shaped requests are rejected. See `src/main/local-api.ts`, `src/main/app-capability.ts`, `src/main/electron-main.ts`.
+- GitHub writes (review, comment, merge) always require explicit user confirmation in the UI. PR descriptions and check links are untrusted; only a user click may open an HTTPS link on the configured GitHub host via the main process. See `src/main/external-navigation.ts`.
+- Layered code: `src/domain/` (pure types + invariants) → `src/services/` (orchestration) → `src/adapters/{github,pi,storage}/` (I/O). Local API composition lives in `src/app.ts`; never publish a Patchdesk review route from there.
+- External runtime assets (workflows, skills, `@flue/*`) are unpacked from `asar` at runtime. Keep them under `src/workflows/`, `src/skills/`, and `node_modules/@flue/**` when adding new ones — see the `build.asarUnpack` list in `package.json`.
+- No CI workflows exist under `.github/`. All verification is local; treat the commands below as the source of truth.
+
+## Commands (pnpm@8.8.0)
+
+| Goal                            | Command                                  |
+| ------------------------------- | ---------------------------------------- |
+| Dev (HMR, three processes)      | `pnpm dev`                               |
+| Lint                            | `pnpm lint` (ESLint, `--max-warnings=0`) |
+| Typecheck                       | `pnpm typecheck` (`tsc --noEmit`)        |
+| Unit / integration tests        | `pnpm test -- --run`                     |
+| Renderer dashboard suite only   | `pnpm test:ui`                           |
+| Build main + preload + renderer | `pnpm build`                             |
+| Browser e2e (Playwright)        | `pnpm exec playwright test`              |
+| Build + run browser e2e         | `pnpm test:e2e`                          |
+| Accessibility Playwright run    | `pnpm test:a11y`                         |
+| Performance Playwright run      | `pnpm test:performance`                  |
+| Package unsigned Mac app (dir)  | `pnpm package:mac`                       |
+| Packaged smoke test             | `pnpm test:package-smoke`                |
+
+Verification order for any change touching the desktop or renderer: `pnpm lint && pnpm typecheck && pnpm test -- --run && pnpm build && pnpm exec playwright test && pnpm package:mac && pnpm test:package-smoke`.
+
+## Packaged-app QA (CDP)
+
+Primary agent does not run these. Spawn a `electron-tester` subagent and hand it the recipe.
+
+- Launch isolated packaged app with a distinct user-data dir and CDP port:
+  `./release/mac-arm64/Patchdesk.app/Contents/MacOS/Patchdesk --user-data-dir=/tmp/patchdesk-qa --remote-debugging-port=9233`
+  Pick a different port if 9233 is occupied.
+- Connect per command (avoids stale persistent CDP connections):
+  `agent-browser --session patchdesk-qa --cdp 9233 snapshot -i`
+  `agent-browser --session patchdesk-qa --cdp 9233 screenshot /tmp/patchdesk-qa.png`
+- `pnpm test:package-smoke` already launches its own isolated instance; do not run a second one in parallel against the same port.
+
+## Test layout
+
+- Vitest (Node env): `tests/**/*.test.{ts,tsx}` — covers domain, services, adapters, renderer units, desktop bridge, local API auth, main lifecycle. Alias `@/` → `src/renderer/src/`.
+- Playwright (Chromium, headless): `tests/browser/*.spec.ts` — milestones, accessibility, performance, plus milestone-9 snapshot dir.
+- Renderer component tests are colocated under `src/renderer/src/` and run with `pnpm test:ui` (filter `dashboard.ui`).
+- Fixtures live under `fixtures/{flue,github,scenarios,screen-states}/` and are loaded by `tests/setup.ts`.
+
+## Conventions
+
+- TypeScript is strict: `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`. Code that compiles locally is expected to typecheck clean without `// @ts-` or `as any`; ESLint also forbids them.
+- Path aliases in `tsconfig.json`: `@/*` → `src/renderer/src/*`; `@flue/runtime` and `@flue/runtime/routing` are stubbed to local types in `src/flue-*.ts`.
+- `react-refresh/only-export-components` is off only for `src/renderer/src/components/ui/**` (shadcn registry). Anywhere else, components-only files are enforced.
+- Prettier: double quotes, trailing commas.
+- Domain types in `src/domain/ids.ts` parse via dedicated parsers (e.g. `parseWorkspaceProfileId`); use them rather than casting strings.
+- Service constructors accept the `PatchdeskPaths` storage root and a clock; inject them in tests rather than reaching for module globals.
 
 ## Agent skills
 
-### Issue tracker
-
-Issues and specs live as local markdown under `.agents/tasks/<feature>/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
+- **Issue tracker.** Issues and specs live as local markdown under `.agents/tasks/<feature>/`. See `docs/agents/issue-tracker.md`.
+- **Triage labels.** Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+- **Domain docs.** Single-context: `CONTEXT.md` + `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`. Currently neither file exists — proceed silently; do not flag the gap.

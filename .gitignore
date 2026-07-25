@@ -9,3 +9,13 @@ test-results/
 .superpowers/
 .pi-subagents/
 PLAN.md
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage/
+.vscode/
+.idea/
+.opencode/
