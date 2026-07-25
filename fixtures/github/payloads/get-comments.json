@@ -19,6 +19,9 @@
                     "author": { "login": "reviewer" },
                     "path": "src/review.ts",
                     "line": 7,
+                    "startLine": 5,
+                    "side": "RIGHT",
+                    "startSide": "RIGHT",
                     "originalLine": 7
                   }
                 ]

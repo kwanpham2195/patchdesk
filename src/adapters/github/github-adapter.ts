@@ -1206,7 +1206,9 @@ function parseComment(
     input.path,
     input.line,
     input.originalLine,
-    undefined,
+    input.startLine,
+    input.side,
+    input.startSide,
   );
   const comment: GitHubComment = {
     id: input.id,
@@ -1226,7 +1228,9 @@ function parseLocation(
   path: string | null | undefined,
   line: number | null | undefined,
   originalLine: number | null | undefined,
+  startLine: number | null | undefined,
   diffSide: string | null | undefined,
+  startSide: string | null | undefined,
 ): GitHubComment["location"] {
   if (path === null || path === undefined) return undefined;
   const parsedPath = parseRepoRelativePath(path);
@@ -1239,12 +1243,18 @@ function parseLocation(
       : line;
   return {
     path: parsedPath.value,
-    ...(selectedLine === undefined ? {} : { line: selectedLine }),
+    ...(selectedLine === undefined
+      ? {}
+      : startLine === null || startLine === undefined
+        ? { line: selectedLine }
+        : { line: startLine, lineEnd: selectedLine }),
     ...(diffSide === "RIGHT"
       ? { diffSide: "new" as const }
-      : diffSide === "LEFT"
+      : diffSide === "LEFT" || startSide === "LEFT"
         ? { diffSide: "old" as const }
-        : {}),
+        : startSide === "RIGHT"
+          ? { diffSide: "new" as const }
+          : {}),
   };
 }
 
