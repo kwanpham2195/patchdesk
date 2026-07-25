@@ -5,6 +5,7 @@ import { editFailedDraftComment, type ReviewDraft } from "../../src/domain/revie
 import type { ReviewSession } from "../../src/domain/review-session";
 import {
   createPendingReview,
+  planBatchOperations,
   submitSummaryOnlyPendingReview,
   submitPendingReview,
 } from "../../src/services/review-submission-service";
@@ -57,6 +58,18 @@ const profile = { githubHost: "github.com", ghAccount: "pmquan2cfw" } as never;
 const now = "2026-07-16T00:01:00.000Z" as never;
 
 describe("review submission service", () => {
+  it("plans one pending review before saved replies and thread actions", () => {
+    expect(planBatchOperations({
+      sessionId: session.id,
+      attemptId: "001" as never,
+      state: { _tag: "Local" }, summaryBody: "Review summary", suggestedEvent: "COMMENT",
+      items: [
+        { _tag: "InlineComment", id: "one" as never, source: "manual", anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" }, body: "a", include: true, postability: "postable" },
+        { _tag: "ThreadReply", id: "reply" as never, threadId: "thread-1" as never, body: "b", include: true },
+        { _tag: "ThreadState", id: "state" as never, threadId: "thread-2" as never, action: "resolve", include: true },
+      ], receipts: [], createdAt: now, updatedAt: now,
+    })).toEqual([{ _tag: "CreatePendingReview", itemIds: ["one"] }, { _tag: "Reply", itemId: "reply" }, { _tag: "ThreadState", itemId: "state" }]);
+  });
   it("rechecks the head immediately before create and blocks a stale write without invoking GitHub", async () => {
     const fake = gateway(movedHeadSha);
     const result = await createPendingReview({ profile, session, draft, gateway: fake.gateway as never, now });

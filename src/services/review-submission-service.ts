@@ -4,6 +4,7 @@ import type {
   PendingReviewComment,
 } from "../adapters/github/github-adapter";
 import type { GitHubReviewEvent, ReviewDraft } from "../domain/review-draft";
+import type { BatchOperation, ReviewBatch, ReviewBatchItem } from "../domain/review-batch";
 import type { GitSha, IsoTimestamp } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { ReviewSession } from "../domain/review-session";
@@ -209,4 +210,14 @@ function withDraft(session: ReviewSession, draft: ReviewDraft, updatedAt: IsoTim
 
 function sessionPr(session: ReviewSession): PullRequestRef {
   return { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber };
+}
+
+/** Plans the persisted, confirmed remote operations in their only legal order. */
+export function planBatchOperations(batch: ReviewBatch): ReadonlyArray<BatchOperation> {
+  const inline = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && item.include && item.postability === "postable");
+  const thread = batch.items.filter((item) => item.include && (item._tag === "ThreadReply" || item._tag === "ThreadState"));
+  return [
+    ...(inline.length === 0 ? [] : [{ _tag: "CreatePendingReview" as const, itemIds: inline.map((item) => item.id) }]),
+    ...thread.map((item) => item._tag === "ThreadReply" ? ({ _tag: "Reply" as const, itemId: item.id }) : ({ _tag: "ThreadState" as const, itemId: item.id })),
+  ];
 }
