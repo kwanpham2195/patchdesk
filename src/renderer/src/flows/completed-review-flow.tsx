@@ -45,7 +45,6 @@ export function CompletedReviewFlow({
   const currentWorkbench = { ...workbench, ...remoteContext };
   const profileId = currentWorkbench.session.key.profileId;
   const sessionId = currentWorkbench.session.id;
-  const draft = currentWorkbench.draft as { readonly updatedAt?: unknown } | undefined;
   const batch = currentWorkbench.batch as { readonly updatedAt?: unknown } | undefined;
 
   const refreshRemote = async (): Promise<void> => {
@@ -57,31 +56,13 @@ export function CompletedReviewFlow({
     setRemoteContext(value);
   };
 
-  const saveDraft = async (input: {
-    readonly expectedRevision: string;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<{
-      readonly findingId: string;
-      readonly include: boolean;
-      readonly body: string;
-    }>;
-  }): Promise<{ readonly draft: never; readonly revision: string }> => {
-    const value = await requestJson("/v1/reviews/draft", {
-      method: "POST",
-      body: { profileId, sessionId, ...input },
-    });
-    if (!isDraftWrite(value)) throw new Error("Draft save was rejected");
-    onWorkbenchPatch({ session: value.session, draft: value.draft });
-    return { draft: value.draft as never, revision: value.revision };
-  };
-
   const reviewWrite = async (
     path: "/v1/reviews/pending" | "/v1/reviews/submit" | "/v1/reviews/apply-batch",
     extra: Record<string, unknown> = {},
   ): Promise<{ readonly reviewId: string }> => {
-    const revision = typeof batch?.updatedAt === "string" ? batch.updatedAt : draft?.updatedAt;
+    const revision = typeof batch?.updatedAt === "string" ? batch.updatedAt : undefined;
     if (typeof revision !== "string") {
-      throw new Error("The saved draft revision is unavailable");
+      throw new Error("The saved review batch revision is unavailable");
     }
     const value = await requestJson(path, {
       method: "POST",
@@ -106,6 +87,17 @@ export function CompletedReviewFlow({
             ? state.pendingReviewId
             : "review",
     };
+  };
+
+  const updateBatch = async (command: Record<string, unknown>): Promise<void> => {
+    const current = currentWorkbench.batch as { readonly attemptId?: unknown; readonly updatedAt?: unknown } | undefined;
+    if (typeof current?.attemptId !== "string" || typeof current.updatedAt !== "string") throw new Error("The saved review batch is unavailable");
+    const value = await requestJson("/v1/reviews/batch", {
+      method: "POST",
+      body: { profileId, sessionId, attemptId: current.attemptId, expectedRevision: current.updatedAt, command },
+    });
+    if (!isBatchUpdate(value)) throw new Error("Review batch update was rejected");
+    onWorkbenchPatch({ session: value.session, ...(value.batch === undefined ? {} : { batch: value.batch }) });
   };
 
   const merge = async (
@@ -140,7 +132,6 @@ export function CompletedReviewFlow({
         ...(currentWorkbench.currentHeadSha === undefined ? {} : { currentHeadSha: currentWorkbench.currentHeadSha }),
         freshness: currentWorkbench.freshness as never,
         refreshedAt: currentWorkbench.refreshedAt as never,
-        draft: currentWorkbench.draft as never,
         ...(currentWorkbench.batch === undefined ? {} : { batch: currentWorkbench.batch as never }),
         comments: currentWorkbench.comments as never,
         checks: currentWorkbench.checks as never,
@@ -148,9 +139,11 @@ export function CompletedReviewFlow({
         ...(currentWorkbench.mergeReadiness === undefined ? {} : { mergeReadiness: currentWorkbench.mergeReadiness as never }),
       }}
       actions={{
-        saveDraft,
-        createPendingReview: async () => reviewWrite("/v1/reviews/pending"),
-        submitPendingReview: async (event) => reviewWrite("/v1/reviews/submit", { event }),
+        batchActions: {
+          addInlineComment: async ({ path, startLine, line, side, body }) => updateBatch({ _tag: "AddInlineComment", anchor: { path, startLine, line, side }, body }),
+          removeItem: async (itemId) => updateBatch({ _tag: "RemoveItem", itemId }),
+          apply: async () => { await reviewWrite("/v1/reviews/apply-batch"); },
+        },
         refreshRemote,
         merge,
         reportNavigationState: onNavigationStateChange,
@@ -159,20 +152,16 @@ export function CompletedReviewFlow({
   );
 }
 
-function isDraftWrite(value: unknown): value is {
-  readonly session: unknown;
-  readonly draft: unknown;
-  readonly revision: string;
-} {
-  return isRecord(value) && isRecord(value.session) && isRecord(value.draft) && typeof value.revision === "string";
-}
-
 function isReviewWrite(value: unknown): value is {
   readonly session: unknown;
   readonly draft?: { readonly state: unknown };
   readonly batch?: { readonly state: unknown };
 } {
   return isRecord(value) && isRecord(value.session) && ((isRecord(value.draft) && "state" in value.draft) || (isRecord(value.batch) && "state" in value.batch));
+}
+
+function isBatchUpdate(value: unknown): value is { readonly session: unknown; readonly batch?: unknown } {
+  return isRecord(value) && isRecord(value.session) && (value.batch === undefined || isRecord(value.batch));
 }
 
 function isMergeWrite(value: unknown): value is {

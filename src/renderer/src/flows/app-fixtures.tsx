@@ -56,34 +56,11 @@ export function AppFixtureContent({
           reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
           freshness: "fresh",
           refreshedAt: "2026-07-17T00:00:00.000Z",
-          draft: workbenchFixtureData.editableDraft as never,
           comments: fixture.comments as never,
           checks: fixture.checks,
           history: workbenchFixtureData.history,
         }}
         actions={{
-          saveDraft: async (input) => {
-            const draft = {
-              ...workbenchFixtureData.editableDraft,
-              summaryBody: input.summaryBody,
-              comments: workbenchFixtureData.editableDraft.comments.map(
-                (comment) => {
-                  const edited = input.comments.find(
-                    (candidate) => candidate.findingId === comment.findingId,
-                  );
-                  return edited === undefined
-                    ? comment
-                    : {
-                        ...comment,
-                        include: edited.include,
-                        body: edited.body,
-                      };
-                },
-              ),
-              updatedAt: "2026-07-17T00:00:01.000Z",
-            };
-            return { draft: draft as never, revision: draft.updatedAt };
-          },
           reportNavigationState: onNavigationStateChange,
         }}
       />

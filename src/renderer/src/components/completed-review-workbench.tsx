@@ -10,7 +10,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  ShieldCheck,
 } from "lucide-react";
 
 import type {
@@ -18,10 +17,7 @@ import type {
   GitHubComments,
   PullRequestSummary,
 } from "../../../domain/github-context";
-import type {
-  GitHubReviewEvent,
-  ReviewDraft,
-} from "../../../domain/review-draft";
+import type { ReviewBatch } from "../../../domain/review-batch";
 import type { ReviewResult } from "../../../domain/review-result";
 import type { FindingLifecycleEntry } from "../../../domain/finding-lifecycle";
 import type { RevisionComparison, ReviewScopeProjection } from "../../../domain/review-comparison";
@@ -30,8 +26,7 @@ import { parseUnifiedPatch } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
 import { ReviewChecks } from "./review-checks";
 import { ReviewDiffView } from "./review-diff-view";
-import { ReviewDraftSheet, type DraftSaveState } from "./review-draft-sheet";
-import { ReviewSubmissionDialog } from "./review-submission-dialog";
+import { ReviewBatchPanel, type ReviewBatchPanelActions } from "./review-batch-panel";
 import {
   MergeConfirmationDialog,
   type MergeMethod,
@@ -77,7 +72,7 @@ export type CompletedReviewWorkbenchModel = {
   readonly currentHeadSha?: string;
   readonly freshness: "fresh" | "stale" | "unavailable";
   readonly refreshedAt: string;
-  readonly draft: ReviewDraft;
+  readonly batch?: ReviewBatch;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly history: ReadonlyArray<ReviewHistoryItem>;
@@ -85,20 +80,7 @@ export type CompletedReviewWorkbenchModel = {
 };
 
 export type CompletedReviewWorkbenchActions = {
-  readonly saveDraft: (input: {
-    readonly expectedRevision: string;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<{
-      readonly findingId: string;
-      readonly include: boolean;
-      readonly body: string;
-    }>;
-  }) => Promise<{ readonly draft: ReviewDraft; readonly revision: string }>;
-  readonly createPendingReview?: () => Promise<{ readonly reviewId: string }>;
-  readonly submitPendingReview?: (
-    event: GitHubReviewEvent,
-    summaryBody: string,
-  ) => Promise<{ readonly reviewId: string }>;
+  readonly batchActions?: ReviewBatchPanelActions;
   readonly merge?: (
     method: MergeMethod,
     acknowledgedWarnings: boolean,
@@ -136,15 +118,8 @@ export function CompletedReviewWorkbench({
     comments: model.comments,
     checks: model.checks,
     history: model.history,
-    onNavigationStateChange: actions.reportNavigationState,
-    draftEditor: { draft: model.draft, onSave: actions.saveDraft },
-    submission: actions.createPendingReview === undefined || actions.submitPendingReview === undefined
-      ? undefined
-      : {
-          draft: model.draft,
-          onCreatePending: actions.createPendingReview,
-          onSubmitPending: actions.submitPendingReview,
-        },
+    batch: model.batch,
+    batchActions: actions.batchActions,
     merge: model.mergeReadiness === undefined || model.pullRequest === undefined || actions.merge === undefined
       ? undefined
       : {
@@ -196,8 +171,6 @@ export function CompletedReviewWorkbench({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
-  const [draftSaveState, setDraftSaveState] = useState<DraftSaveState>("saved");
-  const [writePending, setWritePending] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const preferenceProfileId = props.profileId ?? "default";
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
@@ -212,7 +185,7 @@ export function CompletedReviewWorkbench({
     setPreferences(loadReviewViewPreferences(preferenceProfileId));
   }, [preferenceProfileId]);
   const freshness = props.freshness;
-  const writeBlocked = freshness !== "fresh" || draftSaveState !== "saved";
+  const writeBlocked = freshness !== "fresh";
   const selectFinding = (finding: ReviewResult["findings"][number]): void => {
     setSelectedFinding(finding);
     if (finding.mappingStatus === "mapped" && finding.file !== undefined) {
@@ -262,26 +235,7 @@ export function CompletedReviewWorkbench({
           side: selectedFinding.diffSide,
         }
       : undefined;
-  const updateDraftSaveState = (state: DraftSaveState): void => {
-    setDraftSaveState(state);
-    props.onNavigationStateChange?.(
-      writePending
-        ? "write_pending"
-        : state === "saved"
-          ? "clear"
-          : "dirty_draft",
-    );
-  };
-  const updateWritePending = (pending: boolean): void => {
-    setWritePending(pending);
-    props.onNavigationStateChange?.(
-      pending
-        ? "write_pending"
-        : draftSaveState === "saved"
-          ? "clear"
-          : "dirty_draft",
-    );
-  };
+  const updateWritePending = (pending: boolean): void => actions.reportNavigationState(pending ? "write_pending" : "clear");
 
   const copyValidationPlan = async (): Promise<void> => {
     try {
@@ -651,48 +605,14 @@ export function CompletedReviewWorkbench({
                   </section>
                 </>}
                 <Separator />
-                <section>
-                  <h2 className="font-semibold">Draft and GitHub writes</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Every write uses the exact saved local revision and requires
-                    confirmation.
-                  </p>
-                  {props.draftEditor === undefined ? null : (
-                    <div className="mt-3">
-                      <ReviewDraftSheet
-                        draft={props.draftEditor.draft}
-                        onSave={props.draftEditor.onSave}
-                        onSaveState={updateDraftSaveState}
-                      />
-                    </div>
-                  )}
-                  <div className="mt-3">
-                    {props.submission === undefined ? (
-                      <p className="text-sm text-muted-foreground">
-                        GitHub submission is unavailable for this session. The
-                        local draft remains editable.
-                      </p>
-                    ) : writeBlocked ? (
-                      <Alert>
-                        <ShieldCheck />
-                        <AlertTitle>Writes blocked</AlertTitle>
-                        <AlertDescription>
-                          {freshness !== "fresh"
-                            ? "Refresh GitHub state first."
-                            : "Save the draft before continuing."}
-                        </AlertDescription>
-                      </Alert>
-                    ) : (
-                      <ReviewSubmissionDialog
-                        draft={props.submission.draft}
-                        findings={props.result.findings}
-                        onCreatePending={props.submission.onCreatePending}
-                        onSubmitPending={props.submission.onSubmitPending}
-                        onPendingChange={updateWritePending}
-                      />
-                    )}
-                  </div>
-                </section>
+                {props.batchActions === undefined ? null : (
+                  <ReviewBatchPanel
+                    {...(props.batch === undefined ? {} : { batch: props.batch })}
+                    {...(selectedFinding === undefined ? {} : { selectedFinding })}
+                    writeBlocked={writeBlocked}
+                    actions={props.batchActions}
+                  />
+                )}
                 {props.merge === undefined ? null : (
                   <>
                     <Separator />
@@ -700,8 +620,7 @@ export function CompletedReviewWorkbench({
                       <h2 className="mb-3 font-semibold">Merge</h2>
                       {writeBlocked ? (
                         <p className="text-sm text-muted-foreground">
-                          Merge remains unavailable until the head is fresh and
-                          the draft is saved.
+                          Merge remains unavailable until the head is fresh.
                         </p>
                       ) : (
                         <MergeConfirmationDialog

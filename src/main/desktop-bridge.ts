@@ -49,6 +49,7 @@ const allowedRoutes = new Set([
   "POST /v1/direct-entry/preview",
   "POST /v1/runs/review-pr",
   "POST /v1/reviews/pending",
+  "POST /v1/reviews/apply-batch",
   "POST /v1/reviews/submit",
   "POST /v1/reviews/open",
   "GET /v1/reviews/models",
@@ -57,6 +58,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/load",
   "POST /v1/reviews/diff-file",
   "POST /v1/reviews/draft",
+  "POST /v1/reviews/batch",
   "POST /v1/reviews/refresh",
   "POST /v1/reviews/merge",
 ]);

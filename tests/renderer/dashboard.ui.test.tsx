@@ -2,7 +2,6 @@
 
 import {
   cleanup,
-  fireEvent,
   render,
   screen,
   waitFor,
@@ -524,95 +523,6 @@ describe("dashboard renderer API flow", () => {
     ).toBe(false);
   });
 
-  it("uses one guarded transition before leaving an unsaved review draft", async () => {
-    window.localStorage.setItem(
-      "patchdesk.destination",
-      "workbench:session-123",
-    );
-    installApi({ loadedWorkbench: completedWorkbench });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findByRole("heading", { name: "Stored review title" });
-    await user.click(screen.getByRole("button", { name: "Edit review draft" }));
-    fireEvent.change(screen.getByLabelText("Review summary"), {
-      target: { value: "Unsaved local edit" },
-    });
-    await waitFor(() =>
-      expect(window.patchdesk.request).toHaveBeenCalledWith({
-        operation: "setNavigationState",
-        state: "dirty_draft",
-      }),
-    );
-
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
-    expect(
-      screen.queryByRole("dialog", { name: "Navigate Patchdesk" }),
-    ).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", hidden: true }),
-    );
-    expect(
-      screen.getByRole("alertdialog", {
-        name: "Leave with an unsaved review draft?",
-      }),
-    ).toBeTruthy();
-    await user.click(
-      screen.getByRole("button", { name: "Stay on this review" }),
-    );
-    expect(
-      screen.getByRole("heading", {
-        name: "Stored review title",
-        hidden: true,
-      }),
-    ).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", hidden: true }),
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Discard changes and leave" }),
-    );
-    expect(
-      await screen.findByRole("heading", { name: "Settings" }),
-    ).toBeTruthy();
-    expect(window.patchdesk.request).toHaveBeenCalledWith({
-      operation: "setNavigationState",
-      state: "clear",
-    });
-    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
-      "settings",
-    );
-  });
-
-  it("routes the native Settings command through the dirty-draft guard", async () => {
-    window.localStorage.setItem(
-      "patchdesk.destination",
-      "workbench:session-123",
-    );
-    let nativeNavigate: ((destination: "settings") => void) | undefined;
-    installApi({
-      loadedWorkbench: completedWorkbench,
-      captureNavigation(listener) {
-        nativeNavigate = listener;
-      },
-    });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findByRole("heading", { name: "Stored review title" });
-    await user.click(screen.getByRole("button", { name: "Edit review draft" }));
-    fireEvent.change(screen.getByLabelText("Review summary"), {
-      target: { value: "Unsaved native navigation edit" },
-    });
-
-    nativeNavigate?.("settings");
-    expect(
-      await screen.findByRole("alertdialog", {
-        name: "Leave with an unsaved review draft?",
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
-  });
 });
 
 const completedWorkbench = {

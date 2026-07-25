@@ -18,16 +18,6 @@ function ReviewWorkbenchFixture(props: {
   const profileId = typeof props.profileId === "string" ? props.profileId : "fixture";
   const source = props.sourceSession as { readonly profileId: string; readonly sessionId: string } | undefined;
   const modelSource = source ?? { profileId, sessionId: "fixture-session" };
-  const draft = {
-    sessionId: modelSource.sessionId,
-    attemptId: "001",
-    state: { _tag: "LocalDraft" },
-    summaryBody: "",
-    suggestedEvent: "COMMENT",
-    comments: [],
-    createdAt: "2026-07-18T00:00:00.000Z",
-    updatedAt: "2026-07-18T00:00:00.000Z",
-  } as never;
   return (
     <CompletedReviewWorkbench
       model={{
@@ -44,13 +34,11 @@ function ReviewWorkbenchFixture(props: {
         ...(props.currentHeadSha === undefined ? {} : { currentHeadSha: props.currentHeadSha as never }),
         freshness: (props.staleHead === true ? "stale" : props.freshness ?? "fresh") as never,
         refreshedAt: "2026-07-18T00:00:00.000Z" as never,
-        draft,
         comments: (props.comments ?? { threads: [] }) as never,
         checks: (props.checks ?? { overall: "unknown", checks: [] }) as never,
         history: (props.history ?? []) as never,
       }}
       actions={{
-        saveDraft: async () => ({ draft, revision: "fixture" }),
         reportNavigationState: () => undefined,
       }}
     />
