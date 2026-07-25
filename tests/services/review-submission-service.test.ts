@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
+import type { GitHubReviewWriter, PendingReviewComment } from "../../src/adapters/github/github-adapter";
 import { editFailedDraftComment, type ReviewDraft } from "../../src/domain/review-draft";
 import type { ReviewSession } from "../../src/domain/review-session";
 import {
@@ -91,6 +91,37 @@ describe("review submission service", () => {
     expect(result).toMatchObject({ _tag: "err", error: { _tag: "BatchWriteRejected", batch: { state: { _tag: "PartialFailure", failure: { category: "rejected" } } } } });
     expect(persisted).toHaveLength(2);
     expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "PartialFailure", failure: { message: "Line is no longer in the diff." } } } });
+  });
+
+  it("sends a manual inline range with its first and last lines in GitHub order", async () => {
+    let sent: { readonly line: number; readonly lineEnd?: number } | undefined;
+    const batch = {
+      sessionId: session.id,
+      attemptId: "001" as never,
+      state: { _tag: "Local" as const },
+      summaryBody: "Review summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [{ _tag: "InlineComment" as const, id: "range" as never, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 4, line: 6, side: "new" as const }, body: "Keep the guard.", include: true, postability: "postable" as const }],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async () => true,
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview(input: { readonly comments: ReadonlyArray<PendingReviewComment> }) {
+          sent = input.comments[0];
+          return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } };
+        },
+        async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+      } as never,
+    });
+    expect(sent).toMatchObject({ line: 4, lineEnd: 6 });
   });
 
   it("completes a reply-only batch without creating a pending review", async () => {

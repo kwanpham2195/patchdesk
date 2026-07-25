@@ -243,7 +243,7 @@ export async function applyReviewBatch(input: {
     const item = operation._tag === "CreatePendingReview" ? undefined : batch.items.find((value) => value.id === operation.itemId);
     let receipt: ReviewBatch["receipts"][number] | undefined;
     if (operation._tag === "CreatePendingReview") {
-      const comments = batch.items.filter((value): value is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => value._tag === "InlineComment" && operation.itemIds.includes(value.id)).map((value) => ({ body: value.body, path: value.anchor.path, line: value.anchor.line, ...(value.anchor.startLine === value.anchor.line ? {} : { lineEnd: value.anchor.startLine }), diffSide: value.anchor.side }));
+      const comments = batch.items.filter((value): value is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => value._tag === "InlineComment" && operation.itemIds.includes(value.id)).map((value) => ({ body: value.body, path: value.anchor.path, line: value.anchor.startLine, ...(value.anchor.startLine === value.anchor.line ? {} : { lineEnd: value.anchor.line }), diffSide: value.anchor.side }));
       const created = await input.gateway.createPendingReview({ profile: input.profile, pr: sessionPr(session), headSha: session.key.headSha, summaryBody: batch.summaryBody, comments });
       if (created._tag === "err") return err(await persistBatchFailure({
         operation,
