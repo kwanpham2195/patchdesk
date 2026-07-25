@@ -58,7 +58,11 @@ export class ReviewWriteController {
   async applyBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
     return this.withLoadedBatch(input, async ({ profile, session, batch }) => {
       const applied = await applyReviewBatch({ profile, session, batch, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
-      return applied._tag === "ok" ? ok({ session: applied.value.session, batch: applied.value.batch }) : err({ reason: failureReason(applied.error._tag) });
+      if (applied._tag === "ok") return ok({ session: applied.value.session, batch: applied.value.batch });
+      if (applied.error._tag === "StaleHeadBlocksWrite") {
+        await this.sessions.save(applied.error.session);
+      }
+      return err({ reason: failureReason(applied.error._tag) });
     });
   }
 

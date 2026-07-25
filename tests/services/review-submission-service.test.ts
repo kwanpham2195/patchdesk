@@ -59,6 +59,40 @@ const profile = { githubHost: "github.com", ghAccount: "pmquan2cfw" } as never;
 const now = "2026-07-16T00:01:00.000Z" as never;
 
 describe("review submission service", () => {
+  it("persists a partial failure after GitHub rejects a confirmed batch operation", async () => {
+    const persisted: ReviewSession[] = [];
+    const batch = {
+      sessionId: session.id,
+      attemptId: "001" as never,
+      state: { _tag: "Local" as const },
+      summaryBody: "Review summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [{ _tag: "InlineComment" as const, id: "comment" as never, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Keep this.", include: true, postability: "postable" as const }],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async (next) => {
+        persisted.push(next);
+        return true;
+      },
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview() { return { _tag: "err" as const, error: { category: "rejected" as const, message: "Line is no longer in the diff." } }; },
+        async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+      } as never,
+    });
+
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "BatchWriteRejected", batch: { state: { _tag: "PartialFailure", failure: { category: "rejected" } } } } });
+    expect(persisted).toHaveLength(2);
+    expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "PartialFailure", failure: { message: "Line is no longer in the diff." } } } });
+  });
+
   it("completes a reply-only batch without creating a pending review", async () => {
     const writes: string[] = [];
     const batch = { sessionId: session.id, attemptId: "001" as never, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [{ _tag: "ThreadReply" as const, id: "reply" as never, threadId: "thread-1" as never, body: "Fixed.", include: true }], receipts: [], createdAt: now, updatedAt: now };

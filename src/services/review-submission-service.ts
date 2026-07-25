@@ -245,21 +245,91 @@ export async function applyReviewBatch(input: {
     if (operation._tag === "CreatePendingReview") {
       const comments = batch.items.filter((value): value is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => value._tag === "InlineComment" && operation.itemIds.includes(value.id)).map((value) => ({ body: value.body, path: value.anchor.path, line: value.anchor.line, ...(value.anchor.startLine === value.anchor.line ? {} : { lineEnd: value.anchor.startLine }), diffSide: value.anchor.side }));
       const created = await input.gateway.createPendingReview({ profile: input.profile, pr: sessionPr(session), headSha: session.key.headSha, summaryBody: batch.summaryBody, comments });
-      if (created._tag === "err") return err({ _tag: created.error.category === "rejected" ? "BatchWriteRejected" : "BatchOutcomeUnknown", session, batch });
+      if (created._tag === "err") return err(await persistBatchFailure({
+        operation,
+        category: created.error.category,
+        message: created.error.message,
+        session,
+        batch,
+        now: input.now,
+        persist: input.persist,
+      }));
       receipt = { _tag: "PendingReviewCreated", reviewId: created.value.reviewId, itemIds: operation.itemIds };
     } else if (operation._tag === "Reply" && item?._tag === "ThreadReply" && input.gateway.createThreadReply !== undefined) {
       const replied = await input.gateway.createThreadReply({ profile: input.profile, threadId: item.threadId, body: item.body });
-      if (replied._tag === "err") return err({ _tag: replied.error.category === "rejected" ? "BatchWriteRejected" : "BatchOutcomeUnknown", session, batch });
+      if (replied._tag === "err") return err(await persistBatchFailure({
+        operation,
+        category: replied.error.category,
+        message: replied.error.message,
+        session,
+        batch,
+        now: input.now,
+        persist: input.persist,
+      }));
       receipt = { _tag: "ReplyCreated", itemId: item.id, commentId: replied.value.commentId };
     } else if (operation._tag === "ThreadState" && item?._tag === "ThreadState" && input.gateway.setReviewThreadState !== undefined) {
       const changed = await input.gateway.setReviewThreadState({ profile: input.profile, threadId: item.threadId, state: item.action === "resolve" ? "resolved" : "open" });
-      if (changed._tag === "err") return err({ _tag: changed.error.category === "rejected" ? "BatchWriteRejected" : "BatchOutcomeUnknown", session, batch });
+      if (changed._tag === "err") return err(await persistBatchFailure({
+        operation,
+        category: changed.error.category,
+        message: changed.error.message,
+        session,
+        batch,
+        now: input.now,
+        persist: input.persist,
+      }));
       receipt = { _tag: "ThreadStateChanged", itemId: item.id, state: item.action === "resolve" ? "resolved" : "open" };
-    } else return err({ _tag: "BatchWriterUnavailable", session, batch });
+    } else return err(await persistBatchFailure({
+      operation,
+      category: "unavailable",
+      message: "GitHub thread writes are unavailable for this profile.",
+      session,
+      batch,
+      now: input.now,
+      persist: input.persist,
+    }));
     batch = { ...batch, receipts: [...batch.receipts, receipt], updatedAt: input.now };
   }
   const pending = batch.receipts.find((receipt): receipt is Extract<ReviewBatch["receipts"][number], { readonly _tag: "PendingReviewCreated" }> => receipt._tag === "PendingReviewCreated");
   batch = { ...batch, state: pending === undefined ? { _tag: "Completed" } : { _tag: "PendingReview", reviewId: pending.reviewId }, updatedAt: input.now };
   session = { ...session, batch: { state: batch.state }, batchContent: batch, updatedAt: input.now };
   return (await input.persist(session)) ? ok({ session, batch }) : err({ _tag: "BatchOutcomeUnknown", session, batch });
+}
+
+async function persistBatchFailure(input: {
+  readonly operation: BatchOperation;
+  readonly category: "auth" | "rejected" | "unavailable";
+  readonly message: string;
+  readonly session: ReviewSession;
+  readonly batch: ReviewBatch;
+  readonly now: IsoTimestamp;
+  readonly persist: (session: ReviewSession) => Promise<boolean>;
+}): Promise<BatchApplyFailure> {
+  const failedBatch: ReviewBatch = {
+    ...input.batch,
+    state: {
+      _tag: "PartialFailure",
+      operation: input.operation,
+      failure: {
+        _tag: "SafeWriteFailure",
+        category: input.category,
+        message: input.message,
+      },
+    },
+    updatedAt: input.now,
+  };
+  const failedSession: ReviewSession = {
+    ...input.session,
+    batch: { state: failedBatch.state },
+    batchContent: failedBatch,
+    updatedAt: input.now,
+  };
+  if (!(await input.persist(failedSession))) {
+    return { _tag: "BatchOutcomeUnknown", session: input.session, batch: input.batch };
+  }
+  return {
+    _tag: input.category === "rejected" ? "BatchWriteRejected" : "BatchOutcomeUnknown",
+    session: failedSession,
+    batch: failedBatch,
+  };
 }
