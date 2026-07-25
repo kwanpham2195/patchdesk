@@ -265,7 +265,10 @@ test("completed-review workbench keeps drafts local and unmapped findings unpost
     await expect(
       page.getByRole("region", { name: "Completed review workbench" }),
     ).toBeVisible();
+    await expect(page.getByText("2 findings · 1 mapped")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Fix queue" })).toHaveCount(0);
     await page.getByRole("tab", { name: "Findings" }).click();
+    await expect(page.getByLabel("Filter findings by severity")).toHaveCount(0);
     await expect(page.getByText("Unmapped — not postable")).toBeVisible();
     await page.getByRole("button", { name: "Edit review draft" }).click();
     await page.getByLabel("Draft for mapped").fill("Edited only in Patchdesk");

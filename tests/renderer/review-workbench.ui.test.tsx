@@ -58,19 +58,21 @@ function ReviewWorkbenchFixture(props: {
 }
 
 describe("completed review workbench", () => {
-  it("keeps Fix queue statuses local to the reviewed revision", async () => {
-    const user = userEvent.setup();
+  it("shows truthful finding counts without a duplicate local queue", () => {
+    const legacyQueueKey = "patchdesk.fix-queue.v1.findings.abcdef";
+    window.localStorage.setItem(legacyQueueKey, '{"guard":"investigating"}');
     render(
       <ReviewWorkbenchFixture
-        profileId="fix-queue"
+        profileId="findings"
         reviewedHeadSha="abcdef"
-        result={{ changeSummary: "Fix queue.", verdict: "comment", summary: "Fix queue.", findings: [{ id: "guard", severity: "P1", title: "Protect guard", file: "src/a.ts", lineStart: 1, diffSide: "new", explanation: "Protect it.", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } as never}
+        result={{ changeSummary: "Findings.", verdict: "comment", summary: "Findings.", findings: [{ id: "guard", severity: "P1", title: "Protect guard", file: "src/a.ts", lineStart: 1, diffSide: "new", explanation: "Protect it.", confidence: "high", mappingStatus: "mapped" }, { id: "manual", severity: "P2", title: "Inspect manual placement", explanation: "No verified line.", confidence: "medium", mappingStatus: "unmapped" }], validationPlan: [], assumptions: [] } as never}
         draft={{ summaryBody: "", comments: [] }} comments={{ threads: [] }} checks={{ overall: "unknown", checks: [] }} history={[]} debugHref="/debug"
       />,
     );
-    await user.click(screen.getByLabelText("Fix queue status for Protect guard"));
-    await user.click(await screen.findByRole("option", { name: "Investigating" }));
-    expect(window.localStorage.getItem("patchdesk.fix-queue.v1.fix-queue.abcdef")).toContain('"guard":"investigating"');
+    expect(screen.getByText("2 findings · 1 mapped")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Fix queue" })).toBeNull();
+    expect(screen.queryByLabelText("Fix queue status for Protect guard")).toBeNull();
+    expect(window.localStorage.getItem(legacyQueueKey)).toBe('{"guard":"investigating"}');
   });
 
   it("persists compact Pierre controls and collapses both workbench rails", async () => {
@@ -216,12 +218,12 @@ describe("completed review workbench", () => {
     expect(screen.getByText("Finding mapped · new lines 7–8")).toBeTruthy();
   });
 
-  it("truthfully hides a selected finding when a filter excludes it and restores it when cleared", async () => {
+  it("shows every finding without filter controls", async () => {
     const user = userEvent.setup();
     render(
       <ReviewWorkbenchFixture
         result={{
-          changeSummary: "Filter findings.",
+          changeSummary: "All findings.",
           verdict: "comment",
           summary: "One finding per severity.",
           findings: [
@@ -237,17 +239,15 @@ describe("completed review workbench", () => {
       />,
     );
     await user.click(screen.getByRole("tab", { name: /Findings/ }));
-    await user.click(screen.getByRole("button", { name: /High finding/ }));
-    expect(screen.getByText("Finding p1 · no mapped line")).toBeTruthy();
-
-    await user.click(screen.getByLabelText("Filter findings by severity"));
-    await user.click(await screen.findByRole("option", { name: "P2 Medium" }));
-    expect(screen.queryByRole("button", { name: /High finding/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /Medium finding/ })).toBeTruthy();
-
-    await user.click(screen.getByLabelText("Filter findings by severity"));
-    await user.click(await screen.findByRole("option", { name: "All severities" }));
+    expect(screen.queryByLabelText("Filter findings by severity")).toBeNull();
+    expect(screen.queryByLabelText("Filter findings by confidence")).toBeNull();
+    expect(screen.queryByLabelText("Filter findings by evidence mapping")).toBeNull();
+    expect(screen.queryByLabelText("Filter findings by category")).toBeNull();
     expect(screen.getByRole("button", { name: /High finding/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Medium finding/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /High finding/ }));
+    await user.click(screen.getByRole("button", { name: "Next finding" }));
+    expect(screen.getByText("Finding p2 · no mapped line")).toBeTruthy();
   });
 
   it("opens incremental reviews on Updates and preserves the full PR surface", async () => {
