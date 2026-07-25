@@ -552,9 +552,9 @@ const completedWorkbench = {
     comments: [],
     state: { _tag: "LocalDraft" },
   },
+  history: [],
   comments: { threads: [] },
   checks: { overall: "passing", checks: [] },
-  history: [],
   reviewScope: { kind: "full" },
   comparisonAvailability: "not_requested",
   fullPatch:

@@ -36,7 +36,6 @@ function ReviewWorkbenchFixture(props: {
         refreshedAt: "2026-07-18T00:00:00.000Z" as never,
         comments: (props.comments ?? { threads: [] }) as never,
         checks: (props.checks ?? { overall: "unknown", checks: [] }) as never,
-        history: (props.history ?? []) as never,
       }}
       actions={{
         reportNavigationState: () => undefined,
@@ -173,7 +172,6 @@ describe("completed review workbench", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: /Findings/ }));
     await user.click(screen.getByRole("button", { name: /Mapped finding/ }));
     expect(
       screen.getByLabelText("Review diff").getAttribute("data-selected-path"),
@@ -226,7 +224,6 @@ describe("completed review workbench", () => {
         history={[]}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.queryByLabelText("Filter findings by severity")).toBeNull();
     expect(screen.queryByLabelText("Filter findings by confidence")).toBeNull();
     expect(screen.queryByLabelText("Filter findings by evidence mapping")).toBeNull();
@@ -350,13 +347,13 @@ describe("completed review workbench", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: /Findings/ }));
-    expect(screen.getByText("Unmapped — not postable")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Unmapped finding" }));
+    expect(screen.getByText("Unmapped evidence — inspect before drafting a comment")).toBeTruthy();
     expect(screen.getByText("Existing review comment")).toBeTruthy();
     expect(screen.getByText("unit")).toBeTruthy();
     expect(screen.getByText("Required")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
-    expect(screen.getByText("Attempt 002: Discarded")).toBeTruthy();
+    expect(screen.queryByText("Attempt 002: Discarded")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /resolve|reply|apply/i }),
     ).toBeNull();
@@ -364,10 +361,6 @@ describe("completed review workbench", () => {
       screen.getByRole("button", { name: "Copy validation plan" }),
     );
     expect(screen.getByText("Validation plan copied locally.")).toBeTruthy();
-    await user.click(
-      screen.getByRole("button", { name: "Attempt 002: Discarded" }),
-    );
-    expect(screen.getByText("Viewing attempt 002 metadata.")).toBeTruthy();
   });
 
   it("shows a stale-head warning instead of a GitHub write control", () => {

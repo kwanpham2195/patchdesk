@@ -25,7 +25,7 @@ import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
 import { ReviewChecks } from "./review-checks";
-import { ReviewDiffView } from "./review-diff-view";
+import { ReviewDiffView, type ReviewInlineAnnotation } from "./review-diff-view";
 import { ReviewBatchPanel, type ReviewBatchPanelActions } from "./review-batch-panel";
 import {
   MergeConfirmationDialog,
@@ -45,19 +45,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
-
-export type ReviewHistoryItem = {
-  readonly id: string;
-  readonly state: string;
-  readonly startedAt?: string;
-};
 
 export type CompletedReviewWorkbenchModel = {
   readonly source: { readonly profileId: string; readonly sessionId: string };
@@ -76,7 +70,6 @@ export type CompletedReviewWorkbenchModel = {
   readonly batch?: ReviewBatch;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
-  readonly history: ReadonlyArray<ReviewHistoryItem>;
   readonly mergeReadiness?: MergeReadiness;
 };
 
@@ -118,7 +111,6 @@ export function CompletedReviewWorkbench({
     refreshedAt: model.refreshedAt,
     comments: model.comments,
     checks: model.checks,
-    history: model.history,
     batch: model.batch,
     batchActions: actions.batchActions,
     merge: model.mergeReadiness === undefined || model.pullRequest === undefined || actions.merge === undefined
@@ -168,7 +160,6 @@ export function CompletedReviewWorkbench({
   );
   const [selectedFinding, setSelectedFinding] =
     useState<ReviewResult["findings"][number]>();
-  const [selectedAttempt, setSelectedAttempt] = useState<string>();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -236,6 +227,27 @@ export function CompletedReviewWorkbench({
           side: selectedFinding.diffSide,
         }
       : undefined;
+  const inlineFindingAnnotations = useMemo(
+    () =>
+      props.result.findings.flatMap((finding): ReadonlyArray<ReviewInlineAnnotation> =>
+        finding.mappingStatus === "mapped" &&
+        finding.file !== undefined &&
+        finding.lineStart !== undefined &&
+        finding.diffSide !== undefined
+          ? [{
+              id: finding.id,
+              path: finding.file,
+              start: finding.lineStart,
+              end: finding.lineEnd ?? finding.lineStart,
+              side: finding.diffSide,
+              severity: finding.severity,
+              title: finding.title,
+              explanation: finding.explanation,
+            }]
+          : [],
+      ),
+    [props.result.findings],
+  );
   const updateWritePending = (pending: boolean): void => actions.reportNavigationState(pending ? "write_pending" : "clear");
 
   const copyValidationPlan = async (): Promise<void> => {
@@ -333,37 +345,14 @@ export function CompletedReviewWorkbench({
             aria-label="Review navigation"
             className="min-w-0 overflow-auto border-r bg-card p-2 max-[1279px]:hidden"
           >
-            <Tabs defaultValue="files">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <TabsList className="w-full">
-                  <TabsTrigger value="files">Files</TabsTrigger>
-                  <TabsTrigger value="findings">
-                    Findings
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 px-1.5 py-0 text-[10px]"
-                    >
-                      {props.result.findings.length}
-                    </Badge>
-                  </TabsTrigger>
-                </TabsList>
-                <SeverityCounts findings={props.result.findings} />
-              </div>
-              <TabsContent value="files" className="mt-3">
-                <PierreFileTree
-                  files={changedFiles}
-                  {...(selectedPath === undefined ? {} : { selectedPath })}
-                  onSelect={selectFile}
-                />
-              </TabsContent>
-              <TabsContent value="findings" className="mt-3">
-                <FindingList
-                  findings={props.result.findings}
-                  selectedFinding={selectedFinding}
-                  onSelect={selectFinding}
-                />
-              </TabsContent>
-            </Tabs>
+            <h2 className="px-1 text-sm font-semibold">Changed files</h2>
+            <div className="mt-3 h-[calc(100%-2rem)]">
+              <PierreFileTree
+                files={changedFiles}
+                {...(selectedPath === undefined ? {} : { selectedPath })}
+                onSelect={selectFile}
+              />
+            </div>
           </aside>
         ) : null}
         <div
@@ -462,45 +451,24 @@ export function CompletedReviewWorkbench({
                     />
                   }
                 >
-                  Files and findings
+                  Files
                 </SheetTrigger>
                 <SheetContent side="left">
                   <SheetHeader>
-                    <SheetTitle>Files and findings</SheetTitle>
+                    <SheetTitle>Files</SheetTitle>
                     <SheetDescription>
-                      Navigate the stored patch and review findings.
+                      Navigate the stored patch.
                     </SheetDescription>
                   </SheetHeader>
                   <div className="min-h-0 overflow-auto p-4">
-                    <Tabs defaultValue="files">
-                      <TabsList className="w-full">
-                        <TabsTrigger value="files">Files</TabsTrigger>
-                        <TabsTrigger value="findings">Findings</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="files" className="mt-3">
-                        <PierreFileTree
-                          files={changedFiles}
-                          {...(selectedPath === undefined
-                            ? {}
-                            : { selectedPath })}
-                          onSelect={(path) => {
-                            selectFile(path);
-                            setNavigationOpen(false);
-                          }}
-                        />
-                      </TabsContent>
-                      <TabsContent value="findings" className="mt-3">
-                        <SeverityCounts findings={props.result.findings} />
-                        <FindingList
-                          findings={props.result.findings}
-                          selectedFinding={selectedFinding}
-                          onSelect={(finding) => {
-                            selectFinding(finding);
-                            setNavigationOpen(false);
-                          }}
-                        />
-                      </TabsContent>
-                    </Tabs>
+                    <PierreFileTree
+                      files={changedFiles}
+                      {...(selectedPath === undefined ? {} : { selectedPath })}
+                      onSelect={(path) => {
+                        selectFile(path);
+                        setNavigationOpen(false);
+                      }}
+                    />
                   </div>
                 </SheetContent>
               </Sheet>
@@ -521,6 +489,7 @@ export function CompletedReviewWorkbench({
               fileStatsByPath={parsedDiff.statsByPath}
               {...(selectedPath === undefined ? {} : { selectedPath })}
               {...(selectedRange === undefined ? {} : { selectedRange })}
+              annotations={inlineFindingAnnotations}
               preferences={preferences}
               collapsedPaths={collapsedPaths}
               onPreferencesChange={updatePreferences}
@@ -550,6 +519,25 @@ export function CompletedReviewWorkbench({
                     <div className="rounded-md border p-2"><dt className="text-muted-foreground">Reviewed SHA</dt><dd className="mt-1 font-mono">{(props.reviewedHeadSha ?? "unavailable").slice(0, 12)}</dd></div>
                     <div className="rounded-md border p-2"><dt className="text-muted-foreground">Lifecycle</dt><dd className="mt-1 font-medium">Local only until you confirm a GitHub write</dd></div>
                   </dl>
+                  {props.result.findings.length === 0 ? null : (
+                    <div className="mt-3 border-t pt-3">
+                      <h3 className="text-sm font-medium">Findings</h3>
+                      <div className="mt-2 space-y-1">
+                        {props.result.findings.map((finding) => (
+                          <Button
+                            key={finding.id}
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto w-full justify-start whitespace-normal px-1 py-1 text-left"
+                            aria-pressed={selectedFinding?.id === finding.id}
+                            onClick={() => selectFinding(finding)}
+                          >
+                            <span className="line-clamp-2">{finding.title}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </section>
                 {selectedFinding === undefined ? null : (
                   <>
@@ -701,28 +689,6 @@ export function CompletedReviewWorkbench({
                     </p>
                   ) : null}
                 </section>
-                <Separator />
-                <section>
-                  <h2 className="font-semibold">Review history</h2>
-                  <div className="mt-2 space-y-1">
-                    {props.history.map((item) => (
-                      <Button
-                        key={item.id}
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start"
-                        onClick={() => setSelectedAttempt(item.id)}
-                      >
-                        Attempt {item.id}: {item.state}
-                      </Button>
-                    ))}
-                  </div>
-                  {selectedAttempt === undefined ? null : (
-                    <p role="status" className="mt-2 text-sm text-primary">
-                      Viewing attempt {selectedAttempt} metadata.
-                    </p>
-                  )}
-                </section>
                 <div className="rounded-lg border bg-muted p-3 text-xs text-muted-foreground">
                   <div className="flex items-center gap-2 font-medium text-foreground">
                     <GitPullRequest className="size-4" />
@@ -756,27 +722,6 @@ function ThreadBatchActions({
   return <div className="mt-2 border-t pt-2"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => { void onReply(body).then(() => setBody("")); }}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void onState(state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
 }
 
-function SeverityCounts({
-  findings,
-}: {
-  readonly findings: ReviewResult["findings"];
-}): React.JSX.Element {
-  return (
-    <div aria-label="Finding severity counts" className="flex flex-wrap gap-1">
-      {(["P0", "P1", "P2", "P3"] as const).map((severity) => (
-        <Badge
-          key={severity}
-          variant="outline"
-          className="px-1.5 py-0 text-[10px]"
-        >
-          {severityLabel(severity)} · {" "}
-          {findings.filter((finding) => finding.severity === severity).length}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 function severityLabel(severity: "P0" | "P1" | "P2" | "P3"): string {
   return `${severity} ${severity === "P0" ? "Critical" : severity === "P1" ? "High" : severity === "P2" ? "Medium" : "Low"}`;
 }
@@ -794,56 +739,4 @@ function SeverityBadge({
 }): React.JSX.Element {
   const severityClass = severity === "P0" || severity === "P1" ? "border-destructive text-foreground" : undefined;
   return <Badge variant="outline" className={[severityClass, className].filter((value) => value !== undefined).join(" ")} aria-label={severityLabel(severity)}>{severityLabel(severity)}</Badge>;
-}
-
-function FindingList({
-  findings,
-  selectedFinding,
-  onSelect,
-}: {
-  readonly findings: ReviewResult["findings"];
-  readonly selectedFinding: ReviewResult["findings"][number] | undefined;
-  readonly onSelect: (finding: ReviewResult["findings"][number]) => void;
-}): React.JSX.Element {
-  return (
-    <div className="mt-2 divide-y overflow-hidden rounded-md border">
-      {findings.map((finding) => {
-        const location =
-          finding.mappingStatus === "mapped" &&
-          finding.file !== undefined &&
-          finding.lineStart !== undefined
-            ? `${finding.file} · L${finding.lineStart}${finding.lineEnd === undefined ? "" : `–${finding.lineEnd}`}`
-            : "Unmapped — not postable";
-        return (
-          <Button
-            key={finding.id}
-            variant="ghost"
-            className="h-auto w-full items-stretch justify-start whitespace-normal rounded-none px-2 py-2 text-left hover:bg-muted/60 aria-pressed:bg-muted aria-pressed:shadow-[inset_3px_0_0_var(--primary)]"
-            aria-pressed={selectedFinding?.id === finding.id}
-            onClick={() => onSelect(finding)}
-          >
-            <span className="grid min-w-0 flex-1 grid-cols-[0.25rem_minmax(0,1fr)] gap-x-2">
-              <span
-                aria-hidden="true"
-                className={`w-1 rounded-full ${finding.severity === "P0" || finding.severity === "P1" ? "bg-destructive" : "bg-muted-foreground/50"}`}
-              />
-              <span className="min-w-0">
-                <SeverityBadge severity={finding.severity} />
-                <span className="mt-1 block min-w-0 line-clamp-2 leading-4 font-medium">
-                  {finding.title}
-                </span>
-                <span
-                  className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs text-muted-foreground"
-                  title={location}
-                >
-                  <span className="truncate">{location}</span>
-                  <span title={confidenceText(finding.confidence)}>{finding.confidence}</span>
-                </span>
-              </span>
-            </span>
-          </Button>
-        );
-      })}
-    </div>
-  );
 }

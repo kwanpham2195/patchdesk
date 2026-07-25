@@ -10,6 +10,7 @@ import {
 import {
   type CodeViewDiffItem,
   type CodeViewItem,
+  type DiffLineAnnotation,
   type FileDiffMetadata,
 } from "@pierre/diffs";
 import { CodeView, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
@@ -67,6 +68,17 @@ export type SelectedDiffRange = {
   readonly side: "new" | "old";
 };
 
+export type ReviewInlineAnnotation = {
+  readonly id: string;
+  readonly path: string;
+  readonly start: number;
+  readonly end: number;
+  readonly side: "new" | "old";
+  readonly severity: string;
+  readonly title: string;
+  readonly explanation: string;
+};
+
 
 function FileChangeCounts({
   stats,
@@ -93,6 +105,7 @@ type ReviewDiffViewProps = {
   readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
   readonly selectedPath?: string | undefined;
   readonly selectedRange?: SelectedDiffRange;
+  readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
   readonly preferences: ReviewViewPreferences;
   readonly collapsedPaths: ReadonlySet<string>;
   readonly onPreferencesChange: (
@@ -110,6 +123,7 @@ function ReviewDiffSurface({
   fileStatsByPath,
   selectedPath,
   selectedRange,
+  annotations = [],
   preferences,
   collapsedPaths,
   onPreferencesChange,
@@ -122,7 +136,7 @@ function ReviewDiffSurface({
   const [themePreferences, setThemePreferences] = useState<DiffThemePreferences>(() =>
     loadDiffThemePreferences(),
   );
-  const viewer = useRef<CodeViewHandle<undefined>>(null);
+  const viewer = useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
@@ -178,10 +192,17 @@ function ReviewDiffSurface({
   );
   const items = useMemo(
     () =>
-      visibleFiles.map<CodeViewDiffItem>((file) => ({
+      visibleFiles.map<CodeViewDiffItem<ReviewInlineAnnotation | undefined>>((file) => ({
         id: file.name,
         type: "diff",
         fileDiff: file,
+        annotations: annotations
+          .filter((annotation) => annotation.path === file.name)
+          .map((annotation) => ({
+            side: annotation.side === "new" ? "additions" : "deletions",
+            lineNumber: annotation.start,
+            metadata: annotation,
+          })),
         collapsed: collapsedPaths.has(file.name),
         // Pierre deliberately reuses a controlled item with the same ID and
         // version. Hydration swaps the partial raw-patch metadata for exact
@@ -192,7 +213,7 @@ function ReviewDiffSurface({
           hydrated: hydratedFiles.has(file.name),
         }),
       })),
-    [collapsedPaths, hydratedFiles, visibleFiles],
+    [annotations, collapsedPaths, hydratedFiles, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -226,7 +247,7 @@ function ReviewDiffSurface({
     nextItemIndex,
     appendItemsThrough,
     handleViewerScroll,
-  } = useProgressiveReviewDiffStream({
+  } = useProgressiveReviewDiffStream<ReviewInlineAnnotation | undefined>({
     items,
     fileMode: preferences.fileMode,
     hydrateFiles,
@@ -373,6 +394,26 @@ function ReviewDiffSurface({
     },
     [collapsedPaths, renderFileChangeCounts, toggleFile],
   );
+  const renderAnnotation = useCallback(
+    (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) => {
+      const finding = annotation.metadata;
+      if (finding === undefined) return null;
+      return (
+        <article
+          className="mx-2 my-2 max-w-2xl rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
+          data-review-inline-finding={finding.id}
+          aria-label={`${finding.severity} finding: ${finding.title}`}
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs font-semibold text-primary">{finding.severity}</span>
+            <h3 className="font-medium">{finding.title}</h3>
+          </div>
+          <p className="mt-1 text-muted-foreground">{finding.explanation}</p>
+        </article>
+      );
+    },
+    [],
+  );
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => (
       <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-sm">
@@ -510,7 +551,7 @@ function ReviewDiffSurface({
         />
       ) : (
         <div className="relative min-h-0 flex-1">
-          <CodeView
+          <CodeView<ReviewInlineAnnotation | undefined>
             key={`${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`}
             ref={viewer}
             items={items.slice(0, loadedCount)}
@@ -520,6 +561,7 @@ function ReviewDiffSurface({
             style={DIFF_CODE_METRICS}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
+            renderAnnotation={renderAnnotation}
             onScroll={handleViewerScroll}
           />
         </div>

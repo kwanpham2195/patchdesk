@@ -135,7 +135,6 @@ export function CompletedReviewFlow({
         ...(currentWorkbench.batch === undefined ? {} : { batch: currentWorkbench.batch as never }),
         comments: currentWorkbench.comments as never,
         checks: currentWorkbench.checks as never,
-        history: (currentWorkbench.history as never) ?? [],
         ...(currentWorkbench.mergeReadiness === undefined ? {} : { mergeReadiness: currentWorkbench.mergeReadiness as never }),
       }}
       actions={{

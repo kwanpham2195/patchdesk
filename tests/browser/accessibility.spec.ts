@@ -148,7 +148,7 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
   await expect(
-    page.getByRole("button", { name: "Files and findings" }),
+    page.getByRole("button", { name: "Files", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Hide details" }),

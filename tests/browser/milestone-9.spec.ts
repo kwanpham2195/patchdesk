@@ -14,7 +14,8 @@ test("review navigator presents the Pierre file tree", async ({
     const navigation = page.getByRole("complementary", {
       name: "Review navigation",
     });
-    await expect(navigation.locator("file-tree-container")).toBeVisible();
+    await expect(navigation.locator("file-tree-container")).toHaveCount(1);
+    await expect(navigation.getByRole("treeitem", { name: "a.ts" })).toBeVisible();
   } finally {
     await close(server);
   }
@@ -162,7 +163,7 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
   }
 });
 
-test("Pierre headers and the file navigator show the same per-file totals", async ({
+test("Pierre headers retain per-file totals while the navigator stays compact", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -170,11 +171,7 @@ test("Pierre headers and the file navigator show the same per-file totals", asyn
     await page.setViewportSize({ width: 1_280, height: 800 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
 
-    const treeStats = page
-      .getByRole("treeitem", { name: "src/a.ts" })
-      .locator("[data-file-change-stats]");
-    await expect(treeStats).toHaveAttribute("data-additions", "48");
-    await expect(treeStats).toHaveAttribute("data-deletions", "48");
+    await expect(page.getByRole("treeitem", { name: "a.ts" })).toBeVisible();
 
     const headerStats = page
       .locator("[data-file-header-change-stats]")
@@ -239,6 +236,11 @@ test("completed-review workbench keeps drafts local and unmapped findings unpost
     await expect(page.getByText("2 findings · 1 mapped")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Fix queue" })).toHaveCount(0);
     await expect(page.getByLabel("Filter findings by severity")).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Findings" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Keep writes behind the stale-head check" }).click();
+    await expect(page.locator('[data-review-inline-finding="mapped"]')).toContainText(
+      "Keep writes behind the stale-head check",
+    );
     await page.getByRole("button", { name: "Copy validation plan" }).click();
     await expect(
       page.getByText("Validation plan copied locally."),
@@ -294,7 +296,7 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
       await expect(navigation).toBeVisible();
       await expect(actions).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "Files and findings" }),
+        page.getByRole("button", { name: "Files", exact: true }),
       ).toBeHidden();
       const overflow = await page.evaluate(
         () =>
@@ -323,8 +325,6 @@ test("long workbench content keeps full values accessible without viewport overf
   try {
     const title =
       "Protect the authoritative review write boundary when a pull request title contains localized text, identifiers, and enough detail to exceed the available header width";
-    const path =
-      "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
     for (const width of [960, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin(server)}/#long-workbench-fixture`);
@@ -338,9 +338,9 @@ test("long workbench content keeps full values accessible without viewport overf
           { exact: false },
         ),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Files and findings" }).click();
+      await page.getByRole("button", { name: "Files", exact: true }).click();
       const navigation = page.getByRole("dialog", {
-        name: "Files and findings",
+        name: "Files",
       });
       await expect(
         navigation.getByRole("treeitem", { name: "authoritative-review-write-coordination-and-recovery-surface.ts" }),

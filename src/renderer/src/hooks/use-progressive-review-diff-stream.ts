@@ -4,11 +4,11 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 
 const VIRTUAL_FILE_BATCH_SIZE = 5;
 
-export type PierreCodeView = NonNullable<
-  ReturnType<CodeViewHandle<undefined>["getInstance"]>
+export type PierreCodeView<T = undefined> = NonNullable<
+  ReturnType<CodeViewHandle<T>["getInstance"]>
 >;
 
-export type ProgressiveReviewDiffStream = {
+export type ProgressiveReviewDiffStream<T = undefined> = {
   readonly loadedCount: number;
   /** Current exclusive item index; selection reads it without restarting the scroll effect. */
   readonly nextItemIndex: RefObject<number>;
@@ -16,7 +16,7 @@ export type ProgressiveReviewDiffStream = {
   readonly appendVisibleBatch: () => void;
   readonly handleViewerScroll: (
     scrollTop: number,
-    codeView: PierreCodeView,
+    codeView: PierreCodeView<T>,
   ) => void;
 };
 
@@ -24,17 +24,17 @@ export type ProgressiveReviewDiffStream = {
  * Adds virtualized files in small, hydrated batches. The native CodeView
  * owns scrolling; this hook only asks it to continue at an appended file.
  */
-export function useProgressiveReviewDiffStream({
+export function useProgressiveReviewDiffStream<T = undefined>({
   items,
   fileMode,
   hydrateFiles,
   viewerContainer,
 }: {
-  readonly items: ReadonlyArray<CodeViewDiffItem>;
+  readonly items: ReadonlyArray<CodeViewDiffItem<T>>;
   readonly fileMode: "all" | "selected";
   readonly hydrateFiles: (paths: ReadonlyArray<string>) => Promise<void>;
   readonly viewerContainer: RefObject<HTMLDivElement | null>;
-}): ProgressiveReviewDiffStream {
+}): ProgressiveReviewDiffStream<T> {
   const [loadedCount, setLoadedCount] = useState(1);
   const isAppendingBatch = useRef(false);
   const streamGeneration = useRef(0);
@@ -85,7 +85,7 @@ export function useProgressiveReviewDiffStream({
   );
 
   const handleViewerScroll = useCallback(
-    (scrollTop: number, codeView: PierreCodeView): void => {
+    (scrollTop: number, codeView: PierreCodeView<T>): void => {
       const root = viewerContainer.current;
       if (
         root === null ||

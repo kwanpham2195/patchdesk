@@ -58,7 +58,6 @@ export function AppFixtureContent({
           refreshedAt: "2026-07-17T00:00:00.000Z",
           comments: fixture.comments as never,
           checks: fixture.checks,
-          history: workbenchFixtureData.history,
         }}
         actions={{
           reportNavigationState: onNavigationStateChange,
@@ -278,14 +277,6 @@ const workbenchFixtureData = {
       { name: "docs", required: false as const, status: "queued" as const },
     ],
   },
-  history: [
-    { id: "001", state: "ReviewCompleted" as const },
-    { id: "002", state: "ReviewFailed" as const },
-    { id: "003", state: "Stale" as const },
-    { id: "004", state: "Discarded" as const },
-    { id: "005", state: "Merged" as const },
-    { id: "006", state: "IgnoredLateResult" as const },
-  ],
 };
 const longFixturePath =
   "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";

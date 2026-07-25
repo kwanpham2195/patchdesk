@@ -191,12 +191,11 @@ export function PreparedReviewFlow({
   return (
     <section
       className={showingDiff ? "flex min-h-0 flex-1 flex-col" : "mx-auto w-full max-w-3xl p-6"}
-      aria-label="Prepared review workbench"
+      aria-label="Review workbench"
     >
       <div className={showingDiff ? "flex min-h-0 flex-1 flex-col bg-card" : "rounded-xl border bg-card p-6 shadow-sm"}>
         <header className={showingDiff ? "flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-4 py-3" : undefined}>
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[.16em] text-primary">Prepared review</p>
             <h1 className="mt-2 text-2xl font-semibold">{workbench.pullRequest?.title ?? `Pull request ${prLabel}`}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{prLabel} · snapshot {snapshotLabel.slice(0, 12)} · read-only</p>
           </div>

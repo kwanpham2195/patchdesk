@@ -6,9 +6,9 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
  * Captures passive, QA-only scroll evidence without altering native wheel or
  * trackpad delivery. Production builds leave this hook dormant.
  */
-export function useReviewDiffQaScrollDiagnostics(
+export function useReviewDiffQaScrollDiagnostics<T>(
   viewerElement: HTMLDivElement | null,
-  viewer: RefObject<CodeViewHandle<undefined> | null>,
+  viewer: RefObject<CodeViewHandle<T> | null>,
 ): void {
   useEffect(() => {
     if (
