@@ -59,7 +59,10 @@ export type PreparedReviewFlowProps = {
   readonly workbench: PreparedReviewFlowWorkbench;
   readonly initialSection?: "diff" | "checks";
   readonly onNavigate: (section: "diff" | "checks") => void;
-  readonly onWorkbenchPatch: (patch: { readonly runId?: string }) => void;
+  readonly onWorkbenchPatch: (patch: {
+    readonly runId?: string;
+    readonly session?: PreparedReviewFlowWorkbench["session"];
+  }) => void;
   readonly onWorkbenchReplace: (workbench: unknown) => void;
 };
 
@@ -111,7 +114,7 @@ export function PreparedReviewFlow({
     };
   }, [profileId]);
 
-  const startRun = async (): Promise<string | undefined> => {
+  const startRun = async (): Promise<{ readonly runId: string; readonly attemptId: string } | undefined> => {
     if (reviewModel === undefined) {
       setRunError("No enabled Pi review model is available. Update the active Pi runtime settings, then try again.");
       return undefined;
@@ -123,7 +126,9 @@ export function PreparedReviewFlow({
         method: "POST",
         body: { profileId, sessionId: workbench.session.id, model: reviewModel, reasoning: reviewReasoning },
       });
-      return isRunStart(value) ? value.runId : undefined;
+      if (isRunStart(value)) return { runId: value.runId, attemptId: value.attemptId };
+      setRunError("Patchdesk could not start this read-only review.");
+      return undefined;
     } catch (cause: unknown) {
       setRunError(cause instanceof PatchdeskApiError && cause.status === 409
         ? "GitHub changed after this snapshot was prepared. Refresh and reopen before running a review."
@@ -132,7 +137,7 @@ export function PreparedReviewFlow({
     }
   };
 
-  const resumePreparedRun = async (): Promise<string | undefined> => {
+  const resumePreparedRun = async (): Promise<{ readonly runId: string; readonly attemptId: string } | undefined> => {
     const attemptId = workbench.session.currentAttemptId;
     if (attemptId === undefined) return undefined;
     try {
@@ -140,17 +145,22 @@ export function PreparedReviewFlow({
         method: "POST",
         body: { profileId, sessionId: workbench.session.id, attemptId },
       });
-      return isRunStart(value) ? value.runId : undefined;
+      return isRunStart(value) ? { runId: value.runId, attemptId } : undefined;
     } catch {
       return undefined;
     }
   };
 
-  const startOwnedRun = async (): Promise<void> => {
-    const runId = workbench.session.currentAttemptId === undefined
+  const startOwnedRun = async (): Promise<boolean> => {
+    const started = workbench.session.currentAttemptId === undefined
       ? await startRun()
       : await resumePreparedRun();
-    if (runId !== undefined) onWorkbenchPatch({ runId });
+    if (started === undefined) return false;
+    onWorkbenchPatch({
+      runId: started.runId,
+      session: { ...workbench.session, currentAttemptId: started.attemptId },
+    });
+    return true;
   };
 
   const refreshPrepared = async (): Promise<void> => {
@@ -229,7 +239,7 @@ export function PreparedReviewFlow({
             sessionId={workbench.session.id}
             attemptId={workbench.session.currentAttemptId}
             {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
-            onStart={startOwnedRun}
+            onStart={async () => { await startOwnedRun(); }}
             onCompleted={loadCompleted}
           />
         )}
@@ -273,8 +283,10 @@ function isModelCatalog(value: unknown): value is {
     && (!("defaultModel" in value) || value.defaultModel === undefined || typeof value.defaultModel === "string");
 }
 
-function isRunStart(value: unknown): value is { readonly runId: string } {
-  return typeof value === "object" && value !== null && "runId" in value && typeof value.runId === "string";
+function isRunStart(value: unknown): value is { readonly runId: string; readonly attemptId: string } {
+  return typeof value === "object" && value !== null
+    && "runId" in value && typeof value.runId === "string"
+    && "attemptId" in value && typeof value.attemptId === "string";
 }
 
 function pullRequestRef(workbench: PreparedReviewFlowWorkbench): PullRequestRef | undefined {

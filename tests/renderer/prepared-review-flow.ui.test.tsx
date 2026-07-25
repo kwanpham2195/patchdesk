@@ -1,0 +1,83 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PreparedReviewFlow, type PreparedReviewFlowWorkbench } from "../../src/renderer/src/flows/prepared-review-flow";
+
+afterEach(cleanup);
+
+const workbench: PreparedReviewFlowWorkbench = {
+  state: "review_started",
+  session: {
+    id: "session-1",
+    key: { profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", prNumber: 42, headSha: "abcdef1234567890" },
+  },
+};
+
+const models = { models: [{ id: "model-1", label: "Model One" }], defaultModel: "model-1", defaultReasoning: "medium" };
+
+type MockRequest = { readonly path: string; readonly method?: string; readonly body?: unknown };
+
+function mockApi(handler: (request: MockRequest) => { readonly ok: boolean; readonly status: number; readonly body: unknown }) {
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: { request: vi.fn((request: MockRequest) => Promise.resolve({ correlationId: "test", ...handler(request) })) },
+  });
+}
+
+const ok200 = (body: unknown) => ({ ok: true as const, status: 200, body });
+
+async function startFromDialog() {
+  fireEvent.click(await screen.findByRole("button", { name: "Run review" }));
+  const confirm = await screen.findByRole("button", { name: "Start read-only review" });
+  await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(confirm);
+}
+
+describe("prepared review run start", () => {
+  it("applies runId and attemptId so the workbench enters live progress", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/run") return ok200({ runId: "run-1", attemptId: "001", model: "model-1", reasoning: "medium" });
+      throw new Error(`unexpected ${request.path}`);
+    });
+    const patched = vi.fn();
+    render(<PreparedReviewFlow workbench={workbench} onNavigate={() => {}} onWorkbenchPatch={patched} onWorkbenchReplace={() => {}} />);
+
+    await startFromDialog();
+
+    await waitFor(() => expect(patched).toHaveBeenCalledWith({
+      runId: "run-1",
+      session: { ...workbench.session, currentAttemptId: "001" },
+    }));
+  });
+
+  it("shows an error and patches nothing when the start response lacks attemptId", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/run") return ok200({ runId: "run-1" });
+      throw new Error(`unexpected ${request.path}`);
+    });
+    const patched = vi.fn();
+    render(<PreparedReviewFlow workbench={workbench} onNavigate={() => {}} onWorkbenchPatch={patched} onWorkbenchReplace={() => {}} />);
+
+    await startFromDialog();
+
+    // findAllByText: Task 2 renders the same error inside the open dialog as well.
+    expect((await screen.findAllByText("Patchdesk could not start this read-only review.")).length).toBeGreaterThan(0);
+    expect(patched).not.toHaveBeenCalled();
+  });
+
+  it("shows the head-change message when the start is rejected with 409", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/run") return { ok: false as const, status: 409, body: { error: "head_changed" } };
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<PreparedReviewFlow workbench={workbench} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    await startFromDialog();
+
+    // findAllByText: Task 2 renders the same error inside the open dialog as well.
+    expect((await screen.findAllByText("GitHub changed after this snapshot was prepared. Refresh and reopen before running a review.")).length).toBeGreaterThan(0);
+  });
+});
