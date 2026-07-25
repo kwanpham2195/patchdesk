@@ -49,21 +49,26 @@ function fakeGitHub(options: {
   readonly current?: PullRequestSummary;
   readonly comments?: GitHubComments;
   readonly checks?: CheckSummary;
-}): Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"> {
+}): Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"> & { readonly calls: Array<string> } {
+  const calls: Array<string> = [];
   const missing = (): { readonly _tag: "err"; readonly error: never } => ({
     _tag: "err",
     error: { _tag: "GitHubReadFailure" } as never,
   });
   return {
     async getPullRequest() {
+      calls.push("pull_request");
       return options.current === undefined ? missing() : { _tag: "ok", value: options.current };
     },
     async getPullRequestComments() {
+      calls.push("comments");
       return options.comments === undefined ? missing() : { _tag: "ok", value: options.comments };
     },
     async getPullRequestChecks() {
+      calls.push("checks");
       return options.checks === undefined ? missing() : { _tag: "ok", value: options.checks };
     },
+    calls,
   };
 }
 
@@ -99,13 +104,14 @@ function completedSession(paths: PatchdeskPaths, options: { readonly incremental
     worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, id))), headSha },
     createdAt: now,
   });
-  const draft = {
+  const batch = {
     sessionId: session.id,
     attemptId: "001",
-    state: { _tag: "LocalDraft" },
+    state: { _tag: "Local" },
     summaryBody: "Persisted review result",
     suggestedEvent: "COMMENT",
-    comments: [],
+    items: [],
+    receipts: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -113,8 +119,8 @@ function completedSession(paths: PatchdeskPaths, options: { readonly incremental
     ...session,
     state: { _tag: "ReviewCompleted", attemptId: "001" as never },
     currentAttemptId: "001" as never,
-    draft: { state: { _tag: "LocalDraft" } },
-    draftContent: draft as never,
+    batch: { state: { _tag: "Local" } },
+    batchContent: batch as never,
     visibleResult: {
       changeSummary: "Persisted review result",
       verdict: "comment",
@@ -156,6 +162,41 @@ async function setup(github: ReturnType<typeof fakeGitHub>): Promise<{
 }
 
 describe("ReviewWorkbenchProjectionService", () => {
+  it("opens saved local work without reading GitHub", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+
+      const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+
+      expect(loaded).toMatchObject({ _tag: "ok", value: { state: "completed", freshness: "not_refreshed" } });
+      expect(github.calls).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes GitHub context without replacing the saved local batch", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const before = await sessions.load(profileId, session.id);
+      if (before._tag === "err") throw new Error("session should load");
+
+      const refreshed = await projection.refreshRemote({ profileId, sessionId: session.id });
+      const after = await sessions.load(profileId, session.id);
+
+      expect(refreshed).toMatchObject({ _tag: "ok", value: { freshness: "fresh", checks: { overall: "passing" } } });
+      expect(github.calls).toEqual(expect.arrayContaining(["pull_request", "comments", "checks"]));
+      expect(after).toMatchObject({ _tag: "ok", value: { batchContent: before.value.batchContent } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it("keeps a completed review readable when its local patch is absent, without path fields", async () => {
     const github = fakeGitHub({
       current: summary(headSha),

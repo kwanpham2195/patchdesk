@@ -9,6 +9,7 @@ import {
 import { err, type Result } from "../domain/result";
 import type { PrepareReviewSessionFailure, ReviewOpenMode, ReviewSessionPreparation } from "./review-session-preparation";
 import type {
+  RemoteReviewContext,
   ReviewWorkbenchProjection,
   ReviewWorkbenchProjectionService,
   WorkbenchProjectionFailure,
@@ -59,8 +60,16 @@ export class ReviewWorkbenchController {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     if (profileId._tag === "err" || sessionId._tag === "err") return err({ reason: "invalid_input" });
-    const projected = await this.projection.load({ profileId: profileId.value, sessionId: sessionId.value });
+    const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: sessionId.value });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+  }
+
+  async refresh(input: unknown): Promise<Result<RemoteReviewContext, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    if (profileId._tag === "err" || sessionId._tag === "err") return err({ reason: "invalid_input" });
+    const refreshed = await this.projection.refreshRemote({ profileId: profileId.value, sessionId: sessionId.value });
+    return refreshed._tag === "err" ? err(mapProjectionFailure(refreshed.error)) : refreshed;
   }
 }
 

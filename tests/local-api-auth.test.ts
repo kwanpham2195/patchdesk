@@ -14,7 +14,6 @@ import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../src/domain/review-session";
-import type { ReviewDraft } from "../src/domain/review-draft";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { ProfileSettingsService } from "../src/services/profile-service";
 
@@ -243,22 +242,22 @@ describe("local API capability boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "review_write_unavailable" });
   });
 
-  it("persists a created pending review through the capability-authenticated local API", async () => {
+  it("persists a created pending review batch through the capability-authenticated local API", async () => {
     const fixture = await reviewWriteFixture({ _tag: "ok", value: { reviewId: "9001", state: "PENDING" } });
     localApi = fixture.api;
-    const response = await fetch(new URL("v1/reviews/pending", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
+    const response = await fetch(new URL("v1/reviews/apply-batch", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ draft: { state: { _tag: "PendingGitHubReview", pendingReviewId: "9001" } } });
-    await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { draftContent: { state: { _tag: "PendingGitHubReview", pendingReviewId: "9001" } } } });
+    await expect(response.json()).resolves.toMatchObject({ batch: { state: { _tag: "PendingReview", reviewId: "9001" } } });
+    await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "PendingReview", reviewId: "9001" } } } });
   });
 
-  it("persists DraftFailed after a rejected pending-review write and never advances its phase", async () => {
+  it("persists PartialFailure after a rejected batch write and never advances its phase", async () => {
     const fixture = await reviewWriteFixture({ _tag: "err", error: { _tag: "GitHubWriteFailure", category: "rejected", message: "Rejected by fixture." } });
     localApi = fixture.api;
-    const response = await fetch(new URL("v1/reviews/pending", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
+    const response = await fetch(new URL("v1/reviews/apply-batch", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual({ error: "github_rejected" });
-    await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "ReviewCompleted" }, draftContent: { state: { _tag: "DraftFailed" } } } });
+    await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "ReviewCompleted" }, batchContent: { state: { _tag: "PartialFailure" } } } });
   });
 });
 
@@ -282,15 +281,15 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
   await new ProfileStore(paths).save(profile);
   const session = createReviewSession({ key: { profileId, host, owner, repo, prNumber: number, headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath("/tmp/patch.diff")), worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha }, createdAt: "2026-07-16T00:00:00.000Z" as never });
-  const draft = { sessionId: session.id, attemptId, state: { _tag: "LocalDraft" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, comments: [{ findingId: "finding", include: true, originalSuggestedBody: "Comment", body: "Comment", path: "src/write.ts", line: 7, diffSide: "new" as const, postability: "postable" as const }], createdAt: "2026-07-16T00:00:00.000Z", updatedAt: "2026-07-16T00:00:00.000Z" } as unknown as ReviewDraft;
-  const completed = { ...session, state: { _tag: "ReviewCompleted" as const, attemptId }, currentAttemptId: attemptId, draft: { state: draft.state }, draftContent: draft } as ReviewSession;
+  const batch = { sessionId: session.id, attemptId, state: { _tag: "Local" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: "finding" as never, source: "finding" as const, findingId: "finding" as never, anchor: { path: "src/write.ts" as never, startLine: 7, line: 7, side: "new" as const }, body: "Comment", include: true, postability: "postable" as const }], receipts: [], createdAt: "2026-07-16T00:00:00.000Z" as never, updatedAt: "2026-07-16T00:00:00.000Z" as never };
+  const completed = { ...session, state: { _tag: "ReviewCompleted" as const, attemptId }, currentAttemptId: attemptId, batch: { state: batch.state }, batchContent: batch } as ReviewSession;
   const sessions = new ReviewSessionStore(paths);
   await sessions.save(completed);
   const github = new FakeGitHubAdapter({ pullRequest: { headSha } } as never);
   const writer: GitHubReviewWriter = { async createPendingReview() { return createResult; }, async submitPendingReview() { return { _tag: "ok", value: { reviewId: "9001" } }; } };
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github, reviewWriter: writer });
   if (startup._tag !== "started") throw new Error("Expected local API");
-  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, sessionId: completed.id, expectedRevision: draft.updatedAt, acknowledgement: true } };
+  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, sessionId: completed.id, expectedRevision: batch.updatedAt, acknowledgement: true } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {

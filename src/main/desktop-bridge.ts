@@ -57,6 +57,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/load",
   "POST /v1/reviews/diff-file",
   "POST /v1/reviews/draft",
+  "POST /v1/reviews/refresh",
   "POST /v1/reviews/merge",
 ]);
 

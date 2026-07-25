@@ -28,6 +28,7 @@ import {
   type RevisionComparison,
 } from "../domain/review-comparison";
 import type { ReviewDraft } from "../domain/review-draft";
+import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -63,7 +64,7 @@ export type PreparedWorkbenchProjection = {
   readonly pullRequest?: PullRequestSummary;
   readonly reviewedHeadSha: GitSha;
   readonly currentHeadSha?: GitSha;
-  readonly freshness: "fresh" | "stale" | "unavailable";
+  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
   readonly checks: CheckSummary;
 };
@@ -81,9 +82,10 @@ export type CompletedWorkbenchProjection = {
   readonly pullRequest?: PullRequestSummary;
   readonly reviewedHeadSha: GitSha;
   readonly currentHeadSha?: GitSha;
-  readonly freshness: "fresh" | "stale" | "unavailable";
+  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
-  readonly draft: ReviewDraft;
+  readonly draft?: ReviewDraft;
+  readonly batch?: ReviewBatch;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly history: ReadonlyArray<ReviewHistoryItem>;
@@ -93,6 +95,17 @@ export type CompletedWorkbenchProjection = {
 export type ReviewWorkbenchProjection =
   | PreparedWorkbenchProjection
   | CompletedWorkbenchProjection;
+
+/** Current GitHub context is ephemeral and never replaces the saved local batch. */
+export type RemoteReviewContext = {
+  readonly pullRequest?: PullRequestSummary;
+  readonly currentHeadSha?: GitSha;
+  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
+  readonly refreshedAt: IsoTimestamp;
+  readonly comments: GitHubComments;
+  readonly checks: CheckSummary;
+  readonly mergeReadiness?: MergeReadiness;
+};
 
 export type LoadWorkbenchInput = {
   readonly profileId: WorkspaceProfileId;
@@ -121,6 +134,73 @@ export class ReviewWorkbenchProjectionService {
     private readonly now: () => IsoTimestamp,
   ) {}
 
+  /** Opens durable local evidence without polling GitHub. */
+  async loadLocal(
+    input: LoadWorkbenchInput,
+  ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
+    const [profile, session] = await Promise.all([
+      this.profiles.load(input.profileId),
+      this.sessions.load(input.profileId, input.sessionId),
+    ]);
+    if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
+    if (session._tag === "err") return err({ _tag: "SessionNotFound" });
+    if (session.value.visibleResult === undefined || (session.value.batchContent === undefined && session.value.draftContent === undefined)) {
+      return this.projectPreparedLocal(session.value);
+    }
+    const [fullPatch, attempts] = await Promise.all([
+      readFile(session.value.patchPath, "utf8").catch(() => undefined),
+      this.sessions.listAttempts(session.value.key.profileId, session.value.id),
+    ]);
+    if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    const pr = session.value.prContext === undefined ? undefined : {
+      ref: { host: session.value.key.host, owner: session.value.key.owner, repo: session.value.key.repo, number: session.value.key.prNumber },
+      ...session.value.prContext,
+      headSha: session.value.key.headSha,
+      isDraft: session.value.pr.isDraft,
+      isOpen: session.value.pr.isOpen,
+      reviewState: "unknown" as const,
+      mergeability: "unknown" as const,
+      labels: [],
+      updatedAt: session.value.updatedAt,
+    };
+    return ok({
+      state: "completed",
+      session: projectSession(session.value),
+      result: session.value.visibleResult,
+      reviewScope: projectReviewScope(session.value.scope),
+      ...(fullPatch === undefined ? {} : { fullPatch }),
+      comparisonAvailability: session.value.scope.kind === "full" ? "not_requested" : "missing",
+      ...(pr === undefined ? {} : { pullRequest: pr }),
+      reviewedHeadSha: session.value.key.headSha,
+      freshness: "not_refreshed",
+      refreshedAt: session.value.updatedAt,
+      ...(session.value.draftContent === undefined ? {} : { draft: session.value.draftContent }),
+      ...(session.value.batchContent === undefined ? {} : { batch: session.value.batchContent }),
+      comments: { threads: [] },
+      checks: { overall: "unknown", checks: [] },
+      history: attempts.value.map((attempt) => ({ id: attempt.id, state: attempt.state._tag, startedAt: attempt.startedAt })),
+      mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
+    });
+  }
+
+  /** Fetches current GitHub data without saving or changing any local review work. */
+  async refreshRemote(
+    input: LoadWorkbenchInput,
+  ): Promise<Result<RemoteReviewContext, WorkbenchProjectionFailure>> {
+    const projected = await this.load(input);
+    if (projected._tag === "err") return projected;
+    const value = projected.value;
+    return ok({
+      ...(value.pullRequest === undefined ? {} : { pullRequest: value.pullRequest }),
+      ...(value.currentHeadSha === undefined ? {} : { currentHeadSha: value.currentHeadSha }),
+      freshness: value.freshness,
+      refreshedAt: value.refreshedAt,
+      comments: value.state === "completed" ? value.comments : { threads: [] },
+      checks: value.checks,
+      ...(value.state === "completed" && value.mergeReadiness !== undefined ? { mergeReadiness: value.mergeReadiness } : {}),
+    });
+  }
+
   async load(
     input: LoadWorkbenchInput,
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
@@ -130,7 +210,7 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    if (session.value.visibleResult === undefined || session.value.draftContent === undefined) {
+    if (session.value.visibleResult === undefined || (session.value.draftContent === undefined && session.value.batchContent === undefined)) {
       return this.projectPrepared(profile.value, session.value);
     }
     return this.projectCompleted(profile.value, session.value);
@@ -170,11 +250,24 @@ export class ReviewWorkbenchProjectionService {
     });
   }
 
+  private async projectPreparedLocal(session: ReviewSession): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
+    const fullPatch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    return ok({
+      state: "review_started",
+      session: projectSession(session),
+      ...(fullPatch === undefined ? {} : { fullPatch }),
+      reviewedHeadSha: session.key.headSha,
+      freshness: "not_refreshed",
+      refreshedAt: session.updatedAt,
+      checks: { overall: "unknown", checks: [] },
+    });
+  }
+
   private async projectCompleted(
     profile: WorkspaceProfileConfig,
     session: ReviewSession,
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    if (session.visibleResult === undefined || session.draftContent === undefined) {
+    if (session.visibleResult === undefined || (session.draftContent === undefined && session.batchContent === undefined)) {
       return err({ _tag: "SessionNotFound" });
     }
     const pr = {
@@ -283,7 +376,8 @@ export class ReviewWorkbenchProjectionService {
       ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
       freshness,
       refreshedAt: this.now(),
-      draft: session.draftContent,
+      ...(session.draftContent === undefined ? {} : { draft: session.draftContent }),
+      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
       comments: safeComments,
       checks: safeChecks,
       history: attempts.value.map((attempt) => ({

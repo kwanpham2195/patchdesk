@@ -122,5 +122,9 @@ function isReviewEvent(value: unknown): value is GitHubReviewEvent {
 }
 
 function failureReason(tag: string): string {
-  return tag === "GitHubWriteRejected" || tag === "GitHubSubmitFailed" ? "github_rejected" : tag === "StaleHeadBlocksWrite" ? "stale_head" : "review_write_failed";
+  return tag === "GitHubWriteRejected" || tag === "GitHubSubmitFailed" || tag === "BatchWriteRejected"
+    ? "github_rejected"
+    : tag === "StaleHeadBlocksWrite"
+      ? "stale_head"
+      : "review_write_failed";
 }

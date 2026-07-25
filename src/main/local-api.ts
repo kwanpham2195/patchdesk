@@ -442,6 +442,9 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/load", async (context) =>
     response(context, await reviewWorkbench.load(await jsonBody(context))),
   );
+  app.post("/v1/reviews/refresh", async (context) =>
+    response(context, await reviewWorkbench.refresh(await jsonBody(context))),
+  );
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
