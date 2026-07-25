@@ -7,11 +7,13 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { createPendingReview, submitPendingReview } from "./review-submission-service";
+import { applyReviewBatch } from "./review-submission-service";
 import { readObjectField } from "./read-object-field";
 
 export type ReviewWriteResponse = {
   readonly session: unknown;
-  readonly draft: unknown;
+  readonly draft?: unknown;
+  readonly batch?: unknown;
 };
 
 export type ReviewWriteControllerFailure = { readonly reason: string };
@@ -53,6 +55,13 @@ export class ReviewWriteController {
     });
   }
 
+  async applyBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
+    return this.withLoadedBatch(input, async ({ profile, session, batch }) => {
+      const applied = await applyReviewBatch({ profile, session, batch, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
+      return applied._tag === "ok" ? ok({ session: applied.value.session, batch: applied.value.batch }) : err({ reason: failureReason(applied.error._tag) });
+    });
+  }
+
   private async withLoaded(
     input: unknown,
     operation: (value: { readonly profile: WorkspaceProfileConfig; readonly session: ReviewSession; readonly draft: ReviewDraft }) => Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>>,
@@ -76,6 +85,24 @@ export class ReviewWriteController {
     } finally {
       this.inFlight.delete(key);
     }
+  }
+
+  private async withLoadedBatch(input: unknown, operation: (value: { readonly profile: WorkspaceProfileConfig; readonly session: ReviewSession; readonly batch: NonNullable<ReviewSession["batchContent"]> }) => Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>>): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const expectedRevision = parseIsoTimestamp(readObjectField(input, "expectedRevision"));
+    if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err" || readObjectField(input, "acknowledgement") !== true) return err({ reason: "invalid_input" });
+    const key = `${profileId.value}:${sessionId.value}`;
+    if (this.inFlight.has(key)) return err({ reason: "review_write_in_progress" });
+    this.inFlight.add(key);
+    try {
+      const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
+      if (profile._tag === "err") return err({ reason: "profile_not_found" });
+      if (session._tag === "err") return err({ reason: "session_not_found" });
+      const batch = session.value.batchContent;
+      if (batch === undefined || batch.updatedAt !== expectedRevision.value || session.value.currentAttemptId !== batch.attemptId) return err({ reason: "revision_conflict" });
+      return operation({ profile: profile.value, session: session.value, batch });
+    } finally { this.inFlight.delete(key); }
   }
 
   private async persistFailure(error: unknown): Promise<void> {

@@ -171,6 +171,8 @@ export async function startLocalApiServer(
             getPullRequest: github.getPullRequest.bind(github),
             createPendingReview: writer.createPendingReview.bind(writer),
             submitPendingReview: writer.submitPendingReview.bind(writer),
+            ...(writer.createThreadReply === undefined ? {} : { createThreadReply: writer.createThreadReply.bind(writer) }),
+            ...(writer.setReviewThreadState === undefined ? {} : { setReviewThreadState: writer.setReviewThreadState.bind(writer) }),
           },
           () => new Date().toISOString() as never,
         );
@@ -398,6 +400,11 @@ export async function startLocalApiServer(
           context,
           await reviewWrites.createPending(await jsonBody(context)),
         ),
+  );
+  app.post("/v1/reviews/apply-batch", async (context) =>
+    reviewWrites === undefined
+      ? context.json({ error: "review_write_unavailable" }, 503)
+      : response(context, await reviewWrites.applyBatch(await jsonBody(context))),
   );
   app.post("/v1/reviews/submit", async (context) =>
     reviewWrites === undefined
