@@ -52,7 +52,7 @@ export class ReviewWorkbenchController {
       mode,
     });
     if (prepared._tag === "err") return err(mapPreparationFailure(prepared.error));
-    const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: prepared.value.session.id });
+    const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
   }
 

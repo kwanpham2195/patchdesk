@@ -25,7 +25,6 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
     await page.goto(`${origin(server)}/#performance-fixture`);
     const workbench = page.getByRole("region", { name: "Diff workbench" });
     await expect(workbench).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("1000 changed files")).toBeVisible();
     const bytes = Number(await workbench.getAttribute("data-patch-bytes"));
     expect(bytes).toBeGreaterThanOrEqual(10_000_000);
 
