@@ -43,5 +43,33 @@ describe("parseReviewDiff", () => {
       additions: 0,
       deletions: 0,
     });
+    expect(parsed.gitStatusByPath.get("src/a.ts")).toBe("modified");
+  });
+
+  it("maps Pierre file change types to native tree git status", () => {
+    const patch = [
+      "diff --git a/old.ts b/new.ts",
+      "similarity index 100%",
+      "rename from old.ts",
+      "rename to new.ts",
+      "diff --git a/dev/null b/added.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/added.ts",
+      "@@ -0,0 +1 @@",
+      "+new",
+      "diff --git a/deleted.ts b/dev/null",
+      "deleted file mode 100644",
+      "--- a/deleted.ts",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "-old",
+    ].join("\n");
+
+    const parsed = parseReviewDiff(patch);
+
+    expect(parsed.gitStatusByPath.get("new.ts")).toBe("renamed");
+    expect(parsed.gitStatusByPath.get("added.ts")).toBe("added");
+    expect(parsed.gitStatusByPath.get("deleted.ts")).toBe("deleted");
   });
 });

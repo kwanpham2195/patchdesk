@@ -3,6 +3,9 @@ import type { CodeViewDiffItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 const VIRTUAL_FILE_BATCH_SIZE = 5;
+const LARGE_DIFF_FILE_COUNT = 256;
+const INITIAL_FILE_BATCH_SIZE = 1;
+const NORMAL_INITIAL_FILE_BATCH_SIZE = 2;
 
 export type PierreCodeView<T = undefined> = NonNullable<
   ReturnType<CodeViewHandle<T>["getInstance"]>
@@ -35,17 +38,19 @@ export function useProgressiveReviewDiffStream<T = undefined>({
   readonly hydrateFiles: (paths: ReadonlyArray<string>) => Promise<void>;
   readonly viewerContainer: RefObject<HTMLDivElement | null>;
 }): ProgressiveReviewDiffStream<T> {
-  const [loadedCount, setLoadedCount] = useState(1);
+  const initialLoadedCount = initialFileCount(items.length);
+  const [loadedCount, setLoadedCount] = useState(initialLoadedCount);
   const isAppendingBatch = useRef(false);
   const streamGeneration = useRef(0);
-  const nextItemIndex = useRef(1);
+  const nextItemIndex = useRef(initialLoadedCount);
 
   useEffect(() => {
     streamGeneration.current += 1;
     isAppendingBatch.current = false;
-    nextItemIndex.current = 1;
-    setLoadedCount(1);
-  }, [fileMode]);
+    const initialCount = initialFileCount(items.length);
+    nextItemIndex.current = initialCount;
+    setLoadedCount(initialCount);
+  }, [fileMode, items.length]);
 
   useEffect(() => {
     void hydrateFiles(items.slice(0, loadedCount).map((item) => item.id));
@@ -106,4 +111,13 @@ export function useProgressiveReviewDiffStream<T = undefined>({
     appendVisibleBatch,
     handleViewerScroll,
   };
+}
+
+/** Small reviews distinguish All from Selected immediately; huge reviews stay light. */
+function initialFileCount(itemCount: number): number {
+  const batchSize =
+    itemCount > LARGE_DIFF_FILE_COUNT
+      ? INITIAL_FILE_BATCH_SIZE
+      : NORMAL_INITIAL_FILE_BATCH_SIZE;
+  return Math.min(batchSize, itemCount);
 }

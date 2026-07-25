@@ -152,10 +152,14 @@ export function CompletedReviewWorkbench({
           additions: 0,
           deletions: 0,
         },
+        gitStatus: parsedDiff.gitStatusByPath.get(file.newPath),
       })),
-    [files, parsedDiff.statsByPath],
+    [files, parsedDiff.gitStatusByPath, parsedDiff.statsByPath],
   );
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
+    files[0]?.newPath,
+  );
+  const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
   const [selectedFinding, setSelectedFinding] =
@@ -183,6 +187,7 @@ export function CompletedReviewWorkbench({
     if (finding.mappingStatus === "mapped" && finding.file !== undefined) {
       const path = finding.file;
       setSelectedPath(path);
+      setActivePath(path);
       setCollapsedPaths((current) => {
         if (!current.has(path)) return current;
         const next = new Set(current);
@@ -194,6 +199,7 @@ export function CompletedReviewWorkbench({
   const selectFile = (path: string): void => {
     setSelectedFinding(undefined);
     setSelectedPath(path);
+    setActivePath(path);
     setCollapsedPaths((current) => {
       if (!current.has(path)) return current;
       const next = new Set(current);
@@ -266,7 +272,7 @@ export function CompletedReviewWorkbench({
     <section
       aria-label="Completed review workbench"
       data-density={preferences.density}
-      className="min-w-0 overflow-x-hidden"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden"
     >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="min-w-0">
@@ -337,7 +343,7 @@ export function CompletedReviewWorkbench({
         </Alert>
       ) : null}
       <div
-        className={`grid min-h-[calc(100vh-8.5rem)] min-w-0 grid-cols-1 min-[1280px]:h-[calc(100vh-8.5rem)] ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
+        className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
       >
         {reviewRailOpen ? (
           <aside
@@ -350,6 +356,7 @@ export function CompletedReviewWorkbench({
               <PierreFileTree
                 files={changedFiles}
                 {...(selectedPath === undefined ? {} : { selectedPath })}
+                {...(activePath === undefined ? {} : { activePath })}
                 onSelect={selectFile}
               />
             </div>
@@ -361,7 +368,7 @@ export function CompletedReviewWorkbench({
         >
           <div
             data-review-workbench-toolbar
-            className="sticky top-0 z-30 flex min-h-10 flex-wrap items-center justify-between gap-2 border-b bg-background/95 px-2 py-1.5 backdrop-blur"
+            className="sticky top-0 z-30 flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-background/95 px-2 py-1.5 backdrop-blur"
           >
             <div className="flex min-w-0 items-center gap-1.5">
               <Button
@@ -400,7 +407,9 @@ export function CompletedReviewWorkbench({
                   const nextSurface = value === "updates" ? "updates" : "full";
                   const nextPatch = nextSurface === "updates" ? props.comparisonPatch : props.fullPatch;
                   setDiffSurface(nextSurface);
-                  setSelectedPath(nextPatch === undefined ? undefined : parseUnifiedPatch(nextPatch)[0]?.newPath);
+                  const nextPath = nextPatch === undefined ? undefined : parseUnifiedPatch(nextPatch)[0]?.newPath;
+                  setSelectedPath(nextPath);
+                  setActivePath(nextPath);
                 }}>
                   <TabsList>
                     <TabsTrigger value="updates" disabled={props.comparisonPatch === undefined}>Updates</TabsTrigger>
@@ -464,6 +473,7 @@ export function CompletedReviewWorkbench({
                     <PierreFileTree
                       files={changedFiles}
                       {...(selectedPath === undefined ? {} : { selectedPath })}
+                      {...(activePath === undefined ? {} : { activePath })}
                       onSelect={(path) => {
                         selectFile(path);
                         setNavigationOpen(false);
@@ -488,6 +498,7 @@ export function CompletedReviewWorkbench({
               parsedFiles={parsedDiff.files}
               fileStatsByPath={parsedDiff.statsByPath}
               {...(selectedPath === undefined ? {} : { selectedPath })}
+              onActiveFileChange={setActivePath}
               {...(selectedRange === undefined ? {} : { selectedRange })}
               annotations={inlineFindingAnnotations}
               preferences={preferences}

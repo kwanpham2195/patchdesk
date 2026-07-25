@@ -105,6 +105,13 @@ test("all-files stream appends when the diff scroll reaches its end", async ({
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
     await expect(
+      page.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
+    ).toBeVisible();
+    await expect(page.locator("[data-review-diff-loaded-file-count]")).toHaveAttribute(
+      "data-review-diff-loaded-file-count",
+      "2",
+    );
+    await expect(
       page.getByRole("button", { name: /Load more files/ }),
     ).toHaveCount(0);
 
@@ -112,7 +119,9 @@ test("all-files stream appends when the diff scroll reaches its end", async ({
     const box = await diffViewport.boundingBox();
     if (box === null) throw new Error("Review diff viewport was not visible");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(0, 10_000);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.mouse.wheel(0, 10_000);
+    }
 
     await expect(
       page.getByRole("button", { name: /Load more files/ }),
@@ -137,6 +146,157 @@ test("all-files stream appends when the diff scroll reaches its end", async ({
     expect(diffToolbarBox.y).toBeGreaterThanOrEqual(
       workbenchToolbarBox.y + workbenchToolbarBox.height - 1,
     );
+  } finally {
+    await close(server);
+  }
+});
+
+test("native diff scrolling passively follows the active file without changing finding state", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    await page.getByRole("button", { name: "Keep writes behind the stale-head check" }).click();
+    await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute(
+      "data-selected-path",
+      "src/b.ts",
+    );
+    await expect(page.getByText("Finding mapped · new lines 1–1")).toBeVisible();
+
+    const viewport = page.locator(".review-diff-viewport");
+    const box = await viewport.boundingBox();
+    if (box === null) throw new Error("Review diff viewport was not visible");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.mouse.wheel(0, 10_000);
+    }
+    await expect(page.locator("[data-review-diff-loaded-file-count]")).toHaveAttribute(
+      "data-review-diff-loaded-file-count",
+      "3",
+    );
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await page.mouse.wheel(0, 1_000);
+      await page.waitForTimeout(100);
+      if (
+        (await page.locator("file-tree-container").getAttribute("data-active-path")) ===
+        "src/c.ts"
+      ) {
+        break;
+      }
+    }
+    await expect(page.locator('file-tree-container[data-active-path="src/c.ts"]')).toBeVisible();
+    await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute(
+      "data-selected-path",
+      "src/b.ts",
+    );
+    await expect(page.getByText("Finding mapped · new lines 1–1")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.activeElement?.localName),
+    ).not.toBe("file-tree-container");
+  } finally {
+    await close(server);
+  }
+});
+
+test("streamed files can become the passive active path", async ({ page }) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    await expect(page.locator("[data-review-diff-loaded-file-count]")).toHaveAttribute(
+      "data-review-diff-loaded-file-count",
+      "2",
+    );
+    await expect(page.getByRole("button", { name: /Load more files/ })).toHaveCount(0);
+
+    const viewport = page.locator(".review-diff-viewport");
+    const box = await viewport.boundingBox();
+    if (box === null) throw new Error("Review diff viewport was not visible");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 10_000);
+    await expect(page.locator("[data-review-diff-loaded-file-count]")).toHaveAttribute(
+      "data-review-diff-loaded-file-count",
+      "3",
+    );
+    await page.mouse.wheel(0, 3_000);
+    await expect(page.locator('file-tree-container[data-active-path="src/c.ts"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: /Load more files/ })).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("explicit tree keyboard navigation remains selection and diff navigation", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const treeItem = page.getByRole("treeitem", { name: "b.ts" });
+    await treeItem.click();
+    await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute(
+      "data-selected-path",
+      "src/b.ts",
+    );
+    await treeItem.press("ArrowUp");
+    await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute(
+      "data-selected-path",
+      "src/b.ts",
+    );
+  } finally {
+    await close(server);
+  }
+});
+
+test("viewed toggles replace the collapse icon without changing file selection", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+
+    const viewed = page.getByRole("checkbox", {
+      name: "Mark file src/a.ts as viewed",
+    });
+    await viewed.click();
+    const shown = page.getByRole("checkbox", { name: "Show file src/a.ts" });
+    await expect(shown).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: "Mark all viewed" }).click();
+    await page.getByRole("button", { name: "Show all" }).click();
+    await expect(
+      page.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
+    ).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("inline finding text remains inside the diff viewport", async ({ page }) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.getByRole("treeitem", { name: "b.ts" }).click();
+
+    const finding = page.locator("[data-review-inline-finding='mapped']");
+    await expect(finding).toBeVisible();
+    const bounds = await finding.evaluate((element) => {
+      const findingBounds = element.getBoundingClientRect();
+      const viewportBounds = element.closest(".review-diff-viewport")?.getBoundingClientRect();
+      if (viewportBounds === undefined || viewportBounds === null) {
+        throw new Error("Expected inline finding in the diff viewport");
+      }
+      return { right: findingBounds.right, viewportRight: viewportBounds.right };
+    });
+    expect(bounds.right).toBeLessThanOrEqual(bounds.viewportRight + 1);
+    const explanation = finding.locator("p");
+    await expect(explanation).toHaveCSS("white-space", "normal");
+    const explanationWidth = await explanation.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+    expect(explanationWidth.scrollWidth).toBeLessThanOrEqual(explanationWidth.clientWidth);
   } finally {
     await close(server);
   }
@@ -274,6 +434,11 @@ test("constrained completed review keeps navigation and actions reachable", asyn
       page.getByRole("complementary", { name: "Review result and actions" }),
     ).toBeVisible();
     await expect(page.getByText("Review result")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
   } finally {
     await close(server);
   }
@@ -286,7 +451,7 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
   try {
     for (const width of [1_280, 1_440]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${origin(server)}/#long-workbench-fixture`);
+      await page.goto(`${origin(server)}/#active-follow-fixture`);
       const navigation = page.getByRole("complementary", {
         name: "Review navigation",
       });
@@ -304,6 +469,14 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
           document.documentElement.clientWidth,
       );
       expect(overflow).toBeLessThanOrEqual(1);
+      const pageHeightOverflow = await page.evaluate(
+        () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      );
+      expect(pageHeightOverflow).toBeLessThanOrEqual(1);
+      const diffScroll = await page.locator(".review-diff-viewport").evaluate(
+        (viewport) => viewport.scrollHeight > viewport.clientHeight,
+      );
+      expect(diffScroll).toBe(true);
       const inspectorOverflow = await actions
         .locator('[data-slot="scroll-area-viewport"]')
         .evaluate((viewport) => viewport.scrollWidth - viewport.clientWidth);

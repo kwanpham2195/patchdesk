@@ -1,4 +1,5 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import type { GitStatus } from "@pierre/trees";
 
 /** Immutable textual change totals for one file in a parsed review patch. */
 export type FileChangeStats = {
@@ -11,6 +12,7 @@ export type FileChangeStats = {
 export type ParsedReviewDiff = {
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly statsByPath: ReadonlyMap<string, FileChangeStats>;
+  readonly gitStatusByPath: ReadonlyMap<string, GitStatus>;
 };
 
 /** Parse a stored unified patch once for Pierre rendering and navigator totals. */
@@ -19,6 +21,7 @@ export function parseReviewDiff(patch: string): ParsedReviewDiff {
     (value) => value.files,
   );
   const statsByPath = new Map<string, FileChangeStats>();
+  const gitStatusByPath = new Map<string, GitStatus>();
 
   for (const file of files) {
     let additions = 0;
@@ -31,7 +34,22 @@ export function parseReviewDiff(patch: string): ParsedReviewDiff {
       }
     }
     statsByPath.set(file.name, { path: file.name, additions, deletions });
+    gitStatusByPath.set(file.name, gitStatusForFileDiff(file));
   }
 
-  return { files, statsByPath };
+  return { files, statsByPath, gitStatusByPath };
+}
+
+function gitStatusForFileDiff(file: FileDiffMetadata): GitStatus {
+  switch (file.type) {
+    case "new":
+      return "added";
+    case "deleted":
+      return "deleted";
+    case "rename-pure":
+    case "rename-changed":
+      return "renamed";
+    case "change":
+      return "modified";
+  }
 }

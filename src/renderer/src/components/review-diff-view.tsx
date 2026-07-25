@@ -15,12 +15,10 @@ import {
 } from "@pierre/diffs";
 import { CodeView, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
 import {
-  AlignJustify,
   ChevronsUpDown,
   Columns2,
   FileCode2,
   Files,
-  Minimize2,
   MoveHorizontal,
   Rows3,
   WrapText,
@@ -35,7 +33,9 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
+import { activeFilePathAtScrollTop } from "@/review-diff-active-file";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
+import { compareTreePaths } from "@/review-diff-order";
 import {
   reviewContextControl,
 } from "@/review-context-control";
@@ -46,7 +46,10 @@ import {
   type ReviewDiffSourceSession,
 } from "@/hooks/use-review-diff-hydration";
 import { useReviewDiffQaScrollDiagnostics } from "@/hooks/use-review-diff-qa-scroll-diagnostics";
-import { useProgressiveReviewDiffStream } from "@/hooks/use-progressive-review-diff-stream";
+import {
+  useProgressiveReviewDiffStream,
+  type PierreCodeView,
+} from "@/hooks/use-progressive-review-diff-stream";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
@@ -61,6 +64,7 @@ const DIFF_CODE_METRICS = {
   lineHeight: "20px",
   fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
+const TREE_ORDER_SORT_LIMIT = 256;
 
 export type SelectedDiffRange = {
   readonly start: number;
@@ -112,6 +116,7 @@ type ReviewDiffViewProps = {
     update: Partial<ReviewViewPreferences>,
   ) => void;
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
+  readonly onActiveFileChange?: (path: string) => void;
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
@@ -128,6 +133,7 @@ function ReviewDiffSurface({
   collapsedPaths,
   onPreferencesChange,
   onCollapsedPathsChange,
+  onActiveFileChange,
   sourceSession,
   virtualized = true,
 }: ReviewDiffViewProps): React.JSX.Element {
@@ -137,6 +143,7 @@ function ReviewDiffSurface({
     loadDiffThemePreferences(),
   );
   const viewer = useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
+  const activePathRef = useRef<string | undefined>(undefined);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
@@ -178,11 +185,16 @@ function ReviewDiffSurface({
     () => selectPatch(rawPatchesByPath, rawFilePatches, patch, selectedPath),
     [patch, rawFilePatches, rawPatchesByPath, selectedPath],
   );
-  const files = useMemo(
-    () =>
-      parsedFiles.map((file) => hydratedFiles.get(file.name) ?? file),
-    [hydratedFiles, parsedFiles],
-  );
+  const files = useMemo(() => {
+    const hydrated = parsedFiles.map(
+      (file) => hydratedFiles.get(file.name) ?? file,
+    );
+    // Large generated diffs already arrive in source/tree order. Avoid a
+    // full re-sort whenever one of their files hydrates.
+    return parsedFiles.length > TREE_ORDER_SORT_LIMIT
+      ? hydrated
+      : hydrated.sort((left, right) => compareTreePaths(left.name, right.name));
+  }, [hydratedFiles, parsedFiles]);
   const visibleFiles = useMemo(
     () =>
       preferences.fileMode === "selected" && selectedPath !== undefined
@@ -255,12 +267,71 @@ function ReviewDiffSurface({
   });
 
   useEffect(() => {
+    activePathRef.current = undefined;
+  }, [items, preferences.fileMode]);
+
+  const updateActivePath = useCallback(
+    (
+      scrollTop: number,
+      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
+    ): void => {
+      if (preferences.fileMode !== "all") return;
+      const path = activeFilePathAtScrollTop(
+        items.slice(0, loadedCount),
+        scrollTop,
+        (id) => codeView.getTopForItem(id),
+      );
+      if (path === undefined || path === activePathRef.current) return;
+      activePathRef.current = path;
+      onActiveFileChange?.(path);
+    },
+    [items, loadedCount, onActiveFileChange, preferences.fileMode],
+  );
+
+  useEffect(() => {
+    if (preferences.fileMode !== "all") return;
+    const frame = window.requestAnimationFrame(() => {
+      const codeView = viewer.current?.getInstance();
+      if (codeView === undefined) return;
+      updateActivePath(codeView.getScrollTop(), codeView);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loadedCount, preferences.fileMode, updateActivePath]);
+
+  const handleCodeViewScroll = useCallback(
+    (
+      scrollTop: number,
+      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
+    ): void => {
+      handleViewerScroll(scrollTop, codeView);
+      updateActivePath(scrollTop, codeView);
+    },
+    [handleViewerScroll, updateActivePath],
+  );
+
+  const selectionScrollKey = [
+    preferences.diffStyle,
+    preferences.fileMode,
+    selectedPath ?? "",
+    selectedLines?.id ?? "",
+    selectedLines?.range.start ?? "",
+    selectedLines?.range.end ?? "",
+    selectedLines?.range.side ?? "",
+  ].join(":");
+  const lastSelectionScrollKey = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
     if (selectedPath === undefined) return;
+    const selectionChanged =
+      selectionScrollKey !== lastSelectionScrollKey.current;
+    if (selectionChanged) lastSelectionScrollKey.current = selectionScrollKey;
     let secondFrame: number | undefined;
     let continuationFrame: number | undefined;
     const scrollToSelection = (): void => {
       const targetIndex = items.findIndex((item) => item.id === selectedPath);
       if (targetIndex === -1) return;
+      if (!selectionChanged && viewer.current?.getItem(selectedPath) !== undefined)
+        return;
       // DiffWorkbench promotes exceptionally deep direct selections to its
       // explicit selected-file mode. Do not spend a frame materializing a
       // large all-files stream while that controlled preference update is in
@@ -308,6 +379,7 @@ function ReviewDiffSurface({
     nextItemIndex,
     preferences.diffStyle,
     preferences.fileMode,
+    selectionScrollKey,
     selectedLines,
     selectedPath,
   ]);
@@ -375,14 +447,19 @@ function ReviewDiffSurface({
       if (item.type !== "diff") return null;
       const path = item.fileDiff.name;
       return (
-        <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-sm">
+        <div
+          className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-sm"
+          data-review-diff-file-header={path}
+        >
           <button
             type="button"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-white/10 focus-visible:outline"
-            aria-label={`${collapsedPaths.has(path) ? "Expand" : "Collapse"} file ${path}`}
+            role="checkbox"
+            aria-checked={collapsedPaths.has(path)}
+            aria-label={collapsedPaths.has(path) ? `Show file ${path}` : `Mark file ${path} as viewed`}
+            className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/60 bg-background text-[10px] leading-none hover:border-primary focus-visible:outline"
             onClick={() => toggleFile(path)}
           >
-            {collapsedPaths.has(path) ? <AlignJustify /> : <Minimize2 />}
+            {collapsedPaths.has(path) ? "✓" : null}
           </button>
           <FileCode2 className="size-4 shrink-0 text-amber-300" />
           <span className="min-w-0 truncate font-medium" title={path}>
@@ -400,15 +477,15 @@ function ReviewDiffSurface({
       if (finding === undefined) return null;
       return (
         <article
-          className="mx-2 my-2 max-w-2xl rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
+          className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
           data-review-inline-finding={finding.id}
           aria-label={`${finding.severity} finding: ${finding.title}`}
         >
-          <div className="flex items-baseline gap-2">
+          <div className="flex min-w-0 items-baseline gap-2">
             <span className="text-xs font-semibold text-primary">{finding.severity}</span>
-            <h3 className="font-medium">{finding.title}</h3>
+            <h3 className="min-w-0 break-words font-medium">{finding.title}</h3>
           </div>
-          <p className="mt-1 text-muted-foreground">{finding.explanation}</p>
+          <p className="mt-1 break-words text-muted-foreground">{finding.explanation}</p>
         </article>
       );
     },
@@ -510,8 +587,7 @@ function ReviewDiffSurface({
             aria-pressed={collapsedPaths.size === files.length && files.length > 0}
             onClick={() => setAllCollapsed(!(collapsedPaths.size === files.length && files.length > 0))}
           >
-            {collapsedPaths.size === files.length && files.length > 0 ? <ChevronsUpDown /> : <Minimize2 />}
-            {collapsedPaths.size === files.length && files.length > 0 ? "Expand files" : "Collapse files"}
+            {collapsedPaths.size === files.length && files.length > 0 ? "Show all" : "Mark all viewed"}
           </Button>
         </div>
       </div>
@@ -551,6 +627,7 @@ function ReviewDiffSurface({
         />
       ) : (
         <div className="relative min-h-0 flex-1">
+          <span className="hidden" data-review-diff-loaded-file-count={loadedCount} />
           <CodeView<ReviewInlineAnnotation | undefined>
             key={`${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`}
             ref={viewer}
@@ -562,7 +639,7 @@ function ReviewDiffSurface({
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
             renderAnnotation={renderAnnotation}
-            onScroll={handleViewerScroll}
+            onScroll={handleCodeViewScroll}
           />
         </div>
       )}

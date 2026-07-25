@@ -158,7 +158,7 @@ export function AppShell({
         setAppRailOpen(open);
         saveReviewViewPreferences(profileId, { appRailOpen: open });
       }}
-      className="min-h-screen flex-col"
+      className="flex h-screen min-h-screen flex-col"
     >
       <div className="compact-surface flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
       <a className="skip-link" href="#main-content">
@@ -292,7 +292,7 @@ export function AppShell({
           ref={mainRef}
           id="main-content"
           tabIndex={-1}
-          className="flex min-w-0 flex-1 flex-col overflow-auto"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           {children}
         </main>

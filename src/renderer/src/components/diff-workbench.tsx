@@ -43,6 +43,9 @@ export function DiffWorkbench({
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     files[0]?.newPath,
   );
+  const [activePath, setActivePath] = useState<string | undefined>(
+    files[0]?.newPath,
+  );
   const [preferences, setPreferences] = useState<ReviewViewPreferences>({
     ...DEFAULT_REVIEW_VIEW_PREFERENCES,
     fileMode: "all",
@@ -76,6 +79,7 @@ export function DiffWorkbench({
   const selectFile = useCallback(
     (path: string): void => {
       setSelectedPath(path);
+      setActivePath(path);
       const targetIndex = files.findIndex((file) => file.newPath === path);
       // A direct jump deep into an exceptionally large stream would require
       // synchronously materializing hundreds of file metrics. Switch to the
@@ -99,8 +103,9 @@ export function DiffWorkbench({
         additions: 0,
         deletions: 0,
       },
+      gitStatus: parsedDiff.gitStatusByPath.get(file.newPath),
       })),
-    [files, parsedDiff.statsByPath],
+    [files, parsedDiff.gitStatusByPath, parsedDiff.statsByPath],
   );
   const mapped =
     finding === undefined ? undefined : mapFindingLocation(files, finding);
@@ -114,23 +119,26 @@ export function DiffWorkbench({
       aria-label="Diff workbench"
       data-patch-bytes={patch.length}
       className={cn(
-        "grid min-w-0 grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1",
-        fillViewport ? "min-h-[calc(100vh-3.5rem)]" : "h-full min-h-0",
+        "grid min-w-0 overflow-hidden min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1",
+        fillViewport
+          ? "min-h-[calc(100vh-3.5rem)] min-[1100px]:h-[calc(100vh-3.5rem)]"
+          : "h-full min-h-0",
         className,
       )}
     >
       <aside
         aria-label="Review navigation"
-        className="min-w-0 border-r bg-card p-3 max-[1099px]:hidden"
+        className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
       >
         <PierreFileTree
           files={fileRows}
           {...(selectedPath === undefined ? {} : { selectedPath })}
+          {...(activePath === undefined ? {} : { activePath })}
           onSelect={selectFile}
         />
       </aside>
-      <div className="min-w-0 overflow-auto bg-background">
-        <header className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+        <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
               {selectedPath ?? "No file selected"}
@@ -157,6 +165,7 @@ export function DiffWorkbench({
                   <PierreFileTree
                     files={fileRows}
                     {...(selectedPath === undefined ? {} : { selectedPath })}
+                    {...(activePath === undefined ? {} : { activePath })}
                     onSelect={(path) => {
                       selectFile(path);
                       setNavigationOpen(false);
@@ -203,6 +212,7 @@ export function DiffWorkbench({
           parsedFiles={parsedDiff.files}
           fileStatsByPath={parsedDiff.statsByPath}
           {...(selectedPath === undefined ? {} : { selectedPath })}
+          onActiveFileChange={setActivePath}
           preferences={preferences}
           collapsedPaths={collapsedPaths}
           onPreferencesChange={updatePreferences}

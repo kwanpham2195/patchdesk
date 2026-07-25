@@ -5,6 +5,7 @@ const fixtureHashes = new Set([
   "#run-fixture",
   "#workbench-fixture",
   "#long-workbench-fixture",
+  "#active-follow-fixture",
   "#performance-fixture",
   "#submission-fixture",
   "#submission-rejection-fixture",

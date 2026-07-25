@@ -39,11 +39,17 @@ export function AppFixtureContent({
         <RunFixturePanel />
       </div>
     );
-  if (hash === "#workbench-fixture" || hash === "#long-workbench-fixture") {
+  if (
+    hash === "#workbench-fixture" ||
+    hash === "#long-workbench-fixture" ||
+    hash === "#active-follow-fixture"
+  ) {
     const fixture =
       hash === "#long-workbench-fixture"
         ? longWorkbenchFixtureData
-        : workbenchFixtureData;
+        : hash === "#active-follow-fixture"
+          ? activeFollowFixtureData
+          : workbenchFixtureData;
     return (
       <CompletedReviewWorkbench
         model={{
@@ -133,6 +139,7 @@ function RunFixturePanel(): React.JSX.Element {
 }
 
 const fixturePatch = buildFixturePatch();
+const activeFollowFixturePatch = buildActiveFollowPatch();
 function buildFixturePatch(): string {
   const changedLines = Array.from(
     { length: 48 },
@@ -165,6 +172,17 @@ function buildLargePatchFixture(): string {
     );
   }
   return files.join("");
+}
+
+function buildActiveFollowPatch(): string {
+  return Array.from({ length: 3 }, (_, fileIndex) => {
+    const path = `src/${String.fromCharCode(97 + fileIndex)}.ts`;
+    const lines = Array.from(
+      { length: 48 },
+      (_, lineIndex) => `-old-${fileIndex}-${lineIndex}\n+new-${fileIndex}-${lineIndex}`,
+    ).join("\n");
+    return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,48 +1,48 @@\n${lines}\n`;
+  }).join("");
 }
 
 const workbenchFixtureData = {
@@ -277,6 +295,10 @@ const workbenchFixtureData = {
       { name: "docs", required: false as const, status: "queued" as const },
     ],
   },
+};
+const activeFollowFixtureData = {
+  ...workbenchFixtureData,
+  fullPatch: activeFollowFixturePatch,
 };
 const longFixturePath =
   "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
