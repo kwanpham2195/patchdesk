@@ -42,6 +42,8 @@ export type PreparedReviewFlowWorkbench = {
       readonly prNumber: number;
       readonly headSha: string;
     };
+    readonly state?: string;
+    readonly lastRunFailure?: string;
     readonly currentAttemptId?: string;
   };
   readonly pullRequest?: {
@@ -250,7 +252,14 @@ export function PreparedReviewFlow({
             sessionId={workbench.session.id}
             attemptId={workbench.session.currentAttemptId}
             {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
-            onStart={async () => { await startOwnedRun(); }}
+            {...(workbench.session.state === "Running"
+              ? { recoveryMessage: "This review may still be running in the background.", recoveryActionLabel: "Reconnect" }
+              : {})}
+            {...(runError === undefined ? {} : { startError: runError })}
+            onStart={async () => {
+              const started = await startOwnedRun();
+              if (!started) setRunError("Patchdesk could not start this review run.");
+            }}
             onCompleted={loadCompleted}
           />
         )}

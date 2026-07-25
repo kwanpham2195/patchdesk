@@ -115,6 +115,8 @@ const workbenchSessionSchema = v.strictObject({
     prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
   }),
+  state: v.optional(v.string()),
+  lastRunFailure: v.optional(v.string()),
   currentAttemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 

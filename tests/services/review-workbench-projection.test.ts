@@ -318,6 +318,38 @@ describe("ReviewWorkbenchProjectionService", () => {
       expect(loaded.value.session).toEqual({
         id: session.id,
         key: { profileId, host, owner, repo, prNumber: number, headSha },
+        state: "Created",
+      });
+      expect(loaded.value).toMatchObject({ session: { state: "Created" } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces the last run failure for a failed session", async () => {
+    const github = fakeGitHub({
+      current: summary(headSha),
+      checks: { overall: "pending", checks: [] },
+    });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const id = sessionId();
+      const base = createReviewSession({
+        key: { profileId, host, owner, repo, prNumber: number, headSha },
+        pr: { headSha, isDraft: false, isOpen: true },
+        patchPath: must(parseAbsolutePath(paths.patchFile(profileId, id))),
+        worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, id))), headSha },
+        createdAt: now,
+      });
+      const session: ReviewSession = {
+        ...base,
+        state: { _tag: "ReviewFailed", attemptId: "001" as never, error: { category: "flue", message: "The review workflow did not complete." } },
+      };
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const loaded = await projection.load({ profileId, sessionId: session.id });
+      expect(loaded).toMatchObject({
+        _tag: "ok",
+        value: { session: { state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." } },
       });
     } finally {
       await rm(root, { recursive: true, force: true });

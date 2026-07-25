@@ -47,6 +47,8 @@ export type WorkbenchSessionProjection = {
     readonly prNumber: PullRequestNumber;
     readonly headSha: GitSha;
   };
+  readonly state: ReviewSession["state"]["_tag"];
+  readonly lastRunFailure?: string;
   readonly currentAttemptId?: ReviewAttemptId;
 };
 
@@ -401,6 +403,11 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       prNumber: session.key.prNumber,
       headSha: session.key.headSha,
     },
+    state: session.state._tag,
+    ...(session.state._tag === "ReviewFailed" ? { lastRunFailure: session.state.error.message } : {}),
+    ...(session.state._tag === "Stale" && session.state.reason === "orphaned_run"
+      ? { lastRunFailure: "Patchdesk restarted before this review run completed." }
+      : {}),
     ...(session.currentAttemptId === undefined ? {} : { currentAttemptId: session.currentAttemptId }),
   };
 }

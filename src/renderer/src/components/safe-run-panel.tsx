@@ -25,6 +25,9 @@ export function SafeRunPanel({
   sessionId,
   attemptId,
   runId,
+  recoveryMessage,
+  recoveryActionLabel,
+  startError,
   onStart,
   onCompleted,
 }: {
@@ -32,6 +35,9 @@ export function SafeRunPanel({
   readonly sessionId: string;
   readonly attemptId: string;
   readonly runId?: string;
+  readonly recoveryMessage?: string;
+  readonly recoveryActionLabel?: string;
+  readonly startError?: string;
   readonly onStart?: () => Promise<void>;
   readonly onCompleted?: (profileId: string, sessionId: string) => Promise<void>;
 }): React.JSX.Element {
@@ -97,8 +103,13 @@ export function SafeRunPanel({
         <RotateCcw />
         <AlertTitle>This review is not running</AlertTitle>
         <AlertDescription className="mt-2">
-          Reopening a session never restarts its workflow automatically.
-          {onStart === undefined ? null : <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>{starting ? "Starting…" : "Start review"}</Button>}
+          {recoveryMessage ?? "The previous review run did not finish."}
+          {startError === undefined ? null : <span className="mt-1 block">{startError}</span>}
+          {onStart === undefined ? null : (
+            <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>
+              {starting ? "Starting…" : (recoveryActionLabel ?? "Start review")}
+            </Button>
+          )}
         </AlertDescription>
       </Alert>
     );

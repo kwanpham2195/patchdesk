@@ -6,6 +6,24 @@ afterEach(cleanup);
 
 describe("safe live run panel", () => { it("renders only a disconnected projection and never raw event fields", async () => { Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "disconnected", elapsedMs: 0, step: "inspecting", prompt: "hidden" } }) } }); render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />); expect(await screen.findByText("Run status: disconnected")).toBeTruthy(); expect(screen.queryByText("hidden")).toBeNull(); }); });
 
+describe("recovery copy", () => {
+  it("uses reconnect copy when the persisted session is still running", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn() } });
+    render(
+      <SafeRunPanel
+        profileId="cfw"
+        sessionId="session"
+        attemptId="001"
+        onStart={async () => {}}
+        recoveryMessage="This review may still be running in the background."
+        recoveryActionLabel="Reconnect"
+      />,
+    );
+    expect(await screen.findByText("This review may still be running in the background.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+  });
+});
+
 describe("review completion", () => {
   it("reloads the persisted workbench after the owned run reaches completion", async () => {
     Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "completed", elapsedMs: 12, step: "complete" } }) } });

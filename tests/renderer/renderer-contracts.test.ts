@@ -31,6 +31,19 @@ const completedProjection = {
 };
 
 describe("parseWorkbenchResponse", () => {
+  it("carries the session lifecycle state and last run failure", () => {
+    const prepared = parseWorkbenchResponse({
+      state: "review_started",
+      session: { ...sessionProjection, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." },
+      reviewedHeadSha: "2222222222222222222222222222222222222222",
+      freshness: "fresh",
+      refreshedAt: "2026-07-18T00:00:00.000Z",
+      checks: { overall: "unknown", checks: [] },
+    });
+    expect(prepared?.state).toBe("review_started");
+    expect(prepared?.session).toMatchObject({ state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." });
+  });
+
   it("accepts the renderer-safe prepared and completed projections", () => {
     const prepared = parseWorkbenchResponse({
       state: "review_started",
