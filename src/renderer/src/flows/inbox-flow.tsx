@@ -43,7 +43,6 @@ import type {
   Preview,
   PrRow,
   RepoOutcome,
-  ReviewRecord,
   WorkbenchPayload,
 } from "../renderer-models";
 import type { InboxResponse } from "../renderer-contracts";
@@ -60,7 +59,7 @@ export function InboxFlow({
   onWorkspaceReload,
   onOpenWorkbench,
 }: {
-  readonly destination: "dashboard" | "drafts" | "history" | "workbench";
+  readonly destination: "dashboard" | "workbench";
   readonly sessionId?: string;
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
@@ -78,29 +77,7 @@ export function InboxFlow({
   const [preview, setPreview] = useState<Preview>();
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
-  const [records, setRecords] = useState<ReadonlyArray<ReviewRecord>>([]);
-  const [recordsState, setRecordsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [invalidRecordCount, setInvalidRecordCount] = useState(0);
   const previewTrigger = useRef<HTMLElement | null>(null);
-  async function loadRecords(): Promise<void> {
-    if (dashboard === undefined) return;
-    setRecordsState("loading");
-    setInvalidRecordCount(0);
-    try {
-      const value = await requestJson(`/v1/reviews?profileId=${encodeURIComponent(dashboard.profile.id)}`);
-      if (!isRecord(value) || !Array.isArray(value.sessions)) throw new Error("Invalid local review response");
-      const valid = value.sessions.filter(isReviewRecord);
-      setRecords(valid);
-      setInvalidRecordCount(value.sessions.length - valid.length);
-      setRecordsState("ready");
-    } catch {
-      setRecordsState("error");
-    }
-  }
-
-  useEffect(() => {
-    if (destination === "drafts" || destination === "history") void loadRecords();
-  }, [dashboard?.profile.id, destination]);
   useEffect(() => {
     if (destination !== "workbench" || dashboard === undefined || sessionId === undefined) return;
     let active = true;
@@ -179,10 +156,6 @@ export function InboxFlow({
     } catch {
       setOpenError("Could not open the saved review.");
     }
-  }
-
-  if (destination === "drafts" || destination === "history") {
-    return <ReviewRecords records={records} state={recordsState} invalidCount={invalidRecordCount} draftsOnly={destination === "drafts"} onRetry={() => void loadRecords()} onOpen={(record) => void openStoredSessionById(record.profileId, record.id)} />;
   }
 
   const referenceProps = {
@@ -718,120 +691,8 @@ function Outcome({
     </section>
   );
 }
-export function ReviewRecords({
-  records,
-  state,
-  invalidCount,
-  draftsOnly,
-  onRetry,
-  onOpen,
-}: {
-  readonly records: ReadonlyArray<ReviewRecord>;
-  readonly state: "idle" | "loading" | "ready" | "error";
-  readonly invalidCount: number;
-  readonly draftsOnly: boolean;
-  readonly onRetry: () => void;
-  readonly onOpen: (record: ReviewRecord) => void;
-}): React.JSX.Element {
-  const visible = draftsOnly
-    ? records.filter(
-        (record) =>
-          record.draftState !== undefined &&
-          record.draftState !== "SubmittedGitHubReview",
-      )
-    : records;
-  return (
-    <div className="mx-auto max-w-5xl">
-      <header>
-        <p className="text-xs font-medium uppercase tracking-[.14em] text-primary">
-          Local review records
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">
-          {draftsOnly ? "Review drafts" : "Review history"}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Saved sessions are reopened from durable local state; opening one
-          never restarts its workflow.
-        </p>
-      </header>
-      <div className="mt-6 space-y-3">
-        {state === "loading" || state === "idle" ? (
-          <Card role="status" aria-label="Loading local review records">
-            <CardContent className="space-y-3">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-9 w-full" />
-            </CardContent>
-          </Card>
-        ) : state === "error" ? (
-          <Alert variant="destructive">
-            <AlertTitle>Local review records could not be loaded</AlertTitle>
-            <AlertDescription className="mt-2">
-              Your saved data remains on this Mac. Retry the local read without
-              starting a review.
-              <div>
-                <Button className="mt-3" variant="outline" onClick={onRetry}>
-                  Retry loading local review records
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <>
-            {invalidCount === 0 ? null : (
-              <Alert>
-                <AlertTitle>Some local records were skipped</AlertTitle>
-                <AlertDescription>
-                  {invalidCount} local review{" "}
-                  {invalidCount === 1 ? "record" : "records"} could not be read.
-                  Healthy records remain available.
-                </AlertDescription>
-              </Alert>
-            )}
-            {visible.length === 0 ? (
-              <Card>
-                <CardContent className="text-sm text-muted-foreground">
-                  No matching local review records.
-                </CardContent>
-              </Card>
-            ) : (
-              visible.map((record) => (
-                <Card key={record.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{record.state}</Badge>
-                        {record.draftState === undefined ? null : (
-                          <Badge variant="secondary">{record.draftState}</Badge>
-                        )}
-                      </div>
-                      <h2 className="mt-2 font-semibold">
-                        {record.owner}/{record.repo}#{record.prNumber} ·{" "}
-                        {record.title ?? "Stored pull request"}
-                      </h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Updated {record.updatedAt}
-                      </p>
-                    </div>
-                    <Button variant="outline" onClick={() => onOpen(record)}>
-                      Open saved review
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isReviewRecord(value: unknown): value is ReviewRecord {
-  return isRecord(value) && typeof value.id === "string" && typeof value.profileId === "string" && typeof value.owner === "string" && typeof value.repo === "string" && typeof value.prNumber === "number" && typeof value.state === "string" && typeof value.updatedAt === "string";
 }
 
 function isPreview(value: unknown): value is Preview {

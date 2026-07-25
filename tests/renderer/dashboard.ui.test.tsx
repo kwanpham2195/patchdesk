@@ -479,112 +479,6 @@ describe("dashboard renderer API flow", () => {
     expect(screen.queryByText("Setup action required")).toBeNull();
   });
 
-  it("reopens the exact persisted history session without starting another review", async () => {
-    const fetch = installApi({
-      reviewRecords: [
-        {
-          id: "session-123",
-          profileId: "cfw",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          prNumber: 42,
-          title: "Stored review title",
-          state: "ReviewCompleted",
-          draftState: "LocalDraft",
-          updatedAt: "2026-07-17T12:00:00.000Z",
-        },
-      ],
-      loadedWorkbench: completedWorkbench,
-    });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.click(screen.getByRole("button", { name: "History" }));
-    expect(
-      await screen.findByRole("heading", {
-        name: /centraldigital\/patchdesk#42 · Stored review title/,
-      }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Open saved review" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "Stored review title" }),
-    ).toBeTruthy();
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/reviews/load") &&
-          (init as RequestInit | undefined)?.method === "POST" &&
-          String((init as RequestInit).body).includes(
-            '"sessionId":"session-123"',
-          ),
-      ),
-    ).toBe(true);
-    expect(
-      fetch.mock.calls.some(([input]) =>
-        String(input).includes("v1/runs/review-pr"),
-      ),
-    ).toBe(false);
-  });
-
-  it("shows a dedicated loading state while local review records are read", async () => {
-    installApi({ reviewRecordsPending: true });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.click(screen.getByRole("button", { name: "History" }));
-    expect(
-      await screen.findByRole("status", {
-        name: "Loading local review records",
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByText("No matching local review records.")).toBeNull();
-  });
-
-  it("keeps valid history visible when one stored record is malformed", async () => {
-    installApi({
-      reviewRecords: [
-        {
-          id: "session-123",
-          profileId: "cfw",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          prNumber: 42,
-          title: "Stored review title",
-          state: "ReviewCompleted",
-          updatedAt: "2026-07-17T12:00:00.000Z",
-        },
-        { id: "broken-record" },
-      ],
-    });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.click(screen.getByRole("button", { name: "History" }));
-    expect(
-      await screen.findByRole("heading", { name: /Stored review title/ }),
-    ).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain(
-      "1 local review record could not be read",
-    );
-  });
-
-  it("shows an actionable history error when local records cannot be loaded", async () => {
-    installApi({ reviewRecordsStatus: 500 });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.click(screen.getByRole("button", { name: "History" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Local review records could not be loaded",
-    );
-    expect(
-      screen.getByRole("button", {
-        name: "Retry loading local review records",
-      }),
-    ).toBeTruthy();
-  });
-
   it("restores an exact persisted workbench destination after restart", async () => {
     window.localStorage.setItem(
       "patchdesk.destination",
@@ -656,7 +550,7 @@ describe("dashboard renderer API flow", () => {
     ).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "History", hidden: true }),
+      screen.getByRole("button", { name: "Settings", hidden: true }),
     );
     expect(
       screen.getByRole("alertdialog", {
@@ -674,20 +568,20 @@ describe("dashboard renderer API flow", () => {
     ).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "History", hidden: true }),
+      screen.getByRole("button", { name: "Settings", hidden: true }),
     );
     await user.click(
       screen.getByRole("button", { name: "Discard changes and leave" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Review history" }),
+      await screen.findByRole("heading", { name: "Settings" }),
     ).toBeTruthy();
     expect(window.patchdesk.request).toHaveBeenCalledWith({
       operation: "setNavigationState",
       state: "clear",
     });
     expect(window.localStorage.getItem("patchdesk.destination")).toBe(
-      "history",
+      "settings",
     );
   });
 

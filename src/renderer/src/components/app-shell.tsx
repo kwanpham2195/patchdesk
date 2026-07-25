@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Archive,
-  Clock3,
-  FilePenLine,
   GitPullRequest,
   Search,
   Settings,
@@ -57,8 +55,6 @@ import {
 
 const icons = {
   dashboard: GitPullRequest,
-  drafts: FilePenLine,
-  history: Clock3,
   settings: Settings,
 } as const;
 

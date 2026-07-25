@@ -1,14 +1,10 @@
 export type AppDestination =
   | { readonly kind: "dashboard" }
   | { readonly kind: "workbench"; readonly sessionId: string; readonly initialSection?: "overview" | "diff" | "checks" }
-  | { readonly kind: "drafts" }
-  | { readonly kind: "history" }
   | { readonly kind: "settings" };
 
 export const primaryDestinations = [
   { kind: "dashboard", label: "Inbox" },
-  { kind: "drafts", label: "Drafts" },
-  { kind: "history", label: "History" },
   { kind: "settings", label: "Settings" },
 ] as const;
 
@@ -24,10 +20,6 @@ export function destinationTitle(destination: AppDestination): string {
       return "Maintainer inbox";
     case "workbench":
       return "Review workbench";
-    case "drafts":
-      return "Review drafts";
-    case "history":
-      return "Review history";
     case "settings":
       return "Settings";
   }
@@ -38,7 +30,7 @@ export function parseDestination(value: string | null): AppDestination {
     const [sessionId, section] = value.slice("workbench:".length).trim().split(":", 2);
     if (sessionId !== undefined && sessionId.length > 0) return { kind: "workbench", sessionId, ...(section === "diff" || section === "checks" ? { initialSection: section } : {}) };
   }
-  if (value === "drafts" || value === "history" || value === "settings") {
+  if (value === "settings") {
     return { kind: value };
   }
   return { kind: "dashboard" };

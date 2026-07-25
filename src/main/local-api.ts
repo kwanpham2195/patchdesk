@@ -28,6 +28,7 @@ import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewDraftController } from "../services/review-draft-controller";
+import { ReviewBatchController } from "../services/review-batch-controller";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
 import { ReviewWorkbenchProjectionService } from "../services/review-workbench-projection";
@@ -177,6 +178,10 @@ export async function startLocalApiServer(
           () => new Date().toISOString() as never,
         );
   const reviewDrafts = new ReviewDraftController(
+    sessions,
+    () => new Date().toISOString() as never,
+  );
+  const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
   );
@@ -450,6 +455,9 @@ export async function startLocalApiServer(
   );
   app.post("/v1/reviews/draft", async (context) =>
     response(context, await reviewDrafts.update(await jsonBody(context))),
+  );
+  app.post("/v1/reviews/batch", async (context) =>
+    response(context, await reviewBatches.update(await jsonBody(context))),
   );
   app.post("/v1/reviews/complete", async (context) =>
     response(context, await reviewCompletion.complete(await jsonBody(context))),
