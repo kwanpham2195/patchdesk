@@ -760,13 +760,13 @@ Expected: all green. Fix anything attributable to Tasks 1–4; pre-existing fail
 
 Run: `pnpm package:mac && pnpm test:package-smoke`
 
-Launch an isolated app and hand QA to a dedicated tester subagent (repo rule — the primary agent must not do the live UI steps):
+Launch an isolated app and hand QA to the repo's dedicated `electron-tester` subagent (project agent at `.pi/agents/electron-tester.md`; repo rule — the primary agent must not do the live UI steps):
 
 ```bash
 ./release/mac-arm64/Patchdesk.app/Contents/MacOS/Patchdesk --user-data-dir=/tmp/patchdesk-qa-lifecycle --remote-debugging-port=9233
 ```
 
-Tester checklist (agent-browser `--session patchdesk-qa --cdp 9233`, `snapshot -i` before every interaction, `errors` + `console` after each step, screenshots for evidence):
+Tester checklist for the `electron-tester` subagent (it already knows the agent-browser CDP recipe; the task text adds: `snapshot -i` before every interaction, `errors` + `console` after each step, screenshots for evidence):
 
 1. Open a prepared PR session, click **Run review**, confirm the dialog shows **Starting…** and stays open until the run begins.
 2. Assert the workbench enters live progress immediately (run status card with step/elapsed) without an inbox detour.
@@ -1313,7 +1313,7 @@ Launch with a fresh isolated profile (use a distinct CDP port if 9233 is busy):
 ./release/mac-arm64/Patchdesk.app/Contents/MacOS/Patchdesk --user-data-dir=/tmp/patchdesk-qa-lifecycle-2 --remote-debugging-port=9233
 ```
 
-Tester checklist (agent-browser over CDP, `snapshot -i` before interactions, `errors` + `console` after each step, screenshots as evidence):
+Tester checklist for the `electron-tester` subagent (agent-browser over CDP, `snapshot -i` before interactions, `errors` + `console` after each step, screenshots as evidence):
 
 1. Start a review, wait for live progress, then **quit the app mid-run** and relaunch with the same user-data dir. Reopen the session: assert the ready card shows "Previous review run failed — Patchdesk restarted before this review run completed." and a working **Run review** button.
 2. Start a new run from that banner state and assert live progress begins (proves `ReviewFailed` is runnable end to end).
