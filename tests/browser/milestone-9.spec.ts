@@ -126,8 +126,8 @@ test("all-files stream appends when the diff scroll reaches its end", async ({
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
     await expect(
-      page.getByRole("button", { name: "Load more files (1 remaining)" }),
-    ).toBeVisible();
+      page.getByRole("button", { name: /Load more files/ }),
+    ).toHaveCount(0);
 
     const diffViewport = page.locator(".review-diff-viewport");
     const box = await diffViewport.boundingBox();

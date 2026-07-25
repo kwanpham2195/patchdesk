@@ -225,7 +225,6 @@ function ReviewDiffSurface({
     loadedCount,
     nextItemIndex,
     appendItemsThrough,
-    appendVisibleBatch,
     handleViewerScroll,
   } = useProgressiveReviewDiffStream({
     items,
@@ -524,18 +523,6 @@ function ReviewDiffSurface({
             renderCustomHeader={renderCodeViewHeader}
             onScroll={handleViewerScroll}
           />
-          {loadedCount < items.length ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center">
-              <Button
-                variant="secondary"
-                size="xs"
-                className="pointer-events-auto shadow-lg"
-                onClick={() => appendVisibleBatch()}
-              >
-                Load more files ({items.length - loadedCount} remaining)
-              </Button>
-            </div>
-          ) : null}
         </div>
       )}
     </>

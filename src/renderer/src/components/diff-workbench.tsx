@@ -1,22 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LocateFixed, Search } from "lucide-react";
-
 import {
   mapFindingLocation,
   parseUnifiedPatch,
   type FindingLocationInput,
 } from "../../../domain/patch";
-import { ChangedFileTree } from "./changed-file-tree";
+import { PierreFileTree } from "./pierre-file-tree";
 import { ReviewDiffView } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
   type ReviewViewPreferences,
@@ -47,7 +38,6 @@ export function DiffWorkbench({
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
-  const [query, setQuery] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
@@ -112,20 +102,13 @@ export function DiffWorkbench({
       })),
     [files, parsedDiff.statsByPath],
   );
-  const visibleFiles = useMemo(
-    () =>
-      fileRows.filter((file) =>
-        file.path.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [fileRows, query],
-  );
-  const navigatorWindow = query.length === 0 && visibleFiles.length > 200
-    ? 20
-    : undefined;
   const mapped =
     finding === undefined ? undefined : mapFindingLocation(files, finding);
   const mappedPath =
     mapped?.mappingStatus === "mapped" ? mapped.path : undefined;
+  useEffect(() => {
+    if (mappedPath !== undefined) selectFile(mappedPath);
+  }, [mappedPath, selectFile]);
   return (
     <section
       aria-label="Diff workbench"
@@ -140,53 +123,11 @@ export function DiffWorkbench({
         aria-label="Review navigation"
         className="min-w-0 border-r bg-card p-3 max-[1099px]:hidden"
       >
-        <Tabs defaultValue="files">
-          <TabsList className="w-full">
-            <TabsTrigger value="files">Files</TabsTrigger>
-            <TabsTrigger value="findings">Findings</TabsTrigger>
-          </TabsList>
-          <TabsContent value="files" className="mt-3">
-            <Label htmlFor="changed-file-search" className="sr-only">
-              Search changed files
-            </Label>
-            <InputGroup className="mb-3">
-              <InputGroupAddon>
-                <Search aria-hidden="true" />
-              </InputGroupAddon>
-              <InputGroupInput
-                id="changed-file-search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Filter files"
-              />
-            </InputGroup>
-            <ChangedFileTree
-              files={visibleFiles}
-              {...(selectedPath === undefined ? {} : { selectedPath })}
-              onSelect={selectFile}
-              {...(navigatorWindow === undefined
-                ? {}
-                : { maxVisibleItems: navigatorWindow })}
-            />
-          </TabsContent>
-          <TabsContent
-            value="findings"
-            className="mt-3 text-sm text-muted-foreground"
-          >
-            {mappedPath === undefined ? (
-              "No mapped finding selected."
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => selectFile(mappedPath)}
-              >
-                <LocateFixed />
-                Go to mapped finding
-              </Button>
-            )}
-          </TabsContent>
-        </Tabs>
+        <PierreFileTree
+          files={fileRows}
+          {...(selectedPath === undefined ? {} : { selectedPath })}
+          onSelect={selectFile}
+        />
       </aside>
       <div className="min-w-0 overflow-auto bg-background">
         <header className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
@@ -203,74 +144,24 @@ export function DiffWorkbench({
               <SheetTrigger
                 render={<Button variant="outline" size="sm" className="max-[1099px]:inline-flex min-[1100px]:hidden" />}
               >
-                Files and findings
+                Files
               </SheetTrigger>
               <SheetContent side="left">
                 <SheetHeader>
-                  <SheetTitle>Files and findings</SheetTitle>
+                  <SheetTitle>Changed files</SheetTitle>
                   <SheetDescription>
-                    Choose a changed file or mapped finding.
+                    Choose a file to inspect its change.
                   </SheetDescription>
                 </SheetHeader>
                 <div className="min-h-0 overflow-auto p-4">
-                  <Tabs defaultValue="files">
-                    <TabsList className="w-full">
-                      <TabsTrigger value="files">Files</TabsTrigger>
-                      <TabsTrigger value="findings">Findings</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="files" className="mt-3">
-                      <Label
-                        htmlFor="compact-changed-file-search"
-                        className="sr-only"
-                      >
-                        Search changed files
-                      </Label>
-                      <InputGroup className="mb-3">
-                        <InputGroupAddon>
-                          <Search aria-hidden="true" />
-                        </InputGroupAddon>
-                        <InputGroupInput
-                          id="compact-changed-file-search"
-                          value={query}
-                          onChange={(event) => setQuery(event.target.value)}
-                          placeholder="Filter files"
-                        />
-                      </InputGroup>
-                      <ChangedFileTree
-                        files={visibleFiles}
-                        {...(selectedPath === undefined
-                          ? {}
-                          : { selectedPath })}
-                        onSelect={(path) => {
-                          selectFile(path);
-                          setNavigationOpen(false);
-                        }}
-                        {...(navigatorWindow === undefined
-                          ? {}
-                          : { maxVisibleItems: navigatorWindow })}
-                      />
-                    </TabsContent>
-                    <TabsContent
-                      value="findings"
-                      className="mt-3 text-sm text-muted-foreground"
-                    >
-                      {mappedPath === undefined ? (
-                        "No mapped finding selected."
-                      ) : (
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            selectFile(mappedPath);
-                            setNavigationOpen(false);
-                          }}
-                        >
-                          <LocateFixed />
-                          Go to mapped finding
-                        </Button>
-                      )}
-                    </TabsContent>
-                  </Tabs>
+                  <PierreFileTree
+                    files={fileRows}
+                    {...(selectedPath === undefined ? {} : { selectedPath })}
+                    onSelect={(path) => {
+                      selectFile(path);
+                      setNavigationOpen(false);
+                    }}
+                  />
                 </div>
               </SheetContent>
             </Sheet>
