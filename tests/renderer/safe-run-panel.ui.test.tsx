@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SafeRunPanel } from "../../src/renderer/src/components/safe-run-panel";
+afterEach(cleanup);
+
 describe("safe live run panel", () => { it("renders only a disconnected projection and never raw event fields", async () => { Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "disconnected", elapsedMs: 0, step: "inspecting", prompt: "hidden" } }) } }); render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />); expect(await screen.findByText("Run status: disconnected")).toBeTruthy(); expect(screen.queryByText("hidden")).toBeNull(); }); });
 
 describe("review completion", () => {
@@ -27,5 +29,43 @@ describe("review run metadata", () => {
     render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />);
     expect(await screen.findByText("Run status: disconnected")).toBeTruthy();
     expect(screen.queryByText("provider event")).toBeNull();
+  });
+});
+
+describe("settling the finished run", () => {
+  it("shows a finalizing state while the workbench reloads", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "completed", elapsedMs: 12, step: "complete" } }) } });
+    const completed = vi.fn(() => new Promise<void>(() => {}));
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onCompleted={completed} />);
+
+    expect(await screen.findByText("Finalizing review…")).toBeTruthy();
+    expect(completed).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a retry when the workbench reload fails", async () => {
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request: vi.fn().mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "completed", elapsedMs: 12, step: "complete" } }) } });
+    const completed = vi.fn()
+      .mockRejectedValueOnce(new Error("load failed"))
+      .mockResolvedValueOnce(undefined);
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" onCompleted={completed} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(completed).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("disconnected polling", () => {
+  it("retries immediately when the user asks for a check", async () => {
+    const request = vi.fn()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValue({ ok: true, status: 200, correlationId: "test", body: { status: "running", elapsedMs: 5, step: "inspecting" } });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    render(<SafeRunPanel profileId="cfw" sessionId="session" attemptId="001" runId="run" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Check again now" }));
+
+    await waitFor(() => expect(request.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText("Run status: running")).toBeTruthy();
   });
 });

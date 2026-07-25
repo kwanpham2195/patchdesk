@@ -38,6 +38,21 @@ export function SafeRunPanel({
   const [projection, setProjection] = useState<Projection>();
   const [starting, setStarting] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [settleError, setSettleError] = useState(false);
+  const [pollNonce, setPollNonce] = useState(0);
+
+  const settle = async (): Promise<void> => {
+    if (onCompleted === undefined) return;
+    setSettling(true);
+    try {
+      await onCompleted(profileId, sessionId);
+      setSettling(false);
+    } catch {
+      setSettling(false);
+      setSettleError(true);
+    }
+  };
 
   useEffect(() => {
     if (runId === undefined) return;
@@ -54,13 +69,13 @@ export function SafeRunPanel({
           if (cancelled) return;
           setProjection(parsed.value);
           if (parsed.value.status === "completed") {
-            if (onCompleted !== undefined) await onCompleted(profileId, sessionId);
+            await settle();
             return;
           }
           if (parsed.value.status === "failed") return;
           delayMs = 300;
         } catch {
-          if (!cancelled) setProjection({ status: "disconnected", elapsedMs: 0, step: "inspecting", message: "Patchdesk lost its local run connection. The review was not restarted." });
+          if (!cancelled) setProjection({ status: "disconnected", elapsedMs: 0, step: "inspecting", message: "Lost the local run connection — retrying automatically." });
           delayMs = Math.min(delayMs * 2, 5_000);
         }
         await wait(delayMs);
@@ -68,7 +83,7 @@ export function SafeRunPanel({
     };
     void observe();
     return () => { cancelled = true; };
-  }, [attemptId, onCompleted, profileId, runId, sessionId]);
+  }, [attemptId, onCompleted, pollNonce, profileId, runId, sessionId]);
 
   const start = async (): Promise<void> => {
     if (onStart === undefined || starting) return;
@@ -86,6 +101,35 @@ export function SafeRunPanel({
           {onStart === undefined ? null : <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>{starting ? "Starting…" : "Start review"}</Button>}
         </AlertDescription>
       </Alert>
+    );
+  }
+
+  if (settleError) {
+    return (
+      <Alert className="mt-4" variant="destructive">
+        <CircleAlert />
+        <AlertTitle>Could not load the review outcome</AlertTitle>
+        <AlertDescription className="mt-2">
+          The run finished, but the workbench could not be updated.
+          <Button size="sm" className="mt-3 block" onClick={() => { setSettleError(false); void settle(); }}>Retry</Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (settling) {
+    return (
+      <Card className="mt-5 gap-0 rounded-lg py-0 shadow-none" aria-live="polite" aria-busy="true">
+        <CardContent className="p-0">
+          <Item className="rounded-b-none border-0 p-4">
+            <ItemContent>
+              <ItemTitle>Finalizing review…</ItemTitle>
+              <p className="text-xs text-muted-foreground">Saving results</p>
+            </ItemContent>
+            <ItemActions><Badge variant="secondary"><Spinner />saving</Badge></ItemActions>
+          </Item>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -114,7 +158,21 @@ export function SafeRunPanel({
         {current.message === undefined ? null : (
           <Alert className="m-3 mt-0 rounded-md border-0 bg-muted py-3 shadow-none">
             <CircleAlert />
-            <AlertDescription>{current.message}</AlertDescription>
+            <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
+              {current.message}
+              {current.status === "disconnected" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setProjection(undefined);
+                    setPollNonce((nonce) => nonce + 1);
+                  }}
+                >
+                  Check again now
+                </Button>
+              ) : null}
+            </AlertDescription>
           </Alert>
         )}
         {current.metadata === undefined ? null : (
