@@ -27,7 +27,7 @@ import type { FindingLifecycleEntry } from "../../../domain/finding-lifecycle";
 import type { RevisionComparison, ReviewScopeProjection } from "../../../domain/review-comparison";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parseUnifiedPatch } from "../../../domain/patch";
-import { ChangedFileTree } from "./changed-file-tree";
+import { PierreFileTree } from "./pierre-file-tree";
 import { ReviewChecks } from "./review-checks";
 import { ReviewDiffView } from "./review-diff-view";
 import { ReviewDraftSheet, type DraftSaveState } from "./review-draft-sheet";
@@ -386,7 +386,7 @@ export function CompletedReviewWorkbench({
                 <SeverityCounts findings={props.result.findings} />
               </div>
               <TabsContent value="files" className="mt-3">
-                <ChangedFileTree
+                <PierreFileTree
                   files={changedFiles}
                   {...(selectedPath === undefined ? {} : { selectedPath })}
                   onSelect={selectFile}
@@ -509,7 +509,7 @@ export function CompletedReviewWorkbench({
                         <TabsTrigger value="findings">Findings</TabsTrigger>
                       </TabsList>
                       <TabsContent value="files" className="mt-3">
-                        <ChangedFileTree
+                        <PierreFileTree
                           files={changedFiles}
                           {...(selectedPath === undefined
                             ? {}
