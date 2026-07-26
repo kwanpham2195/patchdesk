@@ -16,6 +16,15 @@
 - External runtime assets (workflows, skills, `@flue/*`) are unpacked from `asar` at runtime. Keep them under `src/workflows/`, `src/skills/`, and `node_modules/@flue/**` when adding new ones — see the `build.asarUnpack` list in `package.json`.
 - No CI workflows exist under `.github/`. All verification is local; treat the commands below as the source of truth.
 
+## Local configuration
+
+- Development and packaged builds share the same app-owned paths: config in `~/.config/patchdesk/`, review data in `~/.local/share/patchdesk/`, and cache plus managed review worktrees in `~/.cache/patchdesk/`.
+- `~/.config/patchdesk/config.json` is strict global state only. It supports optional `lastSelectedProfileId`, `appearance` (`system`, `light`, or `dark`), and `diffTheme` (`{ light, dark }` Pierre theme IDs). Do not put workspace, GitHub, credentials, navigation, inbox layout, searches, saved views, or review model choices there.
+- Existing `{ recentPrs: [...] }` configs are read as legacy state. Patchdesk drops `recentPrs` on its next config write. On the first successful app launch when either file-backed preference is missing, Patchdesk imports its renderer local-storage value into `config.json`, then deletes that migrated key.
+- Workspace profiles live in `~/.config/patchdesk/profiles/<profile-id>.json`. Each profile requires `id`, `label`, `githubHost`, `ghAccount`, `ownerFilters`, `workspaceRoots`, `rulePaths`, and `repos`.
+- Each watched repository requires `host`, `owner`, and `repo`; `localPath` and `archived` are optional. Workspace roots, rule paths, and repository paths must be absolute paths. Profile storage never contains ambient credentials or tokens.
+- Settings exposes global appearance and diff theme preferences. It also edits profile label, GitHub host/account, workspace-root lists, owner filters, and rule paths. Existing profile IDs stay fixed; use **New profile** to create another profile. Watched repositories remain in their dedicated Watchlist controls.
+
 ## Commands (pnpm@8.8.0)
 
 | Goal                            | Command                                  |

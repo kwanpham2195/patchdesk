@@ -60,6 +60,9 @@ export function SettingsFlow({
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [pathFeedback, setPathFeedback] = useState<string>();
   const [profileDraft, setProfileDraft] = useState(() => profileDraftFor(dashboard?.profile));
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string>();
+  const [savingProfile, setSavingProfile] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string>();
   const [newRepo, setNewRepo] = useState("");
@@ -68,9 +71,13 @@ export function SettingsFlow({
   const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
   useEffect(() => {
-    if (dashboard !== undefined && dashboard.profile.id !== profileDraft.id)
+    if (
+      !creatingProfile &&
+      dashboard !== undefined &&
+      dashboard.profile.id !== profileDraft.id
+    )
       setProfileDraft(profileDraftFor(dashboard.profile));
-  }, [dashboard?.profile.id]);
+  }, [creatingProfile, dashboard?.profile.id]);
   const loadEnvironment = async (): Promise<void> => {
     const value = await requestJson("/v1/environment");
     if (!record(value)) return;
@@ -128,21 +135,79 @@ export function SettingsFlow({
       setGithubAccess(value.state);
   };
   const saveProfile = async (): Promise<void> => {
-    const exists = profiles.some((profile) => profile.id === profileDraft.id);
-    await requestJson("/v1/profiles", {
-      method: exists ? "PUT" : "POST",
-      body: {
-        ...profileDraft,
-        workspaceRoots: profileDraft.workspaceRoot.trim().length === 0 ? [] : [profileDraft.workspaceRoot.trim()],
-      },
-    });
-    await onWorkspaceReload();
+    setProfileError(undefined);
+    const normalized = normalizeProfileDraft(profileDraft);
+    if (typeof normalized === "string") {
+      setProfileError(normalized);
+      return;
+    }
+    if (creatingProfile && profiles.some((profile) => profile.id === normalized.id)) {
+      setProfileError("A profile with this ID already exists.");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await requestJson("/v1/profiles", {
+        method: creatingProfile ? "POST" : "PUT",
+        body: normalized,
+      });
+      if (creatingProfile)
+        await requestJson("/v1/profiles/select", {
+          method: "POST",
+          body: { id: normalized.id },
+        });
+      setCreatingProfile(false);
+      await onWorkspaceReload();
+    } catch (cause: unknown) {
+      setProfileError(
+        cause instanceof Error
+          ? cause.message
+          : "Patchdesk could not save this profile.",
+      );
+    } finally {
+      setSavingProfile(false);
+    }
   };
   const selectProfile = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
-    if (selected !== undefined) setProfileDraft(profileDraftFor(selected));
+    if (selected !== undefined) {
+      setCreatingProfile(false);
+      setProfileError(undefined);
+      setProfileDraft(profileDraftFor(selected));
+    }
     await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
     await onWorkspaceReload();
+  };
+  const startNewProfile = (): void => {
+    setCreatingProfile(true);
+    setProfileError(undefined);
+    setProfileDraft(profileDraftFor(undefined));
+  };
+  const updateProfileList = (
+    field: ProfileListField,
+    index: number,
+    value: string,
+  ): void => {
+    setProfileDraft((current) => ({
+      ...current,
+      [field]: current[field].map((entry, entryIndex) =>
+        entryIndex === index ? value : entry,
+      ),
+    }));
+  };
+  const addProfileListEntry = (field: ProfileListField): void => {
+    setProfileDraft((current) => ({ ...current, [field]: [...current[field], ""] }));
+  };
+  const removeProfileListEntry = (field: ProfileListField, index: number): void => {
+    setProfileDraft((current) => ({
+      ...current,
+      [field]: current[field].filter((_, entryIndex) => entryIndex !== index),
+    }));
+  };
+  const chooseWorkspaceRoot = async (index: number): Promise<void> => {
+    const selected = await selectDirectory(profileDraft.workspaceRoots[index]);
+    if (selected === undefined) return;
+    updateProfileList("workspaceRoots", index, selected);
   };
   const editPath = async (repo: Repo): Promise<void> => {
     await requestJson("/v1/watchlist/path", { method: "PATCH", body: { ...repo, localPath: paths[key(repo)] ?? repo.localPath ?? "" } });
@@ -329,13 +394,15 @@ export function SettingsFlow({
                 </SelectContent>
               </Select>
             </div>
+            <Button variant="outline" onClick={startNewProfile}>
+              New profile
+            </Button>
             {(
               [
                 ["Profile ID", "id"],
                 ["Label", "label"],
                 ["GitHub host", "githubHost"],
                 ["GitHub account", "ghAccount"],
-                ["Workspace root", "workspaceRoot"],
               ] as const
             ).map(([label, field]) => (
               <div key={field}>
@@ -344,11 +411,7 @@ export function SettingsFlow({
                   id={`profile-${field}`}
                   className="mt-1.5"
                   value={profileDraft[field]}
-                  placeholder={
-                    field === "workspaceRoot"
-                      ? "/absolute/workspace/path"
-                      : undefined
-                  }
+                  disabled={field === "id" && !creatingProfile}
                   onChange={(event) =>
                     setProfileDraft((current) => ({
                       ...current,
@@ -358,7 +421,42 @@ export function SettingsFlow({
                 />
               </div>
             ))}
-            <Button onClick={() => void saveProfile()}>Save profile</Button>
+            <ProfileListEditor
+              label="Workspace roots"
+              field="workspaceRoots"
+              entries={profileDraft.workspaceRoots}
+              placeholder="/absolute/workspace/path"
+              onChange={updateProfileList}
+              onAdd={addProfileListEntry}
+              onRemove={removeProfileListEntry}
+              onChoose={(index) => void chooseWorkspaceRoot(index)}
+            />
+            <ProfileListEditor
+              label="Owner filters"
+              field="ownerFilters"
+              entries={profileDraft.ownerFilters}
+              placeholder="github-owner"
+              onChange={updateProfileList}
+              onAdd={addProfileListEntry}
+              onRemove={removeProfileListEntry}
+            />
+            <ProfileListEditor
+              label="Rule paths"
+              field="rulePaths"
+              entries={profileDraft.rulePaths}
+              placeholder="/absolute/path/to/AGENTS.md"
+              onChange={updateProfileList}
+              onAdd={addProfileListEntry}
+              onRemove={removeProfileListEntry}
+            />
+            {profileError === undefined ? null : (
+              <p role="alert" className="text-sm text-destructive">
+                {profileError}
+              </p>
+            )}
+            <Button disabled={savingProfile} onClick={() => void saveProfile()}>
+              {savingProfile ? "Saving profile…" : "Save profile"}
+            </Button>
           </CardContent>
         </Card>
         <Card>
@@ -684,20 +782,127 @@ function environmentSetupSteps(
   return steps;
 }
 
-function profileDraftFor(profile: Profile | undefined): {
+type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
+
+type ProfileDraft = {
   readonly id: string;
   readonly label: string;
   readonly githubHost: string;
   readonly ghAccount: string;
-  readonly workspaceRoot: string;
-} {
+  readonly workspaceRoots: ReadonlyArray<string>;
+  readonly ownerFilters: ReadonlyArray<string>;
+  readonly rulePaths: ReadonlyArray<string>;
+};
+
+function profileDraftFor(profile: Profile | undefined): ProfileDraft {
   return {
     id: profile?.id ?? "",
     label: profile?.label ?? "",
     githubHost: profile?.githubHost ?? "github.com",
     ghAccount: profile?.ghAccount ?? "",
-    workspaceRoot: profile?.workspaceRoots?.[0] ?? "",
+    workspaceRoots: profile === undefined ? [""] : (profile.workspaceRoots ?? []),
+    ownerFilters: profile === undefined ? [""] : (profile.ownerFilters ?? []),
+    rulePaths: profile?.rulePaths ?? [],
   };
+}
+
+function normalizeProfileDraft(
+  draft: ProfileDraft,
+):
+  | {
+      readonly id: string;
+      readonly label: string;
+      readonly githubHost: string;
+      readonly ghAccount: string;
+      readonly workspaceRoots: ReadonlyArray<string>;
+      readonly ownerFilters: ReadonlyArray<string>;
+      readonly rulePaths: ReadonlyArray<string>;
+    }
+  | string {
+  const workspaceRoots = trimEntries(draft.workspaceRoots, "Workspace roots");
+  if (typeof workspaceRoots === "string") return workspaceRoots;
+  const ownerFilters = trimEntries(draft.ownerFilters, "Owner filters");
+  if (typeof ownerFilters === "string") return ownerFilters;
+  const rulePaths = trimEntries(draft.rulePaths, "Rule paths");
+  if (typeof rulePaths === "string") return rulePaths;
+  return {
+    id: draft.id.trim(),
+    label: draft.label.trim(),
+    githubHost: draft.githubHost.trim(),
+    ghAccount: draft.ghAccount.trim(),
+    workspaceRoots,
+    ownerFilters,
+    rulePaths,
+  };
+}
+
+function trimEntries(
+  entries: ReadonlyArray<string>,
+  label: string,
+): ReadonlyArray<string> | string {
+  const trimmed = entries.map((entry) => entry.trim());
+  return trimmed.some((entry) => entry.length === 0)
+    ? `${label} cannot contain blank entries.`
+    : trimmed;
+}
+
+function ProfileListEditor({
+  label,
+  field,
+  entries,
+  placeholder,
+  onChange,
+  onAdd,
+  onRemove,
+  onChoose,
+}: {
+  readonly label: string;
+  readonly field: ProfileListField;
+  readonly entries: ReadonlyArray<string>;
+  readonly placeholder: string;
+  readonly onChange: (field: ProfileListField, index: number, value: string) => void;
+  readonly onAdd: (field: ProfileListField) => void;
+  readonly onRemove: (field: ProfileListField, index: number) => void;
+  readonly onChoose?: (index: number) => void;
+}): React.JSX.Element {
+  const singular = label.slice(0, -1).toLowerCase();
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">{label}</legend>
+      {entries.map((entry, index) => {
+        const number = index + 1;
+        return (
+          <div key={`${field}-${number}`} className="flex gap-2">
+            <Input
+              aria-label={`${singular} ${number}`}
+              value={entry}
+              placeholder={placeholder}
+              onChange={(event) => onChange(field, index, event.target.value)}
+            />
+            {onChoose === undefined ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onChoose(index)}
+              >
+                {`Choose ${singular} ${number}`}
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onRemove(field, index)}
+            >
+              {`Remove ${singular} ${number}`}
+            </Button>
+          </div>
+        );
+      })}
+      <Button type="button" variant="outline" onClick={() => onAdd(field)}>
+        {`Add ${singular}`}
+      </Button>
+    </fieldset>
+  );
 }
 
 function key(repo: Repo): string {

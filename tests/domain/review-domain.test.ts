@@ -1123,8 +1123,21 @@ describe("Patchdesk review domain", () => {
   });
 
   it("parses strict boundary contracts for config, GitHub, storage, Flue, and UI requests", () => {
-    expect(parsePatchdeskConfig({ recentPrs: [] })).toMatchObject({ _tag: "ok" });
-    expect(parsePatchdeskConfig({ recentPrs: [], typo: true })).toMatchObject({
+    expect(parsePatchdeskConfig({
+      appearance: "dark",
+      diffTheme: { light: "github-light", dark: "github-dark" },
+    })).toMatchObject({
+      _tag: "ok",
+      value: {
+        appearance: "dark",
+        diffTheme: { light: "github-light", dark: "github-dark" },
+      },
+    });
+    expect(parsePatchdeskConfig({
+      lastSelectedProfileId: "cfw",
+      recentPrs: ["centraldigital/patchdesk#42"],
+    })).toEqual({ _tag: "ok", value: { lastSelectedProfileId: "cfw" } });
+    expect(parsePatchdeskConfig({ appearance: "dark", typo: true })).toMatchObject({
       _tag: "err",
       error: { _tag: "InvalidDomainContract", boundary: "config" },
     });

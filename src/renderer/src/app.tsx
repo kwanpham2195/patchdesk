@@ -35,13 +35,15 @@ import {
 } from "./inbox-refresh-scheduler";
 import {
   applyAppearance,
+  clearAppearancePreference,
   loadAppearancePreference,
-  saveAppearancePreference,
   type AppearancePreference,
 } from "./appearance-preferences";
 import {
+  applyDiffThemePreferences,
+  clearDiffThemePreferences,
   loadDiffThemePreferences,
-  saveDiffThemePreferences,
+  parseDiffThemePreferences,
   type DiffThemePreferences,
 } from "./diff-theme-preferences";
 
@@ -84,6 +86,57 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [appearance]);
+  useEffect(() => {
+    applyDiffThemePreferences(diffThemePreferences);
+  }, [diffThemePreferences]);
+  useEffect(() => {
+    if (fixtureMode || typeof window.patchdesk?.request !== "function")
+      return;
+    let active = true;
+    const loadGlobalPreferences = async (): Promise<void> => {
+      let stored: GlobalSettings;
+      try {
+        stored = parseGlobalSettings(await api("/v1/settings"));
+      } catch {
+        return;
+      }
+      const appearanceFromStorage = stored.appearance;
+      const diffThemeFromStorage = stored.diffTheme;
+      const migratedAppearance = appearanceFromStorage === undefined;
+      const migratedDiffTheme = diffThemeFromStorage === undefined;
+      const nextAppearance = appearanceFromStorage ?? loadAppearancePreference();
+      const nextDiffTheme = diffThemeFromStorage === undefined
+        ? loadDiffThemePreferences()
+        : parseDiffThemePreferences(diffThemeFromStorage);
+      const correctedDiffTheme = diffThemeFromStorage !== undefined &&
+        !sameDiffTheme(diffThemeFromStorage, nextDiffTheme);
+
+      if (!active) return;
+      if (appearanceFromStorage !== undefined) setAppearance(nextAppearance);
+      if (diffThemeFromStorage !== undefined) setDiffThemePreferences(nextDiffTheme);
+
+      if (!migratedAppearance && !migratedDiffTheme && !correctedDiffTheme)
+        return;
+      const patch: GlobalSettingsPatch = {
+        ...(migratedAppearance ? { appearance: nextAppearance } : {}),
+        ...(migratedDiffTheme || correctedDiffTheme
+          ? { diffTheme: nextDiffTheme }
+          : {}),
+      };
+      try {
+        await api("/v1/settings", { method: "PATCH", body: patch });
+      } catch {
+        return;
+      }
+      if (!active) return;
+      if (migratedAppearance) clearAppearancePreference();
+      if (migratedDiffTheme) clearDiffThemePreferences();
+    };
+    void loadGlobalPreferences();
+    return () => {
+      active = false;
+    };
+  }, [fixtureMode]);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
   const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
@@ -251,6 +304,27 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     }
     await loadWorkspace();
   };
+  const updateAppearance = useCallback(async (next: AppearancePreference): Promise<void> => {
+    try {
+      const stored = parseGlobalSettings(
+        await api("/v1/settings", { method: "PATCH", body: { appearance: next } }),
+      );
+      if (stored.appearance !== undefined) setAppearance(stored.appearance);
+    } catch {
+      // Keep the last file-backed setting when its replacement is rejected.
+    }
+  }, []);
+  const updateDiffTheme = useCallback(async (next: DiffThemePreferences): Promise<void> => {
+    try {
+      const stored = parseGlobalSettings(
+        await api("/v1/settings", { method: "PATCH", body: { diffTheme: next } }),
+      );
+      if (stored.diffTheme !== undefined)
+        setDiffThemePreferences(parseDiffThemePreferences(stored.diffTheme));
+    } catch {
+      // Keep the last file-backed setting when its replacement is rejected.
+    }
+  }, []);
   const shell = (
     content: React.ReactNode,
     next: AppDestination = destination,
@@ -404,9 +478,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         <SettingsFlow
           {...(dashboard === undefined ? {} : { dashboard })}
           appearance={appearance}
-          onAppearanceChange={(next) => { setAppearance(next); saveAppearancePreference(next); }}
+          onAppearanceChange={(next) => { void updateAppearance(next); }}
           diffThemePreferences={diffThemePreferences}
-          onDiffThemeChange={(next) => { const saved = saveDiffThemePreferences(next); if (saved.saved) setDiffThemePreferences(saved.preferences); }}
+          onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
           profiles={profiles}
           onWorkspaceReload={loadWorkspace}
           onRepositoryRefresh={(value, repo) => {
@@ -452,6 +526,32 @@ async function api(
     ...(init.body === undefined ? {} : { body: init.body }),
   });
 }
+
+type GlobalSettings = {
+  readonly appearance?: AppearancePreference;
+  readonly diffTheme?: unknown;
+};
+
+type GlobalSettingsPatch = {
+  readonly appearance?: AppearancePreference;
+  readonly diffTheme?: DiffThemePreferences;
+};
+
+function parseGlobalSettings(value: unknown): GlobalSettings {
+  if (!record(value)) return {};
+  return {
+    ...(value.appearance === "system" || value.appearance === "light" || value.appearance === "dark"
+      ? { appearance: value.appearance }
+      : {}),
+    ...(Object.hasOwn(value, "diffTheme") ? { diffTheme: value.diffTheme } : {}),
+  };
+}
+
+function sameDiffTheme(value: unknown, expected: DiffThemePreferences): boolean {
+  return record(value) &&
+    value.light === expected.light &&
+    value.dark === expected.dark;
+}
 function key(repo: Repo): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }
@@ -459,13 +559,21 @@ function key(repo: Repo): string {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+function stringArray(value: unknown): value is ReadonlyArray<string> {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
 function isProfile(value: unknown): value is Profile {
   return (
     record(value) &&
     typeof value.id === "string" &&
     typeof value.label === "string" &&
     typeof value.githubHost === "string" &&
-    typeof value.ghAccount === "string"
+    typeof value.ghAccount === "string" &&
+    (value.workspaceRoots === undefined || stringArray(value.workspaceRoots)) &&
+    (value.ownerFilters === undefined || stringArray(value.ownerFilters)) &&
+    (value.rulePaths === undefined || stringArray(value.rulePaths))
   );
 }
 function isDashboard(value: unknown): value is Dashboard {
@@ -488,6 +596,12 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       ...(inbox.profile.workspaceRoots === undefined
         ? {}
         : { workspaceRoots: inbox.profile.workspaceRoots }),
+      ...(inbox.profile.ownerFilters === undefined
+        ? {}
+        : { ownerFilters: inbox.profile.ownerFilters }),
+      ...(inbox.profile.rulePaths === undefined
+        ? {}
+        : { rulePaths: inbox.profile.rulePaths }),
     },
     dashboard: {
       rows: inbox.inbox.rows.map((row) => ({

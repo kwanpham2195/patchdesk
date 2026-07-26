@@ -9,6 +9,10 @@ import {
   parseGitHubRepoName,
   parseWorkspaceProfileId,
 } from "../domain/ids";
+import {
+  parsePatchdeskSettingsPatch,
+  type PatchdeskConfigFile,
+} from "../domain/contracts";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -92,6 +96,24 @@ export class DashboardController {
     return selected._tag === "ok" ? ok(profile.value) : failure("storage");
   }
 
+  /** Returns normalized global settings without creating a first-run config file. */
+  async getSettings(): Promise<
+    Result<PatchdeskConfigFile, DashboardControllerFailure>
+  > {
+    const settings = await this.settings.loadSettings();
+    return settings._tag === "ok" ? settings : failure("storage");
+  }
+
+  /** Applies one validated global-settings patch while preserving profile selection. */
+  async updateSettings(
+    input: unknown,
+  ): Promise<Result<PatchdeskConfigFile, DashboardControllerFailure>> {
+    const patch = parsePatchdeskSettingsPatch(input);
+    if (patch._tag === "err") return failure("invalid_input");
+    const settings = await this.settings.updateSettings(patch.value);
+    return settings._tag === "ok" ? settings : failure("storage");
+  }
+
   /** Creates or updates a profile through the typed profile JSON boundary. */
   async saveProfile(
     input: unknown,
@@ -108,11 +130,9 @@ export class DashboardController {
       label: input.label,
       githubHost: input.githubHost,
       ghAccount: input.ghAccount,
-      ownerFilters: current?.ownerFilters ?? [],
-      workspaceRoots: Array.isArray(input.workspaceRoots)
-        ? input.workspaceRoots
-        : (current?.workspaceRoots ?? []),
-      rulePaths: current?.rulePaths ?? [],
+      ownerFilters: input.ownerFilters,
+      workspaceRoots: input.workspaceRoots,
+      rulePaths: input.rulePaths,
       repos: current?.repos ?? [],
     });
     if (profile._tag === "err") return failure("invalid_input");

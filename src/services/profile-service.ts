@@ -8,6 +8,10 @@ import {
   type GitHubOwner,
   type GitHubRepoName,
 } from "../domain/ids";
+import type {
+  PatchdeskConfigFile,
+  PatchdeskSettingsPatch,
+} from "../domain/contracts";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type {
@@ -29,6 +33,8 @@ export type ProfileMutationFailure = {
 
 /** Persists profile and active-profile choices through the only JSON storage boundary. */
 export class ProfileSettingsService {
+  private configMutationTail: Promise<void> = Promise.resolve();
+
   constructor(private readonly store: ProfileStore) {}
 
   async saveProfile(
@@ -40,13 +46,49 @@ export class ProfileSettingsService {
   async selectProfile(
     profileId: WorkspaceProfileConfig["id"],
   ): Promise<Result<WorkspaceProfileConfig["id"], StorageFailure>> {
-    const current = await this.store.loadConfig();
-    const config =
-      current._tag === "ok"
-        ? { ...current.value, lastSelectedProfileId: profileId }
-        : { lastSelectedProfileId: profileId, recentPrs: [] };
-    const saved = await this.store.saveConfig(config);
-    return saved._tag === "ok" ? ok(profileId) : saved;
+    return await this.runConfigMutation(async () => {
+      const current = await this.store.loadConfig();
+      if (current._tag === "err" && current.error.reason !== "not_found") {
+        return current;
+      }
+      const config =
+        current._tag === "ok"
+          ? { ...current.value, lastSelectedProfileId: profileId }
+          : { lastSelectedProfileId: profileId };
+      const saved = await this.store.saveConfig(config);
+      return saved._tag === "ok" ? ok(profileId) : saved;
+    });
+  }
+
+  /** Loads normalized global settings, treating a missing first-run file as an empty config. */
+  async loadSettings(): Promise<Result<PatchdeskConfigFile, StorageFailure>> {
+    const stored = await this.store.loadConfig();
+    if (stored._tag === "ok") return stored;
+    return stored.error.reason === "not_found" ? ok({}) : stored;
+  }
+
+  /** Persists a parsed settings patch without changing the selected workspace profile. */
+  async updateSettings(
+    patch: PatchdeskSettingsPatch,
+  ): Promise<Result<PatchdeskConfigFile, StorageFailure>> {
+    return await this.runConfigMutation(async () => {
+      const current = await this.loadSettings();
+      if (current._tag === "err") return current;
+      const next = { ...current.value, ...patch };
+      const saved = await this.store.saveConfig(next);
+      return saved._tag === "ok" ? ok(next) : saved;
+    });
+  }
+
+  private async runConfigMutation<T>(
+    mutation: () => Promise<Result<T, StorageFailure>>,
+  ): Promise<Result<T, StorageFailure>> {
+    const scheduled = this.configMutationTail.then(mutation, mutation);
+    this.configMutationTail = scheduled.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await scheduled;
   }
 }
 

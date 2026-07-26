@@ -21,10 +21,6 @@ export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
 const storageKey = "patchdesk.diff-theme.v2";
 const legacyStorageKey = "patchdesk.diff-theme.v1";
 
-export type SaveDiffThemePreferencesResult =
-  | { readonly saved: true; readonly preferences: DiffThemePreferences }
-  | { readonly saved: false; readonly preferences: DiffThemePreferences };
-
 function hasTheme(
   themes: ReadonlyArray<DiffThemeOption>,
   value: unknown,
@@ -54,33 +50,30 @@ export function loadDiffThemePreferences(): DiffThemePreferences {
     if (serialized !== null) return parseDiffThemePreferences(JSON.parse(serialized));
 
     const legacy = parseLegacyDiffThemePreference(window.localStorage.getItem(legacyStorageKey));
-    if (legacy === undefined) return DEFAULT_DIFF_THEME_PREFERENCES;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(legacy));
-      window.localStorage.removeItem(legacyStorageKey);
-    } catch {
-      // Keep v1 intact when storage is unavailable. The current render can
-      // still use its valid migrated pair without pretending it was saved.
-    }
-    return legacy;
+    return legacy ?? DEFAULT_DIFF_THEME_PREFERENCES;
   } catch {
     return DEFAULT_DIFF_THEME_PREFERENCES;
   }
 }
 
-export function saveDiffThemePreferences(value: DiffThemePreferences): SaveDiffThemePreferencesResult {
-  const preferences = parseDiffThemePreferences(value);
+/** Removes legacy renderer preferences after config.json accepts the migration. */
+export function clearDiffThemePreferences(): void {
+  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify(preferences));
-    window.dispatchEvent(
-      new CustomEvent<DiffThemePreferences>("patchdesk:diff-theme", {
-        detail: preferences,
-      }),
-    );
-    return { saved: true, preferences };
+    window.localStorage.removeItem(storageKey);
+    window.localStorage.removeItem(legacyStorageKey);
   } catch {
-    return { saved: false, preferences };
+    // Config is already durable; leave the legacy values for a later cleanup.
   }
+}
+
+/** Announces an already-persisted preference change to mounted diff views. */
+export function applyDiffThemePreferences(value: DiffThemePreferences): void {
+  window.dispatchEvent(
+    new CustomEvent<DiffThemePreferences>("patchdesk:diff-theme", {
+      detail: value,
+    }),
+  );
 }
 
 export function diffThemeFor(

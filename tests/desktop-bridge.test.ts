@@ -19,6 +19,10 @@ describe("desktop request bridge", () => {
     // GitHub-write capabilities, but omitting either makes the dialog appear
     // unavailable in packaged Electron builds.
     expect(isAllowedDesktopRequest({ path: "/v1/reviews/models" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/settings" })).toBe(true);
+    expect(
+      isAllowedDesktopRequest({ path: "/v1/settings", method: "PATCH" }),
+    ).toBe(true);
     expect(
       isAllowedDesktopRequest({ path: "/v1/reviews/run", method: "POST" }),
     ).toBe(true);

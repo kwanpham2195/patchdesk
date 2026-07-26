@@ -347,7 +347,8 @@ describe("Patchdesk storage", () => {
     const config = mustParse(
       parsePatchdeskConfig({
         lastSelectedProfileId: "cfw",
-        recentPrs: ["centraldigital/patchdesk#42"],
+        appearance: "dark",
+        diffTheme: { light: "github-light", dark: "github-dark" },
       }),
     );
     expect(await profiles.saveConfig(config)).toEqual({
@@ -446,6 +447,48 @@ describe("Patchdesk storage", () => {
     ).toMatchObject({
       _tag: "err",
       error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
+    });
+  });
+
+  it("loads legacy global config without retaining recent PRs and persists only current settings", async () => {
+    const paths = await testPaths();
+    const profiles = new ProfileStore(paths);
+    await mkdir(paths.configDirectory(), { recursive: true });
+    await writeFile(
+      paths.configFile(),
+      JSON.stringify({ lastSelectedProfileId: "cfw", recentPrs: ["centraldigital/patchdesk#42"] }),
+    );
+
+    expect(await profiles.loadConfig()).toEqual({
+      _tag: "ok",
+      value: { lastSelectedProfileId: "cfw" },
+    });
+    expect(await profiles.saveConfig({
+      lastSelectedProfileId: "cfw",
+      appearance: "light",
+      diffTheme: { light: "github-light", dark: "github-dark" },
+    })).toEqual({ _tag: "ok", value: undefined });
+    await expect(readFile(paths.configFile(), "utf8")).resolves.toBe(
+      '{"lastSelectedProfileId":"cfw","appearance":"light","diffTheme":{"light":"github-light","dark":"github-dark"}}\n',
+    );
+  });
+
+  it("rejects unknown fields in a persisted current global config", async () => {
+    const paths = await testPaths();
+    const profiles = new ProfileStore(paths);
+    await mkdir(paths.configDirectory(), { recursive: true });
+    await writeFile(
+      paths.configFile(),
+      JSON.stringify({ appearance: "dark", unknown: true }),
+    );
+
+    expect(await profiles.loadConfig()).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_stored_value",
+      },
     });
   });
 

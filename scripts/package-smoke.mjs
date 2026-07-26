@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
-import { _electron as electron } from "playwright";
+import { chromium } from "playwright";
 
 const execute = promisify(execFile);
 
@@ -47,17 +47,27 @@ if (!executableKind.includes(process.arch))
   );
 
 const home = await mkdtemp(join(tmpdir(), "patchdesk-package-smoke-"));
-const application = await electron.launch({
-  executablePath: executable,
-  args: [`--user-data-dir=${join(home, "user-data")}`],
+const cdpPort = 20_000 + Math.floor(Math.random() * 20_000);
+await execute("open", [
+  "-n",
+  bundle,
+  "--args",
+  `--user-data-dir=${join(home, "user-data")}`,
+  `--remote-debugging-port=${cdpPort}`,
+], {
   env: {
     HOME: home,
     PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
     PATCHDESK_PACKAGE_SMOKE: "1",
   },
 });
+const browser = await connectToPackagedApp(cdpPort);
 try {
-  const window = await application.firstWindow();
+  const context = browser.contexts()[0];
+  const window = context === undefined
+    ? undefined
+    : await waitForWindow(context);
+  if (window === undefined) throw new Error("Packaged app did not create a window");
   const rendererFailures = [];
   window.on("console", (message) => {
     if (message.type() === "error") rendererFailures.push(message.text());
@@ -106,6 +116,45 @@ try {
     `${bundle}: packaged fixture workbench loaded (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
   );
 } finally {
-  await application.close();
+  await browser.close();
+  await stopPackagedApp(cdpPort);
   await rm(home, { recursive: true, force: true });
+}
+
+async function connectToPackagedApp(port) {
+  const deadline = Date.now() + 15_000;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw new Error(
+    `Packaged app did not expose DevTools on port ${port}: ${String(lastError)}`,
+  );
+}
+
+async function waitForWindow(context) {
+  const existing = context.pages()[0];
+  if (existing !== undefined) return existing;
+  return await context.waitForEvent("page", { timeout: 15_000 });
+}
+
+async function stopPackagedApp(port) {
+  try {
+    const { stdout } = await execute("lsof", [
+      "-nP",
+      `-iTCP:${port}`,
+      "-sTCP:LISTEN",
+      "-t",
+    ]);
+    const pid = stdout.trim().split("\n")[0];
+    if (pid !== undefined && /^\d+$/.test(pid))
+      await execute("kill", ["-TERM", pid]);
+  } catch {
+    // The process may have already exited after the browser disconnects.
+  }
 }

@@ -273,6 +273,12 @@ export async function startLocalApiServer(
       await dashboard.selectProfile(readObjectField(await jsonBody(context), "id")),
     ),
   );
+  app.get("/v1/settings", async (context) =>
+    response(context, await dashboard.getSettings()),
+  );
+  app.patch("/v1/settings", async (context) =>
+    response(context, await dashboard.updateSettings(await jsonBody(context))),
+  );
   app.get("/v1/dashboard", async (context) =>
     response(context, await dashboard.dashboardForActiveProfile()),
   );

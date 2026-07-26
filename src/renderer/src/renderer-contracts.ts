@@ -75,6 +75,8 @@ const inboxResponseSchema = v.strictObject({
     githubHost: v.pipe(v.string(), v.minLength(1)),
     ghAccount: v.pipe(v.string(), v.minLength(1)),
     workspaceRoots: v.optional(v.array(v.string())),
+    ownerFilters: v.optional(v.array(v.string())),
+    rulePaths: v.optional(v.array(v.string())),
   }),
   inbox: v.object({
     rows: v.array(inboxRowSchema),

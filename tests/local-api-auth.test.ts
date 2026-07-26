@@ -174,6 +174,73 @@ describe("local API capability boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
   });
 
+  it("reads and patches only valid global settings through the authenticated API", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-settings-api-")));
+    const profileStore = new ProfileStore(paths);
+    await profileStore.saveConfig({ lastSelectedProfileId: "cfw" });
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = {
+      "X-Patchdesk-Capability": capability,
+      Origin: allowedOrigin,
+      "Content-Type": "application/json",
+    };
+
+    const initial = await fetch(new URL("v1/settings", localApi.url), { headers });
+    expect(initial.status).toBe(200);
+    await expect(initial.json()).resolves.toEqual({ lastSelectedProfileId: "cfw" });
+
+    const updated = await fetch(new URL("v1/settings", localApi.url), {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ appearance: "dark", diffTheme: { light: "github-light", dark: "github-dark" } }),
+    });
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toEqual({
+      lastSelectedProfileId: "cfw",
+      appearance: "dark",
+      diffTheme: { light: "github-light", dark: "github-dark" },
+    });
+    await expect(profileStore.loadConfig()).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        lastSelectedProfileId: "cfw",
+        appearance: "dark",
+        diffTheme: { light: "github-light", dark: "github-dark" },
+      },
+    });
+
+    for (const body of [
+      { appearance: "bright" },
+      { diffTheme: { light: "", dark: "github-dark" } },
+      { appearance: "light", unknown: true },
+      {},
+    ]) {
+      const invalid = await fetch(new URL("v1/settings", localApi.url), {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(body),
+      });
+      expect(invalid.status).toBe(400);
+      await expect(invalid.json()).resolves.toEqual({ error: "invalid_input" });
+    }
+  });
+
+  it("returns an empty settings config when no global config file exists", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-empty-settings-api-")));
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+
+    const response = await fetch(new URL("v1/settings", localApi.url), {
+      headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({});
+  });
+
   it("never fabricates a review run when the workflow invoker is unavailable", async () => {
     localApi = await startTestLocalApi();
     const headers = { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };

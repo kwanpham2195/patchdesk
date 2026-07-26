@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import type { StorageFailure } from "../../src/adapters/storage/json-file";
+import {
+  parsePatchdeskConfig,
+  type PatchdeskConfigFile,
+} from "../../src/domain/contracts";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -13,7 +18,9 @@ import {
 } from "../../src/domain/ids";
 import type { PullRequestSummary } from "../../src/domain/github-context";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { err, ok, type Result } from "../../src/domain/result";
 import { DashboardService } from "../../src/services/dashboard-service";
+import { DashboardController } from "../../src/services/dashboard-controller";
 import {
   addWatchedRepo,
   createDefaultCfwProfile,
@@ -94,6 +101,51 @@ function summary(
 }
 
 describe("Milestone 5 profile and direct-entry services", () => {
+  it("persists editable owner filters and rule paths while preserving watched repositories", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-editor-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      await store.save(profile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+
+      const saved = await controller.saveProfile({
+        id: "cfw",
+        label: "CFW updated",
+        githubHost: "github.com",
+        ghAccount: "patchdesk",
+        ownerFilters: ["centraldigital", "platform"],
+        workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
+        rulePaths: ["/workspace/cfw/AGENTS.md"],
+      });
+
+      expect(saved).toMatchObject({
+        _tag: "ok",
+        value: {
+          ownerFilters: ["centraldigital", "platform"],
+          workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
+          rulePaths: ["/workspace/cfw/AGENTS.md"],
+          repos: [{ repo: "patchdesk" }],
+        },
+      });
+      expect(await store.load(profile.id)).toMatchObject({
+        _tag: "ok",
+        value: {
+          ownerFilters: ["centraldigital", "platform"],
+          rulePaths: ["/workspace/cfw/AGENTS.md"],
+          repos: [{ repo: "patchdesk" }],
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("persists a selected profile and provides the safe CFW example only as a local default", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-`);
     try {
@@ -117,6 +169,28 @@ describe("Milestone 5 profile and direct-entry services", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("keeps a concurrent settings update when selecting a profile", async () => {
+    const store = new BlockingFirstConfigSaveStore();
+    const service = new ProfileSettingsService(store);
+
+    const selected = service.selectProfile(profile.id);
+    await store.firstConfigSaveStarted;
+    const updated = service.updateSettings({ appearance: "dark" });
+    store.releaseFirstConfigSave();
+
+    await expect(Promise.all([selected, updated])).resolves.toEqual([
+      { _tag: "ok", value: profile.id },
+      {
+        _tag: "ok",
+        value: { lastSelectedProfileId: profile.id, appearance: "dark" },
+      },
+    ]);
+    expect(store.config).toEqual({
+      lastSelectedProfileId: profile.id,
+      appearance: "dark",
+    });
   });
 
   it("maintains an explicit watchlist without adding discovery suggestions", () => {
@@ -219,6 +293,59 @@ describe("Milestone 5 profile and direct-entry services", () => {
     });
   });
 });
+
+class BlockingFirstConfigSaveStore extends ProfileStore {
+  private firstConfigSaveRelease: (() => void) | undefined;
+  private readonly firstConfigSaveGate: Promise<void>;
+  private firstConfigSaveStartedResolve: (() => void) | undefined;
+  private configSaveCount = 0;
+  config: PatchdeskConfigFile = {};
+  readonly firstConfigSaveStarted: Promise<void>;
+
+  constructor() {
+    super(PatchdeskPaths.forTest("/tmp/patchdesk-profile-settings-race"));
+    this.firstConfigSaveGate = new Promise<void>((resolve) => {
+      this.firstConfigSaveRelease = resolve;
+    });
+    this.firstConfigSaveStarted = new Promise<void>((resolve) => {
+      this.firstConfigSaveStartedResolve = resolve;
+    });
+  }
+
+  override async loadConfig(): Promise<Result<PatchdeskConfigFile, StorageFailure>> {
+    return ok(this.config);
+  }
+
+  override async saveConfig(config: unknown): Promise<Result<void, StorageFailure>> {
+    const parsed = parsePatchdeskConfig(config);
+    if (parsed._tag === "err") {
+      return err({
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: "invalid_stored_value",
+      });
+    }
+    if (this.configSaveCount === 0) {
+      this.configSaveCount += 1;
+      const signalStarted = this.firstConfigSaveStartedResolve;
+      if (signalStarted === undefined) {
+        throw new Error("First config save signal was not initialized.");
+      }
+      signalStarted();
+      await this.firstConfigSaveGate;
+    }
+    this.config = parsed.value;
+    return ok(undefined);
+  }
+
+  releaseFirstConfigSave(): void {
+    const release = this.firstConfigSaveRelease;
+    if (release === undefined) {
+      throw new Error("First config save gate was not initialized.");
+    }
+    release();
+  }
+}
 
 describe("Milestone 5 dashboard service", () => {
   it("sorts review-requested, assigned, recent, then draft/authored PRs and keeps missing paths degraded", async () => {

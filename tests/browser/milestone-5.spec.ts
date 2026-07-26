@@ -66,10 +66,13 @@ test("renderer uses the protected loopback API for profile and watchlist control
   ).toBe(401);
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "New profile" }).click();
   await page.getByLabel("Profile ID").fill("enterprise");
   await page.getByLabel("Label").fill("Enterprise");
   await page.getByLabel("GitHub host").fill("github.example.test");
   await page.getByLabel("GitHub account").fill("enterprise-user");
+  await page.getByLabel("workspace root 1").fill("/workspace/enterprise");
+  await page.getByLabel("owner filter 1").fill("enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByLabel("Active profile").click();
   const enterpriseOption = page.getByRole("option", { name: "Enterprise" });

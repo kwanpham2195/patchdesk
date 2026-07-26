@@ -33,11 +33,6 @@ export type WorkspaceProfileConfig = {
   readonly repos: ReadonlyArray<WatchedRepoConfig>;
 };
 
-export type PatchdeskConfig = {
-  readonly lastSelectedProfileId?: WorkspaceProfileId;
-  readonly recentPrs: ReadonlyArray<string>;
-};
-
 export type InvalidWorkspaceProfileConfig = {
   readonly _tag: "InvalidWorkspaceProfileConfig";
 };

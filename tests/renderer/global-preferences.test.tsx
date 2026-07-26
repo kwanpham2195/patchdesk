@@ -1,0 +1,155 @@
+// @vitest-environment jsdom
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { App } from "../../src/renderer/src/app";
+
+const dashboard = {
+  profile: {
+    id: "cfw",
+    label: "CFW",
+    githubHost: "github.com",
+    ghAccount: "patchdesk",
+  },
+  dashboard: { rows: [], repos: [] },
+};
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  vi.unstubAllGlobals();
+});
+
+describe("file-backed renderer preferences", () => {
+  it("uses file-backed preferences ahead of legacy localStorage values", async () => {
+    window.localStorage.setItem("patchdesk.appearance.v1", "light");
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "github-light", dark: "github-dark" }),
+    );
+    const request = installDesktopApi({
+      appearance: "dark",
+      diffTheme: { light: "pierre-light", dark: "tokyo-night" },
+    });
+    const themeEvents: Array<{ readonly light: string; readonly dark: string }> = [];
+    const onTheme = (event: Event): void => {
+      themeEvents.push((event as CustomEvent<{ readonly light: string; readonly dark: string }>).detail);
+    };
+    window.addEventListener("patchdesk:diff-theme", onTheme);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(document.documentElement.dataset.appearance).toBe("dark"),
+    );
+    await waitFor(() =>
+      expect(themeEvents).toContainEqual({
+        light: "pierre-light",
+        dark: "tokyo-night",
+      }),
+    );
+    window.removeEventListener("patchdesk:diff-theme", onTheme);
+    expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(false);
+  });
+
+  it("keeps legacy values until the missing settings write succeeds", async () => {
+    window.localStorage.setItem("patchdesk.appearance.v1", "dark");
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "github-light", dark: "github-dark" }),
+    );
+    const request = installDesktopApi({}, { patchSucceeds: false });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(true),
+    );
+    expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBe("dark");
+    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).not.toBeNull();
+  });
+
+  it("removes migrated legacy values after the missing settings write succeeds", async () => {
+    window.localStorage.setItem("patchdesk.appearance.v1", "dark");
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "github-light", dark: "github-dark" }),
+    );
+    const request = installDesktopApi({});
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(true),
+    );
+    await waitFor(() =>
+      expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBeNull(),
+    );
+    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
+  });
+
+  it("replaces unavailable file-backed diff themes with installed defaults and persists the correction", async () => {
+    const request = installDesktopApi({
+      diffTheme: { light: "removed-light-theme", dark: "github-dark" },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      const corrections = request.mock.calls.filter(([input]) =>
+        input.path === "/v1/settings" && input.method === "PATCH",
+      );
+      expect(corrections).toHaveLength(1);
+      expect(corrections[0]?.[0].body).toEqual({
+        appearance: "system",
+        diffTheme: { light: "pierre-light", dark: "github-dark" },
+      });
+    });
+  });
+});
+
+function installDesktopApi(
+  settings: Record<string, unknown>,
+  options: { readonly patchSucceeds?: boolean } = {},
+): ReturnType<typeof vi.fn> {
+  const request = vi.fn(async (input: {
+    readonly path?: string;
+    readonly method?: string;
+    readonly body?: unknown;
+    readonly operation?: string;
+  }) => {
+    if (input.operation === "setNavigationState")
+      return success({});
+    if (input.path === "/v1/settings" && input.method === "PATCH") {
+      if (options.patchSucceeds === false)
+        return { ok: false, status: 503, body: { error: "unavailable" }, correlationId: "test" };
+      return success({ ...settings, ...(input.body as Record<string, unknown>) });
+    }
+    if (input.path === "/v1/settings") return success(settings);
+    if (input.path === "/v1/profiles") return success([dashboard.profile]);
+    if (input.path === "/v1/inbox") return success({
+      profile: dashboard.profile,
+      inbox: { rows: [], repositories: [], snapshot: {} },
+    });
+    if (input.path === "/v1/environment") return success({});
+    return success(dashboard);
+  });
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: {
+      request,
+      onNavigate: () => () => undefined,
+      qaScrollDiagnosticsEnabled: false,
+    },
+  });
+  return request;
+}
+
+function success(body: unknown): {
+  readonly ok: true;
+  readonly status: 200;
+  readonly body: unknown;
+  readonly correlationId: "test";
+} {
+  return { ok: true, status: 200, body, correlationId: "test" };
+}

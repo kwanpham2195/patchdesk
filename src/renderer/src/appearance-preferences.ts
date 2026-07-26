@@ -9,8 +9,14 @@ export function loadAppearancePreference(): AppearancePreference {
   return value === "light" || value === "dark" ? value : "system";
 }
 
-export function saveAppearancePreference(value: AppearancePreference): void {
-  window.localStorage.setItem(STORAGE_KEY, value);
+/** Removes the legacy renderer preference after it has been persisted to config.json. */
+export function clearAppearancePreference(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Config is already durable; leave the legacy value for a later cleanup.
+  }
 }
 
 export function resolveAppearance(value: AppearancePreference): ResolvedAppearance {

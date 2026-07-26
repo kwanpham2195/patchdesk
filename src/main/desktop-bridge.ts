@@ -36,6 +36,8 @@ const allowedRoutes = new Set([
   "POST /v1/profiles",
   "PUT /v1/profiles",
   "POST /v1/profiles/select",
+  "GET /v1/settings",
+  "PATCH /v1/settings",
   "GET /v1/dashboard",
   "POST /v1/dashboard/refresh/repository",
   "GET /v1/inbox",
