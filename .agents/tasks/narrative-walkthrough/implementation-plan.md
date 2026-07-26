@@ -1,16 +1,14 @@
-# Review recovery, Settings, PR description, and narrative walkthrough implementation
+# Review recovery, Settings, and narrative walkthrough implementation
 
 This ExecPlan is a living implementation specification. Keep `Progress`,
 `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective`
 current as work proceeds. It consolidates the recovery and observability plan
 from `docs/superpowers/plans/2026-07-26-review-recovery-observability.md`, the
 approved Settings design in
-`docs/superpowers/specs/2026-07-26-settings-redesign-design.md`, the approved
-PR-description design in
-`docs/superpowers/specs/2026-07-26-pr-description-generation-design.md`, and the
-narrative walkthrough feature packet in this directory. These features share
-the same recovery, model-selection, authenticated API, and explicit GitHub
-write boundaries; none is an independent replacement for the others.
+`docs/superpowers/specs/2026-07-26-settings-redesign-design.md`, and the
+narrative walkthrough feature packet in this directory. PR-description
+generation remains a separate design/spec and is intentionally not part of
+this implementation plan.
 
 ## Purpose / Big Picture
 
@@ -28,12 +26,6 @@ older-version local review data while retaining running and recoverable
 reviews. Both operations are explicit, idempotent, retryable, and unrelated to
 GitHub writes.
 
-The PR manager can also choose `Generate PR description` from a stable completed
-PR. Patchdesk creates an evidence-backed suggested update that preserves the
-current body, human notes, assets, links, and stack context. The user reviews
-and edits the Markdown, copies it, or explicitly confirms an update after a
-fresh body/`HEAD` check. No title or PR write is changed automatically.
-
 Once a review has a stable completed snapshot, the maintainer can explicitly
 choose `Generate walkthrough`. A model-and-reasoning dialog appears before any
 work starts. A new finite Flue workflow creates bounded semantic sections from
@@ -46,9 +38,8 @@ selection, passive follow state, inspector state, and diff preferences.
 
 The user-visible proof is one local review workbench containing truthful
 recovery actions, a globally accessible Settings modal with two simple local
-data controls, a manually requested PR-description draft, and a manually
-requested narrative takeover. No LLM generation starts after a review run
-completes or merely because a snapshot is opened.
+data controls, and a manually requested narrative takeover. No LLM generation
+starts after a review run completes or merely because a snapshot is opened.
 
 ## Global Constraints
 
@@ -63,9 +54,8 @@ completes or merely because a snapshot is opened.
   focus rules.
 - Renderer code never receives Node.js, `gh`, credentials, filesystem paths,
   raw Flue output, or direct GitHub write access.
-- All LLM workflows are manual, model/reasoning-selected, snapshot-bound,
-  structured-output workflows. They never auto-run, auto-comment, auto-update a
-  PR description, or auto-merge.
+- All LLM workflows are manual, model/reasoning-selected, snapshot-bound, and
+  structured-output workflows. They never auto-run, auto-comment, or auto-merge.
 - Global config remains strict global state. Profile configuration,
   profile-scoped review preferences, watchlist data, and local review data stay
   in their existing stores.
@@ -76,11 +66,10 @@ completes or merely because a snapshot is opened.
 
 - [x] 2026-07-26 — Existing recovery/observability and narrative walkthrough research and specs are available in the repository.
 - [x] 2026-07-26 — The recovery implementation plan and narrative implementation plan were reconciled into this ExecPlan.
-- [x] 2026-07-26 — Settings redesign and PR-description generation specs were approved and added as aligned workstreams.
+- [x] 2026-07-26 — Settings redesign was approved and added as an aligned workstream.
 - [x] 2026-07-26 — The UI implementation constraint is recorded: compose existing shadcn/Base UI primitives; do not invent parallel controls.
 - [ ] Implement the recovery domain, storage cleanup, copy contract, and diagnostics.
 - [ ] Implement the global Settings modal, profile/workspace behavior, and cleanup migration.
-- [ ] Implement snapshot-bound PR-description generation, review, copy, and explicit apply.
 - [ ] Implement the snapshot-bound walkthrough domain, Flue workflow, main-process service, and authenticated API.
 - [ ] Implement the renderer dialog, focused takeover, Pierre hunk surface, and draft parity.
 - [ ] Run focused tests, the full desktop gate, browser coverage, packaged smoke, and dedicated packaged UI QA.
@@ -140,12 +129,6 @@ completes or merely because a snapshot is opened.
   `@base-ui/react`; `src/renderer/src/components/ui/` contains the relevant
   components.
 
-- Observation: PR-body generation is not a free-form Markdown rewrite. The
-  existing GitHub PR-body rules require byte-preserving human notes/assets/
-  stack blocks, evidence-based sections, base-to-head scope, and an explicit
-  post-edit preservation check.
-  Evidence: `docs/superpowers/specs/2026-07-26-pr-description-generation-design.md`
-  and `/Users/kwanpham/.agents/skills/github/github-pr-body/SKILL.md`.
 
 ## Decision Log
 
@@ -202,12 +185,6 @@ completes or merely because a snapshot is opened.
   inconsistent behavior and increase maintenance. Date/Author: 2026-07-26,
   Matthew and Codex.
 
-- Decision: Generate PR descriptions as editable, evidence-backed suggestions
-  that preserve the current body, then apply only after explicit confirmation
-  and a body/`HEAD` recheck. Rationale: PR authors’ notes and reviewer context
-  are valuable human input, and an LLM must not silently overwrite them.
-  Date/Author: 2026-07-26, Matthew and Codex.
-
 ## Outcomes & Retrospective
 
 Implementation has not started. At each completed milestone, record the
@@ -253,11 +230,6 @@ controls. The app already has Base UI shadcn wrappers in
 `base-nova` style with `@base-ui/react`. The redesign must compose those
 wrappers rather than add bespoke overlay or form primitives.
 
-The PR-description feature reads an existing PR body and produces an editable
-suggested update. It is not a title editor and it does not write during
-generation. The apply route is a distinct explicit GitHub write that rechecks
-the body hash and `HEAD` immediately before calling the configured writer.
-
 The narrative walkthrough is a read-only reading mode over one completed,
 stored patch. The model receives bounded aliases for parsed patch hunks, never
 invents paths or line numbers, and returns structured JSON. The main process
@@ -272,20 +244,16 @@ Implement the work in this order:
    cleanup route migration using existing shadcn/Base UI primitives.
 3. Project explicit recovery state, persist diagnostics, and reconcile old
    local data without relaunching workflows.
-4A. Define and test the snapshot-bound PR-description domain and protected-body
-    composition.
-4B. Add the isolated PR-description Flue workflow, main-process service,
-    authenticated generation/apply API, and renderer editor/confirmation.
-5. Define and test the snapshot-bound walkthrough domain and raw-patch hunk
+4. Define and test the snapshot-bound walkthrough domain and raw-patch hunk
    filtering.
-6. Add the isolated walkthrough Flue workflow and fixed-command adapter.
-7. Add the main-process walkthrough service, authenticated API, and production
+5. Add the isolated walkthrough Flue workflow and fixed-command adapter.
+6. Add the main-process walkthrough service, authenticated API, and production
    runtime wiring.
-8. Add strict renderer contracts, explicit model/reasoning selection, and the
+7. Add strict renderer contracts, explicit model/reasoning selection, and the
    manual Generate walkthrough entry point.
-9. Add the focused takeover and reparsed Pierre blocks without changing Files
+8. Add the focused takeover and reparsed Pierre blocks without changing Files
    mode.
-10. Migrate persisted/cache data, run the end-to-end/browser/package gates, and
+9. Migrate persisted/cache data, run the end-to-end/browser/package gates, and
     obtain dedicated packaged UI evidence.
 
 Recovery work is a prerequisite for narrative work, but it does not start
@@ -293,10 +261,9 @@ walkthrough generation. The narrative API must reject any session whose
 prepared patch or snapshot identity is unavailable, stale, or not a completed
 read-only snapshot.
 
-Settings and PR-description generation share the same profile/recovery
-projection but remain independent user actions. Opening Settings never starts
-an LLM workflow. Generating a PR description never opens Settings or mutates a
-review batch.
+Settings and walkthrough generation share the same profile/recovery projection
+but remain independent user actions. Opening Settings never starts an LLM
+workflow.
 
 ## Milestones
 
@@ -365,8 +332,8 @@ Work: inject `ReviewRunRegistry` into
 make `PreparedReviewFlow` and `SafeRunPanel` use those capabilities; add
 `ReviewDiagnosticEvent` and a bounded JSONL diagnostic service; reconcile
 stranded preparation journals and prior-process attempts as interrupted; record
-safe boundary failures from cleanup, profile reload, PR-description
-generation/apply, and walkthrough generation.
+safe boundary failures from cleanup, profile reload, and walkthrough
+generation.
 
 Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
 
@@ -382,58 +349,6 @@ diffs, or absolute paths.
 Why this reduces risk: walkthrough generation will only be enabled for a
 truthful, stable completed snapshot and will inherit the same safe lifecycle
 projection.
-
-### Milestone 4A — Evidence-bound PR-description domain
-
-Goal: make generated PR-body suggestions preserve human context and fail closed
-when evidence is missing.
-
-Work: create `src/domain/pr-description.ts` with snapshot/body/patch hashes,
-protected-body ranges, bounded proposal sections, evidence statuses, exact-one
-change-type validation, base-to-head code-change totals, and deterministic
-composition. Preserve leading human notes, images, links, warnings, rollout
-notes, and stack blocks byte-for-byte. Return structured section proposals, not
-an arbitrary Markdown rewrite. Omit unsupported API, issue, test, and release
-claims.
-
-Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
-
-    pnpm test -- --run tests/domain/pr-description.test.ts tests/services/pr-description-service.test.ts
-
-Expected result: tests prove protected-content preservation, malformed-body
-rejection, template insertion rules, evidence gating, exact-one change type,
-stacked base-to-head scope, and stale snapshot detection.
-
-Why this reduces risk: the untrusted model cannot silently erase author context
-or invent reviewer-facing claims before the editor is shown.
-
-### Milestone 4B — PR-description workflow, editor, and explicit apply
-
-Goal: let a PR manager generate, edit, copy, and explicitly apply a suggested
-description without unsafe GitHub writes.
-
-Work: create `workflow:generate-pr-description`, its fixed Flue adapter, and
-`src/services/pr-description-service.ts`; add authenticated generate/load/apply
-routes with body/`HEAD` rechecks; add strict renderer contracts and a manual
-Model/Reasoning dialog plus editable proposal/diff surface in the completed
-workbench. Compose the editor from existing shadcn/Base UI `Dialog`, `Field`,
-`Textarea`, `Tabs`, `ScrollArea`, `Alert`, `AlertDialog`, `Button`, `Badge`,
-`Separator`, and `Spinner` components. Do not invent a Markdown editor,
-confirmation modal, or scroll primitive.
-
-Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
-
-    pnpm test -- --run tests/services/flue-cli-pr-description-invoker.test.ts tests/services/pr-description-service.test.ts tests/renderer/pr-description.ui.test.tsx tests/local-api-auth.test.ts
-
-Expected result: no generation request occurs before confirmation; the proposal
-is editable and evidence warnings are visible; Copy description makes no
-GitHub request; Update PR description requires explicit confirmation and is
-rejected when the body or `HEAD` changed; human notes/assets/stack blocks stay
-intact.
-
-Why this reduces risk: model output is isolated, user-reviewed, and applied
-only through the same privileged, rechecked GitHub-write boundary as other
-Patchdesk writes.
 
 ### Milestone 4 — Snapshot-bound walkthrough domain
 
@@ -576,8 +491,8 @@ convert stranded attempts to interrupted; quarantine invalid sessions with
 diagnostics; normalize discarded sessions to fresh-attempt eligibility; remove
 renderer action decisions based on `currentAttemptId`; add browser fixtures for
 PR #717, #754, and #716 scenarios; prove the global Settings modal, profile
-switch, independent scroll, cleanup actions, PR-description review/apply
-guard, and narrative journey; preserve the 1,000-file selection ceiling.
+switch, independent scroll, cleanup actions, and narrative journey; preserve
+the 1,000-file selection ceiling.
 
 Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
 
@@ -726,78 +641,7 @@ Add tests in `tests/services/review-workbench-projection.test.ts`,
 `tests/services/review-failure-service.test.ts`. Run the focused suite from
 Milestone 3.
 
-### Step 4A: Define protected PR-body composition
-
-Create `src/domain/pr-description.ts` with a
-`PrDescriptionSnapshot` containing profile/session identity, reviewed/current
-`HEAD`, current body hash, patch hash, and base/head scope. Add bounded
-structured proposal types for opening motivation, optional reviewer context,
-code-change totals, API impact, related issues, exactly one change type, test
-plan evidence, release notes, and warnings.
-
-Implement deterministic protected-range detection. Preserve the leading human
-note byte-for-byte through its `---` separator when present; preserve images,
-attachments, links, warnings, rollout notes, and `<!-- stack:links:start -->`
-blocks. Reject literal-quote or escaped-newline body payloads. Compose the
-initial suggestion from the current body plus generated sections, filling only
-empty or placeholder template headings and appending otherwise.
-
-Add `tests/domain/pr-description.test.ts` for protected bytes, malformed body,
-template insertion, base-to-head LOC totals, exact-one change type, evidence
-gating, issue-link non-invention, and stack preservation. Run:
-
-    pnpm test -- --run tests/domain/pr-description.test.ts
-
-### Step 4B: Add PR-description generation and explicit apply
-
-Create `src/workflows/generate-pr-description.ts` and
-`src/services/flue-cli-pr-description-invoker.ts`. The fixed workflow receives
-the bounded current body, protected ranges, base-to-head diff, checks, commits,
-issue/stack evidence, selected model, and reasoning. It returns structured
-sections only. The adapter keeps stderr/events and raw model output in the main
-process.
-
-Create `src/services/pr-description-service.ts` with an in-memory record per
-profile/session. Capture body and patch hashes before generation, suppress late
-results after retry, and return `stale` when body, PR identity, patch, or
-reviewed/current `HEAD` changes. Add authenticated routes:
-
-    POST /v1/reviews/pr-description/generate
-    POST /v1/reviews/pr-description/load
-    POST /v1/reviews/pr-description/apply
-
-The apply route accepts only the session identity, edited body, expected body
-hash, expected reviewed `HEAD`, and acknowledgement. Re-read body and `HEAD`
-before the configured GitHub writer call. Update preload allowlists and API
-authorization tests together.
-
-In `CompletedReviewFlow`, add the manual Generate PR description dialog and
-proposal editor. Compose it only from existing shadcn/Base UI wrappers:
-`Dialog`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `Tabs`,
-`ScrollArea`, `FieldGroup`, `Field`, `FieldLabel`, `Textarea`, `Alert`,
-`AlertDialog`, `Button`, `Badge`, `Separator`, and `Spinner` where available.
-Use semantic tokens and existing variants; do not hand-roll modal overlays,
-field validation, tabs, toasts, or scroll containers. Use `data-invalid` and
-`aria-invalid` for validation, and keep all model/GitHub process access behind
-the authenticated API.
-
-The editor must offer Copy description without an apply request, and Update PR
-description only after an explicit confirmation. A stale apply retains the
-edited proposal and offers refresh/regenerate or copy.
-
-Add tests in:
-
-    tests/services/flue-cli-pr-description-invoker.test.ts
-    tests/services/pr-description-service.test.ts
-    tests/renderer/pr-description.ui.test.tsx
-    tests/renderer/renderer-contracts.test.ts
-    tests/local-api-auth.test.ts
-
-Run:
-
-    pnpm test -- --run tests/services/flue-cli-pr-description-invoker.test.ts tests/services/pr-description-service.test.ts tests/renderer/pr-description.ui.test.tsx tests/renderer/renderer-contracts.test.ts tests/local-api-auth.test.ts
-
-### Step 5: Define the walkthrough domain and raw patch filter
+### Step 4: Define the walkthrough domain and raw patch filter
 
 Create `src/domain/narrative-walkthrough.ts` with a snapshot type:
 
@@ -822,7 +666,7 @@ overlap, and stale snapshot identity. Run:
 
     pnpm test -- --run tests/domain/narrative-walkthrough.test.ts tests/domain/review-domain.test.ts
 
-### Step 6: Add the finite Flue workflow and adapter
+### Step 5: Add the finite Flue workflow and adapter
 
 Create `src/workflows/generate-walkthrough.ts` with a strict input schema
 containing profile/session IDs, patch/context paths supplied by main, selected
@@ -845,7 +689,7 @@ Run:
 
     pnpm test -- --run tests/services/flue-cli-walkthrough-invoker.test.ts tests/services/flue-cli-review-invoker.test.ts
 
-### Step 7: Add snapshot-bound service and local API
+### Step 6: Add snapshot-bound service and local API
 
 Create `src/services/narrative-walkthrough-service.ts` with an in-memory record
 per profile/session. `generate` loads the session and patch only in main,
@@ -868,7 +712,7 @@ suppression, retry, invalid output, missing session, patch mutation, and
 generation isolation. Extend `tests/local-api-auth.test.ts` for capability,
 origin, input validation, and error mapping. Run the Milestone 6 command.
 
-### Step 8: Add renderer contracts, explicit generation dialog, and takeover
+### Step 7: Add renderer contracts, explicit generation dialog, and takeover
 
 Extend renderer parsing with a strict discriminated walkthrough lifecycle and
 the recovery projection. Reject malformed hunk IDs, paths, line ranges, and
@@ -920,7 +764,7 @@ Run:
 
     pnpm test -- --run tests/renderer/renderer-contracts.test.ts tests/renderer/completed-review-flow.ui.test.tsx tests/renderer/narrative-walkthrough.ui.test.tsx tests/renderer/narrative-walkthrough-diff.test.tsx tests/renderer/docked-diff-state.ui.test.tsx
 
-### Step 9: Migrate local state and cover reported scenarios
+### Step 8: Migrate local state and cover reported scenarios
 
 Update `src/adapters/storage/maintainer-inbox-cache-store.ts` to accept old
 action labels and normalize them to action kinds before renderer presentation.
@@ -939,8 +783,8 @@ Add fixtures/tests in:
     tests/services/review-preparation-journal.test.ts
 
 Update `tests/browser/milestone-5.spec.ts` for prepare/open/recovery actions and
-`tests/browser/milestone-9.spec.ts` for Settings, PR-description, and
-walkthrough flows. Use deterministic fixtures for the three reported PR states
+`tests/browser/milestone-9.spec.ts` for Settings and walkthrough flows. Use
+deterministic fixtures for the three reported PR states
 when live GitHub data is unavailable:
 
 1. PR #717 has invalid local data and can be prepared again without blocking
@@ -962,12 +806,9 @@ workbench; assert General is the first section every time; change appearance
 without changing the underlying route; switch a clean profile immediately;
 exercise dirty-draft Save/Discard/Cancel; scroll a long Workspace section
 without scrolling the page behind it; and run both Data & recovery
-confirmations. PR-description proof must preserve human notes/assets/stack
-blocks in the proposal, allow editing and Copy without an apply request,
-require confirmation for Update, and block the write after a body/`HEAD`
-change.
+confirmations.
 
-### Step 10: Run full verification and packaged QA
+### Step 9: Run full verification and packaged QA
 
 From `/Users/kwanpham/Work/cfw/patchdesk`, run the required desktop order:
 
@@ -985,8 +826,8 @@ subagent as required by `AGENTS.md`. The tester launches
 `release/mac-arm64/Patchdesk.app/Contents/MacOS/Patchdesk` with an isolated
 user-data directory and remote debugging port, uses `agent-browser` over CDP,
 and returns screenshots/evidence for recovery actions, centered Settings modal
-entry/scroll/profile switching, cleanup controls, PR-description generation and
-explicit apply, walkthrough generation, inline drafting, and Back to files.
+entry/scroll/profile switching, cleanup controls, walkthrough generation,
+inline drafting, and Back to files.
 The primary agent must not drive the live packaged UI.
 
 Finally run:
@@ -1021,11 +862,6 @@ Acceptance is behavioral:
   quarantine controls. `Clear cache` retains saved reviews and diagnostics;
   `Clear local review data` removes disposable local review data while retaining
   running/recoverable reviews.
-- PR-description generation is manual and snapshot-bound. It preserves human
-  notes, assets, links, warnings, rollout notes, and stack blocks byte-for-byte
-  in the initial proposal; it does not invent motivation, issue links, tests,
-  API impact, release notes, or trade-offs. Copy makes no GitHub request;
-  Update requires confirmation and a fresh body/`HEAD` recheck.
 - Generate walkthrough is manual, available only for a stable completed
   snapshot, and preceded by model/reasoning selection. Opening or completing a
   review does not call the generation API.
@@ -1073,13 +909,6 @@ idempotent; profile selection reloads from the selected profile rather than
 merging stale in-memory data. A failed profile save leaves the draft available
 for correction. A modal crash or reload cannot change the underlying route.
 
-PR-description generation is retry-safe. A newer request supersedes an older
-proposal; body, patch, PR identity, or `HEAD` changes mark the proposal stale.
-Apply rechecks the expected body hash and `HEAD` immediately before the GitHub
-write, so a repeated click cannot overwrite a newer author update. A failed
-apply keeps the edited proposal available for copy or retry and never retries a
-GitHub write automatically.
-
 ## Artifacts and Notes
 
 The source packet remains available at:
@@ -1092,13 +921,13 @@ The source packet remains available at:
 - `.agents/tasks/narrative-walkthrough/spec.md`
 - `docs/superpowers/specs/2026-07-26-review-recovery-observability-design.md`
 - `docs/superpowers/specs/2026-07-26-settings-redesign-design.md`
-- `docs/superpowers/specs/2026-07-26-pr-description-generation-design.md`
 
 The superseded recovery plan remains at
 `docs/superpowers/plans/2026-07-26-review-recovery-observability.md` as the
 historical source for the consolidated workstream. This file is the execution
-source of truth for the combined recovery, Settings, PR-description, and
-narrative work. Update it if an implementation decision changes.
+source of truth for the combined recovery, Settings, and narrative work. The
+PR-description design remains a separate spec and is not implemented by this
+plan. Update this file if an in-scope implementation decision changes.
 
 At each milestone, append concise evidence here or in the relevant test
 artifact: command, working directory, result, and any blocker. Do not paste
@@ -1120,19 +949,8 @@ The implementation must end with these boundaries:
 - `src/main/local-api.ts` exposes only authenticated, origin-bound
   `POST /v1/storage/clear-local-data`, `POST /v1/storage/cache/clear`,
   `POST /v1/reviews/walkthrough/generate`,
-  `POST /v1/reviews/walkthrough/load`,
-  `POST /v1/reviews/pr-description/generate`,
-  `POST /v1/reviews/pr-description/load`, and
-  `POST /v1/reviews/pr-description/apply` for the new flows. Obsolete
-  Settings-only routes are gone after migration.
-- `src/domain/pr-description.ts` owns protected-body ranges, bounded evidence
-  sections, snapshot hashes, deterministic composition, exact-one change type,
-  and stale validation. `src/services/pr-description-service.ts` owns
-  generation tokens, structured-output normalization, and body/`HEAD` apply
-  rechecks.
-- `src/workflows/generate-pr-description.ts` and
-  `src/services/flue-cli-pr-description-invoker.ts` own the fixed structured
-  LLM workflow; no raw model output crosses into the renderer.
+  `POST /v1/reviews/walkthrough/load` for the new flows. Obsolete Settings-only
+  routes are gone after migration.
 - `src/renderer/src/components/settings-modal.tsx` owns centered global
   Settings invocation, General-first section state, focus return, dirty-close
   guards, and bounded scrolling. It composes existing shadcn/Base UI wrappers
@@ -1158,9 +976,6 @@ The implementation must end with these boundaries:
 - `src/renderer/src/components/narrative-walkthrough-diff.tsx` renders only
   reparsed, bounded raw patches through Pierre and routes comments through the
   existing `AddInlineComment` batch command.
-- `src/renderer/src/flows/completed-review-flow.tsx` owns manual PR-description
-  model/reasoning selection, editable proposal state, Copy, and explicit Apply
-  confirmation without coupling to review batches or walkthrough progress.
 - Dependencies remain the existing TypeScript, React, Valibot, Hono, Flue,
   Pierre, `@base-ui/react` through the local shadcn wrappers, Vitest, Testing
   Library, Playwright, and Electron toolchain. Do not add a new persistence
