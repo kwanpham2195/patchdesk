@@ -31,6 +31,26 @@ describe("desktop request bridge", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/inbox/refresh/repository", method: "POST" })).toBe(false);
   });
 
+  it("allows the storage management routes required by the Settings storage section", () => {
+    expect(isAllowedDesktopRequest({ path: "/v1/storage", method: "GET" })).toBe(true);
+    expect(
+      isAllowedDesktopRequest({ path: "/v1/storage/discard", method: "POST" }),
+    ).toBe(true);
+    expect(
+      isAllowedDesktopRequest({
+        path: "/v1/storage/quarantine/delete",
+        method: "POST",
+      }),
+    ).toBe(true);
+    expect(
+      isAllowedDesktopRequest({ path: "/v1/storage/cache/clear", method: "POST" }),
+    ).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/storage", method: "DELETE" })).toBe(false);
+    expect(
+      isAllowedDesktopRequest({ path: "/v1/storage/discard", method: "GET" }),
+    ).toBe(false);
+  });
+
   it("returns a native directory selection only to the owning renderer", async () => {
     let handler: ((event: { readonly sender: { readonly id: number } }, input: unknown) => Promise<unknown>) | undefined;
     const ipc = {
