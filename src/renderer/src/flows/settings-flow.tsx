@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { requestJson, selectDirectory } from "../api-client";
+import { formatByteSize } from "../format-byte-size";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
@@ -70,6 +71,11 @@ export function SettingsFlow({
   const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
   const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
+  const [storageOverview, setStorageOverview] = useState<StorageOverview>(EMPTY_STORAGE_OVERVIEW);
+  const [storageLoadId, setStorageLoadId] = useState(0);
+  const [storageError, setStorageError] = useState<string>();
+  const [storageAction, setStorageAction] = useState<StorageAction>();
+  const [storagePending, setStoragePending] = useState(false);
   useEffect(() => {
     if (
       !creatingProfile &&
@@ -92,6 +98,80 @@ export function SettingsFlow({
   useEffect(() => {
     void loadEnvironment();
   }, []);
+  const activeProfileId = dashboard?.profile.id;
+  useEffect(() => {
+    if (activeProfileId === undefined) return;
+    let cancelled = false;
+    const requestId = storageLoadId + 1;
+    setStorageLoadId(requestId);
+    void (async (): Promise<void> => {
+      try {
+        const value = await requestJson(`/v1/storage?profileId=${encodeURIComponent(activeProfileId)}`);
+        if (cancelled) return;
+        const overview = parseStorageOverview(value);
+        if (overview !== undefined) {
+          setStorageOverview(overview);
+          setStorageError(undefined);
+        } else {
+          setStorageError("Patchdesk could not read the local review storage.");
+        }
+      } catch {
+        if (cancelled) return;
+        setStorageError("Patchdesk could not read the local review storage.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProfileId]);
+  const reloadStorage = async (): Promise<void> => {
+    if (activeProfileId === undefined) return;
+    setStorageError(undefined);
+    try {
+      const value = await requestJson(`/v1/storage?profileId=${encodeURIComponent(activeProfileId)}`);
+      const overview = parseStorageOverview(value);
+      if (overview !== undefined) {
+        setStorageOverview(overview);
+      } else {
+        setStorageError("Patchdesk could not read the local review storage.");
+      }
+    } catch {
+      setStorageError("Patchdesk could not read the local review storage.");
+    }
+  };
+  const runStorageAction = async (): Promise<void> => {
+    if (storageAction === undefined || activeProfileId === undefined) return;
+    setStoragePending(true);
+    setStorageError(undefined);
+    try {
+      if (storageAction.kind === "discard") {
+        await requestJson("/v1/storage/discard", {
+          method: "POST",
+          body: { profileId: activeProfileId, sessionId: storageAction.sessionId },
+        });
+      } else if (storageAction.kind === "delete-quarantine") {
+        await requestJson("/v1/storage/quarantine/delete", {
+          method: "POST",
+          body: { profileId: activeProfileId, entryName: storageAction.entryName },
+        });
+      } else {
+        await requestJson("/v1/storage/cache/clear", {
+          method: "POST",
+          body: { profileId: activeProfileId },
+        });
+      }
+      setStorageAction(undefined);
+      await reloadStorage();
+    } catch {
+      setStorageError("Patchdesk could not complete that storage action.");
+    } finally {
+      setStoragePending(false);
+    }
+  };
+  const cancelStorageAction = (): void => {
+    if (storagePending) return;
+    setStorageAction(undefined);
+  };
   const addRepo = async (): Promise<void> => {
     const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
     if (match === null) return;
@@ -562,6 +642,170 @@ export function SettingsFlow({
           </CardContent>
         </Card>
       </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Saved reviews</CardTitle>
+            <CardDescription>
+              Discard keeps the saved review and removes its checkout. A running
+              review has no discard control.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {storageOverview.sessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No saved reviews for this profile yet.
+              </p>
+            ) : (
+              storageOverview.sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium">{session.prLabel}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {session.state === "Running"
+                        ? "In progress"
+                        : `Updated ${session.updatedAt}`}
+                    </p>
+                  </div>
+                  {session.canDiscard ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label={`Discard ${session.prLabel}`}
+                      onClick={() =>
+                        setStorageAction({
+                          kind: "discard",
+                          sessionId: session.id,
+                          label: session.prLabel,
+                        })
+                      }
+                    >
+                      {`Discard ${session.prLabel}`}
+                    </Button>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Older-version saved reviews</CardTitle>
+            <CardDescription>
+              Saved reviews from an older version of Patchdesk can't be opened.
+              Delete moves the copy to the system Trash.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {storageOverview.quarantined.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No older-version entries.
+              </p>
+            ) : (
+              storageOverview.quarantined.map((entry) => (
+                <div
+                  key={entry.entryName}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                >
+                  <p>
+                    Saved review from an older version ({entry.quarantinedAt})
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    aria-label="Delete older review"
+                    onClick={() =>
+                      setStorageAction({ kind: "delete-quarantine", entryName: entry.entryName })
+                    }
+                  >
+                    Delete older review
+                  </Button>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Review cache</CardTitle>
+            <CardDescription>
+              Clear removes the rebuildable worktree checkouts only. It never
+              touches saved review data or GitHub.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm">
+              <span className="font-medium">{formatByteSize(storageOverview.cacheBytes)}</span>{" "}
+              <span className="text-muted-foreground">
+                of cached checkouts for this profile.
+              </span>
+            </p>
+            <Button
+              variant="outline"
+              aria-label="Clear review cache"
+              onClick={() => setStorageAction({ kind: "clear-cache" })}
+            >
+              Clear review cache
+            </Button>
+            {storageError === undefined ? null : (
+              <Alert variant="destructive">
+                <AlertTitle>Storage action failed</AlertTitle>
+                <AlertDescription>{storageError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      <AlertDialog
+        open={storageAction !== undefined}
+        onOpenChange={(open) => {
+          if (!open) cancelStorageAction();
+        }}
+      >
+        <AlertDialogContent aria-busy={storagePending}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {storageAction?.kind === "discard"
+                ? `Discard ${storageAction.label}?`
+                : storageAction?.kind === "delete-quarantine"
+                  ? "Delete older review?"
+                  : "Clear review cache?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {storageAction?.kind === "discard"
+                ? "Discard keeps the saved review and removes its checkout."
+                : storageAction?.kind === "delete-quarantine"
+                  ? "Delete moves the quarantined copy to the system Trash."
+                  : "Clear removes the rebuildable checkouts only. It never changes saved sessions or GitHub data."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={storagePending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={storagePending}
+              onClick={() => {
+                void runStorageAction();
+              }}
+            >
+              {storageAction?.kind === "discard"
+                ? storagePending
+                  ? "Discarding…"
+                  : "Confirm discard"
+                : storageAction?.kind === "delete-quarantine"
+                  ? storagePending
+                    ? "Deleting…"
+                    : "Confirm delete"
+                  : storagePending
+                    ? "Clearing…"
+                    : "Confirm clear cache"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Card>
         <CardHeader>
           <CardTitle>Watchlist</CardTitle>
@@ -783,6 +1027,84 @@ function environmentSetupSteps(
 }
 
 type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
+
+type StorageSession = {
+  readonly id: string;
+  readonly prLabel: string;
+  readonly state: string;
+  readonly updatedAt: string;
+  readonly canDiscard: boolean;
+};
+
+type StorageQuarantineEntry = {
+  readonly entryName: string;
+  readonly quarantinedAt: string;
+};
+
+type StorageOverview = {
+  readonly sessions: ReadonlyArray<StorageSession>;
+  readonly quarantined: ReadonlyArray<StorageQuarantineEntry>;
+  readonly cacheBytes: number;
+};
+
+type StorageAction =
+  | { readonly kind: "discard"; readonly sessionId: string; readonly label: string }
+  | { readonly kind: "delete-quarantine"; readonly entryName: string }
+  | { readonly kind: "clear-cache" };
+
+const EMPTY_STORAGE_OVERVIEW: StorageOverview = {
+  sessions: [],
+  quarantined: [],
+  cacheBytes: 0,
+};
+
+function parseStorageOverview(value: unknown): StorageOverview | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.sessions)) return undefined;
+  if (!Array.isArray(candidate.quarantined)) return undefined;
+  if (typeof candidate.cacheBytes !== "number" || !Number.isFinite(candidate.cacheBytes) || candidate.cacheBytes < 0) {
+    return undefined;
+  }
+  const sessions: StorageSession[] = [];
+  for (const entry of candidate.sessions) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const record = entry as Record<string, unknown>;
+    if (
+      typeof record.id !== "string" ||
+      typeof record.prLabel !== "string" ||
+      typeof record.state !== "string" ||
+      typeof record.updatedAt !== "string" ||
+      typeof record.canDiscard !== "boolean"
+    ) {
+      return undefined;
+    }
+    sessions.push({
+      id: record.id,
+      prLabel: record.prLabel,
+      state: record.state,
+      updatedAt: record.updatedAt,
+      canDiscard: record.canDiscard,
+    });
+  }
+  const quarantined: StorageQuarantineEntry[] = [];
+  for (const entry of candidate.quarantined) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const record = entry as Record<string, unknown>;
+    if (
+      typeof record.entryName !== "string" ||
+      typeof record.quarantinedAt !== "string"
+    ) {
+      return undefined;
+    }
+    quarantined.push({ entryName: record.entryName, quarantinedAt: record.quarantinedAt });
+  }
+  return {
+    sessions,
+    quarantined,
+    cacheBytes: candidate.cacheBytes,
+  };
+}
 
 type ProfileDraft = {
   readonly id: string;

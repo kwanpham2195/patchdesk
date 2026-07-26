@@ -697,6 +697,8 @@ function installApi(
               runtime: "bundled",
               modelConfiguration: "configured",
             })
+          : path.includes("v1/storage")
+          ? { sessions: [], quarantined: [], cacheBytes: 0 }
           : path.includes("v1/profiles") && !path.includes("select")
             ? [
                 {

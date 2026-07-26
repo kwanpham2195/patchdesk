@@ -343,7 +343,7 @@ describe("local API capability boundary", () => {
       moves: [] as Array<{ path: string }>,
       async move(path: string) {
         this.moves.push({ path });
-        return { _tag: "ok", value: undefined };
+        return { _tag: "ok" as const, value: undefined };
       },
     };
     const startup = await startLocalApiServer({ capability, allowedOrigin, paths, trash });
