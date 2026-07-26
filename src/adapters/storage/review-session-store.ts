@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 
 import {
@@ -80,7 +80,10 @@ const sessionStateSchema = v.variant("_tag", [
     reason: v.picklist(["head_changed", "orphaned_run"]),
     currentHeadSha: v.optional(v.string()),
   }),
-  v.strictObject({ _tag: v.literal("Discarded"), attemptId: v.string() }),
+  v.strictObject({
+    _tag: v.literal("Discarded"),
+    attemptId: v.optional(v.string()),
+  }),
   v.strictObject({ _tag: v.literal("Merged"), mergedAt: v.string() }),
 ]);
 
@@ -379,12 +382,58 @@ export class ReviewSessionStore {
     }
     const sessions: ReviewSession[] = [];
     for (const entry of entries) {
+      if (entry === ".quarantine") continue;
       const sessionId = parseReviewSessionId(entry);
       if (sessionId._tag === "err") continue;
       const loaded = await this.load(profileId, sessionId.value);
       if (loaded._tag === "ok") sessions.push(loaded.value);
     }
     return ok(sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
+  }
+
+  /**
+   * Whether a stored session still claims the Running state, even when its full
+   * envelope cannot parse. This safety guard exists so quarantine and cache
+   * clearing never move a live review aside.
+   */
+  async isRecordedRunning(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<boolean, StorageFailure>> {
+    const path = this.paths.sessionFile(profileId, sessionId);
+    let contents: string;
+    try {
+      contents = await readFile(path, "utf8");
+    } catch (cause: unknown) {
+      if (isMissing(cause)) return ok(false);
+      return err({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "io",
+      });
+    }
+    try {
+      const parsed: unknown = JSON.parse(contents);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "state" in parsed &&
+        typeof (parsed as { state: unknown }).state === "object" &&
+        (parsed as { state: { _tag?: unknown } }).state !== null &&
+        (parsed as { state: { _tag?: unknown } }).state._tag === "Running"
+      ) {
+        return ok(true);
+      }
+      return ok(false);
+    } catch {
+      // A corrupt envelope must not be treated as not-Running; surface the
+      // failure so callers refuse to move the data aside.
+      return err({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_json",
+      });
+    }
   }
 
   async listAttempts(
@@ -754,6 +803,17 @@ function parseSessionState(
     return mergedAt._tag === "err"
       ? invalidRead()
       : ok({ _tag: "Merged", mergedAt: mergedAt.value });
+  }
+  if (input._tag === "Discarded") {
+    const attemptId =
+      input.attemptId === undefined
+        ? undefined
+        : parseReviewAttemptId(input.attemptId);
+    if (attemptId !== undefined && attemptId._tag === "err") return invalidRead();
+    return ok({
+      _tag: "Discarded",
+      ...(attemptId === undefined ? {} : { attemptId: attemptId.value }),
+    });
   }
   const attemptId = parseReviewAttemptId(input.attemptId);
   if (attemptId._tag === "err") return invalidRead();

@@ -47,7 +47,7 @@ export type ReviewSessionState =
       readonly error: ReviewFailureSummary;
     }
   | { readonly _tag: "Stale"; readonly reason: "head_changed" | "orphaned_run"; readonly currentHeadSha?: GitSha }
-  | { readonly _tag: "Discarded"; readonly attemptId: ReviewAttemptId }
+  | { readonly _tag: "Discarded"; readonly attemptId?: ReviewAttemptId }
   | { readonly _tag: "Merged"; readonly mergedAt: IsoTimestamp };
 
 export type ReviewWorktreeRef = {
@@ -111,6 +111,10 @@ export type ReviewBatchRemediationRequired = {
   readonly batchState: "Applying" | "PartialFailure" | "Conflicting";
 };
 export type SessionImmutable = { readonly _tag: "SessionImmutable" };
+/** A live Running session must never be discarded or moved aside. */
+export type SessionRunning = { readonly _tag: "SessionRunning" };
+/** A session that cannot transition to Discarded (Merged, already Discarded). */
+export type SessionNotDiscardable = { readonly _tag: "SessionNotDiscardable" };
 export type CannotAllocateAttempt = { readonly _tag: "CannotAllocateAttempt" };
 export type AttemptNotCurrent = { readonly _tag: "AttemptNotCurrent" };
 export type AttemptSessionMismatch = { readonly _tag: "AttemptSessionMismatch" };
@@ -363,6 +367,45 @@ export function discardCurrentAttempt(
   return ok({
     ...session,
     state: { _tag: "Discarded", attemptId },
+    updatedAt: discardedAt,
+  });
+}
+
+/**
+ * Transition an idle or completed session to Discarded without touching
+ * external state. The session file is preserved for history; only the cache
+ * worktree is removed by the storage management service.
+ */
+export function discardReviewSession(
+  session: ReviewSession,
+  discardedAt: IsoTimestamp,
+): Result<ReviewSession, SessionImmutable | SessionRunning | SessionNotDiscardable> {
+  if (session.state._tag === "Merged") {
+    return err({ _tag: "SessionImmutable" });
+  }
+  if (session.state._tag === "Running") {
+    return err({ _tag: "SessionRunning" });
+  }
+  if (
+    session.state._tag !== "Created" &&
+    session.state._tag !== "ReviewFailed" &&
+    session.state._tag !== "ReviewCompleted" &&
+    session.state._tag !== "Stale" &&
+    session.state._tag !== "Discarded"
+  ) {
+    return err({ _tag: "SessionNotDiscardable" });
+  }
+  if (session.state._tag === "Discarded") {
+    return err({ _tag: "SessionNotDiscardable" });
+  }
+  const currentAttemptId = session.currentAttemptId;
+  const state: ReviewSessionState =
+    currentAttemptId === undefined
+      ? { _tag: "Discarded" }
+      : { _tag: "Discarded", attemptId: currentAttemptId };
+  return ok({
+    ...session,
+    state,
     updatedAt: discardedAt,
   });
 }

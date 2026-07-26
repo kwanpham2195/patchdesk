@@ -30,6 +30,7 @@ import {
   createReviewSession,
   discardBatchForRerun,
   discardCurrentAttempt,
+  discardReviewSession,
   markSessionMerged,
   startNextAttempt,
 } from "../../src/domain/review-session";
@@ -1216,5 +1217,100 @@ describe("Patchdesk review domain", () => {
     expect(
       parseStartReviewRequest({ profileId: "cfw", value: "centraldigital/patchdesk#42" }),
     ).toMatchObject({ _tag: "ok" });
+  });
+
+  it.each([
+    { name: "idle Created", state: { _tag: "Created" as const } },
+    {
+      name: "idle ReviewFailed",
+      state: {
+        _tag: "ReviewFailed" as const,
+        attemptId: "001" as never,
+        error: { category: "github_auth" as const, message: "Auth failed." },
+      },
+    },
+    {
+      name: "idle ReviewCompleted",
+      state: { _tag: "ReviewCompleted" as const, attemptId: "001" as never },
+    },
+    {
+      name: "idle Stale",
+      state: { _tag: "Stale" as const, reason: "head_changed" as const },
+    },
+  ])("discards an idle $name session without an attempt", ({ state }) => {
+    const session = createReviewSession({
+      key: ids,
+      ...sessionContext,
+      createdAt: times.created,
+    });
+
+    const result = discardReviewSession({ ...session, state }, times.completed);
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "Discarded" }, updatedAt: times.completed },
+    });
+    if (result._tag === "ok") {
+      expect(
+        (result.value.state as { readonly attemptId?: unknown }).attemptId,
+      ).toBeUndefined();
+      expect(result.value.currentAttemptId).toBeUndefined();
+    }
+  });
+
+  it("preserves the attempt id when discarding a session that has a current attempt", () => {
+    const session = {
+      ...createReviewSession({
+        key: ids,
+        ...sessionContext,
+        createdAt: times.created,
+      }),
+      currentAttemptId: mustParse(parseReviewAttemptId("001")),
+      state: {
+        _tag: "ReviewFailed" as const,
+        attemptId: mustParse(parseReviewAttemptId("001")),
+        error: { category: "github_auth" as const, message: "Auth failed." },
+      },
+    };
+
+    const result = discardReviewSession(session, times.completed);
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        state: { _tag: "Discarded", attemptId: mustParse(parseReviewAttemptId("001")) },
+        updatedAt: times.completed,
+      },
+    });
+  });
+
+  it.each([
+    {
+      name: "Running",
+      state: { _tag: "Running" as const, attemptId: "001" as never },
+    },
+    {
+      name: "Merged",
+      state: { _tag: "Merged" as const, mergedAt: times.merged },
+    },
+    {
+      name: "already Discarded",
+      state: { _tag: "Discarded" as const, attemptId: "001" as never },
+    },
+  ])("refuses to discard a $name session", ({ state }) => {
+    const session = createReviewSession({
+      key: ids,
+      ...sessionContext,
+      createdAt: times.created,
+    });
+    const errorTag =
+      state._tag === "Running"
+        ? "SessionRunning"
+        : state._tag === "Merged"
+          ? "SessionImmutable"
+          : "SessionNotDiscardable";
+
+    expect(discardReviewSession({ ...session, state }, times.completed)).toEqual({
+      _tag: "err",
+      error: { _tag: errorTag },
+    });
   });
 });

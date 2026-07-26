@@ -624,6 +624,82 @@ describe("Patchdesk storage", () => {
       '{"at":"2026-07-16T00:00:00.000Z","event":"attempt_started","attemptId":"001"}\n',
     );
   });
+
+  it("accepts an idle Discarded state without an attempt id", () => {
+    const paths = PatchdeskPaths.forTest("/tmp/parse-only");
+    const session = sessionFor(paths);
+
+    const parsed = parseStoredReviewSession({
+      ...session,
+      state: { _tag: "Discarded" },
+    });
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "Discarded" } },
+    });
+    if (parsed._tag === "ok") {
+      expect(
+        (parsed.value.state as { readonly attemptId?: unknown }).attemptId,
+      ).toBeUndefined();
+    }
+  });
+
+  it("excludes a quarantined entry from listSessions and reports a stored Running state", async () => {
+    const paths = await testPaths();
+    const sessions = new ReviewSessionStore(paths);
+    const session = sessionFor(paths);
+    expect((await sessions.save(session))._tag).toBe("ok");
+
+    const quarantinedEntry = `${session.id}.20260725T000000`;
+    const quarantinedDirectory = paths.quarantinedSessionDirectory(
+      profile.id,
+      quarantinedEntry,
+    );
+    await mkdir(quarantinedDirectory, { recursive: true });
+    await writeFile(
+      join(quarantinedDirectory, "session.json"),
+      JSON.stringify({ ...session, state: { _tag: "Discarded" } }),
+      "utf8",
+    );
+
+    const listed = await sessions.listSessions(profile.id);
+    expect(listed).toMatchObject({
+      _tag: "ok",
+      value: [{ id: session.id }],
+    });
+
+    const running = await sessions.isRecordedRunning(profile.id, session.id);
+    expect(running).toEqual({ _tag: "ok", value: false });
+  });
+
+  it("isRecordedRunning still returns true for a deliberately invalid Running record", async () => {
+    const paths = await testPaths();
+    const sessions = new ReviewSessionStore(paths);
+    const session = sessionFor(paths);
+    const sessionId = session.id;
+    await mkdir(paths.sessionDirectory(profile.id, sessionId), { recursive: true });
+    // A persisted envelope that the strict parser would reject, but that still
+    // claims Running; the safety guard must honor it.
+    await writeFile(
+      paths.sessionFile(profile.id, sessionId),
+      JSON.stringify({
+        schemaVersion: 3,
+        id: sessionId,
+        key: { ...session.key, profileId: profile.id },
+        pr: { headSha: session.key.headSha, isDraft: false, isOpen: true },
+        patchPath: "not-an-absolute-path",
+        worktree: { path: "/not-absolute", headSha: session.key.headSha },
+        state: { _tag: "Running", attemptId: "001" },
+        currentAttemptId: "001",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      }),
+      "utf8",
+    );
+
+    const running = await sessions.isRecordedRunning(profile.id, sessionId);
+    expect(running).toEqual({ _tag: "ok", value: true });
+  });
 });
 
 function submittedBatchSessionFor(paths: PatchdeskPaths): ReviewSession {

@@ -245,4 +245,38 @@ export class PatchdeskPaths {
       sessionId,
     );
   }
+
+  /**
+   * Validated session-quarantine directory. Callers must pre-validate the
+   * entry name; this method only joins already-trusted components.
+   */
+  quarantinedSessionDirectory(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): string {
+    return join(
+      this.profileReviewsDirectory(profileId),
+      ".quarantine",
+      entryName,
+    );
+  }
+
+  /**
+   * Validated worktree-quarantine directory. Callers must pre-validate the
+   * entry name; this method only joins already-trusted components.
+   */
+  quarantinedWorktreeDirectory(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): string {
+    return join(
+      this.worktreeRootDirectory(profileId),
+      ".quarantine",
+      entryName,
+    );
+  }
+
+  worktreeRootDirectory(profileId: WorkspaceProfileId): string {
+    return join(this.cacheDirectory(), "profiles", profileId, "review-worktrees");
+  }
 }
