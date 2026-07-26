@@ -326,6 +326,58 @@ describe("local API capability boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "github_rejected" });
     await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "ReviewCompleted" }, batchContent: { state: { _tag: "PartialFailure" } } } });
   });
+
+  it("returns a path-free storage overview and rejects traversal-shaped quarantine names", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-storage-api-")));
+    await new ProfileStore(paths).save(must(parseWorkspaceProfileConfig({
+      id: "cfw",
+      label: "CFW",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+      ownerFilters: [],
+      workspaceRoots: [],
+      rulePaths: [],
+      repos: [],
+    })));
+    const trash = {
+      moves: [] as Array<{ path: string }>,
+      async move(path: string) {
+        this.moves.push({ path });
+        return { _tag: "ok", value: undefined };
+      },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths, trash });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = writeHeaders();
+
+    const overview = await fetch(
+      new URL("v1/storage?profileId=cfw", localApi.url),
+      { headers },
+    );
+    expect(overview.status).toBe(200);
+    const body = await overview.json() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["cacheBytes", "quarantined", "sessions"]);
+    for (const session of body.sessions as Array<Record<string, unknown>>) {
+      expect(Object.keys(session).sort()).toEqual(["canDiscard", "id", "prLabel", "state", "updatedAt"]);
+      for (const value of Object.values(session)) {
+        expect(JSON.stringify(value)).not.toMatch(/\/Users\/|\/var\/|\/private\//);
+      }
+    }
+
+    const malformed = await fetch(new URL("v1/storage?profileId=../etc", localApi.url), { headers });
+    expect(malformed.status).toBe(400);
+    await expect(malformed.json()).resolves.toEqual({ error: "invalid_input" });
+
+    const traversal = await fetch(new URL("v1/storage/quarantine/delete", localApi.url), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ profileId: "cfw", entryName: "../etc/passwd" }),
+    });
+    expect(traversal.status).toBe(400);
+    await expect(traversal.json()).resolves.toEqual({ error: "invalid_input" });
+    expect(trash.moves).toHaveLength(0);
+  });
 });
 
 async function startTestLocalApi(): Promise<LocalApiServer> {

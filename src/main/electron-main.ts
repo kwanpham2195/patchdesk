@@ -66,6 +66,19 @@ const desktopLifecycle = createDesktopLifecycle({
         },
         workflowInvoker: createWorkflowInvoker(),
         modelCatalog: new LocalPiRuntimeModelCatalog(),
+        trash: {
+          async move(path) {
+            try {
+              await shell.trashItem(path);
+              return { _tag: "ok", value: undefined };
+            } catch {
+              return {
+                _tag: "err",
+                error: { _tag: "StorageFailure", operation: "write", reason: "io" },
+              };
+            }
+          },
+        },
       });
       if (startup._tag === "started") {
         runningLocalApi = startup.server;

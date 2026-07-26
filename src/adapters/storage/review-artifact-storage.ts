@@ -139,16 +139,11 @@ export class ReviewArtifactStorage {
    * result excludes any data the renderer is allowed to see.
    */
   async cacheBytes(profileId: WorkspaceProfileId): Promise<Result<number, StorageFailure>> {
+    const children = await this.cacheChildren(profileId);
+    if (children._tag === "err") return children;
     const root = this.paths.worktreeRootDirectory(profileId);
-    let entries: ReadonlyArray<string>;
-    try {
-      entries = await readdir(root);
-    } catch (cause: unknown) {
-      if (isNotFound(cause)) return ok(0);
-      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
-    }
     let total = 0;
-    for (const entry of entries) {
+    for (const entry of children.value) {
       const child = join(root, entry);
       try {
         const info = await lstat(child);
@@ -162,9 +157,43 @@ export class ReviewArtifactStorage {
   }
 
   /**
+   * Return the names of every direct child of the worktree cache root that
+   * is not a symlink, the `.quarantine` directory, or a `.trash` directory.
+   * The list is the only input the cache-clear service needs to identify
+   * safe worktree removals.
+   */
+  async cacheChildren(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<ReadonlyArray<string>, StorageFailure>> {
+    const root = this.paths.worktreeRootDirectory(profileId);
+    let entries: ReadonlyArray<string>;
+    try {
+      entries = await readdir(root);
+    } catch (cause: unknown) {
+      if (isNotFound(cause)) return ok([]);
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+    const result: string[] = [];
+    for (const entry of entries) {
+      if (entry === ".quarantine" || entry === ".trash") continue;
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry)) continue;
+      const child = join(root, entry);
+      try {
+        const info = await lstat(child);
+        if (info.isSymbolicLink()) continue;
+        result.push(entry);
+      } catch {
+        // best-effort; a missing child should not fail the listing.
+      }
+    }
+    return ok(result);
+  }
+
+  /**
    * Remove the provided cache children, skipping any path that is a symlink
    * or that lies outside the worktree cache root. The operation never
-   * touches session directories.
+   * touches session directories. Best-effort: a single failed child is
+   * reported as a storage failure so the caller can surface it.
    */
   async removeCacheChildren(
     profileId: WorkspaceProfileId,
@@ -174,17 +203,12 @@ export class ReviewArtifactStorage {
     for (const child of children) {
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(child)) continue;
       const target = join(root, child);
-      if (!(await this.isUnderRoot(target, root))) continue;
       try {
         const info = await lstat(target);
         if (info.isSymbolicLink()) continue;
-        // The cache is rebuildable. Best-effort rename into a sibling .trash
-        // directory keeps the data invisible until the next process exits
-        // and avoids races with concurrent readers.
-        const trash = join(root, ".trash");
-        await mkdir(trash, { recursive: true });
-        await rename(target, join(trash, child)).catch(() => undefined);
-      } catch {
+        await rename(target, `${target}.removed.${Date.now()}`).catch(() => undefined);
+      } catch (cause: unknown) {
+        if (isNotFound(cause)) continue;
         return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
       }
     }

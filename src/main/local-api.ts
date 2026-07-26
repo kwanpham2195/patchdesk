@@ -17,6 +17,10 @@ import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
+import {
+  StorageManagementService,
+  type TrashMover,
+} from "../services/storage-management-service";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
@@ -41,7 +45,7 @@ import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewContextService } from "../services/review-context-service";
-import { ReviewWorktreeService } from "../services/review-worktree-service";
+import { ReviewWorktreeService, type GitReadExecutor } from "../services/review-worktree-service";
 import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
@@ -54,7 +58,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseWorkspaceProfileId } from "../domain/ids";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -106,6 +110,10 @@ export type LocalApiConfiguration = {
     readonly sessionId: string;
     readonly attemptId: string;
   }) => SafeRunProjection;
+  /** Main-process-owned Trash capability. Production wires shell.trashItem. */
+  readonly trash?: TrashMover;
+  /** Test-only read-only git seam used by storage cache clear. */
+  readonly readOnlyGit?: GitReadExecutor;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -145,6 +153,19 @@ export async function startLocalApiServer(
   };
   const profiles = new ProfileStore(paths);
   const sessions = new ReviewSessionStore(paths);
+  const storageArtifacts = new ReviewArtifactStorage(
+    paths,
+    () => new Date().toISOString() as never,
+  );
+  const storageManagement = new StorageManagementService({
+    profiles,
+    sessions,
+    artifacts: storageArtifacts,
+    paths,
+    ...(configuration.trash === undefined ? {} : { trash: configuration.trash }),
+    git: configuration.readOnlyGit ?? readOnlyGit,
+    now: () => new Date().toISOString() as never,
+  });
   await new ReviewRecoveryService(
     profiles,
     sessions,
@@ -478,6 +499,70 @@ export async function startLocalApiServer(
       ? context.json({ error: "merge_unavailable" }, 503)
       : response(context, await mergeWrites.merge(await jsonBody(context))),
   );
+  app.get("/v1/storage", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return storageResponse(context, await storageManagement.list(profileId.value));
+  });
+  app.post("/v1/storage/discard", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({
+        profileId: pipe(string(), minLength(1)),
+        sessionId: pipe(string(), minLength(1)),
+      }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const sessionId = parseReviewSessionId(parsed.output.sessionId);
+    if (profileId._tag === "err" || sessionId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return storageResponse(
+      context,
+      await storageManagement.discard({
+        profileId: profileId.value,
+        sessionId: sessionId.value,
+      }),
+    );
+  });
+  app.post("/v1/storage/quarantine/delete", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({
+        profileId: pipe(string(), minLength(1)),
+        entryName: pipe(string(), minLength(1)),
+      }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return storageResponse(
+      context,
+      await storageManagement.deleteQuarantined({
+        profileId: profileId.value,
+        entryName: parsed.output.entryName,
+      }),
+    );
+  });
+  app.post("/v1/storage/cache/clear", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({ profileId: pipe(string(), minLength(1)) }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return storageResponse(
+      context,
+      await storageManagement.clearCache(profileId.value),
+    );
+  });
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId");
     const attemptId = context.req.query("attemptId");
@@ -611,6 +696,45 @@ function response(
         { error: result.error.reason },
         statusForReason(result.error.reason),
       );
+}
+
+type StorageRouteFailure = {
+  readonly _tag:
+    | "ProfileNotFound"
+    | "ProfileUnavailable"
+    | "StorageUnavailable"
+    | "SessionRunning"
+    | "SessionImmutable"
+    | "SessionNotDiscardable"
+    | "SessionNotFound"
+    | "InvalidQuarantineEntryName"
+    | "TrashUnavailable";
+};
+
+function storageResponse(
+  context: Context,
+  result:
+    | { readonly _tag: "ok"; readonly value: unknown }
+    | { readonly _tag: "err"; readonly error: StorageRouteFailure },
+): Response {
+  if (result._tag === "ok") return context.json(result.value);
+  const tag = result.error._tag;
+  if (tag === "ProfileNotFound" || tag === "SessionNotFound") {
+    return context.json({ error: "not_found" }, 404);
+  }
+  if (tag === "ProfileUnavailable" || tag === "StorageUnavailable") {
+    return context.json({ error: "storage_unavailable" }, 500);
+  }
+  if (tag === "SessionRunning" || tag === "SessionImmutable" || tag === "SessionNotDiscardable") {
+    return context.json({ error: tag }, 409);
+  }
+  if (tag === "InvalidQuarantineEntryName") {
+    return context.json({ error: "invalid_input" }, 400);
+  }
+  if (tag === "TrashUnavailable") {
+    return context.json({ error: "trash_unavailable" }, 503);
+  }
+  return context.json({ error: "storage" }, 500);
 }
 
 function statusForReason(
