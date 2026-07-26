@@ -7,6 +7,7 @@ import { createFetchedDiffRefs } from "../adapters/github/github-adapter";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -78,6 +79,7 @@ type PreparationDependencies = {
   readonly worktrees: ReviewWorktreeService;
   readonly context: ReviewContextService;
   readonly comparisons?: ReviewComparisonService;
+  readonly artifacts: ReviewArtifactStorage;
 };
 
 /**
@@ -138,7 +140,22 @@ export class ReviewSessionPreparation {
       }
     }
     if (stored._tag === "err" && stored.error.reason !== "not_found") {
-      return err({ _tag: "SessionStorageUnavailable" });
+      // An unreadable stored session is preserved by renaming it into the
+      // quarantine directories before preparing a fresh replacement. A
+      // persisted Running state must never be moved aside, so the rename only
+      // happens when the storage layer confirms the session is not live.
+      if (stored.error.reason === "invalid_stored_value") {
+        const running = await deps.sessions.isRecordedRunning(input.profileId, sessionId);
+        if (running._tag === "err" || running.value) {
+          return err({ _tag: "SessionStorageUnavailable" });
+        }
+        const quarantined = await deps.artifacts.quarantine(input.profileId, sessionId);
+        if (quarantined._tag === "err") {
+          return err({ _tag: "SessionStorageUnavailable" });
+        }
+      } else {
+        return err({ _tag: "SessionStorageUnavailable" });
+      }
     }
 
     const journal = await ReviewPreparationJournal.begin(deps.paths, input.profileId, sessionId);

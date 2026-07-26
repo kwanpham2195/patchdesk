@@ -72,4 +72,22 @@ describe("ReviewWorktreeService", () => {
       expect(await service.cleanup({ ...ids, sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never, localPath: outside, targetPath: target })).toMatchObject({ _tag: "err", error: { _tag: "UnsafeWorktreeCleanup" } });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it("prunes a stale registration before adding a fresh worktree for a missing target", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+    try {
+      const local = join(root, "repo");
+      await mkdir(local);
+      const git = new RecordingGit();
+      const service = new ReviewWorktreeService(PatchdeskPaths.forTest(root), git);
+      const prepared = await service.prepare({ ...ids, sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never, localPath: local });
+      expect(prepared._tag).toBe("ok");
+
+      const pruneIndex = git.calls.findIndex((argv) => argv.includes("prune"));
+      const addIndex = git.calls.findIndex((argv) => argv.includes("add") && argv.includes("worktree"));
+      expect(pruneIndex).toBeGreaterThan(-1);
+      expect(addIndex).toBeGreaterThan(-1);
+      expect(pruneIndex).toBeLessThan(addIndex);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });

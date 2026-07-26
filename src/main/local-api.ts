@@ -16,6 +16,7 @@ import type { LocalApiStartupResult } from "./app-lifecycle";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
@@ -197,6 +198,10 @@ export async function startLocalApiServer(
       comparisons: new ReviewComparisonService(
         paths,
         readOnlyGit,
+        () => new Date().toISOString() as never,
+      ),
+      artifacts: new ReviewArtifactStorage(
+        paths,
         () => new Date().toISOString() as never,
       ),
     }),

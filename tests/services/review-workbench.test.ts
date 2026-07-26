@@ -7,6 +7,7 @@ import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import {
   createReviewBatch,
@@ -116,6 +117,7 @@ describe("review workbench", () => {
           now: () => "2026-07-16T00:00:00.000Z" as never,
           worktrees: new ReviewWorktreeService(paths, { async run() { return { _tag: "err" as const, error: { _tag: "GitReadFailed" as const } }; } }),
           context: new ReviewContextService(),
+          artifacts: new ReviewArtifactStorage(paths, () => "2026-07-16T00:00:00.000Z" as never),
         }),
         new ReviewWorkbenchProjectionService(
           new ProfileStore(paths),

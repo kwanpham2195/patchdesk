@@ -64,6 +64,9 @@ export class ReviewWorktreeService {
     const existing = await this.matchesMetadata(path, input.profileId, input.sessionId);
     if (!existing) {
       await mkdir(dirname(path), { recursive: true });
+      // A stale worktree registration can block the fresh `add` call; clear it
+      // first so the user never has to clean it up by hand.
+      await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
       const added = await this.git.run(["git", "-C", repositoryPath, "worktree", "add", "--detach", path, headRef]);
       if (added._tag === "err") return err({ _tag: "GitWorktreeFailed" });
       await mkdir(path, { recursive: true });
