@@ -1,8 +1,13 @@
-import { mkdir, readdir, rename, lstat } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, relative, resolve, join } from "node:path";
 
 import { err, ok, type Result } from "../../domain/result";
-import type { IsoTimestamp, ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
+import {
+  parseReviewSessionId,
+  type IsoTimestamp,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "../../domain/ids";
 import type { StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
@@ -22,7 +27,7 @@ export function toQuarantineStamp(at: IsoTimestamp): string {
   return `${year}${month}${day}T${hour}${minute}${second}`;
 }
 
-const quarantineEntrySyntax = /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.\d{8}T\d{6}$/;
+const quarantineEntrySyntax = /^(.+)\.(\d{8}T\d{6})$/;
 
 /**
  * Strict quarantine entry-name parser. Rejects anything that could escape
@@ -31,7 +36,20 @@ const quarantineEntrySyntax = /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.\d{8}T\d{6}$/;
 export function parseQuarantineEntryName(
   input: unknown,
 ): Result<string, InvalidQuarantineEntryName> {
-  if (typeof input !== "string" || !quarantineEntrySyntax.test(input)) {
+  if (typeof input !== "string") {
+    return err({ _tag: "InvalidQuarantineEntryName" });
+  }
+  const match = quarantineEntrySyntax.exec(input);
+  const sessionId = match?.[1];
+  const stamp = match?.[2];
+  if (
+    sessionId === undefined ||
+    stamp === undefined ||
+    parseReviewSessionId(sessionId)._tag === "err"
+  ) {
+    return err({ _tag: "InvalidQuarantineEntryName" });
+  }
+  if (stampToIso(stamp) === undefined) {
     return err({ _tag: "InvalidQuarantineEntryName" });
   }
   return ok(input);
@@ -125,7 +143,9 @@ export class ReviewArtifactStorage {
     for (const entry of entries) {
       const parsed = parseQuarantineEntryName(entry);
       if (parsed._tag === "err") continue;
-      const stamp = parsed.value.split(".").at(-1) ?? "";
+      const match = quarantineEntrySyntax.exec(parsed.value);
+      const stamp = match?.[2];
+      if (stamp === undefined) continue;
       const iso = stampToIso(stamp);
       if (iso === undefined) continue;
       items.push({ entryName: parsed.value, quarantinedAt: iso });
@@ -144,14 +164,7 @@ export class ReviewArtifactStorage {
     const root = this.paths.worktreeRootDirectory(profileId);
     let total = 0;
     for (const entry of children.value) {
-      const child = join(root, entry);
-      try {
-        const info = await lstat(child);
-        if (info.isSymbolicLink()) continue;
-        total += info.size;
-      } catch {
-        // best-effort; a missing child should not fail the summary.
-      }
+      total += await measureBytes(join(root, entry));
     }
     return ok(total);
   }
@@ -162,6 +175,20 @@ export class ReviewArtifactStorage {
    * The list is the only input the cache-clear service needs to identify
    * safe worktree removals.
    */
+  async hasQuarantinedWorktree(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): Promise<Result<boolean, StorageFailure>> {
+    const path = this.paths.quarantinedWorktreeDirectory(profileId, entryName);
+    try {
+      const info = await lstat(path);
+      return ok(!info.isSymbolicLink());
+    } catch (cause: unknown) {
+      if (isNotFound(cause)) return ok(false);
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+  }
+
   async cacheChildren(
     profileId: WorkspaceProfileId,
   ): Promise<Result<ReadonlyArray<string>, StorageFailure>> {
@@ -206,7 +233,7 @@ export class ReviewArtifactStorage {
       try {
         const info = await lstat(target);
         if (info.isSymbolicLink()) continue;
-        await rename(target, `${target}.removed.${Date.now()}`).catch(() => undefined);
+        await rm(target, { recursive: true, force: true });
       } catch (cause: unknown) {
         if (isNotFound(cause)) continue;
         return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
@@ -267,6 +294,23 @@ function isNotFound(cause: unknown): boolean {
   );
 }
 
+async function measureBytes(path: string): Promise<number> {
+  try {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) return 0;
+    if (!info.isDirectory()) return info.size;
+    const entries = await readdir(path, { withFileTypes: true });
+    let total = 0;
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      total += await measureBytes(join(path, entry.name));
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
 /** Convert a quarantine stamp like 20260725T000000 into an ISO timestamp. */
 function stampToIso(stamp: string): string | undefined {
   if (!/^\d{8}T\d{6}$/.test(stamp)) return undefined;
@@ -276,5 +320,15 @@ function stampToIso(stamp: string): string | undefined {
   const hour = stamp.slice(9, 11);
   const minute = stamp.slice(11, 13);
   const second = stamp.slice(13, 15);
+  const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() + 1 !== Number(month) ||
+    date.getUTCDate() !== Number(day) ||
+    date.getUTCHours() !== Number(hour) ||
+    date.getUTCMinutes() !== Number(minute) ||
+    date.getUTCSeconds() !== Number(second)
+  ) return undefined;
   return `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
 }

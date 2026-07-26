@@ -1,8 +1,9 @@
 import { err, ok, type Result } from "../domain/result";
-import type {
-  IsoTimestamp,
-  ReviewSessionId,
-  WorkspaceProfileId,
+import {
+  parseReviewSessionId,
+  type IsoTimestamp,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import {
   discardReviewSession,
@@ -159,8 +160,15 @@ export class StorageManagementService {
     const worktreePath = this.deps.paths.quarantinedWorktreeDirectory(input.profileId, parsed.value);
     const movedSession = await this.deps.trash.move(sessionPath);
     if (movedSession._tag === "err") return err({ _tag: "StorageUnavailable" });
-    const movedWorktree = await this.deps.trash.move(worktreePath);
-    if (movedWorktree._tag === "err") return err({ _tag: "StorageUnavailable" });
+    const worktreePresent = await this.deps.artifacts.hasQuarantinedWorktree(
+      input.profileId,
+      parsed.value,
+    );
+    if (worktreePresent._tag === "err") return err({ _tag: "StorageUnavailable" });
+    if (worktreePresent.value) {
+      const movedWorktree = await this.deps.trash.move(worktreePath);
+      if (movedWorktree._tag === "err") return err({ _tag: "StorageUnavailable" });
+    }
     return ok(undefined);
   }
 
@@ -182,9 +190,11 @@ export class StorageManagementService {
         .filter((session) => session.state._tag === "Running")
         .map((session) => session.id),
     );
+    const removable = await this.cacheChildrenExcept(profileId, protectedIds);
+    if (removable._tag === "err") return removable;
     const removed = await this.deps.artifacts.removeCacheChildren(
       profileId,
-      await this.cacheChildrenExcept(profileId, protectedIds),
+      removable.value,
     );
     if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
     const pruned = await this.prunePerLocalPath(profile.value.repos);
@@ -195,10 +205,26 @@ export class StorageManagementService {
   private async cacheChildrenExcept(
     profileId: WorkspaceProfileId,
     protectedIds: ReadonlySet<string>,
-  ): Promise<ReadonlyArray<string>> {
+  ): Promise<Result<ReadonlyArray<string>, StorageManagementFailure>> {
     const all = await this.deps.artifacts.cacheChildren(profileId);
-    if (all._tag === "err") return [];
-    return all.value.filter((entry) => !protectedIds.has(entry));
+    if (all._tag === "err") return err({ _tag: "StorageUnavailable" });
+    const protectedWithRecordedState = new Set(protectedIds);
+    for (const entry of all.value) {
+      if (protectedWithRecordedState.has(entry)) continue;
+      const sessionId = parseReviewSessionId(entry);
+      if (sessionId._tag === "err") continue;
+      const recordedRunning = await this.deps.sessions.isRecordedRunning(
+        profileId,
+        sessionId.value,
+      );
+      if (recordedRunning._tag === "err") {
+        return err({ _tag: "StorageUnavailable" });
+      }
+      if (recordedRunning.value) protectedWithRecordedState.add(entry);
+    }
+    return ok(
+      all.value.filter((entry) => !protectedWithRecordedState.has(entry)),
+    );
   }
 
   private async prunePerLocalPath(

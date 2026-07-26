@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -109,6 +109,14 @@ async function setupService(): Promise<{
   await writeFile(
     join(paths.worktreeDirectory(profileId, running.id), "worktree.json"),
     "stale",
+    "utf8",
+  );
+  await mkdir(join(paths.worktreeDirectory(profileId, running.id), "nested"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(paths.worktreeDirectory(profileId, running.id), "nested", "data.txt"),
+    "nested-data",
     "utf8",
   );
   // Seed a cache directory for the completed session that must be removed.
@@ -245,9 +253,36 @@ describe("StorageManagementService", () => {
     expect(result).toMatchObject({ _tag: "ok" });
     expect(await exists(setup.paths.worktreeDirectory(profileId, setup.sessionsById.running.id))).toBe(true);
     expect(await exists(setup.paths.worktreeDirectory(profileId, setup.sessionsById.reviewed.id))).toBe(false);
+    const cacheEntries = await readdir(setup.paths.worktreeRootDirectory(profileId));
+    expect(cacheEntries.some((entry) => entry.includes(".removed."))).toBe(false);
     const pruneCalls = setup.git.calls.filter((argv) => argv.includes("prune"));
     expect(pruneCalls.length).toBe(1);
     expect(pruneCalls[0]?.join(" ")).toContain(localPaths.patchdesk);
+  });
+
+  it("preserves a worktree when its unreadable session envelope records Running", async () => {
+    const setup = await trackSetup();
+    const sessionPath = setup.paths.sessionFile(profileId, setup.sessionsById.running.id);
+    const contents = await readFile(sessionPath, "utf8");
+    const corrupted = contents.replace(
+      /"attemptId"\s*:\s*"001"/,
+      '"attemptId": "bad"',
+    );
+    expect(corrupted).not.toBe(contents);
+    await writeFile(sessionPath, corrupted, "utf8");
+
+    const result = await setup.service.clearCache(profileId);
+    expect(result).toEqual({ _tag: "ok", value: undefined });
+    expect(await exists(setup.paths.worktreeDirectory(profileId, setup.sessionsById.running.id))).toBe(true);
+    expect(setup.git.calls).toHaveLength(1);
+  });
+
+  it("counts nested cache contents rather than directory metadata", async () => {
+    const setup = await trackSetup();
+    const result = await setup.service.list(profileId);
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.cacheBytes).toBe("stale".length + "nested-data".length);
   });
 
   it("moves a quarantined session and its worktree to Trash", async () => {
@@ -265,6 +300,31 @@ describe("StorageManagementService", () => {
     expect(setup.trash.moves.map((m) => m.path)).toEqual(
       expect.arrayContaining([sessionRoot, worktreeRoot]),
     );
+  });
+
+  it("accepts a quarantined entry when its worktree is already absent", async () => {
+    const setup = await trackSetup();
+    const target = setup.sessionsById.reviewed;
+    const entry = `${target.id}.${formatStamp("2026-07-25T00:00:00.000Z")}`;
+    const sessionRoot = setup.paths.quarantinedSessionDirectory(profileId, entry);
+    await mkdir(sessionRoot, { recursive: true });
+
+    const result = await setup.service.deleteQuarantined({ profileId, entryName: entry });
+    expect(result).toEqual({ _tag: "ok", value: undefined });
+    expect(setup.trash.moves.map((move) => move.path)).toEqual([sessionRoot]);
+  });
+
+  it("rejects quarantine names without a valid session ID", async () => {
+    const setup = await trackSetup();
+    const result = await setup.service.deleteQuarantined({
+      profileId,
+      entryName: "not-a-session.20260725T000000",
+    });
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "InvalidQuarantineEntryName" },
+    });
+    expect(setup.trash.moves).toHaveLength(0);
   });
 
   it("rejects traversal-shaped quarantine names without moving anything", async () => {
