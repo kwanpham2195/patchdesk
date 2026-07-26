@@ -45,6 +45,26 @@ If no user action is possible, the review is omitted from ordinary lists. Techni
 
 The word **quarantine** is internal terminology. User-facing copy should use phrases such as `Needs preparation`, `Review interrupted`, or `Some reviews were skipped`.
 
+## Audience and copy contract
+
+Patchdesk is for maintainers who understand basic GitHub, Git, and LLM concepts. Simplification must remove implementation leakage, not useful domain language.
+
+Keep these concepts visible when they help a user make a decision:
+
+- `PR` and `PRs` instead of the longer `pull request` in compact labels;
+- `HEAD`, `Reviewed HEAD`, `Current HEAD`, and `Reviewed SHA`;
+- branches, checks, `read-only`, model, and `Reasoning`;
+- `Low`, `Medium`, and `High` reasoning choices.
+
+Preferred user-facing labels include:
+
+- `Selected PR`;
+- `Inspect failing checks`;
+- `Run review`;
+- `Reconnect`, `Start again`, and `Try again`.
+
+Keep implementation terms out of ordinary UI: `quarantine`, `worktree`, `checkout`, `session`, `attempt`, `runtime`, `agent`, and `lifecycle`. These belong in diagnostics only.
+
 ## Internal model
 
 ### Review record
@@ -106,7 +126,7 @@ Recovery actions map to typed outcomes:
 
 ## Request and navigation flow
 
-Opening a pull request and running a review are separate commands.
+Opening a PR and running a review are separate commands.
 
 1. `Open review` creates/loads the review record and returns a stable review identity as soon as minimum metadata is available.
 2. The renderer navigates to the workbench immediately.
