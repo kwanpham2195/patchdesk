@@ -175,6 +175,20 @@ export class ReviewArtifactStorage {
    * The list is the only input the cache-clear service needs to identify
    * safe worktree removals.
    */
+  async hasQuarantinedSession(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): Promise<Result<boolean, StorageFailure>> {
+    const path = this.paths.quarantinedSessionDirectory(profileId, entryName);
+    try {
+      const info = await lstat(path);
+      return ok(!info.isSymbolicLink() && info.isDirectory());
+    } catch (cause: unknown) {
+      if (isNotFound(cause)) return ok(false);
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+  }
+
   async hasQuarantinedWorktree(
     profileId: WorkspaceProfileId,
     entryName: string,

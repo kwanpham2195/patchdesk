@@ -302,6 +302,16 @@ describe("StorageManagementService", () => {
     );
   });
 
+  it("rejects a valid-looking quarantine name when its session entry is absent", async () => {
+    const setup = await trackSetup();
+    const target = setup.sessionsById.reviewed;
+    const entry = `${target.id}.${formatStamp("2026-07-25T00:00:00.000Z")}`;
+
+    const result = await setup.service.deleteQuarantined({ profileId, entryName: entry });
+    expect(result).toEqual({ _tag: "err", error: { _tag: "SessionNotFound" } });
+    expect(setup.trash.moves).toHaveLength(0);
+  });
+
   it("accepts a quarantined entry when its worktree is already absent", async () => {
     const setup = await trackSetup();
     const target = setup.sessionsById.reviewed;

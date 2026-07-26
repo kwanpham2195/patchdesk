@@ -156,6 +156,12 @@ export class StorageManagementService {
     if (this.deps.trash === undefined) {
       return err({ _tag: "TrashUnavailable" });
     }
+    const sessionPresent = await this.deps.artifacts.hasQuarantinedSession(
+      input.profileId,
+      parsed.value,
+    );
+    if (sessionPresent._tag === "err") return err({ _tag: "StorageUnavailable" });
+    if (!sessionPresent.value) return err({ _tag: "SessionNotFound" });
     const sessionPath = this.deps.paths.quarantinedSessionDirectory(input.profileId, parsed.value);
     const worktreePath = this.deps.paths.quarantinedWorktreeDirectory(input.profileId, parsed.value);
     const movedSession = await this.deps.trash.move(sessionPath);
