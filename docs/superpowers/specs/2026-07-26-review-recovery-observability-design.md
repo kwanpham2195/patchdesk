@@ -20,6 +20,7 @@ This design separates durable review identity, preparation operations, review at
 - Let users reopen immediately instead of waiting on long-running preparation.
 - Make discarded reviews eligible for a fresh attempt.
 - Provide enough structured evidence to debug failures without exposing secrets or implementation details.
+- Simplify Settings to global cleanup actions that do not require users to manage individual review records.
 - Support a breaking local-storage migration instead of preserving ambiguous state forever.
 
 ## Non-goals
@@ -128,14 +129,26 @@ Settings may provide:
 
 The bundle should include recent structured events and sanitized review metadata, but not secrets or complete diffs unless the user explicitly opts in.
 
-## Cleanup semantics
+## Settings and local-data cleanup
 
-Settings keeps only global cleanup actions:
+Settings should not expose saved-review lists, older-version review lists, quarantine folders, or per-review cleanup controls. It keeps one compact `Local review data` card with two global actions:
 
-- **Clear cache:** remove transient caches and managed worktrees, then reconcile interrupted operations. Durable review records, attempts, quarantined evidence, and diagnostics remain.
-- **Clear local review data:** an explicitly confirmed destructive action that removes durable review records, attempts, quarantined evidence, and local diagnostics.
+- **Clear cache:** remove rebuildable checkout/worktree cache and reconcile interrupted operations. Durable review records, attempts, quarantined evidence, and diagnostics remain.
+- **Clear local review data:** remove discarded review records and quarantined/older-version evidence, including their attempts and artifacts. Running and recoverable reviews remain.
 
-No per-review cleanup buttons are required in Settings.
+The labels are intentionally global. Users do not need to understand the distinction between sessions, attempts, journals, and quarantine storage.
+
+Both operations are explicit and idempotent. A missing disposable entry is already clean. The UI disables the action while a storage operation is pending, keeps the confirmation context available after a failure, and closes it only after a successful response.
+
+The cleanup service owns the retention classification and evaluates protected records at execution time:
+
+- protect `preparing`, `running`, `ready`, `completed`, `failed`, `interrupted`, and `stale` reviews;
+- remove `discarded` review directories and their stored attempts/artifacts;
+- remove quarantined and older-version entries;
+- remove rebuildable cache worktrees that are not protected by an active operation;
+- prune Git worktree registrations only after cache removal.
+
+Every filesystem boundary remains path-checked and app-owned. Partial progress is safe to retry. A storage or Git failure returns an error and never claims success. No cleanup operation changes GitHub data or review lifecycle transitions.
 
 ## Migration
 
@@ -145,6 +158,7 @@ Use a versioned local-storage migration:
 - normalize discarded sessions so they can start a new attempt;
 - convert active attempts left by a previous process into `interrupted`;
 - quarantine invalid sessions and preserve migration diagnostics;
+- remove the Saved reviews and older-version Settings projections and retain only the two global cleanup operations;
 - remove renderer logic that uses `currentAttemptId === undefined` as the run-button condition.
 
 The migration must be idempotent and safe to rerun after a partial application.
@@ -161,7 +175,9 @@ Add focused regression coverage for:
 - failed attempts retaining retry/new-attempt actions;
 - skipped non-actionable records;
 - diagnostics redaction;
-- distinct clear-cache and clear-local-review-data behavior.
+- Settings showing only the two global cleanup actions;
+- clear-cache preserving durable review data;
+- clear-local-review-data removing discarded/quarantined data while preserving recoverable reviews.
 
 Verify the real desktop and packaged surfaces after implementation, including the three reported pull-request scenarios.
 
@@ -172,4 +188,5 @@ Verify the real desktop and packaged surfaces after implementation, including th
 - Every visible error has a user action or is intentionally hidden from normal lists.
 - A user can recover #717 by preparing again, #754 by starting a fresh attempt, and #716 by reconnecting or starting again.
 - Support can obtain a sanitized diagnostic bundle without manually inspecting application directories.
-- Clear cache does not silently delete durable local review data.
+- Settings has no per-review cleanup controls or saved-review management lists.
+- Clear cache does not delete durable review data, and clear local review data preserves running/recoverable reviews.
