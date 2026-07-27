@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative } from "node:path";
 import { expect, test } from "playwright/test";
 
 test("Design index lists stable scenario links", async ({ page }) => {
@@ -46,6 +46,36 @@ test("settings scenario keeps configuration local", async ({ page }) => {
   }
 });
 
+test("design scenarios cover loading, error, cached, prepared, and running states", async ({ page }) => {
+  const cases = ["inbox-loading", "inbox-error", "inbox-cached", "review-prepared", "review-running"] as const;
+  for (const scenario of cases) {
+    const server = await serveDesign();
+    try {
+      await page.goto(`${origin(server)}/?scenario=${scenario}`);
+      if (scenario === "inbox-loading") await expect(page.getByLabel("Loading dashboard")).toBeAttached();
+      if (scenario === "inbox-error") await expect(page.getByText("Patchdesk could not read the active profile or GitHub dashboard.")).toBeVisible();
+      if (scenario === "inbox-cached") await expect(page.getByText("GitHub: Cached after refresh failure")).toBeVisible();
+      if (scenario === "review-prepared") await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
+      if (scenario === "review-running") await expect(page.getByText("Review in progress").first()).toBeVisible();
+    } finally {
+      await close(server);
+    }
+  }
+});
+
+test("design surfaces remain readable at the approved desktop and light-theme size", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=inbox-default&appearance=light`);
+    await expect(page.getByRole("heading", { name: "Maintainer inbox" })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
+    await page.screenshot({ path: "test-results/patchdesk-design-inbox-light-1440.png", fullPage: true });
+  } finally {
+    await close(server);
+  }
+});
+
 test("completed review scenario renders findings and checks", async ({ page }) => {
   const server = await serveDesign();
   try {
@@ -75,9 +105,10 @@ async function serveDesign(): Promise<Server> {
   const designRoot = join(process.cwd(), "release/design");
   const server = createServer(async (request, response) => {
     const pathname = new URL(request.url ?? "/", "http://patchdesk-design.local").pathname;
-    const relative = pathname === "/" ? "index.html" : pathname.slice(1);
-    const file = normalize(join(designRoot, relative));
-    if (!file.startsWith(designRoot)) {
+    const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+    const file = normalize(join(designRoot, relativePath));
+    const relativeFile = relative(designRoot, file);
+    if (relativeFile.startsWith("..") || relativeFile.startsWith("/")) {
       response.writeHead(400).end();
       return;
     }

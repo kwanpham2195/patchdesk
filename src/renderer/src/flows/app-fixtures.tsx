@@ -364,7 +364,8 @@ const longWorkbenchFixtureData = {
     ),
   },
 };
-const submissionFixtureData = {
+// eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic submission payload.
+export const submissionFixtureData = {
   draft: {
     state: { _tag: "LocalDraft" },
     summaryBody: "Request changes before merge.",

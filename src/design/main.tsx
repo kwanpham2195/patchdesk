@@ -11,6 +11,9 @@ const scenario = scenarioFromLocation();
 installDesignBridge(scenario?.id);
 const fixtureHash = fixtureHashForScenario(scenario?.id);
 if (fixtureHash !== undefined) window.location.hash = fixtureHash;
+for (const key of Object.keys(window.localStorage)) {
+  if (key.startsWith("patchdesk.")) window.localStorage.removeItem(key);
+}
 if (scenario?.id === "settings-default") window.localStorage.setItem("patchdesk.destination", "settings");
 else if (scenario !== undefined && scenario.group === "Review workbench") window.localStorage.setItem("patchdesk.destination", "workbench:design-session");
 else window.localStorage.setItem("patchdesk.destination", "dashboard");

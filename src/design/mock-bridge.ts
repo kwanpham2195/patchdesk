@@ -25,7 +25,8 @@ const repositories = [
 const sha = "abcdef1234567890abcdef1234567890abcdef12";
 
 export function installDesignBridge(scenarioId: string | undefined): void {
-  let appearance: "system" | "light" | "dark" = "dark";
+  const requestedAppearance = new URLSearchParams(window.location.search).get("appearance");
+  let appearance: "system" | "light" | "dark" = requestedAppearance === "light" ? "light" : "dark";
   let diffTheme = { light: "pierre-light", dark: "pierre-dark" };
   const api: PatchdeskDesktopApi = {
     request: async (input) => {
@@ -87,17 +88,17 @@ async function routeResponse(
   if (url.pathname === "/v1/reviews/submit" || url.pathname === "/v1/reviews/pending" || url.pathname === "/v1/reviews/apply-batch" || url.pathname === "/v1/reviews/batch") return ok({ session: completedWorkbench().session, batch: { state: { _tag: "Local" }, updatedAt: "2026-07-18T10:00:00.000Z", attemptId: "design-attempt-1" }, draft: { state: { _tag: "SubmittedGitHubReview", reviewId: "design-review-42", event: "COMMENT" } }, reviewId: "design-review-42" });
   if (url.pathname === "/v1/reviews/merge") return ok({ session: completedWorkbench().session });
   if (url.pathname === "/v1/storage/discard" || url.pathname === "/v1/storage/quarantine/delete" || url.pathname === "/v1/storage/cache/clear" || url.pathname.startsWith("/v1/watchlist")) return ok({});
-  return ok({});
+  return errorResponse(404, `Design mock does not implement ${method} ${url.pathname}`);
 }
 
 function inboxForScenario(scenarioId: string | undefined): InboxResponse {
   const rows = scenarioId === "inbox-empty" ? [] : [
-    inboxRow(42, "Protect review writes", "fixture", ["needs_review"], { kind: "run_review", label: "Run review" }, "passing"),
-    inboxRow(118, "Review updated VIP snapshot replacement", "maintainer", ["updated_since_review", "needs_review"], { kind: "review_updates", label: "Review updates", baseSessionId: "design-session" }, "passing"),
-    inboxRow(77, "Open saved local review", "reviewer", ["saved_review", "checks_failing"], { kind: "open_saved_review", label: "Open saved review", sessionId: "design-session" }, "failing"),
-    inboxRow(31, "Review author response", "author", ["waiting_for_author"], { kind: "open_discussion", label: "Review author response", sessionId: "design-session" }, "pending"),
-    inboxRow(19, "Continue active review", "reviewer", ["running"], { kind: "continue_review", label: "View review progress", sessionId: "design-session" }, "pending", "running"),
-    inboxRow(8, "Ready to merge dependency update", "bot", ["ready_to_merge"], { kind: "open_merge_readiness", label: "Open merge readiness", sessionId: "design-session" }, "passing"),
+    inboxRow(42, "Protect review writes", "fixture", ["needs_review"], { kind: "run_review", label: "Run review" }, "passing", undefined, { checks: [{ name: "unit", status: "completed", conclusion: "success", required: true }] }),
+    inboxRow(118, "Review updated VIP snapshot replacement", "maintainer", ["updated_since_review", "needs_review"], { kind: "review_updates", label: "Review updates", baseSessionId: "design-session" }, "passing", { state: "completed", matchesCurrentHead: false }, { reviewState: "review_pending", checks: [{ name: "unit", status: "completed", conclusion: "success", required: true }, { name: "integration", status: "queued", required: true }] }),
+    inboxRow(77, "Open saved local review", "reviewer", ["saved_review", "checks_failing"], { kind: "open_saved_review", label: "Open saved review", sessionId: "design-session" }, "failing", { state: "draft", matchesCurrentHead: true }, { reviewState: "changes_requested", checks: [{ name: "unit", status: "completed", conclusion: "failure", required: true }] }),
+    inboxRow(31, "Review author response", "author", ["waiting_for_author", "draft"], { kind: "open_discussion", label: "Review author response", sessionId: "design-session" }, "pending", undefined, { isDraft: true, checks: [{ name: "unit", status: "queued", required: true }] }),
+    inboxRow(19, "Continue active review", "reviewer", ["running"], { kind: "continue_review", label: "View review progress", sessionId: "design-session" }, "pending", { state: "running", matchesCurrentHead: true }),
+    inboxRow(8, "Ready to merge dependency update", "bot", ["ready_to_merge"], { kind: "open_merge_readiness", label: "Open merge readiness", sessionId: "design-session" }, "passing", undefined, { reviewState: "approved", checks: [{ name: "unit", status: "completed", conclusion: "success", required: true }] }),
   ];
   return {
     profile,
@@ -114,10 +115,11 @@ function inboxRow(
   number: number,
   title: string,
   author: string,
-  categories: Array<"needs_review" | "updated_since_review" | "waiting_for_author" | "checks_failing" | "ready_to_merge" | "saved_review" | "running">,
+  categories: Array<"needs_review" | "updated_since_review" | "waiting_for_author" | "checks_failing" | "ready_to_merge" | "saved_review" | "running" | "draft">,
   recommendedAction: InboxResponse["inbox"]["rows"][number]["recommendedAction"],
   overall: "passing" | "failing" | "pending",
-  latestState?: "running",
+  latestReview?: Pick<NonNullable<InboxResponse["inbox"]["rows"][number]["latestReview"]>, "state" | "matchesCurrentHead">,
+  options: { readonly isDraft?: boolean; readonly reviewState?: InboxResponse["inbox"]["rows"][number]["reviewState"]; readonly checks?: ReadonlyArray<unknown> } = {},
 ): InboxResponse["inbox"]["rows"][number] {
   return {
     identity: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number },
@@ -126,13 +128,13 @@ function inboxRow(
     baseBranch: "main",
     headBranch: `feat/design-${number}`,
     currentHeadSha: sha,
-    isDraft: false,
+    isDraft: options.isDraft ?? false,
     updatedAt: "2026-07-18T10:00:00.000Z",
     changeStats: { additions: number, deletions: Math.max(1, Math.floor(number / 4)), changedFiles: Math.max(1, Math.floor(number / 10)) },
-    checks: { overall, checks: [] },
-    reviewState: "none",
+    checks: { overall, checks: [...(options.checks ?? [])] },
+    reviewState: options.reviewState ?? "none",
     mergeability: overall === "failing" ? "blocked" : "mergeable",
-    ...(latestState === "running" ? { latestReview: { sessionId: "design-session", reviewedHeadSha: sha, state: "running" as const, updatedAt: "2026-07-18T10:00:00.000Z", matchesCurrentHead: true } } : {}),
+    ...(latestReview === undefined ? {} : { latestReview: { sessionId: "design-session", reviewedHeadSha: sha, state: latestReview.state, updatedAt: "2026-07-18T10:00:00.000Z", matchesCurrentHead: latestReview.matchesCurrentHead } }),
     categories,
     recommendedAction,
     dataFreshness: "fresh",
