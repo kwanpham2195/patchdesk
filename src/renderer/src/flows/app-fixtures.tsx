@@ -185,7 +185,8 @@ function buildActiveFollowPatch(): string {
   }).join("");
 }
 
-const workbenchFixtureData = {
+// eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic completed-workbench payload.
+export const workbenchFixtureData = {
   fullPatch: fixturePatch,
   pullRequest: {
     ref: {
