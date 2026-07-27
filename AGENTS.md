@@ -16,6 +16,16 @@
 - External runtime assets (workflows, skills, `@flue/*`) are unpacked from `asar` at runtime. Keep them under `src/workflows/`, `src/skills/`, and `node_modules/@flue/**` when adding new ones — see the `build.asarUnpack` list in `package.json`.
 - No CI workflows exist under `.github/`. All verification is local; treat the commands below as the source of truth.
 
+## Patchdesk Design (`src/design/`)
+
+- Browser-only interactive visual prototype. Reuses the renderer components but bypasses Electron, GitHub, and the filesystem. Not a user-facing distribution; keep it as a permanent visual reference and regression target.
+- Vite root is `src/design/`. Tailwind v4 needs an explicit `@source` directive in `src/renderer/src/styles.css` so renderer-only classes (e.g. `min-[1280px]:*`) are generated for the Design build; production auto-detects from the repo root.
+- Mock bridge (`src/design/mock-bridge.ts`) installs a typed `window.patchdesk` API. The Design app never calls GitHub, the filesystem, or Electron preload; mock side effects are local and deterministic.
+- Scenario registry (`src/design/scenarios.ts`) is the source of truth for stable scenario IDs and the Design index. New scenarios need a registry entry plus a matching URL handler in `src/design/design-app.tsx`.
+- `MergeConfirmationDialog` and `ReviewSubmissionDialog` accept a `defaultOpen` prop so Design scenarios render the confirmation body on first paint; production callers leave it unset.
+- `src/design/main.tsx` clears `patchdesk.*` localStorage on every load so design review starts from a known baseline. Scenario-specific preference seeds (e.g. inbox view) must come after the clear.
+- Current renderer working tree is the visual baseline. Unrelated dirty task, research, and test files are not part of the Design extraction.
+
 ## Local configuration
 
 - Development and packaged builds share the same app-owned paths: config in `~/.config/patchdesk/`, review data in `~/.local/share/patchdesk/`, and cache plus managed review worktrees in `~/.cache/patchdesk/`.
@@ -30,13 +40,16 @@
 | Goal                            | Command                                  |
 | ------------------------------- | ---------------------------------------- |
 | Dev (HMR, three processes)      | `pnpm dev`                               |
+| Design app dev server           | `pnpm dev:design` (Vite, port 5173)      |
 | Lint                            | `pnpm lint` (ESLint, `--max-warnings=0`) |
 | Typecheck                       | `pnpm typecheck` (`tsc --noEmit`)        |
 | Unit / integration tests        | `pnpm test -- --run`                     |
 | Renderer dashboard suite only   | `pnpm test:ui`                           |
 | Build main + preload + renderer | `pnpm build`                             |
+| Build Design app                | `pnpm build:design` (`release/design/`)  |
 | Browser e2e (Playwright)        | `pnpm exec playwright test`              |
 | Build + run browser e2e         | `pnpm test:e2e`                          |
+| Design app browser e2e          | `pnpm test:design`                       |
 | Accessibility Playwright run    | `pnpm test:a11y`                         |
 | Performance Playwright run      | `pnpm test:performance`                  |
 | Package unsigned Mac app (dir)  | `pnpm package:mac`                       |
@@ -59,7 +72,7 @@ Primary agent does not run these. Spawn a `electron-tester` subagent and hand it
 ## Test layout
 
 - Vitest (Node env): `tests/**/*.test.{ts,tsx}` — covers domain, services, adapters, renderer units, desktop bridge, local API auth, main lifecycle. Alias `@/` → `src/renderer/src/`.
-- Playwright (Chromium, headless): `tests/browser/*.spec.ts` — milestones, accessibility, performance, plus milestone-9 snapshot dir.
+- Playwright (Chromium, headless): `tests/browser/*.spec.ts` — milestones, accessibility, performance, plus milestone-9 snapshot dir. `tests/browser/design.spec.ts` covers the Patchdesk Design app and runs via `pnpm test:design` (which builds `release/design/` first and serves it locally).
 - Renderer component tests are colocated under `src/renderer/src/` and run with `pnpm test:ui` (filter `dashboard.ui`).
 - Fixtures live under `fixtures/{flue,github,scenarios,screen-states}/` and are loaded by `tests/setup.ts`.
 
