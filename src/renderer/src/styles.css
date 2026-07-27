@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "**/*.{ts,tsx}";
 @import "@fontsource-variable/inter";
 
 @custom-variant dark (&:where(.dark, .dark *));

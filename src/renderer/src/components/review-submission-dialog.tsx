@@ -52,12 +52,15 @@ export function ReviewSubmissionDialog(props: {
     summaryBody: string,
   ) => Promise<{ readonly reviewId: string }>;
   readonly onPendingChange?: (pending: boolean) => void;
+  /** When true, the active phase's confirmation body is rendered open at mount. Production callers leave this unset so the trigger-then-open flow is preserved. */
+  readonly defaultOpen?: boolean;
 }): React.JSX.Element {
+  const startOpen = props.defaultOpen === true;
   const [phase, setPhase] = useState<DialogPhase>(() =>
     initialPhase(props.draft),
   );
-  const [createOpen, setCreateOpen] = useState(false);
-  const [submitOpen, setSubmitOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(startOpen);
+  const [submitOpen, setSubmitOpen] = useState(startOpen);
   const [createAcknowledged, setCreateAcknowledged] = useState(false);
   const [submitAcknowledged, setSubmitAcknowledged] = useState(false);
   const [event, setEvent] = useState<GitHubReviewEvent>("COMMENT");

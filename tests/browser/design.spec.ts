@@ -89,13 +89,15 @@ test("completed review scenario renders findings and checks", async ({ page }) =
   }
 });
 
-test("dialog scenarios remain directly addressable", async ({ page }) => {
+test("dialog scenarios open the confirmation body on load", async ({ page }) => {
   const server = await serveDesign();
   try {
     await page.goto(`${origin(server)}/?scenario=dialog-submit`);
-    await expect(page.getByRole("button", { name: "Create pending review" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create pending review" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm pending review" })).toBeVisible();
     await page.goto(`${origin(server)}/?scenario=dialog-merge`);
-    await expect(page.getByRole("button", { name: "Prepare merge confirmation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Confirm merge" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm merge" })).toBeVisible();
   } finally {
     await close(server);
   }

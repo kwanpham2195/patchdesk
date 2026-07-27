@@ -19,9 +19,11 @@ export function MergeConfirmationDialog(props: {
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly onMerge: (method: MergeMethod, acknowledgedWarnings: boolean) => Promise<{ readonly mergeCommitSha?: string }>;
   readonly onPendingChange?: (pending: boolean) => void;
+  /** When true, the confirmation body is rendered open at mount. Production callers leave this unset so the trigger-then-open flow is preserved. */
+  readonly defaultOpen?: boolean;
 }): React.JSX.Element {
   const [method, setMethod] = useState<MergeMethod>(props.methods[0] ?? "squash");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(props.defaultOpen === true);
   const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
