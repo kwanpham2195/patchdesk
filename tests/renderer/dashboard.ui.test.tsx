@@ -148,8 +148,10 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Stored review title" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
-    await user.click(screen.getByRole("option", { name: "Enterprise" }));
+    const activeProfile = screen.getByRole("combobox", { name: "Active profile" });
+    await user.click(activeProfile);
+    if (activeProfile.getAttribute("aria-expanded") !== "true") await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Enterprise" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Stored review title" })).toBeNull());
     expect(window.localStorage.getItem("patchdesk.destination")).toBe("dashboard");
   });
