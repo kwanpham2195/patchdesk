@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import type { InboxRow, InboxView } from "@/renderer-contracts";
+import { recoveryActionLabel } from "@/review-copy";
 import { inboxIdentityKey } from "@/renderer-contracts";
 import {
   loadInboxViewPreferences,
@@ -369,9 +370,21 @@ function Inspector({ row, freshness, onAction }: { readonly row?: InboxRow; read
 
 function Detail({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element { return <div className="flex min-w-0 items-start justify-between gap-3"><span className="shrink-0 text-muted-foreground">{label}</span><span className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value}</span></div>; }
 function CheckBadge({ overall }: { readonly overall: InboxRow["checks"]["overall"] }): React.JSX.Element { const variant = overall === "failing" ? "destructive" : overall === "passing" ? "secondary" : "outline"; return <Badge variant={variant} className="h-4 px-1 text-[10px]">{overall}</Badge>; }
-function Reason({ row }: { readonly row: InboxRow }): React.JSX.Element { if (row.categories.includes("updated_since_review")) return <span>Updated since review</span>; if (row.categories.includes("needs_review")) return <span>Review requested</span>; if (row.categories.includes("checks_failing")) return <span className="text-destructive">Checks failing</span>; return <span>{row.recommendedAction.label}</span>; }
+function Reason({ row }: { readonly row: InboxRow }): React.JSX.Element { if (row.categories.includes("updated_since_review")) return <span>Updated since review</span>; if (row.categories.includes("needs_review")) return <span>Review requested</span>; if (row.categories.includes("checks_failing")) return <span className="text-destructive">Checks failing</span>; return <span>{inboxActionLabel(row.recommendedAction.kind)}</span>; }
 function reviewProgressLabel(row: InboxRow): "Review starting" | "Review in progress" | undefined { return row.latestReview?.state === "starting" ? "Review starting" : row.latestReview?.state === "running" ? "Review in progress" : undefined; }
-function reasonText(row: InboxRow): string { if (row.categories.includes("updated_since_review")) return "Updated since review"; if (row.categories.includes("needs_review")) return "Review requested"; if (row.categories.includes("checks_failing")) return "Checks failing"; return row.recommendedAction.label; }
+function reasonText(row: InboxRow): string { if (row.categories.includes("updated_since_review")) return "Updated since review"; if (row.categories.includes("needs_review")) return "Review requested"; if (row.categories.includes("checks_failing")) return "Checks failing"; return inboxActionLabel(row.recommendedAction.kind); }
+function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
+  switch (kind) {
+    case "run_review": return recoveryActionLabel("run_review");
+    case "continue_review": return "View review progress";
+    case "review_updates": return "Review updates";
+    case "open_saved_review": return "Open saved review";
+    case "inspect_checks": return "Inspect failing checks";
+    case "open_merge_readiness": return "Open merge readiness";
+    case "open_discussion": return "Review author response";
+  }
+}
+
 function viewCount(rows: ReadonlyArray<InboxRow>, view: InboxView): number { return filterRows(rows, view, "").length; }
 function queueIndicatorClass(view: InboxView): string { switch (view) { case "my_inbox": case "updated": return "bg-status-info"; case "needs_review": return "bg-status-warning"; case "waiting": return "bg-muted-foreground/60"; case "checks_failing": return "bg-destructive"; case "ready_to_merge": return "bg-status-success"; case "all_open": return "bg-muted-foreground"; } }
 function filterRows(rows: ReadonlyArray<InboxRow>, view: InboxView, search: string): ReadonlyArray<InboxRow> { const needle = search.trim().toLocaleLowerCase(); return rows.filter((row) => matchesView(row, view) && (needle.length === 0 || `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`.toLocaleLowerCase().includes(needle))); }

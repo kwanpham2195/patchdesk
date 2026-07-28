@@ -63,10 +63,12 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/batch",
   "POST /v1/reviews/refresh",
   "POST /v1/reviews/merge",
+  "POST /v1/runs/reconnect",
   "GET /v1/storage",
   "POST /v1/storage/discard",
   "POST /v1/storage/quarantine/delete",
   "POST /v1/storage/cache/clear",
+  "POST /v1/storage/clear-local-data",
 ]);
 
 const maxResponseBytes = 2 * 1024 * 1024;

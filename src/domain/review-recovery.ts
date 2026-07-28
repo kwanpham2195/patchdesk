@@ -8,6 +8,22 @@ export type ReviewRecoveryAction =
   | "try_again"
   | "prepare_again";
 
+export type ReviewRecoveryNoticeKey =
+  | "preparing"
+  | "ready_to_review"
+  | "review_in_progress"
+  | "review_interrupted"
+  | "review_failed"
+  | "needs_preparation";
+
+export type ReviewRecoveryTone = "neutral" | "positive" | "warning" | "destructive";
+
+export type ReviewRecoveryView = {
+  readonly noticeKey: ReviewRecoveryNoticeKey;
+  readonly tone: ReviewRecoveryTone;
+  readonly actionKey?: ReviewRecoveryAction;
+};
+
 export type ReviewRecoveryDecision =
   | { readonly _tag: "Preparing" }
   | { readonly _tag: "Actionable"; readonly action: ReviewRecoveryAction }
@@ -55,5 +71,27 @@ export function decideReviewRecovery(
       return { _tag: "Actionable", action: "prepare_again" };
     default:
       return { _tag: "Unavailable" };
+  }
+}
+
+/** Project one recovery decision into the renderer-safe stable-key view. */
+export function projectReviewRecovery(
+  decision: ReviewRecoveryDecision,
+): ReviewRecoveryView | undefined {
+  if (decision._tag === "Unavailable") return undefined;
+  if (decision._tag === "Preparing") {
+    return { noticeKey: "preparing", tone: "neutral" };
+  }
+  switch (decision.action) {
+    case "run_review":
+      return { noticeKey: "ready_to_review", tone: "positive", actionKey: decision.action };
+    case "reconnect":
+      return { noticeKey: "review_in_progress", tone: "positive", actionKey: decision.action };
+    case "start_again":
+      return { noticeKey: "review_interrupted", tone: "warning", actionKey: decision.action };
+    case "try_again":
+      return { noticeKey: "review_failed", tone: "warning", actionKey: decision.action };
+    case "prepare_again":
+      return { noticeKey: "needs_preparation", tone: "warning", actionKey: decision.action };
   }
 }

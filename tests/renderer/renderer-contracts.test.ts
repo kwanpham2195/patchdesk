@@ -31,17 +31,30 @@ const completedProjection = {
 };
 
 describe("parseWorkbenchResponse", () => {
-  it("carries the session lifecycle state and last run failure", () => {
+  it("rejects lifecycle and attempt fields from the renderer recovery projection", () => {
     const prepared = parseWorkbenchResponse({
       state: "review_started",
-      session: { ...sessionProjection, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." },
+      session: { ...sessionProjection, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete.", currentAttemptId: "attempt-1" },
+      recoveryView: { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" },
       reviewedHeadSha: "2222222222222222222222222222222222222222",
       freshness: "fresh",
       refreshedAt: "2026-07-18T00:00:00.000Z",
       checks: { overall: "unknown", checks: [] },
     });
-    expect(prepared?.state).toBe("review_started");
-    expect(prepared?.session).toMatchObject({ state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." });
+    expect(prepared).toBeUndefined();
+  });
+
+  it("accepts a display-safe recovery view", () => {
+    const prepared = parseWorkbenchResponse({
+      state: "review_started",
+      session: sessionProjection,
+      recoveryView: { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" },
+      reviewedHeadSha: "2222222222222222222222222222222222222222",
+      freshness: "fresh",
+      refreshedAt: "2026-07-18T00:00:00.000Z",
+      checks: { overall: "unknown", checks: [] },
+    });
+    expect(prepared?.recoveryView).toEqual({ noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" });
   });
 
   it("accepts the renderer-safe prepared and completed projections", () => {

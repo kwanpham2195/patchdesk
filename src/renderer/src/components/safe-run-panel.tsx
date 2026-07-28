@@ -1,16 +1,11 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleAlert, RotateCcw } from "lucide-react";
+import { CircleAlert, RotateCcw } from "lucide-react";
 
 import { requestJson } from "@/api-client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -33,7 +28,7 @@ export function SafeRunPanel({
 }: {
   readonly profileId: string;
   readonly sessionId: string;
-  readonly attemptId: string;
+  readonly attemptId?: string;
   readonly runId?: string;
   readonly recoveryMessage?: string;
   readonly recoveryActionLabel?: string;
@@ -43,7 +38,6 @@ export function SafeRunPanel({
 }): React.JSX.Element {
   const [projection, setProjection] = useState<Projection>();
   const [starting, setStarting] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
   const [settling, setSettling] = useState<"completed" | "failed" | undefined>(undefined);
   const [settleError, setSettleError] = useState(false);
   const [pollNonce, setPollNonce] = useState(0);
@@ -68,7 +62,7 @@ export function SafeRunPanel({
       while (!cancelled) {
         try {
           const value = await requestJson(
-            `/v1/runs/${encodeURIComponent(runId)}?sessionId=${encodeURIComponent(sessionId)}&attemptId=${encodeURIComponent(attemptId)}`,
+            `/v1/runs/${encodeURIComponent(runId)}?sessionId=${encodeURIComponent(sessionId)}${attemptId === undefined ? "" : `&attemptId=${encodeURIComponent(attemptId)}`}`,
           );
           const parsed = parseSafeRunProjection(value);
           if (parsed._tag === "err") throw new Error("invalid projection");
@@ -100,9 +94,9 @@ export function SafeRunPanel({
     return (
       <Alert className="mt-4">
         <RotateCcw />
-        <AlertTitle>This review is not running</AlertTitle>
+        <AlertTitle>{recoveryActionLabel ?? "Review was interrupted"}</AlertTitle>
         <AlertDescription className="mt-2">
-          {recoveryMessage ?? "The previous review run did not finish."}
+          {recoveryMessage ?? "The previous review did not finish. Start again when you're ready."}
           {startError === undefined ? null : <span className="mt-1 block">{startError}</span>}
           {onStart === undefined ? null : (
             <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>
@@ -153,15 +147,13 @@ export function SafeRunPanel({
       <CardContent className="p-0">
         <Item className="rounded-b-none border-0 p-4">
           <ItemContent>
-            <ItemTitle>Run status: {current.status}</ItemTitle>
-            <p className="text-xs text-muted-foreground">
-              {stepLabel(current.step)} · {formatElapsed(current.elapsedMs)}
-            </p>
+            <ItemTitle>{runStatusTitle(current.status)}</ItemTitle>
+            <p className="text-xs text-muted-foreground">{stepLabel(current.step)} · {formatElapsed(current.elapsedMs)}</p>
           </ItemContent>
           <ItemActions>
             <Badge variant={current.status === "failed" || current.status === "disconnected" ? "destructive" : "secondary"}>
               {current.status === "queued" || current.status === "connecting" || current.status === "running" ? <Spinner /> : null}
-              {current.status}
+              {runStatusBadge(current.status)}
             </Badge>
           </ItemActions>
         </Item>
@@ -185,44 +177,31 @@ export function SafeRunPanel({
             </AlertDescription>
           </Alert>
         )}
-        {current.metadata === undefined ? null : (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t px-4 py-3 text-xs">
-            <div><dt className="text-muted-foreground">Agent</dt><dd>{current.metadata.agent}</dd></div>
-            <div><dt className="text-muted-foreground">Model</dt><dd className="truncate" title={current.metadata.model}>{current.metadata.model}</dd></div>
-            <div><dt className="text-muted-foreground">Reasoning</dt><dd>{current.metadata.reasoning}</dd></div>
-            <div><dt className="text-muted-foreground">Mode</dt><dd>{current.metadata.mode}</dd></div>
-            <div className="col-span-2"><dt className="text-muted-foreground">Access</dt><dd>{current.metadata.access}</dd></div>
-          </dl>
-        )}
-        {current.activity === undefined || current.activity.length === 0 ? null : (
-          <Collapsible open={activityOpen} onOpenChange={setActivityOpen}>
-            <div className="border-t px-4 py-3">
-              <CollapsibleTrigger
-                render={(
-                  <Button variant="ghost" size="sm" className="w-full justify-between" />
-                )}
-              >
-                Activity ({current.activity.length})
-                <ChevronDown data-icon="inline-end" aria-hidden="true" />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ol className="mt-3 flex flex-col gap-2 text-sm" aria-label="Review activity">
-                  {current.activity.map((event, index) => (
-                    <li key={`${event.step}-${event.elapsedMs}-${index}`} className="flex items-baseline gap-2">
-                      <span className="font-medium">{event.label}</span>
-                      <span className="text-muted-foreground">
-                        {formatElapsed(event.elapsedMs)}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
-        )}
       </CardContent>
     </Card>
   );
+}
+
+function runStatusTitle(status: Projection["status"]): string {
+  switch (status) {
+    case "completed": return "Review ready";
+    case "failed": return "Review couldn't finish";
+    case "disconnected": return "Reconnect to review";
+    case "queued":
+    case "connecting":
+    case "running": return "Review in progress";
+  }
+}
+
+function runStatusBadge(status: Projection["status"]): string {
+  switch (status) {
+    case "completed": return "Ready";
+    case "failed": return "Needs retry";
+    case "disconnected": return "Disconnected";
+    case "queued":
+    case "connecting":
+    case "running": return "In progress";
+  }
 }
 
 function stepLabel(step: Projection["step"]): string {

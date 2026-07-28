@@ -11,6 +11,8 @@ import {
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewWorktreeService } from "./review-worktree-service";
+import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 
 export type PreparationJournalFailure = { readonly _tag: "PreparationJournalFailed" };
 export type PreparationCleanupFailure = { readonly _tag: "PreparationCleanupFailed" };
@@ -171,6 +173,8 @@ export class ReviewPreparationJournal {
   static async recover(
     paths: PatchdeskPaths,
     worktrees: ReviewWorktreeService,
+    sessions?: Pick<ReviewSessionStore, "load">,
+    lifecycleGate?: ReviewLifecycleGate,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const journals = await findJournals(paths);
     let recovered = 0;
@@ -187,19 +191,23 @@ export class ReviewPreparationJournal {
         continue;
       }
       const journal = new ReviewPreparationJournal(filePath, content);
-      if (content.state === "committing" && await exists(paths.sessionFile(
-        content.profileId as WorkspaceProfileId,
-        content.sessionId as ReviewSessionId,
-      ))) {
-        const removed = await rm(filePath, { force: true })
-          .then(() => true)
-          .catch(() => false);
-        if (removed) recovered += 1;
-        else failed += 1;
-        continue;
-      }
-      const cleaned = await journal.cleanup(worktrees);
-      if (cleaned._tag === "ok") recovered += 1;
+      const process = async (): Promise<boolean> => {
+        if (content.state === "committing") {
+          const profileId = parseWorkspaceProfileId(content.profileId);
+          const sessionId = parseReviewSessionId(content.sessionId);
+          if (profileId._tag === "err" || sessionId._tag === "err" || sessions === undefined) return false;
+          const session = await sessions.load(profileId.value, sessionId.value);
+          if (session._tag !== "ok" || session.value.id !== sessionId.value) return false;
+          return await rm(filePath, { force: true }).then(() => true).catch(() => false);
+        }
+        const cleaned = await journal.cleanup(worktrees);
+        return cleaned._tag === "ok";
+      };
+      const profileId = parseWorkspaceProfileId(content.profileId);
+      const success = lifecycleGate !== undefined && profileId._tag === "ok"
+        ? await lifecycleGate.withProfileLock(profileId.value, process)
+        : await process();
+      if (success) recovered += 1;
       else failed += 1;
     }
     return { recovered, failed };

@@ -27,7 +27,7 @@ export function toQuarantineStamp(at: IsoTimestamp): string {
   return `${year}${month}${day}T${hour}${minute}${second}`;
 }
 
-const quarantineEntrySyntax = /^(.+)\.(\d{8}T\d{6})$/;
+const quarantineEntrySyntax = /^([A-Za-z0-9][A-Za-z0-9._-]*)\.(\d{8}T\d{6})$/;
 
 /**
  * Strict quarantine entry-name parser. Rejects anything that could escape
@@ -42,11 +42,10 @@ export function parseQuarantineEntryName(
   const match = quarantineEntrySyntax.exec(input);
   const sessionId = match?.[1];
   const stamp = match?.[2];
-  if (
-    sessionId === undefined ||
-    stamp === undefined ||
-    parseReviewSessionId(sessionId)._tag === "err"
-  ) {
+  if (sessionId === undefined || stamp === undefined) {
+    return err({ _tag: "InvalidQuarantineEntryName" });
+  }
+  if (parseReviewSessionId(sessionId)._tag === "err" && !sessionId.startsWith("invalid-")) {
     return err({ _tag: "InvalidQuarantineEntryName" });
   }
   if (stampToIso(stamp) === undefined) {
@@ -117,6 +116,31 @@ export class ReviewArtifactStorage {
         return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
       },
     );
+  }
+
+  /** Quarantine an invalid profile entry whose name cannot be parsed as a session ID. */
+  async quarantineInvalidEntry(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): Promise<Result<{ readonly entryName: string }, QuarantineFailure>> {
+    if (!isSafeEntryName(entryName)) return err({ _tag: "InvalidQuarantineEntryName" });
+    const source = join(this.paths.profileReviewsDirectory(profileId), entryName);
+    const encoded = Buffer.from(entryName, "utf8").toString("base64url").slice(0, 32);
+    const targetName = `invalid-${encoded}.${toQuarantineStamp(this.clock())}`;
+    const target = this.paths.quarantinedSessionDirectory(profileId, targetName);
+    if (!(await this.isUnderRoot(source, this.paths.profileReviewsDirectory(profileId)))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    if (!(await this.isUnderRoot(target, join(this.paths.profileReviewsDirectory(profileId), ".quarantine")))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    try {
+      await mkdir(dirname(target), { recursive: true });
+    } catch {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    const moved = await renameIfPresentPath(source, target);
+    return moved._tag === "ok" ? ok({ entryName: targetName }) : moved;
   }
 
   /** Remove one disposable session and its rebuildable worktree idempotently. */
@@ -304,21 +328,24 @@ export class ReviewArtifactStorage {
    * is the safety check every destructive operation must pass.
    */
   private async isUnderRoot(path: string, root: string): Promise<boolean> {
-    // Use resolve (lexical) for both so the comparison stays valid even when
-    // the path does not exist yet. realpath would resolve symlinks like
-    // /var -> /private/var on macOS and produce a different absolute form.
     const absoluteRoot = resolve(root);
-    const absolutePath = resolve(path);
-    const rel = relative(absoluteRoot, absolutePath);
-    if (rel.startsWith("..") || rel === "..") return false;
-    if (rel.length === 0) return true;
-    try {
-      const info = await lstat(path);
-      if (info.isSymbolicLink()) return false;
-    } catch {
-      // Path does not exist; trust the lexical containment check.
+    let current = resolve(path);
+    const lexical = relative(absoluteRoot, current);
+    if (lexical.startsWith("..") || lexical === "..") return false;
+    for (;;) {
+      try {
+        const info = await lstat(current);
+        if (info.isSymbolicLink()) return false;
+      } catch (cause: unknown) {
+        if (!isNotFound(cause)) return false;
+      }
+      if (current === absoluteRoot) return true;
+      const parent = dirname(current);
+      if (parent === current) return false;
+      current = parent;
+      const remaining = relative(absoluteRoot, current);
+      if (remaining.startsWith("..") || remaining === "..") return false;
     }
-    return true;
   }
 
   /**
@@ -340,6 +367,23 @@ export class ReviewArtifactStorage {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
   }
+}
+
+async function renameIfPresentPath(
+  source: string,
+  target: string,
+): Promise<Result<void, StorageFailure>> {
+  try {
+    await rename(source, target);
+    return ok(undefined);
+  } catch (cause: unknown) {
+    if (isNotFound(cause)) return ok(undefined);
+    return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+  }
+}
+
+function isSafeEntryName(input: string): boolean {
+  return input.length > 0 && input !== "." && input !== ".." && !input.includes("/") && !input.includes("\\") && input[0] !== ".";
 }
 
 async function removePath(path: string): Promise<Result<void, StorageFailure>> {

@@ -404,7 +404,7 @@ export class ReviewSessionStore {
     const sessions: ReviewSession[] = [];
     const invalidEntries: InvalidSessionEntry[] = [];
     for (const entry of entries) {
-      if (entry === ".quarantine") continue;
+      if (entry === ".quarantine" || entry === "diagnostics.jsonl") continue;
       const sessionId = parseReviewSessionId(entry);
       if (sessionId._tag === "err") {
         invalidEntries.push({ entryName: entry });

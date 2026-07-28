@@ -80,7 +80,11 @@ export type WorkbenchPayload = {
       readonly prNumber: number;
       readonly headSha: string;
     };
-    readonly currentAttemptId?: string;
+  };
+  readonly recoveryView?: {
+    readonly noticeKey: "preparing" | "ready_to_review" | "review_in_progress" | "review_interrupted" | "review_failed" | "needs_preparation";
+    readonly tone: "neutral" | "positive" | "warning" | "destructive";
+    readonly actionKey?: "run_review" | "reconnect" | "start_again" | "try_again" | "prepare_again";
   };
   readonly result?: unknown;
   readonly draft?: unknown;

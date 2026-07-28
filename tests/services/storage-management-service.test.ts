@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -358,6 +358,16 @@ describe("StorageManagementService", () => {
     expect(await setup.artifacts.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
     expect(await exists(setup.paths.sessionDirectory(profileId, target.id))).toBe(false);
     expect(await setup.artifacts.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
+  });
+
+  it("rejects removal when an ancestor is a symlink outside the app-owned root", async () => {
+    const setup = await trackSetup();
+    const outside = await mkdtemp(join(tmpdir(), "patchdesk-outside-"));
+    await rm(setup.paths.profileReviewsDirectory(profileId), { recursive: true, force: true });
+    await symlink(outside, setup.paths.profileReviewsDirectory(profileId), "dir");
+    const result = await setup.artifacts.removeSession(profileId, setup.sessionsById.reviewed.id);
+    expect(result._tag).toBe("err");
+    await rm(outside, { recursive: true, force: true });
   });
 
   it("removes discarded and quarantined evidence while preserving running reviews", async () => {

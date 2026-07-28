@@ -47,7 +47,6 @@ describe("prepared review run start", () => {
 
     await waitFor(() => expect(patched).toHaveBeenCalledWith({
       runId: "run-1",
-      session: { ...workbench.session, currentAttemptId: "001" },
     }));
   });
 
@@ -89,13 +88,13 @@ it("shows the previous run failure above the ready card", async () => {
     });
     const failedWorkbench: PreparedReviewFlowWorkbench = {
       ...workbench,
-      session: { ...workbench.session, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." },
+      recoveryView: { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" },
     };
     render(<PreparedReviewFlow workbench={failedWorkbench} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
 
-    expect(await screen.findByText("Previous review run failed")).toBeTruthy();
-    expect(screen.getByText(/The review workflow did not complete./)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Run review" })).toBeTruthy();
+    expect(await screen.findByText("Review couldn't finish")).toBeTruthy();
+    expect(screen.getByText(/Patchdesk stopped the last run before it completed/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
   describe("run dialog starting state", () => {

@@ -24,6 +24,7 @@ import {
 } from "../components/ui/select";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { parseWorkbenchResponse } from "../renderer-contracts";
+import { recoveryActionLabel, recoveryCopy } from "../review-copy";
 import {
   loadReviewExecutionPreference,
   saveReviewExecutionPreference,
@@ -42,9 +43,11 @@ export type PreparedReviewFlowWorkbench = {
       readonly prNumber: number;
       readonly headSha: string;
     };
-    readonly state?: string;
-    readonly lastRunFailure?: string;
-    readonly currentAttemptId?: string;
+  };
+  readonly recoveryView?: {
+    readonly noticeKey: "preparing" | "ready_to_review" | "review_in_progress" | "review_interrupted" | "review_failed" | "needs_preparation";
+    readonly tone: "neutral" | "positive" | "warning" | "destructive";
+    readonly actionKey?: "run_review" | "reconnect" | "start_again" | "try_again" | "prepare_again";
   };
   readonly pullRequest?: {
     readonly title: string;
@@ -83,7 +86,9 @@ export function PreparedReviewFlow({
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [runError, setRunError] = useState<string>();
   const [starting, setStarting] = useState(false);
+  const [activeAttemptId, setActiveAttemptId] = useState<string>();
   const profileId = workbench.session.key.profileId;
+  const recoveryAction = workbench.recoveryView?.actionKey ?? "run_review";
 
   useEffect(() => {
     let active = true;
@@ -140,29 +145,25 @@ export function PreparedReviewFlow({
     }
   };
 
-  const resumePreparedRun = async (): Promise<{ readonly runId: string; readonly attemptId: string } | undefined> => {
-    const attemptId = workbench.session.currentAttemptId;
-    if (attemptId === undefined) return undefined;
+  const reconnectOwnedRun = async (): Promise<{ readonly runId: string } | undefined> => {
     try {
-      const value = await requestJson("/v1/runs/review-pr", {
+      const value = await requestJson("/v1/runs/reconnect", {
         method: "POST",
-        body: { profileId, sessionId: workbench.session.id, attemptId },
+        body: { profileId, sessionId: workbench.session.id },
       });
-      return isRunStart(value) ? { runId: value.runId, attemptId } : undefined;
+      return isReconnectStart(value) ? value : undefined;
     } catch {
       return undefined;
     }
   };
 
   const startOwnedRun = async (): Promise<boolean> => {
-    const started = workbench.session.currentAttemptId === undefined
-      ? await startRun()
-      : await resumePreparedRun();
+    const started = recoveryAction === "reconnect"
+      ? await reconnectOwnedRun()
+      : await startRun();
     if (started === undefined) return false;
-    onWorkbenchPatch({
-      runId: started.runId,
-      session: { ...workbench.session, currentAttemptId: started.attemptId },
-    });
+    if (isRunStart(started)) setActiveAttemptId(started.attemptId);
+    onWorkbenchPatch({ runId: started.runId });
     return true;
   };
 
@@ -225,21 +226,24 @@ export function PreparedReviewFlow({
           <div className="flex flex-wrap gap-2" aria-label="Read-only inspection actions">
             <Button variant={showingDiff ? "secondary" : "outline"} size="sm" onClick={() => onNavigate("diff")}>View diff</Button>
             <Button variant={showingChecks ? "secondary" : "outline"} size="sm" onClick={() => onNavigate("checks")}>Inspect failing checks</Button>
-            {workbench.session.currentAttemptId === undefined ? <Button size="sm" onClick={() => setRunDialogOpen(true)}>Run review</Button> : null}
+            {recoveryAction === "reconnect" ? <Button size="sm" onClick={() => void startOwnedRun()}>{recoveryActionLabel("reconnect")}</Button> : recoveryAction === undefined ? null : <Button size="sm" onClick={() => setRunDialogOpen(true)}>{recoveryActionLabel(recoveryAction)}</Button>}
           </div>
         </header>
         {showingChecks ? <PreparedChecks checks={workbench.checks} {...(pullRequest === undefined ? {} : { pullRequest })} {...(workbench.freshness === undefined ? {} : { freshness: workbench.freshness })} /> : null}
         {showingDiff && workbench.fullPatch !== undefined ? <DiffWorkbench patch={workbench.fullPatch} sourceSession={{ profileId, sessionId: workbench.session.id }} className="min-h-0 flex-1" fillViewport={false} /> : null}
-        {workbench.session.currentAttemptId === undefined ? (
+        {activeAttemptId === undefined ? (
           showingDiff || showingChecks ? null : (
             <div className="mt-4 rounded-lg border bg-muted/20 p-4">
-              {workbench.session.lastRunFailure === undefined ? null : (
-                <Alert variant="destructive" className="mb-3">
-                  <AlertTitle>Previous review run failed</AlertTitle>
-                  <AlertDescription>{workbench.session.lastRunFailure} You can start a new run.</AlertDescription>
+              {workbench.recoveryView === undefined ? null : (
+                <Alert variant={workbench.recoveryView.tone === "destructive" ? "destructive" : "default"} className="mb-3">
+                  <AlertTitle>{recoveryCopy(workbench.recoveryView.noticeKey).notice}</AlertTitle>
+                  <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
+                    {recoveryCopy(workbench.recoveryView.noticeKey).reassurance}
+                    {recoveryAction === "reconnect" ? <Button size="sm" onClick={() => void startOwnedRun()}>{recoveryActionLabel(recoveryAction)}</Button> : null}
+                  </AlertDescription>
                 </Alert>
               )}
-              <h2 className="font-semibold">Ready to review</h2>
+              <h2 className="font-semibold">{recoveryAction === undefined ? "Review unavailable" : recoveryActionLabel(recoveryAction)}</h2>
               <p className="mt-1 text-sm text-muted-foreground">The saved snapshot is ready. Starting analysis is read-only and never writes to GitHub.</p>
               {runError === undefined ? null : (
                 <Alert variant="destructive">
@@ -256,11 +260,8 @@ export function PreparedReviewFlow({
           <SafeRunPanel
             profileId={profileId}
             sessionId={workbench.session.id}
-            attemptId={workbench.session.currentAttemptId}
+            {...(activeAttemptId === undefined ? {} : { attemptId: activeAttemptId })}
             {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
-            {...(workbench.session.state === "Running"
-              ? { recoveryMessage: "This review may still be running in the background.", recoveryActionLabel: "Reconnect" }
-              : {})}
             {...(runError === undefined ? {} : { startError: runError })}
             onStart={async () => {
               const started = await startOwnedRun();
@@ -269,7 +270,7 @@ export function PreparedReviewFlow({
             onSettled={reloadAfterSettle}
           />
         )}
-        {workbench.session.currentAttemptId === undefined ? (
+        {activeAttemptId === undefined && recoveryAction !== "reconnect" && recoveryAction !== undefined ? (
           <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
             <DialogContent aria-describedby="run-review-description">
               <DialogHeader>
@@ -322,6 +323,10 @@ function isRunStart(value: unknown): value is { readonly runId: string; readonly
   return typeof value === "object" && value !== null
     && "runId" in value && typeof value.runId === "string"
     && "attemptId" in value && typeof value.attemptId === "string";
+}
+
+function isReconnectStart(value: unknown): value is { readonly runId: string } {
+  return typeof value === "object" && value !== null && "runId" in value && typeof value.runId === "string";
 }
 
 function pullRequestRef(workbench: PreparedReviewFlowWorkbench): PullRequestRef | undefined {

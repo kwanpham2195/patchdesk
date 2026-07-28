@@ -14,6 +14,7 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
+import { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import type { ReviewRunMetadata } from "./run-projection";
 import { prepareAttemptArtifacts } from "./review-attempt-artifacts";
@@ -47,9 +48,23 @@ export class ReviewExecutionService {
     private readonly modelCatalog: PiRuntimeModelCatalog,
     private readonly now: () => IsoTimestamp,
     private readonly headVerifier?: ReviewHeadVerifier,
+    private readonly lifecycleGate: ReviewLifecycleGate = new ReviewLifecycleGate(),
   ) {}
 
   async start(input: unknown): Promise<Result<{
+    readonly profileId: string;
+    readonly sessionId: string;
+    readonly attemptId: string;
+    readonly model: string;
+    readonly reasoning: ReviewReasoningLevel;
+    readonly metadata: ReviewRunMetadata;
+  }, ReviewExecutionFailure>> {
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    if (profileId._tag === "err") return this.startUnlocked(input);
+    return this.lifecycleGate.withProfileLock(profileId.value, () => this.startUnlocked(input));
+  }
+
+  private async startUnlocked(input: unknown): Promise<Result<{
     readonly profileId: string;
     readonly sessionId: string;
     readonly attemptId: string;
@@ -78,8 +93,14 @@ export class ReviewExecutionService {
     if (session._tag === "err") {
       return err({ reason: session.error.reason === "not_found" ? "not_found" : "storage" });
     }
-    if (session.value.state._tag === "Running" || session.value.state._tag === "Merged") {
-      return err({ reason: "not_runnable" });
+    if (session.value.state._tag === "Merged") return err({ reason: "not_runnable" });
+    if (session.value.state._tag === "Running") {
+      const currentAttemptId = session.value.currentAttemptId;
+      if (currentAttemptId === undefined) return err({ reason: "not_runnable" });
+      const currentAttempt = await this.sessions.loadAttempt(profileId.value, sessionId.value, currentAttemptId);
+      if (currentAttempt._tag === "err" || currentAttempt.value.state._tag !== "Interrupted") {
+        return err({ reason: "not_runnable" });
+      }
     }
     if (this.headVerifier !== undefined) {
       const verified = await this.headVerifier.verify(session.value);

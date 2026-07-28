@@ -20,6 +20,10 @@ describe("review copy contract", () => {
     }
   });
 
+  it("keeps Prepare again in the amber warning treatment", () => {
+    expect(recoveryCopy("needs_preparation").tone).toBe("warning");
+  });
+
   it("keeps action labels stable regardless of persisted display labels", () => {
     expect(RECOVERY_ACTION_KEYS.map(recoveryActionLabel)).toEqual([
       "Run review",

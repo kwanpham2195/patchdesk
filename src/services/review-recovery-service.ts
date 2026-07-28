@@ -1,3 +1,5 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
@@ -5,6 +7,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { IsoTimestamp, WorkspaceProfileId } from "../domain/ids";
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 import { recoverOrphanedWorkbenchAttempt } from "./review-workbench";
+import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 
 export type RecoveryDiagnostic = {
   readonly profileId: WorkspaceProfileId;
@@ -22,6 +25,7 @@ export class ReviewRecoveryService {
       readonly paths?: PatchdeskPaths;
       readonly artifacts?: ReviewArtifactStorage;
       readonly recordDiagnostic?: (event: RecoveryDiagnostic) => Promise<void>;
+      readonly lifecycleGate?: ReviewLifecycleGate;
     } = {},
   ) {}
 
@@ -32,51 +36,74 @@ export class ReviewRecoveryService {
     let recovered = 0;
     let failed = 0;
     for (const profile of profiles.value) {
-      const scan = await this.sessions.scanSessionEntries(profile.id);
-      if (scan._tag === "err") {
+      const result = this.options.lifecycleGate === undefined
+        ? await this.reconcileProfile(profile.id)
+        : await this.options.lifecycleGate.withProfileLock(profile.id, () => this.reconcileProfile(profile.id));
+      recovered += result.recovered;
+      failed += result.failed;
+    }
+    return { recovered, failed };
+  }
+
+  private async recordDiagnostic(event: RecoveryDiagnostic): Promise<void> {
+    if (this.options.recordDiagnostic !== undefined) {
+      await this.options.recordDiagnostic(event);
+      return;
+    }
+    if (this.options.paths === undefined) return;
+    const root = this.options.paths.profileReviewsDirectory(event.profileId);
+    try {
+      await mkdir(root, { recursive: true });
+      await appendFile(
+        join(root, "diagnostics.jsonl"),
+        `${JSON.stringify({ at: this.now(), kind: event.reason, entryName: event.entryName.slice(0, 160) })}\n`,
+        "utf8",
+      );
+    } catch {
+      // Invalid evidence remains quarantined even if diagnostics cannot be written.
+    }
+  }
+
+  private async reconcileProfile(
+    profileId: WorkspaceProfileId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const scan = await this.sessions.scanSessionEntries(profileId);
+    if (scan._tag === "err") return { recovered: 0, failed: 1 };
+    let recovered = 0;
+    let failed = 0;
+    for (const invalid of scan.value.invalidEntries) {
+      await this.recordDiagnostic({ profileId, entryName: invalid.entryName, reason: "invalid_session" });
+      if (this.options.artifacts === undefined) {
         failed += 1;
         continue;
       }
-      for (const invalid of scan.value.invalidEntries) {
-        await this.options.recordDiagnostic?.({
-          profileId: profile.id,
-          entryName: invalid.entryName,
-          reason: "invalid_session",
-        });
-        if (invalid.sessionId === undefined || this.options.artifacts === undefined) {
+      const quarantined = invalid.sessionId === undefined
+        ? await this.options.artifacts.quarantineInvalidEntry(profileId, invalid.entryName)
+        : await this.options.artifacts.quarantine(profileId, invalid.sessionId);
+      if (quarantined._tag === "ok") recovered += 1;
+      else failed += 1;
+    }
+    for (const session of scan.value.sessions) {
+      if (this.options.paths !== undefined) {
+        const active = await ReviewPreparationJournal.activeFor(this.options.paths, profileId, session.id);
+        if (active._tag === "err") {
           failed += 1;
           continue;
         }
-        const quarantined = await this.options.artifacts.quarantine(profile.id, invalid.sessionId);
-        if (quarantined._tag === "ok") recovered += 1;
-        else failed += 1;
+        if (active.value !== undefined) continue;
       }
-      for (const session of scan.value.sessions) {
-        if (this.options.paths !== undefined) {
-          const active = await ReviewPreparationJournal.activeFor(
-            this.options.paths,
-            profile.id,
-            session.id,
-          );
-          if (active._tag === "err") {
-            failed += 1;
-            continue;
-          }
-          if (active.value !== undefined) continue;
-        }
-        if (session.currentAttemptId === undefined) continue;
-        const attempt = await this.sessions.loadAttempt(profile.id, session.id, session.currentAttemptId);
-        if (attempt._tag === "err") {
-          failed += 1;
-          continue;
-        }
-        const result = recoverOrphanedWorkbenchAttempt({ session, attempt: attempt.value, recoveredAt: this.now() });
-        if (result._tag === "err") continue;
-        const attemptSaved = await this.sessions.saveAttempt(profile.id, session.id, result.value.attempt);
-        const sessionSaved = attemptSaved._tag === "ok" ? await this.sessions.save(result.value.session) : attemptSaved;
-        if (sessionSaved._tag === "ok") recovered += 1;
-        else failed += 1;
+      if (session.currentAttemptId === undefined) continue;
+      const attempt = await this.sessions.loadAttempt(profileId, session.id, session.currentAttemptId);
+      if (attempt._tag === "err") {
+        failed += 1;
+        continue;
       }
+      const result = recoverOrphanedWorkbenchAttempt({ session, attempt: attempt.value, recoveredAt: this.now() });
+      if (result._tag === "err") continue;
+      const attemptSaved = await this.sessions.saveAttempt(profileId, session.id, result.value.attempt);
+      const sessionSaved = attemptSaved._tag === "ok" ? await this.sessions.save(result.value.session) : attemptSaved;
+      if (sessionSaved._tag === "ok") recovered += 1;
+      else failed += 1;
     }
     return { recovered, failed };
   }

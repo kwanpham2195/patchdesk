@@ -171,7 +171,18 @@ describe("ReviewWorkbenchProjectionService", () => {
 
       const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
 
-      expect(loaded).toMatchObject({ _tag: "ok", value: { state: "completed", freshness: "not_refreshed" } });
+      expect(loaded).toMatchObject({
+        _tag: "ok",
+        value: {
+          state: "completed",
+          freshness: "not_refreshed",
+          recoveryView: {
+            noticeKey: "ready_to_review",
+            tone: "positive",
+            actionKey: "run_review",
+          },
+        },
+      });
       expect(github.calls).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -318,9 +329,8 @@ describe("ReviewWorkbenchProjectionService", () => {
       expect(loaded.value.session).toEqual({
         id: session.id,
         key: { profileId, host, owner, repo, prNumber: number, headSha },
-        state: "Created",
       });
-      expect(loaded.value).toMatchObject({ session: { state: "Created" } });
+      expect(loaded.value.recoveryView).toEqual({ noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -349,7 +359,10 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded).toMatchObject({
         _tag: "ok",
-        value: { session: { state: "ReviewFailed", lastRunFailure: "The review workflow did not complete." } },
+        value: {
+          session: { id: session.id },
+          recoveryView: { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" },
+        },
       });
     } finally {
       await rm(root, { recursive: true, force: true });

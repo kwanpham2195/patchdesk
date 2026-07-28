@@ -74,7 +74,7 @@ const RECOVERY_COPY: Readonly<Record<RecoveryNoticeKey, RecoveryCopy>> = {
   },
   needs_preparation: {
     notice: "Review needs preparation",
-    tone: "destructive",
+    tone: "warning",
     actionLabel: "Prepare again",
     actionKey: "prepare_again",
     reassurance:

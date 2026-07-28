@@ -117,15 +117,26 @@ const workbenchSessionSchema = v.strictObject({
     prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
   }),
-  state: v.optional(v.string()),
-  lastRunFailure: v.optional(v.string()),
-  currentAttemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
+});
+
+const recoveryViewSchema = v.strictObject({
+  noticeKey: v.picklist([
+    "preparing",
+    "ready_to_review",
+    "review_in_progress",
+    "review_interrupted",
+    "review_failed",
+    "needs_preparation",
+  ]),
+  tone: v.picklist(["neutral", "positive", "warning", "destructive"]),
+  actionKey: v.optional(v.picklist(["run_review", "reconnect", "start_again", "try_again", "prepare_again"])),
 });
 
 const workbenchProjectionSchema = v.variant("state", [
   v.strictObject({
     state: v.literal("review_started"),
     session: workbenchSessionSchema,
+    recoveryView: v.optional(recoveryViewSchema),
     fullPatch: v.optional(v.string()),
     pullRequest: v.optional(v.unknown()),
     reviewedHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
@@ -137,6 +148,7 @@ const workbenchProjectionSchema = v.variant("state", [
   v.strictObject({
     state: v.literal("completed"),
     session: workbenchSessionSchema,
+    recoveryView: v.optional(recoveryViewSchema),
     result: v.unknown(),
     draft: v.optional(v.unknown()),
     batch: v.optional(v.unknown()),

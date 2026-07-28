@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type {
   CheckSummary,
   GitHubComments,
@@ -20,6 +21,7 @@ import type {
   WorkspaceProfileId,
 } from "../domain/ids";
 import type { FindingLifecycleEntry } from "../domain/finding-lifecycle";
+import type { ReviewAttempt } from "../domain/review-attempt";
 import { evaluateMergeReadiness, type MergeReadiness } from "../domain/merge-readiness";
 import {
   parseRevisionComparison,
@@ -31,6 +33,13 @@ import type { ReviewDraft } from "../domain/review-draft";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
+import {
+  decideReviewRecovery,
+  projectReviewRecovery,
+  type ReviewRecoveryView,
+} from "../domain/review-recovery";
+import { ReviewPreparationJournal } from "./review-preparation-journal";
+import type { ReviewRunRegistry } from "./review-run-registry";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 
@@ -47,9 +56,6 @@ export type WorkbenchSessionProjection = {
     readonly prNumber: PullRequestNumber;
     readonly headSha: GitSha;
   };
-  readonly state: ReviewSession["state"]["_tag"];
-  readonly lastRunFailure?: string;
-  readonly currentAttemptId?: ReviewAttemptId;
 };
 
 /** Bounded attempt history item; it leaks no adapter or workflow mechanics. */
@@ -69,6 +75,7 @@ export type PreparedWorkbenchProjection = {
   readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
   readonly checks: CheckSummary;
+  readonly recoveryView?: ReviewRecoveryView;
 };
 
 export type CompletedWorkbenchProjection = {
@@ -92,6 +99,7 @@ export type CompletedWorkbenchProjection = {
   readonly checks: CheckSummary;
   readonly history: ReadonlyArray<ReviewHistoryItem>;
   readonly mergeReadiness: MergeReadiness;
+  readonly recoveryView?: ReviewRecoveryView;
 };
 
 export type ReviewWorkbenchProjection =
@@ -134,6 +142,10 @@ export class ReviewWorkbenchProjectionService {
       "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"
     >,
     private readonly now: () => IsoTimestamp,
+    private readonly recovery?: {
+      readonly paths?: PatchdeskPaths;
+      readonly runs?: Pick<ReviewRunRegistry, "find">;
+    },
   ) {}
 
   /** Opens durable local evidence without polling GitHub. */
@@ -154,6 +166,7 @@ export class ReviewWorkbenchProjectionService {
       this.sessions.listAttempts(session.value.key.profileId, session.value.id),
     ]);
     if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    const recoveryView = await this.recoveryView(session.value, attempts.value);
     const pr = session.value.prContext === undefined ? undefined : {
       ref: { host: session.value.key.host, owner: session.value.key.owner, repo: session.value.key.repo, number: session.value.key.prNumber },
       ...session.value.prContext,
@@ -182,6 +195,7 @@ export class ReviewWorkbenchProjectionService {
       checks: { overall: "unknown", checks: [] },
       history: attempts.value.map((attempt) => ({ id: attempt.id, state: attempt.state._tag, startedAt: attempt.startedAt })),
       mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
+      ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
 
@@ -234,6 +248,7 @@ export class ReviewWorkbenchProjectionService {
       this.github.getPullRequest({ profile, pr }),
     ]);
     const currentHeadSha = current._tag === "ok" ? current.value.headSha : undefined;
+    const recoveryView = await this.recoveryView(session);
     return ok({
       state: "review_started",
       session: projectSession(session),
@@ -249,11 +264,13 @@ export class ReviewWorkbenchProjectionService {
             : "stale",
       refreshedAt: this.now(),
       checks: checks._tag === "ok" ? checks.value : { overall: "unknown", checks: [] },
+      ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
 
   private async projectPreparedLocal(session: ReviewSession): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const fullPatch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    const recoveryView = await this.recoveryView(session);
     return ok({
       state: "review_started",
       session: projectSession(session),
@@ -262,6 +279,7 @@ export class ReviewWorkbenchProjectionService {
       freshness: "not_refreshed",
       refreshedAt: session.updatedAt,
       checks: { overall: "unknown", checks: [] },
+      ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
 
@@ -296,6 +314,7 @@ export class ReviewWorkbenchProjectionService {
         this.sessions.listAttempts(session.key.profileId, session.id),
       ]);
     if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    const recoveryView = await this.recoveryView(session, attempts.value);
     let comparison: RevisionComparison | undefined;
     let lifecycle: ReadonlyArray<FindingLifecycleEntry> | undefined;
     if (rawComparison !== undefined) {
@@ -388,7 +407,36 @@ export class ReviewWorkbenchProjectionService {
         startedAt: attempt.startedAt,
       })),
       mergeReadiness,
+      ...(recoveryView === undefined ? {} : { recoveryView }),
     });
+  }
+
+  private async recoveryView(
+    session: ReviewSession,
+    attempts?: ReadonlyArray<ReviewAttempt>,
+  ): Promise<ReviewRecoveryView | undefined> {
+    const activePreparation = this.recovery?.paths === undefined
+      ? undefined
+      : await ReviewPreparationJournal.activeFor(
+          this.recovery.paths,
+          session.key.profileId,
+          session.id,
+        );
+    const latestAttempt = attempts === undefined && session.currentAttemptId !== undefined
+      ? await this.sessions.loadAttempt(session.key.profileId, session.id, session.currentAttemptId)
+      : undefined;
+    const foundAttempt = attempts?.find((attempt) => attempt.id === session.currentAttemptId)
+      ?? (latestAttempt?._tag === "ok" ? latestAttempt.value : undefined);
+    const liveRun = foundAttempt === undefined || this.recovery?.runs === undefined
+      ? undefined
+      : this.recovery.runs.find({ sessionId: session.id, attemptId: foundAttempt.id }) !== undefined;
+    const decision = decideReviewRecovery({
+      session,
+      ...(foundAttempt === undefined ? {} : { latestAttempt: foundAttempt }),
+      ...(activePreparation?._tag === "ok" && activePreparation.value !== undefined ? { activePreparation: true } : {}),
+      ...(liveRun === undefined ? {} : { liveRun }),
+    });
+    return projectReviewRecovery(decision);
   }
 }
 
@@ -403,11 +451,5 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       prNumber: session.key.prNumber,
       headSha: session.key.headSha,
     },
-    state: session.state._tag,
-    ...(session.state._tag === "ReviewFailed" ? { lastRunFailure: session.state.error.message } : {}),
-    ...(session.state._tag === "Stale" && session.state.reason === "orphaned_run"
-      ? { lastRunFailure: "Patchdesk restarted before this review run completed." }
-      : {}),
-    ...(session.currentAttemptId === undefined ? {} : { currentAttemptId: session.currentAttemptId }),
   };
 }

@@ -200,6 +200,14 @@ export class StorageManagementService {
       if (clearedCache._tag === "err") return clearedCache;
       const scanned = await this.deps.sessions.scanSessionEntries(profileId);
       if (scanned._tag === "err") return err({ _tag: "StorageUnavailable" });
+      for (const invalid of scanned.value.invalidEntries) {
+        const quarantined = invalid.sessionId === undefined
+          ? await this.deps.artifacts.quarantineInvalidEntry(profileId, invalid.entryName)
+          : await this.deps.artifacts.quarantine(profileId, invalid.sessionId);
+        if (quarantined._tag === "err") return err({ _tag: "StorageUnavailable" });
+        const removed = await this.deps.artifacts.removeQuarantined(profileId, quarantined.value.entryName);
+        if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
+      }
       for (const session of scanned.value.sessions) {
         if (session.state._tag !== "Discarded") continue;
         const removed = await this.deps.artifacts.removeSession(profileId, session.id);

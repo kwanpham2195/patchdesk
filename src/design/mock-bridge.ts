@@ -172,7 +172,7 @@ function recoveryFixtureFor(scenarioId: string | undefined): DesignRecoveryFixtu
     case "workbench-reconnect": return { noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" };
     case "workbench-start-again": return { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" };
     case "workbench-try-again": return { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" };
-    case "workbench-prepare-again": return { noticeKey: "needs_preparation", tone: "destructive", actionKey: "prepare_again" };
+    case "workbench-prepare-again": return { noticeKey: "needs_preparation", tone: "warning", actionKey: "prepare_again" };
     default: return { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" };
   }
 }
@@ -186,7 +186,7 @@ function inboxForScenario(scenarioId: string | undefined): InboxResponse {
         77: { recovery: { noticeKey: "review_failed", tone: "warning" as const, actionKey: "try_again" } },
         31: { recovery: { noticeKey: "ready_to_review", tone: "positive" as const, actionKey: "run_review" } },
         19: { recovery: { noticeKey: "review_in_progress", tone: "positive" as const, actionKey: "reconnect" } },
-        8: { recovery: { noticeKey: "needs_preparation", tone: "destructive" as const, actionKey: "prepare_again" } },
+        8: { recovery: { noticeKey: "needs_preparation", tone: "warning" as const, actionKey: "prepare_again" } },
       }
     : {};
   const baseRows = scenarioId === "inbox-empty" ? [] : [

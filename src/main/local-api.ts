@@ -115,6 +115,8 @@ export type LocalApiConfiguration = {
   readonly trash?: TrashMover;
   /** Test-only read-only git seam used by storage cache clear. */
   readonly readOnlyGit?: GitReadExecutor;
+  /** Composition-root lifecycle gate shared by every durable review mutation. */
+  readonly lifecycleGate?: ReviewLifecycleGate;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -158,7 +160,7 @@ export async function startLocalApiServer(
     paths,
     () => new Date().toISOString() as never,
   );
-  const lifecycleGate = new ReviewLifecycleGate();
+  const lifecycleGate = configuration.lifecycleGate ?? new ReviewLifecycleGate();
   const storageManagement = new StorageManagementService({
     profiles,
     sessions,
@@ -172,12 +174,14 @@ export async function startLocalApiServer(
   await ReviewPreparationJournal.recover(
     paths,
     new ReviewWorktreeService(paths, readOnlyGit),
+    sessions,
+    lifecycleGate,
   );
   await new ReviewRecoveryService(
     profiles,
     sessions,
     () => new Date().toISOString() as never,
-    { paths, artifacts: storageArtifacts },
+    { paths, artifacts: storageArtifacts, lifecycleGate },
   ).reconcile();
   const dashboard = new DashboardController(
     profiles,
@@ -236,6 +240,7 @@ export async function startLocalApiServer(
       sessions,
       github,
       () => new Date().toISOString() as never,
+      { paths, runs },
     ),
   );
   const reviewCompletion = new ReviewCompletionService(
@@ -268,6 +273,7 @@ export async function startLocalApiServer(
     modelCatalog,
     () => new Date().toISOString() as never,
     new ReviewHeadVerifier(profiles, sessions, github, () => new Date().toISOString()),
+    lifecycleGate,
   );
   const runCoordinator =
     workflowStarter === undefined
@@ -401,6 +407,24 @@ export async function startLocalApiServer(
     const run =
       runCoordinator?.start(parsed.output) ?? runs.create(parsed.output);
     return context.json(run, 202);
+  });
+  app.post("/v1/runs/reconnect", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)) }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const sessionId = parseReviewSessionId(parsed.output.sessionId);
+    if (profileId._tag === "err" || sessionId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    const session = await sessions.load(profileId.value, sessionId.value);
+    if (session._tag === "err") return context.json({ error: "not_found" }, 404);
+    const attemptId = session.value.currentAttemptId;
+    if (attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
+    const owned = runs.find({ sessionId: sessionId.value, attemptId });
+    if (owned === undefined) return context.json({ error: "run_not_owned" }, 403);
+    return context.json({ runId: owned.runId }, 202);
   });
   app.get("/v1/reviews/models", async (context) => {
     const catalog = await modelCatalog.get();
@@ -554,6 +578,17 @@ export async function startLocalApiServer(
       }),
     );
   });
+  app.post("/v1/storage/clear-local-data", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({ profileId: pipe(string(), minLength(1)) }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    if (profileId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    return storageResponse(context, await storageManagement.clearLocalData(profileId.value));
+  });
   app.post("/v1/storage/cache/clear", async (context) => {
     const body = await jsonBody(context);
     const parsed = safeParse(
@@ -572,18 +607,23 @@ export async function startLocalApiServer(
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId");
     const attemptId = context.req.query("attemptId");
-    if (sessionId === undefined || attemptId === undefined)
-      return context.json({ error: "run_not_owned" }, 403);
-    const owner = { runId: context.req.param("runId"), sessionId, attemptId };
+    if (sessionId === undefined) return context.json({ error: "run_not_owned" }, 403);
+    const runId = context.req.param("runId");
+    const owner = attemptId === undefined
+      ? runs.findByRunId(runId)
+      : { runId, sessionId, attemptId };
+    if (owner === undefined) return context.json({ error: "run_not_owned" }, 403);
     const observed = runCoordinator?.observe(owner);
-    const run = runs.get(owner.runId, owner);
+    const run = "runId" in owner && "projection" in owner
+      ? ok(owner)
+      : runs.get(owner.runId, owner);
     if (run._tag === "err" || observed?._tag === "err")
       return context.json({ error: "run_not_owned" }, 403);
     const projected = projectSafeRun(
       configuration.runProjection?.({
         runId: run.value.runId,
         sessionId,
-        attemptId,
+        attemptId: run.value.attemptId,
       }) ?? (observed?._tag === "ok" ? observed.value : run.value.projection),
     );
     return projected._tag === "ok"

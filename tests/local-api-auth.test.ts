@@ -377,6 +377,20 @@ describe("local API capability boundary", () => {
     expect(traversal.status).toBe(400);
     await expect(traversal.json()).resolves.toEqual({ error: "invalid_input" });
     expect(trash.moves).toHaveLength(0);
+
+    const clearLocalData = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ profileId: "cfw" }),
+    });
+    expect(clearLocalData.status).toBe(200);
+
+    const unauthorized = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: allowedOrigin },
+      body: JSON.stringify({ profileId: "cfw" }),
+    });
+    expect(unauthorized.status).toBe(401);
   });
 });
 
