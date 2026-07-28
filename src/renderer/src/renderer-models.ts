@@ -132,6 +132,51 @@ export type ReviewRecord = {
   readonly updatedAt: string;
 };
 
+export type WalkthroughLifecycle = "idle" | "generating" | "ready" | "failed" | "stale";
+
+export type WalkthroughAction = "walkthrough-retry" | "walkthrough-regenerate";
+
+export type WalkthroughProjection = {
+  readonly lifecycle: WalkthroughLifecycle;
+  readonly noticeKey:
+    | "walkthrough-idle"
+    | "walkthrough-generating"
+    | "walkthrough-ready"
+    | "walkthrough-failed"
+    | "walkthrough-stale";
+  readonly actionKey?: WalkthroughAction;
+  readonly incidentId?: string;
+};
+
+export type WalkthroughReady = {
+  readonly lifecycle: "ready";
+  readonly noticeKey: "walkthrough-ready";
+  readonly walkthrough: {
+    readonly snapshot: {
+      readonly profileId: string;
+      readonly sessionId: string;
+      readonly headSha: string;
+      readonly patchHash: string;
+    };
+    readonly title: string;
+    readonly focus: string;
+    readonly chapters: ReadonlyArray<unknown>;
+    readonly support: { readonly id: "support"; readonly title: "Support" };
+  };
+};
+
+export type PiModelCatalogEntry = {
+  readonly id: string;
+  readonly label: string;
+};
+
+export type PiModelCatalog = {
+  readonly models: ReadonlyArray<PiModelCatalogEntry>;
+  readonly defaultModel?: string;
+  readonly defaultReasoning?: "low" | "medium" | "high";
+  readonly reasoning?: ReadonlyArray<"low" | "medium" | "high">;
+};
+
 export function repositoryKey(repo: Repo): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }

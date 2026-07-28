@@ -34,6 +34,22 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -52,6 +68,8 @@ import {
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
+import { walkthroughCopy } from "@/review-copy";
+import type { WalkthroughProjection } from "../renderer-contracts";
 
 export type CompletedReviewWorkbenchModel = {
   readonly source: { readonly profileId: string; readonly sessionId: string };
@@ -83,6 +101,24 @@ export type CompletedReviewWorkbenchActions = {
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
+  readonly walkthrough?: CompletedReviewWalkthroughActions;
+};
+
+export type CompletedReviewWalkthroughActions = {
+  readonly dialogOpen: boolean;
+  readonly projection: WalkthroughProjection;
+  readonly models: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+  readonly model: string | undefined;
+  readonly reasoning: "low" | "medium" | "high";
+  readonly catalogUnavailable: boolean;
+  readonly onOpenDialog: () => void;
+  readonly onCloseDialog: () => void;
+  readonly onModelChange: (model: string) => void;
+  readonly onReasoningChange: (reasoning: "low" | "medium" | "high") => void;
+  readonly onConfirm: () => void;
+  readonly onRetry: () => void;
+  readonly onRegenerate: () => void;
+  readonly busy: boolean;
 };
 
 /** Owns completed-review-local selection, filtering, draft safety, and view state. */
@@ -342,6 +378,88 @@ export function CompletedReviewWorkbench({
           </AlertDescription>
         </Alert>
       ) : null}
+      {actions.walkthrough === undefined ? null : (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3" data-testid="walkthrough-banner">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Protect review writes · read-only walkthrough</p>
+            <p className="text-sm font-medium">{walkthroughCopy(actions.walkthrough.projection.lifecycle).headline}</p>
+            <p className="text-xs text-muted-foreground">{walkthroughCopy(actions.walkthrough.projection.lifecycle).reassurance}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {actions.walkthrough.projection.lifecycle === "idle" || actions.walkthrough.projection.lifecycle === "ready" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="walkthrough-open"
+                onClick={actions.walkthrough.onOpenDialog}
+              >
+                {actions.walkthrough.projection.lifecycle === "idle" ? "Generate walkthrough" : "Generate another walkthrough"}
+              </Button>
+            ) : null}
+            {actions.walkthrough.projection.lifecycle === "failed" ? (
+              <Button size="sm" variant="outline" data-testid="walkthrough-retry" onClick={actions.walkthrough.onRetry}>Retry generation</Button>
+            ) : null}
+            {actions.walkthrough.projection.lifecycle === "stale" ? (
+              <Button size="sm" variant="outline" data-testid="walkthrough-regenerate" onClick={actions.walkthrough.onRegenerate}>Generate walkthrough</Button>
+            ) : null}
+          </div>
+        </div>
+      )}
+      {actions.walkthrough === undefined ? null : (
+        <Dialog open={actions.walkthrough.dialogOpen} onOpenChange={(open) => { if (!open) actions.walkthrough?.onCloseDialog(); }}>
+          <DialogContent data-testid="walkthrough-generate-dialog">
+            <DialogHeader>
+              <DialogTitle>Generate a read-only walkthrough</DialogTitle>
+              <DialogDescription>Patchdesk reads the stored patch, never writes to GitHub, and never restarts the run.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-2">
+              <Label className="grid gap-1.5">Model
+                <Select
+                  value={actions.walkthrough.model}
+                  onValueChange={(value) => { if (value !== null) actions.walkthrough?.onModelChange(value); }}
+                  disabled={actions.walkthrough.models.length === 0}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {actions.walkthrough.models.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Label>
+              <Label className="grid gap-1.5">Reasoning
+                <Select
+                  value={actions.walkthrough.reasoning}
+                  onValueChange={(value) => {
+                    if (value === "low" || value === "medium" || value === "high") actions.walkthrough?.onReasoningChange(value);
+                  }}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Label>
+              <p className="text-xs text-muted-foreground">The dialog requires a model and reasoning before any generation request can be made.</p>
+              {actions.walkthrough.catalogUnavailable ? (
+                <p role="status" className="text-sm text-muted-foreground">No enabled review model is currently available. Try again after review models are available.</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={actions.walkthrough.onCloseDialog}>Cancel</Button>
+              <Button
+                disabled={actions.walkthrough.model === undefined || actions.walkthrough.catalogUnavailable || actions.walkthrough.busy}
+                onClick={actions.walkthrough.onConfirm}
+                data-testid="walkthrough-confirm"
+              >
+                {actions.walkthrough.busy ? "Generating…" : "Generate read-only walkthrough"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       <div
         className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
       >

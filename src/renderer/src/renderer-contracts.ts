@@ -185,3 +185,135 @@ export function parseWorkbenchResponse(input: unknown): WorkbenchResponse | unde
   const parsed = v.safeParse(workbenchProjectionSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
+
+const walkthroughRepoRelativePathSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(1024),
+  v.regex(/^[^/\\].*$/, "Repo-relative path must not start with a separator"),
+  v.regex(/^(?!\.\.\/).*$/, "Repo-relative path must not include parent traversal"),
+);
+const walkthroughHunkIdSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(64),
+  v.regex(/^[A-Za-z0-9_-]+$/, "Walkthrough hunk id must be alphanumeric"),
+);
+const walkthroughLineNumberSchema = v.pipe(
+  v.number(),
+  v.integer(),
+  v.minValue(0),
+  v.maxValue(1_000_000),
+);
+
+const walkthroughHunkSchema = v.strictObject({
+  id: walkthroughHunkIdSchema,
+  path: walkthroughRepoRelativePathSchema,
+  header: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
+  raw: v.pipe(v.string(), v.minLength(1), v.maxLength(200_000)),
+  oldStart: walkthroughLineNumberSchema,
+  oldLines: walkthroughLineNumberSchema,
+  newStart: walkthroughLineNumberSchema,
+  newLines: walkthroughLineNumberSchema,
+});
+
+const walkthroughSnapshotSchema = v.strictObject({
+  profileId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
+  sessionId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+  headSha: v.pipe(v.string(), v.minLength(40), v.maxLength(128)),
+  patchHash: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
+});
+
+const walkthroughSectionSchema = v.strictObject({
+  id: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+  title: v.pipe(v.string(), v.minLength(1), v.maxLength(160)),
+  prose: v.pipe(v.string(), v.minLength(1), v.maxLength(4_000)),
+  hunkIds: v.pipe(v.array(walkthroughHunkIdSchema), v.maxLength(32)),
+  hunks: v.array(walkthroughHunkSchema),
+});
+
+const walkthroughChapterSchema = v.strictObject({
+  id: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+  title: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+  sections: v.pipe(v.array(walkthroughSectionSchema), v.maxLength(32)),
+});
+
+const walkthroughSupportSchema = v.strictObject({
+  id: v.literal("support"),
+  title: v.literal("Support"),
+  hunkIds: v.pipe(v.array(walkthroughHunkIdSchema), v.maxLength(128)),
+  hunks: v.array(walkthroughHunkSchema),
+});
+
+const walkthroughIdleSchema = v.strictObject({
+  lifecycle: v.literal("idle"),
+  noticeKey: v.literal("walkthrough-idle"),
+});
+const walkthroughGeneratingSchema = v.strictObject({
+  lifecycle: v.literal("generating"),
+  noticeKey: v.literal("walkthrough-generating"),
+});
+const walkthroughReadySchema = v.strictObject({
+  lifecycle: v.literal("ready"),
+  noticeKey: v.literal("walkthrough-ready"),
+  walkthrough: v.strictObject({
+    snapshot: walkthroughSnapshotSchema,
+    title: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+    focus: v.pipe(v.string(), v.minLength(1), v.maxLength(2_000)),
+    chapters: v.pipe(v.array(walkthroughChapterSchema), v.maxLength(12)),
+    support: walkthroughSupportSchema,
+  }),
+});
+const walkthroughFailedSchema = v.strictObject({
+  lifecycle: v.literal("failed"),
+  noticeKey: v.literal("walkthrough-failed"),
+  actionKey: v.literal("walkthrough-retry"),
+});
+const walkthroughFailedWithIncidentSchema = v.strictObject({
+  lifecycle: v.literal("failed"),
+  noticeKey: v.literal("walkthrough-failed"),
+  actionKey: v.literal("walkthrough-retry"),
+  incidentId: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+});
+const walkthroughStaleSchema = v.strictObject({
+  lifecycle: v.literal("stale"),
+  noticeKey: v.literal("walkthrough-stale"),
+  actionKey: v.literal("walkthrough-regenerate"),
+});
+
+const walkthroughProjectionSchema = v.variant("lifecycle", [
+  walkthroughIdleSchema,
+  walkthroughGeneratingSchema,
+  walkthroughReadySchema,
+  walkthroughFailedSchema,
+  walkthroughFailedWithIncidentSchema,
+  walkthroughStaleSchema,
+]);
+
+export type WalkthroughProjection = v.InferOutput<typeof walkthroughProjectionSchema>;
+
+/** Reject malformed walkthrough lifecycle projections before they influence renderer state. */
+export function parseWalkthroughProjection(input: unknown): WalkthroughProjection | undefined {
+  const parsed = v.safeParse(walkthroughProjectionSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const modelCatalogEntrySchema = v.strictObject({
+  id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+});
+
+const modelCatalogSchema = v.strictObject({
+  models: v.pipe(v.array(modelCatalogEntrySchema), v.minLength(1), v.maxLength(64)),
+  defaultModel: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  defaultReasoning: v.optional(v.picklist(["low", "medium", "high"])),
+  reasoning: v.optional(v.array(v.picklist(["low", "medium", "high"]))),
+});
+
+export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
+
+/** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
+export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
+  const parsed = v.safeParse(modelCatalogSchema, input);
+  return parsed.success ? parsed.output : undefined}
+
