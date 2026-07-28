@@ -22,18 +22,13 @@
 - Vite root is `src/design/`. Tailwind v4 needs an explicit `@source` directive in `src/renderer/src/styles.css` so renderer-only classes (e.g. `min-[1280px]:*`) are generated for the Design build; production auto-detects from the repo root.
 - Mock bridge (`src/design/mock-bridge.ts`) installs a typed `window.patchdesk` API. The Design app never calls GitHub, the filesystem, or Electron preload; mock side effects are local and deterministic.
 - Scenario registry (`src/design/scenarios.ts`) is the source of truth for stable scenario IDs and the Design index. New scenarios need a registry entry plus a matching URL handler in `src/design/design-app.tsx`.
-- `MergeConfirmationDialog` and `ReviewSubmissionDialog` accept a `defaultOpen` prop so Design scenarios render the confirmation body on first paint; production callers leave it unset.
-- `src/design/main.tsx` clears `patchdesk.*` localStorage on every load so design review starts from a known baseline. Scenario-specific preference seeds (e.g. inbox view) must come after the clear.
-- Current renderer working tree is the visual baseline. Unrelated dirty task, research, and test files are not part of the Design extraction.
 
 ## Local configuration
 
 - Development and packaged builds share the same app-owned paths: config in `~/.config/patchdesk/`, review data in `~/.local/share/patchdesk/`, and cache plus managed review worktrees in `~/.cache/patchdesk/`.
 - `~/.config/patchdesk/config.json` is strict global state only. It supports optional `lastSelectedProfileId`, `appearance` (`system`, `light`, or `dark`), and `diffTheme` (`{ light, dark }` Pierre theme IDs). Do not put workspace, GitHub, credentials, navigation, inbox layout, searches, saved views, or review model choices there.
-- Existing `{ recentPrs: [...] }` configs are read as legacy state. Patchdesk drops `recentPrs` on its next config write. On the first successful app launch when either file-backed preference is missing, Patchdesk imports its renderer local-storage value into `config.json`, then deletes that migrated key.
 - Workspace profiles live in `~/.config/patchdesk/profiles/<profile-id>.json`. Each profile requires `id`, `label`, `githubHost`, `ghAccount`, `ownerFilters`, `workspaceRoots`, `rulePaths`, and `repos`.
 - Each watched repository requires `host`, `owner`, and `repo`; `localPath` and `archived` are optional. Workspace roots, rule paths, and repository paths must be absolute paths. Profile storage never contains ambient credentials or tokens.
-- Settings exposes global appearance and diff theme preferences. It also edits profile label, GitHub host/account, workspace-root lists, owner filters, and rule paths. Existing profile IDs stay fixed; use **New profile** to create another profile. Watched repositories remain in their dedicated Watchlist controls.
 
 ## Commands (pnpm@8.8.0)
 

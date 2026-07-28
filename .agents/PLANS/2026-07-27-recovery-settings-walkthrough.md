@@ -4,20 +4,24 @@ This ExecPlan is a living implementation specification. Keep `Progress`,
 `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective`
 current as work proceeds. It consolidates the recovery and observability plan
 from `docs/superpowers/plans/2026-07-26-review-recovery-observability.md`, the
-approved Settings design in
+Settings redesign proposal in
 `docs/superpowers/specs/2026-07-26-settings-redesign-design.md`, and the
-narrative walkthrough feature packet in this directory. PR-description
+narrative walkthrough feature packet in
+`.agents/tasks/narrative-walkthrough/`. This ExecPlan is the approved
+implementation handoff for their combined scope. PR-description
 generation remains a separate design/spec and is intentionally not part of
 this implementation plan.
 
 ## Purpose / Big Picture
 
 After this work, a maintainer can open a PR even when another PR has damaged
-local review data. Patchdesk will show honest, actionable states: `Run review`,
-`Reconnect`, `Start again`, `Try again`, or `Prepare again`. It will not guess
-that a review is running from a missing process-local run handle, and it will
-not expose quarantine folders, worktrees, attempts, runtime names, or file
-paths in ordinary UI.
+local review data. Patchdesk will show one clear next step: `Run review`, `Reconnect`, `Start
+again`, `Try again`, or `Prepare again`. It will not guess that a review is
+running from a missing process-local run handle, and it will not expose
+quarantine folders, worktrees, attempts, runtime names, file paths, raw phases,
+or lifecycle labels in ordinary UI. Internal recovery facts select a
+user-oriented message and next action; they are never presented as a state
+machine for maintainers to interpret.
 
 Settings will have two global local-data operations: `Clear cache` and `Clear
 local review data`. The first removes rebuildable cache while retaining review
@@ -52,8 +56,13 @@ starts after a review run completes or merely because a snapshot is opened.
   `base-nova` with `@base-ui/react`; follow the local shadcn composition,
   semantic-color, Field/FieldGroup, Dialog, Tabs, ScrollArea, AlertDialog, and
   focus rules.
-- Renderer code never receives Node.js, `gh`, credentials, filesystem paths,
-  raw Flue output, or direct GitHub write access.
+- Renderer code never receives Node.js, `gh`, credentials, app-owned review
+  artifact paths, raw Flue output, direct GitHub write access, or internal
+  storage/lifecycle state. The Profile/Workspace editor is the narrow exception:
+  it may display and edit the selected profile's configured workspace/rule paths
+  through the existing profile API and directory picker, never review artifacts
+  or diagnostic paths. Recovery projections contain only concise display copy,
+  tone, and at most one next action.
 - All LLM workflows are manual, model/reasoning-selected, snapshot-bound, and
   structured-output workflows. They never auto-run, auto-comment, or auto-merge.
 - Global config remains strict global state. Profile configuration,
@@ -66,8 +75,9 @@ starts after a review run completes or merely because a snapshot is opened.
 
 - [x] 2026-07-26 — Existing recovery/observability and narrative walkthrough research and specs are available in the repository.
 - [x] 2026-07-26 — The recovery implementation plan and narrative implementation plan were reconciled into this ExecPlan.
-- [x] 2026-07-26 — Settings redesign was approved and added as an aligned workstream.
+- [x] 2026-07-26 — Settings redesign proposal was reconciled into this aligned workstream.
 - [x] 2026-07-26 — The UI implementation constraint is recorded: compose existing shadcn/Base UI primitives; do not invent parallel controls.
+- [ ] 2026-07-27 — Milestone 1 design grill completed (7 decisions locked, see Decision Log). The design pass itself (new scenarios in `src/design/`, copy map applied to existing 11, mock updates, screenshots) has not been built yet.
 - [ ] Implement the recovery domain, storage cleanup, copy contract, and diagnostics.
 - [ ] Implement the global Settings modal, profile/workspace behavior, and cleanup migration.
 - [ ] Implement the snapshot-bound walkthrough domain, Flue workflow, main-process service, and authenticated API.
@@ -129,6 +139,17 @@ starts after a review run completes or merely because a snapshot is opened.
   `@base-ui/react`; `src/renderer/src/components/ui/` contains the relevant
   components.
 
+- Observation: `src/design/` is the cheapest design-first surface for
+  the Milestone 1 changes. It already reuses the renderer, has a typed
+  mock bridge, runs in a browser at `pnpm dev:design`, and its
+  scenario registry maps to URL handles. A new recovery state or copy
+  change is a scenario entry plus a mock payload, not a domain or
+  adapter change. Decision (see Decision Log) uses the design app as
+  the place to lock the visual + interaction surface before real
+  implementation.
+  Evidence: `src/design/scenarios.ts`, `src/design/mock-bridge.ts`,
+  `src/design/design-app.tsx`.
+
 
 ## Decision Log
 
@@ -163,9 +184,11 @@ starts after a review run completes or merely because a snapshot is opened.
   latency, and an unrequested model action. Date/Author: 2026-07-26, narrative
   walkthrough specification.
 
-- Decision: Add recovery capabilities to renderer projections rather than
-  deriving actions from `currentAttemptId` or `runId`. Rationale: those fields
-  are historical or process-local linkage, not truth about user actionability.
+- Decision: Add one user-safe recovery decision to renderer projections rather
+  than deriving actions from `currentAttemptId` or `runId`. Rationale: those
+  fields are historical or process-local linkage, not truth about user
+  actionability; multiple capability booleans let the UI expose contradictory
+  controls.
   Date/Author: 2026-07-26, recovery/observability specification.
 
 - Decision: Make Settings a centered modal that always opens on General,
@@ -185,13 +208,83 @@ starts after a review run completes or merely because a snapshot is opened.
   inconsistent behavior and increase maintenance. Date/Author: 2026-07-26,
   Matthew and Codex.
 
+- Decision: Use `src/design/` as the design-first surface for the
+  Milestone 1 changes (recovery states, copy map, redesigned Data &
+  recovery section) before writing any real implementation. Rationale:
+  `src/design/` already reuses the renderer and the design app's mock
+  bridge is the cheapest way to iterate on the visual + interaction
+  surface without touching production code, persist, or GitHub. The
+  approved scenarios become the screenshot evidence that the
+  implementation must match. Date/Author: 2026-07-27, Matthew and Codex.
+
+- Decision: Milestone 1 design pass adds 7 new Design scenarios
+  (`workbench-reconnect`, `workbench-start-again`,
+  `workbench-try-again`, `workbench-prepare-again`,
+  `inbox-recovery-states`, `settings-recovery`,
+  `dialog-clear-local-data`) and updates the 11 existing scenarios to
+  read from the new copy map. `settings-recovery` supersedes
+  `settings-default` for this design pass. No before-snapshot
+  preservation. Rationale: one source of truth for the new copy; the
+  design app becomes an honest preview of the final UI rather than a
+  side-by-side museum. Date/Author: 2026-07-27, Matthew and Codex.
+
+- Decision: The workbench mock carries an explicit display-safe `recoveryView`
+  fixture (notice key, tone, and optional action key); the renderer reads it
+  directly rather than re-deriving from `latestReview.state` +
+  `currentAttemptId` + a mocked registry. Rationale: the Design app is for
+  visual iteration, not production derivation; production recovery decisions
+  are tested in the production suite. One display fixture per scenario, one
+  source of truth per screenshot. Date/Author: 2026-07-27, Matthew and Codex.
+
+- Decision: Recovery action buttons on the workbench share a single
+  primary action slot; the status line above the button is the tone
+  carrier (colored dot). `Run review` and `Reconnect` are primary blue.
+  `Start again` and `Try again` are outline secondary. `Prepare again`
+  is outline amber. Rationale: scannable, the user always knows where
+  to look, and the only action that signals broken local data
+  (`Prepare again`) is visually distinct without making the whole
+  workbench alarmist. Date/Author: 2026-07-27, Matthew and Codex.
+
+- Decision: Settings → Data & recovery is a single card with two
+  outline buttons stacked in severity order (`Clear cache` on top,
+  `Clear local review data` below in outline-destructive). Each
+  opens an `AlertDialog` with explicit "X stays, Y goes" copy. The
+  card title is "Local review data". Rationale: severity ordering
+  matches maintainer expectations; explicit copy satisfies the plan's
+  "Confirmations state exactly: ... preserves or removes" rule.
+  Date/Author: 2026-07-27, Matthew and Codex.
+
 ## Outcomes & Retrospective
 
-Implementation has not started. At each completed milestone, record the
-observable proof, commands run, failures or compromises, and whether the next
-milestone still has the same dependencies. At completion, record any remaining
-live-data or packaged-app limitations instead of claiming unverified PR
-scenarios.
+### Milestone 1 — Design pass (decisions locked 2026-07-27, build pending)
+
+A grilling session on 2026-07-27 locked seven design decisions for
+the Milestone 1 visual + interaction surface (see Decision Log entries
+dated 2026-07-27):
+
+- 7 new Design scenarios to add; 11 existing scenarios to update to
+  read from the new copy map; no before-snapshot preservation.
+- Workbench recovery actions share a single primary slot; tone lives
+  in the status line.
+- Settings → Data & recovery is a single card with two severity-ordered
+  outline buttons and explicit "X stays, Y goes" confirm copy.
+- Workbench mock carries an explicit display-safe `recoveryView` fixture;
+  `src/design/mock-bridge.ts` is the source of truth for what each scenario
+  shows.
+
+The design pass itself has not been built yet. The next step is to
+implement the design in `src/design/` (new scenarios + copy map +
+mock updates + screenshots) before the real Milestone 1
+implementation begins. The grilled decisions are the acceptance bar
+the build must match.
+
+### Implementation has not started.
+
+At each completed implementation milestone, record the observable
+proof, commands run, failures or compromises, and whether the next
+milestone still has the same dependencies. At completion, record any
+remaining live-data or packaged-app limitations instead of claiming
+unverified PR scenarios.
 
 ## Context and Orientation
 
@@ -218,7 +311,7 @@ internal evidence-preservation location for invalid local data; it maps to
 
 The existing `ReviewWorkbenchProjectionService` builds renderer-safe prepared
 and completed projections. It currently exposes `currentAttemptId` but no
-explicit recovery capabilities. The existing `ReviewRunRegistry` already
+single recovery decision. The existing `ReviewRunRegistry` already
 supports `find(owner)`. The existing `SafeRunPanel` treats a missing `runId` as
 “not running,” which is the behavior being removed.
 
@@ -272,9 +365,51 @@ workflow.
 Goal: establish stable presentation labels, typed recovery states, and
 path-checked cleanup behavior before changing UI.
 
-Work: add the renderer-only copy map; add `ReviewRecoveryState` and
-`ReviewRecoveryCapabilities`; add idempotent removal methods and
-`StorageManagementService.clearLocalData(profileId)`.
+#### 1a. Design pass (decisions locked 2026-07-27, build pending)
+
+The visual + interaction surface for Milestone 1 was decided in a
+grilling session on 2026-07-27. Seven new Design scenarios plus
+updates to the 11 existing ones were approved; see the Decision Log
+entries dated 2026-07-27 and the design-pass section in Outcomes &
+Retrospective for the locked choices.
+
+The design pass itself has not been built yet. The build is the
+first implementation work for Milestone 1 and must match the
+grilled decisions. The next concrete step is to construct the
+design in `src/design/`:
+
+- `src/design/scenarios.ts` — 7 new entries + 11 updated entries
+- `src/design/main.tsx` — scenario wiring
+- `src/design/design-app.tsx` — scenario render paths + copy map
+- `src/design/mock-bridge.ts` — display-safe `recoveryView` fixture on the
+  workbench session mock; new settings/dialog fixtures
+- `src/renderer/src/review-copy.ts` — the single renderer copy map used by
+  Design and production; it maps stable action keys to friendly copy and never
+  accepts persisted labels or internal state names
+- `tests/browser/design.spec.ts` — build and visit every scenario, capture the
+  recovery/Settings confirmations, and assert internal state/storage words are
+  absent from their visible UI
+
+Commands for the design build and proof:
+
+    pnpm test:design
+
+Expected result: all 18 scenarios are built, opened by Playwright, checked for
+console errors, and captured under `test-results/`. Recovery scenarios show a
+short reassurance and one next action, never state-machine or storage terms;
+the Data & recovery card and confirmation bodies appear on first paint.
+
+Why this reduces risk: the real Milestone 1 implementation below
+matches the grilled design rather than guessing it. Screenshot
+diffing against the design-build evidence is the fastest reviewer
+check for the real implementation.
+
+#### 1b. Real implementation
+
+Work: add the renderer copy map, a pure recovery decision module, durable
+attempt/preparation reconciliation, an exclusive profile lifecycle gate, and
+idempotent local-data removal. The projection exposes a single display-safe
+next action rather than multiple booleans that callers can combine incorrectly.
 
 Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
 
@@ -293,15 +428,17 @@ details.
 Goal: make Settings available from every route, fix its scroll ownership, and
 remove the per-review storage-management surface.
 
-Work: move Settings invocation into `src/renderer/src/app.tsx` and
-`src/renderer/src/components/app-shell.tsx`; create a centered
+Work: make `settingsOpen` independent overlay state in
+`src/renderer/src/app.tsx`; keep `AppDestination` and the mounted workbench
+unchanged while the overlay is open; create a centered
 `src/renderer/src/components/settings-modal.tsx` using the existing shadcn/Base
 UI `Dialog`, `Tabs`, `ScrollArea`, `Field`, `Alert`, `AlertDialog`, `Select`,
 `Button`, and `Separator` wrappers; split the long SettingsFlow into focused
 section components; always start on General; apply theme changes immediately;
 switch clean profiles immediately; require Save/Discard/Cancel for dirty
-profile drafts; move Watchlist out of Settings; and replace storage overview
-state with the two global cleanup actions.
+profile drafts; move Watchlist out of Settings; include profile-scoped Review
+preferences; and replace storage overview state with the two global cleanup
+actions.
 
 Add `POST /v1/storage/clear-local-data`; retain
 `POST /v1/storage/cache/clear`; remove old Settings-only overview/discard/
@@ -327,12 +464,14 @@ testable without allowing users to manage internal session/quarantine records.
 Goal: make open/run/reconnect/retry behavior reflect durable state and owned
 process state, and preserve enough redacted evidence to debug failures.
 
-Work: inject `ReviewRunRegistry` into
-`ReviewWorkbenchProjectionService`; project recovery state and capabilities;
-make `PreparedReviewFlow` and `SafeRunPanel` use those capabilities; add
-`ReviewDiagnosticEvent` and a bounded JSONL diagnostic service; reconcile
-stranded preparation journals and prior-process attempts as interrupted; record
-safe boundary failures from cleanup, profile reload, and walkthrough
+Work: introduce a durable `ReviewPreparationOperation` journal and an
+`Interrupted` attempt transition; inject `ReviewRunRegistry`, the preparation
+journal reader, and the pure recovery decision module into
+`ReviewWorkbenchProjectionService`; make `PreparedReviewFlow` and `SafeRunPanel`
+render its display-safe recovery view; add `ReviewDiagnosticEvent`, bounded
+JSONL storage, and a sanitized support-bundle export. Reconcile stranded
+preparation journals and previous-process running attempts idempotently, then
+record safe boundary failures from cleanup, profile reload, and walkthrough
 generation.
 
 Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
@@ -400,8 +539,10 @@ safe.
 
 Work: create `src/services/narrative-walkthrough-service.ts`; add
 `POST /v1/reviews/walkthrough/generate` and
-`POST /v1/reviews/walkthrough/load` in `src/main/local-api.ts`; add production
-invoker wiring in `src/main/electron-main.ts`; update preload route allowlists.
+`POST /v1/reviews/walkthrough/load` in `src/main/local-api.ts`; add a separate
+production walkthrough invoker in `src/main/electron-main.ts` that cannot call
+review completion or failure services; update the `src/main/desktop-bridge.ts`
+route allowlist and authorization tests.
 The service hashes the stored patch before and after invocation, increments a
 per-session generation token, and updates a record only if generation token
 and snapshot still match. It records generation failures through diagnostics.
@@ -524,124 +665,215 @@ the existing `app-shell.tsx`, `.agents/tasks/codex-subscription-provider/`,
 `.agents/tasks/narrative-walkthrough/` source/research files, and
 `tests/renderer/app-shell.ui.test.tsx` changes. Stage only explicit paths.
 
-### Step 1: Establish copy and recovery contracts
+### Step 0: Design pass (next thing to do, decisions already locked)
 
-Create `src/renderer/src/review-copy.ts` with functions such as
-`reviewActionLabel(kind)` and `reviewStatusLabel(status)`. Map action kinds to
-`Run review`, `Review updates`, `View review`, `Open merge readiness`, `Review
-author response`, and `Inspect failing checks`. Keep domain/cache labels
-unchanged. Replace renderer reads of `row.recommendedAction.label` with the
-map. Keep `Selected PR`, `PRs`, `HEAD`, `Reviewed HEAD`, `Current HEAD`,
-`Reviewed SHA`, `Reasoning`, and `Low`/`Medium`/`High`; remove `pull request`
-from compact labels and do not introduce `session`, `attempt`, `agent`, or
-`runtime` copy.
+The decisions for the Milestone 1 design pass are locked (see
+Decision Log entries dated 2026-07-27). The pass itself has not
+been built yet. This step constructs the design in `src/design/`
+so the real Milestone 1 implementation below matches an approved,
+screenshot-backed visual surface.
 
-Create `src/domain/review-recovery.ts` with:
+Files to add or modify:
+- `src/design/scenarios.ts` — 7 new entries + 11 updated entries
+- `src/design/main.tsx` — wire `settings-recovery`, not the superseded
+  `settings-default`, to the Settings overlay fixture
+- `src/design/design-app.tsx` — scenario render paths and the shared copy map
+- `src/design/mock-bridge.ts` — a display-safe recovery fixture with only a
+  notice key, tone, and optional action key; new Settings/dialog fixtures
+- `src/renderer/src/review-copy.ts` — the shared renderer copy map
+- `tests/browser/design.spec.ts` — visit each scenario and capture the new
+  recovery and Settings confirmation evidence
 
-    type ReviewRecoveryState =
-      | "preparing" | "ready" | "running" | "completed"
-      | "failed" | "interrupted" | "needs_preparation";
+Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
 
-    type ReviewRecoveryCapabilities = {
-      readonly canRun: boolean;
-      readonly canReconnect: boolean;
-      readonly canRetry: boolean;
-      readonly canPrepare: boolean;
-    };
+    pnpm test:design
 
-The pure mapper must map `Running + registry hit` to reconnectable running,
-`Running + no registry hit` to interrupted/start-again, failed attempts to
-retryable failed, and quarantined/invalid records to needs-preparation. A
-merged or otherwise unavailable review has no run capability and is omitted
-from ordinary action lists.
+Expected result: Playwright builds the Design app, visits all 18 scenarios,
+fails on console errors, and records screenshots under `test-results/`. The
+screenshots show a reassurance and one next action—not a lifecycle or storage
+state—plus the locked Data & recovery card and confirmation bodies. They become
+the acceptance bar for the real Milestone 1 implementation.
 
-Write tests before implementation. Run:
+If a real-implementation step below diverges from the approved
+design, the divergence must be raised before coding and recorded in
+the Decision Log before the implementation lands.
+
+### Step 1: Establish user-safe recovery contracts
+
+Create `src/domain/review-recovery.ts` as a pure decision module. It consumes a
+validated durable session, its latest attempt, an optional active preparation
+operation, and an optional registry-owned live run. It returns exactly one
+`ReviewRecoveryDecision`; it does not return display strings, paths, IDs, or
+multiple capability booleans:
+
+    type ReviewRecoveryAction =
+      | "run_review"
+      | "reconnect"
+      | "start_again"
+      | "try_again"
+      | "prepare_again";
+
+    type ReviewRecoveryDecision =
+      | { readonly _tag: "Preparing" }
+      | { readonly _tag: "Actionable"; readonly action: ReviewRecoveryAction }
+      | { readonly _tag: "Unavailable" };
+
+Keep `ReviewSessionState` focused on the durable snapshot lifecycle. Add
+`Interrupted` to `ReviewAttemptState`; redesign the existing
+`ReviewPreparationJournal` from cleanup-only evidence into a durable
+`ReviewPreparationOperation` reader/writer, rather than inventing overlapping
+session states. It records the review identity, safe phase, and terminal
+outcome; `activeFor(profileId, sessionId)` returns a parsed active operation to
+the projection service. Startup first reconciles preparation operations, then
+reconciles attempts, so an abandoned preparation becomes the user-safe
+`prepare_again` decision without relaunching work. A journal may be deleted
+only after the referenced `session.json` has been parsed and validated.
+
+Add `scanSessionEntries(profileId)` to `ReviewSessionStore`: it returns valid
+sessions plus path-safe invalid entry candidates instead of silently skipping
+parse failures. `ReviewRecoveryService` quarantines each invalid candidate,
+records a diagnostic, and continues scanning so one corrupt entry cannot block
+other reviews. Define and test these legal mappings:
+
+- active preparation journal → `Preparing` → “Preparing review”; no button;
+- usable snapshot with no active attempt or a discarded attempt → `run_review`
+  → “Ready to review” / `Run review`;
+- running attempt with a registry-owned run → `reconnect` → “Review in
+  progress” / `Reconnect`;
+- running attempt without an owned run, or a persisted interrupted attempt →
+  `start_again` → “Review was interrupted” / `Start again`;
+- failed attempt → `try_again` → “Review couldn’t finish” / `Try again`;
+- invalid or quarantined evidence that is safe to rebuild → `prepare_again` →
+  “Review needs preparation” / `Prepare again`;
+- merged or unavailable review → `Unavailable` and omission from ordinary
+  action lists.
+
+Create `src/renderer/src/review-copy.ts` as the sole renderer mapping from
+stable action/notice keys to that copy and tone. Replace reads of persisted
+`recommendedAction.label`; preserve old labels only in tolerant cache parsing.
+Keep `Selected PR`, `PRs`, `HEAD`, `Reviewed HEAD`, `Current HEAD`, `Reviewed
+SHA`, `Reasoning`, and `Low`/`Medium`/`High`; never render `session`, `attempt`,
+`quarantine`, `runtime`, storage phase, or error category.
+
+Write failing domain-table and renderer-copy tests before implementation. Run:
 
     pnpm test -- --run tests/renderer/review-copy.test.ts tests/domain/review-recovery.test.ts tests/renderer/maintainer-inbox.ui.test.tsx
 
-### Step 2: Own safe artifact deletion and local-data cleanup
+### Step 2: Serialize safe cleanup and review lifecycle mutation
+
+Create `src/services/review-lifecycle-gate.ts`. The composition root owns one
+gate instance; preparation start/reconciliation, review-run creation, attempt
+completion/failure persistence, migration/quarantine, and both cleanup commands
+enter `withProfileLock(profileId, operation)`. Hold the lock through state
+classification and filesystem/worktree mutation so a newly started review
+cannot be deleted after a stale pre-check. The long-running Flue process runs
+outside the lock, but completion/failure re-enters it and applies its durable
+transition only when the attempt is still current. The Electron single-instance
+guard prevents a second application process; this gate structurally serializes
+concurrent requests within that process.
 
 In `src/adapters/storage/review-artifact-storage.ts`, add idempotent,
 path-checked `removeSession(profileId, sessionId)` and
-`removeQuarantined(profileId, entryName)`. Validate identifiers and quarantine
-names against app-owned roots before deletion. Do not accept arbitrary paths.
+`removeQuarantined(profileId, entryName)`. Parse identifiers and entry names,
+resolve them beneath their app-owned root, and reject any path that escapes the
+root. Do not accept renderer-supplied paths.
 
-In `src/services/storage-management-service.ts`, add
-`clearLocalData(profileId)`. At execution time protect `preparing`, `running`,
-`ready`, `completed`, `failed`, `interrupted`, and `stale` records. Remove only
-discarded records, quarantined/older-version evidence, and unprotected
-rebuildable cache worktrees. Prune Git worktree registrations only after
-successful cache removal. Keep `clearCache` protection for running sessions
-and recorded-running operations. Missing disposable entries count as already
-clean; partial failure returns an error and remains safe to retry.
+In `src/services/storage-management-service.ts`, perform `clearCache` and
+`clearLocalData(profileId)` inside the profile lock. Re-list and classify
+records after acquiring the lock. `Clear cache` removes only unprotected
+rebuildable cache; `Clear local review data` additionally removes discarded,
+quarantined, and older-version evidence. Both preserve every review a user can
+open, resume, retry, or prepare, plus diagnostics. Prune Git registrations only
+after successful cache removal. Missing disposable entries are success; a
+partial filesystem or Git failure is a typed failure whose retry reruns the
+same safe classification.
 
-Add tests for discarded removal, quarantine removal, protection, malformed
-names, missing entries, and partial retry. Run:
+Add behavior tests for lock ordering, a run that races cleanup, discarded and
+quarantined removal, protected records, malformed names, missing entries, and
+partial retry. Run:
 
-    pnpm test -- --run tests/services/storage-management-service.test.ts tests/storage
+    pnpm test -- --run tests/services/review-lifecycle-gate.test.ts tests/services/storage-management-service.test.ts tests/storage
 
-### Step 3: Replace Settings controls and migrate routes
+### Step 3: Deliver the global Settings overlay and friendly cleanup controls
 
-Before editing the modal, confirm the installed Base UI component contracts from
-the project root:
+Use only the local shadcn/Base UI wrappers under
+`src/renderer/src/components/ui/`; do not fetch or introduce a parallel modal,
+form, tabs, scroll, or confirmation primitive.
 
-    npx shadcn@latest docs dialog tabs scroll-area field alert-dialog select button separator spinner
+In `src/renderer/src/app.tsx`, replace Settings navigation with independent
+`settingsOpen` and opener-focus state. Opening from the gear, `⌘,`, or Navigate
+must not change `AppDestination` or clear a workbench. Normalize the legacy
+`destination.kind === "settings"` route to the overlay over a safe fallback,
+then delete the route and app-shell overflow special case once callers migrate.
+`settings-modal.tsx` always begins on General, owns a labelled scroll region,
+traps focus, returns it to the opener, and opens a dirty-draft dialog on Escape,
+close, or profile switch. A dirty draft compares the current form with its last
+loaded/saved baseline; Save failure keeps the draft, validation error, and
+focus in the modal; Cancel changes nothing.
 
-Expected result: the local Base UI wrappers and their composition APIs are
-confirmed. Do not add a new component if the required primitive already exists
-under `src/renderer/src/components/ui/`; use the existing wrapper and variants.
+Keep Review preferences in Settings as profile-scoped defaults for model and
+reasoning. They never start work. Move Watchlist controls out of Settings.
 
-In `src/renderer/src/flows/settings-flow.tsx`, remove saved-review lists,
-older-version lists, per-review Discard, quarantine deletion, and storage
-overview parsing. Keep one `Local review data` card with `Clear cache` and
-`Clear local review data`. Confirmations state exactly what each preserves or
-removes. Disable while pending and close only after success.
+Data & recovery has exactly two actions and no storage list or internal
+terminology. Use this exact confirmation copy:
+
+- **Clear cache?** — “This removes rebuildable local files. Your saved reviews
+  and diagnostic reports stay.” Confirm: `Clear cache`.
+- **Clear local review data?** — “This removes discarded and unusable local
+  review data. Reviews you can still open or resume, and diagnostic reports,
+  stay.” Confirm: `Clear local data`.
+
+Both dialogs disable their controls while pending, retain the explanation and a
+retryable error after failure, and close only on success.
 
 In `src/main/local-api.ts`, add `POST /v1/storage/clear-local-data` with
-`{ profileId }`. Keep `POST /v1/storage/cache/clear`. Remove `GET /v1/storage`,
-`POST /v1/storage/discard`, and `POST /v1/storage/quarantine/delete` after all
-renderer callers and tests migrate. Update the desktop bridge allowlist and
-authorization tests. Do not remove the service methods until no caller or test
-needs them; delete obsolete paths rather than leaving misleading shims.
+`{ profileId }`. Retain `POST /v1/storage/cache/clear`. After all callers and
+tests migrate, delete `GET /v1/storage`, `POST /v1/storage/discard`, and
+`POST /v1/storage/quarantine/delete`; update the actual route allowlist in
+`src/main/desktop-bridge.ts` and the authorization tests in the same change.
 
 Run:
 
-    pnpm test -- --run tests/renderer/profile-settings.test.tsx tests/desktop-bridge.test.ts tests/local-api-auth.test.ts
+    pnpm test -- --run tests/renderer/profile-settings.test.tsx tests/renderer/app-shell.ui.test.tsx tests/desktop-bridge.test.ts tests/local-api-auth.test.ts
 
-### Step 4: Project truthful recovery and diagnostics
+### Step 4: Project friendly recovery and safe diagnostics
 
-Modify `src/services/review-workbench-projection.ts` to accept the existing
-`ReviewRunRegistry` and add recovery state/capabilities to
-`WorkbenchSessionProjection`. Wire the same registry from `src/main/local-api.ts`.
-Do not persist `runId`; do not infer actionability from
-`currentAttemptId === undefined`.
+Modify `src/services/review-workbench-projection.ts` to consume the existing
+`ReviewRunRegistry`, the preparation-operation reader, and
+`ReviewRecoveryDecision`. Wire those dependencies from the composition root.
+Do not persist `runId`; do not infer actionability from `currentAttemptId`.
+Project only a display-safe recovery DTO: a neutral/positive/warning/destructive
+tone, a renderer-mapped notice key, and zero or one action key. The HTTP and
+renderer contracts reject any path, raw failure, operation/attempt identifier,
+or internal state field.
 
 Modify `src/renderer/src/renderer-models.ts`,
 `src/renderer/src/renderer-contracts.ts`,
 `src/renderer/src/flows/prepared-review-flow.tsx`, and
-`src/renderer/src/components/safe-run-panel.tsx` so actions use capabilities.
-Remove “This review is not running” and “may still be running in the
-background.” Use `Starting review`, `Reviewing`, `Review complete`, `Review
-failed`, `Connection lost`, `Review interrupted`, `Reconnect`, `Start again`,
-and `Try again`. Hide Agent/Mode/Access by default; keep model and Reasoning
-under optional details if they help a maintainer.
+`src/renderer/src/components/safe-run-panel.tsx` to render the Step 1 copy
+matrix. Remove “This review is not running”, “may still be running in the
+background”, Agent, Mode, and Access. Model and Reasoning remain optional
+review context, not recovery diagnostics.
 
 Create `src/domain/review-diagnostic.ts` and
-`src/services/review-diagnostic-service.ts`. Append bounded JSONL under the
-app-owned review directory. Events include incident ID, category, phase,
-retryable flag, review/operation/attempt identifiers, timestamp, duration, and
-redacted detail. Never store credentials, complete diffs, raw stack traces,
-untrusted PR text, or absolute paths in renderer responses. Record preparation,
-run, recovery, migration, and walkthrough-generation boundary failures.
+`src/services/review-diagnostic-service.ts`. Store bounded redacted JSONL
+inside app-owned review data. Events can retain internal category, phase,
+identifiers, timing, retryability, and a redacted detail for support; ordinary
+UI sees only a concise failure message and an optional `Copy incident ID` or
+`Export support bundle` action. The bundle contains recent sanitized events and
+sanitized review metadata, never credentials, complete diffs, raw stack traces,
+untrusted PR text, or absolute paths. Record preparation, run, recovery,
+migration, cleanup, and walkthrough boundary failures.
 
 Add tests in `tests/services/review-workbench-projection.test.ts`,
 `tests/services/review-run-coordinator.test.ts`,
 `tests/services/review-diagnostic-service.test.ts`,
 `tests/services/review-session-preparation.test.ts`, and
-`tests/services/review-failure-service.test.ts`. Run the focused suite from
-Milestone 3.
+`tests/services/review-failure-service.test.ts` for every copy/action mapping,
+redaction, bundle contents, orphan reconciliation, and no-internal-field
+renderer projection. Run the focused Milestone 3 suite.
 
-### Step 4: Define the walkthrough domain and raw patch filter
+### Step 5: Define the walkthrough domain and raw patch filter
 
 Create `src/domain/narrative-walkthrough.ts` with a snapshot type:
 
@@ -666,7 +898,7 @@ overlap, and stale snapshot identity. Run:
 
     pnpm test -- --run tests/domain/narrative-walkthrough.test.ts tests/domain/review-domain.test.ts
 
-### Step 5: Add the finite Flue workflow and adapter
+### Step 6: Add the finite Flue workflow and adapter
 
 Create `src/workflows/generate-walkthrough.ts` with a strict input schema
 containing profile/session IDs, patch/context paths supplied by main, selected
@@ -679,17 +911,21 @@ Create `src/services/flue-cli-walkthrough-invoker.ts` around the fixed argv:
 
     [runtimeExecutable, cliPath, "run", "workflow:generate-walkthrough", "--input", JSON.stringify(input)]
 
+The invoker has its own input/result types and never imports
+`ReviewCompletionService`, `ReviewFailureService`, or the review invoker.
 Parse only terminal JSON through the raw schema. Keep stderr and event output
-inside the main process. Return `execution_failed` or `invalid_result` rather
-than model prose. Test the fixed command, output parsing, timeout, and
-existing review command non-regression in
+inside the main process. Accept caller-owned cancellation in a final options
+object; classify cancellation before ordinary execution failure. Return
+`execution_failed`, `cancelled`, or `invalid_result`, never model prose. Test
+the fixed command, output parsing, timeout/cancellation, isolation from review
+persistence, and existing review command non-regression in
 `tests/services/flue-cli-walkthrough-invoker.test.ts`.
 
 Run:
 
     pnpm test -- --run tests/services/flue-cli-walkthrough-invoker.test.ts tests/services/flue-cli-review-invoker.test.ts
 
-### Step 6: Add snapshot-bound service and local API
+### Step 7: Add snapshot-bound service and local API
 
 Create `src/services/narrative-walkthrough-service.ts` with an in-memory record
 per profile/session. `generate` loads the session and patch only in main,
@@ -699,20 +935,25 @@ retry. A late completion publishes only when token and snapshot still match.
 `load` returns `stale` when the stored hash/head differs. Do not mutate session,
 attempt, draft, or GitHub state.
 
-Add authenticated `POST /v1/reviews/walkthrough/generate` and
-`POST /v1/reviews/walkthrough/load` in `src/main/local-api.ts`, production
-invoker wiring in `src/main/electron-main.ts`, and matching
+Add a distinct `walkthroughs: NarrativeWalkthroughService` dependency to the
+`LocalApiConfiguration` seam in `src/main/local-api.ts`; its two authenticated
+routes call only that dependency, never the review workflow invoker. In
+`src/main/electron-main.ts`, build it through a dedicated
+`createWalkthroughInvoker()` composition path that constructs only
+`FlueCliWalkthroughInvoker` and `NarrativeWalkthroughService`; it must not
+construct or invoke review completion/failure persistence. Add matching
 `src/main/desktop-bridge.ts` allowlist entries. Request bodies contain only
-profile/session/model/reasoning. Return 400/404/409/503 mappings described in
-Milestone 6. Include the user-safe lifecycle projection and optional incident
-ID/recovery message, never patch paths or raw errors.
+profile/session/model/reasoning. Return 400/404/409/503
+mappings described in Milestone 6. Include a display-safe lifecycle projection
+and optional incident ID, never patch paths, internal state names, or raw
+errors.
 
 Test `tests/services/narrative-walkthrough-service.test.ts` for stale-result
 suppression, retry, invalid output, missing session, patch mutation, and
 generation isolation. Extend `tests/local-api-auth.test.ts` for capability,
 origin, input validation, and error mapping. Run the Milestone 6 command.
 
-### Step 7: Add renderer contracts, explicit generation dialog, and takeover
+### Step 8: Add renderer contracts, explicit generation dialog, and takeover
 
 Extend renderer parsing with a strict discriminated walkthrough lifecycle and
 the recovery projection. Reject malformed hunk IDs, paths, line ranges, and
@@ -728,12 +969,18 @@ session, and show `Retry generation` for failed/invalid output or `Generate
 walkthrough` for stale snapshots. Do not auto-request from an effect.
 
 Create `src/renderer/src/components/narrative-walkthrough.tsx` with local
-`currentSectionId` and `reviewedSectionIds`. Render focus, chapter rail,
-section prose, exact hunk groups, Support, Reviewed controls, bounded
-Prev/Next keyboard navigation, and persistent `Back to files`. Create
-`narrative-walkthrough-diff.tsx` to call the raw patch filter and render
-reparsed Pierre blocks with existing view preferences and draft annotations.
-Use unique block IDs when a file appears in multiple sections.
+`currentSectionId` and `reviewedSectionIds`. Render focus, a labelled chapter
+rail, section prose, exact hunk groups, Support, Reviewed controls, and a
+persistent `Back to files` button. `ArrowLeft`/`ArrowRight` and `j`/`k` move to
+the previous/next enabled section only when focus is inside the takeover and
+not in an input, textarea, select, or code annotation editor. At either end,
+the key is a no-op and the previous/next control is disabled. After a keyboard
+move, focus the new section heading; Escape returns focus to `Back to files`
+without closing the takeover. `Back to files` restores focus to the Files-mode
+control that opened it. Create `narrative-walkthrough-diff.tsx` to call the raw
+patch filter and render reparsed Pierre blocks with existing view preferences
+and draft annotations. Use unique block IDs when a file appears in multiple
+sections.
 
 Add `walkthroughOpen` only to `CompletedReviewWorkbench`; opening it must not
 write `selectedPath`, `activePath`, collapsed paths, passive scroll-follow,
@@ -764,16 +1011,20 @@ Run:
 
     pnpm test -- --run tests/renderer/renderer-contracts.test.ts tests/renderer/completed-review-flow.ui.test.tsx tests/renderer/narrative-walkthrough.ui.test.tsx tests/renderer/narrative-walkthrough-diff.test.tsx tests/renderer/docked-diff-state.ui.test.tsx
 
-### Step 8: Migrate local state and cover reported scenarios
+### Step 9: Migrate local state and cover reported scenarios
 
 Update `src/adapters/storage/maintainer-inbox-cache-store.ts` to accept old
 action labels and normalize them to action kinds before renderer presentation.
 Update `src/adapters/storage/review-session-store.ts`,
 `src/services/review-recovery-service.ts`, and
 `src/services/review-preparation-journal.ts` with an explicit version marker.
-The migration must split records/attempts, convert old-process active attempts
-to interrupted, make discarded sessions eligible for new attempts, quarantine
-invalid sessions with diagnostics, and be safe to rerun after partial failure.
+The migration must preserve the existing review-session snapshot model, add
+only the `Interrupted` attempt transition and preparation-operation journal
+needed by Step 1, convert old-process active attempts to interrupted, make
+discarded sessions eligible for new attempts, quarantine invalid sessions with
+diagnostics, and be safe to rerun after partial failure. Persisted technical
+states are mapped to the Step 1 decision before any renderer projection; do not
+add them to API copy or browser fixtures.
 
 Add fixtures/tests in:
 
@@ -808,7 +1059,16 @@ exercise dirty-draft Save/Discard/Cancel; scroll a long Workspace section
 without scrolling the page behind it; and run both Data & recovery
 confirmations.
 
-### Step 9: Run full verification and packaged QA
+Extend `tests/browser/accessibility.spec.ts` with axe checks for the Settings
+modal and walkthrough takeover. Assert the modal has an accessible name,
+initial focus, focus trap, focus return, and a labelled independently scrollable
+region; assert the walkthrough rail, section headings, Reviewed controls,
+disabled previous/next controls, key bindings, editor exclusion, and `Back to
+files` focus return. Run `pnpm test:a11y` after those fixtures are added; the
+existing dashboard/workbench-only accessibility suite is not evidence for these
+new surfaces.
+
+### Step 10: Run full verification and packaged QA
 
 From `/Users/kwanpham/Work/cfw/patchdesk`, run the required desktop order:
 
@@ -816,6 +1076,7 @@ From `/Users/kwanpham/Work/cfw/patchdesk`, run the required desktop order:
     pnpm typecheck
     pnpm test -- --run
     pnpm build
+    pnpm test:design
     pnpm exec playwright test
     pnpm test:a11y
     pnpm package:mac
@@ -851,17 +1112,20 @@ Acceptance is behavioral:
   whether `Run review` is shown. Reconnect appears only for a registry-owned
   live run. Interrupted and failed attempts expose a truthful next action.
 - Every visible error has an action or is intentionally omitted from ordinary
-  lists. Diagnostics expose incident ID, category, phase, and timestamp only;
-  no raw stack trace, credential, path, full diff, or untrusted PR text leaks.
+  lists. Ordinary UI shows only concise action copy and, where needed, an
+  incident ID; category, phase, timestamps, and other technical evidence stay
+  inside the sanitized support bundle. No raw stack trace, credential, path,
+  full diff, or untrusted PR text leaks.
 - Settings opens as a centered modal from any supported route, always starts on
   General, preserves the underlying route, and scrolls independently. Theme
   changes apply immediately; clean profile switching applies immediately;
   dirty profile drafts require Save, Discard, or Cancel. Settings uses only
   existing shadcn/Base UI components and local composition rules.
 - Settings contains no saved-review lists, older-version lists, Discard, or
-  quarantine controls. `Clear cache` retains saved reviews and diagnostics;
-  `Clear local review data` removes disposable local review data while retaining
-  running/recoverable reviews.
+  quarantine controls. Its two confirmation dialogs use the exact Step 3 copy;
+  `Clear cache` retains saved reviews and diagnostics, while `Clear local
+  review data` removes only disposable local review data and retains every
+  review a user can still open, resume, retry, or prepare.
 - Generate walkthrough is manual, available only for a stable completed
   snapshot, and preceded by model/reasoning selection. Opening or completing a
   review does not call the generation API.
@@ -937,23 +1201,28 @@ secrets, raw diffs, local paths from user machines, or full model output.
 
 The implementation must end with these boundaries:
 
-- `src/domain/review-recovery.ts` exports explicit recovery state and
-  capability types; `src/services/review-workbench-projection.ts` consumes the
-  existing `ReviewRunRegistry.find(owner)` dependency.
+- `src/domain/review-recovery.ts` exports the pure one-action
+  `ReviewRecoveryDecision`; `src/services/review-workbench-projection.ts`
+  consumes `ReviewRunRegistry.find(owner)` and the preparation reader, then
+  emits only display-safe notice, tone, and optional action fields.
 - `src/domain/review-diagnostic.ts` and
   `src/services/review-diagnostic-service.ts` provide bounded redacted local
-  diagnostic events and incident IDs.
-- `src/adapters/storage/review-artifact-storage.ts` owns validated,
+  diagnostic events, incident IDs, and sanitized support-bundle export; normal
+  UI receives no diagnostic state beyond an optional incident ID.
+- `src/services/review-lifecycle-gate.ts` serializes profile lifecycle
+  mutations. `src/adapters/storage/review-artifact-storage.ts` owns validated,
   idempotent artifact removal; `src/services/storage-management-service.ts`
-  owns retention classification and `clearLocalData(profileId)`.
+  owns retention classification and `clearLocalData(profileId)` inside that
+  gate.
 - `src/main/local-api.ts` exposes only authenticated, origin-bound
   `POST /v1/storage/clear-local-data`, `POST /v1/storage/cache/clear`,
   `POST /v1/reviews/walkthrough/generate`,
   `POST /v1/reviews/walkthrough/load` for the new flows. Obsolete Settings-only
   routes are gone after migration.
-- `src/renderer/src/components/settings-modal.tsx` owns centered global
-  Settings invocation, General-first section state, focus return, dirty-close
-  guards, and bounded scrolling. It composes existing shadcn/Base UI wrappers
+- `src/renderer/src/app.tsx` owns independent `settingsOpen` and opener-focus
+  state. `src/renderer/src/components/settings-modal.tsx` owns the centered
+  global overlay, General-first section state, focus return, dirty-close guards,
+  and bounded scrolling. It composes existing shadcn/Base UI wrappers
   from `src/renderer/src/components/ui/`; it does not create a parallel UI
   primitive system.
 - `src/renderer/src/flows/settings-flow.tsx` and focused section components own
@@ -965,7 +1234,8 @@ The implementation must end with these boundaries:
   `normalizeNarrativeWalkthrough`, and `filterNarrativePatchToHunks`.
 - `src/workflows/generate-walkthrough.ts` owns the read-only structured-output
   schema and prompt; `src/services/flue-cli-walkthrough-invoker.ts` owns the
-  fixed Flue command and terminal-output parsing.
+  fixed Flue command, caller-owned cancellation, and terminal-output parsing.
+  It is a separate dependency graph from review completion/failure persistence.
 - `src/services/narrative-walkthrough-service.ts` owns snapshot binding,
   generation tokens, normalization, stale suppression, in-memory lifecycle,
   and diagnostic recording.
