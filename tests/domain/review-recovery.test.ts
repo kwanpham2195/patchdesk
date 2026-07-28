@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decideReviewRecovery, type ReviewRecoveryInput } from "../../src/domain/review-recovery";
+import { decideReviewRecovery, projectReviewRecovery, type ReviewRecoveryInput } from "../../src/domain/review-recovery";
 
 function input(overrides: Partial<ReviewRecoveryInput> = {}): ReviewRecoveryInput {
   return {
@@ -22,6 +22,19 @@ describe("decideReviewRecovery", () => {
     [{ session: { state: { _tag: "Merged", mergedAt: "2026-01-01T00:00:00.000Z" } } }, { _tag: "Unavailable" }],
   ] as const)("maps durable state to one display-safe decision", (overrides, expected) => {
     expect(decideReviewRecovery(input(overrides))).toEqual(expected);
+  });
+
+  it("projects every decision into one friendly action slot", () => {
+    const cases = [
+      [{ _tag: "Preparing" }, { noticeKey: "preparing", tone: "neutral" }],
+      [{ _tag: "Actionable", action: "run_review" }, { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" }],
+      [{ _tag: "Actionable", action: "reconnect" }, { noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" }],
+      [{ _tag: "Actionable", action: "start_again" }, { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" }],
+      [{ _tag: "Actionable", action: "try_again" }, { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" }],
+      [{ _tag: "Actionable", action: "prepare_again" }, { noticeKey: "needs_preparation", tone: "warning", actionKey: "prepare_again" }],
+      [{ _tag: "Unavailable" }, undefined],
+    ] as const;
+    for (const [decision, expected] of cases) expect(projectReviewRecovery(decision)).toEqual(expected);
   });
 
   it("does not expose technical fields or copy", () => {

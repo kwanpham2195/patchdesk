@@ -54,6 +54,21 @@ describe("local API capability boundary", () => {
     await expect(response.json()).resolves.toEqual({ status: "ok" });
   });
 
+  it("exports a sanitized support bundle only through the authenticated route", async () => {
+    localApi = await startTestLocalApi();
+    const response = await fetch(new URL("v1/diagnostics/support-bundle", localApi.url), {
+      method: "POST",
+      headers: {
+        "X-Patchdesk-Capability": capability,
+        Origin: allowedOrigin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ profileId: "cfw" }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ schemaVersion: 1, profileId: "cfw", events: [] });
+  });
+
   it("rejects a request with no app capability", async () => {
     localApi = await startTestLocalApi();
 

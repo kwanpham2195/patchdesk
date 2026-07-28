@@ -34,6 +34,7 @@ describe("desktop request bridge", () => {
   it("allows only the global Settings cleanup routes", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/storage/cache/clear", method: "POST" })).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/storage/clear-local-data", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/diagnostics/support-bundle", method: "POST" })).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/storage", method: "GET" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/storage/discard", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/storage/quarantine/delete", method: "POST" })).toBe(false);

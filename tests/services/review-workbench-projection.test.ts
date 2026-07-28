@@ -336,6 +336,32 @@ describe("ReviewWorkbenchProjectionService", () => {
     }
   });
 
+  it("fails closed when the preparation journal cannot be read", async () => {
+    const github = fakeGitHub({ current: summary(headSha), checks: { overall: "pending", checks: [] } });
+    const { root, paths, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const projection = new ReviewWorkbenchProjectionService(
+        new ProfileStore(paths),
+        sessions,
+        github,
+        () => now,
+        { paths, preparation: { activeFor: async () => ({ _tag: "err", error: { _tag: "PreparationJournalFailed" } }) } },
+      );
+      const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+      expect(loaded).toMatchObject({
+        _tag: "ok",
+        value: { recoveryView: { noticeKey: "preparing", tone: "neutral" } },
+      });
+      if (loaded._tag === "ok") {
+        expect(loaded.value.recoveryView?.actionKey).toBeUndefined();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("surfaces the last run failure for a failed session", async () => {
     const github = fakeGitHub({
       current: summary(headSha),

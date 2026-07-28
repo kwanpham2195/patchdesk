@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { err, ok, type Result } from "../domain/result";
 import { parseWorkspaceProfileId, type WorkspaceProfileId } from "../domain/ids";
 import {
+  REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH,
+  REVIEW_DIAGNOSTIC_MAX_EVENTS,
+  REVIEW_DIAGNOSTIC_MAX_FILE_BYTES,
   normalizeReviewDiagnostic,
   parseReviewDiagnosticEvent,
   parseReviewDiagnosticMetadata,
@@ -38,6 +41,7 @@ export type SupportBundleInput = {
 export class ReviewDiagnosticService {
   private readonly maxEvents: number;
   private readonly maxDetailLength: number;
+  private readonly profileLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly paths: PatchdeskPaths,
@@ -45,15 +49,18 @@ export class ReviewDiagnosticService {
     private readonly createIncidentId: () => string = randomUUID,
     options: ReviewDiagnosticServiceOptions = {},
   ) {
-    this.maxEvents = Math.max(1, options.maxEvents ?? 200);
-    this.maxDetailLength = Math.max(1, Math.min(options.maxDetailLength ?? 512, 512));
+    this.maxEvents = Math.min(REVIEW_DIAGNOSTIC_MAX_EVENTS, Math.max(1, options.maxEvents ?? REVIEW_DIAGNOSTIC_MAX_EVENTS));
+    this.maxDetailLength = Math.min(
+      REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH,
+      Math.max(1, options.maxDetailLength ?? REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH),
+    );
   }
 
   /** Record one redacted event and return its incident identifier. */
   async record(
     input: Omit<ReviewDiagnosticInput, "incidentId" | "at"> & { readonly incidentId?: string; readonly at?: string },
   ): Promise<Result<ReviewDiagnosticEvent, ReviewDiagnosticFailure>> {
-    const event = normalizeReviewDiagnostic(
+    const normalized = normalizeReviewDiagnostic(
       {
         ...input,
         incidentId: input.incidentId ?? this.createIncidentId(),
@@ -61,35 +68,43 @@ export class ReviewDiagnosticService {
       },
       this.maxDetailLength,
     );
-    return this.persist(event);
+    const event = parseReviewDiagnosticEvent(normalized);
+    if (event === undefined) return err({ _tag: "ReviewDiagnosticStorageFailed" });
+    const profileId = parseWorkspaceProfileId(event.profileId);
+    if (profileId._tag === "err") return err({ _tag: "ReviewDiagnosticStorageFailed" });
+    return this.withProfileLock(profileId.value, () => this.persist(event));
   }
 
   /** Read the most recent valid events for one profile. */
   async recent(
     profileId: WorkspaceProfileId,
   ): Promise<Result<ReadonlyArray<ReviewDiagnosticEvent>, ReviewDiagnosticFailure>> {
-    const loaded = await this.loadEvents(profileId);
-    return loaded._tag === "err" ? loaded : ok(loaded.value.slice(-this.maxEvents));
+    return this.withProfileLock(profileId, async () => {
+      const loaded = await this.loadEvents(profileId);
+      return loaded._tag === "err" ? loaded : ok(loaded.value.slice(-this.maxEvents));
+    });
   }
 
   /** Build a bounded support bundle containing only sanitized local evidence. */
   async exportSupportBundle(
     input: SupportBundleInput,
   ): Promise<Result<ReviewSupportBundle, ReviewDiagnosticFailure>> {
-    const events = await this.recent(input.profileId);
-    if (events._tag === "err") return events;
-    const metadata = input.metadata === undefined
-      ? undefined
-      : parseReviewDiagnosticMetadata({
-          ...(input.metadata.title === undefined ? {} : { title: redactDiagnosticDetail(input.metadata.title, this.maxDetailLength) }),
-        });
-    return ok({
-      schemaVersion: 1,
-      generatedAt: this.now(),
-      profileId: input.profileId,
-      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(metadata === undefined ? {} : { metadata }),
-      events: events.value,
+    return this.withProfileLock(input.profileId, async () => {
+      const events = await this.loadEvents(input.profileId);
+      if (events._tag === "err") return events;
+      const metadata = input.metadata === undefined
+        ? undefined
+        : parseReviewDiagnosticMetadata({
+            ...(input.metadata.title === undefined ? {} : { title: redactDiagnosticDetail(input.metadata.title, this.maxDetailLength) }),
+          });
+      return ok({
+        schemaVersion: 1,
+        generatedAt: this.now(),
+        profileId: input.profileId,
+        ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+        ...(metadata === undefined ? {} : { metadata }),
+        events: events.value.slice(-this.maxEvents),
+      });
     });
   }
 
@@ -102,7 +117,13 @@ export class ReviewDiagnosticService {
     try {
       const path = diagnosticFile(this.paths, profileId.value);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-      await writeFile(path, `${events.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
+      const temporaryPath = `${path}.${randomUUID()}.tmp`;
+      await writeFile(
+        temporaryPath,
+        `${events.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+      await rename(temporaryPath, path);
       return ok(event);
     } catch {
       return err({ _tag: "ReviewDiagnosticStorageFailed" });
@@ -114,7 +135,7 @@ export class ReviewDiagnosticService {
   ): Promise<Result<ReadonlyArray<ReviewDiagnosticEvent>, ReviewDiagnosticFailure>> {
     let contents: string;
     try {
-      contents = await readFile(diagnosticFile(this.paths, profileId), "utf8");
+      contents = await readBoundedText(diagnosticFile(this.paths, profileId));
     } catch (cause: unknown) {
       if (isNotFound(cause)) return ok([]);
       return err({ _tag: "ReviewDiagnosticStorageFailed" });
@@ -130,6 +151,40 @@ export class ReviewDiagnosticService {
       }
     }
     return ok(events.slice(-this.maxEvents));
+  }
+
+  private async withProfileLock<T>(
+    profileId: WorkspaceProfileId,
+    operation: () => Promise<Result<T, ReviewDiagnosticFailure>>,
+  ): Promise<Result<T, ReviewDiagnosticFailure>> {
+    const previous = this.profileLocks.get(profileId);
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.profileLocks.set(profileId, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release?.();
+      if (this.profileLocks.get(profileId) === current) this.profileLocks.delete(profileId);
+    }
+  }
+}
+
+async function readBoundedText(path: string): Promise<string> {
+  const handle = await open(path, "r");
+  try {
+    const details = await handle.stat();
+    const start = Math.max(0, details.size - REVIEW_DIAGNOSTIC_MAX_FILE_BYTES);
+    const length = Math.min(details.size, REVIEW_DIAGNOSTIC_MAX_FILE_BYTES);
+    const buffer = Buffer.alloc(length);
+    const read = await handle.read(buffer, 0, length, start);
+    const contents = buffer.subarray(0, read.bytesRead).toString("utf8");
+    if (start === 0) return contents;
+    const firstLine = contents.indexOf("\n");
+    return firstLine === -1 ? "" : contents.slice(firstLine + 1);
+  } finally {
+    await handle.close();
   }
 }
 

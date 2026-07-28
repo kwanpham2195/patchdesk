@@ -27,6 +27,7 @@ import { preparedReviewArtifacts } from "./review-attempt-artifacts";
 import type { ReviewComparisonService } from "./review-comparison-service";
 import type { ReviewContextService } from "./review-context-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import {
   ReviewPreparationJournal,
   promoteStagedArtifact,
@@ -82,6 +83,7 @@ type PreparationDependencies = {
   readonly comparisons?: ReviewComparisonService;
   readonly artifacts: ReviewArtifactStorage;
   readonly lifecycleGate?: ReviewLifecycleGate;
+  readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 };
 
 /**
@@ -489,6 +491,16 @@ export class ReviewSessionPreparation {
     failure: PrepareReviewSessionFailure,
   ): Promise<Result<never, PrepareReviewSessionFailure>> {
     const cleaned = await journal.cleanup(this.dependencies.worktrees);
+    if (this.dependencies.diagnostics !== undefined) {
+      await this.dependencies.diagnostics.record({
+        profileId: journal.profileId,
+        sessionId: journal.sessionId,
+        category: "preparation",
+        phase: cleaned._tag === "ok" ? "preparation-failure" : "preparation-cleanup",
+        retryable: true,
+        detail: failure._tag,
+      });
+    }
     return cleaned._tag === "ok" ? err(failure) : err({ _tag: "PreparationCleanupUnavailable" });
   }
 

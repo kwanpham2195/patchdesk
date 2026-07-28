@@ -15,11 +15,11 @@ describe("recovery copy", () => {
         sessionId="session"
         attemptId="001"
         onStart={async () => {}}
-        recoveryMessage="Reconnect to follow this review in this window."
-        recoveryActionLabel="Reconnect"
+        recoveryView={{ noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" }}
       />,
     );
-    expect(await screen.findByText("Reconnect to follow this review in this window.")).toBeTruthy();    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+    expect(await screen.findByText("Reconnect to follow the run in this window without restarting analysis.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
   });
 });
 

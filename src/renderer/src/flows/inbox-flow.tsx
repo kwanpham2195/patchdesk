@@ -579,8 +579,7 @@ function Outcome({
             <li>
               <span className="font-medium">2. Check local tools</span>
               <p className="text-muted-foreground">
-                Verify Git, GitHub CLI, and the bundled review runtime without
-                exposing credentials.
+                Verify Git and GitHub access without exposing credentials.
               </p>
             </li>
             <li>

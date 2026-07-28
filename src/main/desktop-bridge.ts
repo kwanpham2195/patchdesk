@@ -66,6 +66,7 @@ const allowedRoutes = new Set([
   "POST /v1/runs/reconnect",
   "POST /v1/storage/cache/clear",
   "POST /v1/storage/clear-local-data",
+  "POST /v1/diagnostics/support-bundle",
 ]);
 
 const maxResponseBytes = 2 * 1024 * 1024;

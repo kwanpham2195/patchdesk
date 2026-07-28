@@ -13,6 +13,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { ReviewWorktreeService } from "./review-worktree-service";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 export type PreparationJournalFailure = { readonly _tag: "PreparationJournalFailed" };
 export type PreparationCleanupFailure = { readonly _tag: "PreparationCleanupFailed" };
@@ -75,6 +76,14 @@ export class ReviewPreparationJournal {
 
   get stagingRoot(): string {
     return this.content.stagingRoot;
+  }
+
+  get profileId(): WorkspaceProfileId {
+    return this.content.profileId as WorkspaceProfileId;
+  }
+
+  get sessionId(): ReviewSessionId {
+    return this.content.sessionId as ReviewSessionId;
   }
 
   /** Read the active operation for one session without exposing journal paths. */
@@ -175,6 +184,7 @@ export class ReviewPreparationJournal {
     worktrees: ReviewWorktreeService,
     sessions?: Pick<ReviewSessionStore, "load">,
     lifecycleGate?: ReviewLifecycleGate,
+    diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const journals = await findJournals(paths);
     let recovered = 0;
@@ -207,8 +217,22 @@ export class ReviewPreparationJournal {
       const success = lifecycleGate !== undefined && profileId._tag === "ok"
         ? await lifecycleGate.withProfileLock(profileId.value, process)
         : await process();
-      if (success) recovered += 1;
-      else failed += 1;
+      if (success) {
+        recovered += 1;
+      } else {
+        failed += 1;
+        const parsedSessionId = parseReviewSessionId(content.sessionId);
+        if (diagnostics !== undefined && profileId._tag === "ok" && parsedSessionId._tag === "ok") {
+          await diagnostics.record({
+            profileId: profileId.value,
+            sessionId: parsedSessionId.value,
+            category: "preparation",
+            phase: "journal-recovery",
+            retryable: true,
+            detail: "Preparation journal recovery failed.",
+          });
+        }
+      }
     }
     return { recovered, failed };
   }

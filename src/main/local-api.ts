@@ -182,6 +182,7 @@ export async function startLocalApiServer(
     new ReviewWorktreeService(paths, readOnlyGit),
     sessions,
     lifecycleGate,
+    diagnostics,
   );
   await new ReviewRecoveryService(
     profiles,
@@ -240,13 +241,14 @@ export async function startLocalApiServer(
         () => new Date().toISOString() as never,
       ),
       lifecycleGate,
+      diagnostics,
     }),
     new ReviewWorkbenchProjectionService(
       profiles,
       sessions,
       github,
       () => new Date().toISOString() as never,
-      { paths, runs, preparation: ReviewPreparationJournal },
+      { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
     ),
   );
   const reviewCompletion = new ReviewCompletionService(
@@ -311,12 +313,24 @@ export async function startLocalApiServer(
   app.put("/v1/profiles", async (context) =>
     response(context, await dashboard.saveProfile(await jsonBody(context))),
   );
-  app.post("/v1/profiles/select", async (context) =>
-    response(
-      context,
-      await dashboard.selectProfile(readObjectField(await jsonBody(context), "id")),
-    ),
-  );
+  app.post("/v1/profiles/select", async (context) => {
+    const body = await jsonBody(context);
+    const id = readObjectField(body, "id");
+    const selected = await dashboard.selectProfile(id);
+    if (selected._tag === "err") {
+      const profileId = parseWorkspaceProfileId(id);
+      if (profileId._tag === "ok") {
+        await diagnostics.record({
+          profileId: profileId.value,
+          category: "recovery",
+          phase: "profile-switch",
+          retryable: true,
+          detail: "Profile selection failed.",
+        });
+      }
+    }
+    return response(context, selected);
+  });
   app.get("/v1/settings", async (context) =>
     response(context, await dashboard.getSettings()),
   );
@@ -560,6 +574,28 @@ export async function startLocalApiServer(
       context,
       await storageManagement.clearCache(profileId.value),
     );
+  });
+  app.post("/v1/diagnostics/support-bundle", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(
+      object({
+        profileId: pipe(string(), minLength(1)),
+        sessionId: optional(pipe(string(), minLength(1))),
+      }),
+      body,
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    if (profileId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    const sessionId = parsed.output.sessionId === undefined ? undefined : parseReviewSessionId(parsed.output.sessionId);
+    if (sessionId?._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    const bundle = await diagnostics.exportSupportBundle({
+      profileId: profileId.value,
+      ...(sessionId?._tag === "ok" ? { sessionId: sessionId.value } : {}),
+    });
+    return bundle._tag === "ok"
+      ? context.json(bundle.value)
+      : context.json({ error: "diagnostics_unavailable" }, 503);
   });
   app.get("/v1/runs/:runId", (context) => {
     const sessionId = context.req.query("sessionId");

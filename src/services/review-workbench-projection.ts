@@ -41,6 +41,7 @@ import {
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 import type { ReviewRunRegistry } from "./review-run-registry";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { err, ok, type Result } from "../domain/result";
 
 export type { ReviewScopeProjection };
@@ -146,6 +147,7 @@ export class ReviewWorkbenchProjectionService {
       readonly paths?: PatchdeskPaths;
       readonly runs?: Pick<ReviewRunRegistry, "find">;
       readonly preparation?: Pick<typeof ReviewPreparationJournal, "activeFor">;
+      readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
     },
   ) {}
 
@@ -423,6 +425,19 @@ export class ReviewWorkbenchProjectionService {
           session.key.profileId,
           session.id,
         );
+    if (activePreparation?._tag === "err") {
+      if (this.recovery?.diagnostics !== undefined) {
+        await this.recovery.diagnostics.record({
+          profileId: session.key.profileId,
+          sessionId: session.id,
+          category: "recovery",
+          phase: "preparation-journal-read",
+          retryable: true,
+          detail: "The preparation journal could not be read.",
+        });
+      }
+      return projectReviewRecovery({ _tag: "Preparing" });
+    }
     const latestAttempt = attempts === undefined && session.currentAttemptId !== undefined
       ? await this.sessions.loadAttempt(session.key.profileId, session.id, session.currentAttemptId)
       : undefined;

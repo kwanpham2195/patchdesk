@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,6 +48,69 @@ describe("ReviewDiagnosticService", () => {
 
       const stored = await readFile(join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl"), "utf8");
       expect(stored.split("\n").filter(Boolean)).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed for paths, diffs, credentials, PR text, and stack details", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-unsafe");
+      const recorded = await service.record({
+        profileId,
+        sessionId,
+        category: "recovery",
+        phase: "boundary",
+        retryable: true,
+        detail: [
+          "/opt/app /var/log /Users/name C:\\\\work\\\\repo",
+          "diff --git a/src/a.ts b/src/a.ts",
+          "--- a/src/a.ts +++ b/src/a.ts @@ -1 +1 @@",
+          "PR title: untrusted maintainer prose",
+          "api_key=secret-value Authorization: Basic dXNlcjpwYXNz Bearer token-value password=hunter2",
+          "Error: raw failure\n    at /opt/app/index.ts:4:2",
+        ].join(" "),
+      });
+      expect(recorded._tag).toBe("ok");
+      if (recorded._tag === "err") return;
+      expect(recorded.value.detail).toBe("[redacted diagnostic detail]");
+      const bundle = await service.exportSupportBundle({ profileId, sessionId });
+      expect(bundle._tag).toBe("ok");
+      if (bundle._tag === "err") return;
+      const serialized = JSON.stringify(bundle.value);
+      for (const forbidden of ["/opt/app", "/var/log", "C:\\\\work", "diff --git", "--- a/", "+++ b/", "PR title", "secret-value", "dXNlcjpwYXNz", "Bearer", "hunter2", "Error: raw failure", "at /opt"]) {
+        expect(serialized).not.toContain(forbidden);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent writes and bounds oversized existing files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const service = new ReviewDiagnosticService(paths, () => must(at), () => `incident-${Math.random()}`, { maxEvents: 10_000 });
+      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
+      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
+      await writeFile(file, `${"not-json\\n".repeat(500_000)}${JSON.stringify({ schemaVersion: 1, incidentId: "old", at: "2026-07-18T00:00:00.000Z", category: "run", phase: "old", profileId, retryable: false })}\\n`, "utf8");
+
+      const results = await Promise.all(Array.from({ length: 25 }, (_, index) => service.record({
+        profileId,
+        category: "run",
+        phase: `concurrent-${index}`,
+        retryable: true,
+        detail: `safe failure ${index}`,
+      })));
+      expect(results.every((result) => result._tag === "ok")).toBe(true);
+      const recent = await service.recent(profileId);
+      expect(recent._tag).toBe("ok");
+      if (recent._tag === "err") return;
+      expect(recent.value).toHaveLength(25);
+      expect(recent.value.length).toBeLessThanOrEqual(200);
+      expect((await readFile(file, "utf8")).length).toBeLessThan(200_000);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

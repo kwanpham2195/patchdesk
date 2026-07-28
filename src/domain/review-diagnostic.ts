@@ -61,6 +61,11 @@ export type InvalidReviewDiagnostic = {
   readonly _tag: "InvalidReviewDiagnostic";
 };
 
+export const REVIEW_DIAGNOSTIC_MAX_EVENTS = 200;
+export const REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH = 512;
+export const REVIEW_DIAGNOSTIC_MAX_FILE_BYTES = 256_000;
+const REDACTED_DETAIL = "[redacted diagnostic detail]";
+
 /** Parse one persisted diagnostic event before it enters service state. */
 export function parseReviewDiagnosticEvent(
   input: unknown,
@@ -81,18 +86,32 @@ export function parseReviewDiagnosticMetadata(
  * Remove paths, credentials, diff bodies, and stack detail before diagnostic
  * text is persisted or included in a support bundle.
  */
-export function redactDiagnosticDetail(input: string, maxLength = 512): string | undefined {
-  const normalized = input
-    .replace(/(?:Bearer\s+|token=|password=|secret=)[^\s,;]+/gi, "[redacted-secret]")
-    .replace(/(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/g, "[redacted-secret]")
-    .replace(/(?:\/Users\/|\/private\/|\/tmp\/|[A-Za-z]:\\)[^\s,;]+/g, "[redacted-path]")
-    .replace(/@@[^\n]*@@/g, "[diff omitted]")
-    .replace(/(?:raw\s+stack|stack\s+trace)/gi, "[stack omitted]")
-    .replace(/^\s*at\s+.*$/gm, "[stack omitted]")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-  return normalized.length === 0 ? undefined : normalized;
+export function redactDiagnosticDetail(
+  input: string,
+  maxLength = REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH,
+): string | undefined {
+  const normalized = Array.from(input, (character) => {
+    const code = character.codePointAt(0);
+    return code !== undefined && (code < 32 || code === 127) ? " " : character;
+  }).join("").replace(/\s+/g, " ").trim();
+  if (normalized.length === 0) return undefined;
+
+  // Detail is caller-controlled and may contain untrusted PR text, so reject
+  // the whole field when any high-risk shape is present instead of attempting
+  // to preserve an incomplete fragment of a secret, path, diff, or stack.
+  const unsafe = [
+    /(?:^|\s)\/(?:[A-Za-z0-9._-]+\/)+[^\s]*/,
+    /(?:^|\s)[A-Za-z]:[\\/][^\s]*/,
+    /(?:diff --git|^---\s|^\+\+\+\s|@@[^@]*@@)/im,
+    /\b(?:pr|pull request|title|description|body)\b/i,
+    /\b(?:bearer|basic|authorization|api[_-]?key|token|password|secret)\s*[:=]/i,
+    /(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/,
+    /(?:^|\s)(?:Error\b|at\s+[^ ]+\s*\()/m,
+    /(?:raw\s+stack|stack\s+trace)/i,
+  ];
+  if (unsafe.some((pattern) => pattern.test(normalized))) return REDACTED_DETAIL;
+
+  return normalized.slice(0, Math.min(Math.max(1, maxLength), REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH));
 }
 
 /** Build a redacted diagnostic event from a trusted service input. */

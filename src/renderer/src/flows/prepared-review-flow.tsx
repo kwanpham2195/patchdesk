@@ -125,7 +125,7 @@ export function PreparedReviewFlow({
 
   const startRun = async (): Promise<{ readonly runId: string; readonly attemptId: string } | undefined> => {
     if (reviewModel === undefined) {
-      setRunError("No enabled Pi review model is available. Update the active Pi runtime settings, then try again.");
+      setRunError("No enabled review model is available. Try again after review models are available.");
       return undefined;
     }
     try {
@@ -294,7 +294,8 @@ export function PreparedReviewFlow({
             sessionId={workbench.session.id}
             {...(activeAttemptId === undefined ? {} : { attemptId: activeAttemptId })}
             {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
-            {...(runError === undefined ? {} : { startError: runError })}
+            {...(workbench.recoveryView === undefined ? {} : { recoveryView: workbench.recoveryView })}
+            startFailed={runError !== undefined}
             onStart={async () => {
               const started = await startOwnedRun();
               if (!started) setRunError("Patchdesk could not start this review run.");
@@ -322,7 +323,7 @@ export function PreparedReviewFlow({
                     <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
                   </Select>
                 </Label>
-                {reviewCatalogUnavailable ? <p className="text-sm text-muted-foreground">No enabled Pi model is currently available. Patchdesk will not start a review until the runtime configuration is available.</p> : null}
+                {reviewCatalogUnavailable ? <p className="text-sm text-muted-foreground">No enabled review model is currently available. Try again after review models are available.</p> : null}
               </div>
               {runError === undefined ? null : (
                 <Alert variant="destructive">

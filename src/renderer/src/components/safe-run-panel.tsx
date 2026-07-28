@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
+import type { ReviewRecoveryView } from "../../../domain/review-recovery";
+import { recoveryActionLabel, recoveryCopy } from "../review-copy";
 import {
   parseSafeRunProjection,
   type SafeRunProjection,
@@ -20,9 +22,8 @@ export function SafeRunPanel({
   sessionId,
   attemptId,
   runId,
-  recoveryMessage,
-  recoveryActionLabel,
-  startError,
+  recoveryView,
+  startFailed,
   onStart,
   onSettled,
 }: {
@@ -30,9 +31,8 @@ export function SafeRunPanel({
   readonly sessionId: string;
   readonly attemptId?: string;
   readonly runId?: string;
-  readonly recoveryMessage?: string;
-  readonly recoveryActionLabel?: string;
-  readonly startError?: string;
+  readonly recoveryView?: ReviewRecoveryView;
+  readonly startFailed?: boolean;
   readonly onStart?: () => Promise<void>;
   readonly onSettled?: (profileId: string, sessionId: string) => Promise<void>;
 }): React.JSX.Element {
@@ -91,16 +91,18 @@ export function SafeRunPanel({
   };
 
   if (runId === undefined) {
+    const copy = recoveryCopy(recoveryView?.noticeKey ?? "review_interrupted");
+    const actionKey = recoveryView?.actionKey;
     return (
       <Alert className="mt-4">
         <RotateCcw />
-        <AlertTitle>{recoveryActionLabel ?? "Review was interrupted"}</AlertTitle>
+        <AlertTitle>{copy.notice}</AlertTitle>
         <AlertDescription className="mt-2">
-          {recoveryMessage ?? "The previous review did not finish. Start again when you're ready."}
-          {startError === undefined ? null : <span className="mt-1 block">{startError}</span>}
-          {onStart === undefined ? null : (
+          {copy.reassurance}
+          {startFailed === true ? <span className="mt-1 block">Patchdesk could not start this review. Try again.</span> : null}
+          {actionKey === undefined || onStart === undefined ? null : (
             <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>
-              {starting ? "Starting…" : (recoveryActionLabel ?? "Start review")}
+              {starting ? "Starting…" : recoveryActionLabel(actionKey)}
             </Button>
           )}
         </AlertDescription>
