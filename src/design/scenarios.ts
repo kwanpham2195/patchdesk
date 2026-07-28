@@ -32,7 +32,7 @@ export const designScenarios: ReadonlyArray<DesignScenario> = [
   { id: "workbench-reconnect", title: "Workbench: reconnect", description: "Owned live run — show Reconnect as the only next action.", group: "Review workbench" },
   { id: "workbench-start-again", title: "Workbench: start again", description: "Unowned or interrupted run — show Start again, no background guess.", group: "Review workbench" },
   { id: "workbench-try-again", title: "Workbench: try again", description: "Failed attempt — show Try again with one reassurance.", group: "Review workbench" },
-  { id: "workbench-prepare-again", title: "Workbench: prepare again", description: "Invalid preparation — show Prepare again in destructive tone.", group: "Review workbench" },
+  { id: "workbench-prepare-again", title: "Workbench: prepare again", description: "Invalid preparation — show Prepare again in an amber warning treatment.", group: "Review workbench" },
 
   // Settings and dialogs (3 retained)
   { id: "settings-recovery", title: "Settings (recovery)", description: "Global Settings overlay with General, Review, and Data & recovery sections.", group: "Settings and dialogs" },

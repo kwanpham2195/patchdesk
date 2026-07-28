@@ -424,7 +424,7 @@ export async function startLocalApiServer(
     if (attemptId === undefined) return context.json({ error: "run_not_owned" }, 403);
     const owned = runs.find({ sessionId: sessionId.value, attemptId });
     if (owned === undefined) return context.json({ error: "run_not_owned" }, 403);
-    return context.json({ runId: owned.runId }, 202);
+    return context.json({ runId: owned.runId, attemptId }, 202);
   });
   app.get("/v1/reviews/models", async (context) => {
     const catalog = await modelCatalog.get();

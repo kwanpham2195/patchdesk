@@ -117,6 +117,30 @@ describe("MaintainerInbox", () => {
     expect(screen.getAllByText("Review starting").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /View review progress/ })).toBeTruthy();
   });
+
+  it("uses the action kind instead of a persisted label in the inspector", () => {
+    const relabeledRows = rows.map((row) => {
+      if (row.identity.number !== 42) return row;
+      const recommendedAction = { ...row.recommendedAction };
+      Object.defineProperty(recommendedAction, "label", { configurable: true, enumerable: true, value: "Untrusted persisted text" });
+      return { ...row, recommendedAction };
+    });
+    render(
+      <MaintainerInbox
+        profileId="cfw"
+        profileLabel="CFW"
+        rows={relabeledRows}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenSession={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Open saved review" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Untrusted persisted text" })).toBeNull();
+  });
   it("filters queues, moves selection by keyboard, and starts only the selected recommended action", async () => {
     const openedReviews: Array<{ readonly number: number; readonly mode: string }> = [];
     const openedSessions: Array<string> = [];
