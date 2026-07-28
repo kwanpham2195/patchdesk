@@ -51,10 +51,20 @@ const projection: { readonly ready: unknown } = {
 
 type MockRequest = { readonly path: string; readonly method?: string; readonly body?: unknown };
 
-function mockApi(handler: (request: MockRequest) => { readonly ok: boolean; readonly status: number; readonly body: unknown }) {
+function mockApi(
+  handler: (
+    request: MockRequest,
+  ) =>
+    | { readonly ok: boolean; readonly status: number; readonly body: unknown }
+    | Promise<{ readonly ok: boolean; readonly status: number; readonly body: unknown }>,
+) {
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
-    value: { request: vi.fn((request: MockRequest) => Promise.resolve({ correlationId: "test", ...handler(request) })) },
+    value: {
+      request: vi.fn((request: MockRequest) =>
+        Promise.resolve(handler(request)).then((response) => ({ correlationId: "test", ...response })),
+      ),
+    },
   });
 }
 
@@ -208,21 +218,112 @@ describe("completed review walkthrough generation", () => {
     expect(requests).not.toContain("/v1/reviews/walkthrough/generate");
   });
 
-  it("ignores responses for a different snapshot identity", async () => {
+  it("ignores stale responses after the workbench session identity changes", async () => {
+    // Keep the walkthrough-generate request pending until the test deliberately resolves it.
+    let resolveGenerate: ((value: ReturnType<typeof ok200>) => void) | undefined;
+    const pendingGenerate = new Promise<ReturnType<typeof ok200>>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    pendingGenerate.catch(() => undefined);
     const requests: Array<{ path: string; body: unknown }> = [];
     mockApi((request) => {
       requests.push({ path: request.path, body: request.body });
       if (request.path === "/v1/reviews/models") return ok200(models);
-      if (request.path === "/v1/reviews/walkthrough/generate") return ok200(projection.ready);
+      if (request.path === "/v1/reviews/walkthrough/generate") return pendingGenerate;
       throw new Error(`unexpected ${request.path}`);
     });
-    render(<CompletedReviewFlow workbench={{ ...workbench, session: { ...workbench.session, id: "different-session" } }} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />);
+
+    const differentWorkbench: CompletedReviewFlowWorkbench = {
+      ...workbench,
+      session: { ...workbench.session, id: "different-session" },
+      reviewedHeadSha: "3333333333333333333333333333333333333333",
+    };
+
+    const { rerender } = render(
+      <CompletedReviewFlow workbench={workbench} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />,
+    );
+
+    // Click the manual banner button to open the dialog, then click the confirm button. The request fires but stays pending.
+    fireEvent.click(await screen.findByRole("button", { name: "Generate walkthrough" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate read-only walkthrough" }));
+
+    await waitFor(() => expect(requests.filter((request) => request.path === "/v1/reviews/walkthrough/generate").length).toBe(1));
+
+    // Re-render with a different workbench session identity (session id and reviewed head) before the original request resolves.
+    rerender(
+      <CompletedReviewFlow workbench={differentWorkbench} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />,
+    );
+
+    // Resolve the original request. The stale ready projection must NOT enter the new workbench's state.
+    resolveGenerate?.(ok200(projection.ready));
+    await new Promise<void>((flush) => setTimeout(flush, 0));
+
+    // The banner on the new workbench is still in the idle lifecycle (headline "Generate a read-only walkthrough"), not the ready lifecycle ("Read-only walkthrough ready").
+    const banner = await screen.findByTestId("walkthrough-banner");
+    expect(banner.textContent).toContain("Generate a read-only walkthrough");
+    expect(banner.textContent).not.toContain("Read-only walkthrough ready");
+
+    // No new generation request fires for the new workbench; the original request is the only one.
+    expect(requests.filter((request) => request.path === "/v1/reviews/walkthrough/generate").length).toBe(1);
+  });
+
+  it("does not auto-request walkthrough generation when the workbench opens", async () => {
+    const requests: Array<string> = [];
+    mockApi((request) => {
+      requests.push(request.path);
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<CompletedReviewFlow workbench={workbench} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />);
+
+    // Open the dialog and close it; assert no walkthrough generation request fires.
+    fireEvent.click(await screen.findByRole("button", { name: "Generate walkthrough" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(requests).not.toContain("/v1/reviews/walkthrough/generate");
+    expect(requests).not.toContain("/v1/reviews/walkthrough/load");
+  });
+
+  it("ignores stale responses after the reviewed head changes for the same session", async () => {
+    // Keep the walkthrough-generate request pending; only the reviewed HEAD changes between click and resolution.
+    let resolveGenerate: ((value: ReturnType<typeof ok200>) => void) | undefined;
+    const pendingGenerate = new Promise<ReturnType<typeof ok200>>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    pendingGenerate.catch(() => undefined);
+    const requests: Array<{ path: string; body: unknown }> = [];
+    mockApi((request) => {
+      requests.push({ path: request.path, body: request.body });
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/walkthrough/generate") return pendingGenerate;
+      throw new Error(`unexpected ${request.path}`);
+    });
+
+    const headChangedWorkbench: CompletedReviewFlowWorkbench = {
+      ...workbench,
+      // Same session id, different reviewed HEAD.
+      reviewedHeadSha: "4444444444444444444444444444444444444444",
+    };
+
+    const { rerender } = render(
+      <CompletedReviewFlow workbench={workbench} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Generate walkthrough" }));
     fireEvent.click(await screen.findByRole("button", { name: "Generate read-only walkthrough" }));
 
-    await waitFor(() => expect(requests.filter((request) => request.path === "/v1/reviews/walkthrough/generate").length).toBeGreaterThanOrEqual(1));
-    // Single request only, no retries, no extra calls.
-    expect(requests.filter((request) => request.path === "/v1/reviews/walkthrough/generate").length).toBe(1);
+    await waitFor(() => expect(requests.filter((request) => request.path === "/v1/reviews/walkthrough/generate").length).toBe(1));
+
+    rerender(
+      <CompletedReviewFlow workbench={headChangedWorkbench} onWorkbenchPatch={() => {}} onNavigationStateChange={() => {}} />,
+    );
+
+    resolveGenerate?.(ok200(projection.ready));
+    await new Promise<void>((flush) => setTimeout(flush, 0));
+
+    // The new workbench must not have advanced to the ready projection.
+    const banner = await screen.findByTestId("walkthrough-banner");
+    expect(banner.textContent).toContain("Generate a read-only walkthrough");
+    expect(banner.textContent).not.toContain("Read-only walkthrough ready");
   });
 });

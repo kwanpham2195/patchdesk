@@ -52,7 +52,6 @@ export function CompletedReviewFlow({
   const profileId = currentWorkbench.session.key.profileId;
   const sessionId = currentWorkbench.session.id;
   const batch = currentWorkbench.batch as { readonly updatedAt?: unknown } | undefined;
-  const reviewedHeadSha = currentWorkbench.reviewedHeadSha;
 
   const [walkthroughDialogOpen, setWalkthroughDialogOpen] = useState(false);
   const [walkthroughProjection, setWalkthroughProjection] = useState<WalkthroughProjection>({ lifecycle: "idle", noticeKey: "walkthrough-idle" });
@@ -61,8 +60,10 @@ export function CompletedReviewFlow({
   const [walkthroughModel, setWalkthroughModel] = useState<string>();
   const [walkthroughReasoning, setWalkthroughReasoning] = useState<ReviewReasoningPreference>("medium");
   const [walkthroughCatalogUnavailable, setWalkthroughCatalogUnavailable] = useState(false);
-  const mountedSessionRef = useRef(sessionId);
-  useEffect(() => { mountedSessionRef.current = sessionId; }, [sessionId]);
+  const mountedSnapshotRef = useRef({ sessionId, reviewedHeadSha: currentWorkbench.reviewedHeadSha ?? "" });
+  useEffect(() => {
+    mountedSnapshotRef.current = { sessionId, reviewedHeadSha: currentWorkbench.reviewedHeadSha ?? "" };
+  }, [sessionId, currentWorkbench.reviewedHeadSha]);
 
   // Load the active Pi catalog once per mounted session; restore a valid per-profile
   // preference and never block the workbench on a missing catalog.
@@ -107,10 +108,10 @@ export function CompletedReviewFlow({
 
   const submitWalkthrough = useCallback(async () => {
     if (walkthroughModel === undefined) return;
-    const snapshot = mountedSessionRef.current;
+    const snapshot = mountedSnapshotRef.current;
     const request = {
       profileId,
-      sessionId: snapshot,
+      sessionId: snapshot.sessionId,
       model: walkthroughModel,
       reasoning: walkthroughReasoning,
     } as const;
@@ -118,7 +119,12 @@ export function CompletedReviewFlow({
     setWalkthroughBusy(true);
     try {
       const value = await requestJson("/v1/reviews/walkthrough/generate", { method: "POST", body: request });
-      if (mountedSessionRef.current !== snapshot) return;
+      if (
+        mountedSnapshotRef.current.sessionId !== snapshot.sessionId
+        || mountedSnapshotRef.current.reviewedHeadSha !== snapshot.reviewedHeadSha
+      ) {
+        return;
+      }
       const parsed = parseWalkthroughProjection(value);
       if (parsed === undefined) {
         setWalkthroughProjection({ lifecycle: "failed", noticeKey: "walkthrough-failed", actionKey: "walkthrough-retry" });
@@ -129,10 +135,20 @@ export function CompletedReviewFlow({
         }
       }
     } catch {
-      if (mountedSessionRef.current !== snapshot) return;
+      if (
+        mountedSnapshotRef.current.sessionId !== snapshot.sessionId
+        || mountedSnapshotRef.current.reviewedHeadSha !== snapshot.reviewedHeadSha
+      ) {
+        return;
+      }
       setWalkthroughProjection({ lifecycle: "failed", noticeKey: "walkthrough-failed", actionKey: "walkthrough-retry" });
     } finally {
-      if (mountedSessionRef.current === snapshot) setWalkthroughBusy(false);
+      if (
+        mountedSnapshotRef.current.sessionId === snapshot.sessionId
+        && mountedSnapshotRef.current.reviewedHeadSha === snapshot.reviewedHeadSha
+      ) {
+        setWalkthroughBusy(false);
+      }
     }
   }, [profileId, walkthroughModel, walkthroughReasoning]);
 
@@ -168,8 +184,6 @@ export function CompletedReviewFlow({
     walkthroughBusy, walkthroughCatalogUnavailable, walkthroughDialogOpen, walkthroughModel, walkthroughModels,
     walkthroughProjection, walkthroughReasoning,
   ]);
-
-  void reviewedHeadSha;
 
   const refreshRemote = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/refresh", {

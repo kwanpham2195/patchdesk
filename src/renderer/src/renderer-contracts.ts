@@ -315,5 +315,5 @@ export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
 /** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
 export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
   const parsed = v.safeParse(modelCatalogSchema, input);
-  return parsed.success ? parsed.output : undefined}
-
+  return parsed.success ? parsed.output : undefined;
+}
