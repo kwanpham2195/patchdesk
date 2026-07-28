@@ -239,4 +239,44 @@ describe("ReviewDiagnosticService", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("fails closed for root-only paths and raw error headers in legacy events and exports", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
+      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
+      const unsafeDetails = [
+        "path=/tmp",
+        "path=/Users",
+        "path=/",
+        "path=C:\\\\",
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find module",
+        "error: command failed",
+        "TypeError Cannot read property",
+        "RangeError invalid range",
+        "    at processTicksAndRejections (node:internal/process/task_queues:95:5)",
+      ];
+      await writeFile(file, `${unsafeDetails.map((detail, index) => JSON.stringify({
+        schemaVersion: 1,
+        incidentId: `legacy-${index}`,
+        at: "2026-07-18T00:00:00.000Z",
+        category: "recovery",
+        phase: "legacy",
+        profileId,
+        retryable: true,
+        detail,
+      })).join("\n")}\n`, "utf8");
+      const service = new ReviewDiagnosticService(paths, () => must(at));
+      const bundle = await service.exportSupportBundle({ profileId });
+      expect(bundle._tag).toBe("ok");
+      if (bundle._tag === "err") return;
+      expect(bundle.value.events).toHaveLength(unsafeDetails.length);
+      const serialized = JSON.stringify(bundle.value);
+      for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
+      expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

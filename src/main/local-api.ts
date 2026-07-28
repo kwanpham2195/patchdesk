@@ -319,9 +319,11 @@ export async function startLocalApiServer(
           ["squash", "merge", "rebase"],
           () => new Date().toISOString() as never,
         );
-  app.get("/v1/profiles", async (context) =>
-    response(context, await dashboard.listProfiles()),
-  );
+  app.get("/v1/profiles", async (context) => {
+    const result = await dashboard.listProfiles();
+    if (result._tag === "err") await recordProfileReloadFailure("profile-reload-list");
+    return response(context, result);
+  });
   app.post("/v1/profiles", async (context) =>
     response(context, await dashboard.saveProfile(await jsonBody(context))),
   );

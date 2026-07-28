@@ -66,7 +66,13 @@ describe("local API capability boundary", () => {
       body: JSON.stringify({ profileId: "cfw" }),
     });
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ schemaVersion: 1, profileId: "cfw", events: [] });
+    await expect(response.json()).resolves.toMatchObject({
+      schemaVersion: 1,
+      profileId: "cfw",
+      events: expect.arrayContaining([
+        expect.objectContaining({ category: "migration", phase: "attempt-recover" }),
+      ]),
+    });
   });
 
   it("rejects a request with no app capability", async () => {

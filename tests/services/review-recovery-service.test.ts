@@ -5,11 +5,12 @@ import { expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
+import { ReviewArtifactStorage, type QuarantineFailure } from "../../src/adapters/storage/review-artifact-storage";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { createReviewSessionId, parseAbsolutePath, parseGitSha, parseIsoTimestamp, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { createReviewSession } from "../../src/domain/review-session";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {
@@ -20,6 +21,53 @@ function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly
 const profileId = must(parseWorkspaceProfileId("cfw"));
 const headSha = must(parseGitSha("2222222222222222222222222222222222222222"));
 const timestamp = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
+
+class FailingQuarantineArtifacts extends ReviewArtifactStorage {
+  override async quarantineInvalidEntry(
+    _profileId: typeof profileId,
+    _entryName: string,
+  ): Promise<{ readonly _tag: "err"; readonly error: QuarantineFailure }> {
+    void _profileId;
+    void _entryName;
+    return { _tag: "err", error: { _tag: "StorageFailure", operation: "write", reason: "io" } };
+  }
+}
+
+it("records a diagnostic when quarantine fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-recovery-service-"));
+  try {
+    const paths = PatchdeskPaths.forTest(root);
+    const profile = parseWorkspaceProfileConfig({
+      id: "cfw",
+      label: "CFW",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+      ownerFilters: [],
+      workspaceRoots: [],
+      rulePaths: [],
+      repos: [],
+    });
+    if (profile._tag === "err") throw new Error("fixture");
+    const profiles = new ProfileStore(paths);
+    expect((await profiles.save(profile.value))._tag).toBe("ok");
+    await mkdir(join(paths.profileReviewsDirectory(profileId), "broken-entry"), { recursive: true });
+    const sessions = new ReviewSessionStore(paths);
+    const diagnostics = new ReviewDiagnosticService(paths, () => timestamp, () => "incident-quarantine");
+    const artifacts = new FailingQuarantineArtifacts(paths, () => timestamp);
+    const service = new ReviewRecoveryService(profiles, sessions, () => timestamp, { artifacts, diagnostics });
+
+    const result = await service.reconcile();
+
+    expect(result.failed).toBe(1);
+    const events = await diagnostics.recent(profileId);
+    expect(events).toMatchObject({
+      _tag: "ok",
+      value: expect.arrayContaining([expect.objectContaining({ phase: "quarantine-failed" })]),
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 it("quarantines malformed entries, records diagnostics, and continues scanning valid sessions", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-recovery-service-"));

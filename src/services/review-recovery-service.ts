@@ -103,8 +103,18 @@ export class ReviewRecoveryService {
       const quarantined = invalid.sessionId === undefined
         ? await this.options.artifacts.quarantineInvalidEntry(profileId, invalid.entryName)
         : await this.options.artifacts.quarantine(profileId, invalid.sessionId);
-      if (quarantined._tag === "ok") recovered += 1;
-      else failed += 1;
+      if (quarantined._tag === "ok") {
+        recovered += 1;
+      } else {
+        failed += 1;
+        await this.options.diagnostics?.record({
+          profileId,
+          category: "migration",
+          phase: "quarantine-failed",
+          retryable: true,
+          detail: "Invalid local review evidence could not be quarantined safely.",
+        });
+      }
     }
     for (const session of scan.value.sessions) {
       if (this.options.paths !== undefined) {
@@ -142,11 +152,45 @@ export class ReviewRecoveryService {
         continue;
       }
       const result = recoverOrphanedWorkbenchAttempt({ session, attempt: attempt.value, recoveredAt: this.now() });
-      if (result._tag === "err") continue;
+      if (result._tag === "err") {
+        failed += 1;
+        await this.options.diagnostics?.record({
+          profileId,
+          sessionId: session.id,
+          category: "migration",
+          phase: "attempt-recover",
+          retryable: true,
+          detail: "A stored review attempt could not be marked interrupted safely.",
+        });
+        continue;
+      }
       const attemptSaved = await this.sessions.saveAttempt(profileId, session.id, result.value.attempt);
-      const sessionSaved = attemptSaved._tag === "ok" ? await this.sessions.save(result.value.session) : attemptSaved;
-      if (sessionSaved._tag === "ok") recovered += 1;
-      else failed += 1;
+      if (attemptSaved._tag === "err") {
+        failed += 1;
+        await this.options.diagnostics?.record({
+          profileId,
+          sessionId: session.id,
+          category: "migration",
+          phase: "attempt-save",
+          retryable: true,
+          detail: "An interrupted review attempt could not be persisted.",
+        });
+        continue;
+      }
+      const sessionSaved = await this.sessions.save(result.value.session);
+      if (sessionSaved._tag === "ok") {
+        recovered += 1;
+      } else {
+        failed += 1;
+        await this.options.diagnostics?.record({
+          profileId,
+          sessionId: session.id,
+          category: "migration",
+          phase: "session-save",
+          retryable: true,
+          detail: "The reconciled review session could not be persisted.",
+        });
+      }
     }
     return { recovered, failed };
   }
