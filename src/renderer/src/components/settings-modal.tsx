@@ -44,11 +44,18 @@ export function SettingsModal({
   const [dirty, setDirty] = useState(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const pendingSwitch = useRef<(() => void) | undefined>(undefined);
+  const openerRef = useRef<HTMLElement | null>(null);
   const lastOpen = useRef(false);
 
   useEffect(() => {
-    if (open && !lastOpen.current) setSection("general");
-    if (!open && lastOpen.current && opener !== null && opener !== undefined) opener.focus();
+    if (open && !lastOpen.current) {
+      setSection("general");
+      openerRef.current = opener ?? null;
+    }
+    if (!open && lastOpen.current) {
+      openerRef.current?.focus();
+      openerRef.current = null;
+    }
     lastOpen.current = open;
   }, [open, opener]);
 

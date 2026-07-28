@@ -73,6 +73,32 @@ describe("SettingsModal", () => {
     expect(screen.getByRole("button", { name: "Clear local data" })).toBeTruthy();
   });
 
+  it("returns focus to the opener after closing", async () => {
+    installDesktopApi();
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    const user = userEvent.setup();
+    const view = renderModal(vi.fn(), true, opener);
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    view.rerender(
+      <SettingsModal
+        open={false}
+        onOpenChange={() => undefined}
+        opener={opener}
+        dashboard={dashboard}
+        appearance="system"
+        onAppearanceChange={() => undefined}
+        diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
+        onDiffThemeChange={() => undefined}
+        profiles={[profile]}
+        onWorkspaceReload={async () => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
   it("requires an explicit dirty-draft choice before closing", async () => {
     installDesktopApi();
     const user = userEvent.setup();
@@ -91,10 +117,11 @@ describe("SettingsModal", () => {
   });
 });
 
-function renderModal(onOpenChange = vi.fn()): void {
-  render(
+function renderModal(onOpenChange = vi.fn(), open = true, opener?: HTMLElement): ReturnType<typeof render> {
+  return render(
     <SettingsModal
-      open
+      open={open}
+      {...(opener === undefined ? {} : { opener })}
       onOpenChange={onOpenChange}
       dashboard={dashboard}
       appearance="system"
