@@ -76,17 +76,15 @@ type WalkthroughScenarioVariant =
 /**
  * Browser-only walkthrough scenario. Deterministic fixture; no bridge call,
  * filesystem access, GitHub, Electron, or model invocation. The permanent
- * scenarios use the chapter rail with continuous reading surface. The
- * temporary `walkthrough-ready-rail` and `walkthrough-ready-linear` comparison
- * scenarios were used to record the layout choice; only the rail is retained.
+ * scenarios use the chapter rail with continuous reading surface. The linear
+ * section-picker layout was considered and rejected during the Milestone 0
+ * comparison (see Decision Log 2026-07-27); only the rail is retained.
  */
 export function DesignWalkthroughScenario({
   variant,
-  layout,
   onBackToFiles,
 }: {
   readonly variant: WalkthroughScenarioVariant;
-  readonly layout: "rail" | "linear";
   readonly onBackToFiles?: () => void;
 }): React.JSX.Element {
   const [lifecycle, setLifecycle] = useState<WalkthroughLifecycleKey>(initialLifecycle(variant));
@@ -250,63 +248,35 @@ export function DesignWalkthroughScenario({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4" data-layout={layout}>
-        {layout === "rail" ? (
-          <>
-            <aside role="region" aria-label="Walkthrough chapters" className="rounded-lg border bg-card p-3">
-              <h2 className="px-1 text-sm font-semibold">Chapters</h2>
-              <p className="mt-1 px-1 text-xs text-muted-foreground">Persistent rail; arrow keys move sections.</p>
-              <Separator className="my-3" />
-              <ChapterList
-                sections={sections}
-                currentId={current}
-                reviewed={reviewed}
-                onSelect={setCurrent}
-              />
-              <Separator className="my-3" />
-              <SupportList reviewed={supportReviewed} onToggle={() => setSupportReviewed((value) => !value)} />
-            </aside>
-            <SectionPane
-              section={currentSection}
-              reviewed={reviewed.includes(currentSection.id)}
-              onToggleReviewed={() =>
-                setReviewed((currentList) =>
-                  currentList.includes(currentSection.id)
-                    ? currentList.filter((entry) => entry !== currentSection.id)
-                    : [...currentList, currentSection.id],
-                )
-              }
-              canGoPrev={canGoPrev}
-              canGoNext={canGoNext}
-              onPrev={() => { if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current); }}
-              onNext={() => { if (canGoNext) setCurrent(sections[currentIndex + 1]?.id ?? current); }}
-            />
-          </>
-        ) : (
-          <>
-            <SectionPicker
-              sections={sections}
-              currentId={current}
-              reviewed={reviewed}
-              onSelect={setCurrent}
-            />
-            <SectionPane
-              section={currentSection}
-              reviewed={reviewed.includes(currentSection.id)}
-              onToggleReviewed={() =>
-                setReviewed((currentList) =>
-                  currentList.includes(currentSection.id)
-                    ? currentList.filter((entry) => entry !== currentSection.id)
-                    : [...currentList, currentSection.id],
-                )
-              }
-              canGoPrev={canGoPrev}
-              canGoNext={canGoNext}
-              onPrev={() => { if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current); }}
-              onNext={() => { if (canGoNext) setCurrent(sections[currentIndex + 1]?.id ?? current); }}
-            />
-          </>
-        )}
+      <div className="grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4" data-layout="rail">
+        <aside role="region" aria-label="Walkthrough chapters" className="rounded-lg border bg-card p-3">
+          <h2 className="px-1 text-sm font-semibold">Chapters</h2>
+          <p className="mt-1 px-1 text-xs text-muted-foreground">Persistent rail; arrow keys move sections.</p>
+          <Separator className="my-3" />
+          <ChapterList
+            sections={sections}
+            currentId={current}
+            reviewed={reviewed}
+            onSelect={setCurrent}
+          />
+          <Separator className="my-3" />
+          <SupportList reviewed={supportReviewed} onToggle={() => setSupportReviewed((value) => !value)} />
+        </aside>
+        <SectionPane
+          section={currentSection}
+          reviewed={reviewed.includes(currentSection.id)}
+          onToggleReviewed={() =>
+            setReviewed((currentList) =>
+              currentList.includes(currentSection.id)
+                ? currentList.filter((entry) => entry !== currentSection.id)
+                : [...currentList, currentSection.id],
+            )
+          }
+          canGoPrev={canGoPrev}
+          canGoNext={canGoNext}
+          onPrev={() => { if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current); }}
+          onNext={() => { if (canGoNext) setCurrent(sections[currentIndex + 1]?.id ?? current); }}
+        />
       </div>
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent data-testid="walkthrough-generate-dialog">
@@ -388,44 +358,6 @@ function ChapterList({
         );
       })}
     </ol>
-  );
-}
-
-function SectionPicker({
-  sections,
-  currentId,
-  reviewed,
-  onSelect,
-}: {
-  readonly sections: ReadonlyArray<WalkthroughSectionFixture>;
-  readonly currentId: string;
-  readonly reviewed: ReadonlyArray<string>;
-  readonly onSelect: (id: string) => void;
-}): React.JSX.Element {
-  return (
-    <Card className="gap-2 p-3" aria-label="Walkthrough section picker">
-      <CardHeader className="p-0">
-        <CardTitle className="text-sm">Linear section picker</CardTitle>
-        <CardDescription>One drop-down per section; the comparison view is removed in the retained layout.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-2 p-0">
-        {sections.map((section, index) => (
-          <div key={section.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
-            <div className="min-w-0">
-              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{section.chapter}</p>
-              <p className="truncate font-medium">{section.title}</p>
-            </div>
-            <Select value={currentId === section.id ? "current" : "idle"} onValueChange={(value) => { if (value === "select") onSelect(section.id); }}>
-              <SelectTrigger size="sm" aria-label={`Section ${index + 1} controls`}><SelectValue placeholder="Open" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="select">Open section</SelectItem>
-                {reviewed.includes(section.id) ? <SelectItem value="reviewed">Reviewed</SelectItem> : null}
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
   );
 }
 

@@ -25,13 +25,11 @@ export function DesignApp(): React.JSX.Element {
   if (scenario.id === "dialog-clear-local-data") return <DesignCleanupDialogScenario />;
   if (scenario.id === "inbox-recovery-states") return <DesignInboxRecoveryScenario />;
   if (scenario.id === "workbench-reconnect" || scenario.id === "workbench-start-again" || scenario.id === "workbench-try-again" || scenario.id === "workbench-prepare-again") return <DesignWorkbenchRecoveryScenario />;
-  if (scenario.id === "walkthrough-generate-dialog") return <DesignWalkthroughScenario variant="walkthrough-generate-dialog" layout="rail" />;
-  if (scenario.id === "walkthrough-generating") return <DesignWalkthroughScenario variant="walkthrough-generating" layout="rail" />;
-  if (scenario.id === "walkthrough-ready") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="rail" />;
-  if (scenario.id === "walkthrough-failed") return <DesignWalkthroughScenario variant="walkthrough-failed" layout="rail" />;
-  if (scenario.id === "walkthrough-stale") return <DesignWalkthroughScenario variant="walkthrough-stale" layout="rail" />;
-  if (scenario.id === "walkthrough-ready-rail") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="rail" />;
-  if (scenario.id === "walkthrough-ready-linear") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="linear" />;
+  if (scenario.id === "walkthrough-generate-dialog") return <DesignWalkthroughScenario variant="walkthrough-generate-dialog" />;
+  if (scenario.id === "walkthrough-generating") return <DesignWalkthroughScenario variant="walkthrough-generating" />;
+  if (scenario.id === "walkthrough-ready") return <DesignWalkthroughScenario variant="walkthrough-ready" />;
+  if (scenario.id === "walkthrough-failed") return <DesignWalkthroughScenario variant="walkthrough-failed" />;
+  if (scenario.id === "walkthrough-stale") return <DesignWalkthroughScenario variant="walkthrough-stale" />;
   return <App />;
 }
 

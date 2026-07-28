@@ -148,22 +148,6 @@ test("permanent design registry contains exactly 22 stable scenarios", () => {
   ]) expect(ids.has(id)).toBe(true);
 });
 
-test("temporary walkthrough comparison captures both layouts before retention", async ({ page }) => {
-  const cases = ["walkthrough-ready-rail", "walkthrough-ready-linear"] as const;
-  for (const scenario of cases) {
-    const server = await serveDesign();
-    try {
-      await page.goto(`${origin(server)}/?scenario=${scenario}`);
-      await expect(page).toHaveTitle(/Patchdesk Design/);
-      const layoutValue = scenario === "walkthrough-ready-rail" ? "rail" : "linear";
-      await expect(page.locator(`[data-layout=${layoutValue}]`)).toBeVisible();
-      await page.screenshot({ path: `test-results/patchdesk-design-${scenario}.png`, fullPage: true });
-    } finally {
-      await close(server);
-    }
-  }
-});
-
 test("every permanent scenario opens, captures a screenshot, and uses friendly recovery copy", async ({ page }) => {
   for (const scenario of designScenarios) {
     const server = await serveDesign();
