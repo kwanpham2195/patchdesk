@@ -1,0 +1,422 @@
+import * as v from "valibot";
+
+import {
+  parseContentHash,
+  parseGitSha,
+  parseRepoRelativePath,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+  type ContentHash,
+  type GitSha,
+  type RepoRelativePath,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "./ids";
+import { err, ok, type Result } from "./result";
+
+/** The immutable identity that binds a walkthrough to one stored patch. */
+export type NarrativeSnapshot = {
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
+  readonly headSha: GitSha;
+  readonly patchHash: ContentHash;
+};
+
+/** A bounded hunk projection safe for renderer consumption. */
+export type NarrativeHunk = {
+  readonly id: string;
+  readonly path: RepoRelativePath;
+  readonly header: string;
+  readonly raw: string;
+  readonly oldStart: number;
+  readonly oldLines: number;
+  readonly newStart: number;
+  readonly newLines: number;
+};
+
+/** A semantic reading section and the exact hunks that support it. */
+export type NarrativeSection = {
+  readonly id: string;
+  readonly title: string;
+  readonly prose: string;
+  readonly hunkIds: ReadonlyArray<string>;
+  readonly hunks: ReadonlyArray<NarrativeHunk>;
+};
+
+/** An ordered chapter in the persistent walkthrough rail. */
+export type NarrativeChapter = {
+  readonly id: string;
+  readonly title: string;
+  readonly sections: ReadonlyArray<NarrativeSection>;
+};
+
+/** The derived Support group containing every hunk outside the primary path. */
+export type NarrativeSupport = {
+  readonly id: "support";
+  readonly title: "Support";
+  readonly hunkIds: ReadonlyArray<string>;
+  readonly hunks: ReadonlyArray<NarrativeHunk>;
+};
+
+/** A normalized, snapshot-bound walkthrough ready for renderer projection. */
+export type NarrativeWalkthrough = {
+  readonly snapshot: NarrativeSnapshot;
+  readonly title: string;
+  readonly focus: string;
+  readonly chapters: ReadonlyArray<NarrativeChapter>;
+  readonly support: NarrativeSupport;
+};
+
+/** Reasons a model result is rejected before it can reach the renderer. */
+export type NarrativeWalkthroughError = {
+  readonly _tag: "InvalidNarrativeWalkthrough";
+  readonly reason:
+    | "malformed"
+    | "malformed_snapshot"
+    | "stale_snapshot"
+    | "invalid_patch"
+    | "bounds"
+    | "empty_primary";
+};
+
+const MAX_TITLE_LENGTH = 200;
+const MAX_FOCUS_LENGTH = 2_000;
+const MAX_CHAPTER_TITLE_LENGTH = 80;
+const MAX_SECTION_TITLE_LENGTH = 160;
+const MAX_PROSE_LENGTH = 4_000;
+const MAX_CHAPTERS = 12;
+const MAX_SECTIONS = 32;
+const MAX_HUNKS_PER_SECTION = 32;
+const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
+
+const rawSectionSchema = v.object({
+  title: v.string(),
+  prose: v.string(),
+  hunkIds: v.array(v.string()),
+});
+
+const rawChapterSchema = v.object({
+  title: v.string(),
+  sections: v.array(rawSectionSchema),
+});
+
+const rawWalkthroughSchema = v.object({
+  title: v.string(),
+  focus: v.string(),
+  chapters: v.array(rawChapterSchema),
+  snapshot: v.optional(v.unknown()),
+  snapshotId: v.optional(v.string()),
+});
+
+type RawWalkthrough = v.InferOutput<typeof rawWalkthroughSchema>;
+type HunkRange = {
+  readonly oldStart: number;
+  readonly oldLines: number;
+  readonly newStart: number;
+  readonly newLines: number;
+};
+
+type ParsedHunk = NarrativeHunk & {
+  readonly filePrefix: string;
+};
+
+type ParsedPatchFile = {
+  readonly prefix: string;
+  readonly hunks: ReadonlyArray<ParsedHunk>;
+};
+
+type ParsedPatch = {
+  readonly files: ReadonlyArray<ParsedPatchFile>;
+  readonly hunks: ReadonlyArray<ParsedHunk>;
+};
+
+function invalid(reason: NarrativeWalkthroughError["reason"]): Result<never, NarrativeWalkthroughError> {
+  return err({ _tag: "InvalidNarrativeWalkthrough", reason });
+}
+
+function parseSnapshot(input: unknown): Result<NarrativeSnapshot, NarrativeWalkthroughError> {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return invalid("malformed_snapshot");
+  }
+
+  const parsed = v.safeParse(
+    v.object({
+      profileId: v.unknown(),
+      sessionId: v.unknown(),
+      headSha: v.unknown(),
+      patchHash: v.unknown(),
+    }),
+    input,
+  );
+  if (!parsed.success) return invalid("malformed_snapshot");
+
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const sessionId = parseReviewSessionId(parsed.output.sessionId);
+  const headSha = parseGitSha(parsed.output.headSha);
+  const patchHash = parseContentHash(parsed.output.patchHash);
+  if (
+    profileId._tag === "err" ||
+    sessionId._tag === "err" ||
+    headSha._tag === "err" ||
+    patchHash._tag === "err"
+  ) {
+    return invalid("malformed_snapshot");
+  }
+
+  return ok({
+    profileId: profileId.value,
+    sessionId: sessionId.value,
+    headSha: headSha.value,
+    patchHash: patchHash.value,
+  });
+}
+
+function sameSnapshot(left: NarrativeSnapshot, right: NarrativeSnapshot): boolean {
+  return (
+    left.profileId === right.profileId &&
+    left.sessionId === right.sessionId &&
+    left.headSha === right.headSha &&
+    left.patchHash === right.patchHash
+  );
+}
+
+function snapshotId(snapshot: NarrativeSnapshot): string {
+  return [snapshot.profileId, snapshot.sessionId, snapshot.headSha, snapshot.patchHash].join(":");
+}
+
+function normalizeText(value: string): string {
+  return value.trim();
+}
+
+function parseDiffPath(value: string): Result<RepoRelativePath, NarrativeWalkthroughError> {
+  const normalized = value === "/dev/null" ? "dev/null" : value.replace(/^a\//, "").replace(/^b\//, "");
+  const path = parseRepoRelativePath(normalized);
+  return path._tag === "err" ? invalid("invalid_patch") : ok(path.value);
+}
+
+function parseHunkHeader(line: string): HunkRange | undefined {
+  const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+  if (match === null) return undefined;
+  const oldStart = Number(match[1]);
+  const oldLines = Number(match[2] ?? "1");
+  const newStart = Number(match[3]);
+  const newLines = Number(match[4] ?? "1");
+  if (![oldStart, oldLines, newStart, newLines].every(Number.isSafeInteger)) return undefined;
+  return { oldStart, oldLines, newStart, newLines };
+}
+
+function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkthroughError> {
+  if (patch.length === 0) return invalid("invalid_patch");
+  const lines = patch.split("\n");
+  const files: Array<{ readonly start: number; prefixEnd: number | undefined; hunks: Array<{ readonly start: number; end: number; header: string; range: HunkRange; path: RepoRelativePath }> }> = [];
+  let current: (typeof files)[number] | undefined;
+  let currentPath: RepoRelativePath | undefined;
+  let currentHunkStart: number | undefined;
+
+  const finishHunk = (end: number): boolean => {
+    if (current === undefined || currentHunkStart === undefined || currentPath === undefined) return true;
+    const header = lines[currentHunkStart];
+    if (header === undefined) return false;
+    const range = parseHunkHeader(header);
+    if (range === undefined) return false;
+    current.hunks.push({ start: currentHunkStart, end, header, range, path: currentPath });
+    currentHunkStart = undefined;
+    return true;
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const fileHeader = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+    if (fileHeader !== null) {
+      if (!finishHunk(index)) return invalid("invalid_patch");
+      const path = parseDiffPath(fileHeader[2] ?? "");
+      if (path._tag === "err") return path;
+      current = { start: index, prefixEnd: undefined, hunks: [] };
+      files.push(current);
+      currentPath = path.value;
+      continue;
+    }
+    if (current === undefined) continue;
+    const hunkRange = parseHunkHeader(line);
+    if (hunkRange !== undefined) {
+      if (!finishHunk(index)) return invalid("invalid_patch");
+      current.prefixEnd ??= index;
+      currentHunkStart = index;
+      continue;
+    }
+    if (currentHunkStart !== undefined && line.startsWith("diff --git ")) {
+      if (!finishHunk(index)) return invalid("invalid_patch");
+    }
+    if (currentPath === undefined) continue;
+  }
+  if (!finishHunk(lines.length)) return invalid("invalid_patch");
+
+  const parsedFiles: Array<ParsedPatchFile> = [];
+  const parsedHunks: Array<ParsedHunk> = [];
+  let nextAlias = 1;
+  for (const file of files) {
+    if (file.hunks.length === 0) continue;
+    const prefixEnd = file.prefixEnd ?? file.hunks[0]?.start ?? file.start;
+    const prefix = lines.slice(file.start, prefixEnd).join("\n");
+    const hunks: Array<ParsedHunk> = [];
+    for (const hunk of file.hunks) {
+      const raw = lines.slice(hunk.start, hunk.end).join("\n").replace(/\n+$/, "");
+      const parsed: ParsedHunk = {
+        id: `h${nextAlias}`,
+        path: hunk.path,
+        header: hunk.header,
+        raw,
+        oldStart: hunk.range.oldStart,
+        oldLines: hunk.range.oldLines,
+        newStart: hunk.range.newStart,
+        newLines: hunk.range.newLines,
+        filePrefix: prefix,
+      };
+      nextAlias += 1;
+      hunks.push(parsed);
+      parsedHunks.push(parsed);
+    }
+    parsedFiles.push({ prefix, hunks });
+  }
+
+  return parsedHunks.length === 0 ? invalid("invalid_patch") : ok({ files: parsedFiles, hunks: parsedHunks });
+}
+
+function hunkMap(hunks: ReadonlyArray<ParsedHunk>): ReadonlyMap<string, ParsedHunk> {
+  return new Map(hunks.map((hunk) => [hunk.id, hunk]));
+}
+
+function validateRawSnapshot(raw: RawWalkthrough, snapshot: NarrativeSnapshot): NarrativeWalkthroughError["reason"] | undefined {
+  if (raw.snapshot !== undefined) {
+    const parsed = parseSnapshot(raw.snapshot);
+    if (parsed._tag === "err") return parsed.error.reason;
+    if (!sameSnapshot(parsed.value, snapshot)) return "stale_snapshot";
+  }
+  if (raw.snapshotId !== undefined && raw.snapshotId !== snapshot.sessionId && raw.snapshotId !== snapshotId(snapshot)) {
+    return "stale_snapshot";
+  }
+  return undefined;
+}
+
+function isWithinBounds(raw: RawWalkthrough): boolean {
+  if (
+    raw.title.length > MAX_TITLE_LENGTH ||
+    raw.focus.length > MAX_FOCUS_LENGTH ||
+    raw.chapters.length > MAX_CHAPTERS
+  ) {
+    return false;
+  }
+  let sectionCount = 0;
+  for (const chapter of raw.chapters) {
+    if (chapter.title.length > MAX_CHAPTER_TITLE_LENGTH || chapter.sections.length === 0) return false;
+    sectionCount += chapter.sections.length;
+    if (sectionCount > MAX_SECTIONS) return false;
+    for (const section of chapter.sections) {
+      if (
+        section.title.length > MAX_SECTION_TITLE_LENGTH ||
+        section.prose.length > MAX_PROSE_LENGTH ||
+        section.hunkIds.length > MAX_HUNKS_PER_SECTION ||
+        section.hunkIds.some((id) => id.length > 32)
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function normalizedHunk(hunk: ParsedHunk): NarrativeHunk {
+  return {
+    id: hunk.id,
+    path: hunk.path,
+    header: hunk.header,
+    raw: hunk.raw,
+    oldStart: hunk.oldStart,
+    oldLines: hunk.oldLines,
+    newStart: hunk.newStart,
+    newLines: hunk.newLines,
+  };
+}
+
+/** Normalize untrusted structured output against one immutable patch snapshot. */
+export function normalizeNarrativeWalkthrough(
+  raw: unknown,
+  patch: string,
+  snapshot: NarrativeSnapshot,
+): Result<NarrativeWalkthrough, NarrativeWalkthroughError> {
+  const parsedSnapshot = parseSnapshot(snapshot);
+  if (parsedSnapshot._tag === "err") return parsedSnapshot;
+  const parsedRaw = v.safeParse(rawWalkthroughSchema, raw);
+  if (!parsedRaw.success) return invalid("malformed");
+  const input = parsedRaw.output;
+  const snapshotError = validateRawSnapshot(input, parsedSnapshot.value);
+  if (snapshotError !== undefined) return invalid(snapshotError);
+  if (!isWithinBounds(input)) return invalid("bounds");
+  const parsedPatch = parseNarrativePatch(patch);
+  if (parsedPatch._tag === "err") return parsedPatch;
+
+  const byAlias = hunkMap(parsedPatch.value.hunks);
+  const covered = new Set<string>();
+  const chapters: Array<NarrativeChapter> = [];
+  let sectionNumber = 1;
+
+  for (const [chapterIndex, chapter] of input.chapters.entries()) {
+    const sections: Array<NarrativeSection> = [];
+    for (const section of chapter.sections) {
+      const ids: Array<string> = [];
+      const hunks: Array<NarrativeHunk> = [];
+      for (const alias of section.hunkIds) {
+        if (!HUNK_ALIAS_SYNTAX.test(alias) || covered.has(alias)) continue;
+        const hunk = byAlias.get(alias);
+        if (hunk === undefined) continue;
+        covered.add(alias);
+        ids.push(alias);
+        hunks.push(normalizedHunk(hunk));
+      }
+      if (ids.length === 0) continue;
+      sections.push({
+        id: `section-${sectionNumber}`,
+        title: normalizeText(section.title),
+        prose: normalizeText(section.prose),
+        hunkIds: ids,
+        hunks,
+      });
+      sectionNumber += 1;
+    }
+    if (sections.length > 0) {
+      chapters.push({ id: `chapter-${chapterIndex + 1}`, title: normalizeText(chapter.title), sections });
+    }
+  }
+
+  if (chapters.length === 0) return invalid("empty_primary");
+  const supportHunks = parsedPatch.value.hunks.filter((hunk) => !covered.has(hunk.id));
+  return ok({
+    snapshot: parsedSnapshot.value,
+    title: normalizeText(input.title),
+    focus: normalizeText(input.focus),
+    chapters,
+    support: {
+      id: "support",
+      title: "Support",
+      hunkIds: supportHunks.map((hunk) => hunk.id),
+      hunks: supportHunks.map(normalizedHunk),
+    },
+  });
+}
+
+/** Filter an immutable unified patch to known hunk aliases while preserving file headers and hunk order. */
+export function filterNarrativePatchToHunks(
+  patch: string,
+  hunkIds: ReadonlyArray<string>,
+): string {
+  const parsed = parseNarrativePatch(patch);
+  if (parsed._tag === "err") return "";
+  const requested = new Set(hunkIds);
+  const output: Array<string> = [];
+  for (const file of parsed.value.files) {
+    const selected = file.hunks.filter((hunk) => requested.has(hunk.id));
+    if (selected.length === 0) continue;
+    output.push(file.prefix, ...selected.map((hunk) => hunk.raw));
+  }
+  return output.length === 0 ? "" : `${output.join("\n")}\n`;
+}
