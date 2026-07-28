@@ -87,25 +87,42 @@ const MAX_PROSE_LENGTH = 4_000;
 const MAX_CHAPTERS = 12;
 const MAX_SECTIONS = 32;
 const MAX_HUNKS_PER_SECTION = 32;
+const MAX_HUNK_ALIAS_LENGTH = 32;
+const MAX_SNAPSHOT_ID_LENGTH = 400;
+const MAX_PATCH_LINE_COORDINATE = 1_000_000;
+const MAX_HUNK_LINE_COUNT = 100_000;
+const MAX_HUNK_RAW_LENGTH = 200_000;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
 
+const boundedText = (maxLength: number) => v.pipe(v.string(), v.maxLength(maxLength));
+const boundedHunkIds = v.pipe(
+  v.array(boundedText(MAX_HUNK_ALIAS_LENGTH)),
+  v.maxLength(MAX_HUNKS_PER_SECTION),
+);
+const rawSnapshotSchema = v.object({
+  profileId: boundedText(128),
+  sessionId: boundedText(256),
+  headSha: boundedText(128),
+  patchHash: boundedText(128),
+});
+
 const rawSectionSchema = v.object({
-  title: v.string(),
-  prose: v.string(),
-  hunkIds: v.array(v.string()),
+  title: boundedText(MAX_SECTION_TITLE_LENGTH),
+  prose: boundedText(MAX_PROSE_LENGTH),
+  hunkIds: boundedHunkIds,
 });
 
 const rawChapterSchema = v.object({
-  title: v.string(),
-  sections: v.array(rawSectionSchema),
+  title: boundedText(MAX_CHAPTER_TITLE_LENGTH),
+  sections: v.pipe(v.array(rawSectionSchema), v.maxLength(MAX_SECTIONS)),
 });
 
 const rawWalkthroughSchema = v.object({
-  title: v.string(),
-  focus: v.string(),
-  chapters: v.array(rawChapterSchema),
-  snapshot: v.optional(v.unknown()),
-  snapshotId: v.optional(v.string()),
+  title: boundedText(MAX_TITLE_LENGTH),
+  focus: boundedText(MAX_FOCUS_LENGTH),
+  chapters: v.pipe(v.array(rawChapterSchema), v.maxLength(MAX_CHAPTERS)),
+  snapshot: v.optional(rawSnapshotSchema),
+  snapshotId: v.optional(boundedText(MAX_SNAPSHOT_ID_LENGTH)),
 });
 
 type RawWalkthrough = v.InferOutput<typeof rawWalkthroughSchema>;
@@ -202,12 +219,72 @@ function parseHunkHeader(line: string): HunkRange | undefined {
   const newStart = Number(match[3]);
   const newLines = Number(match[4] ?? "1");
   if (![oldStart, oldLines, newStart, newLines].every(Number.isSafeInteger)) return undefined;
+  if (
+    !validRange(oldStart, oldLines) ||
+    !validRange(newStart, newLines)
+  ) {
+    return undefined;
+  }
   return { oldStart, oldLines, newStart, newLines };
+}
+
+function validRange(start: number, lines: number): boolean {
+  if (start < 0 || lines < 0 || start > MAX_PATCH_LINE_COORDINATE || lines > MAX_HUNK_LINE_COUNT) {
+    return false;
+  }
+  return lines === 0 || start > 0;
+}
+
+function countHunkBody(
+  lines: ReadonlyArray<string>,
+  start: number,
+  end: number,
+): { readonly oldLines: number; readonly newLines: number } | undefined {
+  let oldLines = 0;
+  let newLines = 0;
+  let sawContent = false;
+  for (let index = start; index < end; index += 1) {
+    const line = lines[index];
+    if (line === undefined) return undefined;
+    if (line === "\\ No newline at end of file") {
+      if (!sawContent) return undefined;
+      continue;
+    }
+    const marker = line[0];
+    if (marker === " ") {
+      oldLines += 1;
+      newLines += 1;
+      sawContent = true;
+      continue;
+    }
+    if (marker === "-") {
+      oldLines += 1;
+      sawContent = true;
+      continue;
+    }
+    if (marker === "+") {
+      newLines += 1;
+      sawContent = true;
+      continue;
+    }
+    return undefined;
+  }
+  return { oldLines, newLines };
+}
+
+function validHunkBody(
+  lines: ReadonlyArray<string>,
+  start: number,
+  end: number,
+  range: HunkRange,
+): boolean {
+  const counted = countHunkBody(lines, start, end);
+  return counted !== undefined && counted.oldLines === range.oldLines && counted.newLines === range.newLines;
 }
 
 function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkthroughError> {
   if (patch.length === 0) return invalid("invalid_patch");
-  const lines = patch.split("\n");
+  const lines = (patch.endsWith("\n") ? patch.slice(0, -1) : patch).split("\n");
   const files: Array<{ readonly start: number; prefixEnd: number | undefined; hunks: Array<{ readonly start: number; end: number; header: string; range: HunkRange; path: RepoRelativePath }> }> = [];
   let current: (typeof files)[number] | undefined;
   let currentPath: RepoRelativePath | undefined;
@@ -218,7 +295,9 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     const header = lines[currentHunkStart];
     if (header === undefined) return false;
     const range = parseHunkHeader(header);
-    if (range === undefined) return false;
+    if (range === undefined || !validHunkBody(lines, currentHunkStart + 1, end, range)) return false;
+    const raw = lines.slice(currentHunkStart, end).join("\n");
+    if (raw.length > MAX_HUNK_RAW_LENGTH) return false;
     current.hunks.push({ start: currentHunkStart, end, header, range, path: currentPath });
     currentHunkStart = undefined;
     return true;
@@ -238,6 +317,7 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     }
     if (current === undefined) continue;
     const hunkRange = parseHunkHeader(line);
+    if (line.startsWith("@@ ") && hunkRange === undefined) return invalid("invalid_patch");
     if (hunkRange !== undefined) {
       if (!finishHunk(index)) return invalid("invalid_patch");
       current.prefixEnd ??= index;

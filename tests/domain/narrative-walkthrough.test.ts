@@ -159,18 +159,72 @@ describe("narrative walkthrough domain", () => {
         PATCH,
         SNAPSHOT,
       ),
-    ).toMatchObject({ _tag: "err", error: { reason: "bounds" } });
+    ).toMatchObject({ _tag: "err", error: { reason: "malformed" } });
   });
 
-  it("filters non-contiguous hunk blocks while preserving file headers and reparsable coordinates", () => {
-    const filtered = filterNarrativePatchToHunks(PATCH, ["h1", "h3"]);
+  it.each([
+    ["focus", { ...RAW, focus: "x".repeat(2_001) }],
+    ["chapter title", { ...RAW, chapters: [{ ...RAW.chapters[0], title: "x".repeat(81) }] }],
+    ["section title", { ...RAW, chapters: [{ ...RAW.chapters[0], sections: [{ ...RAW.chapters[0]?.sections[0], title: "x".repeat(161) }] }] }],
+    ["prose", { ...RAW, chapters: [{ ...RAW.chapters[0], sections: [{ ...RAW.chapters[0]?.sections[0], prose: "x".repeat(4_001) }] }] }],
+    ["chapter count", { ...RAW, chapters: Array.from({ length: 13 }, () => RAW.chapters[0]) }],
+    ["section count", { ...RAW, chapters: [{ ...RAW.chapters[0], sections: Array.from({ length: 33 }, () => RAW.chapters[0]?.sections[0]) }] }],
+    ["hunk-id count", { ...RAW, chapters: [{ ...RAW.chapters[0], sections: [{ ...RAW.chapters[0]?.sections[0], hunkIds: Array.from({ length: 33 }, () => "h1") }] }] }],
+    ["hunk-id length", { ...RAW, chapters: [{ ...RAW.chapters[0], sections: [{ ...RAW.chapters[0]?.sections[0], hunkIds: ["h" + "1".repeat(32)] }] }] }],
+    ["snapshot-id length", { ...RAW, snapshotId: "x".repeat(401) }],
+  ] as const)("rejects oversized raw %s at the schema boundary", (_label, input) => {
+    expect(normalizeNarrativeWalkthrough(input, PATCH, SNAPSHOT)).toMatchObject({ _tag: "err", error: { reason: "malformed" } });
+  });
 
-    expect(filtered).toContain("diff --git a/src/recovery.ts b/src/recovery.ts");
-    expect(filtered).toContain("--- a/src/recovery.ts\n+++ b/src/recovery.ts");
-    expect(filtered).toContain("@@ -1,2 +1,3 @@");
-    expect(filtered).not.toContain("@@ -20,2 +21,3 @@");
-    expect(filtered).toContain("diff --git a/tests/recovery.test.ts b/tests/recovery.test.ts");
+  it("rejects malformed snapshot identity and accepts both supported snapshot-id forms", () => {
+    expect(normalizeNarrativeWalkthrough({ ...RAW, snapshot: { ...SNAPSHOT, headSha: "bad" } }, PATCH, SNAPSHOT))
+      .toMatchObject({ _tag: "err", error: { reason: "malformed_snapshot" } });
+    expect(normalizeNarrativeWalkthrough({ ...RAW, snapshotId: "wrong" }, PATCH, SNAPSHOT))
+      .toMatchObject({ _tag: "err", error: { reason: "stale_snapshot" } });
+    expect(normalizeNarrativeWalkthrough({ ...RAW, snapshotId: SNAPSHOT.sessionId }, PATCH, SNAPSHOT)._tag).toBe("ok");
+    expect(normalizeNarrativeWalkthrough({ ...RAW, snapshotId: [SNAPSHOT.profileId, SNAPSHOT.sessionId, SNAPSHOT.headSha, SNAPSHOT.patchHash].join(":") }, PATCH, SNAPSHOT)._tag).toBe("ok");
+  });
+
+  it("rejects malformed, invalid, oversized, and mismatched unified-diff ranges", () => {
+    const cases = [
+      PATCH.replace("@@ -1,2 +1,3 @@", "@@ -0,1 +1,3 @@"),
+      PATCH.replace("@@ -1,2 +1,3 @@", "@@ -1,-2 +1,3 @@"),
+      PATCH.replace("@@ -1,2 +1,3 @@", "@@ -1,1000001 +1,3 @@"),
+      PATCH.replace("@@ -1,2 +1,3 @@", "@@ -1,3 +1,3 @@"),
+      PATCH.replace("@@ -1,2 +1,3 @@", "@@ -1,2 +1,3 @@\n? malformed"),
+    ];
+    for (const [index, patch] of cases.entries()) {
+      expect(normalizeNarrativeWalkthrough(RAW, patch, SNAPSHOT), `invalid patch case ${index}`).toMatchObject({ _tag: "err", error: { reason: "invalid_patch" } });
+    }
+  });
+
+  it("accepts valid zero-count ranges and preserves exact coordinates", () => {
+    const patch = [
+      "diff --git a/new.ts b/new.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/new.ts",
+      "@@ -0,0 +1,2 @@",
+      "+one",
+      "+two",
+      "",
+    ].join("\n");
+    const result = normalizeNarrativeWalkthrough({ ...RAW, chapters: [{ title: "Context", sections: [{ title: "New", prose: "Added.", hunkIds: ["h1"] }] }] }, patch, SNAPSHOT);
+    expect(result._tag).toBe("ok");
+    if (result._tag === "ok") {
+      expect(result.value.chapters[0]?.sections[0]?.hunks[0]).toMatchObject({ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2 });
+    }
+  });
+
+  it("filters reverse requested ids in source order and preserves the source patch", () => {
+    const original = PATCH;
+    const filtered = filterNarrativePatchToHunks(PATCH, ["h3", "h1"]);
+    expect(filtered.indexOf("@@ -1,2 +1,3 @@")).toBeLessThan(filtered.indexOf("@@ -3,2 +3,3 @@"));
     expect(parseUnifiedPatch(filtered)).toHaveLength(2);
-    expect(PATCH).toContain("@@ -20,2 +21,3 @@");
+    expect(PATCH).toBe(original);
+  });
+
+  it("filters a malformed patch to an empty result instead of exposing coordinates", () => {
+    expect(filterNarrativePatchToHunks(PATCH.replace("@@ -1,2 +1,3 @@", "@@ -0,1 +1,3 @@"), ["h1"])).toBe("");
   });
 });
