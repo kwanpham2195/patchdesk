@@ -21,6 +21,8 @@ export type FlueHarness = {
     prompt<T>(text: string, options: {
       readonly result: v.GenericSchema;
       readonly tools: ReadonlyArray<ToolDefinition>;
+      readonly model?: string;
+      readonly thinkingLevel?: "low" | "medium" | "high";
     }): Promise<{ readonly data: T }>;
   }>;
 };

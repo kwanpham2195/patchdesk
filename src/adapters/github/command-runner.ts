@@ -13,6 +13,8 @@ export type CommandRequest = {
   readonly stdin?: string;
   /** Adapter-owned environment additions; renderer input never reaches this field. */
   readonly environment?: Readonly<Record<string, string>>;
+  /** Caller-owned cancellation; the adapter terminates only its own child process. */
+  readonly signal?: AbortSignal;
 };
 
 /** Captured completion state from a process execution boundary. */
@@ -101,10 +103,14 @@ class NodeCommandExecutor implements CommandExecutor {
       let outputExceeded = false;
       const maxOutputBytes = 2 * 1024 * 1024;
 
+      const onAbort = (): void => {
+        terminateOwnedProcess(child.pid);
+      };
       const finish = (execution: CommandExecution): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        input.signal?.removeEventListener("abort", onAbort);
         resolve(execution);
       };
       const timeout = setTimeout(() => {
@@ -112,6 +118,11 @@ class NodeCommandExecutor implements CommandExecutor {
         terminateOwnedProcess(child.pid);
       }, input.timeoutMs);
 
+      if (input.signal?.aborted) {
+        terminateOwnedProcess(child.pid);
+      } else {
+        input.signal?.addEventListener("abort", onAbort, { once: true });
+      }
       child.stdout?.setEncoding("utf8");
       child.stderr?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
