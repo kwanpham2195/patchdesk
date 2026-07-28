@@ -5,7 +5,7 @@ import { CompletedReviewFlow } from "./flows/completed-review-flow";
 import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
-import { SettingsFlow } from "./flows/settings-flow";
+import { SettingsModal } from "./components/settings-modal";
 import type {
   Dashboard,
   DashboardScreenState,
@@ -70,6 +70,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     initialState ?? "loading",
   );
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpener, setSettingsOpener] = useState<HTMLElement | undefined>();
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
     loadAppearancePreference(),
   );
@@ -266,6 +268,20 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     };
   }, [dashboard?.profile.id, destination.kind, fixtureMode, refreshInbox]);
   useEffect(() => {
+    if (fixtureMode) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        if (navigationState === "clear") {
+          setSettingsOpener(document.activeElement instanceof HTMLElement ? document.activeElement : undefined);
+          setSettingsOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fixtureMode, navigationState]);
+  useEffect(() => {
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     void window.patchdesk
       .request({ operation: "setNavigationState", state: navigationState })
@@ -288,13 +304,18 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     },
     [destination, navigationState, performNavigation],
   );
+  const openSettings = useCallback((opener?: HTMLElement): void => {
+    if (navigationState !== "clear") return;
+    setSettingsOpener(opener);
+    setSettingsOpen(true);
+  }, [navigationState]);
   useEffect(() => {
     if (fixtureMode || typeof window.patchdesk?.onNavigate !== "function")
       return;
     return window.patchdesk.onNavigate((next) => {
-      if (next === "settings") navigate({ kind: "settings" });
+      if (next === "settings") openSettings();
     });
-  }, [fixtureMode, navigate]);
+  }, [fixtureMode, openSettings]);
 
   const refreshDashboard = async (): Promise<void> => {
     const scheduler = inboxRefreshScheduler.current;
@@ -341,6 +362,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         }
         navigationBlocked={navigationState !== "clear"}
         onNavigate={navigate}
+        onOpenSettings={openSettings}
         workspacePanel={
           dashboard === undefined ? undefined : (
             <section aria-labelledby="watchlist-title">
@@ -380,6 +402,25 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       >
         {content}
       </AppShell>
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          setSettingsOpen(open);
+          if (!open) setSettingsOpener(undefined);
+        }}
+        opener={settingsOpener}
+        {...(dashboard === undefined ? {} : { dashboard })}
+        appearance={appearance}
+        onAppearanceChange={(next) => { void updateAppearance(next); }}
+        diffThemePreferences={diffThemePreferences}
+        onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
+        profiles={profiles}
+        onWorkspaceReload={loadWorkspace}
+        onRepositoryRefresh={(value, repo) => {
+          if (!isDashboardList(value)) return;
+          setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
+        }}
+      />
       <AlertDialog
         open={pendingDestination !== undefined}
         onOpenChange={(open) => {
@@ -473,23 +514,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   }
 
   return shell(
-    <div className={destination.kind === "dashboard" || destination.kind === "workbench" ? "flex min-h-0 flex-1 flex-col" : "p-3 min-[1280px]:p-4"}>
-      {destination.kind === "settings" ? (
-        <SettingsFlow
-          {...(dashboard === undefined ? {} : { dashboard })}
-          appearance={appearance}
-          onAppearanceChange={(next) => { void updateAppearance(next); }}
-          diffThemePreferences={diffThemePreferences}
-          onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
-          profiles={profiles}
-          onWorkspaceReload={loadWorkspace}
-          onRepositoryRefresh={(value, repo) => {
-            if (!isDashboardList(value)) return;
-            setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
-          }}
-        />
-      ) : (
-        <InboxFlow
+    <div className="flex min-h-0 flex-1 flex-col">
+      <InboxFlow
           destination={destination.kind}
           {...(destination.kind === "workbench" ? { sessionId: destination.sessionId } : {})}
           {...(dashboard === undefined ? {} : { dashboard })}
@@ -503,14 +529,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             ...(inbox?.inbox.snapshot?.refreshedAt === undefined ? {} : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
           })}
           onRefresh={() => void refreshDashboard()}
-          onSettings={() => navigate({ kind: "settings" })}
+          onSettings={() => openSettings()}
           onWorkspaceReload={loadWorkspace}
           onOpenWorkbench={(next, initialSection) => {
             setWorkbench(next);
             navigate({ kind: "workbench", sessionId: next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
           }}
         />
-      )}
     </div>,
   );
 }

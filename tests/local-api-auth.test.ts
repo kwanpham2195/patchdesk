@@ -227,6 +227,31 @@ describe("local API capability boundary", () => {
     }
   });
 
+  it("removes the obsolete per-review storage routes from the authenticated API", async () => {
+    localApi = await startTestLocalApi();
+    const headers = { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
+
+    for (const [path, method] of [
+      ["v1/storage", "GET"],
+      ["v1/storage/discard", "POST"],
+      ["v1/storage/quarantine/delete", "POST"],
+    ] as const) {
+      const response = await fetch(new URL(path, localApi.url), {
+        method,
+        headers,
+        ...(method === "POST" ? { body: JSON.stringify({ profileId: "cfw" }) } : {}),
+      });
+      expect(response.status).toBe(404);
+    }
+
+    const cleanup = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    expect(cleanup.status).toBe(400);
+  });
+
   it("returns an empty settings config when no global config file exists", async () => {
     const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-empty-settings-api-")));
     const startup = await startLocalApiServer({ capability, allowedOrigin, paths });
@@ -327,63 +352,15 @@ describe("local API capability boundary", () => {
     await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "ReviewCompleted" }, batchContent: { state: { _tag: "PartialFailure" } } } });
   });
 
-  it("returns a path-free storage overview and rejects traversal-shaped quarantine names", async () => {
-    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-storage-api-")));
-    await new ProfileStore(paths).save(must(parseWorkspaceProfileConfig({
-      id: "cfw",
-      label: "CFW",
-      githubHost: "github.com",
-      ghAccount: "fixture",
-      ownerFilters: [],
-      workspaceRoots: [],
-      rulePaths: [],
-      repos: [],
-    })));
-    const trash = {
-      moves: [] as Array<{ path: string }>,
-      async move(path: string) {
-        this.moves.push({ path });
-        return { _tag: "ok" as const, value: undefined };
-      },
-    };
-    const startup = await startLocalApiServer({ capability, allowedOrigin, paths, trash });
-    if (startup._tag !== "started") throw new Error("Expected local API");
-    localApi = startup.server;
-    const headers = writeHeaders();
-
-    const overview = await fetch(
-      new URL("v1/storage?profileId=cfw", localApi.url),
-      { headers },
-    );
-    expect(overview.status).toBe(200);
-    const body = await overview.json() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["cacheBytes", "quarantined", "sessions"]);
-    for (const session of body.sessions as Array<Record<string, unknown>>) {
-      expect(Object.keys(session).sort()).toEqual(["canDiscard", "id", "prLabel", "state", "updatedAt"]);
-      for (const value of Object.values(session)) {
-        expect(JSON.stringify(value)).not.toMatch(/\/Users\/|\/var\/|\/private\//);
-      }
-    }
-
-    const malformed = await fetch(new URL("v1/storage?profileId=../etc", localApi.url), { headers });
-    expect(malformed.status).toBe(400);
-    await expect(malformed.json()).resolves.toEqual({ error: "invalid_input" });
-
-    const traversal = await fetch(new URL("v1/storage/quarantine/delete", localApi.url), {
+  it("authenticates the global local-data cleanup route", async () => {
+    localApi = await startTestLocalApi();
+    const response = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
       method: "POST",
-      headers,
-      body: JSON.stringify({ profileId: "cfw", entryName: "../etc/passwd" }),
+      headers: writeHeaders(),
+      body: JSON.stringify({}),
     });
-    expect(traversal.status).toBe(400);
-    await expect(traversal.json()).resolves.toEqual({ error: "invalid_input" });
-    expect(trash.moves).toHaveLength(0);
-
-    const clearLocalData = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ profileId: "cfw" }),
-    });
-    expect(clearLocalData.status).toBe(200);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
 
     const unauthorized = await fetch(new URL("v1/storage/clear-local-data", localApi.url), {
       method: "POST",

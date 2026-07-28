@@ -1,24 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requestJson, selectDirectory } from "../api-client";
-import { formatByteSize } from "../format-byte-size";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
   type DiffThemePreferences,
 } from "../diff-theme-preferences";
 import type { AppearancePreference } from "../appearance-preferences";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../components/ui/alert-dialog";
-import { Badge } from "../components/ui/badge";
+  loadReviewExecutionPreference,
+  saveReviewExecutionPreference,
+  type ReviewReasoningPreference,
+} from "../review-execution-preferences";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -38,6 +32,34 @@ import {
 } from "../components/ui/select";
 import type { Dashboard, Profile, Repo } from "../renderer-models";
 
+export type SettingsSection = "general" | "review" | "data";
+
+type ProfileDraft = {
+  readonly id: string;
+  readonly label: string;
+  readonly githubHost: string;
+  readonly ghAccount: string;
+  readonly workspaceRoots: ReadonlyArray<string>;
+  readonly ownerFilters: ReadonlyArray<string>;
+  readonly rulePaths: ReadonlyArray<string>;
+};
+
+type SettingsFlowProps = {
+  readonly dashboard?: Dashboard;
+  readonly appearance: AppearancePreference;
+  readonly onAppearanceChange: (value: AppearancePreference) => void;
+  readonly diffThemePreferences: DiffThemePreferences;
+  readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
+  readonly profiles: ReadonlyArray<Profile>;
+  readonly onWorkspaceReload: () => Promise<void>;
+  readonly onRepositoryRefresh?: (value: unknown, repo: Repo) => void;
+  readonly section?: SettingsSection;
+  readonly onDirtyChange?: (dirty: boolean) => void;
+  readonly onProfileSwitchRequest?: (profileId: string, proceed: () => void) => void;
+  readonly onCleanupSuccess?: () => void;
+};
+
+/** Renders one focused Settings section inside the global Settings overlay. */
 export function SettingsFlow({
   dashboard,
   appearance,
@@ -47,173 +69,64 @@ export function SettingsFlow({
   profiles,
   onWorkspaceReload,
   onRepositoryRefresh,
-}: {
-  readonly dashboard?: Dashboard;
-  readonly appearance: AppearancePreference;
-  readonly onAppearanceChange: (value: AppearancePreference) => void;
-  readonly diffThemePreferences: DiffThemePreferences;
-  readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
-  readonly profiles: ReadonlyArray<Profile>;
-  readonly onWorkspaceReload: () => Promise<void>;
-  readonly onRepositoryRefresh: (value: unknown, repo: Repo) => void;
-}): React.JSX.Element {
-  const [removalTarget, setRemovalTarget] = useState<Repo>();
-  const [paths, setPaths] = useState<Record<string, string>>({});
-  const [pathFeedback, setPathFeedback] = useState<string>();
+  section = "general",
+  onDirtyChange,
+  onProfileSwitchRequest,
+  onCleanupSuccess,
+}: SettingsFlowProps): React.JSX.Element {
+  void onRepositoryRefresh;
   const [profileDraft, setProfileDraft] = useState(() => profileDraftFor(dashboard?.profile));
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string>();
   const [savingProfile, setSavingProfile] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<string>();
-  const [newRepo, setNewRepo] = useState("");
-  const [suggestions, setSuggestions] = useState<ReadonlyArray<Repo>>([]);
-  const [discoveryFeedback, setDiscoveryFeedback] = useState<string>();
-  const [githubAccess, setGithubAccess] = useState<string>();
   const [environment, setEnvironment] = useState<Record<string, string>>();
-  const [storageOverview, setStorageOverview] = useState<StorageOverview>(EMPTY_STORAGE_OVERVIEW);
-  const [storageLoadId, setStorageLoadId] = useState(0);
-  const [storageError, setStorageError] = useState<string>();
-  const [storageAction, setStorageAction] = useState<StorageAction>();
-  const [storagePending, setStoragePending] = useState(false);
+  const [githubAccess, setGithubAccess] = useState<string>();
+  const [cleanupAction, setCleanupAction] = useState<"cache" | "local">();
+  const [cleanupPending, setCleanupPending] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string>();
+  const profileBaseline = useRef(profileDraft);
+  const profileDirty = JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
+
   useEffect(() => {
-    if (
-      !creatingProfile &&
-      dashboard !== undefined &&
-      dashboard.profile.id !== profileDraft.id
-    )
-      setProfileDraft(profileDraftFor(dashboard.profile));
-  }, [creatingProfile, dashboard?.profile.id]);
-  const loadEnvironment = async (): Promise<void> => {
-    const value = await requestJson("/v1/environment");
-    if (!record(value)) return;
-    setEnvironment(
-      Object.fromEntries(
-        Object.entries(value).filter(
-          (entry): entry is [string, string] => typeof entry[1] === "string",
-        ),
-      ),
-    );
-  };
+    onDirtyChange?.(profileDirty);
+  }, [onDirtyChange, profileDirty]);
+
+  useEffect(() => {
+    if (creatingProfile || dashboard === undefined || dashboard.profile.id === profileDraft.id) return;
+    const next = profileDraftFor(dashboard.profile);
+    profileBaseline.current = next;
+    setProfileDraft(next);
+  }, [creatingProfile, dashboard, profileDraft.id]);
+
   useEffect(() => {
     void loadEnvironment();
   }, []);
-  const activeProfileId = dashboard?.profile.id;
-  useEffect(() => {
-    if (activeProfileId === undefined) return;
-    let cancelled = false;
-    const requestId = storageLoadId + 1;
-    setStorageLoadId(requestId);
-    void (async (): Promise<void> => {
-      try {
-        const value = await requestJson(`/v1/storage?profileId=${encodeURIComponent(activeProfileId)}`);
-        if (cancelled) return;
-        const overview = parseStorageOverview(value);
-        if (overview !== undefined) {
-          setStorageOverview(overview);
-          setStorageError(undefined);
-        } else {
-          setStorageError("Patchdesk could not read the local review storage.");
-        }
-      } catch {
-        if (cancelled) return;
-        setStorageError("Patchdesk could not read the local review storage.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeProfileId]);
-  const reloadStorage = async (): Promise<void> => {
-    if (activeProfileId === undefined) return;
-    setStorageError(undefined);
+
+  const loadEnvironment = async (): Promise<void> => {
     try {
-      const value = await requestJson(`/v1/storage?profileId=${encodeURIComponent(activeProfileId)}`);
-      const overview = parseStorageOverview(value);
-      if (overview !== undefined) {
-        setStorageOverview(overview);
-      } else {
-        setStorageError("Patchdesk could not read the local review storage.");
-      }
-    } catch {
-      setStorageError("Patchdesk could not read the local review storage.");
-    }
-  };
-  const runStorageAction = async (): Promise<void> => {
-    if (storageAction === undefined || activeProfileId === undefined) return;
-    setStoragePending(true);
-    setStorageError(undefined);
-    try {
-      if (storageAction.kind === "discard") {
-        await requestJson("/v1/storage/discard", {
-          method: "POST",
-          body: { profileId: activeProfileId, sessionId: storageAction.sessionId },
-        });
-      } else if (storageAction.kind === "delete-quarantine") {
-        await requestJson("/v1/storage/quarantine/delete", {
-          method: "POST",
-          body: { profileId: activeProfileId, entryName: storageAction.entryName },
-        });
-      } else {
-        await requestJson("/v1/storage/cache/clear", {
-          method: "POST",
-          body: { profileId: activeProfileId },
-        });
-      }
-      setStorageAction(undefined);
-      await reloadStorage();
-    } catch {
-      setStorageError("Patchdesk could not complete that storage action.");
-    } finally {
-      setStoragePending(false);
-    }
-  };
-  const cancelStorageAction = (): void => {
-    if (storagePending) return;
-    setStorageAction(undefined);
-  };
-  const addRepo = async (): Promise<void> => {
-    const match = /^([^/]+)\/([^/]+)$/.exec(newRepo.trim());
-    if (match === null) return;
-    await requestJson("/v1/watchlist", {
-      method: "POST",
-      body: {
-        host: dashboard?.profile.githubHost ?? "github.com",
-        owner: match[1],
-        repo: match[2],
-      },
-    });
-    setNewRepo("");
-    await onWorkspaceReload();
-  };
-  const discover = async (): Promise<void> => {
-    setDiscoveryFeedback("Discovering repositories...");
-    try {
-      const value = await requestJson("/v1/watchlist/suggestions");
-      const discovered = Array.isArray(value) ? value.filter(isRepo) : [];
-      setSuggestions(discovered);
-      setDiscoveryFeedback(
-        discovered.length === 0
-          ? "No new repositories found in the configured workspace roots."
-          : `Found ${discovered.length} new ${discovered.length === 1 ? "repository" : "repositories"}.`,
+      const value = await requestJson("/v1/environment");
+      if (!record(value)) return;
+      setEnvironment(
+        Object.fromEntries(
+          Object.entries(value).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        ),
       );
     } catch {
-      setSuggestions([]);
-      setDiscoveryFeedback(
-        "Could not discover repositories. Check the workspace root in Settings.",
-      );
+      setEnvironment(undefined);
     }
   };
-  const addSuggestion = async (repo: Repo): Promise<void> => {
-    await requestJson("/v1/watchlist", { method: "POST", body: repo });
-    setSuggestions((current) => current.filter((item) => key(item) !== key(repo)));
-    await onWorkspaceReload();
-  };
+
   const testGitHubAccess = async (): Promise<void> => {
-    const value = await requestJson("/v1/github/access", { method: "POST" });
-    if (record(value) && typeof value.state === "string")
-      setGithubAccess(value.state);
+    try {
+      const value = await requestJson("/v1/github/access", { method: "POST" });
+      if (record(value) && typeof value.state === "string") setGithubAccess(value.state);
+    } catch {
+      setGithubAccess("unavailable");
+    }
   };
+
   const saveProfile = async (): Promise<void> => {
     setProfileError(undefined);
     const normalized = normalizeProfileDraft(profileDraft);
@@ -231,1015 +144,266 @@ export function SettingsFlow({
         method: creatingProfile ? "POST" : "PUT",
         body: normalized,
       });
-      if (creatingProfile)
+      if (creatingProfile) {
         await requestJson("/v1/profiles/select", {
           method: "POST",
           body: { id: normalized.id },
         });
+      }
+      const next = profileDraftFromNormalized(normalized);
+      profileBaseline.current = next;
+      setProfileDraft(next);
       setCreatingProfile(false);
+      onDirtyChange?.(false);
       await onWorkspaceReload();
     } catch (cause: unknown) {
-      setProfileError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not save this profile.",
-      );
+      setProfileError(cause instanceof Error ? cause.message : "Patchdesk could not save the local review state.");
     } finally {
       setSavingProfile(false);
     }
   };
-  const selectProfile = async (id: string): Promise<void> => {
+
+  const performSelectProfile = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
-    if (selected !== undefined) {
-      setCreatingProfile(false);
-      setProfileError(undefined);
-      setProfileDraft(profileDraftFor(selected));
-    }
+    if (selected === undefined) return;
+    setCreatingProfile(false);
+    setProfileError(undefined);
+    const next = profileDraftFor(selected);
+    profileBaseline.current = next;
+    setProfileDraft(next);
     await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
     await onWorkspaceReload();
   };
-  const startNewProfile = (): void => {
-    setCreatingProfile(true);
-    setProfileError(undefined);
-    setProfileDraft(profileDraftFor(undefined));
+
+  const selectProfile = (id: string): void => {
+    const proceed = (): void => {
+      void performSelectProfile(id);
+    };
+    if (profileDirty) onProfileSwitchRequest?.(id, proceed);
+    else proceed();
   };
-  const updateProfileList = (
-    field: ProfileListField,
-    index: number,
-    value: string,
-  ): void => {
+
+  const updateProfileList = (field: ProfileListField, index: number, value: string): void => {
     setProfileDraft((current) => ({
       ...current,
-      [field]: current[field].map((entry, entryIndex) =>
-        entryIndex === index ? value : entry,
-      ),
+      [field]: current[field].map((entry, entryIndex) => entryIndex === index ? value : entry),
     }));
   };
+
   const addProfileListEntry = (field: ProfileListField): void => {
     setProfileDraft((current) => ({ ...current, [field]: [...current[field], ""] }));
   };
+
   const removeProfileListEntry = (field: ProfileListField, index: number): void => {
     setProfileDraft((current) => ({
       ...current,
       [field]: current[field].filter((_, entryIndex) => entryIndex !== index),
     }));
   };
+
   const chooseWorkspaceRoot = async (index: number): Promise<void> => {
     const selected = await selectDirectory(profileDraft.workspaceRoots[index]);
     if (selected === undefined) return;
     updateProfileList("workspaceRoots", index, selected);
   };
-  const editPath = async (repo: Repo): Promise<void> => {
-    await requestJson("/v1/watchlist/path", { method: "PATCH", body: { ...repo, localPath: paths[key(repo)] ?? repo.localPath ?? "" } });
-    await onWorkspaceReload();
-  };
-  const choosePath = async (repo: Repo): Promise<void> => {
-    const selected = await selectDirectory(paths[key(repo)] ?? repo.localPath);
-    if (selected === undefined) {
-      setPathFeedback("Folder selection cancelled. The existing repository path was not changed.");
-      return;
-    }
-    setPaths((current) => ({ ...current, [key(repo)]: selected }));
-    setPathFeedback(`Selected ${selected} for ${repo.owner}/${repo.repo}. Save the path to apply it.`);
-  };
-  const remove = async (repo: Repo): Promise<void> => {
-    await requestJson("/v1/watchlist", { method: "DELETE", body: repo });
-    await onWorkspaceReload();
-  };
-  const archive = async (repo: Repo): Promise<void> => {
-    await requestJson("/v1/watchlist/archive", { method: "PATCH", body: { ...repo, archived: repo.archived !== true } });
-    await onWorkspaceReload();
-  };
-  const refreshRepo = async (repo: Repo): Promise<void> => {
-    const value = await requestJson("/v1/dashboard/refresh/repository", { method: "POST", body: repo });
-    onRepositoryRefresh(value, repo);
-  };
-  const setupSteps =
-    environment === undefined ? [] : environmentSetupSteps(environment);
 
-  const confirmRemoval = async (): Promise<void> => {
-    if (removalTarget === undefined || removing) return;
-    setRemoving(true);
-    setRemoveError(undefined);
+  const startNewProfile = (): void => {
+    setCreatingProfile(true);
+    setProfileError(undefined);
+    const next = profileDraftFor(undefined);
+    profileBaseline.current = next;
+    setProfileDraft(next);
+  };
+
+  const runCleanup = async (): Promise<void> => {
+    if (cleanupAction === undefined || dashboard?.profile.id === undefined) return;
+    setCleanupPending(true);
+    setCleanupError(undefined);
     try {
-      await remove(removalTarget);
-      setRemovalTarget(undefined);
-    } catch (cause: unknown) {
-      setRemoveError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not remove this repository.",
-      );
+      await requestJson(cleanupAction === "cache" ? "/v1/storage/cache/clear" : "/v1/storage/clear-local-data", {
+        method: "POST",
+        body: { profileId: dashboard.profile.id },
+      });
+      setCleanupAction(undefined);
+      await onWorkspaceReload();
+      onCleanupSuccess?.();
+    } catch {
+      setCleanupError(cleanupAction === "cache" ? "Could not clear cache. Try again." : "Could not clear local review data. Try again.");
     } finally {
-      setRemoving(false);
+      setCleanupPending(false);
     }
   };
+
+  if (section === "review") {
+    return (
+      <ReviewPreferences profileId={dashboard?.profile.id} />
+    );
+  }
+
+  if (section === "data") {
+    return (
+      <>
+        <Card data-testid="local-review-data-card">
+          <CardHeader>
+            <CardTitle>Local review data</CardTitle>
+            <CardDescription>Two global actions, ordered by severity. Confirmations state what stays and what goes.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Alert>
+              <AlertTitle>Stored reviews stay readable</AlertTitle>
+              <AlertDescription>Reviews you can still open, resume, retry, or prepare remain on this Mac until you remove them yourself.</AlertDescription>
+            </Alert>
+            <div className="flex flex-col gap-2">
+              <Button variant="outline" onClick={() => { setCleanupError(undefined); setCleanupAction("cache"); }}>Clear cache</Button>
+              <Button variant="outline" data-testid="clear-local-data-button" onClick={() => { setCleanupError(undefined); setCleanupAction("local"); }}>Clear local review data</Button>
+            </div>
+            {cleanupError === undefined ? null : <Alert variant="destructive"><AlertTitle>Cleanup failed</AlertTitle><AlertDescription role="alert">{cleanupError}</AlertDescription></Alert>}
+          </CardContent>
+        </Card>
+        <CleanupConfirmation
+          action={cleanupAction}
+          pending={cleanupPending}
+          error={cleanupError}
+          onCancel={() => { if (!cleanupPending) setCleanupAction(undefined); }}
+          onConfirm={() => { void runCleanup(); }}
+        />
+      </>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Workspace profiles, repository paths, and safe environment
-          diagnostics.
-        </p>
-      </header>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Appearance</CardTitle>
-            <CardDescription>
-              Follow the system setting, or keep Patchdesk in light or dark
-              mode.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Select
-              value={appearance}
-              onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark")
-                  onAppearanceChange(value);
-              }}
-            >
-              <SelectTrigger aria-label="Appearance">
-                <SelectValue />
-              </SelectTrigger>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Follow the system setting, or keep Patchdesk in light or dark mode.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Label className="grid gap-1.5">Theme
+            <Select value={appearance} onValueChange={(value) => { if (value === "system" || value === "light" || value === "dark") onAppearanceChange(value); }}>
+              <SelectTrigger aria-label="Appearance"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="system">System</SelectItem>
                 <SelectItem value="light">Light</SelectItem>
                 <SelectItem value="dark">Dark</SelectItem>
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Diff theme</CardTitle>
-            <CardDescription>
-              Choose one of every Pierre-supported light and dark theme. The
-              matching choice is used when the app appearance changes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="diff-theme-light">Light appearance</Label>
-              <Select
-                value={diffThemePreferences.light}
-                onValueChange={(value) => {
-                  if (
-                    value !== null &&
-                    DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
-                  ) {
-                    onDiffThemeChange({
-                      ...diffThemePreferences,
-                      light: value,
-                    });
-                  }
-                }}
-              >
-                <SelectTrigger
-                  id="diff-theme-light"
-                  aria-label="Light diff theme"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIFF_LIGHT_THEMES.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.id}>
-                      {theme.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="diff-theme-dark">Dark appearance</Label>
-              <Select
-                value={diffThemePreferences.dark}
-                onValueChange={(value) => {
-                  if (
-                    value !== null &&
-                    DIFF_DARK_THEMES.some((theme) => theme.id === value)
-                  ) {
-                    onDiffThemeChange({ ...diffThemePreferences, dark: value });
-                  }
-                }}
-              >
-                <SelectTrigger
-                  id="diff-theme-dark"
-                  aria-label="Dark diff theme"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIFF_DARK_THEMES.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.id}>
-                      {theme.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Workspace profile</CardTitle>
-            <CardDescription>
-              GitHub reads and local paths are scoped to the selected profile.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="active-profile">Active profile</Label>
-              <Select
-                value={dashboard?.profile.id ?? profileDraft.id}
-                items={profiles.map((profile) => ({
-                  label: profile.label,
-                  value: profile.id,
-                }))}
-                onValueChange={(value) => {
-                  if (value !== null) void selectProfile(value);
-                }}
-              >
-                <SelectTrigger id="active-profile" className="mt-1.5">
-                  <SelectValue placeholder="Select a profile" />
-                </SelectTrigger>
-                <SelectContent>
-                  {profiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {profile.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="outline" onClick={startNewProfile}>
-              New profile
-            </Button>
-            {(
-              [
-                ["Profile ID", "id"],
-                ["Label", "label"],
-                ["GitHub host", "githubHost"],
-                ["GitHub account", "ghAccount"],
-              ] as const
-            ).map(([label, field]) => (
-              <div key={field}>
-                <Label htmlFor={`profile-${field}`}>{label}</Label>
-                <Input
-                  id={`profile-${field}`}
-                  className="mt-1.5"
-                  value={profileDraft[field]}
-                  disabled={field === "id" && !creatingProfile}
-                  onChange={(event) =>
-                    setProfileDraft((current) => ({
-                      ...current,
-                      [field]: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            ))}
-            <ProfileListEditor
-              label="Workspace roots"
-              field="workspaceRoots"
-              entries={profileDraft.workspaceRoots}
-              placeholder="/absolute/workspace/path"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
-              onChoose={(index) => void chooseWorkspaceRoot(index)}
-            />
-            <ProfileListEditor
-              label="Owner filters"
-              field="ownerFilters"
-              entries={profileDraft.ownerFilters}
-              placeholder="github-owner"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
-            />
-            <ProfileListEditor
-              label="Rule paths"
-              field="rulePaths"
-              entries={profileDraft.rulePaths}
-              placeholder="/absolute/path/to/AGENTS.md"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
-            />
-            {profileError === undefined ? null : (
-              <p role="alert" className="text-sm text-destructive">
-                {profileError}
-              </p>
-            )}
-            <Button disabled={savingProfile} onClick={() => void saveProfile()}>
-              {savingProfile ? "Saving profile…" : "Save profile"}
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Environment diagnostics</CardTitle>
-            <CardDescription>
-              Readiness only; Patchdesk never displays token values or command
-              output.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => void loadEnvironment()}>
-                {setupSteps.length === 0
-                  ? "Check environment"
-                  : "Recheck environment"}
-              </Button>
-              <Button variant="outline" onClick={() => void testGitHubAccess()}>
-                Test GitHub access
-              </Button>
-            </div>
-            {githubAccess === undefined ? null : (
-              <p className="mt-4 text-sm">
-                GitHub access: <Badge variant="outline">{githubAccess}</Badge>
-              </p>
-            )}
-            {environment === undefined ? (
-              <p className="mt-4 text-sm text-muted-foreground">
-                Loading safe environment diagnostics.
-              </p>
-            ) : (
-              <>
-                <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                  {Object.entries(environment)
-                    .filter(
-                      ([name]) =>
-                        ![
-                          "productName",
-                          "version",
-                          "architecture",
-                          "distribution",
-                        ].includes(name),
-                    )
-                    .map(([name, value]) => (
-                      <div key={name} className="rounded-md border p-2">
-                        <dt className="text-muted-foreground">{name}</dt>
-                        <dd className="mt-1 font-medium">
-                          {value.replaceAll("_", " ")}
-                        </dd>
-                      </div>
-                    ))}
-                </dl>
-                {setupSteps.length === 0 ? null : (
-                  <Alert variant="destructive" className="mt-4">
-                    <AlertTitle>Setup action required</AlertTitle>
-                    <AlertDescription>
-                      <ul className="list-disc space-y-1 pl-5">
-                        {setupSteps.map((step) => (
-                          <li key={step}>{step}</li>
-                        ))}
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>About Patchdesk</h2>
-            </CardTitle>
-            <CardDescription>
-              Build identity for diagnostics and internal distribution.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {environment === undefined ? (
-              <p className="text-muted-foreground">
-                Loading build information.
-              </p>
-            ) : (
-              <>
-                <p className="font-medium">
-                  Version {environment.version ?? "unknown"}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Architecture </span>
-                  {environment.architecture ?? "unknown"}
-                </p>
-                <Badge variant="outline">
-                  {environment.distribution === "unsigned_internal"
-                    ? "Unsigned internal build"
-                    : "Development build"}
-                </Badge>
-                <p className="text-muted-foreground">
-                  Signing, notarization, and external distribution are outside
-                  this internal build.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Saved reviews</CardTitle>
-            <CardDescription>
-              Discard keeps the saved review and removes its checkout. A running
-              review has no discard control.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {storageOverview.sessions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No saved reviews for this profile yet.
-              </p>
-            ) : (
-              storageOverview.sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
-                >
-                  <div>
-                    <p className="font-medium">{session.prLabel}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {session.state === "Running"
-                        ? "In progress"
-                        : `Updated ${session.updatedAt}`}
-                    </p>
-                  </div>
-                  {session.canDiscard ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label={`Discard ${session.prLabel}`}
-                      onClick={() =>
-                        setStorageAction({
-                          kind: "discard",
-                          sessionId: session.id,
-                          label: session.prLabel,
-                        })
-                      }
-                    >
-                      {`Discard ${session.prLabel}`}
-                    </Button>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Older-version saved reviews</CardTitle>
-            <CardDescription>
-              Saved reviews from an older version of Patchdesk can't be opened.
-              Delete moves the copy to the system Trash.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {storageOverview.quarantined.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No older-version entries.
-              </p>
-            ) : (
-              storageOverview.quarantined.map((entry) => (
-                <div
-                  key={entry.entryName}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
-                >
-                  <p>
-                    Saved review from an older version ({entry.quarantinedAt})
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    aria-label="Delete older review"
-                    onClick={() =>
-                      setStorageAction({ kind: "delete-quarantine", entryName: entry.entryName })
-                    }
-                  >
-                    Delete older review
-                  </Button>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Review cache</CardTitle>
-            <CardDescription>
-              Clear removes the rebuildable worktree checkouts only. It never
-              touches saved review data or GitHub.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">
-              <span className="font-medium">{formatByteSize(storageOverview.cacheBytes)}</span>{" "}
-              <span className="text-muted-foreground">
-                of cached checkouts for this profile.
-              </span>
-            </p>
-            <Button
-              variant="outline"
-              aria-label="Clear review cache"
-              onClick={() => setStorageAction({ kind: "clear-cache" })}
-            >
-              Clear review cache
-            </Button>
-            {storageError === undefined ? null : (
-              <Alert variant="destructive">
-                <AlertTitle>Storage action failed</AlertTitle>
-                <AlertDescription>{storageError}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <AlertDialog
-        open={storageAction !== undefined}
-        onOpenChange={(open) => {
-          if (!open) cancelStorageAction();
-        }}
-      >
-        <AlertDialogContent aria-busy={storagePending}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {storageAction?.kind === "discard"
-                ? `Discard ${storageAction.label}?`
-                : storageAction?.kind === "delete-quarantine"
-                  ? "Delete older review?"
-                  : "Clear review cache?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {storageAction?.kind === "discard"
-                ? "Discard keeps the saved review and removes its checkout."
-                : storageAction?.kind === "delete-quarantine"
-                  ? "Delete moves the quarantined copy to the system Trash."
-                  : "Clear removes the rebuildable checkouts only. It never changes saved sessions or GitHub data."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={storagePending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={storagePending}
-              onClick={() => {
-                void runStorageAction();
-              }}
-            >
-              {storageAction?.kind === "discard"
-                ? storagePending
-                  ? "Discarding…"
-                  : "Confirm discard"
-                : storageAction?.kind === "delete-quarantine"
-                  ? storagePending
-                    ? "Deleting…"
-                    : "Confirm delete"
-                  : storagePending
-                    ? "Clearing…"
-                    : "Confirm clear cache"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <Card>
-        <CardHeader>
-          <CardTitle>Watchlist</CardTitle>
-          <CardDescription>
-            Archive hides a repository from the active queue and is reversible.
-            Remove deletes only the watchlist entry; saved review history and
-            drafts remain local.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-60 flex-1">
-              <Label htmlFor="repo-add">Repository</Label>
-              <Input
-                id="repo-add"
-                className="mt-1.5"
-                value={newRepo}
-                onChange={(event) => setNewRepo(event.target.value)}
-                placeholder="owner/repo"
-              />
-            </div>
-            <Button onClick={() => void addRepo()}>Add repository</Button>
-            <Button variant="outline" onClick={() => void discover()}>
-              Discover
-            </Button>
-          </div>
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Discovery searches only your configured workspace roots, up to four
-            directory levels, with five-second local command limits. It runs in
-            Patchdesk’s main process and offers local paths only in this
-            Settings suggestion list; it never sends them to GitHub.
-          </p>
-          {discoveryFeedback === undefined ? null : (
-            <p
-              role="status"
-              aria-live="polite"
-              className="mt-3 text-sm text-muted-foreground"
-            >
-              {discoveryFeedback}
-            </p>
-          )}
-          {suggestions.length === 0 ? null : (
-            <div className="mt-4 space-y-2">
-              {suggestions.map((repo) => (
-                <div
-                  key={key(repo)}
-                  className="flex items-center justify-between rounded-md border p-3 text-sm"
-                >
-                  <span>
-                    {repo.owner}/{repo.repo}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void addSuggestion(repo)}
-                  >
-                    Add suggestion
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+          </Label>
         </CardContent>
       </Card>
-      {pathFeedback === undefined ? null : (
-        <p
-          role="status"
-          aria-live="polite"
-          className="text-sm text-muted-foreground"
-        >
-          {pathFeedback}
-        </p>
-      )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {dashboard?.dashboard.repos.map(({ repo }) => (
-          <Card key={key(repo)}>
-            <CardHeader>
-              <CardTitle>
-                {repo.owner}/{repo.repo}
-              </CardTitle>
-              <CardDescription>
-                {repo.archived ? "Archived repository" : "Active repository"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Label htmlFor={`path-${key(repo)}`}>
-                Local path for {repo.owner}/{repo.repo}
-              </Label>
-              <div className="mt-1.5 flex gap-2">
-                <Input
-                  id={`path-${key(repo)}`}
-                  value={paths[key(repo)] ?? repo.localPath ?? ""}
-                  onChange={(event) =>
-                    setPaths((current) => ({
-                      ...current,
-                      [key(repo)]: event.target.value,
-                    }))
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void choosePath(repo)}
-                  aria-label={`Choose folder for ${repo.owner}/${repo.repo}`}
-                >
-                  Choose folder
-                </Button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void editPath(repo)}
-                  aria-label={`Save path for ${repo.owner}/${repo.repo}`}
-                >
-                  Save path
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void refreshRepo(repo)}
-                  aria-label={`Refresh ${repo.owner}/${repo.repo}`}
-                >
-                  Refresh
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void archive(repo)}
-                  aria-label={`${repo.archived ? "Restore" : "Archive"} ${repo.owner}/${repo.repo}`}
-                >
-                  {repo.archived ? "Restore" : "Archive"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  aria-label={`Remove ${repo.owner}/${repo.repo}`}
-                  onClick={() => {
-                    setRemoveError(undefined);
-                    setRemovalTarget(repo);
-                  }}
-                >
-                  Remove
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <AlertDialog
-        open={removalTarget !== undefined}
-        onOpenChange={(open) => {
-          if (!open && !removing) {
-            setRemovalTarget(undefined);
-            setRemoveError(undefined);
-          }
-        }}
-      >
-        <AlertDialogContent aria-busy={removing}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Remove {removalTarget?.owner}/{removalTarget?.repo} from the
-              watchlist?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Saved review history and drafts remain on this Mac.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Remove deletes the watchlist entry. Choose Archive instead when you
-            only want to hide this repository from the active queue.
-          </p>
-          {removeError === undefined ? null : (
-            <Alert variant="destructive">
-              <AlertTitle>Repository was not removed</AlertTitle>
-              <AlertDescription>{removeError}</AlertDescription>
-            </Alert>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={removing}
-              onClick={() => {
-                void confirmRemoval();
-              }}
-            >
-              {removing ? "Removing…" : "Confirm removal"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Card>
+        <CardHeader><CardTitle>Diff theme</CardTitle><CardDescription>Choose the Pierre theme used for light and dark appearance.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Label className="grid gap-1.5">Light appearance
+            <Select value={diffThemePreferences.light} onValueChange={(value) => { if (value !== null && DIFF_LIGHT_THEMES.some((theme) => theme.id === value)) onDiffThemeChange({ ...diffThemePreferences, light: value }); }}>
+              <SelectTrigger aria-label="Light diff theme"><SelectValue /></SelectTrigger>
+              <SelectContent>{DIFF_LIGHT_THEMES.map((theme) => <SelectItem key={theme.id} value={theme.id}>{theme.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </Label>
+          <Label className="grid gap-1.5">Dark appearance
+            <Select value={diffThemePreferences.dark} onValueChange={(value) => { if (value !== null && DIFF_DARK_THEMES.some((theme) => theme.id === value)) onDiffThemeChange({ ...diffThemePreferences, dark: value }); }}>
+              <SelectTrigger aria-label="Dark diff theme"><SelectValue /></SelectTrigger>
+              <SelectContent>{DIFF_DARK_THEMES.map((theme) => <SelectItem key={theme.id} value={theme.id}>{theme.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </Label>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Workspace profile</CardTitle><CardDescription>GitHub reads and configured workspace and rule paths are scoped to the selected profile.</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Label>Active profile
+            <Select value={dashboard?.profile.id ?? profileDraft.id} onValueChange={(value) => { if (value !== null) selectProfile(value); }}>
+              <SelectTrigger aria-label="Active profile"><SelectValue placeholder="Select a profile" /></SelectTrigger>
+              <SelectContent>{profiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </Label>
+          <Button variant="outline" onClick={startNewProfile}>New profile</Button>
+          {([ ["Profile ID", "id"], ["Label", "label"], ["GitHub host", "githubHost"], ["GitHub account", "ghAccount"] ] as const).map(([label, field]) => (
+            <Label key={field}>{label}
+              <Input className="mt-1.5" aria-label={label} value={profileDraft[field]} disabled={field === "id" && !creatingProfile} onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))} />
+            </Label>
+          ))}
+          <ProfileListEditor label="Workspace roots" field="workspaceRoots" entries={profileDraft.workspaceRoots} placeholder="/absolute/workspace/path" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} onChoose={(index) => { void chooseWorkspaceRoot(index); }} />
+          <ProfileListEditor label="Owner filters" field="ownerFilters" entries={profileDraft.ownerFilters} placeholder="github-owner" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} />
+          <ProfileListEditor label="Rule paths" field="rulePaths" entries={profileDraft.rulePaths} placeholder="/absolute/path/to/AGENTS.md" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} />
+          {profileError === undefined ? null : <p role="alert" className="text-sm text-destructive">{profileError}</p>}
+          <Button disabled={savingProfile} onClick={() => { void saveProfile(); }}>{savingProfile ? "Saving profile…" : "Save profile"}</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Environment diagnostics</CardTitle><CardDescription>Readiness only; Patchdesk never displays token values or command output.</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { void loadEnvironment(); }}>Check environment</Button><Button variant="outline" onClick={() => { void testGitHubAccess(); }}>Test GitHub access</Button></div>
+          {githubAccess === undefined ? null : <p className="text-sm" role="status">GitHub access: {githubAccess}</p>}
+          {environment === undefined ? <p className="text-sm text-muted-foreground">Loading safe environment diagnostics.</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(environment).filter(([name]) => ["productName", "version", "architecture", "distribution"].includes(name)).map(([name, value]) => <div key={name} className="rounded-md border p-2"><dt className="text-muted-foreground">{name}</dt><dd>{value}</dd></div>)}</div>}
+        </CardContent>
+      </Card>
     </div>
   );
 }
-function environmentSetupSteps(
-  environment: Readonly<Record<string, string>>,
-): ReadonlyArray<string> {
-  const steps: Array<string> = [];
-  if (environment.git !== "ready" || environment.gh !== "ready")
-    steps.push(
-      "Git and GitHub CLI must be available to Patchdesk from a Dock-launched environment.",
-    );
-  if (environment.githubAuth !== "ready")
-    steps.push(
-      "Authenticate the configured GitHub CLI account, then test GitHub access again.",
-    );
-  if (environment.runtime !== "ready" && environment.runtime !== "bundled")
-    steps.push(
-      "Install or repair the bundled review runtime before starting a review.",
-    );
-  if (
-    environment.modelConfiguration !== "ready" &&
-    environment.modelConfiguration !== "configured"
-  )
-    steps.push(
-      "Configure a model provider before running a review; local history remains readable without it.",
-    );
-  return steps;
+
+function ReviewPreferences({ profileId }: { readonly profileId: string | undefined }): React.JSX.Element {
+  const [preference, setPreference] = useState(() => profileId === undefined ? { model: "pi-design", reasoning: "medium" as ReviewReasoningPreference } : loadReviewExecutionPreference(profileId) ?? { model: "pi-design", reasoning: "medium" as ReviewReasoningPreference });
+  useEffect(() => {
+    setPreference(profileId === undefined ? { model: "pi-design", reasoning: "medium" } : loadReviewExecutionPreference(profileId) ?? { model: "pi-design", reasoning: "medium" });
+  }, [profileId]);
+  const update = (next: { readonly model: string; readonly reasoning: ReviewReasoningPreference }): void => {
+    setPreference(next);
+    if (profileId !== undefined) saveReviewExecutionPreference(profileId, next);
+  };
+  return <Card data-testid="settings-section-review"><CardHeader><CardTitle>Review preferences</CardTitle><CardDescription>Profile-scoped defaults for the next review run. They never start work.</CardDescription></CardHeader><CardContent className="flex flex-col gap-3"><Label>Default model<Input aria-label="Default model" value={preference.model} onChange={(event) => update({ ...preference, model: event.target.value })} /></Label><Label>Default reasoning<Select value={preference.reasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") update({ ...preference, reasoning: value }); }}><SelectTrigger aria-label="Default reasoning"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></Label></CardContent></Card>;
+}
+
+function CleanupConfirmation({ action, pending, error, onCancel, onConfirm }: { readonly action: "cache" | "local" | undefined; readonly pending: boolean; readonly error: string | undefined; readonly onCancel: () => void; readonly onConfirm: () => void }): React.JSX.Element {
+  if (action === undefined) return <></>;
+  const local = action === "local";
+  return (
+    <AlertDialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <AlertDialogContent data-testid={`cleanup-dialog-${local ? "clear_local_review_data" : "clear_cache"}`} aria-busy={pending}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{local ? "Clear local review data?" : "Clear cache?"}</AlertDialogTitle>
+          <AlertDialogDescription>{local ? "This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay." : "This removes rebuildable local files. Your saved reviews and diagnostic reports stay."}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Cleanup failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant={local ? "destructive" : "default"} disabled={pending} onClick={(event) => { event.preventDefault(); onConfirm(); }}>{local ? "Clear local data" : "Clear cache"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
 
-type StorageSession = {
-  readonly id: string;
-  readonly prLabel: string;
-  readonly state: string;
-  readonly updatedAt: string;
-  readonly canDiscard: boolean;
-};
-
-type StorageQuarantineEntry = {
-  readonly entryName: string;
-  readonly quarantinedAt: string;
-};
-
-type StorageOverview = {
-  readonly sessions: ReadonlyArray<StorageSession>;
-  readonly quarantined: ReadonlyArray<StorageQuarantineEntry>;
-  readonly cacheBytes: number;
-};
-
-type StorageAction =
-  | { readonly kind: "discard"; readonly sessionId: string; readonly label: string }
-  | { readonly kind: "delete-quarantine"; readonly entryName: string }
-  | { readonly kind: "clear-cache" };
-
-const EMPTY_STORAGE_OVERVIEW: StorageOverview = {
-  sessions: [],
-  quarantined: [],
-  cacheBytes: 0,
-};
-
-function parseStorageOverview(value: unknown): StorageOverview | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const candidate = value as Record<string, unknown>;
-  if (!Array.isArray(candidate.sessions)) return undefined;
-  if (!Array.isArray(candidate.quarantined)) return undefined;
-  if (typeof candidate.cacheBytes !== "number" || !Number.isFinite(candidate.cacheBytes) || candidate.cacheBytes < 0) {
-    return undefined;
-  }
-  const sessions: StorageSession[] = [];
-  for (const entry of candidate.sessions) {
-    if (typeof entry !== "object" || entry === null) return undefined;
-    const record = entry as Record<string, unknown>;
-    if (
-      typeof record.id !== "string" ||
-      typeof record.prLabel !== "string" ||
-      typeof record.state !== "string" ||
-      typeof record.updatedAt !== "string" ||
-      typeof record.canDiscard !== "boolean"
-    ) {
-      return undefined;
-    }
-    sessions.push({
-      id: record.id,
-      prLabel: record.prLabel,
-      state: record.state,
-      updatedAt: record.updatedAt,
-      canDiscard: record.canDiscard,
-    });
-  }
-  const quarantined: StorageQuarantineEntry[] = [];
-  for (const entry of candidate.quarantined) {
-    if (typeof entry !== "object" || entry === null) return undefined;
-    const record = entry as Record<string, unknown>;
-    if (
-      typeof record.entryName !== "string" ||
-      typeof record.quarantinedAt !== "string"
-    ) {
-      return undefined;
-    }
-    quarantined.push({ entryName: record.entryName, quarantinedAt: record.quarantinedAt });
-  }
-  return {
-    sessions,
-    quarantined,
-    cacheBytes: candidate.cacheBytes,
-  };
-}
-
-type ProfileDraft = {
-  readonly id: string;
-  readonly label: string;
-  readonly githubHost: string;
-  readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<string>;
-  readonly ownerFilters: ReadonlyArray<string>;
-  readonly rulePaths: ReadonlyArray<string>;
-};
-
 function profileDraftFor(profile: Profile | undefined): ProfileDraft {
-  return {
-    id: profile?.id ?? "",
-    label: profile?.label ?? "",
-    githubHost: profile?.githubHost ?? "github.com",
-    ghAccount: profile?.ghAccount ?? "",
-    workspaceRoots: profile === undefined ? [""] : (profile.workspaceRoots ?? []),
-    ownerFilters: profile === undefined ? [""] : (profile.ownerFilters ?? []),
-    rulePaths: profile?.rulePaths ?? [],
-  };
+  return { id: profile?.id ?? "", label: profile?.label ?? "", githubHost: profile?.githubHost ?? "github.com", ghAccount: profile?.ghAccount ?? "", workspaceRoots: profile === undefined ? [""] : (profile.workspaceRoots ?? []), ownerFilters: profile === undefined ? [""] : (profile.ownerFilters ?? []), rulePaths: profile?.rulePaths ?? [] };
 }
 
-function normalizeProfileDraft(
-  draft: ProfileDraft,
-):
-  | {
-      readonly id: string;
-      readonly label: string;
-      readonly githubHost: string;
-      readonly ghAccount: string;
-      readonly workspaceRoots: ReadonlyArray<string>;
-      readonly ownerFilters: ReadonlyArray<string>;
-      readonly rulePaths: ReadonlyArray<string>;
-    }
-  | string {
+function profileDraftFromNormalized(profile: { readonly id: string; readonly label: string; readonly githubHost: string; readonly ghAccount: string; readonly workspaceRoots: ReadonlyArray<string>; readonly ownerFilters: ReadonlyArray<string>; readonly rulePaths: ReadonlyArray<string> }): ProfileDraft {
+  return { ...profile };
+}
+
+function normalizeProfileDraft(draft: ProfileDraft): { readonly id: string; readonly label: string; readonly githubHost: string; readonly ghAccount: string; readonly workspaceRoots: ReadonlyArray<string>; readonly ownerFilters: ReadonlyArray<string>; readonly rulePaths: ReadonlyArray<string> } | string {
   const workspaceRoots = trimEntries(draft.workspaceRoots, "Workspace roots");
   if (typeof workspaceRoots === "string") return workspaceRoots;
   const ownerFilters = trimEntries(draft.ownerFilters, "Owner filters");
   if (typeof ownerFilters === "string") return ownerFilters;
   const rulePaths = trimEntries(draft.rulePaths, "Rule paths");
   if (typeof rulePaths === "string") return rulePaths;
-  return {
-    id: draft.id.trim(),
-    label: draft.label.trim(),
-    githubHost: draft.githubHost.trim(),
-    ghAccount: draft.ghAccount.trim(),
-    workspaceRoots,
-    ownerFilters,
-    rulePaths,
-  };
+  return { id: draft.id.trim(), label: draft.label.trim(), githubHost: draft.githubHost.trim(), ghAccount: draft.ghAccount.trim(), workspaceRoots, ownerFilters, rulePaths };
 }
 
-function trimEntries(
-  entries: ReadonlyArray<string>,
-  label: string,
-): ReadonlyArray<string> | string {
+function trimEntries(entries: ReadonlyArray<string>, label: string): ReadonlyArray<string> | string {
   const trimmed = entries.map((entry) => entry.trim());
-  return trimmed.some((entry) => entry.length === 0)
-    ? `${label} cannot contain blank entries.`
-    : trimmed;
+  return trimmed.some((entry) => entry.length === 0) ? `${label} cannot contain blank entries.` : trimmed;
 }
 
-function ProfileListEditor({
-  label,
-  field,
-  entries,
-  placeholder,
-  onChange,
-  onAdd,
-  onRemove,
-  onChoose,
-}: {
-  readonly label: string;
-  readonly field: ProfileListField;
-  readonly entries: ReadonlyArray<string>;
-  readonly placeholder: string;
-  readonly onChange: (field: ProfileListField, index: number, value: string) => void;
-  readonly onAdd: (field: ProfileListField) => void;
-  readonly onRemove: (field: ProfileListField, index: number) => void;
-  readonly onChoose?: (index: number) => void;
-}): React.JSX.Element {
+function ProfileListEditor({ label, field, entries, placeholder, onChange, onAdd, onRemove, onChoose }: { readonly label: string; readonly field: ProfileListField; readonly entries: ReadonlyArray<string>; readonly placeholder: string; readonly onChange: (field: ProfileListField, index: number, value: string) => void; readonly onAdd: (field: ProfileListField) => void; readonly onRemove: (field: ProfileListField, index: number) => void; readonly onChoose?: (index: number) => void }): React.JSX.Element {
   const singular = label.slice(0, -1).toLowerCase();
-  return (
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">{label}</legend>
-      {entries.map((entry, index) => {
-        const number = index + 1;
-        return (
-          <div key={`${field}-${number}`} className="flex gap-2">
-            <Input
-              aria-label={`${singular} ${number}`}
-              value={entry}
-              placeholder={placeholder}
-              onChange={(event) => onChange(field, index, event.target.value)}
-            />
-            {onChoose === undefined ? null : (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onChoose(index)}
-              >
-                {`Choose ${singular} ${number}`}
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onRemove(field, index)}
-            >
-              {`Remove ${singular} ${number}`}
-            </Button>
-          </div>
-        );
-      })}
-      <Button type="button" variant="outline" onClick={() => onAdd(field)}>
-        {`Add ${singular}`}
-      </Button>
-    </fieldset>
-  );
-}
-
-function key(repo: Repo): string {
-  return `${repo.host}/${repo.owner}/${repo.repo}`;
+  return <fieldset className="flex flex-col gap-2"><legend className="text-sm font-medium">{label}</legend>{entries.map((entry, index) => <div key={`${field}-${index + 1}`} className="flex gap-2"><Input aria-label={`${singular} ${index + 1}`} value={entry} placeholder={placeholder} onChange={(event) => onChange(field, index, event.target.value)} />{onChoose === undefined ? null : <Button type="button" variant="outline" onClick={() => onChoose(index)}>{`Choose ${singular} ${index + 1}`}</Button>}<Button type="button" variant="outline" onClick={() => onRemove(field, index)}>{`Remove ${singular} ${index + 1}`}</Button></div>)}<Button type="button" variant="outline" onClick={() => onAdd(field)}>{`Add ${singular}`}</Button></fieldset>;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isRepo(value: unknown): value is Repo {
-  return (
-    record(value) &&
-    typeof value.host === "string" &&
-    typeof value.owner === "string" &&
-    typeof value.repo === "string"
-  );
 }

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "../../src/renderer/src/components/app-shell";
 
@@ -8,20 +10,27 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("AppShell settings layout", () => {
-  it("gives the settings destination a vertical scroll owner", () => {
+describe("AppShell settings overlay entry points", () => {
+  it("opens Settings without making it a destination or changing the main scroll owner", async () => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+
     render(
       <AppShell
-        destination={{ kind: "settings" }}
+        destination={{ kind: "dashboard" }}
         profileId="cfw"
         profileLabel="CFW"
         repositoryCount={0}
         onNavigate={() => undefined}
+        onOpenSettings={onOpenSettings}
       >
-        <div>Settings content</div>
+        <div>Inbox content</div>
       </AppShell>,
     );
 
-    expect(screen.getByRole("main").className).toContain("overflow-y-auto");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("main").className).toContain("overflow-hidden");
+    expect(screen.queryByText("Settings content")).toBeNull();
   });
 });

@@ -77,6 +77,7 @@ export function AppShell({
   workspacePanel,
   navigationBlocked = false,
   onNavigate,
+  onOpenSettings,
   children,
 }: {
   readonly destination: AppDestination;
@@ -87,6 +88,7 @@ export function AppShell({
   readonly workspacePanel?: React.ReactNode;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
+  readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -197,29 +199,47 @@ export function AppShell({
             {destinationTitle(destination)}
           </span>
         </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={navigationBlocked}
-                onClick={() => setCommandOpen(true)}
-              />
-            }
-          >
-            <Search />
-            Navigate
-            <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground">
-              ⌘K
-            </Kbd>
-          </TooltipTrigger>
-          <TooltipContent>
-            {navigationBlocked
-              ? "Finish or close the current dialog before navigating"
-              : "Open quick navigation"}
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Settings"
+                  disabled={navigationBlocked}
+                  onClick={(event) => onOpenSettings(event.currentTarget)}
+                />
+              }
+            >
+              <Settings />
+            </TooltipTrigger>
+            <TooltipContent>Open Settings</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={navigationBlocked}
+                  onClick={() => setCommandOpen(true)}
+                />
+              }
+            >
+              <Search />
+              Navigate
+              <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground">
+                ⌘K
+              </Kbd>
+            </TooltipTrigger>
+            <TooltipContent>
+              {navigationBlocked
+                ? "Finish or close the current dialog before navigating"
+                : "Open quick navigation"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </header>
       <div
         className="app-frame min-h-0 flex-1"
@@ -292,9 +312,7 @@ export function AppShell({
           ref={mainRef}
           id="main-content"
           tabIndex={-1}
-          className={`flex min-h-0 min-w-0 flex-1 flex-col ${
-            destination.kind === "settings" ? "overflow-y-auto" : "overflow-hidden"
-          }`}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           {children}
         </main>
@@ -328,6 +346,13 @@ export function AppShell({
                   </CommandItem>
                 );
               })}
+            </CommandGroup>
+            <CommandSeparator />
+            <CommandGroup heading="Actions">
+              <CommandItem value="Settings" onSelect={() => { setCommandOpen(false); onOpenSettings(document.activeElement instanceof HTMLElement ? document.activeElement : undefined); }}>
+                <Settings />
+                Settings
+              </CommandItem>
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Inbox">

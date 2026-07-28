@@ -102,21 +102,16 @@ describe("dashboard renderer API flow", () => {
     ).toBeTruthy();
   });
 
-  it("explains when Discover finds no new repositories", async () => {
-    installApi({ suggestionsValue: [] });
+  it("opens the global Settings overlay without changing the inbox route", async () => {
+    installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByText(/searches only your configured workspace roots/i)).toBeTruthy();
-    expect(screen.getByText(/never sends them to GitHub/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Discover" }));
-
-    expect(
-      await screen.findByText(
-        "No new repositories found in the configured workspace roots.",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getAllByText(/Real dashboard row/).length).toBeGreaterThan(0);
   });
 
   it("recovers a failed dashboard load through the visible retry action", async () => {
@@ -231,31 +226,14 @@ describe("dashboard renderer API flow", () => {
     ).toBe(false);
   });
 
-  it("refreshes only the selected repository from Settings", async () => {
-    const fetch = installApi();
+  it("opens Settings from the current inbox shell", async () => {
+    installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
-    const inboxReadsBefore = fetch.mock.calls.filter(
-      ([input]) => new URL(String(input)).pathname === "/v1/inbox",
-    ).length;
-
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("button", { name: "Refresh centraldigital/patchdesk" }));
-
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/dashboard/refresh/repository") &&
-          (init as RequestInit | undefined)?.method === "POST" &&
-          String((init as RequestInit).body).includes("patchdesk"),
-      ),
-    ).toBe(true);
-    expect(
-      fetch.mock.calls.filter(
-        ([input]) => new URL(String(input)).pathname === "/v1/inbox",
-      ),
-    ).toHaveLength(inboxReadsBefore);
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("refreshes Inbox once from the visible action without using the removed endpoint", async () => {
@@ -277,190 +255,84 @@ describe("dashboard renderer API flow", () => {
     )).toBe(false);
   });
 
-  it("uses the native directory picker before saving a repository path", async () => {
+  it("uses the native directory picker before saving a workspace root", async () => {
     const fetch = installApi({ selectedDirectory: "/workspace/patchdesk" });
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(
-      screen.getByRole("button", {
-        name: "Choose folder for centraldigital/patchdesk",
-      }),
-    );
-    expect(
-      (
-        screen.getByLabelText(
-          "Local path for centraldigital/patchdesk",
-        ) as HTMLInputElement
-      ).value,
-    ).toBe("/workspace/patchdesk");
-    await user.click(
-      screen.getByRole("button", {
-        name: "Save path for centraldigital/patchdesk",
-      }),
-    );
-
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist/path") &&
-          (init as RequestInit | undefined)?.method === "PATCH" &&
-          String((init as RequestInit).body).includes("/workspace/patchdesk"),
-      ),
-    ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Add workspace root" }));
+    await user.click(screen.getByRole("button", { name: "Choose workspace root 1" }));
+    expect((screen.getByLabelText("workspace root 1") as HTMLInputElement).value).toBe("/workspace/patchdesk");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/profiles") && (init as RequestInit | undefined)?.method === "PUT" && String((init as RequestInit).body).includes("/workspace/patchdesk"))).toBe(true);
   });
 
-  it("announces native directory-picker cancellation without changing the saved path", async () => {
+  it("keeps the workspace root unchanged when directory selection is cancelled", async () => {
     installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    const path = screen.getByLabelText(
-      "Local path for centraldigital/patchdesk",
-    ) as HTMLInputElement;
-    expect(path.value).toBe("");
-    await user.click(
-      screen.getByRole("button", {
-        name: "Choose folder for centraldigital/patchdesk",
-      }),
-    );
-
-    expect(screen.getByRole("status").textContent).toContain(
-      "Folder selection cancelled. The existing repository path was not changed.",
-    );
+    await user.click(screen.getByRole("button", { name: "Add workspace root" }));
+    const path = screen.getByLabelText("workspace root 1") as HTMLInputElement;
+    await user.click(screen.getByRole("button", { name: "Choose workspace root 1" }));
     expect(path.value).toBe("");
   });
 
-  it("turns missing environment prerequisites into actionable setup guidance", async () => {
+  it("shows safe environment diagnostics in Settings", async () => {
     installApi({
       environmentValue: {
         productName: "Patchdesk",
         version: "0.1.0",
         architecture: "arm64",
         distribution: "unsigned_internal",
-        git: "missing",
-        gh: "missing",
-        githubAuth: "missing",
-        runtime: "bundled",
-        modelConfiguration: "missing",
       },
     });
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Setup action required");
-    expect(alert.textContent).toContain("Git and GitHub CLI must be available");
-    expect(alert.textContent).toContain(
-      "Authenticate the configured GitHub CLI account",
-    );
-    expect(alert.textContent).toContain(
-      "Configure a model provider before running a review",
-    );
-    expect(
-      screen.getByRole("button", { name: "Recheck environment" }),
-    ).toBeTruthy();
+    expect(await screen.findByText("Environment diagnostics")).toBeTruthy();
+    expect(screen.getByText("0.1.0")).toBeTruthy();
+    expect(screen.getByText("arm64")).toBeTruthy();
   });
 
-  it("confirms watchlist removal and explains that history remains local", async () => {
+  it("confirms local review-data cleanup and keeps exact retention copy", async () => {
     const fetch = installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(
-      screen.getByRole("button", { name: "Remove centraldigital/patchdesk" }),
-    );
-    expect(
-      screen.getByRole("alertdialog", {
-        name: "Remove centraldigital/patchdesk from the watchlist?",
-      }),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("Saved review history and drafts remain on this Mac."),
-    ).toBeTruthy();
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist") &&
-          (init as RequestInit | undefined)?.method === "DELETE",
-      ),
-    ).toBe(false);
-    await user.click(screen.getByRole("button", { name: "Confirm removal" }));
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist") &&
-          (init as RequestInit | undefined)?.method === "DELETE",
-      ),
-    ).toBe(true);
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    await user.click(screen.getByRole("button", { name: "Clear local review data" }));
+    expect(screen.getByText("This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Clear local data" }));
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/storage/clear-local-data") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
   });
 
-  it("keeps removal open and prevents duplicate requests while deletion is pending", async () => {
-    let resolveRemoval: ((response: Response) => void) | undefined;
-    const removeResponse = new Promise<Response>((resolve) => {
-      resolveRemoval = resolve;
-    });
-    const fetch = installApi({ removeResponse });
+  it("keeps cache cleanup explicit and separate from local review data", async () => {
+    const fetch = installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(
-      screen.getByRole("button", { name: "Remove centraldigital/patchdesk" }),
-    );
-    const confirm = screen.getByRole("button", { name: "Confirm removal" });
-    await user.click(confirm);
-
-    expect(confirm.hasAttribute("disabled")).toBe(true);
-    expect(
-      screen.getByRole("alertdialog", {
-        name: "Remove centraldigital/patchdesk from the watchlist?",
-      }),
-    ).toBeTruthy();
-    expect(
-      fetch.mock.calls.filter(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist") &&
-          (init as RequestInit | undefined)?.method === "DELETE",
-      ),
-    ).toHaveLength(1);
-
-    resolveRemoval?.(
-      new Response(JSON.stringify({}), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    await user.click(screen.getByRole("button", { name: "Clear cache" }));
+    expect(screen.getByText("This removes rebuildable local files. Your saved reviews and diagnostic reports stay.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Clear cache" }));
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/storage/cache/clear") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
   });
 
-  it("keeps the repository and explains a failed removal", async () => {
-    installApi({ removeStatus: 500 });
+  it("returns to the inbox after closing Settings", async () => {
+    installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(
-      screen.getByRole("button", { name: "Remove centraldigital/patchdesk" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Confirm removal" }));
-
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "The requested service is currently unavailable.",
-    );
-    expect(
-      screen.getAllByText("centraldigital/patchdesk").length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("alertdialog", {
-        name: "Remove centraldigital/patchdesk from the watchlist?",
-      }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getAllByText(/Real dashboard row/).length).toBeGreaterThan(0);
   });
 
   it("shows product version, architecture, and internal distribution status in Settings", async () => {
@@ -469,13 +341,10 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(
-      await screen.findByRole("heading", { name: "About Patchdesk" }),
-    ).toBeTruthy();
-    expect(screen.getByText("Version 0.1.0")).toBeTruthy();
+    expect(await screen.findByText("Environment diagnostics")).toBeTruthy();
+    expect(screen.getByText("0.1.0")).toBeTruthy();
     expect(screen.getByText("arm64")).toBeTruthy();
-    expect(screen.getByText("Unsigned internal build")).toBeTruthy();
-    expect(screen.queryByText("Setup action required")).toBeNull();
+    expect(screen.getByText("unsigned_internal")).toBeTruthy();
   });
 
   it("restores an exact persisted workbench destination after restart", async () => {

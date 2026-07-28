@@ -529,55 +529,6 @@ export async function startLocalApiServer(
       ? context.json({ error: "merge_unavailable" }, 503)
       : response(context, await mergeWrites.merge(await jsonBody(context))),
   );
-  app.get("/v1/storage", async (context) => {
-    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
-    if (profileId._tag === "err")
-      return context.json({ error: "invalid_input" }, 400);
-    return storageResponse(context, await storageManagement.list(profileId.value));
-  });
-  app.post("/v1/storage/discard", async (context) => {
-    const body = await jsonBody(context);
-    const parsed = safeParse(
-      object({
-        profileId: pipe(string(), minLength(1)),
-        sessionId: pipe(string(), minLength(1)),
-      }),
-      body,
-    );
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    const sessionId = parseReviewSessionId(parsed.output.sessionId);
-    if (profileId._tag === "err" || sessionId._tag === "err")
-      return context.json({ error: "invalid_input" }, 400);
-    return storageResponse(
-      context,
-      await storageManagement.discard({
-        profileId: profileId.value,
-        sessionId: sessionId.value,
-      }),
-    );
-  });
-  app.post("/v1/storage/quarantine/delete", async (context) => {
-    const body = await jsonBody(context);
-    const parsed = safeParse(
-      object({
-        profileId: pipe(string(), minLength(1)),
-        entryName: pipe(string(), minLength(1)),
-      }),
-      body,
-    );
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    if (profileId._tag === "err")
-      return context.json({ error: "invalid_input" }, 400);
-    return storageResponse(
-      context,
-      await storageManagement.deleteQuarantined({
-        profileId: profileId.value,
-        entryName: parsed.output.entryName,
-      }),
-    );
-  });
   app.post("/v1/storage/clear-local-data", async (context) => {
     const body = await jsonBody(context);
     const parsed = safeParse(
