@@ -1,9 +1,8 @@
-import { readFile } from "node:fs/promises";
-
 import { defineAgent, defineWorkflow } from "@flue/runtime";
 import * as v from "valibot";
 
 import { err, ok, type Result } from "../domain/result";
+import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
 const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
@@ -15,6 +14,8 @@ const MAX_SECTION_TITLE_LENGTH = 160;
 const MAX_CHAPTER_TITLE_LENGTH = 80;
 const MAX_PROSE_LENGTH = 4_000;
 const MAX_HUNKS_PER_SECTION = 32;
+const MAX_HUNK_ALIAS_LENGTH = 16;
+const MAX_TOTAL_SECTIONS = 32;
 const HUNK_ALIAS = /^h[1-9]\d*$/;
 
 const boundedIdentifier = (maxLength: number) => v.pipe(v.string(), v.minLength(1), v.maxLength(maxLength));
@@ -34,7 +35,7 @@ const walkthroughSectionSchema = v.strictObject({
   title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_SECTION_TITLE_LENGTH)),
   prose: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_PROSE_LENGTH)),
   hunkIds: v.pipe(
-    v.array(v.pipe(v.string(), v.regex(HUNK_ALIAS))),
+    v.array(v.pipe(v.string(), v.maxLength(MAX_HUNK_ALIAS_LENGTH), v.regex(HUNK_ALIAS))),
     v.maxLength(MAX_HUNKS_PER_SECTION),
   ),
 });
@@ -60,7 +61,15 @@ export function parseWalkthroughOutput(
   input: unknown,
 ): Result<WalkthroughOutput, InvalidWalkthroughOutput> {
   const parsed = v.safeParse(walkthroughOutputSchema, input);
-  return parsed.success ? ok(parsed.output) : err({ _tag: "InvalidWalkthroughOutput" });
+  if (!parsed.success) return err({ _tag: "InvalidWalkthroughOutput" });
+
+  const sectionCount = parsed.output.chapters.reduce(
+    (count, chapter) => count + chapter.sections.length,
+    0,
+  );
+  return sectionCount <= MAX_TOTAL_SECTIONS
+    ? ok(parsed.output)
+    : err({ _tag: "InvalidWalkthroughOutput" });
 }
 
 const walkthroughAgent = defineAgent(() => ({
@@ -80,8 +89,8 @@ export default defineWorkflow({
   output: walkthroughOutputSchema,
   async run({ harness, input }) {
     const [context, patch] = await Promise.all([
-      readBoundedArtifact(input.contextPath, MAX_CONTEXT_BYTES),
-      readBoundedArtifact(input.patchPath, MAX_ARTIFACT_BYTES),
+      readWorkflowArtifact(input.contextPath, MAX_CONTEXT_BYTES),
+      readWorkflowArtifact(input.patchPath, MAX_ARTIFACT_BYTES),
     ]);
     const response = await harness.session().then((session) =>
       session.prompt<WalkthroughOutput>(composeWalkthroughPrompt({ input, context, patch }), {
@@ -95,12 +104,13 @@ export default defineWorkflow({
   },
 });
 
-async function readBoundedArtifact(path: string, maxBytes: number): Promise<string> {
-  const content = await readFile(path, "utf8");
-  if (Buffer.byteLength(content, "utf8") > maxBytes) {
+async function readWorkflowArtifact(path: string, maxBytes: number): Promise<string> {
+  const result = await readBoundedArtifact(path, maxBytes);
+  if (result._tag === "ok") return result.value;
+  if (result.error.reason === "input_too_large") {
     throw new Error("Walkthrough artifact exceeds the bounded input size");
   }
-  return content;
+  throw new Error("Walkthrough artifact could not be read");
 }
 
 function composeWalkthroughPrompt(input: {

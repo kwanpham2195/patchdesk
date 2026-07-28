@@ -4,6 +4,7 @@ import { CommandRunner, type CommandExecution, type CommandExecutor, type Comman
 import {
   FlueCliWalkthroughInvoker,
   type FlueCliWalkthroughInput,
+  walkthroughTimeoutMs,
 } from "../../src/services/flue-cli-walkthrough-invoker";
 
 const input: FlueCliWalkthroughInput = {
@@ -56,6 +57,16 @@ class ControlledExecutor implements CommandExecutor {
 }
 
 describe("FlueCliWalkthroughInvoker", () => {
+  it("scales timeout from artifact size and hunk count with a hard maximum", () => {
+    const minimum = walkthroughTimeoutMs({ patchBytes: 0, contextBytes: 0, hunkCount: 0 });
+    const larger = walkthroughTimeoutMs({ patchBytes: 512 * 1024, contextBytes: 512 * 1024, hunkCount: 20 });
+    const capped = walkthroughTimeoutMs({ patchBytes: 100 * 1024 * 1024, contextBytes: 100 * 1024 * 1024, hunkCount: 100_000 });
+
+    expect(larger).toBeGreaterThan(minimum);
+    expect(minimum).toBe(120_000);
+    expect(capped).toBe(600_000);
+  });
+
   it("runs the fixed walkthrough command and parses only valid terminal JSON", async () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",
@@ -68,6 +79,7 @@ describe("FlueCliWalkthroughInvoker", () => {
       "/workspace/patchdesk",
       "/runtime/node",
       "/runtime/flue.mjs",
+      async () => ({ patchBytes: 0, contextBytes: 0, hunkCount: 0 }),
     );
 
     await expect(invoker.invoke(input)).resolves.toEqual({ _tag: "ok", value: validOutput });
@@ -82,7 +94,7 @@ describe("FlueCliWalkthroughInvoker", () => {
       ],
       cwd: "/workspace/patchdesk",
       environment: { ELECTRON_RUN_AS_NODE: "1" },
-      timeoutMs: expect.any(Number),
+      timeoutMs: 120_000,
     }]);
   });
 
@@ -111,11 +123,19 @@ describe("FlueCliWalkthroughInvoker", () => {
 
   it("lets caller cancellation win over a late command failure", async () => {
     const executor = new ControlledExecutor();
-    const invoker = new FlueCliWalkthroughInvoker(new CommandRunner(executor), "/workspace/patchdesk");
+    const invoker = new FlueCliWalkthroughInvoker(
+      new CommandRunner(executor),
+      "/workspace/patchdesk",
+      process.execPath,
+      "/runtime/flue.mjs",
+      async () => ({ patchBytes: 0, contextBytes: 0, hunkCount: 0 }),
+    );
     const controller = new AbortController();
     const pending = invoker.invoke(input, { signal: controller.signal });
+    await Promise.resolve();
 
     expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]?.signal).toBe(controller.signal);
     controller.abort();
     executor.finish({ _tag: "Exited", exitCode: 1, stdout: "", stderr: "private failure" });
 
