@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +82,44 @@ describe("dashboard renderer API flow", () => {
     expect(screen.queryByText(/Submit review|Merge pull request/i)).toBeNull();
   });
 
+  it("keeps Watchlist management in the dedicated queue surface", async () => {
+    const fetch = installApi({
+      suggestionsValue: [
+        { host: "github.com", owner: "centraldigital", repo: "new-service" },
+      ],
+      selectedDirectory: "/workspace/patchdesk",
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+
+    const watchlist = screen.getByRole("region", { name: "Watchlist" });
+    expect(within(watchlist).getByLabelText("Repository")).toBeTruthy();
+    expect(within(watchlist).getByRole("button", { name: "Discover" })).toBeTruthy();
+    expect(within(watchlist).getByRole("button", { name: "Refresh centraldigital/patchdesk" })).toBeTruthy();
+    expect(within(watchlist).getByRole("button", { name: "Archive centraldigital/patchdesk" })).toBeTruthy();
+    expect(within(watchlist).getByRole("button", { name: "Remove centraldigital/patchdesk" })).toBeTruthy();
+
+    await user.type(within(watchlist).getByLabelText("Repository"), "centraldigital/new-service");
+    await user.click(within(watchlist).getByRole("button", { name: "Add repository" }));
+    await user.click(within(watchlist).getByRole("button", { name: "Discover" }));
+    expect(await within(watchlist).findByText("centraldigital/new-service")).toBeTruthy();
+    await user.click(within(watchlist).getByRole("button", { name: "Add suggestion" }));
+
+    await user.click(within(watchlist).getByRole("button", { name: "Choose folder for centraldigital/patchdesk" }));
+    await user.click(within(watchlist).getByRole("button", { name: "Save path for centraldigital/patchdesk" }));
+    await user.click(within(watchlist).getByRole("button", { name: "Refresh centraldigital/patchdesk" }));
+    await user.click(within(watchlist).getByRole("button", { name: "Archive centraldigital/patchdesk" }));
+    await user.click(within(watchlist).getByRole("button", { name: "Remove centraldigital/patchdesk" }));
+    await user.click(screen.getByRole("button", { name: "Confirm removal" }));
+
+    expect(fetch.mock.calls.some(([input]) => String(input).includes("v1/watchlist/suggestions"))).toBe(true);
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist/path") && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true);
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/dashboard/refresh/repository") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist/archive") && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true);
+    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist") && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+  });
+
   it("shows an ordered first-run path with a real Settings action", async () => {
     installApi({
       dashboardValue: { ...dashboard, dashboard: { rows: [], repos: [] } },
@@ -100,6 +139,32 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Settings" }),
     ).toBeTruthy();
+  });
+
+  it("clears an active workbench before switching profiles", async () => {
+    window.localStorage.setItem("patchdesk.destination", "workbench:session-123");
+    installApi({ loadedWorkbench: completedWorkbench });
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Stored review title" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
+    await user.click(screen.getByRole("option", { name: "Enterprise" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Stored review title" })).toBeNull());
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe("dashboard");
+  });
+
+  it("returns focus to the persistent Navigate opener after command-palette Settings", async () => {
+    installApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+    const navigate = screen.getByRole("button", { name: /Navigate/ });
+    await user.click(navigate);
+    await user.click(screen.getByRole("option", { name: "Settings" }));
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(document.activeElement).toBe(navigate));
   });
 
   it("opens the global Settings overlay without changing the inbox route", async () => {

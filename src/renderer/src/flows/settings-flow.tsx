@@ -12,6 +12,7 @@ import {
   type ReviewReasoningPreference,
 } from "../review-execution-preferences";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+import { cleanupCopy } from "../review-copy";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import {
@@ -21,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -57,6 +59,9 @@ type SettingsFlowProps = {
   readonly onDirtyChange?: (dirty: boolean) => void;
   readonly onProfileSwitchRequest?: (profileId: string, proceed: () => void) => void;
   readonly onCleanupSuccess?: () => void;
+  readonly onSaveProfileReady?: (save: () => Promise<boolean>) => void;
+  readonly onDiscardProfileReady?: (discard: () => void) => void;
+  readonly onProfileSwitchStart?: (() => void) | undefined;
 };
 
 /** Renders one focused Settings section inside the global Settings overlay. */
@@ -73,6 +78,9 @@ export function SettingsFlow({
   onDirtyChange,
   onProfileSwitchRequest,
   onCleanupSuccess,
+  onSaveProfileReady,
+  onDiscardProfileReady,
+  onProfileSwitchStart,
 }: SettingsFlowProps): React.JSX.Element {
   void onRepositoryRefresh;
   const [profileDraft, setProfileDraft] = useState(() => profileDraftFor(dashboard?.profile));
@@ -127,16 +135,16 @@ export function SettingsFlow({
     }
   };
 
-  const saveProfile = async (): Promise<void> => {
+  const saveProfile = async (): Promise<boolean> => {
     setProfileError(undefined);
     const normalized = normalizeProfileDraft(profileDraft);
     if (typeof normalized === "string") {
       setProfileError(normalized);
-      return;
+      return false;
     }
     if (creatingProfile && profiles.some((profile) => profile.id === normalized.id)) {
       setProfileError("A profile with this ID already exists.");
-      return;
+      return false;
     }
     setSavingProfile(true);
     try {
@@ -156,18 +164,37 @@ export function SettingsFlow({
       setCreatingProfile(false);
       onDirtyChange?.(false);
       await onWorkspaceReload();
+      return true;
     } catch (cause: unknown) {
       setProfileError(cause instanceof Error ? cause.message : "Patchdesk could not save the local review state.");
+      return false;
     } finally {
       setSavingProfile(false);
     }
   };
+
+  useEffect(() => {
+    onSaveProfileReady?.(saveProfile);
+  });
+
+  const discardProfileDraft = (): void => {
+    const baseline = profileBaseline.current;
+    setProfileDraft(baseline);
+    setCreatingProfile(false);
+    setProfileError(undefined);
+    onDirtyChange?.(false);
+  };
+
+  useEffect(() => {
+    onDiscardProfileReady?.(discardProfileDraft);
+  });
 
   const performSelectProfile = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
     if (selected === undefined) return;
     setCreatingProfile(false);
     setProfileError(undefined);
+    onProfileSwitchStart?.();
     const next = profileDraftFor(selected);
     profileBaseline.current = next;
     setProfileDraft(next);
@@ -224,8 +251,8 @@ export function SettingsFlow({
         method: "POST",
         body: { profileId: dashboard.profile.id },
       });
-      setCleanupAction(undefined);
       await onWorkspaceReload();
+      setCleanupAction(undefined);
       onCleanupSuccess?.();
     } catch {
       setCleanupError(cleanupAction === "cache" ? "Could not clear cache. Try again." : "Could not clear local review data. Try again.");
@@ -311,18 +338,22 @@ export function SettingsFlow({
       <Card>
         <CardHeader><CardTitle>Workspace profile</CardTitle><CardDescription>GitHub reads and configured workspace and rule paths are scoped to the selected profile.</CardDescription></CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Label>Active profile
-            <Select value={dashboard?.profile.id ?? profileDraft.id} onValueChange={(value) => { if (value !== null) selectProfile(value); }}>
-              <SelectTrigger aria-label="Active profile"><SelectValue placeholder="Select a profile" /></SelectTrigger>
-              <SelectContent>{profiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </Label>
-          <Button variant="outline" onClick={startNewProfile}>New profile</Button>
-          {([ ["Profile ID", "id"], ["Label", "label"], ["GitHub host", "githubHost"], ["GitHub account", "ghAccount"] ] as const).map(([label, field]) => (
-            <Label key={field}>{label}
-              <Input className="mt-1.5" aria-label={label} value={profileDraft[field]} disabled={field === "id" && !creatingProfile} onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))} />
-            </Label>
-          ))}
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
+              <Select value={dashboard?.profile.id ?? profileDraft.id} onValueChange={(value) => { if (value !== null) selectProfile(value); }}>
+                <SelectTrigger id="active-profile" aria-label="Active profile"><SelectValue placeholder="Select a profile" /></SelectTrigger>
+                <SelectContent>{profiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Button variant="outline" onClick={startNewProfile}>New profile</Button>
+            {([ ["Profile ID", "id"], ["Label", "label"], ["GitHub host", "githubHost"], ["GitHub account", "ghAccount"] ] as const).map(([label, field]) => (
+              <Field key={field}>
+                <FieldLabel htmlFor={`profile-${field}`}>{label}</FieldLabel>
+                <Input id={`profile-${field}`} aria-label={label} value={profileDraft[field]} disabled={field === "id" && !creatingProfile} onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))} />
+              </Field>
+            ))}
+          </FieldGroup>
           <ProfileListEditor label="Workspace roots" field="workspaceRoots" entries={profileDraft.workspaceRoots} placeholder="/absolute/workspace/path" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} onChoose={(index) => { void chooseWorkspaceRoot(index); }} />
           <ProfileListEditor label="Owner filters" field="ownerFilters" entries={profileDraft.ownerFilters} placeholder="github-owner" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} />
           <ProfileListEditor label="Rule paths" field="rulePaths" entries={profileDraft.rulePaths} placeholder="/absolute/path/to/AGENTS.md" onChange={updateProfileList} onAdd={addProfileListEntry} onRemove={removeProfileListEntry} />
@@ -356,18 +387,19 @@ function ReviewPreferences({ profileId }: { readonly profileId: string | undefin
 
 function CleanupConfirmation({ action, pending, error, onCancel, onConfirm }: { readonly action: "cache" | "local" | undefined; readonly pending: boolean; readonly error: string | undefined; readonly onCancel: () => void; readonly onConfirm: () => void }): React.JSX.Element {
   if (action === undefined) return <></>;
+  const copy = cleanupCopy(action === "local" ? "clear_local_review_data" : "clear_cache");
   const local = action === "local";
   return (
     <AlertDialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
       <AlertDialogContent data-testid={`cleanup-dialog-${local ? "clear_local_review_data" : "clear_cache"}`} aria-busy={pending}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{local ? "Clear local review data?" : "Clear cache?"}</AlertDialogTitle>
-          <AlertDialogDescription>{local ? "This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay." : "This removes rebuildable local files. Your saved reviews and diagnostic reports stay."}</AlertDialogDescription>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogDescription>{copy.body}</AlertDialogDescription>
         </AlertDialogHeader>
         {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Cleanup failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant={local ? "destructive" : "default"} disabled={pending} onClick={(event) => { event.preventDefault(); onConfirm(); }}>{local ? "Clear local data" : "Clear cache"}</AlertDialogAction>
+          <AlertDialogAction variant={local ? "destructive" : "default"} disabled={pending} onClick={(event) => { event.preventDefault(); onConfirm(); }}>{copy.confirmLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

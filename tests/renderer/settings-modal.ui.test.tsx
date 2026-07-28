@@ -34,6 +34,7 @@ describe("SettingsModal", () => {
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("settings-section-general")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Settings content" })).toBeTruthy();
     expect(screen.queryByText("Saved reviews")).toBeNull();
     expect(screen.queryByText("Watchlist")).toBeNull();
 
@@ -97,6 +98,21 @@ describe("SettingsModal", () => {
     );
 
     await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it("offers Save in the dirty-draft guard and closes only after saving", async () => {
+    const request = installDesktopApi();
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    renderModal(onOpenChange);
+    await user.type(screen.getByLabelText("Label"), " changed");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/profiles", method: "PUT" })));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("requires an explicit dirty-draft choice before closing", async () => {

@@ -131,7 +131,6 @@ async function routeResponse(
   if (url.pathname.startsWith("/v1/runs/")) return ok({ status: "running", elapsedMs: 12_000, step: "inspecting", message: "Reading the prepared snapshot" });
   if (url.pathname === "/v1/direct-entry/preview") return ok({ pr: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 }, confirmation: { required: false } });
   if (url.pathname === "/v1/environment") return ok({ productName: "Patchdesk Design", version: "wireframe", architecture: "browser", distribution: "design-only", git: "mock", gh: "mock", githubAuth: "mock", runtime: "in-memory", modelConfiguration: "mock" });
-  if (url.pathname === "/v1/storage") return ok({ sessions: [{ sessionId: "design-session", state: "completed", sizeBytes: 38_400, updatedAt: "2026-07-18T10:00:00.000Z" }], quarantined: [], cacheBytes: 12_800 });
   if (url.pathname === "/v1/storage/cache/clear" || url.pathname === "/v1/storage/clear-local-data") return ok({});
   if (url.pathname === "/v1/watchlist/suggestions") return ok([{ host: "github.com", owner: "centraldigital", repo: "new-service" }]);
   if (url.pathname === "/v1/github/access") return ok({ state: "ready" });

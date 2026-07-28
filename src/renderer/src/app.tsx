@@ -6,6 +6,7 @@ import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsModal } from "./components/settings-modal";
+import { WatchlistPanel } from "./components/watchlist-panel";
 import type {
   Dashboard,
   DashboardScreenState,
@@ -24,7 +25,6 @@ import {
   AlertDialogTitle,
 } from "./components/ui/alert-dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { Badge } from "./components/ui/badge";
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson } from "./api-client";
@@ -77,6 +77,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   );
   const [diffThemePreferences, setDiffThemePreferences] =
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());
+  const [preferenceError, setPreferenceError] = useState<string>();
+  const preferenceRetry = useRef<(() => Promise<void>) | undefined>(undefined);
 
   useEffect(() => {
     const apply = (): void => {
@@ -306,7 +308,8 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   );
   const openSettings = useCallback((opener?: HTMLElement): void => {
     if (navigationState !== "clear") return;
-    setSettingsOpener(opener);
+    const fallback = document.querySelector<HTMLElement>("[data-settings-opener]") ?? document.querySelector<HTMLElement>("#main-content");
+    setSettingsOpener(opener ?? fallback ?? undefined);
     setSettingsOpen(true);
   }, [navigationState]);
   useEffect(() => {
@@ -326,16 +329,22 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     await loadWorkspace();
   };
   const updateAppearance = useCallback(async (next: AppearancePreference): Promise<void> => {
+    preferenceRetry.current = async () => updateAppearance(next);
+    setAppearance(next);
+    setPreferenceError(undefined);
     try {
       const stored = parseGlobalSettings(
         await api("/v1/settings", { method: "PATCH", body: { appearance: next } }),
       );
       if (stored.appearance !== undefined) setAppearance(stored.appearance);
     } catch {
-      // Keep the last file-backed setting when its replacement is rejected.
+      setPreferenceError("Could not save appearance. The visible change is active; retry to persist it.");
     }
   }, []);
   const updateDiffTheme = useCallback(async (next: DiffThemePreferences): Promise<void> => {
+    preferenceRetry.current = async () => updateDiffTheme(next);
+    setDiffThemePreferences(next);
+    setPreferenceError(undefined);
     try {
       const stored = parseGlobalSettings(
         await api("/v1/settings", { method: "PATCH", body: { diffTheme: next } }),
@@ -343,9 +352,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       if (stored.diffTheme !== undefined)
         setDiffThemePreferences(parseDiffThemePreferences(stored.diffTheme));
     } catch {
-      // Keep the last file-backed setting when its replacement is rejected.
+      setPreferenceError("Could not save diff theme. The visible change is active; retry to persist it.");
     }
   }, []);
+  const retryPreferences = useCallback((): void => {
+    void preferenceRetry.current?.();
+  }, []);
+
   const shell = (
     content: React.ReactNode,
     next: AppDestination = destination,
@@ -365,38 +378,14 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         onOpenSettings={openSettings}
         workspacePanel={
           dashboard === undefined ? undefined : (
-            <section aria-labelledby="watchlist-title">
-              <h2
-                id="watchlist-title"
-                className="px-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
-              >
-                Watchlist
-              </h2>
-              <div className="mt-2 space-y-1">
-                {dashboard.dashboard.repos.map(({ repo, state: outcome }) => (
-                  <div
-                    key={key(repo)}
-                    className="rounded-md px-2 py-1.5 text-xs"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate font-medium">
-                        {repo.owner}/{repo.repo}
-                      </span>
-                      {outcome === "no_open_prs" ? null : (
-                        <Badge
-                          variant={
-                            outcome === "ready" ? "secondary" : "outline"
-                          }
-                          className="shrink-0"
-                        >
-                          {outcome.replaceAll("_", " ")}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <WatchlistPanel
+              dashboard={dashboard}
+              onWorkspaceReload={loadWorkspace}
+              onRepositoryRefresh={(value, repo) => {
+                if (!isDashboardList(value)) return;
+                setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
+              }}
+            />
           )
         }
       >
@@ -416,6 +405,13 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
         profiles={profiles}
         onWorkspaceReload={loadWorkspace}
+        onProfileSwitchStart={() => {
+          setWorkbench(undefined);
+          setDestination({ kind: "dashboard" });
+          window.localStorage.setItem("patchdesk.destination", "dashboard");
+        }}
+        preferenceError={preferenceError}
+        onRetryPreferences={retryPreferences}
         onRepositoryRefresh={(value, repo) => {
           if (!isDashboardList(value)) return;
           setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
@@ -577,10 +573,6 @@ function sameDiffTheme(value: unknown, expected: DiffThemePreferences): boolean 
     value.light === expected.light &&
     value.dark === expected.dark;
 }
-function key(repo: Repo): string {
-  return `${repo.host}/${repo.owner}/${repo.repo}`;
-}
-
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

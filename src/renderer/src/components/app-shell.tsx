@@ -96,6 +96,7 @@ export function AppShell({
     () => loadReviewViewPreferences(profileId).appRailOpen,
   );
   const mainRef = useRef<HTMLElement | null>(null);
+  const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
   const focusedDestination = useRef(destinationKey(destination));
 
   useEffect(() => {
@@ -220,6 +221,8 @@ export function AppShell({
             <TooltipTrigger
               render={
                 <Button
+                  ref={navigateOpenerRef}
+                  data-settings-opener="navigate"
                   variant="outline"
                   size="sm"
                   disabled={navigationBlocked}
@@ -349,7 +352,7 @@ export function AppShell({
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Actions">
-              <CommandItem value="Settings" onSelect={() => { setCommandOpen(false); onOpenSettings(document.activeElement instanceof HTMLElement ? document.activeElement : undefined); }}>
+              <CommandItem value="Settings" onSelect={() => { setCommandOpen(false); onOpenSettings(navigateOpenerRef.current ?? undefined); }}>
                 <Settings />
                 Settings
               </CommandItem>
