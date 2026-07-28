@@ -184,18 +184,6 @@ export class StorageManagementService {
     return ok(undefined);
   }
 
-  async removeSession(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): Promise<Result<undefined, StorageManagementFailure>> {
-    return this.lifecycleGate.withProfileLock(profileId, async () => {
-      const removed = await this.deps.artifacts.removeSession(profileId, sessionId);
-      return removed._tag === "ok"
-        ? ok(undefined)
-        : err({ _tag: "StorageUnavailable" });
-    });
-  }
-
   async clearLocalData(
     profileId: WorkspaceProfileId,
   ): Promise<Result<undefined, StorageManagementFailure>> {

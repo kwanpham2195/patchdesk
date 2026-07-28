@@ -64,6 +64,7 @@ async function setupService(): Promise<{
   readonly paths: PatchdeskPaths;
   readonly sessions: ReviewSessionStore;
   readonly service: StorageManagementService;
+  readonly artifacts: ReviewArtifactStorage;
   readonly trash: TrashMover & { readonly moves: Array<{ readonly path: string }> };
   readonly git: GitReadExecutor & { readonly calls: Array<ReadonlyArray<string>> };
   readonly sessionsById: {
@@ -151,6 +152,7 @@ async function setupService(): Promise<{
     paths,
     sessions,
     service,
+    artifacts,
     trash,
     git,
     sessionsById: { created, reviewed, running },
@@ -353,9 +355,9 @@ describe("StorageManagementService", () => {
   it("removes a session and its cache worktree idempotently", async () => {
     const setup = await trackSetup();
     const target = setup.sessionsById.reviewed;
-    expect(await setup.service.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
+    expect(await setup.artifacts.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
     expect(await exists(setup.paths.sessionDirectory(profileId, target.id))).toBe(false);
-    expect(await setup.service.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
+    expect(await setup.artifacts.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
   });
 
   it("removes discarded and quarantined evidence while preserving running reviews", async () => {
