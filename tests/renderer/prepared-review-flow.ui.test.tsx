@@ -88,7 +88,8 @@ describe("prepared review run start", () => {
     });
     render(<PreparedReviewFlow workbench={{ ...workbench, recoveryView: { noticeKey: "preparing", tone: "neutral" } }} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
 
-    expect((await screen.findAllByText("Preparing review")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Preparing review")).length).toBe(1);
+    expect((await screen.findAllByText("Patchdesk is preparing this pull request. You can wait or come back to this view later.")).length).toBe(1);
     expect(screen.queryByRole("button", { name: "Run review" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Start read-only review" })).toBeNull();
   });

@@ -271,8 +271,12 @@ export function PreparedReviewFlow({
                   </AlertDescription>
                 </Alert>
               )}
-              <h2 className="font-semibold">{recoveryAction === undefined ? recoveryCopyValue?.notice ?? "Review unavailable" : recoveryActionLabel(recoveryAction)}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{recoveryCopyValue?.reassurance ?? "This review is not available in this window."}</p>
+              {workbench.recoveryView === undefined ? (
+                <>
+                  <h2 className="font-semibold">{recoveryCopyValue?.notice ?? "Review unavailable"}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">{recoveryCopyValue?.reassurance ?? "This review is not available in this window."}</p>
+                </>
+              ) : null}
               {runError === undefined ? null : (
                 <Alert variant="destructive">
                   <AlertTitle>Review was not started</AlertTitle>
