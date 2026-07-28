@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import type { FlueHarness } from "../../src/flue-runtime-types";
 import { readBoundedArtifact } from "../../src/workflows/walkthrough-artifact-reader";
 import {
   parseWalkthroughOutput,
@@ -124,9 +125,12 @@ describe("walkthrough workflow harness contract", () => {
         tools: ReadonlyArray<unknown>;
       };
     }> = [];
-    const harness = {
-      writeRecorder: { records: [] as string[] },
-      session: async () => ({
+    const writeRecorder = { records: [] as string[] };
+    type RecordingSession = Awaited<ReturnType<FlueHarness["session"]>> & {
+      write(reason: string): void;
+    };
+    const createSession = async (): Promise<RecordingSession> => {
+      const session: RecordingSession = {
         prompt: async <T>(text: string, options: {
           result: v.GenericSchema;
           model?: string;
@@ -136,9 +140,14 @@ describe("walkthrough workflow harness contract", () => {
           prompts.push({ text, options });
           return { data: validOutput as T };
         },
-      }),
+        write: (reason) => writeRecorder.records.push(reason),
+      };
+      return session;
     };
-    let session: Awaited<ReturnType<typeof harness.session>> | undefined;
+    const harness: FlueHarness & { readonly session: () => Promise<RecordingSession> } = {
+      session: createSession,
+    };
+    let session: RecordingSession | undefined;
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, "@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
 
@@ -155,7 +164,7 @@ describe("walkthrough workflow harness contract", () => {
         harness: {
           ...harness,
           session: async () => {
-            session = await harness.session();
+            session = await createSession();
             return session;
           },
         },
@@ -164,8 +173,14 @@ describe("walkthrough workflow harness contract", () => {
       expect(result).toEqual(validOutput);
       expect(prompts).toHaveLength(1);
       expect(session).toBeDefined();
-      expect(Object.keys(session ?? {})).not.toEqual(expect.arrayContaining(["write", "persist", "save"]));
-      expect(harness.writeRecorder.records).toEqual([]);
+      if (session === undefined) throw new Error("workflow session missing");
+      // The extra write method is test-only; the production FlueHarness type exposes prompt() only.
+      const productionSession: Awaited<ReturnType<FlueHarness["session"]>> = { prompt: session.prompt };
+      expect(Object.keys(productionSession)).toEqual(["prompt"]);
+      expect(writeRecorder.records).toEqual([]);
+      session.write("test-only probe");
+      expect(writeRecorder.records).toEqual(["test-only probe"]);
+      writeRecorder.records.length = 0;
       const prompt = prompts[0];
       if (prompt === undefined) throw new Error("workflow prompt missing");
       expect(prompt.options.model).toBe("model-explicit");
@@ -191,14 +206,19 @@ describe("walkthrough workflow harness contract", () => {
     const contextPath = join(directory, "context.json");
     const patchPath = join(directory, "patch.diff");
     let promptCalls = 0;
-    const harness = {
-      writeRecorder: { records: [] as string[] },
-      session: async () => ({
-        prompt: async <T>() => {
-          promptCalls += 1;
-          return { data: validOutput as T };
-        },
-      }),
+    const writeRecorder = { records: [] as string[] };
+    type RecordingSession = Awaited<ReturnType<FlueHarness["session"]>> & {
+      write(reason: string): void;
+    };
+    const oversizedSession: RecordingSession = {
+      prompt: async <T>() => {
+        promptCalls += 1;
+        return { data: validOutput as T };
+      },
+      write: (reason) => writeRecorder.records.push(reason),
+    };
+    const harness: FlueHarness & { readonly session: () => Promise<RecordingSession> } = {
+      session: async () => oversizedSession,
     };
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
@@ -216,7 +236,10 @@ describe("walkthrough workflow harness contract", () => {
         harness,
       })).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
       expect(promptCalls).toBe(0);
-      expect(harness.writeRecorder.records).toEqual([]);
+      expect(writeRecorder.records).toEqual([]);
+      oversizedSession.write("test-only probe");
+      expect(writeRecorder.records).toEqual(["test-only probe"]);
+      writeRecorder.records.length = 0;
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
