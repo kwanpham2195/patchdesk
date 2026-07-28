@@ -145,6 +145,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly recovery?: {
       readonly paths?: PatchdeskPaths;
       readonly runs?: Pick<ReviewRunRegistry, "find">;
+      readonly preparation?: Pick<typeof ReviewPreparationJournal, "activeFor">;
     },
   ) {}
 
@@ -417,7 +418,7 @@ export class ReviewWorkbenchProjectionService {
   ): Promise<ReviewRecoveryView | undefined> {
     const activePreparation = this.recovery?.paths === undefined
       ? undefined
-      : await ReviewPreparationJournal.activeFor(
+      : await (this.recovery.preparation?.activeFor ?? ReviewPreparationJournal.activeFor)(
           this.recovery.paths,
           session.key.profileId,
           session.id,

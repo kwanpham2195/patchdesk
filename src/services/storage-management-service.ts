@@ -21,6 +21,7 @@ import {
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { GitReadExecutor } from "./review-worktree-service";
 import { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 export type TrashMover = {
   move(path: string): Promise<Result<void, StorageFailure>>;
@@ -77,6 +78,7 @@ type StorageManagementDependencies = {
   readonly git: GitReadExecutor;
   readonly now: () => IsoTimestamp;
   readonly lifecycleGate?: ReviewLifecycleGate;
+  readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 };
 
 /**
@@ -187,7 +189,7 @@ export class StorageManagementService {
   async clearLocalData(
     profileId: WorkspaceProfileId,
   ): Promise<Result<undefined, StorageManagementFailure>> {
-    return this.lifecycleGate.withProfileLock(profileId, async () => {
+    const result = await this.lifecycleGate.withProfileLock<Result<undefined, StorageManagementFailure>>(profileId, async () => {
       const profile = await this.deps.profiles.load(profileId);
       if (profile._tag === "err") {
         return err(
@@ -221,12 +223,14 @@ export class StorageManagementService {
       }
       return ok(undefined);
     });
+    if (result._tag === "err") await this.recordCleanupFailure(profileId, "clear-local-data", result.error._tag);
+    return result;
   }
 
   async clearCache(
     profileId: WorkspaceProfileId,
   ): Promise<Result<undefined, StorageManagementFailure>> {
-    return this.lifecycleGate.withProfileLock(profileId, async () => {
+    const result = await this.lifecycleGate.withProfileLock<Result<undefined, StorageManagementFailure>>(profileId, async () => {
       const profile = await this.deps.profiles.load(profileId);
       if (profile._tag === "err") {
         return err(
@@ -236,6 +240,22 @@ export class StorageManagementService {
         );
       }
       return this.clearCacheUnlocked(profileId, profile.value.repos);
+    });
+    if (result._tag === "err") await this.recordCleanupFailure(profileId, "clear-cache", result.error._tag);
+    return result;
+  }
+
+  private async recordCleanupFailure(
+    profileId: WorkspaceProfileId,
+    phase: string,
+    detail: string,
+  ): Promise<void> {
+    await this.deps.diagnostics?.record({
+      profileId,
+      category: "cleanup",
+      phase,
+      retryable: true,
+      detail,
     });
   }
 

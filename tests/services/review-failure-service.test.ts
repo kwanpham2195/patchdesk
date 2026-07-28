@@ -17,6 +17,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { createReviewSession, startNextAttempt } from "../../src/domain/review-session";
+import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 import { ReviewFailureService } from "../../src/services/review-failure-service";
 
 const roots: string[] = [];
@@ -47,6 +48,11 @@ describe("ReviewFailureService", () => {
       },
     });
     expect(storedSession._tag === "ok" && storedSession.value.currentAttemptId).toBeUndefined();
+    const diagnostics = await fixture.diagnostics.recent(fixture.profileId);
+    expect(diagnostics).toMatchObject({
+      _tag: "ok",
+      value: [{ category: "run", phase: "review-failed", retryable: true }],
+    });
     const storedAttempt = await fixture.store.loadAttempt(fixture.profileId, fixture.session.id, fixture.attempt.id);
     expect(storedAttempt).toMatchObject({
       _tag: "ok",
@@ -122,8 +128,10 @@ async function runningReview() {
   expect(await store.save(started.session)).toEqual({ _tag: "ok", value: undefined });
   expect(await store.saveAttempt(profileId, started.session.id, attempt)).toEqual({ _tag: "ok", value: undefined });
   await writeFile(started.session.patchPath, "diff --git a/src/review.ts b/src/review.ts\n--- a/src/review.ts\n+++ b/src/review.ts\n@@ -12 +12 @@\n-old\n+new\n", "utf8");
+  const diagnostics = new ReviewDiagnosticService(paths, () => at, () => "incident-failure");
   return {
-    service: new ReviewFailureService(paths, () => at),
+    service: new ReviewFailureService(paths, () => at, undefined, diagnostics),
+    diagnostics,
     store,
     profileId,
     session: started.session,

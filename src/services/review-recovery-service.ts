@@ -8,6 +8,7 @@ import type { IsoTimestamp, WorkspaceProfileId } from "../domain/ids";
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 import { recoverOrphanedWorkbenchAttempt } from "./review-workbench";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 export type RecoveryDiagnostic = {
   readonly profileId: WorkspaceProfileId;
@@ -25,6 +26,7 @@ export class ReviewRecoveryService {
       readonly paths?: PatchdeskPaths;
       readonly artifacts?: ReviewArtifactStorage;
       readonly recordDiagnostic?: (event: RecoveryDiagnostic) => Promise<void>;
+      readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
       readonly lifecycleGate?: ReviewLifecycleGate;
     } = {},
   ) {}
@@ -46,6 +48,16 @@ export class ReviewRecoveryService {
   }
 
   private async recordDiagnostic(event: RecoveryDiagnostic): Promise<void> {
+    if (this.options.diagnostics !== undefined) {
+      await this.options.diagnostics.record({
+        profileId: event.profileId,
+        category: "recovery",
+        phase: event.reason,
+        retryable: true,
+        detail: event.entryName,
+      });
+      return;
+    }
     if (this.options.recordDiagnostic !== undefined) {
       await this.options.recordDiagnostic(event);
       return;

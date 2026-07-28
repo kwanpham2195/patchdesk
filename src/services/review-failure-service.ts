@@ -9,6 +9,7 @@ import {
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 import { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 /**
  * Persists a failed live run so the session becomes visibly runnable again.
@@ -22,6 +23,7 @@ export class ReviewFailureService {
     private readonly paths: PatchdeskPaths,
     private readonly now: () => IsoTimestamp,
     lifecycleGate?: ReviewLifecycleGate,
+    private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ) {
     this.lifecycleGate = lifecycleGate ?? new ReviewLifecycleGate();
   }
@@ -68,6 +70,16 @@ export class ReviewFailureService {
     };
     const savedAttempt = await store.saveAttempt(profileId.value, sessionId.value, failedAttempt);
     const savedSession = savedAttempt._tag === "ok" ? await store.save(failedSession) : savedAttempt;
-    return savedSession._tag === "ok" ? ok({ failed: true as const }) : err({ reason: "storage_failed" });
+    if (savedSession._tag === "err") return err({ reason: "storage_failed" });
+    await this.diagnostics?.record({
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+      attemptId: attemptId.value,
+      category: "run",
+      phase: "review-failed",
+      retryable: true,
+      detail: message,
+    });
+    return ok({ failed: true as const });
   }
 }

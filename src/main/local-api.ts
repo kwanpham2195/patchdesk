@@ -44,6 +44,7 @@ import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
+import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService, type GitReadExecutor } from "../services/review-worktree-service";
@@ -161,12 +162,17 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
   );
   const lifecycleGate = configuration.lifecycleGate ?? new ReviewLifecycleGate();
+  const diagnostics = new ReviewDiagnosticService(
+    paths,
+    () => new Date().toISOString(),
+  );
   const storageManagement = new StorageManagementService({
     profiles,
     sessions,
     artifacts: storageArtifacts,
     paths,
     lifecycleGate,
+    diagnostics,
     ...(configuration.trash === undefined ? {} : { trash: configuration.trash }),
     git: configuration.readOnlyGit ?? readOnlyGit,
     now: () => new Date().toISOString() as never,
@@ -181,7 +187,7 @@ export async function startLocalApiServer(
     profiles,
     sessions,
     () => new Date().toISOString() as never,
-    { paths, artifacts: storageArtifacts, lifecycleGate },
+    { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate },
   ).reconcile();
   const dashboard = new DashboardController(
     profiles,
@@ -240,7 +246,7 @@ export async function startLocalApiServer(
       sessions,
       github,
       () => new Date().toISOString() as never,
-      { paths, runs },
+      { paths, runs, preparation: ReviewPreparationJournal },
     ),
   );
   const reviewCompletion = new ReviewCompletionService(

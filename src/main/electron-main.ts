@@ -37,6 +37,7 @@ import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
 import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
+import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
@@ -117,6 +118,10 @@ function createWorkflowInvoker(sharedLifecycleGate: ReviewLifecycleGate) {
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
     sharedLifecycleGate,
+    new ReviewDiagnosticService(
+      PatchdeskPaths.default(),
+      () => new Date().toISOString(),
+    ),
   );
   const flue = new FlueCliReviewInvoker(
     new CommandRunner(),
