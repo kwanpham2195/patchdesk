@@ -124,7 +124,21 @@ describe("walkthrough workflow harness contract", () => {
         tools: ReadonlyArray<unknown>;
       };
     }> = [];
-    const writeRecords: string[] = [];
+    const harness = {
+      writeRecorder: { records: [] as string[] },
+      session: async () => ({
+        prompt: async <T>(text: string, options: {
+          result: v.GenericSchema;
+          model?: string;
+          thinkingLevel?: string;
+          tools: ReadonlyArray<unknown>;
+        }) => {
+          prompts.push({ text, options });
+          return { data: validOutput as T };
+        },
+      }),
+    };
+    let session: Awaited<ReturnType<typeof harness.session>> | undefined;
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, "@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
 
@@ -139,23 +153,19 @@ describe("walkthrough workflow harness contract", () => {
           reasoning: "high",
         },
         harness: {
-          session: async () => ({
-            prompt: async <T>(text: string, options: {
-              result: v.GenericSchema;
-              model?: string;
-              thinkingLevel?: string;
-              tools: ReadonlyArray<unknown>;
-            }) => {
-              prompts.push({ text, options });
-              return { data: validOutput as T };
-            },
-          }),
+          ...harness,
+          session: async () => {
+            session = await harness.session();
+            return session;
+          },
         },
       });
 
       expect(result).toEqual(validOutput);
       expect(prompts).toHaveLength(1);
-      expect(writeRecords).toEqual([]);
+      expect(session).toBeDefined();
+      expect(Object.keys(session ?? {})).not.toEqual(expect.arrayContaining(["write", "persist", "save"]));
+      expect(harness.writeRecorder.records).toEqual([]);
       const prompt = prompts[0];
       if (prompt === undefined) throw new Error("workflow prompt missing");
       expect(prompt.options.model).toBe("model-explicit");
@@ -181,7 +191,15 @@ describe("walkthrough workflow harness contract", () => {
     const contextPath = join(directory, "context.json");
     const patchPath = join(directory, "patch.diff");
     let promptCalls = 0;
-    const writeRecords: string[] = [];
+    const harness = {
+      writeRecorder: { records: [] as string[] },
+      session: async () => ({
+        prompt: async <T>() => {
+          promptCalls += 1;
+          return { data: validOutput as T };
+        },
+      }),
+    };
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
 
@@ -195,17 +213,10 @@ describe("walkthrough workflow harness contract", () => {
           model: "model-explicit",
           reasoning: "high",
         },
-        harness: {
-          session: async () => ({
-            prompt: async <T>() => {
-              promptCalls += 1;
-              return { data: validOutput as T };
-            },
-          }),
-        },
+        harness,
       })).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
       expect(promptCalls).toBe(0);
-      expect(writeRecords).toEqual([]);
+      expect(harness.writeRecorder.records).toEqual([]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
