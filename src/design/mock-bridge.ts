@@ -19,10 +19,44 @@ const profile = {
 const repositories = [
   { repo: { host: "github.com", owner: "centraldigital", repo: "patchdesk" }, state: "ready" },
   { repo: { host: "github.com", owner: "centraldigital", repo: "customer-management" }, state: "has_open_prs" },
-  { repo: { host: "github.com", owner: "centraldigital", repo: "archived-service" }, archived: true, state: "archived" },
+  { repo: { host: "github.com", owner: "centraldigital", repo: "archived-service", archived: true }, state: "archived" },
 ];
+const repositoriesWithArchived = repositories.map((entry) => (
+  entry.state === "archived"
+    ? { ...entry, repo: { ...entry.repo, archived: true } }
+    : entry
+));
 
 const sha = "abcdef1234567890abcdef1234567890abcdef12";
+
+/**
+ * Display-safe recovery fixture consumed by the Design app. The fixture holds
+ * only a notice key, tone, and optional action key — no paths, IDs, attempts,
+ * raw error text, lifecycle, storage, quarantine, worktree, or runtime terms.
+ * The Design recovery routes must read this fixture; a duplicate inline map is
+ * not allowed.
+ */
+export type DesignRecoveryFixture = {
+  readonly noticeKey: "preparing" | "ready_to_review" | "review_in_progress" | "review_interrupted" | "review_failed" | "needs_preparation";
+  readonly tone: "neutral" | "positive" | "warning" | "destructive";
+  readonly actionKey?: "run_review" | "reconnect" | "start_again" | "try_again" | "prepare_again";
+};
+
+export function designRecoveryFixtureFor(scenarioId: string | undefined): DesignRecoveryFixture {
+  return recoveryFixtureFor(scenarioId);
+}
+
+export function designInboxRecoveryFixtureFor(prNumber: number): DesignRecoveryFixture {
+  switch (prNumber) {
+    case 42: return { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" };
+    case 118: return { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" };
+    case 77: return { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" };
+    case 31: return { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" };
+    case 19: return { noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" };
+    case 8: return { noticeKey: "needs_preparation", tone: "destructive", actionKey: "prepare_again" };
+    default: return { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" };
+  }
+}
 
 export function installDesignBridge(scenarioId: string | undefined): void {
   const requestedAppearance = new URLSearchParams(window.location.search).get("appearance");
@@ -133,7 +167,7 @@ function recoveryWorkbench(scenarioId: string | undefined): unknown {
   };
 }
 
-function recoveryFixtureFor(scenarioId: string | undefined): { readonly noticeKey: string; readonly tone: "neutral" | "positive" | "warning" | "destructive"; readonly actionKey?: string } {
+function recoveryFixtureFor(scenarioId: string | undefined): DesignRecoveryFixture {
   switch (scenarioId) {
     case "workbench-reconnect": return { noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" };
     case "workbench-start-again": return { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" };
@@ -167,7 +201,7 @@ function inboxForScenario(scenarioId: string | undefined): InboxResponse {
     profile,
     inbox: {
       rows: baseRows,
-      repositories: scenarioId === "inbox-empty" ? repositories.map((entry) => ({ ...entry, state: "no_open_prs" })) : repositories,
+      repositories: scenarioId === "inbox-empty" ? repositoriesWithArchived.map((entry) => ({ ...entry, state: "no_open_prs" })) : repositoriesWithArchived,
       dataFreshness: scenarioId === "inbox-cached" ? "cached" : "fresh",
       snapshot: { state: scenarioId === "inbox-cached" ? "failed_cached" : "current", refreshedAt: "2026-07-18T10:00:00.000Z" },
     },

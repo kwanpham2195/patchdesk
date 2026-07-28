@@ -48,10 +48,25 @@ export const designScenarios: ReadonlyArray<DesignScenario> = [
   { id: "walkthrough-stale", title: "Walkthrough: stale", description: "Stored patch changed; show the regenerate path for the current snapshot.", group: "Walkthrough" },
 ];
 
+/**
+ * Temporary walkthrough comparison scenarios used to select the reading layout.
+ * The chapter-rail layout is retained as the permanent `walkthrough-ready`
+ * reference; the linear-picker layout is rejected. After the comparison, both
+ * comparison entries are removed; the retained layout is `walkthrough-ready`.
+ */
+export const TEMPORARY_WALKTHROUGH_COMPARISON: ReadonlyArray<DesignScenario> = [
+  { id: "walkthrough-ready-rail", title: "Walkthrough ready (rail)", description: "Comparison candidate: persistent chapter rail with continuous reading surface.", group: "Walkthrough" },
+  { id: "walkthrough-ready-linear", title: "Walkthrough ready (linear)", description: "Comparison candidate: linear section picker above the reading surface.", group: "Walkthrough" },
+];
+
+export function allDesignScenarios(): ReadonlyArray<DesignScenario> {
+  return [...designScenarios, ...TEMPORARY_WALKTHROUGH_COMPARISON];
+}
+
 export function scenarioFromLocation(): DesignScenario | undefined {
   if (typeof window === "undefined") return undefined;
   const id = new URLSearchParams(window.location.search).get("scenario");
-  return designScenarios.find((scenario) => scenario.id === id);
+  return allDesignScenarios().find((scenario) => scenario.id === id);
 }
 
 export function scenarioUrl(id: string): string {

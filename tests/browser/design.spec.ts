@@ -148,6 +148,22 @@ test("permanent design registry contains exactly 22 stable scenarios", () => {
   ]) expect(ids.has(id)).toBe(true);
 });
 
+test("temporary walkthrough comparison captures both layouts before retention", async ({ page }) => {
+  const cases = ["walkthrough-ready-rail", "walkthrough-ready-linear"] as const;
+  for (const scenario of cases) {
+    const server = await serveDesign();
+    try {
+      await page.goto(`${origin(server)}/?scenario=${scenario}`);
+      await expect(page).toHaveTitle(/Patchdesk Design/);
+      const layoutValue = scenario === "walkthrough-ready-rail" ? "rail" : "linear";
+      await expect(page.locator(`[data-layout=${layoutValue}]`)).toBeVisible();
+      await page.screenshot({ path: `test-results/patchdesk-design-${scenario}.png`, fullPage: true });
+    } finally {
+      await close(server);
+    }
+  }
+});
+
 test("every permanent scenario opens, captures a screenshot, and uses friendly recovery copy", async ({ page }) => {
   for (const scenario of designScenarios) {
     const server = await serveDesign();
@@ -290,6 +306,142 @@ test("walkthrough-generating shows progress and read-only assurance", async ({ p
     await page.goto(`${origin(server)}/?scenario=walkthrough-generating`);
     await expect(page.getByRole("alert").getByText("Generating walkthrough…")).toBeVisible();
     await expect(page.getByText("read-only").first()).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough interaction: dialog → generating → ready, navigate, mark reviewed, Support, Back to files", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-generate-dialog`);
+    const dialog = page.getByTestId("walkthrough-generate-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByText("Generate a read-only walkthrough")).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Model" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Reasoning" })).toBeVisible();
+    await page.getByTestId("generate-walkthrough-confirm").click();
+    await expect(page.getByTestId("walkthrough-generating-alert")).toBeVisible();
+    await expect(page.getByTestId("walkthrough-generating-alert").getByText("Generating walkthrough…")).toBeVisible();
+    await expect(page.getByTestId("walkthrough-generating-steps")).toBeVisible();
+    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Support coverage" })).toBeVisible();
+    await expect(page.locator("[data-layout=rail]")).toBeVisible();
+    await page.getByTestId("section-next").click();
+    await expect(page.getByRole("heading", { name: "How reads stay read-only" })).toBeVisible();
+    await page.getByTestId("mark-section-reviewed").click();
+    await expect(page.getByTestId("mark-section-reviewed")).toHaveText("Reviewed");
+    await page.getByTestId("mark-support-reviewed").click();
+    await expect(page.getByTestId("mark-support-reviewed")).toHaveText("Reviewed");
+    await page.getByTestId("back-to-files").click({ force: true });
+    await expect(page.getByTestId("files-mode-stage")).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-failed retry returns to generating and reaches ready", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-failed`);
+    await expect(page.getByTestId("walkthrough-failed")).toBeVisible();
+    await page.getByTestId("retry-generation").click();
+    await expect(page.getByTestId("walkthrough-generating-alert")).toBeVisible();
+    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-stale regenerate returns to generating and reaches ready", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-stale`);
+    await expect(page.getByTestId("walkthrough-stale")).toBeVisible();
+    await page.getByTestId("regenerate-stale").click();
+    await expect(page.getByTestId("walkthrough-generate-dialog")).toBeVisible();
+    await page.getByTestId("generate-walkthrough-confirm").click();
+    await expect(page.getByTestId("walkthrough-generating-alert")).toBeVisible();
+    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough keyboard navigation moves between sections", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-ready`);
+    await expect(page.getByRole("heading", { name: "Why this snapshot matters" })).toBeVisible();
+    await page.getByTestId("section-next").focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("heading", { name: "How reads stay read-only" })).toBeVisible();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByRole("heading", { name: "Why this snapshot matters" })).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("dialog-clear-local-data opens Settings on General first, then exposes cleanup dialog", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=dialog-clear-local-data`);
+    await expect(page.locator("[role=dialog]").filter({ hasText: "Settings" }).first()).toBeVisible();
+    await expect(page.getByTestId("settings-section-general")).toBeVisible();
+    await expect(page.getByTestId("cleanup-dialog-clear_local_review_data")).toBeVisible();
+    await expect(page.getByText("Reviews you can still open or resume, and diagnostic reports, stay.")).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("settings-recovery opens Settings on General and reaches the cleanup card", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=settings-recovery`);
+    await expect(page.getByRole("heading", { name: /Settings/ }).first()).toBeVisible();
+    await expect(page.getByTestId("settings-section-general")).toBeVisible();
+    await page.getByRole("tab", { name: "Data & recovery" }).click();
+    await expect(page.getByTestId("local-review-data-card")).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("design recovery routes consume the bridge fixture and omit forbidden terms", async ({ page }) => {
+  const cases: ReadonlyArray<{ readonly id: string; readonly button: string; readonly notice: string }> = [
+    { id: "workbench-reconnect", button: "Reconnect", notice: "Review in progress" },
+    { id: "workbench-start-again", button: "Start again", notice: "Review was interrupted" },
+    { id: "workbench-try-again", button: "Try again", notice: "Review couldn't finish" },
+    { id: "workbench-prepare-again", button: "Prepare again", notice: "Review needs preparation" },
+  ];
+  for (const { id, button, notice } of cases) {
+    const server = await serveDesign();
+    try {
+      await page.goto(`${origin(server)}/?scenario=${id}`);
+      await expect(page.getByTestId(id)).toBeVisible();
+      await expect(page.getByRole("button", { name: button })).toBeVisible();
+      await expect(page.getByText(notice)).toBeVisible();
+      const text = await page.locator("body").innerText();
+      for (const term of FORBIDDEN_TERMS) {
+        expect(text.toLowerCase().includes(term), `${id} should not show forbidden term "${term}"`).toBe(false);
+      }
+    } finally {
+      await close(server);
+    }
+  }
+});
+
+test("inbox recovery scenario reads fixtures from the bridge and exposes six rows", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=inbox-recovery-states`);
+    await expect(page.getByTestId("inbox-recovery-stage")).toBeVisible();
+    for (const prNumber of [42, 118, 77, 31, 19, 8]) {
+      await expect(page.getByTestId(`inbox-recovery-row-${prNumber}`)).toBeVisible();
+    }
   } finally {
     await close(server);
   }

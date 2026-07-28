@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ArrowLeft, BookOpen, CircleAlert, RefreshCw, ShieldAlert, Sparkles, Square, Star } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, CircleAlert, FileText, RefreshCw, ShieldAlert, Sparkles, Square, Star } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "../renderer/src/components/ui/alert";
 import { Badge } from "../renderer/src/components/ui/badge";
@@ -76,14 +76,18 @@ type WalkthroughScenarioVariant =
 /**
  * Browser-only walkthrough scenario. Deterministic fixture; no bridge call,
  * filesystem access, GitHub, Electron, or model invocation. The permanent
- * scenarios use the chapter rail with continuous reading surface.
+ * scenarios use the chapter rail with continuous reading surface. The
+ * temporary `walkthrough-ready-rail` and `walkthrough-ready-linear` comparison
+ * scenarios were used to record the layout choice; only the rail is retained.
  */
 export function DesignWalkthroughScenario({
   variant,
   layout,
+  onBackToFiles,
 }: {
   readonly variant: WalkthroughScenarioVariant;
   readonly layout: "rail" | "linear";
+  readonly onBackToFiles?: () => void;
 }): React.JSX.Element {
   const [lifecycle, setLifecycle] = useState<WalkthroughLifecycleKey>(initialLifecycle(variant));
   const [dialogOpen, setDialogOpen] = useState(variant === "walkthrough-generate-dialog");
@@ -92,10 +96,44 @@ export function DesignWalkthroughScenario({
   const [reviewed, setReviewed] = useState<ReadonlyArray<string>>([]);
   const [current, setCurrent] = useState(WALKTHROUGH_SECTIONS[0]?.id ?? "");
   const [supportReviewed, setSupportReviewed] = useState(false);
+  const [generationSteps, setGenerationSteps] = useState<ReadonlyArray<string>>([]);
+  const [filesView, setFilesView] = useState<"patchdesk" | "storybook">("patchdesk");
 
   useEffect(() => {
     setLifecycle(initialLifecycle(variant));
+    setDialogOpen(variant === "walkthrough-generate-dialog");
+    setReviewed([]);
+    setCurrent(WALKTHROUGH_SECTIONS[0]?.id ?? "");
+    setSupportReviewed(false);
+    setGenerationSteps([]);
   }, [variant]);
+
+  // Deterministic, browser-safe generating → ready completion. The setTimeout
+  // runs in the renderer; the test harness advances time by interacting with
+  // visible controls (clicking Generate) and the scenario never performs any
+  // out-of-band I/O.
+  useEffect(() => {
+    if (lifecycle !== "generating") return;
+    const steps = [
+      "Reading the stored patch",
+      "Grouping stored hunks by file",
+      "Mapping sections to hunks",
+      "Verifying every hunk is covered",
+    ];
+    setGenerationSteps([steps[0] ?? ""]);
+    const timeouts: Array<ReturnType<typeof setTimeout>> = [];
+    steps.forEach((step, index) => {
+      if (index === 0) return;
+      timeouts.push(setTimeout(() => setGenerationSteps((current) => [...current, step]), 80 * index));
+    });
+    timeouts.push(setTimeout(() => {
+      setLifecycle("ready");
+      setGenerationSteps([]);
+    }, 80 * (steps.length + 1)));
+    return () => {
+      for (const id of timeouts) clearTimeout(id);
+    };
+  }, [lifecycle]);
 
   const sections = WALKTHROUGH_SECTIONS;
   const currentIndex = useMemo(
@@ -110,8 +148,23 @@ export function DesignWalkthroughScenario({
   const headline = walkthroughCopy(lifecycle).headline;
   const reassurance = walkthroughCopy(lifecycle).reassurance;
 
+  const startGeneration = (): void => {
+    setDialogOpen(false);
+    setLifecycle("generating");
+  };
+
+  const retryGeneration = (): void => {
+    setLifecycle("generating");
+  };
+
+  const handleBackToFiles = (): void => {
+    setFilesView("storybook");
+    onBackToFiles?.();
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.target instanceof HTMLElement && /^(input|textarea|select|button)$/i.test(event.target.tagName)) return;
+    if (event.target instanceof HTMLElement && /^(input|textarea|select)$/i.test(event.target.tagName)) return;
+    if (lifecycle !== "ready") return;
     if (event.key === "ArrowLeft" || event.key === "j") {
       event.preventDefault();
       if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current);
@@ -126,11 +179,24 @@ export function DesignWalkthroughScenario({
   const isStale = lifecycle === "stale";
   const isGenerating = lifecycle === "generating";
 
+  if (filesView === "storybook") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background p-6" data-testid="files-mode-stage">
+        <FileText className="size-10 text-muted-foreground" />
+        <h1 className="text-xl font-semibold">Files mode (fixture)</h1>
+        <p className="max-w-xl text-center text-sm text-muted-foreground">
+          Back to files restored the file selection, inspector, and diff controls. The walkthrough takeover is closed.
+        </p>
+        <Button onClick={() => setFilesView("patchdesk")} variant="outline">Reopen walkthrough</Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background" onKeyDown={handleKeyDown} tabIndex={-1}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="sm" data-testid="back-to-files" aria-label="Back to files">
+          <Button variant="ghost" size="sm" data-testid="back-to-files" aria-label="Back to files" onClick={handleBackToFiles}>
             <ArrowLeft /> Back to files
           </Button>
           <Separator orientation="vertical" className="h-5" />
@@ -145,16 +211,23 @@ export function DesignWalkthroughScenario({
             {lifecycle === "ready" ? <BookOpen /> : isFailed || isStale ? <CircleAlert /> : <Sparkles />}
             {lifecycle}
           </Badge>
-          {isFailed ? <Button size="sm" onClick={() => setLifecycle("ready")}><RefreshCw /> Retry generation</Button> : null}
-          {isStale ? <Button size="sm" onClick={() => setDialogOpen(true)}><Sparkles /> Generate walkthrough</Button> : null}
+          {isFailed ? <Button size="sm" onClick={retryGeneration} data-testid="retry-generation"><RefreshCw /> Retry generation</Button> : null}
+          {isStale ? <Button size="sm" onClick={() => setDialogOpen(true)} data-testid="regenerate-stale"><Sparkles /> Generate walkthrough</Button> : null}
           {lifecycle === "ready" ? <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>Show generate dialog</Button> : null}
         </div>
       </header>
       {isGenerating ? (
-        <Alert className="m-4" aria-busy="true">
+        <Alert className="m-4" aria-busy="true" data-testid="walkthrough-generating-alert">
           <Sparkles />
           <AlertTitle>{headline}</AlertTitle>
-          <AlertDescription>{reassurance}</AlertDescription>
+          <AlertDescription>
+            {reassurance}
+            <ul className="mt-2 space-y-1 text-xs" data-testid="walkthrough-generating-steps">
+              {generationSteps.map((step) => (
+                <li key={step} className="flex items-center gap-2"><CheckCircle2 className="size-3 text-primary" /> {step}</li>
+              ))}
+            </ul>
+          </AlertDescription>
         </Alert>
       ) : null}
       {isFailed ? (
@@ -163,7 +236,7 @@ export function DesignWalkthroughScenario({
           <AlertTitle>{headline}</AlertTitle>
           <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
             {reassurance}
-            <Button size="sm" variant="outline" onClick={() => setLifecycle("ready")}><RefreshCw /> Retry generation</Button>
+            <Button size="sm" variant="outline" onClick={retryGeneration}><RefreshCw /> Retry generation</Button>
           </AlertDescription>
         </Alert>
       ) : null}
@@ -265,7 +338,7 @@ export function DesignWalkthroughScenario({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setDialogOpen(false); setLifecycle("ready"); }}><Sparkles /> Generate read-only walkthrough</Button>
+            <Button onClick={startGeneration} data-testid="generate-walkthrough-confirm"><Sparkles /> Generate read-only walkthrough</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -393,11 +466,11 @@ function SectionPane({
           </CardContent>
         </Card>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={onToggleReviewed} aria-pressed={reviewed}>
+          <Button size="sm" onClick={onToggleReviewed} aria-pressed={reviewed} data-testid="mark-section-reviewed">
             <Star /> {reviewed ? "Reviewed" : "Mark section reviewed"}
           </Button>
-          <Button size="sm" variant="outline" onClick={onPrev} disabled={!canGoPrev} aria-label="Previous section"><ArrowLeft /> Previous</Button>
-          <Button size="sm" variant="outline" onClick={onNext} disabled={!canGoNext} aria-label="Next section">Next <ArrowLeft className="rotate-180" /></Button>
+          <Button size="sm" variant="outline" onClick={onPrev} disabled={!canGoPrev} aria-label="Previous section" data-testid="section-prev"><ArrowLeft /> Previous</Button>
+          <Button size="sm" variant="outline" onClick={onNext} disabled={!canGoNext} aria-label="Next section" data-testid="section-next">Next <ArrowLeft className="rotate-180" /></Button>
           <Button size="sm" variant="ghost" aria-label="Add inline draft comment"><Square /> Add inline comment</Button>
         </div>
         <Separator />
@@ -412,7 +485,7 @@ function SupportList({ reviewed, onToggle }: { readonly reviewed: boolean; reado
     <section role="region" aria-label="Support coverage" className="space-y-2">
       <header className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Support</h3>
-        <Button size="xs" variant="outline" onClick={onToggle} aria-pressed={reviewed}>
+        <Button size="xs" variant="outline" onClick={onToggle} aria-pressed={reviewed} data-testid="mark-support-reviewed">
           {reviewed ? "Reviewed" : "Mark Support reviewed"}
         </Button>
       </header>

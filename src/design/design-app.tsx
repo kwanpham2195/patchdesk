@@ -9,13 +9,11 @@ import { Badge } from "../renderer/src/components/ui/badge";
 import { Button } from "../renderer/src/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../renderer/src/components/ui/card";
 import { submissionFixtureData } from "../renderer/src/flows/app-fixtures";
-import type { RecoveryActionKey, RecoveryNoticeKey, RecoveryTone } from "../renderer/src/review-copy";
 import { scenarioFromLocation, scenarioUrl, designScenarios } from "./scenarios";
 import { DesignRecoveryChip } from "./design-recovery";
+import { designInboxRecoveryFixtureFor, designRecoveryFixtureFor } from "./mock-bridge";
 import { DesignSettingsOverlay } from "./design-settings-overlay";
 import { DesignWalkthroughScenario } from "./design-walkthrough-scenario";
-
-type RecoveryFixture = { readonly notice: RecoveryNoticeKey; readonly tone: RecoveryTone; readonly action: RecoveryActionKey };
 
 export function DesignApp(): React.JSX.Element {
   const scenario = scenarioFromLocation();
@@ -32,6 +30,8 @@ export function DesignApp(): React.JSX.Element {
   if (scenario.id === "walkthrough-ready") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="rail" />;
   if (scenario.id === "walkthrough-failed") return <DesignWalkthroughScenario variant="walkthrough-failed" layout="rail" />;
   if (scenario.id === "walkthrough-stale") return <DesignWalkthroughScenario variant="walkthrough-stale" layout="rail" />;
+  if (scenario.id === "walkthrough-ready-rail") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="rail" />;
+  if (scenario.id === "walkthrough-ready-linear") return <DesignWalkthroughScenario variant="walkthrough-ready" layout="linear" />;
   return <App />;
 }
 
@@ -83,35 +83,38 @@ function DesignSettingsScenarioContent(): React.JSX.Element {
 
 function DesignCleanupDialogScenario(): React.JSX.Element {
   const [open, setOpen] = useState(true);
+  const [pendingCleanup, setPendingCleanup] = useState<"clear_cache" | "clear_local_review_data" | undefined>("clear_local_review_data");
   return (
     <div className="min-h-screen bg-background p-6" data-testid="settings-cleanup-stage">
-      <p className="mb-4 text-sm text-muted-foreground">The destructive cleanup confirmation shows what stays and what goes.</p>
-      <Button onClick={() => setOpen(true)}>Reopen dialog</Button>
-      {open ? <DesignSettingsOverlay onClose={() => setOpen(false)} initialSection="data" /> : null}
+      <p className="mb-4 text-sm text-muted-foreground">The destructive cleanup confirmation shows what stays and what goes. Settings always opens on General.</p>
+      <Button onClick={() => { setOpen(true); setPendingCleanup("clear_local_review_data"); }}>Reopen dialog</Button>
+      {open ? (
+        <DesignSettingsOverlay
+          onClose={() => setOpen(false)}
+          initialSection="general"
+          autoOpenCleanup={pendingCleanup}
+          onCleanupDialogChange={setPendingCleanup}
+        />
+      ) : null}
     </div>
   );
 }
 
 function DesignInboxRecoveryScenario(): React.JSX.Element {
-  type Row = { readonly key: string; readonly notice: RecoveryNoticeKey; readonly tone: RecoveryTone; readonly action: RecoveryActionKey };
-  const rows: ReadonlyArray<Row> = [
-    { key: "#42", notice: "ready_to_review", tone: "positive", action: "run_review" },
-    { key: "#118", notice: "review_interrupted", tone: "warning", action: "start_again" },
-    { key: "#77", notice: "review_failed", tone: "warning", action: "try_again" },
-    { key: "#31", notice: "ready_to_review", tone: "positive", action: "run_review" },
-    { key: "#19", notice: "review_in_progress", tone: "positive", action: "reconnect" },
-    { key: "#8", notice: "needs_preparation", tone: "destructive", action: "prepare_again" },
-  ];
+  const prNumbers: ReadonlyArray<number> = [42, 118, 77, 31, 19, 8];
   return (
     <div className="mx-auto max-w-3xl p-6" data-testid="inbox-recovery-stage">
       <p className="mb-4 text-sm text-muted-foreground">Every row exposes exactly one friendly action and a short reassurance. No lifecycle or storage terms.</p>
       <div className="grid gap-3">
-        {rows.map((row) => (
-          <div key={row.key} className="rounded-md border p-3">
-            <p className="text-sm font-medium">Pull request {row.key}</p>
-            <DesignRecoveryChip noticeKey={row.notice} tone={row.tone} actionKey={row.action} />
-          </div>
-        ))}
+        {prNumbers.map((prNumber) => {
+          const fixture = designInboxRecoveryFixtureFor(prNumber);
+          return (
+            <div key={`#${prNumber}`} className="rounded-md border p-3" data-testid={`inbox-recovery-row-${prNumber}`}>
+              <p className="text-sm font-medium">Pull request #{prNumber}</p>
+              <DesignRecoveryChip noticeKey={fixture.noticeKey} tone={fixture.tone} {...(fixture.actionKey === undefined ? {} : { actionKey: fixture.actionKey })} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -120,21 +123,14 @@ function DesignInboxRecoveryScenario(): React.JSX.Element {
 function DesignWorkbenchRecoveryScenario(): React.JSX.Element {
   const scenario = scenarioFromLocation();
   if (scenario === undefined) return <></>;
-  const map: Record<string, RecoveryFixture> = {
-    "workbench-reconnect": { notice: "review_in_progress", tone: "positive", action: "reconnect" },
-    "workbench-start-again": { notice: "review_interrupted", tone: "warning", action: "start_again" },
-    "workbench-try-again": { notice: "review_failed", tone: "warning", action: "try_again" },
-    "workbench-prepare-again": { notice: "needs_preparation", tone: "destructive", action: "prepare_again" },
-  };
-  const fixture = map[scenario.id] ?? map["workbench-reconnect"];
-  if (fixture === undefined) return <></>;
+  const fixture = designRecoveryFixtureFor(scenario.id);
   return (
     <div className="mx-auto max-w-3xl p-6" data-testid={scenario.id}>
       <header className="mb-4">
         <p className="text-sm text-muted-foreground">Workbench recovery — single primary action.</p>
         <h1 className="text-2xl font-semibold">Protect review writes</h1>
       </header>
-      <DesignRecoveryChip noticeKey={fixture.notice} tone={fixture.tone} actionKey={fixture.action} />
+      <DesignRecoveryChip noticeKey={fixture.noticeKey} tone={fixture.tone} {...(fixture.actionKey === undefined ? {} : { actionKey: fixture.actionKey })} />
     </div>
   );
 }
