@@ -310,11 +310,21 @@ describe("ReviewDiagnosticService", () => {
         profileId,
         retryable: true,
         detail,
-      })).join("\\n")}\\n`, "utf8");
+      })).join("\n")}\n`, "utf8");
+
+      const recentResult = await service.recent(profileId);
+      expect(recentResult).toMatchObject({ _tag: "ok" });
+      if (recentResult._tag === "err") return;
+      const recent = recentResult.value;
+      expect(recent).toHaveLength(unsafeDetails.length);
+      expect(recent.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+      const recentSerialized = JSON.stringify(recent);
+      for (const detail of unsafeDetails) expect(recentSerialized).not.toContain(detail);
 
       const bundle = await service.exportSupportBundle({ profileId });
       expect(bundle).toMatchObject({ _tag: "ok" });
       if (bundle._tag === "err") return;
+      expect(bundle.value.events).toHaveLength(unsafeDetails.length);
       const serialized = JSON.stringify(bundle.value);
       for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
       expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
