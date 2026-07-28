@@ -293,7 +293,13 @@ describe("ReviewDiagnosticService", () => {
         'cause="Error: command failed"',
         "error=command failed",
         "message=(Error: command failed)",
+        'token="secret"',
+        "password: secret",
+        'api_key="secret"',
+        "Authorization: Bearer secret",
+        "Authorization: Basic dXNlcjpwYXNz",
       ];
+      const credentialValues = ["secret", "dXNlcjpwYXNz"];
 
       for (const detail of unsafeDetails) {
         const recorded = await service.record({ profileId, category: "recovery", phase: "delimiter", retryable: true, detail });
@@ -320,6 +326,7 @@ describe("ReviewDiagnosticService", () => {
       expect(recent.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
       const recentSerialized = JSON.stringify(recent);
       for (const detail of unsafeDetails) expect(recentSerialized).not.toContain(detail);
+      for (const value of credentialValues) expect(recentSerialized).not.toContain(value);
 
       const bundle = await service.exportSupportBundle({ profileId });
       expect(bundle).toMatchObject({ _tag: "ok" });
@@ -327,6 +334,7 @@ describe("ReviewDiagnosticService", () => {
       expect(bundle.value.events).toHaveLength(unsafeDetails.length);
       const serialized = JSON.stringify(bundle.value);
       for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
+      for (const value of credentialValues) expect(serialized).not.toContain(value);
       expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });

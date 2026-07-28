@@ -134,7 +134,7 @@ export function redactDiagnosticDetail(
     /(?:^|[^A-Za-z0-9])file:(?:\/\/)?[^\s]*/i,
     /(?:^|\s)(?:diff --git|---\s|\+\+\+\s|@@[^@]*@@)/im,
     /\b(?:pr|pull request|title|description|body)\b/i,
-    /\b(?:bearer|basic|authorization|api[_-]?key|token|password|secret)\b(?:\s*[:=]|\s+)\S+/i,
+    /\b(?:bearer|basic|authorization|api[_-]?key|token|password|secret)\b(?:\s*[:=]\s*|\s+)\S+/i,
     /(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/,
     /(?:^|[\s"'():=,]|\[)(?:Error(?:\s+\[[A-Z0-9_]+\])?|error|TypeError|RangeError|[A-Za-z_$][A-Za-z0-9_$]*(?:Error|Exception))(?:\s*:\s*|\s+)\S/im,
     /(?:^|[\s"'():=,]|\[)(?:cause|error|message|reason|exception|failure)\s*[:=]\s*\S+/i,
