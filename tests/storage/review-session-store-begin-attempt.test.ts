@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -208,6 +208,40 @@ describe("ReviewSessionStore.beginAttempt", () => {
       expect(stored.value.batch).toBeUndefined();
       expect(stored.value.batchContent).toBeUndefined();
     }
+  });
+
+  it("scans corrupt entries without hiding healthy sessions", async () => {
+    const fixture = await createFixture();
+    const corruptId = `${fixture.session.id.slice(0, -1)}0` as ReviewSessionId;
+    await mkdir(fixture.paths.sessionDirectory(fixture.profileId, corruptId), { recursive: true });
+    await writeFile(fixture.paths.sessionFile(fixture.profileId, corruptId), "{\"broken\":true}", "utf8");
+    const scanned = await fixture.store.scanSessionEntries(fixture.profileId);
+    expect(scanned).toMatchObject({ _tag: "ok", value: { sessions: [{ id: fixture.session.id }] } });
+    expect(scanned).toMatchObject({ value: { invalidEntries: [{ entryName: corruptId, sessionId: corruptId }] } });
+  });
+
+  it("round-trips an interrupted attempt and allows a fresh begin", async () => {
+    const fixture = await createFixture();
+    const first = await fixture.store.beginAttempt({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      updatedAt: startedAt,
+      createAttempt: async (session, id) => okAttempt(fixture.paths, fixture.profileId, session.id, id),
+    });
+    expect(first._tag).toBe("ok");
+    if (first._tag === "err") return;
+    await fixture.store.saveAttempt(fixture.profileId, fixture.session.id, {
+      ...first.value,
+      state: { _tag: "Interrupted", interruptedAt: startedAt },
+    });
+    await fixture.store.save({ ...fixture.session, currentAttemptId: first.value.id, state: { _tag: "Running", attemptId: first.value.id } });
+    await expect(fixture.store.loadAttempt(fixture.profileId, fixture.session.id, first.value.id)).resolves.toMatchObject({ value: { state: { _tag: "Interrupted" } } });
+    await expect(fixture.store.beginAttempt({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      updatedAt: startedAt,
+      createAttempt: async (session, id) => okAttempt(fixture.paths, fixture.profileId, session.id, id),
+    })).resolves.toMatchObject({ _tag: "ok", value: { id: "002" } });
   });
 
   it("serializes duplicate starts and refuses stale sessions", async () => {

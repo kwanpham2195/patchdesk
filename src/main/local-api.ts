@@ -44,6 +44,7 @@ import { projectSafeRun } from "../services/run-projection";
 import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
+import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService, type GitReadExecutor } from "../services/review-worktree-service";
 import { ReviewComparisonService } from "../services/review-comparison-service";
@@ -157,24 +158,27 @@ export async function startLocalApiServer(
     paths,
     () => new Date().toISOString() as never,
   );
+  const lifecycleGate = new ReviewLifecycleGate();
   const storageManagement = new StorageManagementService({
     profiles,
     sessions,
     artifacts: storageArtifacts,
     paths,
+    lifecycleGate,
     ...(configuration.trash === undefined ? {} : { trash: configuration.trash }),
     git: configuration.readOnlyGit ?? readOnlyGit,
     now: () => new Date().toISOString() as never,
   });
-  await new ReviewRecoveryService(
-    profiles,
-    sessions,
-    () => new Date().toISOString() as never,
-  ).reconcile();
   await ReviewPreparationJournal.recover(
     paths,
     new ReviewWorktreeService(paths, readOnlyGit),
   );
+  await new ReviewRecoveryService(
+    profiles,
+    sessions,
+    () => new Date().toISOString() as never,
+    { paths, artifacts: storageArtifacts },
+  ).reconcile();
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -225,6 +229,7 @@ export async function startLocalApiServer(
         paths,
         () => new Date().toISOString() as never,
       ),
+      lifecycleGate,
     }),
     new ReviewWorkbenchProjectionService(
       profiles,
@@ -236,6 +241,7 @@ export async function startLocalApiServer(
   const reviewCompletion = new ReviewCompletionService(
     paths,
     () => new Date().toISOString() as never,
+    lifecycleGate,
   );
   const reviewDiffSources = new ReviewDiffSourceService(
     profiles,

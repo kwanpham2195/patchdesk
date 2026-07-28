@@ -349,6 +349,28 @@ describe("StorageManagementService", () => {
     });
     expect(setup.trash.moves).toHaveLength(0);
   });
+
+  it("removes a session and its cache worktree idempotently", async () => {
+    const setup = await trackSetup();
+    const target = setup.sessionsById.reviewed;
+    expect(await setup.service.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
+    expect(await exists(setup.paths.sessionDirectory(profileId, target.id))).toBe(false);
+    expect(await setup.service.removeSession(profileId, target.id)).toEqual({ _tag: "ok", value: undefined });
+  });
+
+  it("removes discarded and quarantined evidence while preserving running reviews", async () => {
+    const setup = await trackSetup();
+    const discarded = setup.sessionsById.created;
+    expect(await setup.service.discard({ profileId, sessionId: discarded.id })).toEqual({ _tag: "ok", value: undefined });
+    const entry = `${setup.sessionsById.reviewed.id}.${formatStamp("2026-07-25T00:00:00.000Z")}`;
+    await mkdir(setup.paths.quarantinedSessionDirectory(profileId, entry), { recursive: true });
+    await mkdir(setup.paths.quarantinedWorktreeDirectory(profileId, entry), { recursive: true });
+
+    expect(await setup.service.clearLocalData(profileId)).toEqual({ _tag: "ok", value: undefined });
+    expect(await exists(setup.paths.sessionFile(profileId, discarded.id))).toBe(false);
+    expect(await exists(setup.paths.quarantinedSessionDirectory(profileId, entry))).toBe(false);
+    expect(await exists(setup.paths.worktreeDirectory(profileId, setup.sessionsById.running.id))).toBe(true);
+  });
 });
 
 async function trackSetup(): Promise<Setup> {

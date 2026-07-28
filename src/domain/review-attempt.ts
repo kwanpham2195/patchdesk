@@ -27,6 +27,8 @@ export type ReviewAttemptState =
   | { readonly _tag: "Running"; readonly flueRunId: string }
   | { readonly _tag: "Completed"; readonly resultPath: AbsolutePath }
   | { readonly _tag: "Failed"; readonly error: ReviewFailureSummary }
+  /** A previous process ended before this attempt reached a terminal result. */
+  | { readonly _tag: "Interrupted"; readonly interruptedAt: IsoTimestamp }
   | { readonly _tag: "Discarded"; readonly discardedAt: IsoTimestamp }
   | {
       readonly _tag: "IgnoredLateResult";

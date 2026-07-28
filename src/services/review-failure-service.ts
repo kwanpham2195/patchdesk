@@ -8,6 +8,7 @@ import {
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
+import { ReviewLifecycleGate } from "./review-lifecycle-gate";
 
 /**
  * Persists a failed live run so the session becomes visibly runnable again.
@@ -15,9 +16,23 @@ import { readObjectField } from "./read-object-field";
  * start path take over, and resume never re-enters a dead run.
  */
 export class ReviewFailureService {
-  constructor(private readonly paths: PatchdeskPaths, private readonly now: () => IsoTimestamp) {}
+  private readonly lifecycleGate: ReviewLifecycleGate;
+
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly now: () => IsoTimestamp,
+    lifecycleGate?: ReviewLifecycleGate,
+  ) {
+    this.lifecycleGate = lifecycleGate ?? new ReviewLifecycleGate();
+  }
 
   async fail(input: unknown): Promise<Result<{ readonly failed: true }, { readonly reason: string }>> {
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    if (profileId._tag === "err") return this.failUnlocked(input);
+    return this.lifecycleGate.withProfileLock(profileId.value, () => this.failUnlocked(input));
+  }
+
+  private async failUnlocked(input: unknown): Promise<Result<{ readonly failed: true }, { readonly reason: string }>> {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     const attemptId = parseReviewAttemptId(readObjectField(input, "attemptId"));

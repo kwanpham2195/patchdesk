@@ -170,6 +170,7 @@ const attemptStateSchema = v.variant("_tag", [
   }),
   v.strictObject({ _tag: v.literal("Completed"), resultPath: v.string() }),
   v.strictObject({ _tag: v.literal("Failed"), error: reviewFailureSchema }),
+  v.strictObject({ _tag: v.literal("Interrupted"), interruptedAt: v.string() }),
   v.strictObject({ _tag: v.literal("Discarded"), discardedAt: v.string() }),
   v.strictObject({
     _tag: v.literal("IgnoredLateResult"),
@@ -245,6 +246,16 @@ export type BeginAttemptInput = {
   ) => Promise<Result<ReviewAttempt, StorageFailure>>;
 };
 
+export type InvalidSessionEntry = {
+  readonly entryName: string;
+  readonly sessionId?: ReviewSessionId;
+};
+
+export type SessionEntryScan = {
+  readonly sessions: ReadonlyArray<ReviewSession>;
+  readonly invalidEntries: ReadonlyArray<InvalidSessionEntry>;
+};
+
 /** Owns durable session and attempt artifacts; debug JSONL is never read as state. */
 export class ReviewSessionStore {
   private readonly beginLocks = new Map<string, Promise<void>>();
@@ -307,11 +318,21 @@ export class ReviewSessionStore {
     return this.withBeginLock(input.profileId, input.sessionId, async () => {
       const session = await this.load(input.profileId, input.sessionId);
       if (session._tag === "err") return session;
-      if (
-        session.value.state._tag === "Running" ||
-        session.value.state._tag === "Merged" ||
-        session.value.state._tag === "Stale"
-      ) {
+      if (session.value.state._tag === "Running") {
+        const currentAttemptId = session.value.currentAttemptId;
+        if (currentAttemptId === undefined) {
+          return err({ _tag: "BeginAttemptRejected", reason: "not_runnable" });
+        }
+        const currentAttempt = await this.loadAttempt(
+          input.profileId,
+          input.sessionId,
+          currentAttemptId,
+        );
+        if (currentAttempt._tag === "err" || currentAttempt.value.state._tag !== "Interrupted") {
+          return err({ _tag: "BeginAttemptRejected", reason: "not_runnable" });
+        }
+      }
+      if (session.value.state._tag === "Merged" || session.value.state._tag === "Stale") {
         return err({ _tag: "BeginAttemptRejected", reason: "not_runnable" });
       }
 
@@ -367,6 +388,34 @@ export class ReviewSessionStore {
       return invalidRead();
     }
     return parsed;
+  }
+
+  async scanSessionEntries(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<SessionEntryScan, StorageFailure>> {
+    const root = this.paths.profileReviewsDirectory(profileId);
+    let entries: ReadonlyArray<string>;
+    try {
+      entries = await readdir(root);
+    } catch (cause: unknown) {
+      if (isMissing(cause)) return ok({ sessions: [], invalidEntries: [] });
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+    const sessions: ReviewSession[] = [];
+    const invalidEntries: InvalidSessionEntry[] = [];
+    for (const entry of entries) {
+      if (entry === ".quarantine") continue;
+      const sessionId = parseReviewSessionId(entry);
+      if (sessionId._tag === "err") {
+        invalidEntries.push({ entryName: entry });
+        continue;
+      }
+      const loaded = await this.load(profileId, sessionId.value);
+      if (loaded._tag === "ok") sessions.push(loaded.value);
+      else invalidEntries.push({ entryName: entry, sessionId: sessionId.value });
+    }
+    sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    return ok({ sessions, invalidEntries });
   }
 
   async listSessions(
@@ -987,6 +1036,12 @@ function parseAttemptState(
     return resultPath._tag === "err"
       ? invalidRead()
       : ok({ _tag: "Completed", resultPath: resultPath.value });
+  }
+  if (input._tag === "Interrupted") {
+    const interruptedAt = parseIsoTimestamp(input.interruptedAt);
+    return interruptedAt._tag === "err"
+      ? invalidRead()
+      : ok({ _tag: "Interrupted", interruptedAt: interruptedAt.value });
   }
   const timestamp = parseIsoTimestamp(
     input._tag === "Discarded" ? input.discardedAt : input.completedAt,

@@ -119,6 +119,49 @@ export class ReviewArtifactStorage {
     );
   }
 
+  /** Remove one disposable session and its rebuildable worktree idempotently. */
+  async removeSession(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<void, QuarantineFailure>> {
+    const parsed = parseReviewSessionId(sessionId);
+    if (parsed._tag === "err") return err({ _tag: "InvalidQuarantineEntryName" });
+    const sessionRoot = this.paths.sessionDirectory(profileId, parsed.value);
+    const worktreeRoot = this.paths.worktreeDirectory(profileId, parsed.value);
+    if (!(await this.isUnderRoot(sessionRoot, this.paths.profileReviewsDirectory(profileId)))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    if (!(await this.isUnderRoot(worktreeRoot, this.paths.worktreeRootDirectory(profileId)))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    const removedSession = await removePath(sessionRoot);
+    if (removedSession._tag === "err") return removedSession;
+    const removedWorktree = await removePath(worktreeRoot);
+    return removedWorktree;
+  }
+
+  /** Remove one validated quarantine entry and its paired worktree idempotently. */
+  async removeQuarantined(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): Promise<Result<void, QuarantineFailure>> {
+    const parsed = parseQuarantineEntryName(entryName);
+    if (parsed._tag === "err") return parsed;
+    const sessionRoot = this.paths.quarantinedSessionDirectory(profileId, parsed.value);
+    const worktreeRoot = this.paths.quarantinedWorktreeDirectory(profileId, parsed.value);
+    const quarantineSessionRoot = join(this.paths.profileReviewsDirectory(profileId), ".quarantine");
+    const quarantineWorktreeRoot = join(this.paths.worktreeRootDirectory(profileId), ".quarantine");
+    if (!(await this.isUnderRoot(sessionRoot, quarantineSessionRoot))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    if (!(await this.isUnderRoot(worktreeRoot, quarantineWorktreeRoot))) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    const removedSession = await removePath(sessionRoot);
+    if (removedSession._tag === "err") return removedSession;
+    return removePath(worktreeRoot);
+  }
+
   /**
    * List every validated quarantine entry for the given profile, paired with
    * the timestamp extracted from its name. The list is sorted newest first.
@@ -296,6 +339,16 @@ export class ReviewArtifactStorage {
       }
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
+  }
+}
+
+async function removePath(path: string): Promise<Result<void, StorageFailure>> {
+  try {
+    await rm(path, { recursive: true, force: true });
+    return ok(undefined);
+  } catch (cause: unknown) {
+    if (isNotFound(cause)) return ok(undefined);
+    return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
   }
 }
 

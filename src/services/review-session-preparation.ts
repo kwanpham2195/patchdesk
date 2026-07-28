@@ -26,6 +26,7 @@ import { err, ok, type Result } from "../domain/result";
 import { preparedReviewArtifacts } from "./review-attempt-artifacts";
 import type { ReviewComparisonService } from "./review-comparison-service";
 import type { ReviewContextService } from "./review-context-service";
+import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import {
   ReviewPreparationJournal,
   promoteStagedArtifact,
@@ -80,6 +81,7 @@ type PreparationDependencies = {
   readonly context: ReviewContextService;
   readonly comparisons?: ReviewComparisonService;
   readonly artifacts: ReviewArtifactStorage;
+  readonly lifecycleGate?: ReviewLifecycleGate;
 };
 
 /**
@@ -116,9 +118,13 @@ export class ReviewSessionPreparation {
       prNumber: input.pullRequest.number,
       headSha: current.value.headSha,
     });
-    return this.serialized(input.profileId, sessionId, () =>
-      this.prepareSerialized(input, profile.value, current.value.headSha, sessionId),
-    );
+    const run = (): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> =>
+      this.serialized(input.profileId, sessionId, () =>
+        this.prepareSerialized(input, profile.value, current.value.headSha, sessionId),
+      );
+    return deps.lifecycleGate === undefined
+      ? run()
+      : deps.lifecycleGate.withProfileLock(input.profileId, run);
   }
 
   private async prepareSerialized(

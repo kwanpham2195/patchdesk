@@ -37,6 +37,7 @@ import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
 import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
+import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 
@@ -105,13 +106,16 @@ const desktopLifecycle = createDesktopLifecycle({
 });
 
 function createWorkflowInvoker() {
+  const lifecycleGate = new ReviewLifecycleGate();
   const completion = new ReviewCompletionService(
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
+    lifecycleGate,
   );
   const failure = new ReviewFailureService(
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
+    lifecycleGate,
   );
   const flue = new FlueCliReviewInvoker(
     new CommandRunner(),

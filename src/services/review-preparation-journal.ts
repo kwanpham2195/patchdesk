@@ -3,12 +3,23 @@ import { dirname, join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
-import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
+import {
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewWorktreeService } from "./review-worktree-service";
 
 export type PreparationJournalFailure = { readonly _tag: "PreparationJournalFailed" };
 export type PreparationCleanupFailure = { readonly _tag: "PreparationCleanupFailed" };
+
+export type ReviewPreparationOperation = {
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
+  readonly phase: "preparing" | "committing";
+};
 
 type JournalWorktree = { readonly path: string; readonly repositoryPath: string };
 
@@ -31,7 +42,8 @@ type JournalContent = {
 /**
  * Tracks artifact paths created while preparing an immutable Session so a
  * failure, head change, or crash can remove every one of them. A retained
- * journal never makes a Session reusable; startup recovery only deletes.
+ * journal is an internal active-operation signal; it never becomes renderer
+ * state or a reason to relaunch preparation.
  */
 export class ReviewPreparationJournal {
   private constructor(
@@ -61,6 +73,35 @@ export class ReviewPreparationJournal {
 
   get stagingRoot(): string {
     return this.content.stagingRoot;
+  }
+
+  /** Read the active operation for one session without exposing journal paths. */
+  static async activeFor(
+    paths: PatchdeskPaths,
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<ReviewPreparationOperation | undefined, PreparationJournalFailure>> {
+    const stored = await readJsonFile(journalFile(paths, profileId, sessionId));
+    if (stored._tag === "err") {
+      return stored.error.reason === "not_found"
+        ? ok(undefined)
+        : err({ _tag: "PreparationJournalFailed" });
+    }
+    const content = parseJournal(stored.value);
+    if (content === undefined) return err({ _tag: "PreparationJournalFailed" });
+    const parsedProfile = parseWorkspaceProfileId(content.profileId);
+    const parsedSession = parseReviewSessionId(content.sessionId);
+    if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
+      return err({ _tag: "PreparationJournalFailed" });
+    }
+    if (parsedProfile.value !== profileId || parsedSession.value !== sessionId) {
+      return err({ _tag: "PreparationJournalFailed" });
+    }
+    return ok({
+      profileId: parsedProfile.value,
+      sessionId: parsedSession.value,
+      phase: content.state,
+    });
   }
 
   /** Append a created final artifact path before the next preparation effect. */

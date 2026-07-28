@@ -11,12 +11,28 @@ import type { RepoRelativePath } from "../domain/ids";
 import { parseRevisionComparison } from "../domain/review-comparison";
 import { err, ok, type Result } from "../domain/result";
 import { createReviewBatch } from "./review-workbench";
+import { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import { readObjectField } from "./read-object-field";
 
 /** Persists only validated structured review output; it has no shell, model, or GitHub write capability. */
 export class ReviewCompletionService {
-  constructor(private readonly paths: PatchdeskPaths, private readonly now: () => IsoTimestamp) {}
+  private readonly lifecycleGate: ReviewLifecycleGate;
+
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly now: () => IsoTimestamp,
+    lifecycleGate?: ReviewLifecycleGate,
+  ) {
+    this.lifecycleGate = lifecycleGate ?? new ReviewLifecycleGate();
+  }
+
   async complete(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
+    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    if (profileId._tag === "err") return this.completeUnlocked(input);
+    return this.lifecycleGate.withProfileLock(profileId.value, () => this.completeUnlocked(input));
+  }
+
+  private async completeUnlocked(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId")); const sessionId = parseReviewSessionId(readObjectField(input, "sessionId")); const attemptId = parseReviewAttemptId(readObjectField(input, "attemptId"));
     const modelResult = parseModelReviewResult(readObjectField(input, "result"));
     if (profileId._tag === "err" || sessionId._tag === "err" || attemptId._tag === "err" || modelResult._tag === "err") return err({ reason: "invalid_result" });

@@ -222,7 +222,7 @@ describe("review workbench", () => {
     });
   });
 
-  it("marks an orphaned starting attempt failed and the session runnable after Patchdesk restarts", () => {
+  it("marks an orphaned starting attempt interrupted after Patchdesk restarts", () => {
     const running = {
       ...session,
       state: { _tag: "Running", attemptId: "001" },
@@ -236,16 +236,10 @@ describe("review workbench", () => {
     expect(recovered).toMatchObject({
       _tag: "ok",
       value: {
-        session: {
-          state: {
-            _tag: "ReviewFailed",
-            attemptId: "001",
-            error: { category: "flue", message: "Patchdesk restarted before this review run completed." },
-          },
-        },
-        attempt: { state: { _tag: "Failed", error: { category: "flue" } } },
+        session: { state: { _tag: "Running", attemptId: "001" } },
+        attempt: { state: { _tag: "Interrupted", interruptedAt: "2026-07-16T00:04:00.000Z" } },
       },
     });
-    expect(recovered._tag === "ok" && recovered.value.session.currentAttemptId).toBeUndefined();
+    expect(recovered._tag === "ok" && recovered.value.session.currentAttemptId).toBe("001");
   });
 });

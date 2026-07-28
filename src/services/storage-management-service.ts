@@ -20,6 +20,7 @@ import {
 } from "../adapters/storage/review-artifact-storage";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { GitReadExecutor } from "./review-worktree-service";
+import { ReviewLifecycleGate } from "./review-lifecycle-gate";
 
 export type TrashMover = {
   move(path: string): Promise<Result<void, StorageFailure>>;
@@ -75,6 +76,7 @@ type StorageManagementDependencies = {
   readonly trash?: TrashMover;
   readonly git: GitReadExecutor;
   readonly now: () => IsoTimestamp;
+  readonly lifecycleGate?: ReviewLifecycleGate;
 };
 
 /**
@@ -83,7 +85,11 @@ type StorageManagementDependencies = {
  * path-free projection that the renderer can safely display.
  */
 export class StorageManagementService {
-  constructor(private readonly deps: StorageManagementDependencies) {}
+  private readonly lifecycleGate: ReviewLifecycleGate;
+
+  constructor(private readonly deps: StorageManagementDependencies) {
+    this.lifecycleGate = deps.lifecycleGate ?? new ReviewLifecycleGate();
+  }
 
   async list(profileId: WorkspaceProfileId): Promise<Result<StorageOverview, StorageManagementFailure>> {
     const profileResult = await this.deps.profiles.load(profileId);
@@ -178,17 +184,69 @@ export class StorageManagementService {
     return ok(undefined);
   }
 
+  async removeSession(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<undefined, StorageManagementFailure>> {
+    return this.lifecycleGate.withProfileLock(profileId, async () => {
+      const removed = await this.deps.artifacts.removeSession(profileId, sessionId);
+      return removed._tag === "ok"
+        ? ok(undefined)
+        : err({ _tag: "StorageUnavailable" });
+    });
+  }
+
+  async clearLocalData(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<undefined, StorageManagementFailure>> {
+    return this.lifecycleGate.withProfileLock(profileId, async () => {
+      const profile = await this.deps.profiles.load(profileId);
+      if (profile._tag === "err") {
+        return err(
+          profile.error.reason === "not_found"
+            ? { _tag: "ProfileNotFound" }
+            : { _tag: "ProfileUnavailable" },
+        );
+      }
+      const clearedCache = await this.clearCacheUnlocked(profileId, profile.value.repos);
+      if (clearedCache._tag === "err") return clearedCache;
+      const scanned = await this.deps.sessions.scanSessionEntries(profileId);
+      if (scanned._tag === "err") return err({ _tag: "StorageUnavailable" });
+      for (const session of scanned.value.sessions) {
+        if (session.state._tag !== "Discarded") continue;
+        const removed = await this.deps.artifacts.removeSession(profileId, session.id);
+        if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
+      }
+      const quarantined = await this.deps.artifacts.listQuarantined(profileId);
+      if (quarantined._tag === "err") return err({ _tag: "StorageUnavailable" });
+      for (const entry of quarantined.value) {
+        const removed = await this.deps.artifacts.removeQuarantined(profileId, entry.entryName);
+        if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
+      }
+      return ok(undefined);
+    });
+  }
+
   async clearCache(
     profileId: WorkspaceProfileId,
   ): Promise<Result<undefined, StorageManagementFailure>> {
-    const profile = await this.deps.profiles.load(profileId);
-    if (profile._tag === "err") {
-      return err(
-        profile.error.reason === "not_found"
-          ? { _tag: "ProfileNotFound" }
-          : { _tag: "ProfileUnavailable" },
-      );
-    }
+    return this.lifecycleGate.withProfileLock(profileId, async () => {
+      const profile = await this.deps.profiles.load(profileId);
+      if (profile._tag === "err") {
+        return err(
+          profile.error.reason === "not_found"
+            ? { _tag: "ProfileNotFound" }
+            : { _tag: "ProfileUnavailable" },
+        );
+      }
+      return this.clearCacheUnlocked(profileId, profile.value.repos);
+    });
+  }
+
+  private async clearCacheUnlocked(
+    profileId: WorkspaceProfileId,
+    repos: ReadonlyArray<{ readonly localPath?: string }>,
+  ): Promise<Result<undefined, StorageManagementFailure>> {
     const listed = await this.deps.sessions.listSessions(profileId);
     if (listed._tag === "err") return err({ _tag: "StorageUnavailable" });
     const protectedIds = new Set<string>(
@@ -198,12 +256,9 @@ export class StorageManagementService {
     );
     const removable = await this.cacheChildrenExcept(profileId, protectedIds);
     if (removable._tag === "err") return removable;
-    const removed = await this.deps.artifacts.removeCacheChildren(
-      profileId,
-      removable.value,
-    );
+    const removed = await this.deps.artifacts.removeCacheChildren(profileId, removable.value);
     if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
-    const pruned = await this.prunePerLocalPath(profile.value.repos);
+    const pruned = await this.prunePerLocalPath(repos);
     if (pruned._tag === "err") return err({ _tag: "StorageUnavailable" });
     return ok(undefined);
   }
@@ -270,7 +325,8 @@ function projectSession(session: ReviewSession): StorageSessionProjection {
     session.state._tag === "Created" ||
     session.state._tag === "ReviewFailed" ||
     session.state._tag === "ReviewCompleted" ||
-    session.state._tag === "Stale";
+    session.state._tag === "Stale" ||
+    session.state._tag === "Discarded";
   return {
     id: session.id,
     prLabel,
