@@ -156,6 +156,28 @@ describe("dashboard renderer API flow", () => {
     expect(window.localStorage.getItem("patchdesk.destination")).toBe("dashboard");
   });
 
+  it("clears dashboard and inbox data when a selected profile reload fails", async () => {
+    const fetch = installApi({ profileSwitchReloadFailures: 2 });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const activeProfile = screen.getByRole("combobox", { name: "Active profile" });
+    await user.click(activeProfile);
+    await waitFor(() => expect(activeProfile.getAttribute("aria-expanded")).toBe("true"));
+    await user.click(await screen.findByRole("option", { name: "Enterprise" }));
+
+    await waitFor(() => expect(fetch.mock.calls.some(([input, init]) =>
+      String(input).includes("v1/profiles/select") && init?.method === "POST",
+    )).toBe(true));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(await screen.findByText("Dashboard could not be loaded")).toBeTruthy();
+    expect(screen.queryByText("Real dashboard row")).toBeNull();
+    expect(screen.queryByText("centraldigital/patchdesk")).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry dashboard" })).toBeTruthy();
+  });
+
   it("returns focus to the persistent Navigate opener after command-palette Settings", async () => {
     installApi();
     const user = userEvent.setup();
@@ -526,6 +548,7 @@ function installApi(
     readonly confirmationRequired?: boolean;
     readonly dashboardPending?: boolean;
     readonly dashboardFailures?: number;
+    readonly profileSwitchReloadFailures?: number;
     readonly dashboardValue?: unknown;
     readonly suggestionsValue?: unknown;
     readonly environmentValue?: unknown;
@@ -542,6 +565,8 @@ function installApi(
   } = {},
 ): ReturnType<typeof vi.fn> {
   let remainingDashboardFailures = options.dashboardFailures ?? 0;
+  let remainingProfileSwitchReloadFailures = options.profileSwitchReloadFailures ?? 0;
+  let profileSelectionSucceeded = false;
   const request = vi.fn(
     async (request: {
       readonly path?: string;
@@ -597,6 +622,13 @@ function installApi(
         status: options.reviewRecordsStatus,
         headers: { "Content-Type": "application/json" },
       });
+    if (path.includes("v1/profiles/select") && init?.method === "POST") {
+      profileSelectionSucceeded = true;
+      return new Response(JSON.stringify({ selected: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (path.includes("v1/watchlist") && init?.method === "DELETE") {
       if (options.removeResponse !== undefined)
         return await options.removeResponse;
@@ -608,6 +640,17 @@ function installApi(
     }
     if (options.dashboardPending === true && (path.includes("v1/dashboard") || path.includes("v1/inbox")))
       return await new Promise<Response>(() => {});
+    if (
+      profileSelectionSucceeded &&
+      (path.includes("v1/profiles") || path.includes("v1/dashboard") || path.includes("v1/inbox")) &&
+      remainingProfileSwitchReloadFailures > 0
+    ) {
+      remainingProfileSwitchReloadFailures -= 1;
+      return new Response(JSON.stringify({ error: "profile reload unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if ((path.includes("v1/dashboard") || path.includes("v1/inbox")) && remainingDashboardFailures > 0) {
       remainingDashboardFailures -= 1;
       return new Response(JSON.stringify({ error: "unavailable" }), {

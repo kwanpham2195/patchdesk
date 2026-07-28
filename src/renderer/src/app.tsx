@@ -407,6 +407,12 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         onWorkspaceReload={loadWorkspace}
         onProfileSwitchStart={() => {
           setWorkbench(undefined);
+          setDashboard(undefined);
+          setInbox(undefined);
+          activeInboxProfileId.current = undefined;
+          inboxRefreshGeneration.current += 1;
+          setInboxRefreshFailed(false);
+          setState("loading");
           setDestination({ kind: "dashboard" });
           window.localStorage.setItem("patchdesk.destination", "dashboard");
         }}
