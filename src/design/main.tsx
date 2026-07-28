@@ -14,14 +14,14 @@ if (fixtureHash !== undefined) window.location.hash = fixtureHash;
 for (const key of Object.keys(window.localStorage)) {
   if (key.startsWith("patchdesk.")) window.localStorage.removeItem(key);
 }
-if (scenario?.id === "settings-default") window.localStorage.setItem("patchdesk.destination", "settings");
+if (scenario?.id === "settings-recovery" || scenario?.id === "dialog-clear-local-data") window.localStorage.setItem("patchdesk.destination", "settings");
 else if (scenario !== undefined && scenario.group === "Review workbench") window.localStorage.setItem("patchdesk.destination", "workbench:design-session");
 else window.localStorage.setItem("patchdesk.destination", "dashboard");
 // Seed the inbox view preference so the inbox-default scenario shows all six
 // curated PR rows. The production default of "my_inbox" filters out the draft
 // and ready_to_merge rows, which is fine for the live product but not for the
 // visual baseline.
-if (scenario?.id === "inbox-default") {
+if (scenario?.id === "inbox-default" || scenario?.id === "inbox-recovery-states") {
   window.localStorage.setItem("patchdesk.inbox-view.v1.cfw", JSON.stringify({ version: 1, preferences: { view: "all_open" } }));
 }
 

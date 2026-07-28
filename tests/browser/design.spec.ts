@@ -1,7 +1,20 @@
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, relative } from "node:path";
-import { expect, test } from "playwright/test";
+import { expect, test, type ConsoleMessage } from "playwright/test";
+
+import { designScenarios } from "../../src/design/scenarios";
+
+const FORBIDDEN_TERMS: ReadonlyArray<string> = [
+  "session",
+  "attempt",
+  "quarantine",
+  "worktree",
+  "runtime",
+  "stack trace",
+  "ENOENT",
+  "PATCH_FAIL",
+];
 
 test("Design index lists stable scenario links", async ({ page }) => {
   const server = await serveDesign();
@@ -11,7 +24,7 @@ test("Design index lists stable scenario links", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Interactive visual prototype" })).toBeVisible();
     await expect(page.getByRole("link", { name: /Inbox default/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Review completed/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Settings/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Settings \(recovery\)/ })).toBeVisible();
     await page.screenshot({ path: "test-results/patchdesk-design-index.png", fullPage: true });
   } finally {
     await close(server);
@@ -36,10 +49,13 @@ test("default inbox scenario renders the shared product surface", async ({ page 
 test("settings scenario keeps configuration local", async ({ page }) => {
   const server = await serveDesign();
   try {
-    await page.goto(`${origin(server)}/?scenario=settings-default`);
-    await expect(page).toHaveTitle(/Patchdesk Design · Settings/);
-    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
-    await expect(page.getByText("CFW").first()).toBeVisible();
+    await page.goto(`${origin(server)}/?scenario=settings-recovery`);
+    await expect(page.getByRole("heading", { name: /Settings/ }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "General" }).click();
+    await expect(page.getByRole("tab", { name: "General" })).toHaveAttribute("data-active");
+    await page.getByRole("tab", { name: "Data & recovery" }).click();
+    await expect(page.getByTestId("local-review-data-card")).toBeVisible();
+    await expect(page.getByTestId("clear-local-data-button")).toBeVisible();
     await page.screenshot({ path: "test-results/patchdesk-design-settings.png", fullPage: true });
   } finally {
     await close(server);
@@ -103,6 +119,182 @@ test("dialog scenarios open the confirmation body on load", async ({ page }) => 
   }
 });
 
+test("permanent design registry contains exactly 22 stable scenarios", () => {
+  expect(designScenarios).toHaveLength(22);
+  const ids = new Set(designScenarios.map((scenario) => scenario.id));
+  for (const id of [
+    "inbox-default",
+    "inbox-empty",
+    "inbox-loading",
+    "inbox-error",
+    "inbox-cached",
+    "inbox-recovery-states",
+    "review-prepared",
+    "review-running",
+    "review-completed",
+    "workbench-reconnect",
+    "workbench-start-again",
+    "workbench-try-again",
+    "workbench-prepare-again",
+    "settings-recovery",
+    "dialog-clear-local-data",
+    "dialog-submit",
+    "dialog-merge",
+    "walkthrough-generate-dialog",
+    "walkthrough-generating",
+    "walkthrough-ready",
+    "walkthrough-failed",
+    "walkthrough-stale",
+  ]) expect(ids.has(id)).toBe(true);
+});
+
+test("every permanent scenario opens, captures a screenshot, and uses friendly recovery copy", async ({ page }) => {
+  for (const scenario of designScenarios) {
+    const server = await serveDesign();
+    const errors: Array<string> = [];
+    const onConsole = (message: ConsoleMessage): void => {
+      if (message.type() === "error") errors.push(message.text());
+    };
+    page.on("console", onConsole);
+    try {
+      await page.goto(`${origin(server)}/?scenario=${scenario.id}`, { waitUntil: "load" });
+      await expect(page).toHaveTitle(new RegExp(`${escapeRegExp(scenario.title)}\\s*·\\s*Patchdesk Design|Patchdesk Design · ${escapeRegExp(scenario.title)}`));
+      await page.waitForTimeout(50);
+      await page.screenshot({
+        path: `test-results/patchdesk-design-${scenario.id}.png`,
+        fullPage: true,
+      });
+      const visibleText = await page.locator("body").innerText();
+      for (const term of FORBIDDEN_TERMS) {
+        expect(visibleText.toLowerCase().includes(term), `${scenario.id} should not show forbidden term "${term}"`).toBe(false);
+      }
+      expect(errors, `${scenario.id} should not log console errors`).toEqual([]);
+    } finally {
+      page.off("console", onConsole);
+      await close(server);
+    }
+  }
+});
+
+test("workbench recovery scenarios show one action and never internal terms", async ({ page }) => {
+  const cases: ReadonlyArray<{ readonly id: string; readonly button: string; readonly notice: string }> = [
+    { id: "workbench-reconnect", button: "Reconnect", notice: "Review in progress" },
+    { id: "workbench-start-again", button: "Start again", notice: "Review was interrupted" },
+    { id: "workbench-try-again", button: "Try again", notice: "Review couldn't finish" },
+    { id: "workbench-prepare-again", button: "Prepare again", notice: "Review needs preparation" },
+  ];
+  for (const { id, button, notice } of cases) {
+    const server = await serveDesign();
+    try {
+      await page.goto(`${origin(server)}/?scenario=${id}`);
+      await expect(page.getByTestId(id)).toBeVisible();
+      await expect(page.getByRole("button", { name: button })).toBeVisible();
+      await expect(page.getByText(notice)).toBeVisible();
+      const text = await page.locator("body").innerText();
+      for (const term of FORBIDDEN_TERMS) {
+        expect(text.toLowerCase().includes(term), `${id} should not show forbidden term "${term}"`).toBe(false);
+      }
+    } finally {
+      await close(server);
+    }
+  }
+});
+
+test("inbox recovery scenarios expose the recovery chip and omit forbidden terms", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=inbox-recovery-states`);
+    await expect(page.getByTestId("inbox-recovery-stage")).toBeVisible();
+    await expect(page.getByTestId("recovery-chip-ready_to_review").first()).toBeVisible();
+    await expect(page.getByTestId("recovery-chip-needs_preparation").first()).toBeVisible();
+    const text = await page.locator("body").innerText();
+    for (const term of FORBIDDEN_TERMS) {
+      expect(text.toLowerCase().includes(term), `inbox-recovery-states should not show forbidden term "${term}"`).toBe(false);
+    }
+    await page.screenshot({ path: "test-results/patchdesk-design-inbox-recovery.png", fullPage: true });
+  } finally {
+    await close(server);
+  }
+});
+
+test("settings overlay renders both cleanup confirmations with retention copy", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=settings-recovery`);
+    await page.getByRole("tab", { name: "Data & recovery" }).click();
+    await page.getByTestId("clear-local-data-button").click();
+    await expect(page.getByTestId("cleanup-dialog-clear_local_review_data")).toBeVisible();
+    await expect(page.getByText("Reviews you can still open or resume, and diagnostic reports, stay.")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Clear cache" }).click();
+    await expect(page.getByTestId("cleanup-dialog-clear_cache")).toBeVisible();
+    await expect(page.getByText("Your saved reviews and diagnostic reports stay.")).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough generate dialog requires model and reasoning before any request", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-generate-dialog`);
+    const dialog = page.getByTestId("walkthrough-generate-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByText("Generate a read-only walkthrough")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-ready exposes the rail, Support, Reviewed controls, and Back to files", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-ready`);
+    await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Support coverage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mark section reviewed" })).toBeVisible();
+    await expect(page.getByTestId("back-to-files")).toBeVisible();
+    await expect(page.locator("[data-layout=rail]")).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-failed surfaces retry that stays on the same snapshot", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-failed`);
+    await expect(page.getByTestId("walkthrough-failed")).toBeVisible();
+    await expect(page.getByTestId("walkthrough-failed").getByRole("button", { name: "Retry generation" })).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-stale surfaces regenerate for the current snapshot", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-stale`);
+    await expect(page.getByTestId("walkthrough-stale")).toBeVisible();
+    await expect(page.getByTestId("walkthrough-stale").getByRole("button", { name: "Generate walkthrough" })).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
+test("walkthrough-generating shows progress and read-only assurance", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=walkthrough-generating`);
+    await expect(page.getByRole("alert").getByText("Generating walkthrough…")).toBeVisible();
+    await expect(page.getByText("read-only").first()).toBeVisible();
+  } finally {
+    await close(server);
+  }
+});
+
 async function serveDesign(): Promise<Server> {
   const designRoot = join(process.cwd(), "release/design");
   const server = createServer(async (request, response) => {
@@ -140,4 +332,8 @@ function origin(server: Server): string {
 
 function close(server: Server): Promise<void> {
   return new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
