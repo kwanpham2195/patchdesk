@@ -32,8 +32,11 @@ import {
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
+import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
+import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
+import { NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
 import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
@@ -72,6 +75,7 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
+        walkthroughs: createWalkthroughService(),
         lifecycleGate,
         diagnostics,
         modelCatalog: new LocalPiRuntimeModelCatalog(),
@@ -112,6 +116,20 @@ const desktopLifecycle = createDesktopLifecycle({
     await ensureWorkbenchWindow(server);
   },
 });
+
+function createWalkthroughService(): NarrativeWalkthroughService {
+  const paths = PatchdeskPaths.default();
+  return new NarrativeWalkthroughService(
+    new ProfileStore(paths),
+    new ReviewSessionStore(paths),
+    paths,
+    new FlueCliWalkthroughInvoker(
+      new CommandRunner(),
+      resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd()),
+    ),
+    diagnostics,
+  );
+}
 
 function createWorkflowInvoker(
   sharedLifecycleGate: ReviewLifecycleGate,

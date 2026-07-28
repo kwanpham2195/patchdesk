@@ -8,6 +8,7 @@ import {
   picklist,
   pipe,
   string,
+  strictObject,
 } from "valibot";
 
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
@@ -52,6 +53,7 @@ import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
+import type { NarrativeWalkthroughFailure, NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
 import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
@@ -77,6 +79,16 @@ const localApiConfigurationSchema = object({
 });
 
 const localhostHostname = "127.0.0.1";
+const walkthroughRequestSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  sessionId: pipe(string(), minLength(1)),
+  model: pipe(string(), minLength(1)),
+  reasoning: picklist(["low", "medium", "high"]),
+});
+const walkthroughLoadSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  sessionId: pipe(string(), minLength(1)),
+});
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -120,6 +132,8 @@ export type LocalApiConfiguration = {
   readonly lifecycleGate?: ReviewLifecycleGate;
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
+  /** Main-process-owned manual walkthrough generation seam. */
+  readonly walkthroughs?: Pick<NarrativeWalkthroughService, "generate" | "load">;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -550,6 +564,18 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/load", async (context) =>
     response(context, await reviewWorkbench.load(await jsonBody(context))),
   );
+  app.post("/v1/reviews/walkthrough/generate", async (context) => {
+    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+    const parsed = safeParse(walkthroughRequestSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    return walkthroughResponse(context, await configuration.walkthroughs.generate(parsed.output));
+  });
+  app.post("/v1/reviews/walkthrough/load", async (context) => {
+    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+    const parsed = safeParse(walkthroughLoadSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    return walkthroughResponse(context, await configuration.walkthroughs.load(parsed.output));
+  });
   app.post("/v1/reviews/refresh", async (context) =>
     response(context, await reviewWorkbench.refresh(await jsonBody(context))),
   );
@@ -742,6 +768,20 @@ function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
+}
+
+function walkthroughResponse(
+  context: Context,
+  result:
+    | { readonly _tag: "ok"; readonly value: unknown }
+    | { readonly _tag: "err"; readonly error: NarrativeWalkthroughFailure },
+): Response {
+  if (result._tag === "ok") return context.json(result.value);
+  const status = result.error.reason === "invalid_input" ? 400
+    : result.error.reason === "profile_not_found" || result.error.reason === "session_not_found" ? 404
+      : result.error.reason === "stale_snapshot" || result.error.reason === "not_completed" ? 409
+        : 503;
+  return context.json({ error: result.error.reason }, status);
 }
 
 function response(

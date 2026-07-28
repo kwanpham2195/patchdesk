@@ -344,6 +344,41 @@ describe("local API capability boundary", () => {
     });
   });
 
+  it("keeps walkthrough routes capability/origin protected and rejects renderer paths", async () => {
+    const walkthroughs = {
+      async generate() { return { _tag: "ok" as const, value: { lifecycle: "idle" as const, noticeKey: "walkthrough-idle" as const } }; },
+      async load() { return { _tag: "ok" as const, value: { lifecycle: "idle" as const, noticeKey: "walkthrough-idle" as const } }; },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, walkthroughs });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const unauthorized = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers: { Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low" }) });
+    expect(unauthorized.status).toBe(401);
+    const wrongOrigin = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers: { Origin: "http://evil.invalid", "X-Patchdesk-Capability": capability, "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low" }) });
+    expect(wrongOrigin.status).toBe(403);
+    const invalid = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers: { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low", patchPath: "/tmp/secret" }) });
+    expect(invalid.status).toBe(400);
+  });
+
+  it("maps walkthrough dependency failures to the required statuses", async () => {
+    const walkthroughs = {
+      async generate(input: unknown) {
+        return input === undefined
+          ? { _tag: "err" as const, error: { reason: "invalid_input" as const } }
+          : { _tag: "err" as const, error: { reason: "stale_snapshot" as const } };
+      },
+      async load() { return { _tag: "err" as const, error: { reason: "workflow_unavailable" as const } }; },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, walkthroughs });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const stale = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low" }) });
+    expect(stale.status).toBe(409);
+    const unavailable = await fetch(new URL("v1/reviews/walkthrough/load", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s" }) });
+    expect(unavailable.status).toBe(503);
+  });
+
   it("keeps review writes unavailable when the API receives only a GitHub reader", async () => {
     const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-")));
     const reader = { async getPullRequest() { return { _tag: "err" as const, error: { _tag: "GitHubReadFailed" as const } }; } } as unknown as GitHubReader;
