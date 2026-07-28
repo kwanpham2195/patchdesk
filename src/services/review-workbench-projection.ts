@@ -424,6 +424,7 @@ export class ReviewWorkbenchProjectionService {
           this.recovery.paths,
           session.key.profileId,
           session.id,
+          this.recovery.diagnostics,
         );
     if (activePreparation?._tag === "err") {
       if (this.recovery?.diagnostics !== undefined) {

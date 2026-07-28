@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { requestJson } from "../api-client";
 import { parseWorkbenchResponse } from "../renderer-contracts";
 import { recoveryActionLabel, recoveryCopy } from "../review-copy";
 import {
@@ -84,8 +84,7 @@ export function PreparedReviewFlow({
   const [reviewReasoning, setReviewReasoning] = useState<ReviewReasoningPreference>("medium");
   const [reviewCatalogUnavailable, setReviewCatalogUnavailable] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
-  const [runError, setRunError] = useState<string>();
-  const [starting, setStarting] = useState(false);
+  const [runError, setRunError] = useState<string>();  const [starting, setStarting] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [activeAttemptId, setActiveAttemptId] = useState<string>();
   const profileId = workbench.session.key.profileId;
@@ -138,10 +137,8 @@ export function PreparedReviewFlow({
       if (isRunStart(value)) return { runId: value.runId, attemptId: value.attemptId };
       setRunError("Patchdesk could not start this read-only review.");
       return undefined;
-    } catch (cause: unknown) {
-      setRunError(cause instanceof PatchdeskApiError && cause.status === 409
-        ? "GitHub changed after this snapshot was prepared. Refresh and reopen before running a review."
-        : "Patchdesk could not start this read-only review.");
+    } catch {
+      setRunError("Patchdesk could not start this read-only review.");
       return undefined;
     }
   };
@@ -277,15 +274,15 @@ export function PreparedReviewFlow({
                   <p className="mt-1 text-sm text-muted-foreground">{recoveryCopyValue?.reassurance ?? "This review is not available in this window."}</p>
                 </>
               ) : null}
-              {runError === undefined ? null : (
+              {runError ? (
                 <Alert variant="destructive">
-                  <AlertTitle>Review was not started</AlertTitle>
+                  <AlertTitle>Review couldn't finish</AlertTitle>
                   <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
-                    {runError}
+                    {recoveryCopy("review_failed").reassurance}
                     <Button variant="outline" size="sm" onClick={() => void refreshPrepared()}>Refresh and reopen review</Button>
                   </AlertDescription>
                 </Alert>
-              )}
+              ) : null}
             </div>
           )
         ) : showingDiff || showingChecks ? null : (
@@ -295,10 +292,9 @@ export function PreparedReviewFlow({
             {...(activeAttemptId === undefined ? {} : { attemptId: activeAttemptId })}
             {...(workbench.runId === undefined ? {} : { runId: workbench.runId })}
             {...(workbench.recoveryView === undefined ? {} : { recoveryView: workbench.recoveryView })}
-            startFailed={runError !== undefined}
             onStart={async () => {
               const started = await startOwnedRun();
-              if (!started) setRunError("Patchdesk could not start this review run.");
+              if (!started) setRunError("Patchdesk could not start this read-only review.");
             }}
             onSettled={reloadAfterSettle}
           />
@@ -325,15 +321,15 @@ export function PreparedReviewFlow({
                 </Label>
                 {reviewCatalogUnavailable ? <p className="text-sm text-muted-foreground">No enabled review model is currently available. Try again after review models are available.</p> : null}
               </div>
-              {runError === undefined ? null : (
+              {runError ? (
                 <Alert variant="destructive">
-                  <AlertTitle>Review was not started</AlertTitle>
+                  <AlertTitle>Review couldn't finish</AlertTitle>
                   <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
-                    {runError}
+                    {recoveryCopy("review_failed").reassurance}
                     <Button variant="outline" size="sm" onClick={() => void refreshPrepared()}>Refresh and reopen review</Button>
                   </AlertDescription>
                 </Alert>
-              )}
+              ) : null}
               <DialogFooter><Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button><Button disabled={reviewModel === undefined || starting} onClick={() => void confirmStart()}>{starting ? "Starting…" : "Start read-only review"}</Button></DialogFooter>
             </DialogContent>
           </Dialog>

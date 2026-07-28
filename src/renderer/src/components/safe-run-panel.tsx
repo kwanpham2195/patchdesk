@@ -23,7 +23,6 @@ export function SafeRunPanel({
   attemptId,
   runId,
   recoveryView,
-  startFailed,
   onStart,
   onSettled,
 }: {
@@ -32,7 +31,6 @@ export function SafeRunPanel({
   readonly attemptId?: string;
   readonly runId?: string;
   readonly recoveryView?: ReviewRecoveryView;
-  readonly startFailed?: boolean;
   readonly onStart?: () => Promise<void>;
   readonly onSettled?: (profileId: string, sessionId: string) => Promise<void>;
 }): React.JSX.Element {
@@ -99,7 +97,6 @@ export function SafeRunPanel({
         <AlertTitle>{copy.notice}</AlertTitle>
         <AlertDescription className="mt-2">
           {copy.reassurance}
-          {startFailed === true ? <span className="mt-1 block">Patchdesk could not start this review. Try again.</span> : null}
           {actionKey === undefined || onStart === undefined ? null : (
             <Button size="sm" className="mt-3 block" disabled={starting} onClick={() => void start()}>
               {starting ? "Starting…" : recoveryActionLabel(actionKey)}

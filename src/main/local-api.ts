@@ -118,6 +118,8 @@ export type LocalApiConfiguration = {
   readonly readOnlyGit?: GitReadExecutor;
   /** Composition-root lifecycle gate shared by every durable review mutation. */
   readonly lifecycleGate?: ReviewLifecycleGate;
+  /** Composition-root diagnostic service shared by every failure boundary. */
+  readonly diagnostics?: ReviewDiagnosticService;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -155,17 +157,30 @@ export async function startLocalApiServer(
         : err({ _tag: "GitReadFailed" as const });
     },
   };
+  const diagnostics = configuration.diagnostics ?? new ReviewDiagnosticService(
+    paths,
+    () => new Date().toISOString(),
+  );
   const profiles = new ProfileStore(paths);
+  const recordProfileReloadFailure = async (phase: string): Promise<void> => {
+    const config = await profiles.loadConfig();
+    if (config._tag !== "ok" || config.value.lastSelectedProfileId === undefined) return;
+    const profileId = parseWorkspaceProfileId(config.value.lastSelectedProfileId);
+    if (profileId._tag !== "ok") return;
+    await diagnostics.record({
+      profileId: profileId.value,
+      category: "recovery",
+      phase,
+      retryable: true,
+      detail: "The selected profile could not reload its workspace data.",
+    });
+  };
   const sessions = new ReviewSessionStore(paths);
   const storageArtifacts = new ReviewArtifactStorage(
     paths,
     () => new Date().toISOString() as never,
   );
   const lifecycleGate = configuration.lifecycleGate ?? new ReviewLifecycleGate();
-  const diagnostics = new ReviewDiagnosticService(
-    paths,
-    () => new Date().toISOString(),
-  );
   const storageManagement = new StorageManagementService({
     profiles,
     sessions,
@@ -337,18 +352,22 @@ export async function startLocalApiServer(
   app.patch("/v1/settings", async (context) =>
     response(context, await dashboard.updateSettings(await jsonBody(context))),
   );
-  app.get("/v1/dashboard", async (context) =>
-    response(context, await dashboard.dashboardForActiveProfile()),
-  );
+  app.get("/v1/dashboard", async (context) => {
+    const result = await dashboard.dashboardForActiveProfile();
+    if (result._tag === "err") await recordProfileReloadFailure("profile-reload-dashboard");
+    return response(context, result);
+  });
   app.post("/v1/dashboard/refresh/repository", async (context) =>
     response(
       context,
       await dashboard.refreshWatchlistRepo(await jsonBody(context)),
     ),
   );
-  app.get("/v1/inbox", async (context) =>
-    response(context, await dashboard.inboxForActiveProfile()),
-  );
+  app.get("/v1/inbox", async (context) => {
+    const result = await dashboard.inboxForActiveProfile();
+    if (result._tag === "err") await recordProfileReloadFailure("profile-reload-inbox");
+    return response(context, result);
+  });
   app.post("/v1/watchlist", async (context) =>
     response(
       context,

@@ -51,6 +51,10 @@ let rendererNavigationState: DesktopNavigationState = "clear";
 let allowWindowClose = false;
 let closePromptOpen = false;
 const lifecycleGate = new ReviewLifecycleGate();
+const diagnostics = new ReviewDiagnosticService(
+  PatchdeskPaths.default(),
+  () => new Date().toISOString(),
+);
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
@@ -67,8 +71,9 @@ const desktopLifecycle = createDesktopLifecycle({
           architecture: process.arch,
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
-        workflowInvoker: createWorkflowInvoker(lifecycleGate),
+        workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
         lifecycleGate,
+        diagnostics,
         modelCatalog: new LocalPiRuntimeModelCatalog(),
         trash: {
           async move(path) {
@@ -108,7 +113,10 @@ const desktopLifecycle = createDesktopLifecycle({
   },
 });
 
-function createWorkflowInvoker(sharedLifecycleGate: ReviewLifecycleGate) {
+function createWorkflowInvoker(
+  sharedLifecycleGate: ReviewLifecycleGate,
+  diagnostics: ReviewDiagnosticService,
+) {
   const completion = new ReviewCompletionService(
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
@@ -118,10 +126,7 @@ function createWorkflowInvoker(sharedLifecycleGate: ReviewLifecycleGate) {
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
     sharedLifecycleGate,
-    new ReviewDiagnosticService(
-      PatchdeskPaths.default(),
-      () => new Date().toISOString(),
-    ),
+    diagnostics,
   );
   const flue = new FlueCliReviewInvoker(
     new CommandRunner(),

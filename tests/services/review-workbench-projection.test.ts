@@ -15,9 +15,11 @@ import {
   parseIsoTimestamp,
   type GitSha,
 } from "../../src/domain/ids";
-import { createReviewSession, type ReviewSession } from "../../src/domain/review-session";
+import { createReviewSession, type ReviewSession, type ReviewSessionState } from "../../src/domain/review-session";
+import type { ReviewAttempt, ReviewAttemptState } from "../../src/domain/review-attempt";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+import { ReviewWorkbenchProjectionService, type ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
+import { ReviewRunRegistry } from "../../src/services/review-run-registry";
 
 const profileId = "cfw" as never;
 const host = "github.com" as never;
@@ -129,6 +131,38 @@ function completedSession(paths: PatchdeskPaths, options: { readonly incremental
       validationPlan: [],
       assumptions: [],
     } as never,
+  };
+}
+
+function preparedSession(paths: PatchdeskPaths, state: ReviewSessionState, currentAttemptId?: string): ReviewSession {
+  const id = sessionId();
+  return {
+    ...createReviewSession({
+      key: { profileId, host, owner, repo, prNumber: number, headSha },
+      pr: { headSha, isDraft: false, isOpen: true },
+      patchPath: must(parseAbsolutePath(paths.patchFile(profileId, id))),
+      worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, id))), headSha },
+      createdAt: now,
+    }),
+    state,
+    ...(currentAttemptId === undefined ? {} : { currentAttemptId: currentAttemptId as never }),
+  };
+}
+
+function attemptFor(paths: PatchdeskPaths, session: ReviewSession, state: ReviewAttemptState): ReviewAttempt {
+  const id = "001" as never;
+  return {
+    id,
+    sessionId: session.id,
+    state,
+    model: "fixture-model",
+    reasoning: "medium",
+    reviewSkillVersion: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as never,
+    contextHash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as never,
+    contextPath: must(parseAbsolutePath(paths.attemptContextFile(profileId, session.id, id))),
+    reviewInputPath: must(parseAbsolutePath(paths.attemptReviewInputFile(profileId, session.id, id))),
+    debugPath: must(parseAbsolutePath(paths.attemptDebugFile(profileId, session.id, id))),
+    startedAt: now,
   };
 }
 
@@ -333,6 +367,59 @@ describe("ReviewWorkbenchProjectionService", () => {
       expect(loaded.value.recoveryView).toEqual({ noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" });
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("projects every recovery matrix action through the workbench boundary", async () => {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly state: ReviewSessionState;
+      readonly attemptState?: ReviewAttemptState;
+      readonly liveRun?: boolean;
+      readonly activePreparation?: boolean;
+      readonly expected: ReviewWorkbenchProjection["recoveryView"];
+    }> = [
+      { name: "run review", state: { _tag: "Created" }, expected: { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" } },
+      { name: "interrupted", state: { _tag: "Running", attemptId: "001" as never }, attemptState: { _tag: "Interrupted", interruptedAt: now }, expected: { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" } },
+      { name: "failed", state: { _tag: "ReviewFailed", attemptId: "001" as never, error: { category: "flue", message: "failed" } }, attemptState: { _tag: "Failed", error: { category: "flue", message: "failed" } }, expected: { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" } },
+      { name: "stale", state: { _tag: "Stale", reason: "head_changed" }, expected: { noticeKey: "needs_preparation", tone: "warning", actionKey: "prepare_again" } },
+      { name: "unavailable", state: { _tag: "Merged", mergedAt: now }, expected: undefined },
+      { name: "preparing", state: { _tag: "Created" }, activePreparation: true, expected: { noticeKey: "preparing", tone: "neutral" } },
+      { name: "reconnect", state: { _tag: "Running", attemptId: "001" as never }, attemptState: { _tag: "Running", flueRunId: "flue-1" }, liveRun: true, expected: { noticeKey: "review_in_progress", tone: "positive", actionKey: "reconnect" } },
+    ];
+    for (const fixture of cases) {
+      const github = fakeGitHub({ current: summary(headSha), checks: { overall: "pending", checks: [] } });
+      const { root, paths, sessions } = await setup(github);
+      try {
+        const session = preparedSession(paths, fixture.state, fixture.attemptState === undefined ? undefined : "001");
+        expect((await sessions.save(session))._tag).toBe("ok");
+        if (fixture.attemptState !== undefined) {
+          expect((await sessions.saveAttempt(profileId, session.id, attemptFor(paths, session, fixture.attemptState)))._tag).toBe("ok");
+        }
+        const runs = new ReviewRunRegistry(() => now);
+        if (fixture.liveRun === true) runs.create({ sessionId: session.id, attemptId: "001" });
+        const projection = new ReviewWorkbenchProjectionService(
+          new ProfileStore(paths),
+          sessions,
+          github,
+          () => now,
+          {
+            paths,
+            runs,
+            preparation: fixture.activePreparation === true
+              ? { activeFor: async () => ({ _tag: "ok", value: { profileId, sessionId: session.id, phase: "preparing" as const } }) }
+              : { activeFor: async () => ({ _tag: "ok", value: undefined }) },
+          },
+        );
+        const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+        expect(loaded._tag).toBe("ok");
+        if (loaded._tag === "ok") {
+          if (fixture.expected === undefined) expect(loaded.value.recoveryView).toBeUndefined();
+          else expect(loaded.value.recoveryView).toEqual(fixture.expected);
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     }
   });
 

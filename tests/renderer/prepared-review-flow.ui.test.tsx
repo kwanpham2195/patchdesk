@@ -62,8 +62,7 @@ describe("prepared review run start", () => {
 
     await startFromDialog();
 
-    // findAllByText: Task 2 renders the same error inside the open dialog as well.
-    expect((await screen.findAllByText("Patchdesk could not start this read-only review.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Patchdesk stopped the last run before it completed. Try again when you're ready.")).length).toBeGreaterThan(0);
     expect(patched).not.toHaveBeenCalled();
   });
 
@@ -77,8 +76,7 @@ describe("prepared review run start", () => {
 
     await startFromDialog();
 
-    // findAllByText: Task 2 renders the same error inside the open dialog as well.
-    expect((await screen.findAllByText("GitHub changed after this snapshot was prepared. Refresh and reopen before running a review.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Patchdesk stopped the last run before it completed. Try again when you're ready.")).length).toBeGreaterThan(0);
   });
 
   it("keeps Preparing non-actionable when recovery has no action key", async () => {
@@ -194,6 +192,6 @@ it("shows the previous run failure above the ready card", async () => {
     fireEvent.click(confirm);
 
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("Patchdesk could not start this read-only review."));
+    await waitFor(() => expect(dialog.textContent).toContain("Patchdesk stopped the last run before it completed. Try again when you're ready."));
   });
 });

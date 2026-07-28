@@ -10,7 +10,7 @@ import {
   REVIEW_DIAGNOSTIC_MAX_EVENTS,
   REVIEW_DIAGNOSTIC_MAX_FILE_BYTES,
   normalizeReviewDiagnostic,
-  parseReviewDiagnosticEvent,
+  sanitizeReviewDiagnosticEvent,
   parseReviewDiagnosticMetadata,
   redactDiagnosticDetail,
   type ReviewDiagnosticEvent,
@@ -28,6 +28,8 @@ export type ReviewDiagnosticServiceOptions = {
   readonly maxDetailLength?: number;
 };
 
+const processProfileLocks = new Map<string, Promise<void>>();
+
 export type SupportBundleInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId?: string;
@@ -41,8 +43,6 @@ export type SupportBundleInput = {
 export class ReviewDiagnosticService {
   private readonly maxEvents: number;
   private readonly maxDetailLength: number;
-  private readonly profileLocks = new Map<string, Promise<void>>();
-
   constructor(
     private readonly paths: PatchdeskPaths,
     private readonly now: () => string,
@@ -68,10 +68,10 @@ export class ReviewDiagnosticService {
       },
       this.maxDetailLength,
     );
-    const event = parseReviewDiagnosticEvent(normalized);
-    if (event === undefined) return err({ _tag: "ReviewDiagnosticStorageFailed" });
-    const profileId = parseWorkspaceProfileId(event.profileId);
+    const profileId = parseWorkspaceProfileId(input.profileId);
     if (profileId._tag === "err") return err({ _tag: "ReviewDiagnosticStorageFailed" });
+    const event = sanitizeReviewDiagnosticEvent(normalized, profileId.value, this.maxDetailLength);
+    if (event === undefined) return err({ _tag: "ReviewDiagnosticStorageFailed" });
     return this.withProfileLock(profileId.value, () => this.persist(event));
   }
 
@@ -94,9 +94,14 @@ export class ReviewDiagnosticService {
       if (events._tag === "err") return events;
       const metadata = input.metadata === undefined
         ? undefined
-        : parseReviewDiagnosticMetadata({
-            ...(input.metadata.title === undefined ? {} : { title: redactDiagnosticDetail(input.metadata.title, this.maxDetailLength) }),
-          });
+        : (() => {
+            const title = input.metadata?.title === undefined
+              ? undefined
+              : redactDiagnosticDetail(input.metadata.title, this.maxDetailLength);
+            return title === undefined
+              ? undefined
+              : parseReviewDiagnosticMetadata({ title });
+          })();
       return ok({
         schemaVersion: 1,
         generatedAt: this.now(),
@@ -144,7 +149,7 @@ export class ReviewDiagnosticService {
     for (const line of contents.split("\n")) {
       if (line.trim().length === 0) continue;
       try {
-        const parsed = parseReviewDiagnosticEvent(JSON.parse(line));
+        const parsed = sanitizeReviewDiagnosticEvent(JSON.parse(line), profileId, this.maxDetailLength);
         if (parsed !== undefined) events.push(parsed);
       } catch {
         // Preserve valid evidence around one malformed line.
@@ -157,16 +162,16 @@ export class ReviewDiagnosticService {
     profileId: WorkspaceProfileId,
     operation: () => Promise<Result<T, ReviewDiagnosticFailure>>,
   ): Promise<Result<T, ReviewDiagnosticFailure>> {
-    const previous = this.profileLocks.get(profileId);
+    const previous = processProfileLocks.get(profileId);
     let release: (() => void) | undefined;
     const current = new Promise<void>((resolve) => { release = resolve; });
-    this.profileLocks.set(profileId, current);
+    processProfileLocks.set(profileId, current);
     await previous;
     try {
       return await operation();
     } finally {
       release?.();
-      if (this.profileLocks.get(profileId) === current) this.profileLocks.delete(profileId);
+      if (processProfileLocks.get(profileId) === current) processProfileLocks.delete(profileId);
     }
   }
 }

@@ -1,5 +1,5 @@
 import { access, mkdir, readdir, rename, rm, rmdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
@@ -91,15 +91,22 @@ export class ReviewPreparationJournal {
     paths: PatchdeskPaths,
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<Result<ReviewPreparationOperation | undefined, PreparationJournalFailure>> {
     const stored = await readJsonFile(journalFile(paths, profileId, sessionId));
     if (stored._tag === "err") {
+      if (stored.error.reason !== "not_found") {
+        await recordJournalDiagnostic(diagnostics, profileId, sessionId, "journal-read");
+      }
       return stored.error.reason === "not_found"
         ? ok(undefined)
         : err({ _tag: "PreparationJournalFailed" });
     }
     const content = parseJournal(stored.value);
-    if (content === undefined) return err({ _tag: "PreparationJournalFailed" });
+    if (content === undefined) {
+      await recordJournalDiagnostic(diagnostics, profileId, sessionId, "journal-parse");
+      return err({ _tag: "PreparationJournalFailed" });
+    }
     const parsedProfile = parseWorkspaceProfileId(content.profileId);
     const parsedSession = parseReviewSessionId(content.sessionId);
     if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
@@ -193,11 +200,13 @@ export class ReviewPreparationJournal {
       const stored = await readJsonFile(filePath);
       if (stored._tag === "err") {
         failed += 1;
+        await recordRecoveredJournalDiagnostic(diagnostics, filePath, "journal-read");
         continue;
       }
       const content = parseJournal(stored.value);
       if (content === undefined) {
         failed += 1;
+        await recordRecoveredJournalDiagnostic(diagnostics, filePath, "journal-parse");
         continue;
       }
       const journal = new ReviewPreparationJournal(filePath, content);
@@ -254,6 +263,42 @@ function journalFile(
   sessionId: ReviewSessionId,
 ): string {
   return join(paths.sessionDirectory(profileId, sessionId), "preparation.journal.json");
+}
+
+async function recordJournalDiagnostic(
+  diagnostics: Pick<ReviewDiagnosticService, "record"> | undefined,
+  profileId: WorkspaceProfileId,
+  sessionId: ReviewSessionId,
+  phase: "journal-read" | "journal-parse",
+): Promise<void> {
+  if (diagnostics === undefined) return;
+  await diagnostics.record({
+    profileId,
+    sessionId,
+    category: "preparation",
+    phase,
+    retryable: true,
+    detail: "Preparation journal evidence could not be read safely.",
+  });
+}
+
+async function recordRecoveredJournalDiagnostic(
+  diagnostics: Pick<ReviewDiagnosticService, "record"> | undefined,
+  filePath: string,
+  phase: "journal-read" | "journal-parse",
+): Promise<void> {
+  if (diagnostics === undefined) return;
+  const sessionId = parseReviewSessionId(basename(dirname(filePath)));
+  const profileId = parseWorkspaceProfileId(basename(dirname(dirname(dirname(filePath)))));
+  if (sessionId._tag === "err" || profileId._tag === "err") return;
+  await diagnostics.record({
+    profileId: profileId.value,
+    sessionId: sessionId.value,
+    category: "preparation",
+    phase,
+    retryable: true,
+    detail: "Preparation journal evidence could not be recovered safely.",
+  });
 }
 
 async function findJournals(paths: PatchdeskPaths): Promise<ReadonlyArray<string>> {

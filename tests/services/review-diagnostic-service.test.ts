@@ -95,7 +95,7 @@ describe("ReviewDiagnosticService", () => {
       const service = new ReviewDiagnosticService(paths, () => must(at), () => `incident-${Math.random()}`, { maxEvents: 10_000 });
       const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
       await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
-      await writeFile(file, `${"not-json\\n".repeat(500_000)}${JSON.stringify({ schemaVersion: 1, incidentId: "old", at: "2026-07-18T00:00:00.000Z", category: "run", phase: "old", profileId, retryable: false })}\\n`, "utf8");
+      await writeFile(file, `${"not-json\n".repeat(500_000)}${JSON.stringify({ schemaVersion: 1, incidentId: "old", at: "2026-07-18T00:00:00.000Z", category: "run", phase: "old", profileId, retryable: false })}\n`, "utf8");
 
       const results = await Promise.all(Array.from({ length: 25 }, (_, index) => service.record({
         profileId,
@@ -108,9 +108,87 @@ describe("ReviewDiagnosticService", () => {
       const recent = await service.recent(profileId);
       expect(recent._tag).toBe("ok");
       if (recent._tag === "err") return;
-      expect(recent.value).toHaveLength(25);
+      expect(recent.value).toHaveLength(26);
       expect(recent.value.length).toBeLessThanOrEqual(200);
       expect((await readFile(file, "utf8")).length).toBeLessThan(200_000);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts contextual paths, standalone credentials, and typed stack headers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-context");
+      const unsafeDetails = [
+        "path=/opt/app/index.ts",
+        "file:/private/repo/index.ts",
+        "(/Users/name/repo)",
+        "Bearer abc123",
+        "Basic dXNlcjpwYXNz",
+        "token abc123",
+        "password hunter2",
+        "api_key=secret",
+        "Authorization Bearer abc123",
+        "TypeError: Cannot read property",
+        "RangeError: invalid range",
+      ];
+      for (const detail of unsafeDetails) {
+        const result = await service.record({ profileId, category: "recovery", phase: "boundary", retryable: true, detail });
+        expect(result).toMatchObject({ _tag: "ok", value: { detail: "[redacted diagnostic detail]" } });
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("re-sanitizes unsafe historical events before support export", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
+      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
+      await writeFile(file, `${JSON.stringify({
+        schemaVersion: 1,
+        incidentId: "incident-historical",
+        at: "2026-07-18T00:00:00.000Z",
+        category: "recovery",
+        phase: "path=/opt/app",
+        profileId,
+        retryable: true,
+        detail: "path=/opt/app TypeError: secret Bearer abc123",
+      })}\n`, "utf8");
+      const service = new ReviewDiagnosticService(paths, () => must(at));
+      const bundle = await service.exportSupportBundle({ profileId });
+      expect(bundle).toMatchObject({ _tag: "ok", value: { events: [{ incidentId: "incident-historical", detail: "[redacted diagnostic detail]" }] } });
+      if (bundle._tag === "ok") {
+        const serialized = JSON.stringify(bundle.value);
+        expect(serialized).not.toContain("/opt/app");
+        expect(serialized).not.toContain("TypeError");
+        expect(serialized).not.toContain("Bearer");
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes writes across independent service instances", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const first = new ReviewDiagnosticService(paths, () => must(at), () => "incident-first");
+      const second = new ReviewDiagnosticService(paths, () => must(at), () => "incident-second");
+      const results = await Promise.all([
+        first.record({ profileId, category: "run", phase: "first", retryable: true }),
+        second.record({ profileId, category: "run", phase: "second", retryable: true }),
+      ]);
+      expect(results.every((result) => result._tag === "ok")).toBe(true);
+      const recent = await first.recent(profileId);
+      expect(recent).toMatchObject({ _tag: "ok", value: expect.arrayContaining([
+        expect.objectContaining({ phase: "first" }),
+        expect.objectContaining({ phase: "second" }),
+      ]) });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

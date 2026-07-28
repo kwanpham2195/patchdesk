@@ -80,7 +80,18 @@ export class ReviewRecoveryService {
     profileId: WorkspaceProfileId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const scan = await this.sessions.scanSessionEntries(profileId);
-    if (scan._tag === "err") return { recovered: 0, failed: 1 };
+    if (scan._tag === "err") {
+      if (this.options.diagnostics !== undefined) {
+        await this.options.diagnostics.record({
+          profileId,
+          category: "migration",
+          phase: "session-scan",
+          retryable: true,
+          detail: "Review session migration could not scan local entries safely.",
+        });
+      }
+      return { recovered: 0, failed: 1 };
+    }
     let recovered = 0;
     let failed = 0;
     for (const invalid of scan.value.invalidEntries) {
@@ -97,9 +108,19 @@ export class ReviewRecoveryService {
     }
     for (const session of scan.value.sessions) {
       if (this.options.paths !== undefined) {
-        const active = await ReviewPreparationJournal.activeFor(this.options.paths, profileId, session.id);
+        const active = await ReviewPreparationJournal.activeFor(this.options.paths, profileId, session.id, this.options.diagnostics);
         if (active._tag === "err") {
           failed += 1;
+          if (this.options.diagnostics !== undefined) {
+            await this.options.diagnostics.record({
+              profileId,
+              sessionId: session.id,
+              category: "recovery",
+              phase: "preparation-active-read",
+              retryable: true,
+              detail: "Preparation state could not be reconciled safely.",
+            });
+          }
           continue;
         }
         if (active.value !== undefined) continue;
@@ -108,6 +129,16 @@ export class ReviewRecoveryService {
       const attempt = await this.sessions.loadAttempt(profileId, session.id, session.currentAttemptId);
       if (attempt._tag === "err") {
         failed += 1;
+        if (this.options.diagnostics !== undefined) {
+          await this.options.diagnostics.record({
+            profileId,
+            sessionId: session.id,
+            category: "migration",
+            phase: "attempt-reconcile",
+            retryable: true,
+            detail: "A stored review attempt could not be reconciled safely.",
+          });
+        }
         continue;
       }
       const result = recoverOrphanedWorkbenchAttempt({ session, attempt: attempt.value, recoveredAt: this.now() });
