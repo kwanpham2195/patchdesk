@@ -565,15 +565,15 @@ export async function startLocalApiServer(
     response(context, await reviewWorkbench.load(await jsonBody(context))),
   );
   app.post("/v1/reviews/walkthrough/generate", async (context) => {
-    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     const parsed = safeParse(walkthroughRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     return walkthroughResponse(context, await configuration.walkthroughs.generate(parsed.output));
   });
   app.post("/v1/reviews/walkthrough/load", async (context) => {
-    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     const parsed = safeParse(walkthroughLoadSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     return walkthroughResponse(context, await configuration.walkthroughs.load(parsed.output));
   });
   app.post("/v1/reviews/refresh", async (context) =>

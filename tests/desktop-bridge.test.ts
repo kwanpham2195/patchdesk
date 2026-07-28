@@ -40,6 +40,14 @@ describe("desktop request bridge", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/storage/quarantine/delete", method: "POST" })).toBe(false);
   });
 
+  it("allows only the manual walkthrough routes", () => {
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/generate", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/load", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough", method: "POST" })).toBe(false);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/generate", method: "GET" })).toBe(false);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/load", method: "DELETE" })).toBe(false);
+  });
+
   it("returns a native directory selection only to the owning renderer", async () => {
     let handler: ((event: { readonly sender: { readonly id: number } }, input: unknown) => Promise<unknown>) | undefined;
     const ipc = {

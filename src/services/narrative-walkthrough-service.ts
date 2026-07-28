@@ -42,6 +42,18 @@ type Record = {
   readonly projection: NarrativeWalkthroughProjection;
 };
 
+type CommitKind = "stale" | "failed" | "ready" | "stale_publish" | "stale_failed";
+
+type Commit = {
+  readonly token: number;
+  readonly snapshot: NarrativeSnapshot;
+  readonly kind: CommitKind;
+  readonly incidentId?: string;
+  readonly walkthrough?: NarrativeWalkthrough;
+  readonly recordFailureInput?: ServiceInput;
+  readonly recordFailureDetail?: string;
+};
+
 const identitySchema = v.strictObject({
   profileId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
   sessionId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
@@ -56,6 +68,12 @@ const inputSchema = v.strictObject({
 export class NarrativeWalkthroughService {
   private readonly records = new Map<string, Record>();
   private readonly tokens = new Map<string, number>();
+  // Per-key critical section: the publication guard re-checks the token plus
+  // the snapshot identity after every await that crosses a yield boundary so
+  // a superseded result cannot overwrite a newer record. The previous promise
+  // is awaited before this one runs, so concurrent generation calls for the
+  // same profile/session are serialized.
+  private readonly commitLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly profiles: Pick<ProfileStore, "load">,
@@ -74,68 +92,89 @@ export class NarrativeWalkthroughService {
     if (parsed.value.model === undefined || parsed.value.reasoning === undefined) return err({ reason: "invalid_input" });
 
     const key = recordKey(parsed.value.profileId, parsed.value.sessionId);
+    // The token bump and the generating record are mutations, but they do not
+    // need to be serialized against other in-flight invocations: each call
+    // already takes a unique token, and the only consumer of `records` is the
+    // final `commit()` decision, which is serialized separately below.
     const token = (this.tokens.get(key) ?? 0) + 1;
     this.tokens.set(key, token);
-    const generating = projection("generating");
-    this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: generating });
+    this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: projection("generating") });
 
+    const decision = await this.runGeneration(parsed.value, loaded.value, token);
+
+    // The commit section is the only mutation of `this.records` that can
+    // overwrite an existing projection. It re-checks the token and snapshot
+    // identity under the commit lock so a superseded result cannot overwrite
+    // a newer one.
+    return this.withCommitLock(key, () => this.commit(key, decision.commit));
+  }
+
+  private async withCommitLock<T>(key: string, operation: () => Promise<T> | T): Promise<T> {
+    const previousLock = this.commitLocks.get(key);
+    let release!: () => void;
+    const currentLock = new Promise<void>((resolve) => { release = resolve; });
+    this.commitLocks.set(key, currentLock);
+    try {
+      if (previousLock !== undefined) await previousLock;
+      return await operation();
+    } finally {
+      release();
+      if (this.commitLocks.get(key) === currentLock) this.commitLocks.delete(key);
+    }
+  }
+
+  private async runGeneration(
+    input: ServiceInput,
+    loaded: { readonly session: ReviewSession; readonly snapshot: NarrativeSnapshot },
+    token: number,
+  ): Promise<{ readonly commit: Commit }> {
+    if (this.invoker === undefined) return { commit: { token, snapshot: loaded.snapshot, kind: "stale_publish" } };
     let invoked: Result<unknown, { readonly reason: string }>;
     try {
       invoked = await this.invoker.invoke({
-        profileId: parsed.value.profileId,
-        sessionId: parsed.value.sessionId,
-        contextPath: this.paths.preparedContextFile(parsed.value.profileId, parsed.value.sessionId),
-        patchPath: loaded.value.session.patchPath,
-        model: parsed.value.model,
-        reasoning: parsed.value.reasoning,
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        contextPath: this.paths.preparedContextFile(input.profileId, input.sessionId),
+        patchPath: loaded.session.patchPath,
+        model: input.model ?? "",
+        reasoning: input.reasoning ?? "medium",
       });
     } catch {
       invoked = err({ reason: "execution_failed" });
     }
 
-    const currentHash = await contentHash(loaded.value.session.patchPath);
-    const latestSession = await this.sessions.load(parsed.value.profileId, parsed.value.sessionId);
+    const currentHash = await contentHash(loaded.session.patchPath);
+    const latestSession = await this.sessions.load(input.profileId, input.sessionId);
     const snapshotStillCurrent = latestSession._tag === "ok" &&
-      latestSession.value.id === parsed.value.sessionId &&
+      latestSession.value.id === input.sessionId &&
       latestSession.value.state._tag === "ReviewCompleted" &&
-      latestSession.value.key.headSha === loaded.value.snapshot.headSha;
-    const current = this.records.get(key);
-    if (current === undefined || current.token !== token || current.snapshot.patchHash !== currentHash || !snapshotStillCurrent) {
-      if (current?.token === token) this.records.set(key, { token, snapshot: current.snapshot, projection: projection("stale") });
-      return ok(projection("stale"));
-    }
-    if (invoked._tag === "err") {
-      const incidentId = await this.recordFailure(parsed.value, invoked.error.reason);
-      const failed = projection("failed", incidentId);
-      this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: failed });
-      return ok(failed);
+      latestSession.value.key.headSha === loaded.snapshot.headSha;
+    const key = recordKey(input.profileId, input.sessionId);
+    if (!this.tokenStillCurrent(key, token, currentHash, loaded.snapshot.headSha) || !snapshotStillCurrent) {
+      const parsed = parseContentHash(currentHash);
+      if (parsed._tag === "err") return { commit: { token, snapshot: loaded.snapshot, kind: "stale_publish" } };
+      return { commit: { token, snapshot: { ...loaded.snapshot, patchHash: parsed.value }, kind: "stale_publish" } };
     }
 
-    const patch = await readFile(loaded.value.session.patchPath, "utf8").catch(() => undefined);
+    if (invoked._tag === "err") {
+      return { commit: { token, snapshot: loaded.snapshot, kind: "failed", recordFailureInput: input, recordFailureDetail: invoked.error.reason } };
+    }
+
+    const patch = await readFile(loaded.session.patchPath, "utf8").catch(() => undefined);
     if (patch === undefined) {
-      const incidentId = await this.recordFailure(parsed.value, "patch_unavailable");
-      const failed = projection("failed", incidentId);
-      this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: failed });
-      return ok(failed);
+      return { commit: { token, snapshot: loaded.snapshot, kind: "failed", recordFailureInput: input, recordFailureDetail: "patch_unavailable" } };
     }
-    const normalized = normalizeNarrativeWalkthrough(
-      invoked.value,
-      patch,
-      loaded.value.snapshot,
-    );
+    const normalized = normalizeNarrativeWalkthrough(invoked.value, patch, loaded.snapshot);
     if (normalized._tag === "err") {
-      const incidentId = await this.recordFailure(parsed.value, "invalid_output");
-      const failed = projection("failed", incidentId);
-      this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: failed });
-      return ok(failed);
+      return { commit: { token, snapshot: loaded.snapshot, kind: "failed", recordFailureInput: input, recordFailureDetail: "invalid_output" } };
     }
-    const ready: NarrativeWalkthroughProjection = {
-      lifecycle: "ready",
-      noticeKey: "walkthrough-ready",
-      walkthrough: normalized.value,
-    };
-    this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: ready });
-    return ok(ready);
+    const finalHash = await contentHash(loaded.session.patchPath);
+    if (finalHash !== currentHash || !this.tokenStillCurrent(key, token, finalHash, loaded.snapshot.headSha)) {
+      const parsed = parseContentHash(finalHash);
+      if (parsed._tag === "err") return { commit: { token, snapshot: loaded.snapshot, kind: "stale_publish" } };
+      return { commit: { token, snapshot: { ...loaded.snapshot, patchHash: parsed.value }, kind: "stale_publish" } };
+    }
+    return { commit: { token, snapshot: loaded.snapshot, kind: "ready", walkthrough: normalized.value } };
   }
 
   async load(input: unknown): Promise<Result<NarrativeWalkthroughProjection, NarrativeWalkthroughFailure>> {
@@ -148,9 +187,62 @@ export class NarrativeWalkthroughService {
     if (record === undefined) return ok(projection("idle"));
     const currentHash = await contentHash(loaded.value.session.patchPath);
     if (record.snapshot.headSha !== loaded.value.snapshot.headSha || record.snapshot.patchHash !== currentHash) {
-      return err({ reason: "stale_snapshot" });
+      // Stale snapshots are projected as a renderer-safe regenerate action
+      // rather than returned as a raw error so the Design regenerate path
+      // stays available without exposing an internal failure envelope.
+      return ok(projection("stale"));
     }
     return ok(record.projection);
+  }
+
+  private tokenStillCurrent(key: string, token: number, currentHash: string, currentHeadSha: string): boolean {
+    const live = this.records.get(key);
+    if (live === undefined) return false;
+    if (live.token !== token) return false;
+    if (live.snapshot.patchHash !== currentHash) return false;
+    if (live.snapshot.headSha !== currentHeadSha) return false;
+    return true;
+  }
+
+  private async commit(key: string, change: Commit): Promise<Result<NarrativeWalkthroughProjection, NarrativeWalkthroughFailure>> {
+    const live = this.records.get(key);
+    if (live !== undefined && live.token > change.token) {
+      // A newer generation already committed. The late caller is informed via
+      // the renderer-safe stale projection so the Design regenerate path stays
+      // available; the live ready/failed record remains the source of truth.
+      return ok(projection("stale"));
+    }
+    if (change.kind === "ready" && change.walkthrough !== undefined) {
+      const readyProjection: NarrativeWalkthroughProjection = {
+        lifecycle: "ready",
+        noticeKey: "walkthrough-ready",
+        walkthrough: change.walkthrough,
+      };
+      this.records.set(key, { token: change.token, snapshot: change.snapshot, projection: readyProjection });
+      return ok(readyProjection);
+    }
+    if (change.kind === "failed") {
+      let incidentId: string | undefined;
+      if (change.recordFailureInput !== undefined && change.recordFailureDetail !== undefined) {
+        const recorded = await this.recordFailure(change.recordFailureInput, change.recordFailureDetail);
+        incidentId = recorded;
+      }
+      const failed: NarrativeWalkthroughProjection = {
+        lifecycle: "failed",
+        noticeKey: "walkthrough-failed",
+        actionKey: "walkthrough-retry",
+        ...(incidentId === undefined ? {} : { incidentId }),
+      };
+      this.records.set(key, { token: change.token, snapshot: change.snapshot, projection: failed });
+      return ok(failed);
+    }
+    const stale: NarrativeWalkthroughProjection = {
+      lifecycle: "stale",
+      noticeKey: "walkthrough-stale",
+      actionKey: "walkthrough-regenerate",
+    };
+    this.records.set(key, { token: change.token, snapshot: change.snapshot, projection: stale });
+    return ok(stale);
   }
 
   private parseIdentity(input: unknown): Result<ServiceInput, NarrativeWalkthroughFailure> {
@@ -190,7 +282,14 @@ export class NarrativeWalkthroughService {
 
   private async recordFailure(input: ServiceInput, detail: string): Promise<string | undefined> {
     if (this.diagnostics === undefined) return undefined;
-    const recorded = await this.diagnostics.record({ profileId: input.profileId, category: "walkthrough", phase: "walkthrough-generation", retryable: true, detail: `Walkthrough generation failed: ${detail}` });
+    const recorded = await this.diagnostics.record({
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      category: "walkthrough",
+      phase: "walkthrough-generation",
+      retryable: true,
+      detail: `Walkthrough generation failed: ${detail}`,
+    });
     return recorded._tag === "ok" ? recorded.value.incidentId : undefined;
   }
 }

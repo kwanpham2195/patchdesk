@@ -379,6 +379,63 @@ describe("local API capability boundary", () => {
     expect(unavailable.status).toBe(503);
   });
 
+  it("returns the renderer-safe stale lifecycle from walkthrough load when the snapshot hash no longer matches", async () => {
+    const staleProjection = { lifecycle: "stale" as const, noticeKey: "walkthrough-stale" as const, actionKey: "walkthrough-regenerate" as const };
+    const walkthroughs = {
+      async generate() { return { _tag: "err" as const, error: { reason: "stale_snapshot" as const } }; },
+      async load() { return { _tag: "ok" as const, value: staleProjection }; },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, walkthroughs });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const response = await fetch(new URL("v1/reviews/walkthrough/load", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s" }) });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(staleProjection);
+  });
+
+  it("returns 400 for malformed JSON before the unavailable dependency check", async () => {
+    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const response = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers, body: "not-json" });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for renderer-supplied path fields before the unavailable dependency check", async () => {
+    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const response = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low", patchPath: "/tmp/secret" }) });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 503 only for valid walkthrough requests when the dependency is unavailable", async () => {
+    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const response = await fetch(new URL("v1/reviews/walkthrough/load", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s" }) });
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 404 for walkthrough generate with a missing profile or session", async () => {
+    const walkthroughs = {
+      async generate() { return { _tag: "err" as const, error: { reason: "profile_not_found" as const } }; },
+      async load() { return { _tag: "err" as const, error: { reason: "session_not_found" as const } }; },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, walkthroughs });
+    if (startup._tag !== "started") throw new Error("Expected local API");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const missingProfile = await fetch(new URL("v1/reviews/walkthrough/generate", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s", model: "m", reasoning: "low" }) });
+    expect(missingProfile.status).toBe(404);
+    const missingSession = await fetch(new URL("v1/reviews/walkthrough/load", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "p", sessionId: "s" }) });
+    expect(missingSession.status).toBe(404);
+  });
+
   it("keeps review writes unavailable when the API receives only a GitHub reader", async () => {
     const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-")));
     const reader = { async getPullRequest() { return { _tag: "err" as const, error: { _tag: "GitHubReadFailed" as const } }; } } as unknown as GitHubReader;
