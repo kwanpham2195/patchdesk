@@ -40,7 +40,7 @@ const PATCH = [
   "+  expect(true).toBe(true);",
   " });",
   "",
-].join("\\n");
+].join("\n");
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");
