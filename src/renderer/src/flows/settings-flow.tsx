@@ -192,14 +192,23 @@ export function SettingsFlow({
   const performSelectProfile = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
     if (selected === undefined) return;
+    const previousDraft = profileDraft;
+    const previousBaseline = profileBaseline.current;
     setCreatingProfile(false);
     setProfileError(undefined);
-    onProfileSwitchStart?.();
     const next = profileDraftFor(selected);
-    profileBaseline.current = next;
-    setProfileDraft(next);
-    await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
-    await onWorkspaceReload();
+    try {
+      await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
+      onProfileSwitchStart?.();
+      profileBaseline.current = next;
+      setProfileDraft(next);
+      await onWorkspaceReload();
+    } catch (cause: unknown) {
+      profileBaseline.current = previousBaseline;
+      setProfileDraft(previousDraft);
+      setProfileError(cause instanceof Error ? cause.message : "Patchdesk could not switch profiles.");
+      onDirtyChange?.(JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline));
+    }
   };
 
   const selectProfile = (id: string): void => {
