@@ -128,16 +128,17 @@ export function redactDiagnosticDetail(
   // the whole field when any high-risk shape is present instead of attempting
   // to preserve an incomplete fragment of a secret, path, diff, or stack.
   const unsafe = [
-    /(?:^|\s|=|\(|\[)\/(?:[^\s/]+(?:\/[^\s/]*)*)?(?=$|[\s,;:)\]}])/,
-    /(?:^|\s|=|\(|\[)\/?[A-Za-z]:[\\/][^\s]*(?=$|[\s,;:)\]}])/,
-    /(?:^|\s|=|\(|\[)\\\\[^\s\\/]+(?:[\\/][^\s\\/]*)*(?=$|[\s,;:)\]}])/,
+    /(?:^|[\s"'():=,]|\[)\/(?:[^\s/]+(?:\/[^\s/]*)*)?(?=$|[\s,;:)\]}])/,
+    /(?:^|[\s"'():=,]|\[)\/?[A-Za-z]:[\\/][^\s]*(?=$|[\s,;:)\]}])/,
+    /(?:^|[\s"'():=,]|\[)\\\\[^\s\\/]+(?:[\\/][^\s\\/]*)*(?=$|[\s,;:)\]}])/,
     /(?:^|[^A-Za-z0-9])file:(?:\/\/)?[^\s]*/i,
     /(?:^|\s)(?:diff --git|---\s|\+\+\+\s|@@[^@]*@@)/im,
     /\b(?:pr|pull request|title|description|body)\b/i,
     /\b(?:bearer|basic|authorization|api[_-]?key|token|password|secret)\b(?:\s*[:=]|\s+)\S+/i,
     /(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/,
-    /(?:^|\s)(?:Error(?:\s+\[[A-Z0-9_]+\])?|error|TypeError|RangeError|[A-Za-z_$][A-Za-z0-9_$]*(?:Error|Exception))(?:\s*:\s*|\s+)\S/im,
-    /(?:^|\s)at\s+[^\s]+(?:\s+|\()/im,
+    /(?:^|[\s"'():=,]|\[)(?:Error(?:\s+\[[A-Z0-9_]+\])?|error|TypeError|RangeError|[A-Za-z_$][A-Za-z0-9_$]*(?:Error|Exception))(?:\s*:\s*|\s+)\S/im,
+    /(?:^|[\s"'():=,]|\[)(?:cause|error|message|reason|exception|failure)\s*[:=]\s*\S+/i,
+    /(?:^|[\s"'():=,]|\[)at\s+[^\s]+(?:\s+|\()/im,
     /(?:raw\s+stack|stack\s+trace)/i,
   ];
   if (unsafe.some((pattern) => pattern.test(normalized))) return REDACTED_DETAIL;

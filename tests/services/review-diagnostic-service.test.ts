@@ -279,4 +279,47 @@ describe("ReviewDiagnosticService", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("fails closed for quoted and colon-delimited paths and raw errors through record and legacy export", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-delimiters");
+      const unsafeDetails = [
+        'path="/tmp"',
+        "path:/tmp",
+        'path="C:\\\\"',
+        'path="\\\\server\\share"',
+        'cause="Error: command failed"',
+        "error=command failed",
+        "message=(Error: command failed)",
+      ];
+
+      for (const detail of unsafeDetails) {
+        const recorded = await service.record({ profileId, category: "recovery", phase: "delimiter", retryable: true, detail });
+        expect(recorded).toMatchObject({ _tag: "ok", value: { detail: "[redacted diagnostic detail]" } });
+      }
+
+      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
+      await writeFile(file, `${unsafeDetails.map((detail, index) => JSON.stringify({
+        schemaVersion: 1,
+        incidentId: `legacy-delimiter-${index}`,
+        at: "2026-07-18T00:00:00.000Z",
+        category: "recovery",
+        phase: "legacy",
+        profileId,
+        retryable: true,
+        detail,
+      })).join("\\n")}\\n`, "utf8");
+
+      const bundle = await service.exportSupportBundle({ profileId });
+      expect(bundle).toMatchObject({ _tag: "ok" });
+      if (bundle._tag === "err") return;
+      const serialized = JSON.stringify(bundle.value);
+      for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
+      expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
