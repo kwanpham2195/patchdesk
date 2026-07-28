@@ -111,11 +111,20 @@ describe("walkthrough raw output boundary", () => {
 });
 
 describe("walkthrough workflow harness contract", () => {
-  it("forwards explicit choices and keeps generation read-only with no tools", async () => {
+  it("forwards explicit choices, bounded result schema, and no write surface", async () => {
     const directory = await mkdtemp(join(tmpdir(), "patchdesk-walkthrough-harness-"));
     const contextPath = join(directory, "context.json");
     const patchPath = join(directory, "patch.diff");
-    const prompts: Array<{ text: string; options: { model?: string; thinkingLevel?: string; tools: ReadonlyArray<unknown> } }> = [];
+    const prompts: Array<{
+      text: string;
+      options: {
+        result: v.GenericSchema;
+        model?: string;
+        thinkingLevel?: string;
+        tools: ReadonlyArray<unknown>;
+      };
+    }> = [];
+    const writeRecords: string[] = [];
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, "@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
 
@@ -131,7 +140,12 @@ describe("walkthrough workflow harness contract", () => {
         },
         harness: {
           session: async () => ({
-            prompt: async <T>(text: string, options: { model?: string; thinkingLevel?: string; tools: ReadonlyArray<unknown> }) => {
+            prompt: async <T>(text: string, options: {
+              result: v.GenericSchema;
+              model?: string;
+              thinkingLevel?: string;
+              tools: ReadonlyArray<unknown>;
+            }) => {
               prompts.push({ text, options });
               return { data: validOutput as T };
             },
@@ -141,11 +155,14 @@ describe("walkthrough workflow harness contract", () => {
 
       expect(result).toEqual(validOutput);
       expect(prompts).toHaveLength(1);
+      expect(writeRecords).toEqual([]);
       const prompt = prompts[0];
       if (prompt === undefined) throw new Error("workflow prompt missing");
       expect(prompt.options.model).toBe("model-explicit");
       expect(prompt.options.thinkingLevel).toBe("high");
       expect(prompt.options.tools).toEqual([]);
+      expect(prompt.options.result).toBe(walkthroughOutputSchema);
+      expect(v.safeParse(prompt.options.result, result).success).toBe(true);
       expect(prompt.text).toContain("ordered chapter rail");
       expect(prompt.text).toContain("continuous reading surface");
       expect(prompt.text).toContain("behavior before consequences and validation");
@@ -154,6 +171,41 @@ describe("walkthrough workflow harness contract", () => {
       expect(prompt.text).toContain("context artifact");
       expect(prompt.text).toContain("@@ -1,1 +1,1 @@");
       expect(prompt.text).not.toMatch(/review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an oversized artifact before invoking the read-only harness", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "patchdesk-walkthrough-oversized-"));
+    const contextPath = join(directory, "context.json");
+    const patchPath = join(directory, "patch.diff");
+    let promptCalls = 0;
+    const writeRecords: string[] = [];
+    await writeFile(contextPath, "context artifact", "utf8");
+    await writeFile(patchPath, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
+
+    try {
+      await expect(runWalkthroughWorkflow({
+        input: {
+          profileId: "profile-1",
+          sessionId: "session-1",
+          contextPath,
+          patchPath,
+          model: "model-explicit",
+          reasoning: "high",
+        },
+        harness: {
+          session: async () => ({
+            prompt: async <T>() => {
+              promptCalls += 1;
+              return { data: validOutput as T };
+            },
+          }),
+        },
+      })).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
+      expect(promptCalls).toBe(0);
+      expect(writeRecords).toEqual([]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
