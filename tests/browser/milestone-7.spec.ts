@@ -14,12 +14,9 @@ test("diff workbench", async ({ page }) => {
     await expect(
       page.getByRole("region", { name: "Diff workbench" }),
     ).toBeVisible();
-    await page.getByLabel("Search changed files").fill("b.ts");
-    await page.getByRole("tab", { name: "Findings" }).click();
-    await page.getByRole("button", { name: "Go to mapped finding" }).click();
-    await expect(
-      page.getByText("src/b.ts", { exact: true }).first(),
-    ).toBeVisible();
+    await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute("data-selected-path", "src/b.ts");
+    await page.getByRole("button", { name: "Review context" }).click();
+    await expect(page.getByRole("dialog", { name: "Review context" })).toContainText("Findings must map to a verified line");
     await page.screenshot({
       path: "test-results/milestone-7-browser.png",
       fullPage: true,
@@ -43,18 +40,13 @@ test("constrained diff workbench keeps secondary rails reachable through labelle
     await expect(
       page.getByRole("complementary", { name: "Review context" }),
     ).toBeHidden();
-    await page.getByRole("button", { name: "Files and findings" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Files and findings" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("tree", { name: "Changed files" }),
-    ).toBeVisible();
+    await page.getByRole("button", { name: "Files", exact: true }).click();
+    const filesDialog = page.getByRole("dialog", { name: "Changed files" });
+    await expect(filesDialog).toBeVisible();
+    await expect(filesDialog.getByRole("treeitem").first()).toBeVisible();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Review context" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Review context" }),
-    ).toContainText("Findings must map to a verified line");
+    await expect(page.getByRole("dialog", { name: "Review context" })).toContainText("Findings must map to a verified line");
   } finally {
     await close(server);
   }

@@ -131,7 +131,7 @@ export function SettingsModal({
               <TabsTrigger value="data">Data &amp; recovery</TabsTrigger>
             </TabsList>
             <div role="region" aria-label="Settings content" data-testid="settings-scroll-region" className="min-h-0">
-              <ScrollArea className="max-h-[min(68vh,560px)] min-h-0 px-5 py-4">
+              <ScrollArea className="h-[min(calc(100vh-14rem),560px)] min-h-0 px-5 py-4">
                 <TabsContent value={section} data-testid={`settings-section-${section}`} className="mt-0"><SettingsFlow {...flowProps} section={section} onDirtyChange={setDirty} onProfileSwitchRequest={requestProfileSwitch} onCleanupSuccess={() => requestClose(false)} onSaveProfileReady={onSaveProfileReady} onDiscardProfileReady={onDiscardProfileReady} onProfileSwitchStart={flowProps.onProfileSwitchStart} /></TabsContent>
               </ScrollArea>
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { requestJson, selectDirectory } from "../api-client";
 import {
   DIFF_DARK_THEMES,
@@ -93,6 +93,12 @@ export function SettingsFlow({
   const [cleanupPending, setCleanupPending] = useState(false);
   const [cleanupError, setCleanupError] = useState<string>();
   const profileBaseline = useRef(profileDraft);
+  const pendingSavedProfile = useRef<{ readonly id: string; readonly label: string } | undefined>(undefined);
+  const profileDraftGeneration = useRef(0);
+  const updateProfileDraft = (update: SetStateAction<ProfileDraft>): void => {
+    profileDraftGeneration.current += 1;
+    setProfileDraft(update);
+  };
   const profileDirty = JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
 
   useEffect(() => {
@@ -100,11 +106,17 @@ export function SettingsFlow({
   }, [onDirtyChange, profileDirty]);
 
   useEffect(() => {
-    if (creatingProfile || dashboard === undefined || dashboard.profile.id === profileDraft.id) return;
+    if (dashboard === undefined) return;
+    const pending = pendingSavedProfile.current;
+    if (pending !== undefined) {
+      if (dashboard.profile.id !== pending.id || dashboard.profile.label !== pending.label) return;
+      pendingSavedProfile.current = undefined;
+    }
+    if (creatingProfile || dashboard.profile.id === profileDraft.id || profileDirty) return;
     const next = profileDraftFor(dashboard.profile);
     profileBaseline.current = next;
     setProfileDraft(next);
-  }, [creatingProfile, dashboard, profileDraft.id]);
+  }, [creatingProfile, dashboard, profileDirty, profileDraft.id]);
 
   useEffect(() => {
     void loadEnvironment();
@@ -147,6 +159,7 @@ export function SettingsFlow({
       return false;
     }
     setSavingProfile(true);
+    const draftGeneration = profileDraftGeneration.current;
     try {
       await requestJson("/v1/profiles", {
         method: creatingProfile ? "POST" : "PUT",
@@ -159,10 +172,15 @@ export function SettingsFlow({
         });
       }
       const next = profileDraftFromNormalized(normalized);
+      pendingSavedProfile.current = { id: normalized.id, label: normalized.label };
       profileBaseline.current = next;
-      setProfileDraft(next);
+      if (profileDraftGeneration.current === draftGeneration) {
+        setProfileDraft(next);
+        onDirtyChange?.(false);
+      } else {
+        onDirtyChange?.(true);
+      }
       setCreatingProfile(false);
-      onDirtyChange?.(false);
       await onWorkspaceReload();
       return true;
     } catch (cause: unknown) {
@@ -194,20 +212,25 @@ export function SettingsFlow({
     if (selected === undefined) return;
     const previousDraft = profileDraft;
     const previousBaseline = profileBaseline.current;
+    const draftGeneration = profileDraftGeneration.current;
     setCreatingProfile(false);
     setProfileError(undefined);
     const next = profileDraftFor(selected);
     try {
       await requestJson("/v1/profiles/select", { method: "POST", body: { id } });
       onProfileSwitchStart?.();
-      profileBaseline.current = next;
-      setProfileDraft(next);
+      if (profileDraftGeneration.current === draftGeneration) {
+        profileBaseline.current = next;
+        setProfileDraft(next);
+      }
       await onWorkspaceReload();
     } catch (cause: unknown) {
-      profileBaseline.current = previousBaseline;
-      setProfileDraft(previousDraft);
+      if (profileDraftGeneration.current === draftGeneration) {
+        profileBaseline.current = previousBaseline;
+        setProfileDraft(previousDraft);
+        onDirtyChange?.(JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline));
+      }
       setProfileError(cause instanceof Error ? cause.message : "Patchdesk could not switch profiles.");
-      onDirtyChange?.(JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline));
     }
   };
 
@@ -220,18 +243,18 @@ export function SettingsFlow({
   };
 
   const updateProfileList = (field: ProfileListField, index: number, value: string): void => {
-    setProfileDraft((current) => ({
+    updateProfileDraft((current) => ({
       ...current,
       [field]: current[field].map((entry, entryIndex) => entryIndex === index ? value : entry),
     }));
   };
 
   const addProfileListEntry = (field: ProfileListField): void => {
-    setProfileDraft((current) => ({ ...current, [field]: [...current[field], ""] }));
+    updateProfileDraft((current) => ({ ...current, [field]: [...current[field], ""] }));
   };
 
   const removeProfileListEntry = (field: ProfileListField, index: number): void => {
-    setProfileDraft((current) => ({
+    updateProfileDraft((current) => ({
       ...current,
       [field]: current[field].filter((_, entryIndex) => entryIndex !== index),
     }));
@@ -248,7 +271,7 @@ export function SettingsFlow({
     setProfileError(undefined);
     const next = profileDraftFor(undefined);
     profileBaseline.current = next;
-    setProfileDraft(next);
+    updateProfileDraft(next);
   };
 
   const runCleanup = async (): Promise<void> => {
@@ -350,8 +373,12 @@ export function SettingsFlow({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
-              <Select value={dashboard?.profile.id ?? profileDraft.id} onValueChange={(value) => { if (value !== null) selectProfile(value); }}>
-                <SelectTrigger id="active-profile" aria-label="Active profile"><SelectValue placeholder="Select a profile" /></SelectTrigger>
+              <Select
+                value={dashboard?.profile.id ?? profileDraft.id}
+                items={profiles.map((profile) => ({ label: profile.label, value: profile.id }))}
+                onValueChange={(value) => { if (value !== null) selectProfile(value); }}
+              >
+                <SelectTrigger id="active-profile" aria-label="Active profile"><SelectValue placeholder="Select a profile">{profileDraft.label}</SelectValue></SelectTrigger>
                 <SelectContent>{profiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
@@ -359,7 +386,7 @@ export function SettingsFlow({
             {([ ["Profile ID", "id"], ["Label", "label"], ["GitHub host", "githubHost"], ["GitHub account", "ghAccount"] ] as const).map(([label, field]) => (
               <Field key={field}>
                 <FieldLabel htmlFor={`profile-${field}`}>{label}</FieldLabel>
-                <Input id={`profile-${field}`} aria-label={label} value={profileDraft[field]} disabled={field === "id" && !creatingProfile} onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))} />
+                <Input id={`profile-${field}`} aria-label={label} value={profileDraft[field]} disabled={field === "id" && !creatingProfile} onChange={(event) => updateProfileDraft((current) => ({ ...current, [field]: event.target.value }))} />
               </Field>
             ))}
           </FieldGroup>

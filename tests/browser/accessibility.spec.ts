@@ -57,6 +57,9 @@ for (const fixture of [
     page,
   }) => {
     await page.goto(`${origin(renderer)}/${fixture}`);
+    if (fixture === "") {
+      await expect(page.getByLabel("Pull request reference")).toBeVisible();
+    }
     expect(await seriousProductViolations(page)).toEqual([]);
   });
 }
@@ -125,6 +128,61 @@ test("quick navigation scrolls results through the final action", async ({
   }
   expect(actionBox.y).toBeGreaterThanOrEqual(listBox.y);
   expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(listBox.y + listBox.height);
+});
+
+test("Settings modal has a named, trapped, independently scrollable surface", async ({
+  page,
+}) => {
+  await page.goto(origin(renderer));
+  const opener = page.getByRole("button", { name: "Settings", exact: true });
+  await opener.click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.getByRole("tab", { name: "General" })).toBeFocused();
+  await expect(await seriousProductViolations(page)).toEqual([]);
+  const scrollViewport = page.getByTestId("settings-scroll-region").locator('[data-slot="scroll-area-viewport"]');
+  await expect(scrollViewport).toBeVisible();
+  const pageScrollTop = await page.evaluate(() => window.scrollY);
+  const scrollResult = await scrollViewport.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return { scrollTop: element.scrollTop, canScroll: element.scrollTop > 0 };
+  });
+  expect(scrollResult.canScroll).toBe(true);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollTop);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test("walkthrough takeover exposes rail, Reviewed controls, and Back to files focus", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#walkthrough-fixture`);
+  await page.getByRole("button", { name: "Generate walkthrough" }).click();
+  const dialog = page.getByTestId("walkthrough-generate-dialog");
+  await dialog.getByRole("combobox", { name: "Model" }).click();
+  await page.getByRole("option", { name: "Design model" }).click();
+  await dialog.getByTestId("walkthrough-confirm").click();
+  await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeVisible();
+  await page.getByRole("button", { name: "Open walkthrough" }).click();
+  await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keep the review local" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous section" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next section" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Mark section reviewed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark Support reviewed" })).toBeVisible();
+  const editor = page.getByLabel("Add inline comment body");
+  await editor.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "Keep the review local" })).toBeVisible();
+  await page.getByRole("button", { name: "Next section" }).click();
+  await expect(page.getByRole("heading", { name: "Follow the changed path" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next section" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Previous section" })).toBeEnabled();
+  await expect(await seriousProductViolations(page)).toEqual([]);
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeFocused();
 });
 
 test("forced colors and reduced motion preserve the workbench interaction surface", async ({

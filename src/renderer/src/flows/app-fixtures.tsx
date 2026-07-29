@@ -39,6 +39,8 @@ export function AppFixtureContent({
         <RunFixturePanel />
       </div>
     );
+  if (hash === "#walkthrough-fixture")
+    return <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />;
   if (
     hash === "#workbench-fixture" ||
     hash === "#long-workbench-fixture" ||
@@ -114,6 +116,110 @@ export function AppFixtureContent({
   return undefined;
 }
 
+function WalkthroughFixture({
+  onNavigationStateChange,
+}: {
+  readonly onNavigationStateChange: (state: NavigationState) => void;
+}): React.JSX.Element {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [lifecycle, setLifecycle] = useState<"idle" | "generating" | "ready">("idle");
+  const [model, setModel] = useState<string>();
+  const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [generateRequests, setGenerateRequests] = useState(0);
+  const [draftAdded, setDraftAdded] = useState(false);
+  const [reviewedSectionIds, setReviewedSectionIds] = useState<ReadonlyArray<string>>([]);
+  const [supportReviewed, setSupportReviewed] = useState(false);
+  const walkthrough = {
+    snapshot: {
+      profileId: "fixture",
+      sessionId: "fixture-session",
+      headSha: "abcdef1234567890abcdef1234567890abcdef12",
+      patchHash: "b".repeat(64),
+    },
+    title: "Read-only walkthrough fixture",
+    focus: "The focused review path remains separate from Files mode.",
+    chapters: [{
+      id: "chapter-1",
+      title: "Read first",
+      sections: [{
+        id: "section-1",
+        title: "Keep the review local",
+        prose: "This fixture proves a manual, read-only walkthrough without starting a review run.",
+        hunkIds: ["h1"],
+        hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
+      }, {
+        id: "section-2",
+        title: "Follow the changed path",
+        prose: "The chapter rail keeps the next section available without leaving the saved Files surface.",
+        hunkIds: ["h2"],
+        hunks: [{ id: "h2", path: "src/b.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
+      }],
+    }],
+    support: {
+      id: "support" as const,
+      title: "Support" as const,
+      hunkIds: ["h3"],
+      hunks: [{ id: "h3", path: "src/c.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
+    },
+  };
+  const projection = lifecycle === "ready"
+    ? { lifecycle: "ready" as const, noticeKey: "walkthrough-ready" as const, walkthrough }
+    : lifecycle === "generating"
+      ? { lifecycle: "generating" as const, noticeKey: "walkthrough-generating" as const }
+      : { lifecycle: "idle" as const, noticeKey: "walkthrough-idle" as const };
+  const walkthroughActions = {
+    dialogOpen,
+    projection,
+    models: [{ id: "pi-design", label: "Design model" }],
+    model,
+    reasoning,
+    catalogUnavailable: false,
+    onOpenDialog: () => setDialogOpen(true),
+    onCloseDialog: () => setDialogOpen(false),
+    onModelChange: setModel,
+    onReasoningChange: setReasoning,
+    onConfirm: () => {
+      setDialogOpen(false);
+      setGenerateRequests((current) => current + 1);
+      setLifecycle("generating");
+      window.setTimeout(() => setLifecycle("ready"), 50);
+    },
+    onRetry: () => setLifecycle("generating"),
+    onRegenerate: () => setLifecycle("generating"),
+    busy: lifecycle === "generating",
+    onMarkSectionReviewed: (sectionId: string) => setReviewedSectionIds((current) => current.includes(sectionId) ? current : [...current, sectionId]),
+    onMarkSupportReviewed: () => setSupportReviewed(true),
+    onSelectSection: () => undefined,
+    reviewedSectionIds,
+    supportReviewed,
+  };
+  return (
+    <div data-walkthrough-generate-requests={generateRequests}>
+      <CompletedReviewWorkbench
+        model={{
+          source: { profileId: "fixture", sessionId: "fixture-session" },
+          result: workbenchFixtureData.result as never,
+          reviewScope: { kind: "full" },
+          fullPatch: walkthroughFixturePatch,
+          comparisonAvailability: "not_requested",
+          pullRequest: workbenchFixtureData.pullRequest as never,
+          reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
+          freshness: "fresh",
+          refreshedAt: "2026-07-17T00:00:00.000Z",
+          comments: workbenchFixtureData.comments as never,
+          checks: workbenchFixtureData.checks,
+        }}
+        actions={{
+          reportNavigationState: onNavigationStateChange,
+          walkthrough: walkthroughActions as never,
+          batchActions: { addInlineComment: async () => setDraftAdded(true) } as never,
+        }}
+      />
+      {draftAdded ? <p role="status">Draft added to review batch</p> : null}
+    </div>
+  );
+}
+
 function RunFixturePanel(): React.JSX.Element {
   const [runId, setRunId] = useState<string>();
   return (
@@ -121,6 +227,7 @@ function RunFixturePanel(): React.JSX.Element {
       profileId="fixture"
       sessionId="fixture-session"
       attemptId="001"
+      recoveryView={{ noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" }}
       {...(runId === undefined ? {} : { runId })}
       onStart={async () => {
         const value = await requestJson("/v1/runs/review-pr", {
@@ -139,6 +246,7 @@ function RunFixturePanel(): React.JSX.Element {
 }
 
 const fixturePatch = buildFixturePatch();
+const walkthroughFixturePatch = `${fixturePatch}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+new\n`;
 const activeFollowFixturePatch = buildActiveFollowPatch();
 function buildFixturePatch(): string {
   const changedLines = Array.from(

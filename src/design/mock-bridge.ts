@@ -250,6 +250,7 @@ function preparedWorkbench(running = false): unknown {
     refreshedAt: "2026-07-18T10:00:00.000Z",
     fullPatch: workbenchFixtureData.fullPatch,
     checks: workbenchFixtureData.checks,
+    recoveryView: { noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" },
     ...(running ? { runId: "design-run-1" } : {}),
   };
 }

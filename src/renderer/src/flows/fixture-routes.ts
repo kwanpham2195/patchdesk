@@ -4,6 +4,7 @@ const fixtureHashes = new Set([
   "#diff-fixture",
   "#run-fixture",
   "#workbench-fixture",
+  "#walkthrough-fixture",
   "#long-workbench-fixture",
   "#active-follow-fixture",
   "#performance-fixture",

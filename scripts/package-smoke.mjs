@@ -108,10 +108,24 @@ try {
     window.history.replaceState(null, "", window.location.pathname),
   );
   await window.reload({ waitUntil: "domcontentloaded" });
-  await window.getByRole("button", { name: "Settings" }).click();
-  await window.getByRole("heading", { name: "About Patchdesk" }).waitFor();
-  await window.getByText("Version 0.1.0").waitFor({ timeout: 15_000 });
-  await window.getByText("Unsigned internal build").waitFor();
+  await window.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = window.getByRole("dialog", { name: "Settings" });
+  await settings.waitFor();
+  const generalTab = settings.getByRole("tab", { name: "General" });
+  await generalTab.waitFor();
+  if (await generalTab.getAttribute("aria-selected") !== "true")
+    throw new Error("Packaged Settings did not open on the General tab");
+  const settingsViewport = window
+    .getByTestId("settings-scroll-region")
+    .locator('[data-slot="scroll-area-viewport"]');
+  await settingsViewport.waitFor();
+  const scrollMetrics = await settingsViewport.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: window.getComputedStyle(element).overflowY,
+  }));
+  if (scrollMetrics.scrollHeight <= scrollMetrics.clientHeight || scrollMetrics.overflowY !== "scroll")
+    throw new Error(`Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`);
   console.log(
     `${bundle}: packaged fixture workbench loaded (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
   );

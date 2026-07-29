@@ -84,6 +84,19 @@ test("renderer uses the protected loopback API for profile and watchlist control
 
   await page.getByRole("button", { name: "Test GitHub access" }).click();
   await expect(page.getByText("GitHub access: available")).toBeVisible();
+  const settingsRoute = page.url();
+  await page.getByLabel("Appearance").click();
+  await page.getByRole("option", { name: "Dark" }).click();
+  await expect(page).toHaveURL(settingsRoute);
+  await page.getByLabel("Label").fill("Enterprise dirty");
+  await page.getByRole("button", { name: "Close" }).click();
+  const dirtyDialog = page.getByRole("alertdialog", { name: "Discard profile changes?" });
+  await expect(dirtyDialog).toBeVisible();
+  await dirtyDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dirtyDialog).toBeHidden();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Discard changes" }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
   await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await page.getByRole("button", { name: "Add suggestion" }).click();
@@ -95,7 +108,20 @@ test("renderer uses the protected loopback API for profile and watchlist control
     page.getByRole("button", { name: "Restore" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Inbox" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Data & recovery" }).click();
+  await page.getByRole("button", { name: "Clear cache" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Clear cache?" })).toBeVisible();
+  await page.getByRole("alertdialog", { name: "Clear cache?" }).getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Clear cache?" })).toBeHidden();
+  await page.getByRole("button", { name: "Clear local review data" }).click();
+  const clearLocalDialog = page.getByRole("alertdialog", { name: "Clear local review data?" });
+  await expect(clearLocalDialog).toBeVisible();
+  await clearLocalDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(clearLocalDialog).toBeHidden();
+  await page.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("button", { name: "Inbox", exact: true }).click();
   await page.getByLabel("Pull request reference").fill("acme/service#3");
   await page.getByRole("button", { name: "Preview pull request" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Could not open review" })).toContainText("Could not prepare acme/service#3.");

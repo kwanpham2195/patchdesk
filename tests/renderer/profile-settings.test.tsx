@@ -66,6 +66,26 @@ describe("workspace profile settings", () => {
     expect(reload).toHaveBeenCalled();
   });
 
+  it("keeps edits made while a profile save is pending", async () => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
+      releaseSave = () => resolve(success({}));
+    });
+    installDesktopApi({ pendingProfileSave: pendingSave });
+    const user = userEvent.setup();
+
+    renderSettings();
+    const label = screen.getByLabelText("Label");
+    await user.clear(label);
+    await user.type(label, "Saved");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.clear(label);
+    await user.type(label, "Newer");
+
+    releaseSave();
+    await vi.waitFor(() => expect((label as HTMLInputElement).value).toBe("Newer"));
+  });
+
   it("shows inline validation for a blank list entry without saving", async () => {
     const request = installDesktopApi();
     const user = userEvent.setup();
@@ -104,10 +124,11 @@ function renderSettings(onWorkspaceReload = async (): Promise<void> => undefined
   );
 }
 
-function installDesktopApi(options: { readonly rejectProfileSave?: boolean } = {}): ReturnType<typeof vi.fn> {
+function installDesktopApi(options: { readonly rejectProfileSave?: boolean; readonly pendingProfileSave?: Promise<ReturnType<typeof success>> } = {}): ReturnType<typeof vi.fn> {
   const request = vi.fn(async (input: { readonly path?: string; readonly method?: string; readonly body?: unknown; readonly operation?: string }) => {
     if (input.operation === "selectDirectory") return success({ path: "/picked/enterprise" });
     if (input.path === "/v1/environment") return success({});
+    if (input.path === "/v1/profiles" && options.pendingProfileSave !== undefined) return options.pendingProfileSave;
     if (input.path === "/v1/profiles" && options.rejectProfileSave === true) return failure({ error: "storage" });
     return success({});
   });

@@ -3,6 +3,81 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
+test("production walkthrough stays manual, supports review actions, and returns to Files", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#walkthrough-fixture`);
+    await expect(page.locator("[data-walkthrough-generate-requests]")).toHaveAttribute("data-walkthrough-generate-requests", "0");
+    await page.getByRole("button", { name: "Generate walkthrough" }).click();
+    const dialog = page.getByTestId("walkthrough-generate-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("combobox", { name: "Model" }).click();
+    await page.getByRole("option", { name: "Design model" }).click();
+    await dialog.getByRole("combobox", { name: "Reasoning" }).click();
+    await page.getByRole("option", { name: "High" }).click();
+    await dialog.getByTestId("walkthrough-confirm").click();
+    await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeVisible();
+    await expect(page.locator("[data-walkthrough-generate-requests]")).toHaveAttribute("data-walkthrough-generate-requests", "1");
+
+    const filesDiff = page.getByRole("region", { name: "Review diff" });
+    const selectedPath = await filesDiff.getAttribute("data-selected-path");
+    await page.getByRole("button", { name: "Open walkthrough" }).click();
+    await expect(page.getByTestId("back-to-files")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Keep the review local" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous section" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next section" })).toBeEnabled();
+    await expect(page.getByText("Support coverage")).toBeVisible();
+    await page.getByRole("button", { name: "Mark section reviewed" }).click();
+    await expect(page.getByRole("button", { name: "Section reviewed" })).toBeVisible();
+    await page.getByRole("button", { name: "Mark Support reviewed" }).click();
+    await expect(page.getByRole("button", { name: "Support reviewed" })).toBeVisible();
+    await page.getByLabel("Add inline comment body").fill("Keep this draft local");
+    await page.getByRole("button", { name: "Add inline comment" }).click();
+    await expect(page.getByRole("status")).toContainText("Draft added to review batch");
+    await page.getByRole("button", { name: "Next section" }).click();
+    await expect(page.getByRole("heading", { name: "Follow the changed path" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous section" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Next section" })).toBeDisabled();
+
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(page.getByTestId("back-to-files")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeFocused();
+    await expect(filesDiff).toHaveAttribute("data-selected-path", selectedPath ?? "");
+    await expect(page.locator("[data-walkthrough-generate-requests]")).toHaveAttribute("data-walkthrough-generate-requests", "1");
+  } finally {
+    await close(server);
+  }
+});
+
+test("Settings stays a centered General-first overlay on dashboard, Inbox, and workbench", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    for (const fixture of ["", "#workbench-fixture"]) {
+      await page.goto(`${origin(server)}/${fixture}`);
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Settings" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByTestId("settings-scroll-region")).toBeVisible();
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(dialog).toBeHidden();
+    }
+
+    await page.goto(origin(server));
+    await page.getByRole("button", { name: "Inbox", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Settings" }).getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await close(server);
+  }
+});
+
 test("review navigator presents the Pierre file tree", async ({
   page,
 }) => {
@@ -315,9 +390,9 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
     await page.getByRole("treeitem", { name: "b.ts" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
-    expect(
-      await diffViewport.evaluate((viewport) => viewport.scrollTop),
-    ).toBeGreaterThan(0);
+    await expect
+      .poll(() => diffViewport.evaluate((viewport) => viewport.scrollTop))
+      .toBeGreaterThan(0);
   } finally {
     await close(server);
   }
