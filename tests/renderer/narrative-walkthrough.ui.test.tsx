@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@pierre/diffs/react", () => ({
@@ -125,7 +126,7 @@ describe("narrative walkthrough takeover", () => {
     opener.textContent = "Existing opener";
     document.body.append(opener);
     opener.focus();
-    render(<NarrativeWalkthrough walkthrough={buildWalkthrough()} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} />);
+    render(<StrictMode><NarrativeWalkthrough walkthrough={buildWalkthrough()} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} /></StrictMode>);
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
@@ -177,6 +178,7 @@ describe("narrative walkthrough takeover", () => {
     const next = screen.getByRole("button", { name: "Next section" });
     fireEvent.click(next);
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "How reads stay read-only" }));
   });
 
   it("disables Previous at the first section and Next at the last section", () => {

@@ -13,7 +13,7 @@ import {
   type DiffLineAnnotation,
   type FileDiffMetadata,
 } from "@pierre/diffs";
-import { CodeView, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
+import { CodeView, FileDiff, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
 import {
   ChevronsUpDown,
   Columns2,
@@ -201,6 +201,20 @@ function ReviewDiffSurface({
         ? files.filter((file) => file.name === selectedPath)
         : files,
     [files, preferences.fileMode, selectedPath],
+  );
+  const selectedFile = useMemo(
+    () => selectedPath === undefined ? undefined : files.find((file) => file.name === selectedPath),
+    [files, selectedPath],
+  );
+  const selectedAnnotations = useMemo(
+    () => annotations
+      .filter((annotation) => selectedPath === undefined || annotation.path === selectedPath)
+      .map((annotation): DiffLineAnnotation<ReviewInlineAnnotation | undefined> => ({
+        side: annotation.side === "new" ? "additions" : "deletions",
+        lineNumber: annotation.start,
+        metadata: annotation,
+      })),
+    [annotations, selectedPath],
   );
   const items = useMemo(
     () =>
@@ -551,7 +565,6 @@ function ReviewDiffSurface({
             </Button>
           </ButtonGroup>
           <Button
-            className={virtualized ? undefined : "hidden"}
             variant="ghost"
             size="xs"
             onClick={() =>
@@ -568,7 +581,6 @@ function ReviewDiffSurface({
             {preferences.overflow === "wrap" ? "Scroll" : "Wrap"}
           </Button>
           <Button
-            className={virtualized ? undefined : "hidden"}
             variant={expandUnchanged ? "secondary" : "ghost"}
             size="xs"
             aria-pressed={expandUnchanged}
@@ -606,25 +618,51 @@ function ReviewDiffSurface({
           {...(selectedRange === undefined ? {} : { selectedRange })}
         />
       ) : !virtualized ? (
-        <PatchDiff
-          patch={selectedPatch}
-          disableWorkerPool
-          className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
-          style={DIFF_CODE_METRICS}
-          options={{
-            theme: diffThemeFor(themePreferences),
-            themeType: appearance,
-            disableBackground: false,
-            diffStyle: preferences.diffStyle,
-            overflow: preferences.overflow,
-            hunkSeparators: "line-info",
-            expandUnchanged: expandUnchanged || expandSelectedRange,
-            lineDiffType: "word-alt",
-            diffIndicators: "bars",
-          }}
-          selectedLines={selectedLines?.range ?? null}
-          renderCustomHeader={renderPatchHeader}
-        />
+        selectedFile === undefined ? (
+          <PatchDiff
+            patch={selectedPatch}
+            disableWorkerPool
+            className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
+            style={DIFF_CODE_METRICS}
+            options={{
+              theme: diffThemeFor(themePreferences),
+              themeType: appearance,
+              disableBackground: false,
+              diffStyle: preferences.diffStyle,
+              overflow: preferences.overflow,
+              hunkSeparators: "line-info",
+              expandUnchanged: expandUnchanged || expandSelectedRange,
+              lineDiffType: "word-alt",
+              diffIndicators: "bars",
+            }}
+            lineAnnotations={selectedAnnotations}
+            selectedLines={selectedLines?.range ?? null}
+            renderAnnotation={renderAnnotation}
+            renderCustomHeader={renderPatchHeader}
+          />
+        ) : (
+          <FileDiff
+            fileDiff={selectedFile}
+            disableWorkerPool
+            className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
+            style={DIFF_CODE_METRICS}
+            options={{
+              theme: diffThemeFor(themePreferences),
+              themeType: appearance,
+              disableBackground: false,
+              diffStyle: preferences.diffStyle,
+              overflow: preferences.overflow,
+              hunkSeparators: "line-info",
+              expandUnchanged: expandUnchanged || expandSelectedRange,
+              lineDiffType: "word-alt",
+              diffIndicators: "bars",
+            }}
+            lineAnnotations={selectedAnnotations}
+            selectedLines={selectedLines?.range ?? null}
+            renderAnnotation={renderAnnotation}
+            renderCustomHeader={renderPatchHeader}
+          />
+        )
       ) : (
         <div className="relative min-h-0 flex-1">
           <span className="hidden" data-review-diff-loaded-file-count={loadedCount} />

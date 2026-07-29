@@ -153,14 +153,22 @@ export function NarrativeWalkthrough({
     sectionHeadingRef.current?.focus();
   }, []);
 
+  const focusHeadingAfterMoveRef = useRef(false);
+  const selectSection = useCallback(
+    (sectionId: string) => {
+      focusHeadingAfterMoveRef.current = true;
+      setLocalCurrentSectionId(sectionId);
+      actions.onSelectSection(sectionId);
+    },
+    [actions],
+  );
   const goToOffset = useCallback(
     (offset: -1 | 1) => {
       const target = sections[sectionIndex + offset];
       if (target === undefined) return;
-      setLocalCurrentSectionId(target.id);
-      actions.onSelectSection(target.id);
+      selectSection(target.id);
     },
-    [actions, sectionIndex, sections],
+    [sectionIndex, sections, selectSection],
   );
 
   const handleKeyDown = useCallback(
@@ -199,12 +207,9 @@ export function NarrativeWalkthrough({
     [canGoNext, canGoPrev, goToOffset],
   );
 
-  const hasMountedTakeoverRef = useRef(false);
   useEffect(() => {
-    if (!hasMountedTakeoverRef.current) {
-      hasMountedTakeoverRef.current = true;
-      return;
-    }
+    if (!focusHeadingAfterMoveRef.current) return;
+    focusHeadingAfterMoveRef.current = false;
     focusHeading();
   }, [activeSection.id, focusHeading]);
 
@@ -292,10 +297,7 @@ export function NarrativeWalkthrough({
                       size="sm"
                       className="h-auto w-full justify-between whitespace-normal px-2 py-2 text-left"
                       aria-current={active ? "true" : undefined}
-                      onClick={() => {
-                      setLocalCurrentSectionId(section.id);
-                      actions.onSelectSection(section.id);
-                    }}
+                      onClick={() => selectSection(section.id)}
                     >
                       <span className="min-w-0">
                         <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{chapter.title}</span>
