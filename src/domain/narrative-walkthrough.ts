@@ -28,6 +28,8 @@ export type NarrativeHunk = {
   readonly path: RepoRelativePath;
   readonly header: string;
   readonly raw: string;
+  /** The original file header, retained so renderers can reparse source hunks safely. */
+  readonly filePrefix?: string;
   readonly oldStart: number;
   readonly oldLines: number;
   readonly newStart: number;
@@ -411,6 +413,7 @@ function normalizedHunk(hunk: ParsedHunk): NarrativeHunk {
     path: hunk.path,
     header: hunk.header,
     raw: hunk.raw,
+    ...(hunk.filePrefix === undefined ? {} : { filePrefix: hunk.filePrefix }),
     oldStart: hunk.oldStart,
     oldLines: hunk.oldLines,
     newStart: hunk.newStart,

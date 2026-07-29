@@ -229,6 +229,9 @@ export function CompletedReviewWorkbench({
   useEffect(() => {
     setPreferences(loadReviewViewPreferences(preferenceProfileId));
   }, [preferenceProfileId]);
+  useEffect(() => {
+    if (!walkthroughOpen) openWalkthroughButtonRef.current?.focus();
+  }, [walkthroughOpen]);
   const freshness = props.freshness;
   const writeBlocked = freshness !== "fresh";
   const selectFinding = (finding: ReviewResult["findings"][number]): void => {
@@ -318,6 +321,26 @@ export function CompletedReviewWorkbench({
       ),
     [props.result.findings],
   );
+  const walkthroughAnnotations = useMemo(
+    () => [
+      ...inlineFindingAnnotations,
+      ...(props.batch?.items.flatMap((item): ReadonlyArray<ReviewInlineAnnotation> =>
+        item._tag === "InlineComment"
+          ? [{
+              id: item.id,
+              path: item.anchor.path,
+              start: item.anchor.startLine,
+              end: item.anchor.line,
+              side: item.anchor.side,
+              severity: "info",
+              title: "Draft inline comment",
+              explanation: item.body,
+            }]
+          : [],
+      ) ?? []),
+    ],
+    [inlineFindingAnnotations, props.batch?.items],
+  );
   const updateWritePending = (pending: boolean): void => actions.reportNavigationState(pending ? "write_pending" : "clear");
 
   const copyValidationPlan = async (): Promise<void> => {
@@ -406,6 +429,7 @@ export function CompletedReviewWorkbench({
           </AlertDescription>
         </Alert>
       ) : null}
+      {!walkthroughOpen ? <>
       {actions.walkthrough === undefined ? null : (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3" data-testid="walkthrough-banner">
           <div className="min-w-0">
@@ -504,14 +528,16 @@ export function CompletedReviewWorkbench({
           </DialogContent>
         </Dialog>
       )}
+      </> : null}
       {walkthroughOpen && readyWalkthrough !== undefined ? (
         <NarrativeWalkthrough
           walkthrough={readyWalkthrough}
           {...(walkthroughCurrentSectionId === undefined ? {} : { currentSectionId: walkthroughCurrentSectionId })}
           reviewedSectionIds={walkthroughReviewedSectionIds}
           supportReviewed={walkthroughSupportReviewed}
+          {...(props.fullPatch === undefined ? {} : { rawPatch: props.fullPatch })}
+          annotations={walkthroughAnnotations}
           preferences={preferences}
-          onPreferencesChange={updatePreferences}
           actions={{
             onBackToFiles: () => {
               setWalkthroughOpen(false);

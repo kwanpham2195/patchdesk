@@ -23,7 +23,7 @@ vi.mock("@pierre/diffs/react", () => ({
 import { NarrativeWalkthroughDiff } from "../../src/renderer/src/components/narrative-walkthrough-diff";
 import type { NarrativeHunk } from "../../src/domain/narrative-walkthrough";
 
-afterEach(() => cleanup);
+afterEach(() => cleanup());
 
 const hunk: NarrativeHunk = {
   id: "h1",
@@ -38,15 +38,50 @@ const hunk: NarrativeHunk = {
 
 describe("narrative walkthrough diff block", () => {
   it("renders a unique block id and the filtered raw patch", () => {
-    render(<NarrativeWalkthroughDiff blockId="block-1" hunk={hunk} />);
+    render(<NarrativeWalkthroughDiff blockId="block-1" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
     const block = document.querySelector('[data-walkthrough-diff-block]');
     expect(block).toBeTruthy();
     expect(block?.getAttribute("data-walkthrough-diff-block")).toBe("block-1");
   });
 
+  it("filters the original raw patch to the requested hunk and preserves its file header", () => {
+    const secondHunk: NarrativeHunk = {
+      ...hunk,
+      id: "h2",
+      path: "src/second.ts" as never,
+      header: "@@ -20 +20 @@",
+      raw: "@@ -20 +20 @@\n-old-second\n+new-second",
+      oldStart: 20,
+      newStart: 20,
+    };
+    const patch = [
+      "diff --git a/src/example.ts b/src/example.ts",
+      "--- a/src/example.ts",
+      "+++ b/src/example.ts",
+      hunk.raw,
+      "diff --git a/src/second.ts b/src/second.ts",
+      "--- a/src/second.ts",
+      "+++ b/src/second.ts",
+      secondHunk.raw,
+      "",
+    ].join("\n");
+    render(
+      <NarrativeWalkthroughDiff
+        blockId="block-filter"
+        patch={patch}
+        hunkIds={[secondHunk.id]}
+        hunks={[secondHunk]}
+        allHunks={[hunk, secondHunk]}
+      />,
+    );
+    const renderedPatch = document.querySelector('[data-pierre-mock="true"]')?.getAttribute("data-patch") ?? "";
+    expect(renderedPatch).toContain("diff --git a/src/second.ts b/src/second.ts");
+    expect(renderedPatch).not.toContain("src/example.ts");
+  });
+
   it("honors the unified/split and wrap preferences from the user", async () => {
     const user = userEvent.setup();
-    const { container } = render(<NarrativeWalkthroughDiff blockId="block-prefs" hunk={hunk} />);
+    const { container } = render(<NarrativeWalkthroughDiff blockId="block-prefs" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
     const buttons = container.querySelectorAll('button');
     const splitButton = Array.from(buttons).find((b) => b.textContent?.includes('Split'));
     const wrapButton = Array.from(buttons).find((b) => b.textContent?.includes('Wrap'));
@@ -60,7 +95,7 @@ describe("narrative walkthrough diff block", () => {
   });
 
   it("honors appearance and diff-theme events", () => {
-    const { container } = render(<NarrativeWalkthroughDiff blockId="block-theme" hunk={hunk} />);
+    const { container } = render(<NarrativeWalkthroughDiff blockId="block-theme" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
     const event = new CustomEvent("patchdesk:appearance", { detail: "light" });
     window.dispatchEvent(event);
     const themeEvent = new CustomEvent("patchdesk:diff-theme", { detail: { light: "github-light", dark: "github-dark" } });

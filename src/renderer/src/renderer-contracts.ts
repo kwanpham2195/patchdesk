@@ -211,6 +211,7 @@ const walkthroughHunkSchema = v.strictObject({
   path: walkthroughRepoRelativePathSchema,
   header: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
   raw: v.pipe(v.string(), v.minLength(1), v.maxLength(200_000)),
+  filePrefix: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(2_000))),
   oldStart: walkthroughLineNumberSchema,
   oldLines: walkthroughLineNumberSchema,
   newStart: walkthroughLineNumberSchema,

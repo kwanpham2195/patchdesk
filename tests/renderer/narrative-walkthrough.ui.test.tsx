@@ -182,7 +182,9 @@ describe("narrative walkthrough takeover", () => {
     );
     expect((screen.getByRole("button", { name: "Previous section" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Next section" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next section" }));
+    expect(screen.getByRole("heading", { name: "How reads stay read-only" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Next section" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Previous section" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("dispatches Mark section reviewed and Mark Support reviewed", () => {
@@ -201,6 +203,38 @@ describe("narrative walkthrough takeover", () => {
     expect(onMarkSectionReviewed).toHaveBeenCalledWith("section-1");
     fireEvent.click(screen.getByRole("button", { name: "Mark Support reviewed" }));
     expect(onMarkSupportReviewed).toHaveBeenCalledTimes(1);
+  });
+
+  it("anchors deletion-only drafts on the old side", async () => {
+    const onAddInlineComment = vi.fn().mockResolvedValue(undefined);
+    const base = buildWalkthrough();
+    const firstChapter = base.chapters[0];
+    const firstSection = firstChapter?.sections[0];
+    const firstHunk = firstSection?.hunks[0];
+    if (firstChapter === undefined || firstSection === undefined || firstHunk === undefined) {
+      throw new Error("Walkthrough fixture requires a first hunk");
+    }
+    const walkthrough: NarrativeWalkthroughModel = {
+      ...base,
+      chapters: [{
+        ...firstChapter,
+        sections: [{
+          ...firstSection,
+          hunks: [{
+            ...firstHunk,
+            raw: "@@ -42,1 +0,0 @@\\n-old",
+            header: "@@ -42,1 +0,0 @@",
+            newStart: 0,
+            newLines: 0,
+          }],
+        }],
+      }],
+    };
+    const user = userEvent.setup();
+    render(<NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions({ onAddInlineComment })} />);
+    await user.type(screen.getByLabelText("Add inline comment body"), "Keep the deletion visible");
+    await user.click(screen.getByRole("button", { name: "Add inline comment" }));
+    await waitFor(() => expect(onAddInlineComment).toHaveBeenCalledWith(expect.objectContaining({ startLine: 42, line: 42, side: "old" })));
   });
 
   it("routes Add inline comment through the supplied actions", async () => {

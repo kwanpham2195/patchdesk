@@ -3,6 +3,10 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@pierre/diffs/react", () => ({
+  PatchDiff: ({ patch }: { readonly patch: string }) => <div data-pierre-mock="true" data-patch={patch} />,
+}));
+
 import { CompletedReviewWorkbench } from "../../src/renderer/src/components/completed-review-workbench";
 
 afterEach(() => {
@@ -390,14 +394,14 @@ describe("completed review workbench", () => {
                   title: "Why this snapshot matters",
                   prose: "The stored patch remains readable.",
                   hunkIds: ["h1"],
-                  hunks: [],
+                  hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
                 },
                 {
                   id: "section-2",
                   title: "How reads stay read-only",
                   prose: "The walkthrough does not start a review run.",
                   hunkIds: ["h2"],
-                  hunks: [],
+                  hunks: [{ id: "h2", path: "src/b.ts", header: "@@ -2 +2 @@", raw: "@@ -2 +2 @@\\n-old\\n+new", oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }],
                 },
               ],
             },
@@ -406,7 +410,7 @@ describe("completed review workbench", () => {
             id: "support",
             title: "Support",
             hunkIds: ["h3"],
-            hunks: [],
+            hunks: [{ id: "h3", path: "src/c.ts", header: "@@ -3 +3 @@", raw: "@@ -3 +3 @@\\n-old\\n+new", oldStart: 3, oldLines: 1, newStart: 3, newLines: 1 }],
           },
         },
       },
@@ -432,6 +436,7 @@ describe("completed review workbench", () => {
     render(
       <ReviewWorkbenchFixture
         result={{ changeSummary: "Walkthrough", verdict: "comment", summary: "Summary", findings: [], validationPlan: [], assumptions: [] } as never}
+        fullPatch={"diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -2 +2 @@\n-old\n+new\ndiff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -3 +3 @@\n-old\n+new\n"}
         draft={{ summaryBody: "", comments: [] }}
         comments={{ threads: [] }}
         checks={{ overall: "unknown", checks: [] }}
@@ -444,12 +449,16 @@ describe("completed review workbench", () => {
     await user.click(open);
     expect(screen.getByTestId("back-to-files")).toBeTruthy();
     expect(screen.queryByLabelText("Review diff")).toBeNull();
+    const preferencesBefore = window.localStorage.getItem("patchdesk.review-view.v1.fixture");
+    await user.click(screen.getByRole("button", { name: "Split" }));
+    await user.click(screen.getByRole("button", { name: "Wrap" }));
+    expect(window.localStorage.getItem("patchdesk.review-view.v1.fixture")).toBe(preferencesBefore);
     await user.click(screen.getByRole("button", { name: "Next section" }));
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
     await user.click(screen.getByRole("button", { name: "Back to files" }));
     expect(screen.queryByTestId("back-to-files")).toBeNull();
-    expect(screen.getByText("Stored patch unavailable")).toBeTruthy();
-    expect(document.activeElement).toBe(open);
+    expect(screen.getByRole("button", { name: "Open walkthrough" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open walkthrough" }));
   });
 
   it("shows a stale-head warning instead of a GitHub write control", () => {

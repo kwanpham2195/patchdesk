@@ -29,12 +29,14 @@ import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
+import type { ReviewInlineAnnotation } from "./review-diff-view";
 
 type NarrativeHunk = {
   readonly id: string;
   readonly path: string;
   readonly header: string;
   readonly raw: string;
+  readonly filePrefix?: string | undefined;
   readonly oldStart: number;
   readonly oldLines: number;
   readonly newStart: number;
@@ -96,28 +98,34 @@ export function NarrativeWalkthrough({
   onActionRef,
   actions,
   preferences,
-  onPreferencesChange,
+  rawPatch,
+  annotations,
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
   readonly reviewedSectionIds: ReadonlyArray<string>;
   readonly supportReviewed: boolean;
   readonly currentSectionId?: string;
+  readonly rawPatch?: string;
+  readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
   readonly onActionRef?: (ref: NarrativeWalkthroughRefAction) => void;
   readonly actions: NarrativeWalkthroughActions;
   readonly preferences?: ReviewViewPreferences;
-  readonly onPreferencesChange?: (update: Partial<ReviewViewPreferences>) => void;
 }): React.JSX.Element {
   const sections = useMemo(
     () => walkthrough.chapters.flatMap((chapter) => chapter.sections),
     [walkthrough.chapters],
   );
+  const [localCurrentSectionId, setLocalCurrentSectionId] = useState(currentSectionId ?? sections[0]?.id);
+  useEffect(() => {
+    if (currentSectionId !== undefined) setLocalCurrentSectionId(currentSectionId);
+  }, [currentSectionId]);
   const sectionIndex = useMemo(
     () =>
       Math.max(
         0,
-        sections.findIndex((section) => section.id === currentSectionId),
+        sections.findIndex((section) => section.id === localCurrentSectionId),
       ),
-    [currentSectionId, sections],
+    [localCurrentSectionId, sections],
   );
   const fallbackSection = sections[0] as NarrativeSection | undefined;
   const activeSection: NarrativeSection = sections[sectionIndex] ?? fallbackSection ?? nullSection();
@@ -146,6 +154,7 @@ export function NarrativeWalkthrough({
     (offset: -1 | 1) => {
       const target = sections[sectionIndex + offset];
       if (target === undefined) return;
+      setLocalCurrentSectionId(target.id);
       actions.onSelectSection(target.id);
     },
     [actions, sectionIndex, sections],
@@ -195,13 +204,17 @@ export function NarrativeWalkthrough({
     const trimmed = commentBody.trim();
     const target = activeSection.hunks[0];
     if (trimmed.length === 0 || target === undefined || commentPending) return;
+    const anchor = target.newLines > 0
+      ? { startLine: target.newStart, line: target.newStart + target.newLines - 1, side: "new" as const }
+      : target.oldLines > 0
+        ? { startLine: target.oldStart, line: target.oldStart + target.oldLines - 1, side: "old" as const }
+        : undefined;
+    if (anchor === undefined) return;
     setCommentPending(true);
     try {
       await actions.onAddInlineComment({
         path: target.path,
-        startLine: target.newStart,
-        line: target.newStart + Math.max(0, target.newLines - 1),
-        side: "new",
+        ...anchor,
         body: trimmed,
       });
       setCommentBody("");
@@ -209,6 +222,14 @@ export function NarrativeWalkthrough({
       setCommentPending(false);
     }
   }, [actions, activeSection.hunks, commentBody, commentPending]);
+
+  const allHunks = useMemo(
+    () => [
+      ...sections.flatMap((section) => section.hunks),
+      ...walkthrough.support.hunks,
+    ],
+    [sections, walkthrough.support.hunks],
+  );
 
   return (
     <div
@@ -334,9 +355,12 @@ export function NarrativeWalkthrough({
                 <NarrativeWalkthroughDiff
                   key={`${activeSection.id}::${hunk.id}`}
                   blockId={`${activeSection.id}::${hunk.id}::${index}`}
-                  hunk={hunk}
+                  {...(rawPatch === undefined ? {} : { patch: rawPatch })}
+                  hunkIds={[hunk.id]}
+                  hunks={[hunk]}
+                  allHunks={allHunks}
+                  {...(annotations === undefined ? {} : { annotations })}
                   {...(preferences === undefined ? {} : { preferences })}
-                  {...(onPreferencesChange === undefined ? {} : { onPreferencesChange })}
                 />
               ))
             )}
