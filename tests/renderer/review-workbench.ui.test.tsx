@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -448,10 +448,16 @@ describe("completed review workbench", () => {
     const open = screen.getByRole("button", { name: "Open walkthrough" });
     await user.click(open);
     expect(screen.getByTestId("back-to-files")).toBeTruthy();
-    expect(screen.queryByLabelText("Review diff")).toBeNull();
+    expect(document.querySelector('[hidden] [aria-label="Review diff"]')).toBeTruthy();
     const preferencesBefore = window.localStorage.getItem("patchdesk.review-view.v1.fixture");
-    await user.click(screen.getByRole("button", { name: "Split" }));
-    await user.click(screen.getByRole("button", { name: "Wrap" }));
+    const takeover = within(screen.getByTestId("back-to-files").closest("[data-walkthrough-takeover]") as HTMLElement);
+    const splitButtons = takeover.getAllByRole("button", { name: "Split" });
+    const wrapButtons = takeover.getAllByRole("button", { name: "Wrap" });
+    const splitButton = splitButtons[0];
+    const wrapButton = wrapButtons[0];
+    if (splitButton === undefined || wrapButton === undefined) throw new Error("Missing takeover diff controls");
+    await user.click(splitButton);
+    await user.click(wrapButton);
     expect(window.localStorage.getItem("patchdesk.review-view.v1.fixture")).toBe(preferencesBefore);
     await user.click(screen.getByRole("button", { name: "Next section" }));
     expect(onSelectSection).toHaveBeenCalledWith("section-2");

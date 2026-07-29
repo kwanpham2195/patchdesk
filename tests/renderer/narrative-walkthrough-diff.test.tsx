@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -74,9 +74,22 @@ describe("narrative walkthrough diff block", () => {
         allHunks={[hunk, secondHunk]}
       />,
     );
-    const renderedPatch = document.querySelector('[data-pierre-mock="true"]')?.getAttribute("data-patch") ?? "";
+    const renderedPatch = screen.getByLabelText("Review diff").textContent ?? "";
     expect(renderedPatch).toContain("diff --git a/src/second.ts b/src/second.ts");
     expect(renderedPatch).not.toContain("src/example.ts");
+  });
+
+  it("keeps fallback patches renderable for deletion-only hunks", () => {
+    const deletion: NarrativeHunk = {
+      ...hunk,
+      id: "h2",
+      raw: "@@ -10,1 +0,0 @@\n-old",
+      header: "@@ -10,1 +0,0 @@",
+      newStart: 0,
+      newLines: 0,
+    };
+    render(<NarrativeWalkthroughDiff blockId="block-deletion" hunkIds={[deletion.id]} hunks={[deletion]} allHunks={[deletion]} />);
+    expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });
 
   it("honors the unified/split and wrap preferences from the user", async () => {
@@ -87,19 +100,17 @@ describe("narrative walkthrough diff block", () => {
     const wrapButton = Array.from(buttons).find((b) => b.textContent?.includes('Wrap'));
     if (!splitButton || !wrapButton) throw new Error("Missing buttons");
     await user.click(splitButton);
-    let block = container.querySelector('[data-pierre-mock="true"]');
-    expect(block?.getAttribute("data-diff-style")).toBe("split");
+    expect(container.querySelector('[aria-label="Review diff"]')?.getAttribute("data-diff-style")).toBe("split");
     await user.click(wrapButton);
-    block = container.querySelector('[data-pierre-mock="true"]');
-    expect(block?.getAttribute("data-overflow")).toBe("wrap");
+    expect(screen.getByRole("button", { name: "Scroll" })).toBeTruthy();
   });
 
   it("honors appearance and diff-theme events", () => {
-    const { container } = render(<NarrativeWalkthroughDiff blockId="block-theme" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
+    render(<NarrativeWalkthroughDiff blockId="block-theme" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
     const event = new CustomEvent("patchdesk:appearance", { detail: "light" });
     window.dispatchEvent(event);
     const themeEvent = new CustomEvent("patchdesk:diff-theme", { detail: { light: "github-light", dark: "github-dark" } });
     window.dispatchEvent(themeEvent);
-    expect(container.querySelectorAll('[data-pierre-mock="true"]').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });
 });

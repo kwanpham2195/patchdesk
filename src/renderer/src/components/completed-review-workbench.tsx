@@ -229,8 +229,12 @@ export function CompletedReviewWorkbench({
   useEffect(() => {
     setPreferences(loadReviewViewPreferences(preferenceProfileId));
   }, [preferenceProfileId]);
+  const walkthroughWasOpenRef = useRef(false);
   useEffect(() => {
-    if (!walkthroughOpen) openWalkthroughButtonRef.current?.focus();
+    if (walkthroughWasOpenRef.current && !walkthroughOpen) {
+      openWalkthroughButtonRef.current?.focus();
+    }
+    walkthroughWasOpenRef.current = walkthroughOpen;
   }, [walkthroughOpen]);
   const freshness = props.freshness;
   const writeBlocked = freshness !== "fresh";
@@ -536,6 +540,7 @@ export function CompletedReviewWorkbench({
           reviewedSectionIds={walkthroughReviewedSectionIds}
           supportReviewed={walkthroughSupportReviewed}
           {...(props.fullPatch === undefined ? {} : { rawPatch: props.fullPatch })}
+          {...(props.sourceSession === undefined ? {} : { sourceSession: props.sourceSession })}
           annotations={walkthroughAnnotations}
           preferences={preferences}
           actions={{
@@ -563,7 +568,8 @@ export function CompletedReviewWorkbench({
           }}
         />
       ) : null}
-      {!walkthroughOpen ? <div
+      <div
+        hidden={walkthroughOpen}
         className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
       >
         {reviewRailOpen ? (
@@ -934,7 +940,7 @@ export function CompletedReviewWorkbench({
             </ScrollArea>
           </aside>
         ) : null}
-      </div> : null}
+      </div>
     </section>
   );
 }

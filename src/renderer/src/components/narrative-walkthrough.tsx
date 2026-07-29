@@ -30,6 +30,7 @@ import type { ReviewViewPreferences } from "@/review-view-preferences";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
+import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 
 type NarrativeHunk = {
   readonly id: string;
@@ -99,6 +100,7 @@ export function NarrativeWalkthrough({
   actions,
   preferences,
   rawPatch,
+  sourceSession,
   annotations,
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
@@ -106,6 +108,7 @@ export function NarrativeWalkthrough({
   readonly supportReviewed: boolean;
   readonly currentSectionId?: string;
   readonly rawPatch?: string;
+  readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
   readonly onActionRef?: (ref: NarrativeWalkthroughRefAction) => void;
   readonly actions: NarrativeWalkthroughActions;
@@ -284,7 +287,10 @@ export function NarrativeWalkthrough({
                       size="sm"
                       className="h-auto w-full justify-between whitespace-normal px-2 py-2 text-left"
                       aria-current={active ? "true" : undefined}
-                      onClick={() => actions.onSelectSection(section.id)}
+                      onClick={() => {
+                      setLocalCurrentSectionId(section.id);
+                      actions.onSelectSection(section.id);
+                    }}
                     >
                       <span className="min-w-0">
                         <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{chapter.title}</span>
@@ -356,6 +362,7 @@ export function NarrativeWalkthrough({
                   key={`${activeSection.id}::${hunk.id}`}
                   blockId={`${activeSection.id}::${hunk.id}::${index}`}
                   {...(rawPatch === undefined ? {} : { patch: rawPatch })}
+                  {...(sourceSession === undefined ? {} : { sourceSession })}
                   hunkIds={[hunk.id]}
                   hunks={[hunk]}
                   allHunks={allHunks}
@@ -435,13 +442,28 @@ export function NarrativeWalkthrough({
                 {walkthrough.support.hunks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Every source hunk is in a section.</p>
                 ) : (
-                  <ul className="space-y-1 text-sm">
-                    {walkthrough.support.hunks.map((hunk) => (
-                      <li key={hunk.id} className="break-all">
-                        <code className="font-mono text-xs">{hunk.id}</code> · {hunk.path}
-                      </li>
+                  <div className="space-y-2">
+                    <ul className="space-y-1 text-sm">
+                      {walkthrough.support.hunks.map((hunk) => (
+                        <li key={hunk.id} className="break-all">
+                          <code className="font-mono text-xs">{hunk.id}</code> · {hunk.path}
+                        </li>
+                      ))}
+                    </ul>
+                    {walkthrough.support.hunks.map((hunk, index) => (
+                      <NarrativeWalkthroughDiff
+                        key={`support::${hunk.id}`}
+                        blockId={`support::${hunk.id}::${index}`}
+                        {...(rawPatch === undefined ? {} : { patch: rawPatch })}
+                        {...(sourceSession === undefined ? {} : { sourceSession })}
+                        hunkIds={[hunk.id]}
+                        hunks={[hunk]}
+                        allHunks={allHunks}
+                        {...(annotations === undefined ? {} : { annotations })}
+                        {...(preferences === undefined ? {} : { preferences })}
+                      />
                     ))}
-                  </ul>
+                  </div>
                 )}
               </CardContent>
             </Card>
