@@ -199,7 +199,12 @@ export function NarrativeWalkthrough({
     [canGoNext, canGoPrev, goToOffset],
   );
 
+  const hasMountedTakeoverRef = useRef(false);
   useEffect(() => {
+    if (!hasMountedTakeoverRef.current) {
+      hasMountedTakeoverRef.current = true;
+      return;
+    }
     focusHeading();
   }, [activeSection.id, focusHeading]);
 

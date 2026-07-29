@@ -119,6 +119,17 @@ function buildActions(overrides: Partial<NarrativeWalkthroughActions> = {}): Nar
 }
 
 describe("narrative walkthrough takeover", () => {
+  it("does not steal focus when the takeover first mounts", () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "Existing opener";
+    document.body.append(opener);
+    opener.focus();
+    render(<NarrativeWalkthrough walkthrough={buildWalkthrough()} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} />);
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
   it("renders the chapter rail, current section prose, and Support group", () => {
     const actions = buildActions();
     render(
