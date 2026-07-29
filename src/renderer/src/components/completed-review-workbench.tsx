@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -70,6 +70,7 @@ import {
 import { parseReviewDiff } from "@/review-diff-data";
 import { walkthroughCopy } from "@/review-copy";
 import type { WalkthroughProjection } from "../renderer-contracts";
+import { NarrativeWalkthrough } from "./narrative-walkthrough";
 
 export type CompletedReviewWorkbenchModel = {
   readonly source: { readonly profileId: string; readonly sessionId: string };
@@ -119,6 +120,13 @@ export type CompletedReviewWalkthroughActions = {
   readonly onRetry: () => void;
   readonly onRegenerate: () => void;
   readonly busy: boolean;
+  readonly onOpenTakeover?: () => void;
+  readonly onCloseTakeover?: () => void;
+  readonly onSelectSection?: (sectionId: string) => void;
+  readonly onMarkSectionReviewed?: (sectionId: string) => void;
+  readonly onMarkSupportReviewed?: () => void;
+  readonly reviewedSectionIds?: ReadonlyArray<string>;
+  readonly supportReviewed?: boolean;
 };
 
 /** Owns completed-review-local selection, filtering, draft safety, and view state. */
@@ -204,6 +212,11 @@ export function CompletedReviewWorkbench({
     "idle",
   );
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [walkthroughCurrentSectionId, setWalkthroughCurrentSectionId] = useState<string>();
+  const [walkthroughReviewedSectionIds, setWalkthroughReviewedSectionIds] = useState<ReadonlyArray<string>>([]);
+  const [walkthroughSupportReviewed, setWalkthroughSupportReviewed] = useState(false);
+  const openWalkthroughButtonRef = useRef<HTMLButtonElement>(null);
   const preferenceProfileId = props.profileId ?? "default";
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
     loadReviewViewPreferences(preferenceProfileId),
@@ -246,6 +259,21 @@ export function CompletedReviewWorkbench({
   const updatePreferences = (update: Partial<ReviewViewPreferences>): void => {
     setPreferences(saveReviewViewPreferences(preferenceProfileId, update));
   };
+  const readyWalkthrough =
+    actions.walkthrough?.projection.lifecycle === "ready"
+      ? actions.walkthrough.projection.walkthrough
+      : undefined;
+  useEffect(() => {
+    if (readyWalkthrough === undefined) return;
+    const firstSectionId = readyWalkthrough.chapters[0]?.sections[0]?.id;
+    if (firstSectionId === undefined) return;
+    setWalkthroughCurrentSectionId((current) => {
+      if (current !== undefined && readyWalkthrough.chapters.some((chapter) => chapter.sections.some((section) => section.id === current))) {
+        return current;
+      }
+      return firstSectionId;
+    });
+  }, [readyWalkthrough]);
   const mappedFindingCount = props.result.findings.filter(
     (finding) => finding.mappingStatus === "mapped",
   ).length;
@@ -396,6 +424,22 @@ export function CompletedReviewWorkbench({
                 {actions.walkthrough.projection.lifecycle === "idle" ? "Generate walkthrough" : "Generate another walkthrough"}
               </Button>
             ) : null}
+            {actions.walkthrough.projection.lifecycle === "ready" && actions.walkthrough.projection.walkthrough !== undefined ? (
+              <Button
+                ref={openWalkthroughButtonRef}
+                size="sm"
+                variant="default"
+                data-testid="open-walkthrough-takeover"
+                onClick={() => {
+                  const firstSectionId = readyWalkthrough?.chapters[0]?.sections[0]?.id;
+                  if (firstSectionId !== undefined) setWalkthroughCurrentSectionId((current) => current ?? firstSectionId);
+                  setWalkthroughOpen(true);
+                  actions.walkthrough?.onOpenTakeover?.();
+                }}
+              >
+                Open walkthrough
+              </Button>
+            ) : null}
             {actions.walkthrough.projection.lifecycle === "failed" ? (
               <Button size="sm" variant="outline" data-testid="walkthrough-retry" onClick={actions.walkthrough.onRetry}>Retry generation</Button>
             ) : null}
@@ -460,7 +504,40 @@ export function CompletedReviewWorkbench({
           </DialogContent>
         </Dialog>
       )}
-      <div
+      {walkthroughOpen && readyWalkthrough !== undefined ? (
+        <NarrativeWalkthrough
+          walkthrough={readyWalkthrough}
+          {...(walkthroughCurrentSectionId === undefined ? {} : { currentSectionId: walkthroughCurrentSectionId })}
+          reviewedSectionIds={walkthroughReviewedSectionIds}
+          supportReviewed={walkthroughSupportReviewed}
+          preferences={preferences}
+          onPreferencesChange={updatePreferences}
+          actions={{
+            onBackToFiles: () => {
+              setWalkthroughOpen(false);
+              actions.walkthrough?.onCloseTakeover?.();
+              openWalkthroughButtonRef.current?.focus();
+            },
+            onMarkSectionReviewed: (sectionId) => {
+              setWalkthroughReviewedSectionIds((current) => current.includes(sectionId) ? current : [...current, sectionId]);
+              actions.walkthrough?.onMarkSectionReviewed?.(sectionId);
+            },
+            onMarkSupportReviewed: () => {
+              setWalkthroughSupportReviewed(true);
+              actions.walkthrough?.onMarkSupportReviewed?.();
+            },
+            onSelectSection: (sectionId) => {
+              setWalkthroughCurrentSectionId(sectionId);
+              actions.walkthrough?.onSelectSection?.(sectionId);
+            },
+            onAddInlineComment: async (input) => {
+              if (actions.batchActions?.addInlineComment === undefined) return;
+              await actions.batchActions.addInlineComment(input);
+            },
+          }}
+        />
+      ) : null}
+      {!walkthroughOpen ? <div
         className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
       >
         {reviewRailOpen ? (
@@ -831,7 +908,7 @@ export function CompletedReviewWorkbench({
             </ScrollArea>
           </aside>
         ) : null}
-      </div>
+      </div> : null}
     </section>
   );
 }

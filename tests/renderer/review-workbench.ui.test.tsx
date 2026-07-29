@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompletedReviewWorkbench } from "../../src/renderer/src/components/completed-review-workbench";
 
@@ -39,6 +39,7 @@ function ReviewWorkbenchFixture(props: {
       }}
       actions={{
         reportNavigationState: () => undefined,
+        ...(props.walkthrough === undefined ? {} : { walkthrough: props.walkthrough as never }),
       }}
     />
   );
@@ -361,6 +362,94 @@ describe("completed review workbench", () => {
       screen.getByRole("button", { name: "Copy validation plan" }),
     );
     expect(screen.getByText("Validation plan copied locally.")).toBeTruthy();
+  });
+
+  it("opens the chapter-rail takeover without changing Files state and restores focus", async () => {
+    const user = userEvent.setup();
+    const onSelectSection = vi.fn();
+    const walkthrough = {
+      projection: {
+        lifecycle: "ready",
+        noticeKey: "walkthrough-ready",
+        walkthrough: {
+          snapshot: {
+            profileId: "fixture",
+            sessionId: "fixture-session",
+            headSha: "a".repeat(40),
+            patchHash: "b".repeat(64),
+          },
+          title: "Read-only walkthrough",
+          focus: "Recovery flow",
+          chapters: [
+            {
+              id: "chapter-1",
+              title: "Context",
+              sections: [
+                {
+                  id: "section-1",
+                  title: "Why this snapshot matters",
+                  prose: "The stored patch remains readable.",
+                  hunkIds: ["h1"],
+                  hunks: [],
+                },
+                {
+                  id: "section-2",
+                  title: "How reads stay read-only",
+                  prose: "The walkthrough does not start a review run.",
+                  hunkIds: ["h2"],
+                  hunks: [],
+                },
+              ],
+            },
+          ],
+          support: {
+            id: "support",
+            title: "Support",
+            hunkIds: ["h3"],
+            hunks: [],
+          },
+        },
+      },
+      dialogOpen: false,
+      models: [{ id: "pi-design", label: "Design model" }],
+      model: "pi-design",
+      reasoning: "medium",
+      catalogUnavailable: false,
+      onOpenDialog: vi.fn(),
+      onCloseDialog: vi.fn(),
+      onModelChange: vi.fn(),
+      onReasoningChange: vi.fn(),
+      onConfirm: vi.fn(),
+      onRetry: vi.fn(),
+      onRegenerate: vi.fn(),
+      busy: false,
+      onSelectSection,
+      onMarkSectionReviewed: vi.fn(),
+      onMarkSupportReviewed: vi.fn(),
+      onOpenTakeover: vi.fn(),
+      onCloseTakeover: vi.fn(),
+    } as never;
+    render(
+      <ReviewWorkbenchFixture
+        result={{ changeSummary: "Walkthrough", verdict: "comment", summary: "Summary", findings: [], validationPlan: [], assumptions: [] } as never}
+        draft={{ summaryBody: "", comments: [] }}
+        comments={{ threads: [] }}
+        checks={{ overall: "unknown", checks: [] }}
+        history={[]}
+        debugHref="/debug"
+        walkthrough={walkthrough}
+      />,
+    );
+    const open = screen.getByRole("button", { name: "Open walkthrough" });
+    await user.click(open);
+    expect(screen.getByTestId("back-to-files")).toBeTruthy();
+    expect(screen.queryByLabelText("Review diff")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Next section" }));
+    expect(onSelectSection).toHaveBeenCalledWith("section-2");
+    await user.click(screen.getByRole("button", { name: "Back to files" }));
+    expect(screen.queryByTestId("back-to-files")).toBeNull();
+    expect(screen.getByText("Stored patch unavailable")).toBeTruthy();
+    expect(document.activeElement).toBe(open);
   });
 
   it("shows a stale-head warning instead of a GitHub write control", () => {
