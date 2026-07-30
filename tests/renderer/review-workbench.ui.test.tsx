@@ -61,13 +61,13 @@ describe("completed review workbench", () => {
         draft={{ summaryBody: "", comments: [] }} comments={{ threads: [] }} checks={{ overall: "unknown", checks: [] }} history={[]} debugHref="/debug"
       />,
     );
-    expect(screen.getByText("2 findings · 1 mapped")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Findings · 2" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Fix queue" })).toBeNull();
     expect(screen.queryByLabelText("Fix queue status for Protect guard")).toBeNull();
     expect(window.localStorage.getItem(legacyQueueKey)).toBe('{"guard":"investigating"}');
   });
 
-  it("persists compact Pierre controls and collapses both workbench rails", async () => {
+  it("persists compact Pierre controls and keeps the PR workbench to one file rail", async () => {
     const user = userEvent.setup();
     render(
       <ReviewWorkbenchFixture
@@ -108,7 +108,6 @@ describe("completed review workbench", () => {
     await user.click(
       screen.getByRole("button", { name: "Hide review navigator" }),
     );
-    await user.click(screen.getByRole("button", { name: "Hide details" }));
 
     expect(
       screen.getByLabelText("Review diff").getAttribute("data-diff-style"),
@@ -177,6 +176,7 @@ describe("completed review workbench", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Findings · 2" }));
     await user.click(screen.getByRole("button", { name: /Mapped finding/ }));
     expect(
       screen.getByLabelText("Review diff").getAttribute("data-selected-path"),
@@ -195,16 +195,7 @@ describe("completed review workbench", () => {
     expect(
       document.querySelectorAll('[data-selected-line="true"]'),
     ).toHaveLength(0);
-    expect(
-      screen
-        .getByRole("button", { name: /Unmapped finding/ })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-
-    await user.click(screen.getByRole("button", { name: "Hide details" }));
-    expect(screen.queryByLabelText("Review result and actions")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Show details" }));
-    expect(screen.getByLabelText("Review result and actions")).toBeTruthy();
+    expect(screen.getByLabelText("Selected finding detail")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Previous finding" }));
     expect(screen.getByText("Finding mapped · new lines 7–8")).toBeTruthy();
   });
@@ -233,6 +224,7 @@ describe("completed review workbench", () => {
     expect(screen.queryByLabelText("Filter findings by confidence")).toBeNull();
     expect(screen.queryByLabelText("Filter findings by evidence mapping")).toBeNull();
     expect(screen.queryByLabelText("Filter findings by category")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Findings · 2" }));
     expect(screen.getByRole("button", { name: /High finding/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Medium finding/ })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /High finding/ }));
@@ -259,14 +251,13 @@ describe("completed review workbench", () => {
       />,
     );
     expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/updates.ts");
-    expect(screen.getByText("Prior guard")).toBeTruthy();
     await user.click(screen.getByRole("tab", { name: "Full PR" }));
     expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/full.ts");
     await user.click(screen.getByRole("tab", { name: "Updates" }));
     expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/updates.ts");
   });
 
-  it("keeps unmapped findings visible and exposes only read-only review context", async () => {
+  it("keeps unmapped findings visible and exposes PR context from the overview", async () => {
     const user = userEvent.setup();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -352,8 +343,11 @@ describe("completed review workbench", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Findings · 2" }));
     await user.click(screen.getByRole("button", { name: "Unmapped finding" }));
     expect(screen.getByText("Unmapped evidence — inspect before drafting a comment")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "PR overview" }));
+    await user.click(screen.getByRole("button", { name: "Existing threads" }));
     expect(screen.getByText("Existing review comment")).toBeTruthy();
     expect(screen.getByText("unit")).toBeTruthy();
     expect(screen.getByText("Required")).toBeTruthy();
@@ -362,10 +356,6 @@ describe("completed review workbench", () => {
     expect(
       screen.queryByRole("button", { name: /resolve|reply|apply/i }),
     ).toBeNull();
-    await user.click(
-      screen.getByRole("button", { name: "Copy validation plan" }),
-    );
-    expect(screen.getByText("Validation plan copied locally.")).toBeTruthy();
   });
 
   it("opens the chapter-rail takeover without changing Files state and restores focus", async () => {

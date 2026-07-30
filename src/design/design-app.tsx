@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 
 import { App } from "../renderer/src/app";
-import { requestJson } from "../renderer/src/api-client";
 import { BrandMark } from "../renderer/src/components/brand-mark";
-import { MergeConfirmationDialog } from "../renderer/src/components/merge-confirmation-dialog";
-import { ReviewSubmissionDialog } from "../renderer/src/components/review-submission-dialog";
 import { Badge } from "../renderer/src/components/ui/badge";
 import { Button } from "../renderer/src/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../renderer/src/components/ui/card";
-import { submissionFixtureData } from "../renderer/src/flows/app-fixtures";
 import { scenarioFromLocation, scenarioUrl, designScenarios } from "./scenarios";
 import { DesignRecoveryChip } from "./design-recovery";
+import { designRecoveryTargetFor } from "./design-recovery-targets";
 import { designInboxRecoveryFixtureFor, designRecoveryFixtureFor } from "./mock-bridge";
+import { DesignPublishConfirmationScenario } from "./design-publish-confirmation-scenario";
+import { DesignReviewJourneyScenario } from "./design-review-journey-scenario";
 import { DesignSettingsOverlay } from "./design-settings-overlay";
 import { DesignWalkthroughScenario } from "./design-walkthrough-scenario";
 
@@ -19,8 +18,10 @@ export function DesignApp(): React.JSX.Element {
   const scenario = scenarioFromLocation();
   useEffect(() => { document.title = scenario === undefined ? "Patchdesk Design" : `Patchdesk Design · ${scenario.title}`; }, [scenario]);
   if (scenario === undefined) return <DesignIndex />;
-  if (scenario.id === "dialog-submit") return <DesignSubmissionScenario />;
-  if (scenario.id === "dialog-merge") return <DesignMergeScenario />;
+  if (scenario.id === "dialog-submit") return <DesignPublishConfirmationScenario variant="submit" />;
+  if (scenario.id === "dialog-merge") return <DesignPublishConfirmationScenario variant="merge" />;
+  if (scenario.id === "review-prepared") return <DesignReviewJourneyScenario variant="prepared" />;
+  if (scenario.id === "review-completed") return <DesignReviewJourneyScenario variant="completed" />;
   if (scenario.id === "settings-recovery") return <DesignSettingsScenario />;
   if (scenario.id === "dialog-clear-local-data") return <DesignCleanupDialogScenario />;
   if (scenario.id === "inbox-recovery-states") return <DesignInboxRecoveryScenario />;
@@ -31,37 +32,6 @@ export function DesignApp(): React.JSX.Element {
   if (scenario.id === "walkthrough-failed") return <DesignWalkthroughScenario variant="walkthrough-failed" />;
   if (scenario.id === "walkthrough-stale") return <DesignWalkthroughScenario variant="walkthrough-stale" />;
   return <App />;
-}
-
-function DesignSubmissionScenario(): React.JSX.Element {
-  return (
-    <div className="mx-auto max-w-3xl p-6">
-      <ReviewSubmissionDialog
-        defaultOpen
-        draft={submissionFixtureData.draft as never}
-        findings={submissionFixtureData.findings as never}
-        onCreatePending={async () => readReviewId(await requestJson("/v1/reviews/pending", { method: "POST", body: { profileId: "cfw", sessionId: "design-session" } }))}
-        onSubmitPending={async (event, summaryBody) => readReviewId(await requestJson("/v1/reviews/submit", { method: "POST", body: { profileId: "cfw", sessionId: "design-session", event, summaryBody } }))}
-      />
-    </div>
-  );
-}
-
-function DesignMergeScenario(): React.JSX.Element {
-  return (
-    <div className="mx-auto max-w-3xl p-6">
-      <MergeConfirmationDialog
-        defaultOpen
-        readiness={{ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] }}
-        context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }}
-        methods={["squash", "merge"]}
-        onMerge={async (method, acknowledgedWarnings) => {
-          const response = await requestJson("/v1/reviews/merge", { method: "POST", body: { profileId: "cfw", sessionId: "design-session", method, acknowledgedWarnings } });
-          return isRecord(response) && typeof response.mergeCommitSha === "string" ? { mergeCommitSha: response.mergeCommitSha } : {};
-        }}
-      />
-    </div>
-  );
 }
 
 function DesignSettingsScenario(): React.JSX.Element {
@@ -122,24 +92,23 @@ function DesignWorkbenchRecoveryScenario(): React.JSX.Element {
   const scenario = scenarioFromLocation();
   if (scenario === undefined) return <></>;
   const fixture = designRecoveryFixtureFor(scenario.id);
+  const target = designRecoveryTargetFor(scenario.id);
+  if (target === undefined) return <></>;
   return (
     <div className="mx-auto max-w-3xl p-6" data-testid={scenario.id}>
       <header className="mb-4">
         <p className="text-sm text-muted-foreground">Workbench recovery — single primary action.</p>
         <h1 className="text-2xl font-semibold">Protect review writes</h1>
       </header>
-      <DesignRecoveryChip noticeKey={fixture.noticeKey} tone={fixture.tone} {...(fixture.actionKey === undefined ? {} : { actionKey: fixture.actionKey })} />
+      <DesignRecoveryChip
+        noticeKey={fixture.noticeKey}
+        tone={fixture.tone}
+        {...(fixture.actionKey === undefined ? {} : { actionKey: fixture.actionKey })}
+        primaryLabel={target.primaryLabel}
+        snapshotReadable={target.snapshotReadable}
+      />
     </div>
   );
-}
-
-async function readReviewId(value: unknown): Promise<{ readonly reviewId: string }> {
-  if (isRecord(value) && typeof value.reviewId === "string") return { reviewId: value.reviewId };
-  throw new Error("Design mock did not return a review ID");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function DesignIndex(): React.JSX.Element {

@@ -112,13 +112,13 @@ describe("FlueCliWalkthroughInvoker", () => {
     await expect(failed.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
   });
 
-  it("classifies timeout as execution failure", async () => {
+  it("classifies timeout without returning model output", async () => {
     const invoker = new FlueCliWalkthroughInvoker(
       new CommandRunner(new RecordingExecutor({ _tag: "TimedOut", stdout: "", stderr: "" })),
       "/workspace/patchdesk",
     );
 
-    await expect(invoker.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+    await expect(invoker.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "timed_out" } });
   });
 
   it("lets caller cancellation win over a late command failure", async () => {

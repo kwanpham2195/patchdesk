@@ -52,6 +52,18 @@ describe("maintainer inbox", () => {
     expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
   });
 
+  it("offers a review when checks fail for a PR that was not assigned to the active maintainer", () => {
+    const row = projectMaintainerInboxRow({
+      summary,
+      checks: { overall: "failing", checks: [] },
+      activeAccount: "someone-else",
+      dataFreshness: "fresh",
+    });
+
+    expect(row.categories).toContain("checks_failing");
+    expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
+  });
+
 
   it("prioritizes a running current-head review above every remote category", () => {
     const row = projectMaintainerInboxRow({

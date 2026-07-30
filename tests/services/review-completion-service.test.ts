@@ -17,6 +17,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { createReviewSession, startNextAttempt } from "../../src/domain/review-session";
+import { createEmptyReviewBatch } from "../../src/domain/review-batch";
 import { ReviewCompletionService } from "../../src/services/review-completion-service";
 
 const roots: string[] = [];
@@ -66,6 +67,51 @@ describe("ReviewCompletionService", () => {
       value: { state: { _tag: "Completed" } },
     });
     expect(JSON.parse(await readFile(fixture.resultPath, "utf8"))).toMatchObject({ changeSummary: "Protect the write boundary" });
+  });
+
+  it("replaces only model items when an optional AI run completes", async () => {
+    const fixture = await runningReview();
+    const initial = createEmptyReviewBatch({
+      sessionId: fixture.session.id,
+      createdAt: at,
+    });
+    const sessionWithHumanItem = {
+      ...fixture.session,
+      batch: { state: initial.state },
+      batchContent: {
+        ...initial,
+        items: [{
+          _tag: "InlineComment" as const,
+          id: "manual-1" as never,
+          provenance: { _tag: "human" as const },
+          source: "manual" as const,
+          anchor: { path: "src/review.ts" as never, startLine: 12, line: 12, side: "new" as const },
+          body: "Keep this local observation.",
+          include: true,
+          postability: "postable" as const,
+        }],
+      },
+    };
+    expect(await fixture.store.save(sessionWithHumanItem)).toEqual({ _tag: "ok", value: undefined });
+
+    const completed = await fixture.service.complete({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      attemptId: fixture.attempt.id,
+      result: result(),
+    });
+
+    expect(completed).toMatchObject({
+      _tag: "ok",
+      value: {
+        batch: {
+          items: [
+            { id: "manual-1", provenance: { _tag: "human" } },
+            { findingId: "mapped", provenance: { _tag: "model", attemptId: "001" } },
+          ],
+        },
+      },
+    });
   });
 
   it("rejects invalid, raw, or credential-like model output without creating a result artifact", async () => {

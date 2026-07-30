@@ -33,7 +33,6 @@ import type {
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
-import { ReviewDraftController } from "../services/review-draft-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -243,10 +242,6 @@ export async function startLocalApiServer(
           },
           () => new Date().toISOString() as never,
         );
-  const reviewDrafts = new ReviewDraftController(
-    sessions,
-    () => new Date().toISOString() as never,
-  );
   const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
@@ -515,25 +510,17 @@ export async function startLocalApiServer(
       reasoning: started.value.reasoning,
     }, 202);
   });
-  app.post("/v1/reviews/pending", async (context) =>
-    reviewWrites === undefined
-      ? context.json({ error: "review_write_unavailable" }, 503)
-      : response(
-          context,
-          await reviewWrites.createPending(await jsonBody(context)),
-        ),
-  );
   app.post("/v1/reviews/apply-batch", async (context) =>
     reviewWrites === undefined
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(context, await reviewWrites.applyBatch(await jsonBody(context))),
   );
-  app.post("/v1/reviews/submit", async (context) =>
+  app.post("/v1/reviews/submit-batch", async (context) =>
     reviewWrites === undefined
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(
           context,
-          await reviewWrites.submitPending(await jsonBody(context)),
+          await reviewWrites.submitBatch(await jsonBody(context)),
         ),
   );
   app.post("/v1/reviews/open", async (context) =>
@@ -556,7 +543,7 @@ export async function startLocalApiServer(
         prNumber: session.key.prNumber,
         title: session.prContext?.title,
         state: session.state._tag,
-        draftState: session.draftContent?.state._tag,
+        batchState: session.batchContent?.state._tag,
         updatedAt: session.updatedAt,
       })),
     });
@@ -581,9 +568,6 @@ export async function startLocalApiServer(
   );
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
-  );
-  app.post("/v1/reviews/draft", async (context) =>
-    response(context, await reviewDrafts.update(await jsonBody(context))),
   );
   app.post("/v1/reviews/batch", async (context) =>
     response(context, await reviewBatches.update(await jsonBody(context))),
@@ -621,6 +605,14 @@ export async function startLocalApiServer(
       context,
       await storageManagement.clearCache(profileId.value),
     );
+  });
+  app.get("/v1/diagnostics", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    if (profileId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    const events = await diagnostics.recent(profileId.value);
+    return events._tag === "ok"
+      ? context.json({ events: events.value })
+      : context.json({ error: "diagnostics_unavailable" }, 503);
   });
   app.post("/v1/diagnostics/support-bundle", async (context) => {
     const body = await jsonBody(context);

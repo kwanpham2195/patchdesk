@@ -4,12 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  Copy,
-  GitPullRequest,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
 } from "lucide-react";
 
 import type {
@@ -24,13 +20,10 @@ import type { RevisionComparison, ReviewScopeProjection } from "../../../domain/
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
-import { ReviewChecks } from "./review-checks";
 import { ReviewDiffView, type ReviewInlineAnnotation } from "./review-diff-view";
-import { ReviewBatchPanel, type ReviewBatchPanelActions } from "./review-batch-panel";
-import {
-  MergeConfirmationDialog,
-  type MergeMethod,
-} from "./merge-confirmation-dialog";
+import { type ReviewBatchPanelActions } from "./review-batch-panel";
+import { PullRequestOverviewSheet } from "./pr-overview-sheet";
+import { type MergeMethod } from "./merge-confirmation-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,9 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -84,7 +74,7 @@ export type CompletedReviewWorkbenchModel = {
   readonly pullRequest?: PullRequestSummary;
   readonly reviewedHeadSha: string;
   readonly currentHeadSha?: string;
-  readonly freshness: "fresh" | "stale" | "unavailable";
+  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: string;
   readonly batch?: ReviewBatch;
   readonly comments: GitHubComments;
@@ -208,10 +198,10 @@ export function CompletedReviewWorkbench({
   );
   const [selectedFinding, setSelectedFinding] =
     useState<ReviewResult["findings"][number]>();
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [findingsOpen, setFindingsOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [overviewFocus, setOverviewFocus] = useState<"checks">();
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [walkthroughCurrentSectionId, setWalkthroughCurrentSectionId] = useState<string>();
   const [walkthroughReviewedSectionIds, setWalkthroughReviewedSectionIds] = useState<ReadonlyArray<string>>([]);
@@ -224,7 +214,6 @@ export function CompletedReviewWorkbench({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const inspectorOpen = preferences.detailsRailOpen;
   const reviewRailOpen = preferences.reviewRailOpen;
   useEffect(() => {
     setPreferences(loadReviewViewPreferences(preferenceProfileId));
@@ -281,9 +270,6 @@ export function CompletedReviewWorkbench({
       return firstSectionId;
     });
   }, [readyWalkthrough]);
-  const mappedFindingCount = props.result.findings.filter(
-    (finding) => finding.mappingStatus === "mapped",
-  ).length;
   const selectedFindingIndex =
     selectedFinding === undefined
       ? -1
@@ -325,6 +311,17 @@ export function CompletedReviewWorkbench({
       ),
     [props.result.findings],
   );
+  const reviewAnnotations = useMemo(
+    () => [
+      ...inlineFindingAnnotations,
+      ...(props.batch?.items.flatMap((item): ReadonlyArray<ReviewInlineAnnotation> =>
+        item._tag === "InlineComment"
+          ? [{ id: item.id, path: item.anchor.path, start: item.anchor.startLine, end: item.anchor.line, side: item.anchor.side, severity: "info", title: "Local draft", explanation: item.body }]
+          : [],
+      ) ?? []),
+    ],
+    [inlineFindingAnnotations, props.batch?.items],
+  );
   const walkthroughAnnotations = useMemo(
     () => [
       ...inlineFindingAnnotations,
@@ -345,20 +342,6 @@ export function CompletedReviewWorkbench({
     ],
     [inlineFindingAnnotations, props.batch?.items],
   );
-  const updateWritePending = (pending: boolean): void => actions.reportNavigationState(pending ? "write_pending" : "clear");
-
-  const copyValidationPlan = async (): Promise<void> => {
-    try {
-      if (navigator.clipboard === undefined) throw new Error("unavailable");
-      await navigator.clipboard.writeText(
-        props.result.validationPlan.join("\n"),
-      );
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
-  };
-
   return (
     <section
       aria-label="Completed review workbench"
@@ -399,6 +382,23 @@ export function CompletedReviewWorkbench({
           </p>
         </div>
         <div className="flex items-start gap-2 text-right text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2">
+            {!overviewOpen ? <Button variant="outline" size="sm" onClick={() => { setOverviewFocus("checks"); setOverviewOpen(true); }}>Checks · {props.checks.overall} · {props.checks.checks.length}</Button> : null}
+            <Button variant="outline" size="sm" onClick={() => { setOverviewFocus(undefined); setOverviewOpen(true); }}>PR overview</Button>
+            <PullRequestOverviewSheet
+              open={overviewOpen}
+              onOpenChange={setOverviewOpen}
+              {...(overviewFocus === undefined ? {} : { focus: overviewFocus })}
+              {...(props.pullRequest === undefined ? {} : { pullRequest: props.pullRequest })}
+              {...(activePatch === undefined ? {} : { patch: activePatch })}
+              freshness={freshness}
+              checks={props.checks}
+              comments={props.comments}
+              {...(props.batch === undefined ? {} : { batch: props.batch })}
+              {...(selectedFinding === undefined ? {} : { selectedFinding })}
+              actions={{ ...(props.batchActions === undefined ? {} : { batch: props.batchActions }), ...(props.merge === undefined ? {} : { merge: props.merge }) }}
+            />
+          </div>
           {refreshRemote === undefined ? null : (
             <Button variant="outline" size="sm" onClick={() => void refreshRemote()}>
               Refresh
@@ -541,6 +541,16 @@ export function CompletedReviewWorkbench({
           supportReviewed={walkthroughSupportReviewed}
           {...(props.fullPatch === undefined ? {} : { rawPatch: props.fullPatch })}
           {...(props.sourceSession === undefined ? {} : { sourceSession: props.sourceSession })}
+          {...(props.batch?.state._tag === "Local" &&
+          !writeBlocked &&
+          props.batchActions !== undefined
+            ? {
+                localCommentAuthoring: {
+                  enabled: true,
+                  onSave: props.batchActions.addInlineComment,
+                },
+              }
+            : {})}
           annotations={walkthroughAnnotations}
           preferences={preferences}
           actions={{
@@ -561,16 +571,12 @@ export function CompletedReviewWorkbench({
               setWalkthroughCurrentSectionId(sectionId);
               actions.walkthrough?.onSelectSection?.(sectionId);
             },
-            onAddInlineComment: async (input) => {
-              if (actions.batchActions?.addInlineComment === undefined) return;
-              await actions.batchActions.addInlineComment(input);
-            },
           }}
         />
       ) : null}
       <div
         hidden={walkthroughOpen}
-        className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"} ${reviewRailOpen && inspectorOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]" : inspectorOpen ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}
+        className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 ${reviewRailOpen ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]" : "min-[1280px]:grid-cols-[minmax(0,1fr)]"}`}
       >
         {reviewRailOpen ? (
           <aside
@@ -665,18 +671,32 @@ export function CompletedReviewWorkbench({
               >
                 <ChevronRight />
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                aria-expanded={inspectorOpen}
-                aria-controls="review-inspector"
-                onClick={() =>
-                  updatePreferences({ detailsRailOpen: !inspectorOpen })
-                }
-              >
-                {inspectorOpen ? <PanelRightClose /> : <PanelRightOpen />}
-                {inspectorOpen ? "Hide details" : "Show details"}
+              <Button variant="outline" size="sm" onClick={() => setFindingsOpen(true)}>
+                Findings · {props.result.findings.length}
               </Button>
+              <Dialog open={findingsOpen} onOpenChange={setFindingsOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Review findings</DialogTitle>
+                    <DialogDescription>{props.result.summary}</DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-96 space-y-1 overflow-y-auto">
+                    {props.result.findings.length === 0 ? <p className="text-sm text-muted-foreground">This review has no findings.</p> : props.result.findings.map((finding) => (
+                      <Button
+                        key={finding.id}
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto w-full justify-start whitespace-normal px-1 py-1 text-left"
+                        aria-pressed={selectedFinding?.id === finding.id}
+                        onClick={() => { selectFinding(finding); setFindingsOpen(false); }}
+                      >
+                        <span className="line-clamp-2">{finding.title}</span>
+                      </Button>
+                    ))}
+                  </div>
+                  <DialogFooter><Button variant="outline" onClick={() => setFindingsOpen(false)}>Close</Button></DialogFooter>
+                </DialogContent>
+              </Dialog>
               <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
                 <SheetTrigger
                   render={
@@ -711,6 +731,13 @@ export function CompletedReviewWorkbench({
               </Sheet>
             </div>
           </div>
+          {selectedFinding === undefined ? null : (
+            <div className="border-b bg-muted/20 px-3 py-2 text-sm" aria-label="Selected finding detail">
+              <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={selectedFinding.severity} /><p className="font-medium">{selectedFinding.title}</p></div>
+              <p className="mt-1 text-muted-foreground">{selectedFinding.explanation}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{selectedFinding.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined ? `${selectedFinding.file} · ${selectedFinding.diffSide === "old" ? "old" : "new"} lines ${selectedFinding.lineStart}–${selectedFinding.lineEnd ?? selectedFinding.lineStart}` : "Unmapped evidence — inspect before drafting a comment"}</p>
+            </div>
+          )}
           {activePatch === undefined ? (
             <Alert className="m-5">
               <AlertTitle>{diffSurface === "updates" ? "Comparison patch unavailable" : "Stored patch unavailable"}</AlertTitle>
@@ -727,7 +754,7 @@ export function CompletedReviewWorkbench({
               {...(selectedPath === undefined ? {} : { selectedPath })}
               onActiveFileChange={setActivePath}
               {...(selectedRange === undefined ? {} : { selectedRange })}
-              annotations={inlineFindingAnnotations}
+              annotations={reviewAnnotations}
               preferences={preferences}
               collapsedPaths={collapsedPaths}
               onPreferencesChange={updatePreferences}
@@ -735,237 +762,17 @@ export function CompletedReviewWorkbench({
               {...(props.sourceSession === undefined
                 ? {}
                 : { sourceSession: props.sourceSession })}
+              {...(props.batch?.state._tag === "Local" && !writeBlocked && props.batchActions !== undefined ? { localCommentAuthoring: { enabled: true, onSave: props.batchActions.addInlineComment } } : {})}
             />
           )}
         </div>
-        {inspectorOpen ? (
-          <aside
-            id="review-inspector"
-            aria-label="Review result and actions"
-            className="min-w-0 overflow-hidden border-t bg-card min-[1280px]:col-span-1 min-[1280px]:border-l min-[1280px]:border-t-0"
-          >
-            <ScrollArea className="h-auto min-[1280px]:h-[calc(100vh-8.5rem)]">
-              <div className="min-w-0 space-y-5 p-4 [overflow-wrap:anywhere] [&_*]:min-w-0">
-                <section>
-                  <h2 className="font-semibold">Review result</h2>
-                  <p className="mt-2 break-words text-sm text-muted-foreground">
-                    {props.result.summary}
-                  </p>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Freshness</dt><dd className="mt-1 font-medium">{freshness === "fresh" ? "Current head confirmed" : freshness === "stale" ? "Head changed" : "Current head unavailable"}</dd></div>
-                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Findings</dt><dd className="mt-1 font-medium">{props.result.findings.length} finding{props.result.findings.length === 1 ? "" : "s"} · {mappedFindingCount} mapped</dd></div>
-                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Reviewed SHA</dt><dd className="mt-1 font-mono">{(props.reviewedHeadSha ?? "unavailable").slice(0, 12)}</dd></div>
-                    <div className="rounded-md border p-2"><dt className="text-muted-foreground">Lifecycle</dt><dd className="mt-1 font-medium">Local only until you confirm a GitHub write</dd></div>
-                  </dl>
-                  {props.result.findings.length === 0 ? null : (
-                    <div className="mt-3 border-t pt-3">
-                      <h3 className="text-sm font-medium">Findings</h3>
-                      <div className="mt-2 space-y-1">
-                        {props.result.findings.map((finding) => (
-                          <Button
-                            key={finding.id}
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto w-full justify-start whitespace-normal px-1 py-1 text-left"
-                            aria-pressed={selectedFinding?.id === finding.id}
-                            onClick={() => selectFinding(finding)}
-                          >
-                            <span className="line-clamp-2">{finding.title}</span>
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </section>
-                {selectedFinding === undefined ? null : (
-                  <>
-                    <Separator />
-                    <section aria-label="Selected finding detail">
-                      <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={selectedFinding.severity} /><h2 className="font-semibold">{selectedFinding.title}</h2></div>
-                      <p className="mt-2 text-sm text-muted-foreground">{selectedFinding.explanation}</p>
-                      <dl className="mt-3 grid gap-2 text-sm">
-                        <div><dt className="text-xs text-muted-foreground">Evidence</dt><dd>{selectedFinding.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined ? `${selectedFinding.file} · ${selectedFinding.diffSide === "old" ? "old" : "new"} lines ${selectedFinding.lineStart}–${selectedFinding.lineEnd ?? selectedFinding.lineStart}` : "Unmapped evidence — inspect before drafting a comment"}</dd></div>
-                        <div><dt className="text-xs text-muted-foreground">Confidence</dt><dd>{confidenceText(selectedFinding.confidence)}</dd></div>
-                        {selectedFinding.affectedScenario === undefined ? null : <div><dt className="text-xs text-muted-foreground">Affected scenario</dt><dd>{selectedFinding.affectedScenario}</dd></div>}
-                        {selectedFinding.whyItMatters === undefined ? null : <div><dt className="text-xs text-muted-foreground">Why it matters</dt><dd>{selectedFinding.whyItMatters}</dd></div>}
-                        {selectedFinding.suggestedChange === undefined ? null : <div><dt className="text-xs text-muted-foreground">Suggested change</dt><dd>{selectedFinding.suggestedChange}</dd></div>}
-                      </dl>
-                    </section>
-                  </>
-                )}
-                {props.reviewScope?.kind !== "incremental" ? null : (
-                  <>
-                    <Separator />
-                    <section>
-                      <h2 className="font-semibold">Incremental review</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {props.comparisonAvailability === "available"
-                          ? `${props.comparison?.commits.length ?? 0} commits · +${props.comparison?.additions ?? 0} −${props.comparison?.deletions ?? 0}`
-                          : "Comparison evidence is unavailable; use Full PR for complete context."}
-                      </p>
-                      {props.lifecycle === undefined ? null : (
-                        <ul className="mt-3 space-y-1 text-sm">
-                          {props.lifecycle.map((entry, index) => (
-                            <li key={`${entry.status}-${entry.currentFindingId ?? entry.priorFindingId ?? index}`} className="flex items-center justify-between gap-2 rounded border px-2 py-1.5">
-                              <span className="truncate">{entry.title}</span>
-                              <Badge variant="outline">{entry.status.replace("_", " ")}</Badge>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-                  </>
-                )}
-                <Separator />
-                <section>
-                  <h2 className="font-semibold">Assumptions and unresolved items</h2>
-                  <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                    {props.result.assumptions.length === 0 ? <li>Not provided by this review.</li> : props.result.assumptions.map((item) => <li key={item}>Assumption: {item}</li>)}
-                    {props.result.unresolvedItems === undefined || props.result.unresolvedItems.length === 0 ? null : props.result.unresolvedItems.map((item) => <li key={item}>Unresolved: {item}</li>)}
-                  </ul>
-                </section>
-                {props.result.callouts === undefined || props.result.callouts.length === 0 ? null : <>
-                  <Separator />
-                  <section>
-                    <h2 className="font-semibold">Human callouts</h2>
-                    <ul className="mt-2 space-y-2 text-sm">{props.result.callouts.map((callout) => <li key={`${callout.category}-${callout.title}`} className="rounded-md border p-2"><Badge variant="outline">{callout.category.replaceAll("_", " ")}</Badge><p className="mt-1 font-medium">{callout.title}</p><p className="mt-1 text-muted-foreground">{callout.detail}</p>{callout.path === undefined ? null : <p className="mt-1 font-mono text-xs text-muted-foreground">{callout.path}</p>}</li>)}</ul>
-                  </section>
-                </>}
-                <Separator />
-                {props.batchActions === undefined ? null : (
-                  <ReviewBatchPanel
-                    {...(props.batch === undefined ? {} : { batch: props.batch })}
-                    {...(selectedFinding === undefined ? {} : { selectedFinding })}
-                    writeBlocked={writeBlocked}
-                    actions={props.batchActions}
-                  />
-                )}
-                {props.merge === undefined ? null : (
-                  <>
-                    <Separator />
-                    <section>
-                      <h2 className="mb-3 font-semibold">Merge</h2>
-                      {writeBlocked ? (
-                        <p className="text-sm text-muted-foreground">
-                          Merge remains unavailable until the head is fresh.
-                        </p>
-                      ) : (
-                        <MergeConfirmationDialog
-                          readiness={props.merge.readiness}
-                          context={props.merge.context}
-                          methods={props.merge.methods}
-                          onMerge={props.merge.onMerge}
-                          onPendingChange={updateWritePending}
-                        />
-                      )}
-                    </section>
-                  </>
-                )}
-                <Separator />
-                <section>
-                  <ReviewChecks checks={props.checks} freshness={freshness} {...(props.pullRequest === undefined ? {} : { pullRequest: props.pullRequest.ref })} />
-                </section>
-                <Separator />
-                <section>
-                  <h2 className="font-semibold">Existing review threads</h2>
-                  {props.comments.threads.length === 0 ? (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      No existing review threads.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 space-y-2">
-                      {props.comments.threads.map((thread) => (
-                        <li
-                          key={thread.id}
-                          className="rounded-md border p-2 text-sm"
-                        >
-                          {thread.comments.map((comment) => (
-                            <div key={comment.id}>
-                              <strong>{comment.author}</strong>
-                              <p className="text-muted-foreground">
-                                {comment.body}
-                              </p>
-                            </div>
-                          ))}
-                          {props.batchActions === undefined || props.batch?.state._tag !== "Local" ? null : (
-                            <ThreadBatchActions
-                              threadId={thread.id}
-                              state={thread.state}
-                              onReply={async (body) => { await props.batchActions?.addThreadReply(thread.id, body); }}
-                              onState={async (action) => { await props.batchActions?.setThreadState(thread.id, action); }}
-                            />
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-                <Separator />
-                <section>
-                  <h2 className="font-semibold">Validation plan</h2>
-                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                    {props.result.validationPlan.map((step) => (
-                      <li key={step}>{step}</li>
-                    ))}
-                  </ol>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => void copyValidationPlan()}
-                  >
-                    <Copy />
-                    Copy validation plan
-                  </Button>
-                  {copyState === "copied" ? (
-                    <p role="status" className="mt-2 text-sm text-primary">
-                      Validation plan copied locally.
-                    </p>
-                  ) : copyState === "failed" ? (
-                    <p role="alert" className="mt-2 text-sm text-destructive">
-                      Clipboard access is unavailable.
-                    </p>
-                  ) : null}
-                </section>
-                <div className="rounded-lg border bg-muted p-3 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2 font-medium text-foreground">
-                    <GitPullRequest className="size-4" />
-                    Read-only workbench
-                  </div>
-                  <p className="mt-1">
-                    No write runs without a dedicated confirmation dialog.
-                  </p>
-                </div>
-              </div>
-            </ScrollArea>
-          </aside>
-        ) : null}
       </div>
     </section>
   );
 }
 
-function ThreadBatchActions({
-  threadId,
-  state,
-  onReply,
-  onState,
-}: {
-  readonly threadId: string;
-  readonly state: "open" | "resolved" | "outdated" | "unknown";
-  readonly onReply: (body: string) => Promise<void>;
-  readonly onState: (action: "resolve" | "reopen") => Promise<void>;
-}): React.JSX.Element {
-  const [body, setBody] = useState("");
-  return <div className="mt-2 border-t pt-2"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => { void onReply(body).then(() => setBody("")); }}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void onState(state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
-}
-
 function severityLabel(severity: "P0" | "P1" | "P2" | "P3"): string {
   return `${severity} ${severity === "P0" ? "Critical" : severity === "P1" ? "High" : severity === "P2" ? "Medium" : "Low"}`;
-}
-
-function confidenceText(confidence: "high" | "medium" | "low"): string {
-  return `${confidence} confidence`;
 }
 
 function SeverityBadge({

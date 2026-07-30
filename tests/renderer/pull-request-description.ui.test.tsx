@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { PullRequestDescription } from "../../src/renderer/src/components/pull-request-description";
+import {
+  PullRequestDescription,
+  PullRequestDescriptionPreview,
+} from "../../src/renderer/src/components/pull-request-description";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
@@ -30,7 +33,9 @@ describe("PullRequestDescription", () => {
 
     render(
       <PullRequestDescription
-        markdown={"# Context\n\n**Keep this**. [Docs](/centraldigital/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"}
+        markdown={
+          "# Context\n\n**Keep this**. [Docs](/centraldigital/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"
+        }
         pullRequest={pullRequest}
       />,
     );
@@ -51,7 +56,40 @@ describe("PullRequestDescription", () => {
 
   it("states when the author did not provide a description", () => {
     render(<PullRequestDescription />);
-    expect(screen.getByText("No description was provided on GitHub.")).toBeTruthy();
+    expect(
+      screen.getByText("No description was provided on GitHub."),
+    ).toBeTruthy();
+  });
+
+  it("preserves safe GitHub HTML and image content without executing arbitrary markup", () => {
+    render(
+      <PullRequestDescriptionPreview
+        markdown={
+          "<details open><summary>Context</summary><p>Details</p></details>\n\n![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)\n\n<script>window.bad = true</script>"
+        }
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(screen.getByText("Context")).toBeTruthy();
+    expect(screen.getByText("Details")).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Architecture diagram" }),
+    ).toBeTruthy();
+    expect(document.querySelector("script")).toBeNull();
+    expect((window as unknown as { bad?: boolean }).bad).toBeUndefined();
+  });
+
+  it("renders Mermaid fences as a diagram surface with readable source fallback", async () => {
+    render(
+      <PullRequestDescriptionPreview
+        markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(screen.getByLabelText("Mermaid diagram")).toBeTruthy();
+    expect(screen.getByText(/graph TD/)).toBeTruthy();
   });
 
   it("caps a long description at twelve visual lines until Show more is requested", async () => {
@@ -84,9 +122,15 @@ describe("PullRequestDescription", () => {
       const showMore = await screen.findByRole("button", { name: "Show more" });
       await user.click(showMore);
       expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
+      expect(
+        screen
+          .getByText("A saved description")
+          .closest('[data-slot="scroll-area"]')?.className,
+      ).not.toMatch(/max-h/);
     } finally {
       if (originalScrollHeight === undefined) {
-        delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+        delete (HTMLElement.prototype as { scrollHeight?: number })
+          .scrollHeight;
       } else {
         Object.defineProperty(
           HTMLElement.prototype,

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { DiffWorkbench } from "../../src/renderer/src/components/diff-workbench";
 
@@ -14,13 +13,10 @@ describe("diff workbench", () => {
     expect(screen.getByText("src/b.ts", { selector: "p" })).toBeTruthy();
   });
 
-  it("keeps review context on demand so the diff keeps the available desktop width", async () => {
-    const user = userEvent.setup();
+  it("keeps normal PR context out of the standalone diff surface", () => {
     render(<DiffWorkbench patch={patch} />);
 
     expect(screen.queryByLabelText("Review context")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Review context" }));
-    expect(screen.getByRole("dialog").textContent).toContain("Review context");
     expect(screen.getByLabelText("Diff workbench").className).not.toContain(
       "_18rem",
     );

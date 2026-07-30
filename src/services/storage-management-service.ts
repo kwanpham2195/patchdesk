@@ -211,7 +211,7 @@ export class StorageManagementService {
         if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
       }
       for (const session of scanned.value.sessions) {
-        if (session.state._tag !== "Discarded") continue;
+        if (session.state._tag === "Running") continue;
         const removed = await this.deps.artifacts.removeSession(profileId, session.id);
         if (removed._tag === "err") return err({ _tag: "StorageUnavailable" });
       }

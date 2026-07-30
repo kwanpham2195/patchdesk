@@ -10,6 +10,7 @@ import {
 import {
   type CodeViewDiffItem,
   type CodeViewItem,
+  type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
 } from "@pierre/diffs";
@@ -25,6 +26,9 @@ import {
 } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
+import { parseRepoRelativePath } from "../../../domain/ids";
+import type { ReviewAnchorFingerprint } from "../../../domain/review-batch";
+import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import {
   diffThemeFor,
@@ -53,6 +57,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 
 registerPierreThemeLoaders();
 
@@ -62,7 +67,7 @@ registerPierreThemeLoaders();
 const DIFF_CODE_METRICS = {
   fontSize: "13px",
   lineHeight: "20px",
-  fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontFamily: '"Berkeley Mono", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
 const TREE_ORDER_SORT_LIMIT = 256;
 
@@ -81,6 +86,25 @@ export type ReviewInlineAnnotation = {
   readonly severity: string;
   readonly title: string;
   readonly explanation: string;
+  readonly localComposer?: {
+    readonly path: string;
+    readonly startLine: number;
+    readonly line: number;
+    readonly onCancel: () => void;
+    readonly onSave: (body: string) => Promise<void>;
+  };
+};
+
+export type LocalCommentAuthoring = {
+  readonly enabled: boolean;
+  readonly onSave: (input: {
+    readonly path: string;
+    readonly startLine: number;
+    readonly line: number;
+    readonly side: "new" | "old";
+    readonly fingerprint?: ReviewAnchorFingerprint;
+    readonly body: string;
+  }) => Promise<void>;
 };
 
 
@@ -120,6 +144,8 @@ type ReviewDiffViewProps = {
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
+  /** Local-only composer. Callers omit it for read-only walkthroughs and stale snapshots. */
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
 };
 
 function ReviewDiffSurface({
@@ -136,6 +162,7 @@ function ReviewDiffSurface({
   onActiveFileChange,
   sourceSession,
   virtualized = true,
+  localCommentAuthoring,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
@@ -146,10 +173,15 @@ function ReviewDiffSurface({
   const activePathRef = useRef<string | undefined>(undefined);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
+  const [authoringSelection, setAuthoringSelection] = useState<CodeViewLineSelection | null>(null);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
     setViewerElement(node);
   }, []);
+  // Walkthrough cards render one filtered hunk with virtualized={false}. Full
+  // source hydration would pair that partial patch with the entire file and
+  // make Pierre calculate impossible trailing context.
+  const hydrationSourceSession = virtualized ? sourceSession : undefined;
   const {
     hydratedFiles,
     contextStatus,
@@ -159,7 +191,7 @@ function ReviewDiffSurface({
   } = useReviewDiffHydration({
     patch,
     ...(selectedPath === undefined ? {} : { selectedPath }),
-    ...(sourceSession === undefined ? {} : { sourceSession }),
+    ...(hydrationSourceSession === undefined ? {} : { sourceSession: hydrationSourceSession }),
   });
   useEffect(() => {
     const onAppearance = (event: Event): void => {
@@ -206,15 +238,61 @@ function ReviewDiffSurface({
     () => selectedPath === undefined ? undefined : files.find((file) => file.name === selectedPath),
     [files, selectedPath],
   );
+  const clearAuthoring = useCallback((): void => {
+    setAuthoringSelection(null);
+    viewer.current?.clearSelectedLines();
+  }, []);
+  const saveAuthoring = useCallback(async (body: string): Promise<void> => {
+    if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return;
+    const side: "new" | "old" = authoringSelection.range.side === "additions" ? "new" : "old";
+    const parsedPath = parseRepoRelativePath(authoringSelection.id);
+    const anchor = parsedPath._tag === "ok"
+      ? { path: parsedPath.value, startLine: authoringSelection.range.start, line: authoringSelection.range.end, side }
+      : undefined;
+    const fingerprint = anchor === undefined ? undefined : fingerprintPatchAnchor(patch, anchor);
+    await localCommentAuthoring.onSave({
+      path: authoringSelection.id,
+      startLine: authoringSelection.range.start,
+      line: authoringSelection.range.end,
+      side,
+      ...(fingerprint === undefined ? {} : { fingerprint }),
+      body,
+    });
+    clearAuthoring();
+  }, [authoringSelection, clearAuthoring, localCommentAuthoring, patch]);
+  const localComposerAnnotation = useMemo<ReviewInlineAnnotation | undefined>(() => {
+    if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return undefined;
+    return {
+      id: `local-comment:${authoringSelection.id}:${authoringSelection.range.start}:${authoringSelection.range.end}:${authoringSelection.range.side}`,
+      path: authoringSelection.id,
+      start: authoringSelection.range.start,
+      end: authoringSelection.range.end,
+      side: authoringSelection.range.side === "additions" ? "new" : "old",
+      severity: "info",
+      title: "Local comment",
+      explanation: "",
+      localComposer: {
+        path: authoringSelection.id,
+        startLine: authoringSelection.range.start,
+        line: authoringSelection.range.end,
+        onCancel: clearAuthoring,
+        onSave: saveAuthoring,
+      },
+    };
+  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring]);
+  const renderedAnnotations = useMemo(
+    () => localComposerAnnotation === undefined ? annotations : [...annotations, localComposerAnnotation],
+    [annotations, localComposerAnnotation],
+  );
   const selectedAnnotations = useMemo(
-    () => annotations
+    () => renderedAnnotations
       .filter((annotation) => selectedPath === undefined || annotation.path === selectedPath)
       .map((annotation): DiffLineAnnotation<ReviewInlineAnnotation | undefined> => ({
         side: annotation.side === "new" ? "additions" : "deletions",
         lineNumber: annotation.start,
         metadata: annotation,
       })),
-    [annotations, selectedPath],
+    [renderedAnnotations, selectedPath],
   );
   const items = useMemo(
     () =>
@@ -222,7 +300,7 @@ function ReviewDiffSurface({
         id: file.name,
         type: "diff",
         fileDiff: file,
-        annotations: annotations
+        annotations: renderedAnnotations
           .filter((annotation) => annotation.path === file.name)
           .map((annotation) => ({
             side: annotation.side === "new" ? "additions" : "deletions",
@@ -239,7 +317,7 @@ function ReviewDiffSurface({
           hydrated: hydratedFiles.has(file.name),
         }),
       })),
-    [annotations, collapsedPaths, hydratedFiles, visibleFiles],
+    [collapsedPaths, hydratedFiles, renderedAnnotations, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -266,8 +344,8 @@ function ReviewDiffSurface({
     typeof CSSStyleSheet !== "undefined" &&
     "replaceSync" in CSSStyleSheet.prototype;
   const viewerKey = preferences.fileMode;
-  const sourceProfileId = sourceSession?.profileId;
-  const sourceSessionId = sourceSession?.sessionId;
+  const sourceProfileId = hydrationSourceSession?.profileId;
+  const sourceSessionId = hydrationSourceSession?.sessionId;
   const {
     loadedCount,
     nextItemIndex,
@@ -424,8 +502,10 @@ function ReviewDiffSurface({
       stickyHeaders: true,
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
+      enableLineSelection: localCommentAuthoring?.enabled === true,
+      enableGutterUtility: localCommentAuthoring?.enabled === true,
     }),
-    [appearance, expandSelectedRange, expandUnchanged, preferences.diffStyle, preferences.overflow, themePreferences],
+    [appearance, expandSelectedRange, expandUnchanged, localCommentAuthoring?.enabled, preferences.diffStyle, preferences.overflow, themePreferences],
   );
   const hasExpandableRenderedFile = useMemo(
     () =>
@@ -489,6 +569,9 @@ function ReviewDiffSurface({
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) => {
       const finding = annotation.metadata;
       if (finding === undefined) return null;
+      if (finding.localComposer !== undefined) {
+        return <InlineCommentComposer {...finding.localComposer} />;
+      }
       return (
         <article
           className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
@@ -517,6 +600,20 @@ function ReviewDiffSurface({
     ),
     [renderFileChangeCounts],
   );
+  const beginAuthoring = useCallback((selection: CodeViewLineSelection | null): void => {
+    if (localCommentAuthoring?.enabled !== true || selection === null) return;
+    const range = selection.range;
+    if ((range.side !== "additions" && range.side !== "deletions") || (range.endSide !== undefined && range.endSide !== range.side)) return;
+    setAuthoringSelection(selection);
+  }, [localCommentAuthoring?.enabled]);
+  const renderGutterUtility = useCallback((getHoveredLine: () => { readonly lineNumber: number; readonly side: "additions" | "deletions" } | undefined, item: { readonly id: string; readonly type: "diff" | "file" }) => {
+    if (localCommentAuthoring?.enabled !== true || item.type !== "diff") return null;
+    return <button type="button" className="rounded px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Add local comment on ${item.id}`} onClick={() => {
+      const hovered = getHoveredLine();
+      if (hovered === undefined) return;
+      beginAuthoring({ id: item.id, range: { start: hovered.lineNumber, end: hovered.lineNumber, side: hovered.side } });
+    }}>+</button>;
+  }, [beginAuthoring, localCommentAuthoring?.enabled]);
 
   return (
     <>
@@ -603,6 +700,9 @@ function ReviewDiffSurface({
           </Button>
         </div>
       </div>
+      {!browserSupportsPierre && localComposerAnnotation?.localComposer !== undefined ? (
+        <InlineCommentComposer {...localComposerAnnotation.localComposer} />
+      ) : null}
       {contextStatus === "loading" ? (
         <p className="sr-only" aria-live="polite">
           Loading unchanged context for {selectedPath}.
@@ -622,7 +722,7 @@ function ReviewDiffSurface({
           <PatchDiff
             patch={selectedPatch}
             disableWorkerPool
-            className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
+            className="visual-diff max-h-[calc(100vh-12rem)] min-h-0 overflow-auto font-mono"
             style={DIFF_CODE_METRICS}
             options={{
               theme: diffThemeFor(themePreferences),
@@ -634,17 +734,24 @@ function ReviewDiffSurface({
               expandUnchanged: expandUnchanged || expandSelectedRange,
               lineDiffType: "word-alt",
               diffIndicators: "bars",
+              enableGutterUtility: localCommentAuthoring?.enabled === true,
             }}
             lineAnnotations={selectedAnnotations}
             selectedLines={selectedLines?.range ?? null}
             renderAnnotation={renderAnnotation}
             renderCustomHeader={renderPatchHeader}
+            renderGutterUtility={(getHoveredLine) =>
+              renderGutterUtility(getHoveredLine, {
+                id: selectedPath ?? "diff",
+                type: "diff",
+              })
+            }
           />
         ) : (
           <FileDiff
             fileDiff={selectedFile}
             disableWorkerPool
-            className="visual-diff h-[calc(100vh-12rem)] min-h-[32rem] overflow-auto font-mono"
+            className="visual-diff max-h-[calc(100vh-12rem)] min-h-0 overflow-auto font-mono"
             style={DIFF_CODE_METRICS}
             options={{
               theme: diffThemeFor(themePreferences),
@@ -656,11 +763,18 @@ function ReviewDiffSurface({
               expandUnchanged: expandUnchanged || expandSelectedRange,
               lineDiffType: "word-alt",
               diffIndicators: "bars",
+              enableGutterUtility: localCommentAuthoring?.enabled === true,
             }}
             lineAnnotations={selectedAnnotations}
             selectedLines={selectedLines?.range ?? null}
             renderAnnotation={renderAnnotation}
             renderCustomHeader={renderPatchHeader}
+            renderGutterUtility={(getHoveredLine) =>
+              renderGutterUtility(getHoveredLine, {
+                id: selectedFile.name,
+                type: "diff",
+              })
+            }
           />
         )
       ) : (
@@ -678,11 +792,39 @@ function ReviewDiffSurface({
             renderCustomHeader={renderCodeViewHeader}
             renderAnnotation={renderAnnotation}
             onScroll={handleCodeViewScroll}
+            onSelectedLinesChange={beginAuthoring}
+            renderGutterUtility={renderGutterUtility}
           />
         </div>
       )}
     </>
   );
+}
+
+function InlineCommentComposer({
+  path,
+  startLine,
+  line,
+  onCancel,
+  onSave,
+}: {
+  readonly path: string;
+  readonly startLine: number;
+  readonly line: number;
+  readonly onCancel: () => void;
+  readonly onSave: (body: string) => Promise<void>;
+}): React.JSX.Element {
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const save = async (): Promise<void> => {
+    if (body.trim().length === 0 || saving) return;
+    setSaving(true); setError(undefined);
+    try { await onSave(body); }
+    catch { setError("Patchdesk could not save this local comment."); }
+    finally { setSaving(false); }
+  };
+  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Local comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · local only</p><Textarea className="mt-2" autoFocus aria-label="Local comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write a local inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Saving…" : "Save local comment"}</Button><Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to save. Escape cancels.</p></section>;
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
@@ -747,7 +889,7 @@ function AccessiblePatch({
   }, [patch, selectedRange]);
   return (
     <div
-      className="h-[calc(100vh-12rem)] overflow-auto p-3 font-mono text-[13px] leading-5"
+      className="max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
       style={{
         fontFamily:
           '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',

@@ -15,10 +15,20 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { cn } from "../lib/utils";
 
 export type SettingsModalProps = {
   readonly open: boolean;
@@ -33,6 +43,7 @@ export type SettingsModalProps = {
   readonly onRepositoryRefresh?: (value: unknown, repo: Repo) => void;
   readonly opener?: HTMLElement | null | undefined;
   readonly onProfileSwitchStart?: () => void;
+  readonly onCleanupSuccess?: (action: "cache" | "local") => void;
   readonly preferenceError?: string | undefined;
   readonly onRetryPreferences?: () => void;
 };
@@ -48,7 +59,9 @@ export function SettingsModal({
   const [dirty, setDirty] = useState(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const pendingSwitch = useRef<(() => void) | undefined>(undefined);
-  const saveProfileRef = useRef<(() => Promise<boolean>) | undefined>(undefined);
+  const saveProfileRef = useRef<(() => Promise<boolean>) | undefined>(
+    undefined,
+  );
   const discardProfileRef = useRef<(() => void) | undefined>(undefined);
   const [dirtySavePending, setDirtySavePending] = useState(false);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -74,7 +87,10 @@ export function SettingsModal({
     setDirtyDialogOpen(true);
   };
 
-  const requestProfileSwitch = (_profileId: string, proceed: () => void): void => {
+  const requestProfileSwitch = (
+    _profileId: string,
+    proceed: () => void,
+  ): void => {
     if (!dirty) {
       proceed();
       return;
@@ -108,9 +124,12 @@ export function SettingsModal({
     else onOpenChange(false);
   };
 
-  const onSaveProfileReady = useCallback((save: () => Promise<boolean>): void => {
-    saveProfileRef.current = save;
-  }, []);
+  const onSaveProfileReady = useCallback(
+    (save: () => Promise<boolean>): void => {
+      saveProfileRef.current = save;
+    },
+    [],
+  );
   const onDiscardProfileReady = useCallback((discard: () => void): void => {
     discardProfileRef.current = discard;
   }, []);
@@ -118,28 +137,93 @@ export function SettingsModal({
   return (
     <>
       <Dialog open={open} onOpenChange={requestClose}>
-        <DialogContent showCloseButton={false} className="max-h-[min(88vh,760px)] max-w-4xl gap-0 p-0" aria-describedby="settings-description">
-          <DialogHeader className="border-b p-5 pb-4">
-            <DialogTitle className="flex items-center gap-2"><SettingsIcon /> Settings</DialogTitle>
-            <DialogDescription id="settings-description">Centered overlay. Always starts on General and returns to the underlying route on close.</DialogDescription>
-            {flowProps.preferenceError === undefined ? null : <Alert variant="destructive" role="alert" className="mt-3"><AlertTitle>Preference update failed</AlertTitle><AlertDescription>{flowProps.preferenceError} <Button variant="outline" size="sm" onClick={flowProps.onRetryPreferences}>Retry</Button></AlertDescription></Alert>}
+        <DialogContent
+          showCloseButton={false}
+          className={cn(
+            "flex w-[min(96vw,1200px)] max-w-[min(96vw,1200px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1200px)]",
+            section === "workspace" || section === "data"
+              ? "h-[min(90vh,960px)] max-h-[90vh]"
+              : "max-h-[90vh]",
+          )}
+          aria-describedby="settings-description"
+        >
+          <DialogHeader className="border-b px-10 py-8">
+            <DialogTitle className="flex items-center gap-2">
+              <SettingsIcon /> Settings
+            </DialogTitle>
+            <DialogDescription id="settings-description">
+              Set Patchdesk appearance and diff themes.
+            </DialogDescription>
+            {flowProps.preferenceError === undefined ? null : (
+              <Alert variant="destructive" role="alert" className="mt-3">
+                <AlertTitle>Preference update failed</AlertTitle>
+                <AlertDescription>
+                  {flowProps.preferenceError}{" "}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={flowProps.onRetryPreferences}
+                  >
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
           </DialogHeader>
-          <Tabs value={section} onValueChange={(value) => { if (value === "general" || value === "review" || value === "data") setSection(value); }} orientation="horizontal" className="min-h-0 gap-0">
-            <TabsList className="mx-5 mt-4" aria-label="Settings sections">
+          <Tabs
+            value={section}
+            onValueChange={(value) => {
+              if (
+                value === "general" ||
+                value === "workspace" ||
+                value === "review" ||
+                value === "data"
+              )
+                setSection(value);
+            }}
+            orientation="horizontal"
+            className="min-h-0 flex-1 gap-0"
+          >
+            <TabsList className="mx-10 mt-8" aria-label="Settings sections">
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="workspace">Workspace</TabsTrigger>
               <TabsTrigger value="review">Review</TabsTrigger>
               <TabsTrigger value="data">Data &amp; recovery</TabsTrigger>
             </TabsList>
-            <div role="region" aria-label="Settings content" data-testid="settings-scroll-region" className="min-h-0">
-              <ScrollArea className="h-[min(calc(100vh-14rem),560px)] min-h-0 px-5 py-4">
-                <TabsContent value={section} data-testid={`settings-section-${section}`} className="mt-0"><SettingsFlow {...flowProps} section={section} onDirtyChange={setDirty} onProfileSwitchRequest={requestProfileSwitch} onCleanupSuccess={() => requestClose(false)} onSaveProfileReady={onSaveProfileReady} onDiscardProfileReady={onDiscardProfileReady} onProfileSwitchStart={flowProps.onProfileSwitchStart} /></TabsContent>
+            <div
+              role="region"
+              aria-label="Settings content"
+              data-testid="settings-scroll-region"
+              className="min-h-0 flex-1"
+            >
+              <ScrollArea className="h-full px-10 py-8">
+                <TabsContent
+                  value={section}
+                  data-testid={`settings-section-${section}`}
+                  className="mt-0"
+                >
+                  <SettingsFlow
+                    {...flowProps}
+                    section={section}
+                    onDirtyChange={setDirty}
+                    onProfileSwitchRequest={requestProfileSwitch}
+                    onCleanupSuccess={(action) => {
+                      requestClose(false);
+                      flowProps.onCleanupSuccess?.(action);
+                    }}
+                    onSaveProfileReady={onSaveProfileReady}
+                    onDiscardProfileReady={onDiscardProfileReady}
+                    onProfileSwitchStart={flowProps.onProfileSwitchStart}
+                  />
+                </TabsContent>
               </ScrollArea>
             </div>
           </Tabs>
           <Separator />
-          <DialogFooter className="rounded-b-xl border-0">
-            <p className="mr-auto text-xs text-muted-foreground">Closing this dialog returns to the underlying route. No data is written automatically.</p>
-            <Button variant="outline" onClick={() => requestClose(false)}>Close</Button>
+          <DialogFooter className="rounded-b-xl border-0 px-10 py-6">
+            <Button variant="outline" onClick={() => requestClose(false)}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -147,12 +231,37 @@ export function SettingsModal({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard profile changes?</AlertDialogTitle>
-            <AlertDialogDescription>Save the profile before leaving, discard the draft, or cancel to keep editing.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Save the profile before leaving, discard the draft, or cancel to
+              keep editing.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={dirtySavePending} onClick={() => { pendingSwitch.current = undefined; }}>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="outline" disabled={dirtySavePending} onClick={(event) => { event.preventDefault(); void saveAndContinue(); }}>{dirtySavePending ? "Saving…" : "Save"}</AlertDialogAction>
-            <AlertDialogAction variant="destructive" disabled={dirtySavePending} onClick={discardAndContinue}>Discard changes</AlertDialogAction>
+            <AlertDialogCancel
+              disabled={dirtySavePending}
+              onClick={() => {
+                pendingSwitch.current = undefined;
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="outline"
+              disabled={dirtySavePending}
+              onClick={(event) => {
+                event.preventDefault();
+                void saveAndContinue();
+              }}
+            >
+              {dirtySavePending ? "Saving…" : "Save"}
+            </AlertDialogAction>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={dirtySavePending}
+              onClick={discardAndContinue}
+            >
+              Discard changes
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

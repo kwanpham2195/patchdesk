@@ -35,7 +35,7 @@ const commandTimeoutMs = 15_000;
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path line startLine side startSide originalLine } } } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path } } } } } } }";
 const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 
@@ -71,6 +71,17 @@ const checkRunsSchema = v.looseObject({
   ),
 });
 
+const commitStatusesSchema = v.looseObject({
+  state: v.string(),
+  statuses: v.array(
+    v.looseObject({
+      context: v.string(),
+      state: v.string(),
+      target_url: v.optional(v.nullable(v.string())),
+    }),
+  ),
+});
+
 const repositoryFileSchema = v.looseObject({
   type: v.string(),
   encoding: v.optional(v.string()),
@@ -88,6 +99,12 @@ const threadResponseSchema = v.looseObject({
               id: v.string(),
               isResolved: v.boolean(),
               isOutdated: v.boolean(),
+              path: v.optional(v.nullable(v.string())),
+              line: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+              originalLine: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+              startLine: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+              diffSide: v.optional(v.nullable(v.string())),
+              startDiffSide: v.optional(v.nullable(v.string())),
               comments: v.looseObject({
                 nodes: v.array(
                   v.looseObject({
@@ -98,19 +115,6 @@ const threadResponseSchema = v.looseObject({
                     url: v.optional(v.nullable(v.string())),
                     author: v.nullish(v.looseObject({ login: v.string() })),
                     path: v.optional(v.nullable(v.string())),
-                    line: v.optional(
-                      v.nullable(
-                        v.pipe(v.number(), v.integer(), v.minValue(1)),
-                      ),
-                    ),
-                    originalLine: v.optional(
-                      v.nullable(
-                        v.pipe(v.number(), v.integer(), v.minValue(1)),
-                      ),
-                    ),
-                    startLine: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
-                    side: v.optional(v.nullable(v.string())),
-                    startSide: v.optional(v.nullable(v.string())),
                   }),
                 ),
               }),
@@ -482,7 +486,17 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       }
       const threadId = parseGitHubThreadId(rawThread.id);
       if (threadId._tag === "err") return invalid("get_comments");
-      const root = comments[0];
+      const location = parseLocation(
+        rawThread.path,
+        rawThread.line,
+        rawThread.originalLine,
+        rawThread.startLine,
+        rawThread.diffSide,
+        rawThread.startDiffSide,
+      );
+      if (location !== undefined && comments[0] !== undefined) {
+        comments[0] = { ...comments[0], location };
+      }
       threads.push({
         id: threadId.value,
         state: rawThread.isResolved
@@ -491,7 +505,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
             ? "outdated"
             : "open",
         comments,
-        ...(root?.location === undefined ? {} : { location: root.location }),
+        ...(location === undefined ? {} : { location }),
       });
     }
     return ok({ threads });
@@ -502,23 +516,51 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
   }): Promise<Result<CheckSummary, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/check-runs`,
-      ],
-      timeoutMs: commandTimeoutMs,
-    });
-    if (response._tag === "err")
-      return commandFailure("get_checks", response.error);
-    const parsed = v.safeParse(checkRunsSchema, response.value);
-    if (!parsed.success) return invalid("get_checks");
+    const [checkRunsResponse, statusesResponse] = await Promise.all([
+      this.commands.runJson({
+        argv: [
+          "gh",
+          "api",
+          "--hostname",
+          input.profile.githubHost,
+          `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/check-runs`,
+        ],
+        timeoutMs: commandTimeoutMs,
+      }),
+      this.commands.runJson({
+        argv: [
+          "gh",
+          "api",
+          "--hostname",
+          input.profile.githubHost,
+          `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/status`,
+        ],
+        timeoutMs: commandTimeoutMs,
+      }),
+    ]);
+    if (checkRunsResponse._tag === "err" && statusesResponse._tag === "err")
+      return commandFailure("get_checks", checkRunsResponse.error);
 
-    const checks = parsed.output.check_runs.map(toCheckRunSummary);
-    return ok({ overall: overallCheckStatus(checks), checks });
+    const checks =
+      checkRunsResponse._tag === "ok"
+        ? v.safeParse(checkRunsSchema, checkRunsResponse.value)
+        : undefined;
+    const statuses =
+      statusesResponse._tag === "ok"
+        ? v.safeParse(commitStatusesSchema, statusesResponse.value)
+        : undefined;
+    if (checks?.success !== true && statuses?.success !== true)
+      return invalid("get_checks");
+
+    const summaries = [
+      ...(checks?.success === true
+        ? checks.output.check_runs.map(toCheckRunSummary)
+        : []),
+      ...(statuses?.success === true
+        ? statuses.output.statuses.map(toCommitStatusSummary)
+        : []),
+    ];
+    return ok({ overall: overallCheckStatus(summaries), checks: summaries });
   }
 
   async getPullRequestDiff(input: {
@@ -1204,11 +1246,11 @@ function parseComment(
 
   const location = parseLocation(
     input.path,
-    input.line,
-    input.originalLine,
-    input.startLine,
-    input.side,
-    input.startSide,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
   );
   const comment: GitHubComment = {
     id: input.id,
@@ -1270,6 +1312,25 @@ function toCheckRunSummary(
     ...(input.details_url === null || input.details_url === undefined
       ? {}
       : { url: input.details_url }),
+  };
+}
+
+function toCommitStatusSummary(
+  input: v.InferOutput<typeof commitStatusesSchema>["statuses"][number],
+): CheckRunSummary {
+  const state = input.state.toLowerCase();
+  return {
+    name: input.context,
+    required: "unknown",
+    status: state === "pending" || state === "expected" ? "in_progress" : "completed",
+    ...(state === "success"
+      ? { conclusion: "success" as const }
+      : state === "failure" || state === "error"
+        ? { conclusion: "failure" as const }
+        : {}),
+    ...(input.target_url === null || input.target_url === undefined
+      ? {}
+      : { url: input.target_url }),
   };
 }
 

@@ -6,7 +6,6 @@ import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsModal } from "./components/settings-modal";
-import { WatchlistPanel } from "./components/watchlist-panel";
 import type {
   Dashboard,
   DashboardScreenState,
@@ -366,28 +365,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     <TooltipProvider>
       <AppShell
         destination={next}
-        profileId={dashboard?.profile.id ?? "default"}
-        profileLabel={dashboard?.profile.label ?? "Local workspace"}
-        repositoryCount={dashboard?.dashboard.repos.length ?? 0}
-        activeReviewCount={
-          inbox?.inbox.rows.filter((row) => row.categories.includes("running"))
-            .length ?? 0
-        }
         navigationBlocked={navigationState !== "clear"}
         onNavigate={navigate}
         onOpenSettings={openSettings}
-        workspacePanel={
-          dashboard === undefined ? undefined : (
-            <WatchlistPanel
-              dashboard={dashboard}
-              onWorkspaceReload={loadWorkspace}
-              onRepositoryRefresh={(value, repo) => {
-                if (!isDashboardList(value)) return;
-                setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
-              }}
-            />
-          )
-        }
       >
         {content}
       </AppShell>
@@ -405,6 +385,9 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
         profiles={profiles}
         onWorkspaceReload={loadWorkspace}
+        onCleanupSuccess={(action) => {
+          if (action === "local") performNavigation({ kind: "dashboard" });
+        }}
         onProfileSwitchStart={() => {
           setWorkbench(undefined);
           setDashboard(undefined);
@@ -509,6 +492,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       <CompletedReviewFlow
         workbench={workbench as never}
         onWorkbenchPatch={(patch) => setWorkbench((current) => current === undefined ? current : { ...current, ...(patch as Partial<WorkbenchPayload>) })}
+        onWorkbenchReplace={(next) => setWorkbench(next as WorkbenchPayload)}
         onNavigationStateChange={setNavigationState}
       />,
       { kind: "workbench", sessionId: workbench.session.id },

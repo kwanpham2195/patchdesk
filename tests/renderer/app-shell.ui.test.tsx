@@ -18,9 +18,6 @@ describe("AppShell settings overlay entry points", () => {
     render(
       <AppShell
         destination={{ kind: "dashboard" }}
-        profileId="cfw"
-        profileLabel="CFW"
-        repositoryCount={0}
         onNavigate={() => undefined}
         onOpenSettings={onOpenSettings}
       >
@@ -32,5 +29,9 @@ describe("AppShell settings overlay entry points", () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("main").className).toContain("overflow-hidden");
     expect(screen.queryByText("Settings content")).toBeNull();
+    expect(screen.queryByLabelText("Workspace navigation")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /application sidebar/i }),
+    ).toBeNull();
   });
 });

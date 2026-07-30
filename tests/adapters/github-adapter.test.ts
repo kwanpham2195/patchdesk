@@ -284,12 +284,13 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
-    const [listOpenPrs, getPr, getComments, getChecks, getDiff] =
+    const [listOpenPrs, getPr, getComments, getChecks, getStatuses, getDiff] =
       await Promise.all([
         payload("list-open-prs.json"),
         payload("get-pr.json"),
         payload("get-comments.json"),
         payload("get-checks.json"),
+        payload("get-statuses.json"),
         payload("get-diff.patch"),
       ]);
     const executor = new FakeProcessExecutor([
@@ -315,6 +316,12 @@ describe("GitHubAdapter read boundary", () => {
         _tag: "Exited",
         exitCode: 0,
         stdout: getChecks,
+        stderr: "",
+      },
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: getStatuses,
         stderr: "",
       },
       {
@@ -385,6 +392,13 @@ describe("GitHubAdapter read boundary", () => {
             conclusion: "success",
             url: "https://example.test/check",
           },
+          {
+            name: "AWS CodeBuild",
+            required: "unknown",
+            status: "completed",
+            conclusion: "success",
+            url: "https://example.test/build",
+          },
         ],
       },
     });
@@ -403,6 +417,7 @@ describe("GitHubAdapter read boundary", () => {
         golden("get-pr"),
         golden("get-comments"),
         golden("get-checks"),
+        golden("get-statuses"),
         golden("get-diff"),
         golden("auth-status"),
       ]),

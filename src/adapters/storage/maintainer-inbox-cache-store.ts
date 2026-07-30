@@ -211,7 +211,11 @@ function parseLatestReview(input: NonNullable<v.InferOutput<typeof rowSchema>["l
 function parseAction(input: v.InferOutput<typeof actionSchema>): Result<InboxRecommendedAction, StorageFailure> {
   switch (input.kind) {
     case "run_review":
-    case "inspect_checks": return ok(input);
+      return ok(input);
+    // Cached inboxes from before failed checks could start a review retain this old
+    // shape. The cache is local, and the current policy always permits analysis.
+    case "inspect_checks":
+      return ok({ kind: "run_review", label: "Run review" });
     case "review_updates": {
       const baseSessionId = parseReviewSessionId(input.baseSessionId);
       return baseSessionId._tag === "ok" ? ok({ ...input, baseSessionId: baseSessionId.value }) : invalidCache();

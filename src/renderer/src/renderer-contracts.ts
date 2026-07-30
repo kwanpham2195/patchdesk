@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { MAX_NARRATIVE_FILE_PREFIX_LENGTH } from "../../domain/narrative-walkthrough";
 
 const pullRequestRefSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
@@ -13,13 +14,35 @@ const checkSchema = v.strictObject({
 });
 
 const actionSchema = v.variant("kind", [
-  v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
-  v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open saved review"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
-  v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ kind: v.literal("open_discussion"), label: v.literal("Review author response"), sessionId: v.pipe(v.string(), v.minLength(1)) }),
+  v.strictObject({
+    kind: v.literal("run_review"),
+    label: v.literal("Run review"),
+  }),
+  v.strictObject({
+    kind: v.literal("review_updates"),
+    label: v.literal("Review updates"),
+    baseSessionId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    kind: v.literal("continue_review"),
+    label: v.literal("View review progress"),
+    sessionId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    kind: v.literal("open_saved_review"),
+    label: v.literal("Open saved review"),
+    sessionId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    kind: v.literal("open_merge_readiness"),
+    label: v.literal("Open merge readiness"),
+    sessionId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    kind: v.literal("open_discussion"),
+    label: v.literal("Review author response"),
+    sessionId: v.pipe(v.string(), v.minLength(1)),
+  }),
 ]);
 
 const inboxRowSchema = v.strictObject({
@@ -37,20 +60,45 @@ const inboxRowSchema = v.strictObject({
     changedFiles: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   }),
   checks: checkSchema,
-  reviewState: v.picklist(["none", "review_pending", "approved", "changes_requested", "unknown"]),
+  reviewState: v.picklist([
+    "none",
+    "review_pending",
+    "approved",
+    "changes_requested",
+    "unknown",
+  ]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
-  latestReview: v.optional(v.strictObject({
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-    reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
-    state: v.picklist(["starting", "running", "completed", "failed", "draft", "submitted", "merged"]),
-    updatedAt: v.pipe(v.string(), v.isoTimestamp()),
-    matchesCurrentHead: v.boolean(),
-  })),
-  categories: v.array(v.picklist([
-    "needs_review", "updated_since_review", "waiting_for_author",
-    "checks_failing", "checks_pending", "ready_to_merge", "draft",
-    "authored", "running", "saved_review",
-  ])),
+  latestReview: v.optional(
+    v.strictObject({
+      sessionId: v.pipe(v.string(), v.minLength(1)),
+      reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
+      state: v.picklist([
+        "starting",
+        "running",
+        "completed",
+        "failed",
+        "draft",
+        "submitted",
+        "merged",
+      ]),
+      updatedAt: v.pipe(v.string(), v.isoTimestamp()),
+      matchesCurrentHead: v.boolean(),
+    }),
+  ),
+  categories: v.array(
+    v.picklist([
+      "needs_review",
+      "updated_since_review",
+      "waiting_for_author",
+      "checks_failing",
+      "checks_pending",
+      "ready_to_merge",
+      "draft",
+      "authored",
+      "running",
+      "saved_review",
+    ]),
+  ),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(["fresh", "cached"]),
 });
@@ -82,16 +130,30 @@ const inboxResponseSchema = v.strictObject({
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
     dataFreshness: v.picklist(["fresh", "cached"]),
-    snapshot: v.optional(v.strictObject({
-      state: v.picklist(["current", "partial", "failed_cached", "unavailable"]),
-      refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
-    })),
+    snapshot: v.optional(
+      v.strictObject({
+        state: v.picklist([
+          "current",
+          "partial",
+          "failed_cached",
+          "unavailable",
+        ]),
+        refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+      }),
+    ),
   }),
 });
 
 export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
-export type InboxView = "my_inbox" | "updated" | "needs_review" | "waiting" | "checks_failing" | "ready_to_merge" | "all_open";
+export type InboxView =
+  | "my_inbox"
+  | "updated"
+  | "needs_review"
+  | "waiting"
+  | "checks_failing"
+  | "ready_to_merge"
+  | "all_open";
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
 export function parseInboxResponse(input: unknown): InboxResponse | undefined {
@@ -129,7 +191,15 @@ const recoveryViewSchema = v.strictObject({
     "needs_preparation",
   ]),
   tone: v.picklist(["neutral", "positive", "warning", "destructive"]),
-  actionKey: v.optional(v.picklist(["run_review", "reconnect", "start_again", "try_again", "prepare_again"])),
+  actionKey: v.optional(
+    v.picklist([
+      "run_review",
+      "reconnect",
+      "start_again",
+      "try_again",
+      "prepare_again",
+    ]),
+  ),
 });
 
 const workbenchProjectionSchema = v.variant("state", [
@@ -141,16 +211,20 @@ const workbenchProjectionSchema = v.variant("state", [
     pullRequest: v.optional(v.unknown()),
     reviewedHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
     currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
-    freshness: v.optional(v.picklist(["fresh", "stale", "unavailable", "not_refreshed"])),
+    freshness: v.optional(
+      v.picklist(["fresh", "stale", "unavailable", "not_refreshed"]),
+    ),
     refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
     checks: v.optional(v.unknown()),
+    comments: v.optional(v.unknown()),
+    batch: v.optional(v.unknown()),
+    mergeReadiness: v.optional(v.unknown()),
   }),
   v.strictObject({
     state: v.literal("completed"),
     session: workbenchSessionSchema,
     recoveryView: v.optional(recoveryViewSchema),
     result: v.unknown(),
-    draft: v.optional(v.unknown()),
     batch: v.optional(v.unknown()),
     comments: v.unknown(),
     checks: v.unknown(),
@@ -169,7 +243,12 @@ const workbenchProjectionSchema = v.variant("state", [
     comparison: v.optional(v.unknown()),
     comparisonPatch: v.optional(v.string()),
     lifecycle: v.optional(v.unknown()),
-    comparisonAvailability: v.picklist(["available", "not_requested", "incomplete", "missing"]),
+    comparisonAvailability: v.picklist([
+      "available",
+      "not_requested",
+      "incomplete",
+      "missing",
+    ]),
     pullRequest: v.optional(v.unknown()),
     reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
     currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
@@ -181,8 +260,32 @@ const workbenchProjectionSchema = v.variant("state", [
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 
 /** Reject malformed local API review projections before they influence renderer state. */
-export function parseWorkbenchResponse(input: unknown): WorkbenchResponse | undefined {
+export function parseWorkbenchResponse(
+  input: unknown,
+): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const remoteReviewContextSchema = v.strictObject({
+  pullRequest: v.optional(v.unknown()),
+  currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
+  freshness: v.picklist(["fresh", "stale", "unavailable", "not_refreshed"]),
+  refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
+  comments: v.unknown(),
+  checks: checkSchema,
+  mergeReadiness: v.optional(v.unknown()),
+});
+
+export type RemoteReviewContextResponse = v.InferOutput<
+  typeof remoteReviewContextSchema
+>;
+
+/** Reject malformed current GitHub context before merging it into saved work. */
+export function parseRemoteReviewContext(
+  input: unknown,
+): RemoteReviewContextResponse | undefined {
+  const parsed = v.safeParse(remoteReviewContextSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 
@@ -191,7 +294,10 @@ const walkthroughRepoRelativePathSchema = v.pipe(
   v.minLength(1),
   v.maxLength(1024),
   v.regex(/^[^/\\].*$/, "Repo-relative path must not start with a separator"),
-  v.regex(/^(?!\.\.\/).*$/, "Repo-relative path must not include parent traversal"),
+  v.regex(
+    /^(?!\.\.\/).*$/,
+    "Repo-relative path must not include parent traversal",
+  ),
 );
 const walkthroughHunkIdSchema = v.pipe(
   v.string(),
@@ -211,7 +317,13 @@ const walkthroughHunkSchema = v.strictObject({
   path: walkthroughRepoRelativePathSchema,
   header: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
   raw: v.pipe(v.string(), v.minLength(1), v.maxLength(200_000)),
-  filePrefix: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(2_000))),
+  filePrefix: v.optional(
+    v.pipe(
+      v.string(),
+      v.minLength(1),
+      v.maxLength(MAX_NARRATIVE_FILE_PREFIX_LENGTH),
+    ),
+  ),
   oldStart: walkthroughLineNumberSchema,
   oldLines: walkthroughLineNumberSchema,
   newStart: walkthroughLineNumberSchema,
@@ -291,10 +403,14 @@ const walkthroughProjectionSchema = v.variant("lifecycle", [
   walkthroughStaleSchema,
 ]);
 
-export type WalkthroughProjection = v.InferOutput<typeof walkthroughProjectionSchema>;
+export type WalkthroughProjection = v.InferOutput<
+  typeof walkthroughProjectionSchema
+>;
 
 /** Reject malformed walkthrough lifecycle projections before they influence renderer state. */
-export function parseWalkthroughProjection(input: unknown): WalkthroughProjection | undefined {
+export function parseWalkthroughProjection(
+  input: unknown,
+): WalkthroughProjection | undefined {
   const parsed = v.safeParse(walkthroughProjectionSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
@@ -305,8 +421,14 @@ const modelCatalogEntrySchema = v.strictObject({
 });
 
 const modelCatalogSchema = v.strictObject({
-  models: v.pipe(v.array(modelCatalogEntrySchema), v.minLength(1), v.maxLength(64)),
-  defaultModel: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  models: v.pipe(
+    v.array(modelCatalogEntrySchema),
+    v.minLength(1),
+    v.maxLength(64),
+  ),
+  defaultModel: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  ),
   defaultReasoning: v.optional(v.picklist(["low", "medium", "high"])),
   reasoning: v.optional(v.array(v.picklist(["low", "medium", "high"]))),
 });

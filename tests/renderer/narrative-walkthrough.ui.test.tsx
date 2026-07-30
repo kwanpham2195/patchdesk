@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@pierre/diffs/react", () => ({
   PatchDiff: ({ patch }: { patch: string }) => <div data-pierre-mock="true" data-patch={patch} />,
+  FileDiff: ({ renderGutterUtility, lineAnnotations, renderAnnotation }: { readonly renderGutterUtility?: (getHoveredLine: () => unknown) => React.ReactNode; readonly lineAnnotations?: ReadonlyArray<{ readonly side: "additions" | "deletions"; readonly lineNumber: number; readonly metadata: unknown }>; readonly renderAnnotation?: (annotation: { readonly side: "additions" | "deletions"; readonly lineNumber: number; readonly metadata: unknown }) => React.ReactNode }) => <div>{renderGutterUtility?.(() => ({ lineNumber: 42, side: "additions" }))}{lineAnnotations?.map((annotation, index) => <div key={index}>{renderAnnotation?.(annotation)}</div>)}</div>,
 }));
 
 import { NarrativeWalkthrough, type NarrativeWalkthroughActions } from "../../src/renderer/src/components/narrative-walkthrough";
@@ -114,7 +115,6 @@ function buildActions(overrides: Partial<NarrativeWalkthroughActions> = {}): Nar
     onMarkSectionReviewed: vi.fn(),
     onMarkSupportReviewed: vi.fn(),
     onSelectSection: vi.fn(),
-    onAddInlineComment: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -212,65 +212,50 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
+    expect(document.querySelector('[data-disclosure-motion="panel"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Mark section reviewed" }));
     expect(onMarkSectionReviewed).toHaveBeenCalledWith("section-1");
+    const supportToggle = screen.getByRole("button", { name: "Support" });
+    expect(supportToggle.querySelector('[data-disclosure-motion="chevron"]')?.tagName).toBe("svg");
+    fireEvent.click(supportToggle);
+    expect(document.querySelector('[data-disclosure-motion="panel"]')).not.toBeNull();
+    expect(document.querySelector('[data-disclosure-motion="chevron"]')).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Mark Support reviewed" }));
     expect(onMarkSupportReviewed).toHaveBeenCalledTimes(1);
   });
 
-  it("anchors deletion-only drafts on the old side", async () => {
-    const onAddInlineComment = vi.fn().mockResolvedValue(undefined);
-    const base = buildWalkthrough();
-    const firstChapter = base.chapters[0];
-    const firstSection = firstChapter?.sections[0];
-    const firstHunk = firstSection?.hunks[0];
-    if (firstChapter === undefined || firstSection === undefined || firstHunk === undefined) {
-      throw new Error("Walkthrough fixture requires a first hunk");
-    }
-    const walkthrough: NarrativeWalkthroughModel = {
-      ...base,
-      chapters: [{
-        ...firstChapter,
-        sections: [{
-          ...firstSection,
-          hunks: [{
-            ...firstHunk,
-            raw: "@@ -42,1 +0,0 @@\\n-old",
-            header: "@@ -42,1 +0,0 @@",
-            newStart: 0,
-            newLines: 0,
-          }],
-        }],
-      }],
-    };
+  it("opens the local composer on a changed walkthrough line", async () => {
+    Object.defineProperty(CSSStyleSheet.prototype, "replaceSync", { configurable: true, value: () => undefined });
+    const onSave = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions({ onAddInlineComment })} />);
-    await user.type(screen.getByLabelText("Add inline comment body"), "Keep the deletion visible");
-    await user.click(screen.getByRole("button", { name: "Add inline comment" }));
-    await waitFor(() => expect(onAddInlineComment).toHaveBeenCalledWith(expect.objectContaining({ startLine: 42, line: 42, side: "old" })));
-  });
-
-  it("routes Add inline comment through the supplied actions", async () => {
-    const onAddInlineComment = vi.fn().mockResolvedValue(undefined);
-    const actions = buildActions({ onAddInlineComment });
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
         supportReviewed={false}
-        actions={actions}
+        localCommentAuthoring={{ enabled: true, onSave }}
+        actions={buildActions()}
       />,
     );
-    const input = screen.getByLabelText("Add inline comment body");
-    fireEvent.change(input, { target: { value: "Use a safe path." } });
-    const add = screen.getByRole("button", { name: "Add inline comment" });
-    fireEvent.click(add);
-    await waitFor(() => expect(onAddInlineComment).toHaveBeenCalledWith(expect.objectContaining({
+    await user.click(screen.getByRole("button", { name: "Add local comment on src/recovery/projection.ts" }));
+    await user.type(screen.getByLabelText("Local comment"), "Use a safe path.");
+    await user.click(screen.getByRole("button", { name: "Save local comment" }));
+    expect(onSave).toHaveBeenCalledWith({
       path: "src/recovery/projection.ts",
       startLine: 42,
       line: 42,
       side: "new",
-    })));
+      body: "Use a safe path.",
+      fingerprint: {
+        path: "src/recovery/projection.ts",
+        startLine: 42,
+        line: 42,
+        side: "new",
+        selectedLines: ["new"],
+        before: [],
+        after: [],
+      },
+    });
   });
 
   it("preserves reviewed indicators and disables the toggle when already reviewed", () => {
@@ -382,15 +367,18 @@ describe("narrative walkthrough takeover", () => {
   it("does not move sections when an input inside the walkthrough is focused", async () => {
     const onSelectSection = vi.fn();
     const actions = buildActions({ onSelectSection });
+    Object.defineProperty(CSSStyleSheet.prototype, "replaceSync", { configurable: true, value: () => undefined });
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
         supportReviewed={false}
+        localCommentAuthoring={{ enabled: true, onSave: vi.fn().mockResolvedValue(undefined) }}
         actions={actions}
       />,
     );
-    const bodyInput = screen.getByLabelText("Add inline comment body");
+    fireEvent.click(screen.getByRole("button", { name: "Add local comment on src/recovery/projection.ts" }));
+    const bodyInput = screen.getByLabelText("Local comment");
     bodyInput.focus();
     // With the input focused, the k keypress fires on the input and bubbles up to the takeover.
     // The handler must early-return for INPUT/SELECT/TEXTAREA targets so the section does not advance.

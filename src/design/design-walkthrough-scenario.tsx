@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ArrowLeft, BookOpen, CheckCircle2, CircleAlert, FileText, RefreshCw, ShieldAlert, Sparkles, Square, Star } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, CircleAlert, FileText, RefreshCw, ShieldAlert, Sparkles } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "../renderer/src/components/ui/alert";
 import { Badge } from "../renderer/src/components/ui/badge";
 import { Button } from "../renderer/src/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../renderer/src/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../renderer/src/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../renderer/src/components/ui/dialog";
 import { Label } from "../renderer/src/components/ui/label";
 import { ScrollArea } from "../renderer/src/components/ui/scroll-area";
@@ -45,7 +46,7 @@ const WALKTHROUGH_SECTIONS: ReadonlyArray<WalkthroughSectionFixture> = [
     chapter: "Consequences",
     title: "What changes for the maintainer",
     prose:
-      "Marking a section reviewed and writing an inline comment use the same batch action as Files mode, so Back to files preserves the work.",
+      "Marking a section as read keeps local reading progress in this walkthrough, so Back to files preserves the work.",
     hunkIds: ["h-3"],
     highlight: "src/renderer/src/flows/completed-review-flow.tsx:96",
   },
@@ -54,7 +55,7 @@ const WALKTHROUGH_SECTIONS: ReadonlyArray<WalkthroughSectionFixture> = [
     chapter: "Validation",
     title: "How reviewers verify the change",
     prose:
-      "Read the changed code path, confirm the recovery decision is bounded to a single action, and use the existing batch actions for inline comments.",
+      "Read the changed code path and confirm the recovery decision is bounded to a single action.",
     hunkIds: ["h-4"],
     highlight: "tests/services/review-recovery-service.test.ts:54",
   },
@@ -91,18 +92,18 @@ export function DesignWalkthroughScenario({
   const [dialogOpen, setDialogOpen] = useState(variant === "walkthrough-generate-dialog");
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
   const [model, setModel] = useState("pi-design");
-  const [reviewed, setReviewed] = useState<ReadonlyArray<string>>([]);
+  const [readSectionIds, setReadSectionIds] = useState<ReadonlyArray<string>>([]);
   const [current, setCurrent] = useState(WALKTHROUGH_SECTIONS[0]?.id ?? "");
-  const [supportReviewed, setSupportReviewed] = useState(false);
+  const [supportRead, setSupportRead] = useState(false);
   const [generationSteps, setGenerationSteps] = useState<ReadonlyArray<string>>([]);
   const [filesView, setFilesView] = useState<"patchdesk" | "storybook">("patchdesk");
 
   useEffect(() => {
     setLifecycle(initialLifecycle(variant));
     setDialogOpen(variant === "walkthrough-generate-dialog");
-    setReviewed([]);
+    setReadSectionIds([]);
     setCurrent(WALKTHROUGH_SECTIONS[0]?.id ?? "");
-    setSupportReviewed(false);
+    setSupportRead(false);
     setGenerationSteps([]);
   }, [variant]);
 
@@ -176,6 +177,7 @@ export function DesignWalkthroughScenario({
   const isFailed = lifecycle === "failed";
   const isStale = lifecycle === "stale";
   const isGenerating = lifecycle === "generating";
+  const showReadingSurface = lifecycle === "ready";
 
   if (filesView === "storybook") {
     return (
@@ -209,102 +211,106 @@ export function DesignWalkthroughScenario({
             {lifecycle === "ready" ? <BookOpen /> : isFailed || isStale ? <CircleAlert /> : <Sparkles />}
             {lifecycle}
           </Badge>
-          {isFailed ? <Button size="sm" onClick={retryGeneration} data-testid="retry-generation"><RefreshCw /> Retry generation</Button> : null}
-          {isStale ? <Button size="sm" onClick={() => setDialogOpen(true)} data-testid="regenerate-stale"><Sparkles /> Generate walkthrough</Button> : null}
-          {lifecycle === "ready" ? <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>Show generate dialog</Button> : null}
+          {isFailed ? <Button size="sm" onClick={retryGeneration} data-testid="walkthrough-primary-action"><RefreshCw /> Retry generation</Button> : null}
+          {isStale ? <Button size="sm" onClick={() => setDialogOpen(true)} data-testid="walkthrough-primary-action"><Sparkles /> Regenerate walkthrough</Button> : null}
+          {lifecycle === "ready" ? <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>Regenerate walkthrough</Button> : null}
         </div>
       </header>
-      {isGenerating ? (
-        <Alert className="m-4" aria-busy="true" data-testid="walkthrough-generating-alert">
-          <Sparkles />
-          <AlertTitle>{headline}</AlertTitle>
-          <AlertDescription>
-            {reassurance}
-            <ul className="mt-2 space-y-1 text-xs" data-testid="walkthrough-generating-steps">
-              {generationSteps.map((step) => (
-                <li key={step} className="flex items-center gap-2"><CheckCircle2 className="size-3 text-primary" /> {step}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {isFailed ? (
-        <Alert variant="destructive" className="m-4" data-testid="walkthrough-failed">
-          <CircleAlert />
-          <AlertTitle>{headline}</AlertTitle>
-          <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
-            {reassurance}
-            <Button size="sm" variant="outline" onClick={retryGeneration}><RefreshCw /> Retry generation</Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {isStale ? (
-        <Alert variant="destructive" className="m-4" data-testid="walkthrough-stale">
-          <ShieldAlert />
-          <AlertTitle>{headline}</AlertTitle>
-          <AlertDescription className="mt-1 flex flex-wrap items-center gap-2">
-            {reassurance}
-            <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}><Sparkles /> Generate walkthrough</Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      <div className="grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4" data-layout="rail">
-        <aside role="region" aria-label="Walkthrough chapters" className="rounded-lg border bg-card p-3">
-          <h2 className="px-1 text-sm font-semibold">Chapters</h2>
-          <p className="mt-1 px-1 text-xs text-muted-foreground">Persistent rail; arrow keys move sections.</p>
-          <Separator className="my-3" />
-          <ChapterList
-            sections={sections}
-            currentId={current}
-            reviewed={reviewed}
-            onSelect={setCurrent}
+      {!showReadingSurface ? (
+        <div data-testid="walkthrough-status-panel" className="flex-1">
+          {isGenerating ? (
+            <Alert className="m-4" aria-busy="true" data-testid="walkthrough-generating-alert">
+              <Sparkles />
+              <AlertTitle>{headline}</AlertTitle>
+              <AlertDescription>
+                {reassurance}
+                <ul className="mt-2 space-y-1 text-xs" data-testid="walkthrough-generating-steps">
+                  {generationSteps.map((step) => (
+                    <li key={step} className="flex items-center gap-2"><CheckCircle2 className="size-3 text-primary" /> {step}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {isFailed ? (
+            <Alert variant="destructive" className="m-4" data-testid="walkthrough-failed">
+              <CircleAlert />
+              <AlertTitle>{headline}</AlertTitle>
+              <AlertDescription className="mt-1">{reassurance}</AlertDescription>
+            </Alert>
+          ) : null}
+          {isStale ? (
+            <Alert variant="destructive" className="m-4" data-testid="walkthrough-stale">
+              <ShieldAlert />
+              <AlertTitle>{headline}</AlertTitle>
+              <AlertDescription className="mt-1">{reassurance}</AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+      ) : (
+        <div data-testid="walkthrough-reading-surface" data-layout="rail" className="grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
+          <aside role="region" aria-label="Walkthrough chapters" className="rounded-lg border bg-card p-3">
+            <h2 className="px-1 text-sm font-semibold">Chapters</h2>
+            <p className="mt-1 px-1 text-xs text-muted-foreground">Arrow keys move between sections.</p>
+            <Separator className="my-3" />
+            <ChapterList
+              sections={sections}
+              currentId={current}
+              readSectionIds={readSectionIds}
+              onSelect={setCurrent}
+            />
+            <Separator className="my-3" />
+            <SupportList supportRead={supportRead} onToggle={() => setSupportRead((value) => !value)} />
+          </aside>
+          <SectionPane
+            section={currentSection}
+            isRead={readSectionIds.includes(currentSection.id)}
+            onToggleRead={() =>
+              setReadSectionIds((currentList) =>
+                currentList.includes(currentSection.id)
+                  ? currentList.filter((entry) => entry !== currentSection.id)
+                  : [...currentList, currentSection.id],
+              )
+            }
+            canGoPrev={canGoPrev}
+            canGoNext={canGoNext}
+            onPrev={() => { if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current); }}
+            onNext={() => { if (canGoNext) setCurrent(sections[currentIndex + 1]?.id ?? current); }}
           />
-          <Separator className="my-3" />
-          <SupportList reviewed={supportReviewed} onToggle={() => setSupportReviewed((value) => !value)} />
-        </aside>
-        <SectionPane
-          section={currentSection}
-          reviewed={reviewed.includes(currentSection.id)}
-          onToggleReviewed={() =>
-            setReviewed((currentList) =>
-              currentList.includes(currentSection.id)
-                ? currentList.filter((entry) => entry !== currentSection.id)
-                : [...currentList, currentSection.id],
-            )
-          }
-          canGoPrev={canGoPrev}
-          canGoNext={canGoNext}
-          onPrev={() => { if (canGoPrev) setCurrent(sections[currentIndex - 1]?.id ?? current); }}
-          onNext={() => { if (canGoNext) setCurrent(sections[currentIndex + 1]?.id ?? current); }}
-        />
-      </div>
+        </div>
+      )}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent data-testid="walkthrough-generate-dialog">
           <DialogHeader>
             <DialogTitle>Generate a read-only walkthrough</DialogTitle>
             <DialogDescription>Patchdesk reads the stored patch, never writes to GitHub, and never restarts the run.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <Label className="grid gap-1.5">Model
-              <Select value={model} onValueChange={(value) => { if (value !== null) setModel(value); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pi-design">Design review model</SelectItem>
-                  <SelectItem value="pi-balanced">Balanced reasoning model</SelectItem>
-                </SelectContent>
-              </Select>
-            </Label>
-            <Label className="grid gap-1.5">Reasoning
-              <Select value={reasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") setReasoning(value); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </Label>
-            <p className="text-xs text-muted-foreground">The dialog requires a model and reasoning before any generation request can be made.</p>
+          <div className="space-y-3 py-2">
+            <p className="text-sm">Uses Design review model with Medium reasoning.</p>
+            <Collapsible data-testid="walkthrough-advanced-options">
+              <CollapsibleTrigger render={<Button variant="outline" />}>Advanced options</CollapsibleTrigger>
+              <CollapsibleContent className="grid gap-3 pt-3">
+                <Label className="grid gap-1.5">Model
+                  <Select value={model} onValueChange={(value) => { if (value !== null) setModel(value); }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pi-design">Design review model</SelectItem>
+                      <SelectItem value="pi-balanced">Balanced reasoning model</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Label>
+                <Label className="grid gap-1.5">Reasoning
+                  <Select value={reasoning} onValueChange={(value) => { if (value === "low" || value === "medium" || value === "high") setReasoning(value); }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Label>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
@@ -326,19 +332,19 @@ function initialLifecycle(variant: string): WalkthroughLifecycleKey {
 function ChapterList({
   sections,
   currentId,
-  reviewed,
+  readSectionIds,
   onSelect,
 }: {
   readonly sections: ReadonlyArray<WalkthroughSectionFixture>;
   readonly currentId: string;
-  readonly reviewed: ReadonlyArray<string>;
+  readonly readSectionIds: ReadonlyArray<string>;
   readonly onSelect: (id: string) => void;
 }): React.JSX.Element {
   return (
     <ol className="flex flex-col gap-1" aria-label="Walkthrough sections">
       {sections.map((section) => {
         const active = section.id === currentId;
-        const isReviewed = reviewed.includes(section.id);
+        const isRead = readSectionIds.includes(section.id);
         return (
           <li key={section.id}>
             <Button
@@ -352,7 +358,7 @@ function ChapterList({
                 <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{section.chapter}</span>
                 <span className="block text-sm font-medium leading-5">{section.title}</span>
               </span>
-              {isReviewed ? <Badge variant="outline" aria-label="Reviewed">reviewed</Badge> : null}
+              {isRead ? <Badge variant="outline" aria-label="Read">read</Badge> : null}
             </Button>
           </li>
         );
@@ -363,16 +369,16 @@ function ChapterList({
 
 function SectionPane({
   section,
-  reviewed,
-  onToggleReviewed,
+  isRead,
+  onToggleRead,
   canGoPrev,
   canGoNext,
   onPrev,
   onNext,
 }: {
   readonly section: WalkthroughSectionFixture;
-  readonly reviewed: boolean;
-  readonly onToggleReviewed: () => void;
+  readonly isRead: boolean;
+  readonly onToggleRead: () => void;
   readonly canGoPrev: boolean;
   readonly canGoNext: boolean;
   readonly onPrev: () => void;
@@ -398,27 +404,26 @@ function SectionPane({
           </CardContent>
         </Card>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={onToggleReviewed} aria-pressed={reviewed} data-testid="mark-section-reviewed">
-            <Star /> {reviewed ? "Reviewed" : "Mark section reviewed"}
+          <Button size="sm" onClick={onToggleRead} aria-pressed={isRead} data-testid="mark-section-as-read">
+            {isRead ? "Read" : "Mark section as read"}
           </Button>
           <Button size="sm" variant="outline" onClick={onPrev} disabled={!canGoPrev} aria-label="Previous section" data-testid="section-prev"><ArrowLeft /> Previous</Button>
           <Button size="sm" variant="outline" onClick={onNext} disabled={!canGoNext} aria-label="Next section" data-testid="section-next">Next <ArrowLeft className="rotate-180" /></Button>
-          <Button size="sm" variant="ghost" aria-label="Add inline draft comment"><Square /> Add inline comment</Button>
         </div>
         <Separator />
-        <p className="text-xs text-muted-foreground">Inline comments use the existing batch action. Back to files preserves file selection, inspector, and diff controls.</p>
+        <p className="text-xs text-muted-foreground">Reading progress stays local to this walkthrough. Back to files preserves file selection and diff controls.</p>
       </article>
     </ScrollArea>
   );
 }
 
-function SupportList({ reviewed, onToggle }: { readonly reviewed: boolean; readonly onToggle: () => void }): React.JSX.Element {
+function SupportList({ supportRead, onToggle }: { readonly supportRead: boolean; readonly onToggle: () => void }): React.JSX.Element {
   return (
     <section role="region" aria-label="Support coverage" className="space-y-2">
       <header className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Support</h3>
-        <Button size="xs" variant="outline" onClick={onToggle} aria-pressed={reviewed} data-testid="mark-support-reviewed">
-          {reviewed ? "Reviewed" : "Mark Support reviewed"}
+        <Button size="xs" variant="outline" onClick={onToggle} aria-pressed={supportRead} data-testid="mark-support-as-read">
+          {supportRead ? "Read" : "Mark support as read"}
         </Button>
       </header>
       <p className="text-xs text-muted-foreground">Mechanical and low-signal changes stay here; every hunk is shown exactly once.</p>

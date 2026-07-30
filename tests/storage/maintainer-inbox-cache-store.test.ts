@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MaintainerInboxCacheStore } from "../../src/adapters/storage/maintainer-inbox-cache-store";
+import { MaintainerInboxCacheStore, parseMaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
   parseGitHubHost,
@@ -68,6 +68,36 @@ describe("maintainer inbox cache store", () => {
     };
     expect(await store.save(profileId, cache)).toEqual({ _tag: "ok", value: undefined });
     expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+  });
+
+  it("upgrades a cached failed-check action to a review action", () => {
+    const parsed = parseMaintainerInboxCache({
+      schemaVersion: 1,
+      refreshedAt: updatedAt,
+      rows: [{
+        identity: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
+        title: "Guard duplicate input",
+        author: "author",
+        baseBranch: "sit",
+        headBranch: "feature/duplicate-guard",
+        currentHeadSha: sha,
+        isDraft: false,
+        updatedAt,
+        changeStats: {},
+        checks: { overall: "failing", checks: [] },
+        reviewState: "none",
+        mergeability: "blocked",
+        categories: ["checks_failing"],
+        recommendedAction: { kind: "inspect_checks", label: "Inspect failing checks" },
+        dataFreshness: "cached",
+      }],
+      repositories: [],
+    });
+
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { rows: [{ recommendedAction: { kind: "run_review", label: "Run review" } }] },
+    });
   });
 
   it("rejects credential-like data before writing the cache", async () => {

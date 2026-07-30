@@ -5,7 +5,7 @@ import {
   type FindingLocationInput,
 } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
-import { ReviewDiffView } from "./review-diff-view";
+import { ReviewDiffView, type LocalCommentAuthoring } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,17 +29,18 @@ export function DiffWorkbench({
   sourceSession,
   className,
   fillViewport = true,
+  localCommentAuthoring,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
   readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
   readonly className?: string;
   readonly fillViewport?: boolean;
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     files[0]?.newPath,
   );
@@ -174,37 +175,6 @@ export function DiffWorkbench({
                 </div>
               </SheetContent>
             </Sheet>
-            <Sheet open={contextOpen} onOpenChange={setContextOpen}>
-              <SheetTrigger render={<Button variant="outline" size="sm" />}>
-                Review context
-              </SheetTrigger>
-              <SheetContent side="right">
-                <SheetHeader>
-                  <SheetTitle>Review context</SheetTitle>
-                  <SheetDescription>
-                    The stored diff is local and read-only.
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="p-4 text-sm text-muted-foreground">
-                  <p>
-                    Findings must map to a verified line before they can enter a
-                    GitHub draft.
-                  </p>
-                  {mapped === undefined ? null : (
-                    <div className="mt-4 rounded-lg border p-3">
-                      <p className="font-medium text-foreground">
-                        Finding location
-                      </p>
-                      <p className="mt-1">
-                        {mapped.mappingStatus === "mapped"
-                          ? `${mapped.path}:${mapped.line ?? "hunk"}`
-                          : "Unmapped and not postable"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
           </div>
         </header>
         <ReviewDiffView
@@ -218,6 +188,7 @@ export function DiffWorkbench({
           onPreferencesChange={updatePreferences}
           onCollapsedPathsChange={setCollapsedPaths}
           {...(sourceSession === undefined ? {} : { sourceSession })}
+          {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
         />
       </div>
     </section>

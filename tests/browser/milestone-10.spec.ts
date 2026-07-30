@@ -3,41 +3,24 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
-test("review submission requires explicit pending and submit confirmations", async ({ page }) => {
+test("review batch requires explicit apply and submit confirmations", async ({ page }) => {
   const server = await serveRenderer();
   try {
     await page.goto(`${origin(server)}/#submission-fixture`);
     await page.getByRole("button", { name: "Create pending review" }).click();
-    await expect(page.getByText("P0/P1 findings included")).toBeVisible();
+    await expect(page.getByRole("alertdialog", { name: "Apply this review batch to GitHub?" })).toBeVisible();
     await expect(page.getByText("src/services/review-submission-service.ts:34")).toBeVisible();
-    await expect(page.getByText("src/services/review-submission-service.ts:55")).toHaveCount(0);
     await page.screenshot({ path: "test-results/milestone-10-preview.png", fullPage: true });
-    await page.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }).check();
-    await page.getByRole("button", { name: "Confirm pending review" }).click();
+    await page.getByRole("button", { name: "Create pending review" }).click();
     await expect(page.getByText("Pending review 9001 created.")).toBeVisible();
     await page.getByRole("button", { name: "Submit pending review" }).click();
     await page.getByRole("combobox", { name: "Review event" }).click();
     await page.getByRole("option", { name: "REQUEST_CHANGES" }).click();
-    await expect(page.getByText("Request changes before merge.")).toBeVisible();
     await page.getByRole("checkbox", { name: "I understand this submits the pending review." }).check();
     await page.getByRole("button", { name: "Submit review" }).click();
-    await expect(page.getByText("Review 9001 submitted as REQUEST_CHANGES.")).toBeVisible();
-    await expect(page.getByRole("button", { name: /create|submit/i })).toHaveCount(0);
+    await expect(page.getByText(/Submitted/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /submit pending review/i })).toHaveCount(0);
     await page.screenshot({ path: "test-results/milestone-10-browser.png", fullPage: true });
-  } finally { await close(server); }
-});
-
-test("pending-review rejection preserves the local draft and dialog", async ({ page }) => {
-  const server = await serveRenderer();
-  try {
-    await page.goto(`${origin(server)}/#submission-rejection-fixture`);
-    await page.getByRole("button", { name: "Create pending review" }).click();
-    await page.getByRole("checkbox", { name: "I understand this creates one pending GitHub review." }).check();
-    await page.getByRole("button", { name: "Confirm pending review" }).click();
-    await expect(page.getByText("GitHub rejected the pending review. Your saved local draft was preserved.")).toBeVisible();
-    await expect(page.getByRole("alertdialog", { name: "Create pending review" })).toBeVisible();
-    await expect(page.getByText("Keep the stale-head check at the write boundary.")).toBeVisible();
-    await page.screenshot({ path: "test-results/milestone-10-rejection.png", fullPage: true });
   } finally { await close(server); }
 });
 

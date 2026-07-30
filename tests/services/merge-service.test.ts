@@ -30,6 +30,26 @@ function gateway(input: { readonly head?: typeof headSha; readonly reviewState?:
 }
 
 describe("merge service", () => {
+  it("merges an eligible prepared snapshot without model findings", async () => {
+    const success = gateway();
+
+    const merged = await mergePullRequest({
+      profile,
+      session: { ...session, state: { _tag: "Created" } },
+      gateway: success.gateway as never,
+      method: "squash",
+      supportedMethods: ["squash"],
+      acknowledgedWarnings: true,
+      now,
+    });
+
+    expect(merged).toMatchObject({
+      _tag: "ok",
+      value: { session: { state: { _tag: "Merged" } } },
+    });
+    expect(success.writes).toEqual(["squash"]);
+  });
+
   it("does not issue a merge for unsupported methods, blockers, or a stale head", async () => {
     const unsupported = gateway();
     await expect(mergePullRequest({ profile, session, result, gateway: unsupported.gateway as never, method: "rebase", supportedMethods: ["squash"], acknowledgedWarnings: true, now })).resolves.toEqual({ _tag: "err", error: { _tag: "MergeMethodUnsupported" } });

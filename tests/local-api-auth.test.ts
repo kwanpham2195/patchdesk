@@ -75,6 +75,22 @@ describe("local API capability boundary", () => {
     });
   });
 
+  it("lists redacted diagnostic activity only through the authenticated route", async () => {
+    localApi = await startTestLocalApi();
+    const response = await fetch(new URL("v1/diagnostics?profileId=cfw", localApi.url), {
+      headers: {
+        "X-Patchdesk-Capability": capability,
+        Origin: allowedOrigin,
+      },
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({ category: "migration", phase: "attempt-recover" }),
+      ]),
+    });
+  });
+
   it("rejects a request with no app capability", async () => {
     localApi = await startTestLocalApi();
 
@@ -256,6 +272,9 @@ describe("local API capability boundary", () => {
       ["v1/storage", "GET"],
       ["v1/storage/discard", "POST"],
       ["v1/storage/quarantine/delete", "POST"],
+      ["v1/reviews/draft", "POST"],
+      ["v1/reviews/pending", "POST"],
+      ["v1/reviews/submit", "POST"],
     ] as const) {
       const response = await fetch(new URL(path, localApi.url), {
         method,
@@ -442,7 +461,7 @@ describe("local API capability boundary", () => {
     const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github: reader });
     if (startup._tag !== "started") throw new Error("Expected local API");
     localApi = startup.server;
-    const response = await fetch(new URL("v1/reviews/pending", localApi.url), { method: "POST", headers: writeHeaders(), body: "{}" });
+    const response = await fetch(new URL("v1/reviews/apply-batch", localApi.url), { method: "POST", headers: writeHeaders(), body: "{}" });
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({ error: "review_write_unavailable" });
   });
@@ -454,6 +473,29 @@ describe("local API capability boundary", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ batch: { state: { _tag: "PendingReview", reviewId: "9001" } } });
     await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "PendingReview", reviewId: "9001" } } } });
+  });
+
+  it("submits the created pending review through the same persisted batch", async () => {
+    const fixture = await reviewWriteFixture({ _tag: "ok", value: { reviewId: "9001", state: "PENDING" } });
+    localApi = fixture.api;
+    const applied = await fetch(new URL("v1/reviews/apply-batch", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(fixture.request) });
+    const appliedBody = await applied.json() as { readonly batch?: { readonly updatedAt?: string } };
+    const expectedRevision = appliedBody.batch?.updatedAt;
+    if (typeof expectedRevision !== "string") throw new Error("Expected pending batch revision");
+
+    const response = await fetch(new URL("v1/reviews/submit-batch", localApi.url), {
+      method: "POST",
+      headers: writeHeaders(),
+      body: JSON.stringify({ ...fixture.request, expectedRevision, event: "REQUEST_CHANGES" }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      batch: { state: { _tag: "Submitted", reviewId: "9001", event: "REQUEST_CHANGES" } },
+    });
+    await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({
+      _tag: "ok",
+      value: { submittedReview: { reviewId: "9001", event: "REQUEST_CHANGES" } },
+    });
   });
 
   it("persists PartialFailure after a rejected batch write and never advances its phase", async () => {
@@ -504,7 +546,7 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
   await new ProfileStore(paths).save(profile);
   const session = createReviewSession({ key: { profileId, host, owner, repo, prNumber: number, headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath("/tmp/patch.diff")), worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha }, createdAt: "2026-07-16T00:00:00.000Z" as never });
-  const batch = { sessionId: session.id, attemptId, state: { _tag: "Local" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: "finding" as never, source: "finding" as const, findingId: "finding" as never, anchor: { path: "src/write.ts" as never, startLine: 7, line: 7, side: "new" as const }, body: "Comment", include: true, postability: "postable" as const }], receipts: [], createdAt: "2026-07-16T00:00:00.000Z" as never, updatedAt: "2026-07-16T00:00:00.000Z" as never };
+  const batch = { sessionId: session.id, state: { _tag: "Local" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: "finding" as never, provenance: { _tag: "model" as const, attemptId }, source: "finding" as const, findingId: "finding" as never, anchor: { path: "src/write.ts" as never, startLine: 7, line: 7, side: "new" as const }, body: "Comment", include: true, postability: "postable" as const }], receipts: [], createdAt: "2026-07-16T00:00:00.000Z" as never, updatedAt: "2026-07-16T00:00:00.000Z" as never };
   const completed = { ...session, state: { _tag: "ReviewCompleted" as const, attemptId }, currentAttemptId: attemptId, batch: { state: batch.state }, batchContent: batch } as ReviewSession;
   const sessions = new ReviewSessionStore(paths);
   await sessions.save(completed);

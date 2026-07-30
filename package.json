@@ -17,9 +17,10 @@
     "dev:design": "vite --config vite.design.config.ts",
     "build:design": "vite build --config vite.design.config.ts",
     "build": "electron-vite build",
+    "stage:flue-runtime": "node scripts/stage-flue-runtime.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
-    "package:mac": "pnpm build && pnpm verify:icon && electron-builder --mac dir",
+    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac dir",
     "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs"
@@ -44,6 +45,7 @@
     "hono": "^4.8.3",
     "lucide-react": "^1.25.0",
     "marked": "18.0.7",
+    "mermaid": "11.16.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "shiki": "4.3.1",
@@ -87,6 +89,22 @@
       "src/workflows/**",
       "src/skills/**",
       "node_modules/@flue/**"
+    ],
+    "extraResources": [
+      {
+        "from": "out/workflow-runtime",
+        "to": "flue-runtime",
+        "filter": [
+          "!node_modules/**"
+        ]
+      },
+      {
+        "from": "out/workflow-runtime/node_modules",
+        "to": "flue-runtime/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "files": [
       "out/**",

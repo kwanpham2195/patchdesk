@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { GitHubReviewWriter, PendingReviewComment } from "../../src/adapters/github/github-adapter";
-import { editFailedDraftComment, type ReviewDraft } from "../../src/domain/review-draft";
 import type { ReviewSession } from "../../src/domain/review-session";
 import {
-  createPendingReview,
   planBatchOperations,
   applyReviewBatch,
-  submitSummaryOnlyPendingReview,
-  submitPendingReview,
+  submitReviewBatch,
 } from "../../src/services/review-submission-service";
 
 const headSha = "abcdef1234567890abcdef1234567890abcdef12" as never;
@@ -22,21 +19,6 @@ const session = {
   createdAt: "2026-07-16T00:00:00.000Z",
   updatedAt: "2026-07-16T00:00:00.000Z",
 } as unknown as ReviewSession;
-const draft = {
-  sessionId: session.id,
-  attemptId: "001",
-  state: { _tag: "LocalDraft" },
-  summaryBody: "Review summary",
-  suggestedEvent: "REQUEST_CHANGES",
-  comments: [
-    { findingId: "mapped", include: true, originalSuggestedBody: "Keep the guard.", body: "Keep the guard.", path: "src/write.ts", line: 8, diffSide: "new", postability: "postable" },
-    { findingId: "excluded", include: false, originalSuggestedBody: "Ignore me.", body: "Ignore me.", path: "src/write.ts", line: 12, diffSide: "new", postability: "postable" },
-    { findingId: "invalid", include: true, originalSuggestedBody: "Cannot post.", body: "Cannot post.", path: "src/write.ts", line: 18, diffSide: "new", postability: "invalid_line" },
-  ],
-  createdAt: "2026-07-16T00:00:00.000Z",
-  updatedAt: "2026-07-16T00:00:00.000Z",
-} as unknown as ReviewDraft;
-
 function gateway(currentHead = headSha, writer: Partial<GitHubReviewWriter> = {}) {
   const writes: Array<string> = [];
   return {
@@ -67,7 +49,7 @@ describe("review submission service", () => {
       state: { _tag: "Local" as const },
       summaryBody: "Review summary",
       suggestedEvent: "COMMENT" as const,
-      items: [{ _tag: "InlineComment" as const, id: "comment" as never, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Keep this.", include: true, postability: "postable" as const }],
+      items: [{ _tag: "InlineComment" as const, id: "comment" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Keep this.", include: true, postability: "postable" as const }],
       receipts: [],
       createdAt: now,
       updatedAt: now,
@@ -101,7 +83,7 @@ describe("review submission service", () => {
       state: { _tag: "Local" as const },
       summaryBody: "Review summary",
       suggestedEvent: "COMMENT" as const,
-      items: [{ _tag: "InlineComment" as const, id: "range" as never, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 4, line: 6, side: "new" as const }, body: "Keep the guard.", include: true, postability: "postable" as const }],
+      items: [{ _tag: "InlineComment" as const, id: "range" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 4, line: 6, side: "new" as const }, body: "Keep the guard.", include: true, postability: "postable" as const }],
       receipts: [],
       createdAt: now,
       updatedAt: now,
@@ -126,79 +108,93 @@ describe("review submission service", () => {
 
   it("completes a reply-only batch without creating a pending review", async () => {
     const writes: string[] = [];
-    const batch = { sessionId: session.id, attemptId: "001" as never, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [{ _tag: "ThreadReply" as const, id: "reply" as never, threadId: "thread-1" as never, body: "Fixed.", include: true }], receipts: [], createdAt: now, updatedAt: now };
+    const batch = { sessionId: session.id, attemptId: "001" as never, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [{ _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Fixed.", include: true }], receipts: [], createdAt: now, updatedAt: now };
     const result = await applyReviewBatch({ profile, session, batch: batch as never, now, persist: async () => true, gateway: { async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; }, async createPendingReview() { writes.push("create"); return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; }, async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; }, async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } }; } } as never });
     expect(result).toMatchObject({ _tag: "ok", value: { batch: { state: { _tag: "Completed" }, receipts: [{ _tag: "ReplyCreated" }] } } });
     expect(writes).toEqual(["reply"]);
   });
+
+  it("applies stable thread actions from a stale batch and leaves inline drafts pending", async () => {
+    const writes: string[] = [];
+    const persisted: ReviewSession[] = [];
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "Local" as const },
+      summaryBody: "",
+      suggestedEvent: "COMMENT" as const,
+      items: [
+        { _tag: "InlineComment" as const, id: "inline" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Check this.", include: true, postability: "postable" as const },
+        { _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Fixed in the latest commit.", include: true },
+      ],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async (next) => {
+        persisted.push(next);
+        return true;
+      },
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha: movedHeadSha } }; },
+        async createPendingReview() { writes.push("inline"); return { _tag: "ok" as const, value: { reviewId: "unexpected", state: "PENDING" as const } }; },
+        async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+        async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } as const }; },
+      } as never,
+    });
+
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        session: { state: { _tag: "Stale", currentHeadSha: movedHeadSha } },
+        batch: {
+          state: { _tag: "Local" },
+          items: [{ postability: "stale_sha" }, { _tag: "ThreadReply" }],
+          receipts: [{ _tag: "ReplyCreated", itemId: "reply" }],
+        },
+      },
+    });
+    expect(writes).toEqual(["reply"]);
+    expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "Local" } } });
+  });
+
   it("plans one pending review before saved replies and thread actions", () => {
     expect(planBatchOperations({
       sessionId: session.id,
       attemptId: "001" as never,
       state: { _tag: "Local" }, summaryBody: "Review summary", suggestedEvent: "COMMENT",
       items: [
-        { _tag: "InlineComment", id: "one" as never, source: "manual", anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" }, body: "a", include: true, postability: "postable" },
-        { _tag: "ThreadReply", id: "reply" as never, threadId: "thread-1" as never, body: "b", include: true },
-        { _tag: "ThreadState", id: "state" as never, threadId: "thread-2" as never, action: "resolve", include: true },
+        { _tag: "InlineComment", id: "one" as never, provenance: { _tag: "human" }, source: "manual", anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" }, body: "a", include: true, postability: "postable" },
+        { _tag: "ThreadReply", id: "reply" as never, provenance: { _tag: "human" }, threadId: "thread-1" as never, body: "b", include: true },
+        { _tag: "ThreadState", id: "state" as never, provenance: { _tag: "human" }, threadId: "thread-2" as never, action: "resolve", include: true },
       ], receipts: [], createdAt: now, updatedAt: now,
     })).toEqual([{ _tag: "CreatePendingReview", itemIds: ["one"] }, { _tag: "Reply", itemId: "reply" }, { _tag: "ThreadState", itemId: "state" }]);
   });
-  it("rechecks the head immediately before create and blocks a stale write without invoking GitHub", async () => {
-    const fake = gateway(movedHeadSha);
-    const result = await createPendingReview({ profile, session, draft, gateway: fake.gateway as never, now });
-    expect(result).toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale", reason: "head_changed" } } } });
-    expect(fake.writes).toEqual([]);
-  });
-
-  it("creates one verified pending review with mapped postable comments only", async () => {
+  it("submits the batch's one pending review only after another current-head check", async () => {
     const fake = gateway();
-    const result = await createPendingReview({ profile, session, draft, gateway: fake.gateway as never, now });
-    expect(result).toMatchObject({ _tag: "ok", value: { draft: { state: { _tag: "PendingGitHubReview", pendingReviewId: "9001", commentCount: 1 } }, session: { draft: { state: { _tag: "PendingGitHubReview" } } } } });
-    expect(fake.writes).toEqual(["create:1"]);
-  });
-
-  it("retains a rejected batch locally and refuses a second create attempt", async () => {
-    const fake = gateway(headSha, { async createPendingReview() { return { _tag: "err" as const, error: { _tag: "GitHubWriteFailure" as const, category: "rejected" as const, message: "GitHub rejected the batch." } }; } });
-    const rejected = await createPendingReview({ profile, session, draft, gateway: fake.gateway as never, now });
-    expect(rejected).toMatchObject({ _tag: "err", error: { _tag: "GitHubWriteRejected", draft: { state: { _tag: "DraftFailed" } } } });
-    if (rejected._tag === "err" && rejected.error._tag === "GitHubWriteRejected") {
-      expect(rejected.error.draft.comments.find((comment) => comment.findingId === "mapped")).toMatchObject({ postability: "api_rejected" });
-      const retry = await createPendingReview({ profile, session: rejected.error.session, draft: rejected.error.draft, gateway: fake.gateway as never, now });
-      expect(retry).toMatchObject({ _tag: "err", error: { _tag: "DraftNotCreatable" } });
-    }
-    expect(fake.writes).toEqual(["create:1"]);
-  });
-
-  it("permits a deliberate local edit to re-arm a failed draft without silently splitting its batch", () => {
-    const failed = { ...draft, state: { _tag: "DraftFailed", error: { _tag: "GitHubWriteFailure", category: "rejected", message: "Rejected." } }, comments: draft.comments.map((comment) => comment.findingId === "mapped" ? { ...comment, postability: "api_rejected" as const } : comment) } as ReviewDraft;
-    const edited = editFailedDraftComment(failed, "mapped" as never, "Use the guarded path.", now);
-    expect(edited).toMatchObject({ _tag: "ok", value: { state: { _tag: "LocalDraft" } } });
-    if (edited._tag === "ok") expect(edited.value.comments.find((comment) => comment.findingId === "mapped")).toMatchObject({ body: "Use the guarded path.", postability: "postable" });
-  });
-
-  it("submits the one pending review only after another current-head check", async () => {
-    const fake = gateway();
-    const pending = { ...draft, state: { _tag: "PendingGitHubReview", pendingReviewId: "9001", commentCount: 1 } } as ReviewDraft;
-    const result = await submitPendingReview({ profile, session, draft: pending, event: "REQUEST_CHANGES", summaryBody: "Request changes before merge.", gateway: fake.gateway as never, now });
-    expect(result).toMatchObject({ _tag: "ok", value: { draft: { state: { _tag: "SubmittedGitHubReview", reviewId: "9001", event: "REQUEST_CHANGES" } }, session: { submittedReview: { reviewId: "9001", event: "REQUEST_CHANGES" } } } });
-    if (result._tag === "ok") {
-      await expect(submitPendingReview({ profile, session: result.value.session, draft: result.value.draft, event: "REQUEST_CHANGES", summaryBody: "Request changes before merge.", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "ReviewAlreadySubmitted" } });
-    }
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "PendingReview" as const, reviewId: "9001" },
+      summaryBody: "Request changes before merge.",
+      suggestedEvent: "REQUEST_CHANGES" as const,
+      items: [],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await submitReviewBatch({ profile, session, batch: batch as never, event: "REQUEST_CHANGES", gateway: fake.gateway as never, now });
+    expect(result).toMatchObject({ _tag: "ok", value: { batch: { state: { _tag: "Submitted", reviewId: "9001", event: "REQUEST_CHANGES" } }, session: { submittedReview: { reviewId: "9001", event: "REQUEST_CHANGES" } } } });
     expect(fake.writes).toEqual(["submit:REQUEST_CHANGES"]);
   });
 
-  it("offers a distinct summary-only submit action without a second inline-comment batch", async () => {
-    const fake = gateway();
-    const pending = { ...draft, state: { _tag: "PendingGitHubReview", pendingReviewId: "9001", commentCount: 1 } } as ReviewDraft;
-    await expect(submitSummaryOnlyPendingReview({ profile, session, draft: pending, summaryBody: "Summary-only review.", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "ok", value: { draft: { state: { _tag: "SubmittedGitHubReview", event: "COMMENT" } } } });
-    expect(fake.writes).toEqual(["submit:COMMENT"]);
-  });
-
-  it("rejects blank summaries and invalid events before reading the head or submitting", async () => {
-    const fake = gateway();
-    const pending = { ...draft, state: { _tag: "PendingGitHubReview", pendingReviewId: "9001", commentCount: 1 } } as ReviewDraft;
-    await expect(submitPendingReview({ profile, session, draft: pending, event: "COMMENT", summaryBody: "   ", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "InvalidSubmitReview" } });
-    await expect(submitPendingReview({ profile, session, draft: pending, event: "PENDING" as never, summaryBody: "summary", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "InvalidSubmitReview" } });
+  it("blocks a stale batch submission before invoking GitHub", async () => {
+    const fake = gateway(movedHeadSha);
+    const batch = { sessionId: session.id, state: { _tag: "PendingReview" as const, reviewId: "9001" }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [], createdAt: now, updatedAt: now };
+    await expect(submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale" } } } });
     expect(fake.writes).toEqual([]);
   });
 });

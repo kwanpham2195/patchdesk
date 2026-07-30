@@ -1,21 +1,19 @@
-# Patchdesk Design
+# Patchdesk glossary
 
-This context names the design-review concepts shared by the Patchdesk product UI and its standalone visual prototype.
+## Review item
 
-## Design language
+A local, snapshot-bound action that may later be sent to GitHub: an inline
+comment, thread reply, or thread-state change. Human and model items share the
+same structure; provenance records how the item started.
 
-**Interactive visual prototype**:
-A faithful, runnable representation of the product UI used to evaluate visual design and interaction states before production data and services are connected.
-_Avoid_: throwaway mock, low-fidelity wireframe
+## Provenance
 
-**Design scenario**:
-A stable, named product state that can be opened directly for design review, such as an empty inbox, a completed review, or a merge confirmation.
-_Avoid_: random fixture, test case
+The local origin of a review item: `human` or `model`. It is not the GitHub
+author. When a human changes a model item, the UI may concisely say `Model
+draft · edited by you`.
 
-**Design index**:
-The discovery surface for the available design scenarios. It belongs to the Design app and is not part of the Patchdesk product shell.
-_Avoid_: product dashboard, settings page
+## Review batch
 
-**Product surface**:
-The app-rendered Patchdesk UI that users evaluate, including the shell, inbox, workbench, settings, dialogs, and state feedback.
-_Avoid_: native window chrome, backend screen
+The one durable collection of local review items for an immutable prepared PR
+snapshot. A model run may add or replace its own items, but never removes human
+items.

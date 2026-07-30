@@ -87,7 +87,7 @@ export type WorkbenchPayload = {
     readonly actionKey?: "run_review" | "reconnect" | "start_again" | "try_again" | "prepare_again";
   };
   readonly result?: unknown;
-  readonly draft?: unknown;
+  readonly batch?: unknown;
   readonly comments?: unknown;
   readonly checks?: unknown;
   readonly history?: unknown;

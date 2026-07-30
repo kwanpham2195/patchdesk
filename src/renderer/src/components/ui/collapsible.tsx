@@ -10,9 +10,18 @@ function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props) {
   )
 }
 
-function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props) {
+function CollapsibleContent({
+  motion,
+  ...props
+}: CollapsiblePrimitive.Panel.Props & {
+  readonly motion?: "disclosure";
+}) {
   return (
-    <CollapsiblePrimitive.Panel data-slot="collapsible-content" {...props} />
+    <CollapsiblePrimitive.Panel
+      data-slot="collapsible-content"
+      {...(motion === "disclosure" ? { "data-disclosure-motion": "panel" } : {})}
+      {...props}
+    />
   )
 }
 

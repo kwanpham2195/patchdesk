@@ -42,7 +42,7 @@ describe("review copy contract", () => {
     });
     expect(cleanupCopy("clear_local_review_data")).toEqual({
       title: "Clear local review data?",
-      body: "This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay.",
+      body: "This removes completed and failed local reviews. An active review and diagnostic reports stay.",
       confirmLabel: "Clear local data",
     });
   });

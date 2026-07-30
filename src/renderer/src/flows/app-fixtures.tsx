@@ -3,8 +3,9 @@ import { requestJson } from "../api-client";
 import { CompletedReviewWorkbench } from "../components/completed-review-workbench";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { MergeConfirmationDialog } from "../components/merge-confirmation-dialog";
-import { ReviewSubmissionDialog } from "../components/review-submission-dialog";
+import { ReviewBatchPanel } from "../components/review-batch-panel";
 import { SafeRunPanel } from "../components/safe-run-panel";
+import type { ReviewBatch } from "../../../domain/review-batch";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
 
@@ -40,7 +41,9 @@ export function AppFixtureContent({
       </div>
     );
   if (hash === "#walkthrough-fixture")
-    return <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />;
+    return (
+      <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />
+    );
   if (
     hash === "#workbench-fixture" ||
     hash === "#long-workbench-fixture" ||
@@ -73,24 +76,7 @@ export function AppFixtureContent({
       />
     );
   }
-  if (
-    hash === "#submission-fixture" ||
-    hash === "#submission-rejection-fixture"
-  )
-    return (
-      <div className="mx-auto max-w-3xl p-6">
-        <ReviewSubmissionDialog
-          draft={submissionFixtureData.draft as never}
-          findings={submissionFixtureData.findings as never}
-          onCreatePending={async () => {
-            if (hash === "#submission-rejection-fixture")
-              throw new Error("fixture rejection");
-            return { reviewId: "9001" };
-          }}
-          onSubmitPending={async () => ({ reviewId: "9001" })}
-        />
-      </div>
-    );
+  if (hash === "#submission-fixture") return <SubmissionFixture />;
   if (hash === "#merge-fixture")
     return (
       <div className="mx-auto max-w-3xl p-6">
@@ -122,12 +108,18 @@ function WalkthroughFixture({
   readonly onNavigationStateChange: (state: NavigationState) => void;
 }): React.JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [lifecycle, setLifecycle] = useState<"idle" | "generating" | "ready">("idle");
+  const [lifecycle, setLifecycle] = useState<"idle" | "generating" | "ready">(
+    "idle",
+  );
   const [model, setModel] = useState<string>();
-  const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [reasoning, setReasoning] = useState<"low" | "medium" | "high">(
+    "medium",
+  );
   const [generateRequests, setGenerateRequests] = useState(0);
   const [draftAdded, setDraftAdded] = useState(false);
-  const [reviewedSectionIds, setReviewedSectionIds] = useState<ReadonlyArray<string>>([]);
+  const [reviewedSectionIds, setReviewedSectionIds] = useState<
+    ReadonlyArray<string>
+  >([]);
   const [supportReviewed, setSupportReviewed] = useState(false);
   const walkthrough = {
     snapshot: {
@@ -138,35 +130,86 @@ function WalkthroughFixture({
     },
     title: "Read-only walkthrough fixture",
     focus: "The focused review path remains separate from Files mode.",
-    chapters: [{
+    chapters: [
+      {
       id: "chapter-1",
       title: "Read first",
-      sections: [{
+        sections: [
+          {
         id: "section-1",
         title: "Keep the review local",
-        prose: "This fixture proves a manual, read-only walkthrough without starting a review run.",
+            prose:
+              "This fixture proves a manual, read-only walkthrough without starting a review run.",
         hunkIds: ["h1"],
-        hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
-      }, {
+            hunks: [
+              {
+                id: "h1",
+                path: "src/a.ts",
+                header: "@@ -1 +1 @@",
+                raw: "@@ -1 +1 @@\\n-old\\n+new",
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+              },
+            ],
+          },
+          {
         id: "section-2",
         title: "Follow the changed path",
-        prose: "The chapter rail keeps the next section available without leaving the saved Files surface.",
+            prose:
+              "The chapter rail keeps the next section available without leaving the saved Files surface.",
         hunkIds: ["h2"],
-        hunks: [{ id: "h2", path: "src/b.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
-      }],
-    }],
+            hunks: [
+              {
+                id: "h2",
+                path: "src/b.ts",
+                header: "@@ -1 +1 @@",
+                raw: "@@ -1 +1 @@\\n-old\\n+new",
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
     support: {
       id: "support" as const,
       title: "Support" as const,
       hunkIds: ["h3"],
-      hunks: [{ id: "h3", path: "src/c.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }],
+      hunks: [
+        {
+          id: "h3",
+          path: "src/c.ts",
+          header: "@@ -1 +1 @@",
+          raw: "@@ -1 +1 @@\\n-old\\n+new",
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 1,
+        },
+      ],
     },
   };
-  const projection = lifecycle === "ready"
-    ? { lifecycle: "ready" as const, noticeKey: "walkthrough-ready" as const, walkthrough }
+  const projection =
+    lifecycle === "ready"
+      ? {
+          lifecycle: "ready" as const,
+          noticeKey: "walkthrough-ready" as const,
+          walkthrough,
+        }
     : lifecycle === "generating"
-      ? { lifecycle: "generating" as const, noticeKey: "walkthrough-generating" as const }
-      : { lifecycle: "idle" as const, noticeKey: "walkthrough-idle" as const };
+        ? {
+            lifecycle: "generating" as const,
+            noticeKey: "walkthrough-generating" as const,
+          }
+        : {
+            lifecycle: "idle" as const,
+            noticeKey: "walkthrough-idle" as const,
+          };
   const walkthroughActions = {
     dialogOpen,
     projection,
@@ -187,7 +230,10 @@ function WalkthroughFixture({
     onRetry: () => setLifecycle("generating"),
     onRegenerate: () => setLifecycle("generating"),
     busy: lifecycle === "generating",
-    onMarkSectionReviewed: (sectionId: string) => setReviewedSectionIds((current) => current.includes(sectionId) ? current : [...current, sectionId]),
+    onMarkSectionReviewed: (sectionId: string) =>
+      setReviewedSectionIds((current) =>
+        current.includes(sectionId) ? current : [...current, sectionId],
+      ),
     onMarkSupportReviewed: () => setSupportReviewed(true),
     onSelectSection: () => undefined,
     reviewedSectionIds,
@@ -206,16 +252,55 @@ function WalkthroughFixture({
           reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
           freshness: "fresh",
           refreshedAt: "2026-07-17T00:00:00.000Z",
+          batch: submissionFixtureData.batch as never,
           comments: workbenchFixtureData.comments as never,
           checks: workbenchFixtureData.checks,
         }}
         actions={{
           reportNavigationState: onNavigationStateChange,
           walkthrough: walkthroughActions as never,
-          batchActions: { addInlineComment: async () => setDraftAdded(true) } as never,
+          batchActions: {
+            addInlineComment: async () => setDraftAdded(true),
+          } as never,
         }}
       />
       {draftAdded ? <p role="status">Draft added to review batch</p> : null}
+    </div>
+  );
+}
+
+export function SubmissionFixture({
+  defaultApplyOpen = false,
+}: {
+  readonly defaultApplyOpen?: boolean;
+} = {}): React.JSX.Element {
+  const [batch, setBatch] = useState<ReviewBatch>(
+    submissionFixtureData.batch as unknown as ReviewBatch,
+  );
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <ReviewBatchPanel
+        batch={batch as never}
+        writeBlocked={false}
+        defaultApplyOpen={defaultApplyOpen}
+        actions={{
+          addInlineComment: async () => undefined,
+          removeItem: async () => undefined,
+          addThreadReply: async () => undefined,
+          setThreadState: async () => undefined,
+          apply: async () =>
+            setBatch((current) => ({
+              ...current,
+              state: { _tag: "PendingReview" as const, reviewId: "9001" },
+            })),
+          submit: async (event) =>
+            setBatch((current) => ({
+              ...current,
+              state: { _tag: "Submitted" as const, reviewId: "9001", event },
+              suggestedEvent: event,
+            })),
+        }}
+      />
     </div>
   );
 }
@@ -227,7 +312,11 @@ function RunFixturePanel(): React.JSX.Element {
       profileId="fixture"
       sessionId="fixture-session"
       attemptId="001"
-      recoveryView={{ noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" }}
+      recoveryView={{
+        noticeKey: "ready_to_review",
+        tone: "positive",
+        actionKey: "run_review",
+      }}
       {...(runId === undefined ? {} : { runId })}
       onStart={async () => {
         const value = await requestJson("/v1/runs/review-pr", {
@@ -287,7 +376,8 @@ function buildActiveFollowPatch(): string {
     const path = `src/${String.fromCharCode(97 + fileIndex)}.ts`;
     const lines = Array.from(
       { length: 48 },
-      (_, lineIndex) => `-old-${fileIndex}-${lineIndex}\n+new-${fileIndex}-${lineIndex}`,
+      (_, lineIndex) =>
+        `-old-${fileIndex}-${lineIndex}\n+new-${fileIndex}-${lineIndex}`,
     ).join("\n");
     return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,48 +1,48 @@\n${lines}\n`;
   }).join("");
@@ -304,6 +394,8 @@ export const workbenchFixtureData = {
       number: 42,
     },
     title: "Protect review writes",
+    description:
+      "## Review path\n\n<details open><summary>Deployment notes</summary><p>Keep this preview readable.</p></details>\n\n```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```",
     author: "fixture",
     headBranch: "feat/review",
     baseBranch: "sit",
@@ -474,29 +566,32 @@ const longWorkbenchFixtureData = {
 };
 // eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic submission payload.
 export const submissionFixtureData = {
-  draft: {
-    state: { _tag: "LocalDraft" },
+  batch: {
+    sessionId: "fixture-session",
+    state: { _tag: "Local" as const },
     summaryBody: "Request changes before merge.",
-    comments: [
+    suggestedEvent: "COMMENT" as const,
+    items: [
       {
-        findingId: "p1",
+        _tag: "InlineComment" as const,
+        id: "p1" as never,
+        provenance: { _tag: "human" as const },
+        source: "manual" as const,
         include: true,
-        path: "src/services/review-submission-service.ts",
+        anchor: {
+          path: "src/services/review-submission-service.ts" as never,
+          startLine: 34,
         line: 34,
+          side: "new" as const,
+        },
         body: "Keep the stale-head check at the write boundary.",
         postability: "postable",
       },
-      {
-        findingId: "unmapped",
-        include: true,
-        path: "src/services/review-submission-service.ts",
-        line: 55,
-        body: "This has no verified GitHub location.",
-        postability: "invalid_line",
-      },
     ],
+    receipts: [],
+    createdAt: "2026-07-18T10:00:00.000Z" as never,
+    updatedAt: "2026-07-18T10:00:00.000Z" as never,
   },
-  findings: [{ id: "p1", severity: "P1" }],
 };
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

@@ -7,12 +7,15 @@ vi.mock("@pierre/diffs/react", () => ({
   PatchDiff: ({
     patch,
     options,
+    className,
   }: {
     patch: string;
     options: { diffStyle: "unified" | "split"; overflow: "scroll" | "wrap" };
+    className?: string;
   }) => (
     <div
       data-pierre-mock="true"
+      className={className}
       data-diff-style={options.diffStyle}
       data-overflow={options.overflow}
       data-patch={patch}
@@ -42,6 +45,14 @@ describe("narrative walkthrough diff block", () => {
     const block = document.querySelector('[data-walkthrough-diff-block]');
     expect(block).toBeTruthy();
     expect(block?.getAttribute("data-walkthrough-diff-block")).toBe("block-1");
+  });
+
+  it("sizes a walkthrough hunk to its content instead of reserving a viewport", () => {
+    render(<NarrativeWalkthroughDiff blockId="block-size" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
+    const diff = screen.getByLabelText("Plain text diff");
+    expect(diff.classList.contains("max-h-[calc(100vh-12rem)]")).toBe(true);
+    expect(diff.classList.contains("h-[calc(100vh-12rem)]")).toBe(false);
+    expect(diff.classList.contains("min-h-[32rem]")).toBe(false);
   });
 
   it("filters the original raw patch to the requested hunk and preserves its file header", () => {

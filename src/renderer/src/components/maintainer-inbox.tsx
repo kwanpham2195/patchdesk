@@ -12,7 +12,6 @@ import {
   PanelLeftOpen,
   Search,
   Save,
-  ShieldAlert,
   Trash2,
 } from "lucide-react";
 
@@ -379,7 +378,6 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
     case "continue_review": return "View review progress";
     case "review_updates": return "Review updates";
     case "open_saved_review": return "Open saved review";
-    case "inspect_checks": return "Inspect failing checks";
     case "open_merge_readiness": return "Open merge readiness";
     case "open_discussion": return "Review author response";
   }
@@ -391,8 +389,8 @@ function filterRows(rows: ReadonlyArray<InboxRow>, view: InboxView, search: stri
 function matchesView(row: InboxRow, view: InboxView): boolean { switch (view) { case "all_open": return true; case "my_inbox": return row.categories.some((category) => category === "needs_review" || category === "updated_since_review" || category === "saved_review" || category === "running"); case "updated": return row.categories.includes("updated_since_review"); case "needs_review": return row.categories.includes("needs_review"); case "waiting": return row.categories.includes("waiting_for_author"); case "checks_failing": return row.categories.includes("checks_failing"); case "ready_to_merge": return row.categories.includes("ready_to_merge"); } }
 function sortRows(rows: ReadonlyArray<InboxRow>, sort: InboxSort): ReadonlyArray<InboxRow> { return [...rows].sort((left, right) => sort === "updated" ? right.updatedAt.localeCompare(left.updatedAt) : sort === "repository" ? inboxIdentityKey(left).localeCompare(inboxIdentityKey(right)) : priority(left) - priority(right) || right.updatedAt.localeCompare(left.updatedAt) || inboxIdentityKey(left).localeCompare(inboxIdentityKey(right))); }
 function priority(row: InboxRow): number { if (row.categories.includes("running") || row.categories.includes("saved_review")) return 0; if (row.categories.includes("updated_since_review")) return 1; if (row.categories.includes("needs_review")) return 2; if (row.categories.includes("waiting_for_author")) return 3; if (row.categories.includes("checks_failing")) return 4; if (row.categories.includes("ready_to_merge")) return 5; return 6; }
-function requestAction(row: InboxRow, onOpenReview: (row: InboxRow, mode: ReviewStartMode, initialSection?: ReviewInitialSection) => void, onOpenSession: (sessionId: string) => void, setScopePreview: (row: InboxRow | undefined) => void): void { switch (row.recommendedAction.kind) { case "run_review": onOpenReview(row, "full"); return; case "review_updates": setScopePreview(row); return; case "continue_review": case "open_saved_review": case "open_merge_readiness": case "open_discussion": onOpenSession(row.recommendedAction.sessionId); return; case "inspect_checks": onOpenReview(row, "full", "checks"); return; } }
-function actionIcon(kind: InboxRow["recommendedAction"]["kind"]): React.JSX.Element { return kind === "review_updates" ? <Clock3 /> : kind === "inspect_checks" ? <ShieldAlert /> : kind === "continue_review" ? <LoaderCircle /> : <CheckCircle2 />; }
+function requestAction(row: InboxRow, onOpenReview: (row: InboxRow, mode: ReviewStartMode, initialSection?: ReviewInitialSection) => void, onOpenSession: (sessionId: string) => void, setScopePreview: (row: InboxRow | undefined) => void): void { switch (row.recommendedAction.kind) { case "run_review": onOpenReview(row, "full"); return; case "review_updates": setScopePreview(row); return; case "continue_review": case "open_saved_review": case "open_merge_readiness": case "open_discussion": onOpenSession(row.recommendedAction.sessionId); return; } }
+function actionIcon(kind: InboxRow["recommendedAction"]["kind"]): React.JSX.Element { return kind === "review_updates" ? <Clock3 /> : kind === "continue_review" ? <LoaderCircle /> : <CheckCircle2 />; }
 function shortSha(value: string): string { return value.slice(0, 12); }
 function changeStats(row: InboxRow): string { const { additions, deletions, changedFiles } = row.changeStats; const parts = [changedFiles === undefined ? undefined : `${changedFiles} files`, additions === undefined ? undefined : `+${additions}`, deletions === undefined ? undefined : `-${deletions}`].filter((value): value is string => value !== undefined); return parts.length === 0 ? "Not available" : parts.join(" · "); }
 function relativeTime(iso: string): string { const timestamp = Date.parse(iso); if (Number.isNaN(timestamp)) return ""; const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000)); if (minutes < 60) return `${minutes}m`; if (minutes < 1_440) return `${Math.round(minutes / 60)}h`; return `${Math.round(minutes / 1_440)}d`; }

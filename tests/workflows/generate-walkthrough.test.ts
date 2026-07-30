@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { FlueHarness } from "../../src/flue-runtime-types";
-import { readBoundedArtifact } from "../../src/workflows/walkthrough-artifact-reader";
+import { readBoundedArtifact } from "../../src/services/walkthrough-artifact-reader";
 import {
   parseWalkthroughOutput,
   runWalkthroughWorkflow,

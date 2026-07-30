@@ -67,7 +67,7 @@ export class ReviewCompletionService {
     const alreadyReportedFindingIds = lifecycle.value === undefined
       ? undefined
       : new Set(lifecycle.value.flatMap((entry) => entry.draftPostability === "already_reported" && entry.currentFindingId !== undefined ? [entry.currentFindingId] : []));
-    const batch = createReviewBatch({ session: completed.value.session, attempt: completedAttempt, result: result.value, createdAt: completedAt, ...(alreadyReportedFindingIds === undefined ? {} : { alreadyReportedFindingIds }) }); if (batch._tag === "err") return err({ reason: "not_current" });
+    const batch = createReviewBatch({ session: completed.value.session, attempt: completedAttempt, result: result.value, patch, ...(session.value.batchContent === undefined ? {} : { existingBatch: session.value.batchContent }), createdAt: completedAt, ...(alreadyReportedFindingIds === undefined ? {} : { alreadyReportedFindingIds }) }); if (batch._tag === "err") return err({ reason: "not_current" });
     const next = { ...completed.value.session, batch: { state: batch.value.batch.state }, batchContent: batch.value.batch, updatedAt: this.now() };
     const savedResult = await writeAtomicJson(resultPath.value, result.value);
     if (savedResult._tag === "err") return err({ reason: savedResult.error.reason === "sensitive_value" ? "invalid_result" : "storage_failed" });

@@ -370,7 +370,7 @@ describe("StorageManagementService", () => {
     await rm(outside, { recursive: true, force: true });
   });
 
-  it("removes discarded and quarantined evidence while preserving running reviews", async () => {
+  it("removes every non-running session and quarantined evidence while preserving running reviews", async () => {
     const setup = await trackSetup();
     const discarded = setup.sessionsById.created;
     expect(await setup.service.discard({ profileId, sessionId: discarded.id })).toEqual({ _tag: "ok", value: undefined });
@@ -380,6 +380,7 @@ describe("StorageManagementService", () => {
 
     expect(await setup.service.clearLocalData(profileId)).toEqual({ _tag: "ok", value: undefined });
     expect(await exists(setup.paths.sessionFile(profileId, discarded.id))).toBe(false);
+    expect(await exists(setup.paths.sessionFile(profileId, setup.sessionsById.reviewed.id))).toBe(false);
     expect(await exists(setup.paths.quarantinedSessionDirectory(profileId, entry))).toBe(false);
     expect(await exists(setup.paths.worktreeDirectory(profileId, setup.sessionsById.running.id))).toBe(true);
   });

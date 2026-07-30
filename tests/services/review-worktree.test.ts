@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -88,6 +88,29 @@ describe("ReviewWorktreeService", () => {
       expect(pruneIndex).toBeGreaterThan(-1);
       expect(addIndex).toBeGreaterThan(-1);
       expect(pruneIndex).toBeLessThan(addIndex);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("removes Patchdesk's worktree marker before asking Git to remove the worktree", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const local = join(root, "repo");
+      const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+      const target = paths.worktreeDirectory(ids.profileId, sessionId);
+      await mkdir(local);
+      await mkdir(target, { recursive: true });
+      await writeFile(join(target, "worktree.json"), JSON.stringify({ profileId: ids.profileId, sessionId }), "utf8");
+
+      const cleaned = await new ReviewWorktreeService(paths, new RecordingGit()).cleanup({
+        profileId: ids.profileId,
+        sessionId,
+        localPath: local,
+        targetPath: target,
+      });
+
+      expect(cleaned).toEqual({ _tag: "ok", value: undefined });
+      await expect(access(join(target, "worktree.json"))).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

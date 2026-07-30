@@ -23,12 +23,10 @@ test("normal dashboard direct entry opens the review workbench", async ({ page }
     await page.goto(origin(renderer));
     await page.getByLabel("Pull request reference").fill("centraldigital/patchdesk#1");
     await page.getByRole("button", { name: "Preview pull request" }).click();
-    await expect(page.getByRole("main")).toContainText("Ready to review", { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Fixture" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
     await expect(page.getByText(/^Session /)).toHaveCount(0);
-    await page.getByRole("button", { name: "View diff" }).click();
-    const diff = page.getByLabel("Diff workbench");
+    const diff = page.getByLabel("Review diff");
     await expect(diff).toBeVisible();
     expect((await diff.boundingBox())?.width).toBeGreaterThan(900);
     await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
@@ -53,8 +51,13 @@ test("normal dashboard opens a seeded completed workbench and writes one confirm
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${sessionId}`);
     await expect(page.getByRole("main")).toContainText("Review complete"); await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await page.getByRole("button", { name: "Apply review batch" }).click(); await page.getByRole("alertdialog", { name: "Apply this review batch to GitHub?" }).getByRole("button", { name: "Apply batch" }).click();
-    await expect(page.getByText(/Pending Review/)).toBeVisible(); expect(creates).toBe(1); await page.screenshot({ path: "test-results/milestone-12-completed-workbench.png", fullPage: true });
+    await page.getByRole("button", { name: "PR overview" }).click();
+    const overview = page.getByRole("dialog", { name: "PR overview" });
+    await overview.getByRole("button", { name: "Create pending review" }).click();
+    const confirmation = page.getByRole("alertdialog", { name: "Apply this review batch to GitHub?" });
+    await confirmation.getByRole("button", { name: "Create pending review" }).click();
+    await expect(confirmation).toBeHidden();
+    await expect(overview.getByText("Pending review 9001 created.")).toBeVisible(); expect(creates).toBe(1); await page.screenshot({ path: "test-results/milestone-12-completed-workbench.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 

@@ -154,7 +154,7 @@ const CLEANUP_COPY: Readonly<
   clear_local_review_data: {
     title: "Clear local review data?",
     body:
-      "This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay.",
+      "This removes completed and failed local reviews. An active review and diagnostic reports stay.",
     confirmLabel: "Clear local data",
   },
 };

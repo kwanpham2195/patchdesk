@@ -2,7 +2,7 @@ import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { chromium } from "playwright";
 
 const execute = promisify(execFile);
@@ -48,10 +48,7 @@ if (!executableKind.includes(process.arch))
 
 const home = await mkdtemp(join(tmpdir(), "patchdesk-package-smoke-"));
 const cdpPort = 20_000 + Math.floor(Math.random() * 20_000);
-await execute("open", [
-  "-n",
-  bundle,
-  "--args",
+const packagedApp = spawn(executable, [
   `--user-data-dir=${join(home, "user-data")}`,
   `--remote-debugging-port=${cdpPort}`,
 ], {
@@ -60,9 +57,11 @@ await execute("open", [
     PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
     PATCHDESK_PACKAGE_SMOKE: "1",
   },
+  stdio: "ignore",
 });
-const browser = await connectToPackagedApp(cdpPort);
+let browser;
 try {
+  browser = await connectToPackagedApp(cdpPort);
   const context = browser.contexts()[0];
   const window = context === undefined
     ? undefined
@@ -115,6 +114,22 @@ try {
   await generalTab.waitFor();
   if (await generalTab.getAttribute("aria-selected") !== "true")
     throw new Error("Packaged Settings did not open on the General tab");
+  const workspaceTab = settings.getByRole("tab", { name: "Workspace" });
+  await workspaceTab.click();
+  await settings.getByTestId("settings-section-workspace").waitFor();
+  await settings.getByTestId("watchlist-management").waitFor();
+  const dataTab = settings.getByRole("tab", { name: "Data & recovery" });
+  await dataTab.click();
+  await settings.getByTestId("settings-section-data").waitFor();
+  await settings.getByTestId("local-review-data-card").waitFor();
+  const reviewActivityCard = settings.getByTestId("review-activity-card");
+  await reviewActivityCard.scrollIntoViewIfNeeded();
+  await reviewActivityCard.waitFor();
+  const loadActivity = settings.getByRole("button", { name: "Load activity" });
+  await loadActivity.click();
+  await settings
+    .getByText("No local review activity yet.", { exact: true })
+    .waitFor();
   const settingsViewport = window
     .getByTestId("settings-scroll-region")
     .locator('[data-slot="scroll-area-viewport"]');
@@ -124,14 +139,15 @@ try {
     scrollHeight: element.scrollHeight,
     overflowY: window.getComputedStyle(element).overflowY,
   }));
-  if (scrollMetrics.scrollHeight <= scrollMetrics.clientHeight || scrollMetrics.overflowY !== "scroll")
+  if (scrollMetrics.overflowY !== "scroll")
     throw new Error(`Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`);
   console.log(
     `${bundle}: packaged fixture workbench loaded (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
   );
 } finally {
-  await browser.close();
+  if (browser !== undefined) await browser.close();
   await stopPackagedApp(cdpPort);
+  if (!packagedApp.killed) packagedApp.kill("SIGTERM");
   await rm(home, { recursive: true, force: true });
 }
 

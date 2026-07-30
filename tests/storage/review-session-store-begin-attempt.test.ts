@@ -24,7 +24,6 @@ import {
 import { parseReviewBatch } from "../../src/domain/review-batch";
 import {
   createReviewSession,
-  discardBatchForRerun,
 } from "../../src/domain/review-session";
 import type { ReviewAttempt } from "../../src/domain/review-attempt";
 
@@ -69,21 +68,7 @@ describe("ReviewSessionStore.beginAttempt", () => {
       createAttempt: async (session, id) =>
         okAttempt(fixture.paths, fixture.profileId, session.id, id),
     });
-    expect(blocked).toMatchObject({
-      _tag: "err",
-      error: { _tag: "BeginAttemptRejected", reason: "not_runnable" },
-    });
-
-    await fixture.store.save(
-      must(discardBatchForRerun(sessionWithBatch, startedAt)),
-    );
-    await expect(fixture.store.beginAttempt({
-      profileId: fixture.profileId,
-      sessionId: fixture.session.id,
-      updatedAt: startedAt,
-      createAttempt: async (session, id) =>
-        okAttempt(fixture.paths, fixture.profileId, session.id, id),
-    })).resolves.toMatchObject({ _tag: "ok", value: { id: "001" } });
+    expect(blocked).toMatchObject({ _tag: "ok", value: { id: "001" } });
   });
 
   it("allocates retry artifacts from the real attempt ID", async () => {
@@ -188,15 +173,15 @@ describe("ReviewSessionStore.beginAttempt", () => {
       updatedAt: startedAt,
       createAttempt: async (session, id) =>
         okAttempt(fixture.paths, fixture.profileId, session.id, id),
-    })).resolves.toMatchObject({ _tag: "ok", value: { id: "002" } });
+    })).resolves.toMatchObject({ _tag: "err", error: { _tag: "BeginAttemptRejected", reason: "not_runnable" } });
 
     await expect(
       fixture.store.load(fixture.profileId, fixture.session.id),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
-        currentAttemptId: "002",
-        state: { _tag: "Running", attemptId: "002" },
+        currentAttemptId: "001",
+        state: { _tag: "ReviewCompleted", attemptId: "001" },
         submittedReview: { reviewId: "review-1" },
       },
     });
@@ -205,8 +190,8 @@ describe("ReviewSessionStore.beginAttempt", () => {
       fixture.session.id,
     );
     if (stored._tag === "ok") {
-      expect(stored.value.batch).toBeUndefined();
-      expect(stored.value.batchContent).toBeUndefined();
+      expect(stored.value.batch).toMatchObject({ state: { _tag: "Submitted" } });
+      expect(stored.value.batchContent).toMatchObject({ state: { _tag: "Submitted" } });
     }
   });
 

@@ -1,10 +1,8 @@
 import type {
   GitHubReader,
   GitHubReviewWriter,
-  PendingReviewComment,
 } from "../adapters/github/github-adapter";
-import type { GitHubReviewEvent, ReviewDraft } from "../domain/review-draft";
-import type { BatchOperation, ReviewBatch, ReviewBatchItem } from "../domain/review-batch";
+import type { BatchOperation, GitHubReviewEvent, ReviewBatch, ReviewBatchItem } from "../domain/review-batch";
 import type { GitSha, IsoTimestamp } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { ReviewSession } from "../domain/review-session";
@@ -13,209 +11,99 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 
 type ReviewGateway = Pick<GitHubReader, "getPullRequest"> & GitHubReviewWriter;
 
-export type ReviewSubmissionFailure =
-  | { readonly _tag: "DraftNotCreatable" }
-  | { readonly _tag: "NoPostableComments" }
-  | { readonly _tag: "InvalidSubmitReview" }
-  | { readonly _tag: "PendingReviewRequired" }
-  | { readonly _tag: "ReviewAlreadySubmitted" }
-  | { readonly _tag: "GitHubHeadReadFailed" }
-  | { readonly _tag: "StaleHeadBlocksWrite"; readonly session: ReviewSession; readonly draft: ReviewDraft }
-  | { readonly _tag: "GitHubWriteRejected"; readonly session: ReviewSession; readonly draft: ReviewDraft }
-  | { readonly _tag: "GitHubCreateAmbiguous"; readonly session: ReviewSession; readonly draft: ReviewDraft }
-  | { readonly _tag: "GitHubSubmitFailed"; readonly session: ReviewSession; readonly draft: ReviewDraft };
-
-type SubmissionSuccess = { readonly session: ReviewSession; readonly draft: ReviewDraft };
-
-/** Creates exactly one PENDING review after a final remote head check; callers persist every returned state. */
-export async function createPendingReview(input: {
-  readonly profile: WorkspaceProfileConfig;
-  readonly session: ReviewSession;
-  readonly draft: ReviewDraft;
-  readonly gateway: ReviewGateway;
-  readonly now: IsoTimestamp;
-}): Promise<Result<SubmissionSuccess, ReviewSubmissionFailure>> {
-  if (input.draft.state._tag !== "LocalDraft") return err({ _tag: "DraftNotCreatable" });
-  const comments = postableComments(input.draft);
-  if (comments.length === 0) return err({ _tag: "NoPostableComments" });
-
-  const currentHead = await verifiedCurrentHead(input.profile, input.session, input.gateway);
-  if (currentHead._tag === "err") return currentHead;
-  const stale = staleHead(input.session, input.draft, currentHead.value, input.now);
-  if (stale !== undefined) return err(stale);
-
-  // No await occurs between the verified head comparison above and this explicit GitHub create call.
-  const created = await input.gateway.createPendingReview({
-    profile: input.profile,
-    pr: sessionPr(input.session),
-    headSha: input.session.key.headSha,
-    summaryBody: input.draft.summaryBody,
-    comments,
-  });
-  if (created._tag === "err") {
-    const failed = failedDraft(input.draft, created.error.category, comments, input.now);
-    const session = withDraft(input.session, failed, input.now);
-    return err(
-      created.error.category === "rejected"
-        ? { _tag: "GitHubWriteRejected", session, draft: failed }
-        : { _tag: "GitHubCreateAmbiguous", session, draft: failed },
-    );
-  }
-
-  const draft: ReviewDraft = {
-    ...input.draft,
-    state: {
-      _tag: "PendingGitHubReview",
-      pendingReviewId: created.value.reviewId,
-      commentCount: comments.length,
-    },
-    updatedAt: input.now,
-  };
-  return ok({ session: withDraft(input.session, draft, input.now), draft });
-}
-
-/** Submits only a known pending review, with its selected event and summary body and no second comment batch. */
-export async function submitPendingReview(input: {
-  readonly profile: WorkspaceProfileConfig;
-  readonly session: ReviewSession;
-  readonly draft: ReviewDraft;
-  readonly event: GitHubReviewEvent;
-  readonly summaryBody: string;
-  readonly gateway: ReviewGateway;
-  readonly now: IsoTimestamp;
-}): Promise<Result<SubmissionSuccess, ReviewSubmissionFailure>> {
-  if (!isReviewEvent(input.event) || input.summaryBody.trim().length === 0)
-    return err({ _tag: "InvalidSubmitReview" });
-  if (input.session.submittedReview !== undefined) return err({ _tag: "ReviewAlreadySubmitted" });
-  if (input.draft.state._tag !== "PendingGitHubReview") return err({ _tag: "PendingReviewRequired" });
-
-  const currentHead = await verifiedCurrentHead(input.profile, input.session, input.gateway);
-  if (currentHead._tag === "err") return currentHead;
-  const stale = staleHead(input.session, input.draft, currentHead.value, input.now);
-  if (stale !== undefined) return err(stale);
-
-  // No await occurs between the verified head comparison above and this explicit submit call.
-  const submitted = await input.gateway.submitPendingReview({
-    profile: input.profile,
-    pr: sessionPr(input.session),
-    reviewId: input.draft.state.pendingReviewId,
-    event: input.event,
-    summaryBody: input.summaryBody.trim(),
-  });
-  if (submitted._tag === "err")
-    return err({ _tag: "GitHubSubmitFailed", session: input.session, draft: input.draft });
-
-  const draft: ReviewDraft = {
-    ...input.draft,
-    state: {
-      _tag: "SubmittedGitHubReview",
-      reviewId: submitted.value.reviewId,
-      event: input.event,
-    },
-    summaryBody: input.summaryBody.trim(),
-    suggestedEvent: input.event,
-    updatedAt: input.now,
-  };
-  return ok({
-    draft,
-    session: {
-      ...withDraft(input.session, draft, input.now),
-      submittedReview: {
-        reviewId: submitted.value.reviewId,
-        event: input.event,
-        submittedAt: input.now,
-      },
-    },
-  });
-}
-
-/** Explicit summary-only action: submits a known pending review as COMMENT without adding or splitting inline comments. */
-export async function submitSummaryOnlyPendingReview(input: Omit<
-  Parameters<typeof submitPendingReview>[0],
-  "event"
->): Promise<Result<SubmissionSuccess, ReviewSubmissionFailure>> {
-  return submitPendingReview({ ...input, event: "COMMENT" });
-}
-
-function postableComments(draft: ReviewDraft): ReadonlyArray<PendingReviewComment> {
-  return draft.comments.flatMap((comment) =>
-    comment.include && comment.postability === "postable" && comment.body.trim().length > 0
-      ? [{ body: comment.body, path: comment.path, line: comment.line, ...(comment.lineEnd === undefined ? {} : { lineEnd: comment.lineEnd }), diffSide: comment.diffSide }]
-      : [],
-  );
-}
-
 async function verifiedCurrentHead(
   profile: WorkspaceProfileConfig,
   session: ReviewSession,
   gateway: ReviewGateway,
-): Promise<Result<GitSha, ReviewSubmissionFailure>> {
+): Promise<Result<GitSha, { readonly _tag: "GitHubHeadReadFailed" }>> {
   const current = await gateway.getPullRequest({ profile, pr: sessionPr(session) });
   return current._tag === "err"
     ? err({ _tag: "GitHubHeadReadFailed" })
     : ok(current.value.headSha);
 }
 
-function staleHead(
-  session: ReviewSession,
-  draft: ReviewDraft,
-  currentHeadSha: GitSha,
-  now: IsoTimestamp,
-): Extract<ReviewSubmissionFailure, { readonly _tag: "StaleHeadBlocksWrite" }> | undefined {
-  if (session.key.headSha === currentHeadSha && session.state._tag !== "Stale") return undefined;
-  return {
-    _tag: "StaleHeadBlocksWrite",
-    draft,
-    session: {
-      ...session,
-      state: { _tag: "Stale", reason: "head_changed", currentHeadSha },
-      updatedAt: now,
-    },
-  };
-}
-
-function failedDraft(
-  draft: ReviewDraft,
-  category: "auth" | "rejected" | "unavailable",
-  sent: ReadonlyArray<PendingReviewComment>,
-  updatedAt: IsoTimestamp,
-): ReviewDraft {
-  const sentKeys = new Set(sent.map((comment) => `${comment.path}:${comment.line}:${comment.body}`));
-  return {
-    ...draft,
-    state: {
-      _tag: "DraftFailed",
-      error: {
-        _tag: "GitHubWriteFailure",
-        category,
-        message: category === "rejected" ? "GitHub rejected the pending-review batch; the draft was retained." : "GitHub could not confirm the pending-review create; retry is blocked to avoid a duplicate review.",
-      },
-    },
-    comments: draft.comments.map((comment) =>
-      sentKeys.has(`${comment.path}:${comment.line}:${comment.body}`)
-        ? { ...comment, postability: "api_rejected" as const }
-        : comment,
-    ),
-    updatedAt,
-  };
-}
-
 function isReviewEvent(value: unknown): value is GitHubReviewEvent {
   return value === "APPROVE" || value === "COMMENT" || value === "REQUEST_CHANGES";
-}
-
-function withDraft(session: ReviewSession, draft: ReviewDraft, updatedAt: IsoTimestamp): ReviewSession {
-  return { ...session, draft: { state: draft.state }, draftContent: draft, updatedAt };
 }
 
 function sessionPr(session: ReviewSession): PullRequestRef {
   return { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber };
 }
 
+export type BatchSubmitFailure =
+  | { readonly _tag: "InvalidSubmitReview" }
+  | { readonly _tag: "PendingReviewRequired" }
+  | { readonly _tag: "ReviewAlreadySubmitted" }
+  | { readonly _tag: "GitHubHeadReadFailed" }
+  | { readonly _tag: "StaleHeadBlocksWrite"; readonly session: ReviewSession; readonly batch: ReviewBatch }
+  | { readonly _tag: "GitHubSubmitFailed"; readonly session: ReviewSession; readonly batch: ReviewBatch };
+
+/** Submits the one pending review already created from this persisted batch. */
+export async function submitReviewBatch(input: {
+  readonly profile: WorkspaceProfileConfig;
+  readonly session: ReviewSession;
+  readonly batch: ReviewBatch;
+  readonly event: GitHubReviewEvent;
+  readonly gateway: ReviewGateway;
+  readonly now: IsoTimestamp;
+}): Promise<Result<{ readonly session: ReviewSession; readonly batch: ReviewBatch }, BatchSubmitFailure>> {
+  if (!isReviewEvent(input.event) || input.batch.summaryBody.trim().length === 0)
+    return err({ _tag: "InvalidSubmitReview" });
+  if (input.session.submittedReview !== undefined) return err({ _tag: "ReviewAlreadySubmitted" });
+  if (input.batch.state._tag !== "PendingReview") return err({ _tag: "PendingReviewRequired" });
+
+  const currentHead = await verifiedCurrentHead(input.profile, input.session, input.gateway);
+  if (currentHead._tag === "err") return currentHead;
+  if (input.session.key.headSha !== currentHead.value || input.session.state._tag === "Stale") {
+    return err({
+      _tag: "StaleHeadBlocksWrite",
+      batch: input.batch,
+      session: {
+        ...input.session,
+        state: { _tag: "Stale", reason: "head_changed", currentHeadSha: currentHead.value },
+        updatedAt: input.now,
+      },
+    });
+  }
+
+  // No await occurs between the verified head comparison above and this explicit submit call.
+  const submitted = await input.gateway.submitPendingReview({
+    profile: input.profile,
+    pr: sessionPr(input.session),
+    reviewId: input.batch.state.reviewId,
+    event: input.event,
+    summaryBody: input.batch.summaryBody.trim(),
+  });
+  if (submitted._tag === "err")
+    return err({ _tag: "GitHubSubmitFailed", session: input.session, batch: input.batch });
+
+  const batch: ReviewBatch = {
+    ...input.batch,
+    state: { _tag: "Submitted", reviewId: submitted.value.reviewId, event: input.event },
+    summaryBody: input.batch.summaryBody.trim(),
+    suggestedEvent: input.event,
+    updatedAt: input.now,
+  };
+  return ok({
+    batch,
+    session: {
+      ...input.session,
+      batch: { state: batch.state },
+      batchContent: batch,
+      submittedReview: { reviewId: submitted.value.reviewId, event: input.event, submittedAt: input.now },
+      updatedAt: input.now,
+    },
+  });
+}
+
 /** Plans the persisted, confirmed remote operations in their only legal order. */
-export function planBatchOperations(batch: ReviewBatch): ReadonlyArray<BatchOperation> {
-  const inline = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && item.include && item.postability === "postable");
-  const thread = batch.items.filter((item) => item.include && (item._tag === "ThreadReply" || item._tag === "ThreadState"));
+export function planBatchOperations(
+  batch: ReviewBatch,
+  options: { readonly allowInline?: boolean } = {},
+): ReadonlyArray<BatchOperation> {
+  const allowInline = options.allowInline ?? true;
+  const inline = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && allowInline && item.include && item.postability === "postable" && !hasReceiptForItem(batch, item.id));
+  const thread = batch.items.filter((item) => item.include && (item._tag === "ThreadReply" || item._tag === "ThreadState") && !hasReceiptForItem(batch, item.id));
   return [
     ...(inline.length === 0 ? [] : [{ _tag: "CreatePendingReview" as const, itemIds: inline.map((item) => item.id) }]),
     ...thread.map((item) => item._tag === "ThreadReply" ? ({ _tag: "Reply" as const, itemId: item.id }) : ({ _tag: "ThreadState" as const, itemId: item.id })),
@@ -230,13 +118,36 @@ export async function applyReviewBatch(input: {
   readonly now: IsoTimestamp; readonly persist: (session: ReviewSession) => Promise<boolean>;
 }): Promise<Result<{ readonly session: ReviewSession; readonly batch: ReviewBatch }, BatchApplyFailure>> {
   const current = await verifiedCurrentHead(input.profile, input.session, input.gateway);
-  if (current._tag === "err" || current.value !== input.session.key.headSha) {
-    const stale = { ...input.session, state: { _tag: "Stale" as const, reason: "head_changed" as const, ...(current._tag === "ok" ? { currentHeadSha: current.value } : {}) }, updatedAt: input.now };
-    return err({ _tag: "StaleHeadBlocksWrite", session: stale, batch: input.batch });
-  }
+  const isFresh = current._tag === "ok" && current.value === input.session.key.headSha;
   let batch = input.batch;
   let session = input.session;
-  for (const operation of planBatchOperations(batch)) {
+  if (!isFresh) {
+    batch = {
+      ...batch,
+      items: batch.items.map((item) => item._tag === "InlineComment" && item.include && item.postability === "postable"
+        ? { ...item, postability: "stale_sha" as const }
+        : item),
+      updatedAt: input.now,
+    };
+    session = {
+      ...session,
+      state: { _tag: "Stale", reason: "head_changed", ...(current._tag === "ok" ? { currentHeadSha: current.value } : {}) },
+      batch: { state: batch.state },
+      batchContent: batch,
+      updatedAt: input.now,
+    };
+  }
+  if (current._tag === "err") {
+    return err({ _tag: "StaleHeadBlocksWrite", session, batch });
+  }
+  const operations = planBatchOperations(batch, { allowInline: isFresh });
+  if (operations.length === 0 && !isFresh) {
+    return err({ _tag: "StaleHeadBlocksWrite", session, batch });
+  }
+  if (!isFresh && !(await input.persist(session))) {
+    return err({ _tag: "BatchOutcomeUnknown", session, batch });
+  }
+  for (const operation of operations) {
     batch = { ...batch, state: { _tag: "Applying", operation }, updatedAt: input.now };
     session = { ...session, batch: { state: batch.state }, batchContent: batch, updatedAt: input.now };
     if (!(await input.persist(session))) return err({ _tag: "BatchOutcomeUnknown", session, batch });
@@ -291,9 +202,20 @@ export async function applyReviewBatch(input: {
     batch = { ...batch, receipts: [...batch.receipts, receipt], updatedAt: input.now };
   }
   const pending = batch.receipts.find((receipt): receipt is Extract<ReviewBatch["receipts"][number], { readonly _tag: "PendingReviewCreated" }> => receipt._tag === "PendingReviewCreated");
-  batch = { ...batch, state: pending === undefined ? { _tag: "Completed" } : { _tag: "PendingReview", reviewId: pending.reviewId }, updatedAt: input.now };
+  const pendingInline = batch.items.some((item) => item._tag === "InlineComment" && item.include && (item.postability === "postable" || item.postability === "stale_sha") && !hasReceiptForItem(batch, item.id));
+  batch = {
+    ...batch,
+    state: pendingInline ? { _tag: "Local" } : pending === undefined ? { _tag: "Completed" } : { _tag: "PendingReview", reviewId: pending.reviewId },
+    updatedAt: input.now,
+  };
   session = { ...session, batch: { state: batch.state }, batchContent: batch, updatedAt: input.now };
   return (await input.persist(session)) ? ok({ session, batch }) : err({ _tag: "BatchOutcomeUnknown", session, batch });
+}
+
+function hasReceiptForItem(batch: ReviewBatch, itemId: ReviewBatchItem["id"]): boolean {
+  return batch.receipts.some((receipt) => receipt._tag === "PendingReviewCreated"
+    ? receipt.itemIds.includes(itemId)
+    : receipt.itemId === itemId);
 }
 
 async function persistBatchFailure(input: {

@@ -6,7 +6,6 @@ import { evaluateMergeReadiness, type MergeReadiness } from "../domain/merge-rea
 import type { GitSha, IsoTimestamp } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { markSessionMerged, type ReviewSession } from "../domain/review-session";
-import type { ReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 
@@ -27,7 +26,7 @@ export type MergeFailure =
 export async function mergePullRequest(input: {
   readonly profile: WorkspaceProfileConfig;
   readonly session: ReviewSession;
-  readonly result: ReviewResult;
+  readonly result?: { readonly findings: ReadonlyArray<{ readonly severity: "P0" | "P1" | "P2" | "P3" }> };
   readonly gateway: MergeGateway;
   readonly method: MergeMethod;
   readonly supportedMethods: ReadonlyArray<MergeMethod>;
@@ -59,7 +58,7 @@ export async function mergePullRequest(input: {
     checks: checks.value,
     hasGitHubReviewBlocker: current.value.reviewState === "review_pending",
     hasRequestChanges: current.value.reviewState === "changes_requested",
-    hasHighSeverityFinding: input.result.findings.some(
+    hasHighSeverityFinding: (input.result?.findings ?? []).some(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ),
   });

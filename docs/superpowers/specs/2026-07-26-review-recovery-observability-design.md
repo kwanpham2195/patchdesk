@@ -63,6 +63,8 @@ Preferred user-facing labels include:
 - `Run review`;
 - `Reconnect`, `Start again`, and `Try again`.
 
+Failed checks are review context, not a review gate. Patchdesk offers `Run review` for a failed-check PR and continues to show its check details. A walkthrough remains available from a prepared snapshot with a stable stored patch. Failed checks still block merge readiness.
+
 Keep implementation terms out of ordinary UI: `quarantine`, `worktree`, `checkout`, `session`, `attempt`, `runtime`, `agent`, and `lifecycle`. These belong in diagnostics only.
 
 ## Internal model

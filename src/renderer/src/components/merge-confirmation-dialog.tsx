@@ -41,7 +41,7 @@ export function MergeConfirmationDialog(props: {
   };
 
   if (merged !== undefined) return <p role="status" className="text-sm text-primary">Merged {merged}.</p>;
-  if (props.readiness._tag === "Blocked") return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{props.readiness.blockers.map((blocker) => <li key={blocker}>{blocker.replaceAll("_", " ")}</li>)}</ul></AlertDescription></Alert>;
+  if (props.readiness._tag === "Blocked") return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{props.readiness.blockers.map((blocker) => <li key={blocker}>{mergeBlockerLabel(blocker)}</li>)}</ul></AlertDescription></Alert>;
   return (
     <section aria-label="Merge readiness" className="space-y-3">
       {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
@@ -56,4 +56,14 @@ export function MergeConfirmationDialog(props: {
       </AlertDialog>
     </section>
   );
+}
+
+function mergeBlockerLabel(blocker: MergeReadiness["blockers"][number]): string {
+  switch (blocker) {
+    case "conflicting": return "conflicting changes";
+    case "merge_blocked": return "blocked by GitHub";
+    case "mergeability_unknown": return "GitHub merge status unavailable";
+    case "github_review": return "approval required";
+    default: return blocker.replaceAll("_", " ");
+  }
 }

@@ -14,6 +14,8 @@
 - GitHub writes (review, comment, merge) always require explicit user confirmation in the UI. PR descriptions and check links are untrusted; only a user click may open an HTTPS link on the configured GitHub host via the main process. See `src/main/external-navigation.ts`.
 - Layered code: `src/domain/` (pure types + invariants) → `src/services/` (orchestration) → `src/adapters/{github,pi,storage}/` (I/O). Local API composition lives in `src/app.ts`; never publish a Patchdesk review route from there.
 - External runtime assets (workflows, skills, `@flue/*`) are unpacked from `asar` at runtime. Keep them under `src/workflows/`, `src/skills/`, and `node_modules/@flue/**` when adding new ones — see the `build.asarUnpack` list in `package.json`.
+- Keep only executable workflow entry modules in `src/workflows/`. Reusable readers and helpers belong in `src/services/` or their architectural layer; runtime discovery treats every workflow module as runnable.
+- Review and walkthrough activity is redacted and best-effort: record finite lifecycle milestones and safe terminal causes, never raw commands, prompts, paths, tokens, or model prose. A diagnostic-write failure must not change the workflow result.
 - No CI workflows exist under `.github/`. All verification is local; treat the commands below as the source of truth.
 
 ## Patchdesk Design (`src/design/`)
@@ -29,6 +31,7 @@
 - `~/.config/patchdesk/config.json` is strict global state only. It supports optional `lastSelectedProfileId`, `appearance` (`system`, `light`, or `dark`), and `diffTheme` (`{ light, dark }` Pierre theme IDs). Do not put workspace, GitHub, credentials, navigation, inbox layout, searches, saved views, or review model choices there.
 - Workspace profiles live in `~/.config/patchdesk/profiles/<profile-id>.json`. Each profile requires `id`, `label`, `githubHost`, `ghAccount`, `ownerFilters`, `workspaceRoots`, `rulePaths`, and `repos`.
 - Each watched repository requires `host`, `owner`, and `repo`; `localPath` and `archived` are optional. Workspace roots, rule paths, and repository paths must be absolute paths. Profile storage never contains ambient credentials or tokens.
+- Local review cleanup removes non-running sessions only. It preserves active review work and diagnostic history; prove cleanup behavior in isolated package QA.
 
 ## Commands (pnpm@8.8.0)
 
@@ -63,6 +66,7 @@ Primary agent does not run these. Spawn a `electron-tester` subagent and hand it
   `agent-browser --session patchdesk-qa --cdp 9233 snapshot -i`
   `agent-browser --session patchdesk-qa --cdp 9233 screenshot /tmp/patchdesk-qa.png`
 - `pnpm test:package-smoke` already launches its own isolated instance; do not run a second one in parallel against the same port.
+- After `pnpm package:mac`, inspect the produced `app.asar` for a task-specific renderer/runtime marker before visual QA. A successful package command can otherwise leave an older bundle in place.
 
 ## Test layout
 

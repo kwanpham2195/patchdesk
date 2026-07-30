@@ -58,4 +58,13 @@ describe("FlueCliReviewInvoker", () => {
     await expect(invalid.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
     await expect(failed.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
   });
+
+  it("classifies provider limits and missing runtime dependencies without exposing stderr", async () => {
+    const rateLimited = new FlueCliReviewInvoker(new CommandRunner(new FakeExecutor({ _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 429: rate limit exceeded" })), "/workspace/patchdesk");
+    const runtimeMissing = new FlueCliReviewInvoker(new CommandRunner(new FakeExecutor({ _tag: "Exited", exitCode: 1, stdout: "", stderr: "ERR_MODULE_NOT_FOUND: Cannot find package" })), "/workspace/patchdesk");
+    const input = { profileId: "cfw", sessionId: "session", attemptId: "001", contextPath: "/tmp/context.json", reviewInputPath: "/tmp/review-input.md", patchPath: "/tmp/patch.diff", worktreePath: "/tmp/worktree" } as never;
+
+    await expect(rateLimited.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "rate_limited" } });
+    await expect(runtimeMissing.invoke(input)).resolves.toEqual({ _tag: "err", error: { reason: "runtime_unavailable" } });
+  });
 });

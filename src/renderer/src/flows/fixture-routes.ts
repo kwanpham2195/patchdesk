@@ -9,7 +9,6 @@ const fixtureHashes = new Set([
   "#active-follow-fixture",
   "#performance-fixture",
   "#submission-fixture",
-  "#submission-rejection-fixture",
   "#merge-fixture",
 ]);
 

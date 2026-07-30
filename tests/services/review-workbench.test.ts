@@ -147,6 +147,18 @@ describe("review workbench", () => {
       expect(serialized).not.toContain(root);
       const patchPath = paths.patchFile(profile.id, opened.value.session.id);
       expect(await readFile(patchPath, "utf8")).toContain("src/review.ts");
+
+      const reopened = await controller.load({
+        profileId: "cfw",
+        sessionId: opened.value.session.id,
+      });
+      expect(reopened).toMatchObject({
+        _tag: "ok",
+        value: {
+          freshness: "fresh",
+          checks: { overall: "passing" },
+        },
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -40,7 +40,10 @@ describe("workspace profile settings", () => {
     await user.type(screen.getByLabelText("GitHub account"), "enterprise-user");
     await user.type(screen.getByLabelText("workspace root 1"), "/workspace/enterprise");
     await user.click(screen.getByRole("button", { name: "Add workspace root" }));
-    await user.click(screen.getByRole("button", { name: "Choose workspace root 2" }));
+    const chooseFolders = screen.getAllByRole("button", { name: "Choose folder" });
+    const secondChooseFolder = chooseFolders[1];
+    if (secondChooseFolder === undefined) throw new Error("Expected a second workspace root picker.");
+    await user.click(secondChooseFolder);
     await user.click(screen.getByRole("button", { name: "Remove workspace root 1" }));
     await user.type(screen.getByLabelText("owner filter 1"), "enterprise");
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
@@ -103,6 +106,7 @@ describe("workspace profile settings", () => {
     const user = userEvent.setup();
 
     renderSettings();
+    await user.type(screen.getByLabelText("Label"), " changed");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
     expect(await screen.findByText("Patchdesk could not save the local review state.")).toBeTruthy();
@@ -120,6 +124,7 @@ function renderSettings(onWorkspaceReload = async (): Promise<void> => undefined
       onDiffThemeChange={() => undefined}
       profiles={[profile]}
       onWorkspaceReload={onWorkspaceReload}
+      section="workspace"
     />,
   );
 }

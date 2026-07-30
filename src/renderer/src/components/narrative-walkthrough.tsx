@@ -12,6 +12,7 @@ import {
   BookOpenCheck,
   CheckCircle2,
   CircleAlert,
+  ChevronDown,
   FileText,
   Square,
   Star,
@@ -20,16 +21,28 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
-import type { ReviewInlineAnnotation } from "./review-diff-view";
+import type {
+  LocalCommentAuthoring,
+  ReviewInlineAnnotation,
+} from "./review-diff-view";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 
 type NarrativeHunk = {
@@ -77,13 +90,6 @@ export type NarrativeWalkthroughActions = {
   readonly onMarkSectionReviewed: (sectionId: string) => void;
   readonly onMarkSupportReviewed: () => void;
   readonly onSelectSection: (sectionId: string) => void;
-  readonly onAddInlineComment: (input: {
-    readonly path: string;
-    readonly startLine: number;
-    readonly line: number;
-    readonly side: "new" | "old";
-    readonly body: string;
-  }) => Promise<void>;
 };
 
 export type NarrativeWalkthroughRefAction = {
@@ -102,6 +108,7 @@ export function NarrativeWalkthrough({
   rawPatch,
   sourceSession,
   annotations,
+  localCommentAuthoring,
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
   readonly reviewedSectionIds: ReadonlyArray<string>;
@@ -110,6 +117,7 @@ export function NarrativeWalkthrough({
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly onActionRef?: (ref: NarrativeWalkthroughRefAction) => void;
   readonly actions: NarrativeWalkthroughActions;
   readonly preferences?: ReviewViewPreferences;
@@ -118,9 +126,12 @@ export function NarrativeWalkthrough({
     () => walkthrough.chapters.flatMap((chapter) => chapter.sections),
     [walkthrough.chapters],
   );
-  const [localCurrentSectionId, setLocalCurrentSectionId] = useState(currentSectionId ?? sections[0]?.id);
+  const [localCurrentSectionId, setLocalCurrentSectionId] = useState(
+    currentSectionId ?? sections[0]?.id,
+  );
   useEffect(() => {
-    if (currentSectionId !== undefined) setLocalCurrentSectionId(currentSectionId);
+    if (currentSectionId !== undefined)
+      setLocalCurrentSectionId(currentSectionId);
   }, [currentSectionId]);
   const sectionIndex = useMemo(
     () =>
@@ -131,21 +142,26 @@ export function NarrativeWalkthrough({
     [localCurrentSectionId, sections],
   );
   const fallbackSection = sections[0] as NarrativeSection | undefined;
-  const activeSection: NarrativeSection = sections[sectionIndex] ?? fallbackSection ?? nullSection();
-  const [commentBody, setCommentBody] = useState("");
-  const [commentPending, setCommentPending] = useState(false);
+  const activeSection: NarrativeSection =
+    sections[sectionIndex] ?? fallbackSection ?? nullSection();
+  const [supportOpen, setSupportOpen] = useState(false);
   const backToFilesButtonRef = useRef<HTMLButtonElement>(null);
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (onActionRef === undefined) return;
     onActionRef({
-      focusBackToFiles: () => backToFilesButtonRef.current?.focus({ preventScroll: false }),
-      focusCurrentSection: () => sectionHeadingRef.current?.focus({ preventScroll: false }),
+      focusBackToFiles: () =>
+        backToFilesButtonRef.current?.focus({ preventScroll: false }),
+      focusCurrentSection: () =>
+        sectionHeadingRef.current?.focus({ preventScroll: false }),
     });
   }, [onActionRef, activeSection.id]);
 
-  const reviewedSet = useMemo(() => new Set(reviewedSectionIds), [reviewedSectionIds]);
+  const reviewedSet = useMemo(
+    () => new Set(reviewedSectionIds),
+    [reviewedSectionIds],
+  );
   const canGoPrev = sectionIndex > 0;
   const canGoNext = sectionIndex >= 0 && sectionIndex < sections.length - 1;
 
@@ -213,29 +229,6 @@ export function NarrativeWalkthrough({
     focusHeading();
   }, [activeSection.id, focusHeading]);
 
-  const handleAddInlineComment = useCallback(async () => {
-    const trimmed = commentBody.trim();
-    const target = activeSection.hunks[0];
-    if (trimmed.length === 0 || target === undefined || commentPending) return;
-    const anchor = target.newLines > 0
-      ? { startLine: target.newStart, line: target.newStart + target.newLines - 1, side: "new" as const }
-      : target.oldLines > 0
-        ? { startLine: target.oldStart, line: target.oldStart + target.oldLines - 1, side: "old" as const }
-        : undefined;
-    if (anchor === undefined) return;
-    setCommentPending(true);
-    try {
-      await actions.onAddInlineComment({
-        path: target.path,
-        ...anchor,
-        body: trimmed,
-      });
-      setCommentBody("");
-    } finally {
-      setCommentPending(false);
-    }
-  }, [actions, activeSection.hunks, commentBody, commentPending]);
-
   const allHunks = useMemo(
     () => [
       ...sections.flatMap((section) => section.hunks),
@@ -266,8 +259,12 @@ export function NarrativeWalkthrough({
           </Button>
           <Separator orientation="vertical" className="h-5" />
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Read-only walkthrough · {walkthrough.title}</p>
-            <p className="text-xs text-muted-foreground">Focus: {walkthrough.focus}</p>
+            <p className="text-xs text-muted-foreground">
+              Read-only walkthrough · {walkthrough.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Focus: {walkthrough.focus}
+            </p>
           </div>
         </div>
         <Badge variant="outline">
@@ -282,7 +279,9 @@ export function NarrativeWalkthrough({
           className="min-w-0 overflow-auto border-r bg-card p-3"
         >
           <h2 className="px-1 text-sm font-semibold">Chapters</h2>
-          <p className="mt-1 px-1 text-xs text-muted-foreground">Persistent rail; arrow keys move sections.</p>
+          <p className="mt-1 px-1 text-xs text-muted-foreground">
+            Persistent rail; arrow keys move sections.
+          </p>
           <Separator className="my-3" />
           <ol className="flex flex-col gap-1" aria-label="Walkthrough sections">
             {walkthrough.chapters.flatMap((chapter) =>
@@ -300,10 +299,18 @@ export function NarrativeWalkthrough({
                       onClick={() => selectSection(section.id)}
                     >
                       <span className="min-w-0">
-                        <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{chapter.title}</span>
-                        <span className="block text-sm font-medium leading-5">{section.title}</span>
+                        <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {chapter.title}
+                        </span>
+                        <span className="block text-sm font-medium leading-5">
+                          {section.title}
+                        </span>
                       </span>
-                      {reviewed ? <Badge variant="outline" aria-label="Reviewed">reviewed</Badge> : null}
+                      {reviewed ? (
+                        <Badge variant="outline" aria-label="Reviewed">
+                          reviewed
+                        </Badge>
+                      ) : null}
                     </Button>
                   </li>
                 );
@@ -311,25 +318,51 @@ export function NarrativeWalkthrough({
             )}
           </ol>
           <Separator className="my-3" />
-          <h2 className="px-1 text-sm font-semibold">Support</h2>
-          <p className="mt-1 px-1 text-xs text-muted-foreground">Every hunk the model did not cover.</p>
-          <ul className="mt-2 space-y-1 px-1 text-xs text-muted-foreground" aria-label="Support hunks">
-            {walkthrough.support.hunks.map((hunk) => (
-              <li key={hunk.id} className="break-all">{hunk.id} · {hunk.path}</li>
-            ))}
-          </ul>
-          <Separator className="my-3" />
-          <Button
-            type="button"
-            variant={supportReviewed ? "secondary" : "outline"}
-            size="sm"
-            className="w-full"
-            aria-pressed={supportReviewed}
-            onClick={actions.onMarkSupportReviewed}
-          >
-            <Square />
-            {supportReviewed ? "Support reviewed" : "Mark Support reviewed"}
-          </Button>
+          <Collapsible open={supportOpen} onOpenChange={setSupportOpen}>
+            <CollapsibleTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-between px-1"
+                />
+              }
+            >
+              <span className="min-w-0">Support</span>
+              <ChevronDown
+                data-disclosure-motion="chevron"
+                className={supportOpen ? "size-4" : "size-4 -rotate-90"}
+                aria-hidden="true"
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent motion="disclosure" className="pt-2">
+              <p className="px-1 text-xs text-foreground/85">
+                Every hunk the model did not cover.
+              </p>
+              <ul
+                className="mt-2 space-y-1 px-1 text-xs text-foreground/85"
+                aria-label="Support hunks"
+              >
+                {walkthrough.support.hunks.map((hunk) => (
+                  <li key={hunk.id} className="break-all">
+                    {hunk.id} · {hunk.path}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                variant={supportReviewed ? "secondary" : "outline"}
+                size="sm"
+                className="mt-3 w-full"
+                aria-pressed={supportReviewed}
+                onClick={actions.onMarkSupportReviewed}
+              >
+                <Square />
+                {supportReviewed ? "Support reviewed" : "Mark Support reviewed"}
+              </Button>
+            </CollapsibleContent>
+          </Collapsible>
         </aside>
         <ScrollArea
           role="region"
@@ -348,20 +381,27 @@ export function NarrativeWalkthrough({
             >
               {activeSection.title}
             </h3>
-            <p className="text-sm text-muted-foreground">{activeSection.prose}</p>
+            <p className="text-sm text-muted-foreground">
+              {activeSection.prose}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">
                 <CircleAlert />
-                {activeSection.hunks.length} hunk{activeSection.hunks.length === 1 ? "" : "s"}
+                {activeSection.hunks.length} hunk
+                {activeSection.hunks.length === 1 ? "" : "s"}
               </Badge>
               {reviewedSet.has(activeSection.id) ? (
-                <Badge variant="outline" aria-label="Reviewed">reviewed</Badge>
+                <Badge variant="outline" aria-label="Reviewed">
+                  reviewed
+                </Badge>
               ) : null}
             </div>
             {activeSection.hunks.length === 0 ? (
               <Alert>
                 <AlertTitle>This section has no supporting hunks.</AlertTitle>
-                <AlertDescription>Patchdesk routes every source hunk to a section or Support.</AlertDescription>
+                <AlertDescription>
+                  Patchdesk routes every source hunk to a section or Support.
+                </AlertDescription>
               </Alert>
             ) : (
               activeSection.hunks.map((hunk, index) => (
@@ -375,39 +415,27 @@ export function NarrativeWalkthrough({
                   allHunks={allHunks}
                   {...(annotations === undefined ? {} : { annotations })}
                   {...(preferences === undefined ? {} : { preferences })}
+                  {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
                 />
               ))
             )}
-            <div className="mt-2 grid gap-2 rounded-md border p-3">
-              <Label htmlFor="walkthrough-inline-comment" className="grid gap-1">
-                <span>Add inline comment to the first hunk in this section</span>
-                <Input
-                  id="walkthrough-inline-comment"
-                  aria-label="Add inline comment body"
-                  placeholder="Write a local inline comment"
-                  value={commentBody}
-                  onChange={(event) => setCommentBody(event.target.value)}
-                />
-              </Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void handleAddInlineComment()}
-                  disabled={commentBody.trim().length === 0 || commentPending || activeSection.hunks.length === 0}
-                >
-                  Add inline comment
-                </Button>
-                <Button
-                  size="sm"
-                  variant={reviewedSet.has(activeSection.id) ? "secondary" : "outline"}
-                  onClick={() => actions.onMarkSectionReviewed(activeSection.id)}
-                  disabled={reviewedSet.has(activeSection.id)}
-                  aria-pressed={reviewedSet.has(activeSection.id)}
-                >
-                  <CheckCircle2 />
-                  {reviewedSet.has(activeSection.id) ? "Section reviewed" : "Mark section reviewed"}
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant={
+                  reviewedSet.has(activeSection.id) ? "secondary" : "outline"
+                }
+                onClick={() =>
+                  actions.onMarkSectionReviewed(activeSection.id)
+                }
+                disabled={reviewedSet.has(activeSection.id)}
+                aria-pressed={reviewedSet.has(activeSection.id)}
+              >
+                <CheckCircle2 />
+                {reviewedSet.has(activeSection.id)
+                  ? "Section reviewed"
+                  : "Mark section reviewed"}
+              </Button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -430,7 +458,10 @@ export function NarrativeWalkthrough({
                 Next section
                 <ArrowLeft className="rotate-180" />
               </Button>
-              <span className="text-xs text-muted-foreground" aria-label="Section progress">
+              <span
+                className="text-xs text-muted-foreground"
+                aria-label="Section progress"
+              >
                 {sectionIndex + 1} of {sections.length}
               </span>
             </div>
@@ -442,18 +473,23 @@ export function NarrativeWalkthrough({
                   Support coverage
                 </CardTitle>
                 <CardDescription>
-                  {walkthrough.support.hunks.length} hunk{walkthrough.support.hunks.length === 1 ? "" : "s"} not covered by the model.
+                  {walkthrough.support.hunks.length} hunk
+                  {walkthrough.support.hunks.length === 1 ? "" : "s"} not
+                  covered by the model.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {walkthrough.support.hunks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Every source hunk is in a section.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Every source hunk is in a section.
+                  </p>
                 ) : (
                   <div className="space-y-2">
                     <ul className="space-y-1 text-sm">
                       {walkthrough.support.hunks.map((hunk) => (
                         <li key={hunk.id} className="break-all">
-                          <code className="font-mono text-xs">{hunk.id}</code> · {hunk.path}
+                          <code className="font-mono text-xs">{hunk.id}</code> ·{" "}
+                          {hunk.path}
                         </li>
                       ))}
                     </ul>
@@ -462,24 +498,31 @@ export function NarrativeWalkthrough({
                         key={`support::${hunk.id}`}
                         blockId={`support::${hunk.id}::${index}`}
                         {...(rawPatch === undefined ? {} : { patch: rawPatch })}
-                        {...(sourceSession === undefined ? {} : { sourceSession })}
+                        {...(sourceSession === undefined
+                          ? {}
+                          : { sourceSession })}
                         hunkIds={[hunk.id]}
                         hunks={[hunk]}
                         allHunks={allHunks}
                         {...(annotations === undefined ? {} : { annotations })}
                         {...(preferences === undefined ? {} : { preferences })}
+                        {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
                       />
                     ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-            <p className="text-xs text-muted-foreground" aria-label="Read-only walkthrough copy">
+            <p
+              className="text-xs text-muted-foreground"
+              aria-label="Read-only walkthrough copy"
+            >
               {walkthroughCopy("ready").reassurance}
             </p>
             <Badge variant="secondary">
               <Star />
-              {reviewedSet.size} of {sections.length} section{sections.length === 1 ? "" : "s"} reviewed
+              {reviewedSet.size} of {sections.length} section
+              {sections.length === 1 ? "" : "s"} reviewed
             </Badge>
           </article>
         </ScrollArea>

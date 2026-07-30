@@ -298,6 +298,17 @@ describe("Patchdesk review domain", () => {
     expect(parseReviewBatch(batchFixture())._tag).toBe("ok");
   });
 
+  it("migrates an attempt-owned finding into model provenance", () => {
+    const parsed = parseReviewBatch(batchFixture());
+
+    expect(parsed).toMatchObject({ _tag: "ok" });
+    if (parsed._tag === "err") return;
+    expect(parsed.value.items[0]).toMatchObject({
+      _tag: "InlineComment",
+      provenance: { _tag: "model", attemptId: "001" },
+    });
+  });
+
   it("rejects an invalid batch comment range", () => {
     expect(
       parseReviewBatch(batchFixture({ startLine: 8, line: 7 }))._tag,
@@ -698,7 +709,7 @@ describe("Patchdesk review domain", () => {
     })._tag).toBe("ok");
   });
 
-  it("blocks reruns until a local batch is explicitly discarded", () => {
+  it("allows an optional AI rerun while the prepared snapshot has an editable local batch", () => {
     const session = createReviewSession({
       key: ids,
       ...sessionContext,
@@ -707,12 +718,15 @@ describe("Patchdesk review domain", () => {
     });
 
     expect(startNextAttempt(session, ["001"])).toMatchObject({
-      _tag: "err",
-      error: { _tag: "ActiveBatchBlocksRerun" },
+      _tag: "ok",
+      value: {
+        attemptId: "002",
+        session: { state: { _tag: "Running", attemptId: "002" } },
+      },
     });
   });
 
-  it("clears a completed reply and thread-state batch before a rerun", () => {
+  it("keeps a completed remote batch readable when an optional AI rerun starts", () => {
     const fixture = batchFixture();
     const completedBatch = mustParse(parseReviewBatch({
       ...fixture,
@@ -739,9 +753,9 @@ describe("Patchdesk review domain", () => {
       }),
       state: {
         _tag: "ReviewCompleted" as const,
-        attemptId: completedBatch.attemptId,
+        attemptId: completedBatch.attemptId ?? mustParse(parseReviewAttemptId("001")),
       },
-      currentAttemptId: completedBatch.attemptId,
+      currentAttemptId: completedBatch.attemptId ?? mustParse(parseReviewAttemptId("001")),
       batch: { state: completedBatch.state },
       batchContent: completedBatch,
     };
@@ -755,11 +769,11 @@ describe("Patchdesk review domain", () => {
         state: { _tag: "Running", attemptId: "002" },
       },
     });
-    expect(started.session.batch).toBeUndefined();
-    expect(started.session.batchContent).toBeUndefined();
+    expect(started.session.batch).toEqual({ state: completedBatch.state });
+    expect(started.session.batchContent).toEqual(completedBatch);
   });
 
-  it("discards only the batch before a rerun and preserves the visible result", () => {
+  it("keeps local human items and the visible result through an optional AI rerun", () => {
     const visibleResult = mustParse(
       parseReviewResult({
         changeSummary: "Preserve this completed review.",
@@ -786,19 +800,16 @@ describe("Patchdesk review domain", () => {
       visibleResult,
     };
 
-    expect(hasActiveReviewBatch(session.batch)).toBe(true);
-    const discarded = mustParse(discardBatchForRerun(session, times.completed));
-    expect(discarded).toEqual({
-      ...session,
-      batch: undefined,
-      batchContent: undefined,
-      updatedAt: times.completed,
-    });
-    expect(startNextAttempt(discarded, ["001"])).toMatchObject({
+    expect(hasActiveReviewBatch(session.batch)).toBe(false);
+    expect(startNextAttempt(session, ["001"])).toMatchObject({
       _tag: "ok",
       value: {
         attemptId: "002",
-        session: { visibleResult },
+        session: {
+          visibleResult,
+          batch: { state: { _tag: "Local" } },
+          batchContent: session.batchContent,
+        },
       },
     });
   });
@@ -842,9 +853,9 @@ describe("Patchdesk review domain", () => {
       }),
       state: {
         _tag: "ReviewCompleted" as const,
-        attemptId: batchContent.attemptId,
+        attemptId: batchContent.attemptId ?? mustParse(parseReviewAttemptId("001")),
       },
-      currentAttemptId: batchContent.attemptId,
+      currentAttemptId: batchContent.attemptId ?? mustParse(parseReviewAttemptId("001")),
       batch: { state: batchContent.state },
       batchContent,
     };

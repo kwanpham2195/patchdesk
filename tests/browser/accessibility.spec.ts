@@ -12,7 +12,9 @@ test.afterAll(async () => {
   await close(renderer);
 });
 test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
   await page.addInitScript(() => {
+    window.localStorage.setItem("patchdesk.appearance.v1", "light");
     Object.defineProperty(window, "patchdesk", {
       value: {
         async request(input: {
@@ -96,9 +98,9 @@ test("quick navigation scrolls results through the final action", async ({
   const selectedOption = dialog.locator(
     '[data-slot="command-item"][data-selected="true"]',
   );
-  const unselectedOption = dialog.locator(
-    '[data-slot="command-item"][data-selected="false"]',
-  ).first();
+  const unselectedOption = dialog
+    .locator('[data-slot="command-item"][data-selected="false"]')
+    .first();
   const lastAction = dialog.getByRole("option", {
     name: "Open selected pull request",
   });
@@ -106,12 +108,18 @@ test("quick navigation scrolls results through the final action", async ({
   await expect(list).toBeVisible();
   await expect(selectedOption).toHaveCount(1);
   expect(
-    await selectedOption.evaluate((element) => getComputedStyle(element).backgroundColor),
+    await selectedOption.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    ),
   ).not.toEqual(
-    await unselectedOption.evaluate((element) => getComputedStyle(element).backgroundColor),
+    await unselectedOption.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    ),
   );
   expect(
-    await list.evaluate((element) => element.scrollHeight > element.clientHeight),
+    await list.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
   ).toBe(true);
 
   await lastAction.scrollIntoViewIfNeeded();
@@ -124,10 +132,14 @@ test("quick navigation scrolls results through the final action", async ({
   expect(listBox).not.toBeNull();
   expect(actionBox).not.toBeNull();
   if (listBox === null || actionBox === null) {
-    throw new Error("quick navigation did not render its list and final action");
+    throw new Error(
+      "quick navigation did not render its list and final action",
+    );
   }
   expect(actionBox.y).toBeGreaterThanOrEqual(listBox.y);
-  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(listBox.y + listBox.height);
+  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(
+    listBox.y + listBox.height,
+  );
 });
 
 test("Settings modal has a named, trapped, independently scrollable surface", async ({
@@ -138,10 +150,20 @@ test("Settings modal has a named, trapped, independently scrollable surface", as
   await opener.click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.getByRole("tab", { name: "General" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(dialog.getByRole("tab", { name: "General" })).toBeFocused();
   await expect(await seriousProductViolations(page)).toEqual([]);
-  const scrollViewport = page.getByTestId("settings-scroll-region").locator('[data-slot="scroll-area-viewport"]');
+  await dialog.getByRole("tab", { name: "Workspace" }).click();
+  await expect(dialog.getByRole("tab", { name: "Workspace" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const scrollViewport = page
+    .getByTestId("settings-scroll-region")
+    .locator('[data-slot="scroll-area-viewport"]');
   await expect(scrollViewport).toBeVisible();
   const pageScrollTop = await page.evaluate(() => window.scrollY);
   const scrollResult = await scrollViewport.evaluate((element) => {
@@ -164,25 +186,59 @@ test("walkthrough takeover exposes rail, Reviewed controls, and Back to files fo
   await dialog.getByRole("combobox", { name: "Model" }).click();
   await page.getByRole("option", { name: "Design model" }).click();
   await dialog.getByTestId("walkthrough-confirm").click();
-  await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open walkthrough" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Open walkthrough" }).click();
-  await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Keep the review local" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Previous section" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Next section" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Mark section reviewed" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark Support reviewed" })).toBeVisible();
-  const editor = page.getByLabel("Add inline comment body");
+  await expect(
+    page.getByRole("region", { name: "Walkthrough chapters" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Keep the review local" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Previous section" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Next section" }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Mark section reviewed" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Support" }).click();
+  await expect(
+    page.getByRole("button", { name: "Mark Support reviewed" }),
+  ).toBeVisible();
+  const walkthroughDiff = page.locator('[data-walkthrough-diff-block="section-1::h1::0"]');
+  const addedLine = walkthroughDiff.locator('[data-line-type="change-addition"]').first();
+  await addedLine.hover();
+  await walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }).click();
+  const editor = page.getByRole("textbox", { name: "Local comment" });
   await editor.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("heading", { name: "Keep the review local" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Keep the review local" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Next section" }).click();
-  await expect(page.getByRole("heading", { name: "Follow the changed path" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Next section" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Previous section" })).toBeEnabled();
+  await expect(
+    page.getByRole("heading", { name: "Follow the changed path" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Next section" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Previous section" }),
+  ).toBeEnabled();
+  await page.locator("html").evaluate((root) => {
+    root.classList.remove("dark");
+    root.dataset.appearance = "light";
+    root.style.colorScheme = "light";
+  });
   await expect(await seriousProductViolations(page)).toEqual([]);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "Open walkthrough" })).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Open walkthrough" }),
+  ).toBeFocused();
 });
 
 test("forced colors and reduced motion preserve the workbench interaction surface", async ({
@@ -190,10 +246,10 @@ test("forced colors and reduced motion preserve the workbench interaction surfac
 }) => {
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
-  const details = page.getByRole("button", { name: "Hide details" });
-  await details.focus();
-  await expect(details).toBeFocused();
-  const outline = await details.evaluate(
+  const overview = page.getByRole("button", { name: "PR overview" });
+  await overview.focus();
+  await expect(overview).toBeFocused();
+  const outline = await overview.evaluate(
     (element) => getComputedStyle(element).outlineStyle,
   );
   expect(outline).not.toBe("none");
@@ -209,7 +265,7 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
     page.getByRole("button", { name: "Files", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Hide details" }),
+    page.getByRole("button", { name: "PR overview" }),
   ).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () =>

@@ -8,6 +8,12 @@
               "id": "thread-1",
               "isResolved": false,
               "isOutdated": false,
+              "path": "src/review.ts",
+              "line": 7,
+              "startLine": 5,
+              "diffSide": "RIGHT",
+              "startDiffSide": "RIGHT",
+              "originalLine": 7,
               "comments": {
                 "nodes": [
                   {
@@ -17,12 +23,7 @@
                     "updatedAt": null,
                     "url": "https://example.test/comment/1",
                     "author": { "login": "reviewer" },
-                    "path": "src/review.ts",
-                    "line": 7,
-                    "startLine": 5,
-                    "side": "RIGHT",
-                    "startSide": "RIGHT",
-                    "originalLine": 7
+                    "path": "src/review.ts"
                   }
                 ]
               }

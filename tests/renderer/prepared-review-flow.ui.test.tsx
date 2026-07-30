@@ -35,6 +35,158 @@ async function startFromDialog() {
 }
 
 describe("prepared review run start", () => {
+  it("shows a retryable walkthrough failure after generation is rejected", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/walkthrough/generate") {
+        return {
+          ok: false as const,
+          status: 503,
+          body: { error: "workflow_unavailable" },
+        };
+      }
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<PreparedReviewFlow workbench={workbench} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate walkthrough" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate read-only walkthrough" }));
+
+    expect(await screen.findByText("Walkthrough didn't finish")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
+  });
+
+  it("opens normal PR context without starting a model review", async () => {
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(<PreparedReviewFlow workbench={{
+      ...workbench,
+      pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 }, title: "Prepared PR", description: "Safe **description**", author: "reviewer", headBranch: "feat/prepared", baseBranch: "main", headSha: "abcdef1234567890", isDraft: false, isOpen: true, reviewState: "unknown", mergeability: "unknown", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" } as never,
+      checks: { overall: "passing", checks: [] },
+      comments: { threads: [] },
+      batch: { sessionId: "session-1", state: { _tag: "Local" }, summaryBody: "", suggestedEvent: "COMMENT", items: [], receipts: [], createdAt: "2026-07-16T00:00:00.000Z", updatedAt: "2026-07-16T00:00:00.000Z" } as never,
+      freshness: "fresh",
+    }} onNavigate={() => {}} onWorkbenchPatch={() => {}} onWorkbenchReplace={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "PR overview" }));
+    expect(await screen.findByRole("heading", { name: "PR overview" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Collapse checks" })).toBeNull();
+    expect(screen.getByText("Existing threads")).toBeTruthy();
+    expect(screen.getByText("Your local review")).toBeTruthy();
+    expect(document.querySelectorAll('[data-disclosure-motion="panel"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-disclosure-motion="chevron"]')).toHaveLength(4);
+    expect(screen.queryByRole("dialog", { name: "Run local review" })).toBeNull();
+  });
+
+  it("refreshes GitHub checks for a prepared saved session", async () => {
+    const replaced = vi.fn();
+    mockApi((request) => {
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/refresh")
+        return ok200({
+          freshness: "fresh",
+          refreshedAt: "2026-07-30T00:00:00.000Z",
+          comments: { threads: [] },
+          checks: {
+            overall: "passing",
+            checks: [
+              {
+                name: "check-test-coverage",
+                required: "unknown",
+                status: "completed",
+                conclusion: "success",
+              },
+            ],
+          },
+          mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+        });
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(
+      <PreparedReviewFlow
+        workbench={{ ...workbench, freshness: "not_refreshed" }}
+        onNavigate={() => {}}
+        onWorkbenchPatch={() => {}}
+        onWorkbenchReplace={replaced}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Refresh GitHub state" }),
+    );
+
+    await waitFor(() =>
+      expect(replaced).toHaveBeenCalledWith(
+        expect.objectContaining({
+          freshness: "fresh",
+          checks: { overall: "passing", checks: expect.any(Array) },
+        }),
+      ),
+    );
+  });
+
+  it("reopens the prepared session after refresh detects a changed head", async () => {
+    const replaced = vi.fn();
+    const requests: MockRequest[] = [];
+    mockApi((request) => {
+      requests.push(request);
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/refresh")
+        return ok200({
+          freshness: "stale",
+          refreshedAt: "2026-07-30T00:00:00.000Z",
+          comments: { threads: [] },
+          checks: { overall: "passing", checks: [] },
+        });
+      if (request.path === "/v1/reviews/open")
+        return ok200({
+          state: "review_started",
+          session: {
+            id: "session-2",
+            key: {
+              profileId: "cfw",
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              prNumber: 42,
+              headSha: "fedcba9876543210",
+            },
+          },
+          recoveryView: {
+            noticeKey: "ready_to_review",
+            tone: "positive",
+            actionKey: "run_review",
+          },
+        });
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(
+      <PreparedReviewFlow
+        workbench={{ ...workbench, freshness: "fresh" }}
+        onNavigate={() => {}}
+        onWorkbenchPatch={() => {}}
+        onWorkbenchReplace={replaced}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Refresh GitHub state" }),
+    );
+
+    await waitFor(() =>
+      expect(replaced).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session: expect.objectContaining({ id: "session-2" }),
+        }),
+      ),
+    );
+    expect(requests.map((request) => request.path)).toContain("/v1/reviews/refresh");
+    expect(requests.map((request) => request.path)).toContain("/v1/reviews/open");
+    expect(requests.find((request) => request.path === "/v1/reviews/open")?.body).toMatchObject({ previousSessionId: "session-1" });
+  });
+
   it("applies runId and attemptId so the workbench enters live progress", async () => {
     mockApi((request) => {
       if (request.path === "/v1/reviews/models") return ok200(models);

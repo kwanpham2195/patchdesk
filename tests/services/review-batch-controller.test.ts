@@ -41,6 +41,7 @@ afterEach(async () => {
 
 async function fixture(
   batchOverride: Readonly<Record<string, unknown>> = {},
+  options: { readonly prepared?: boolean } = {},
 ): Promise<{
   readonly store: ReviewSessionStore;
   readonly profileId: ReviewSession["key"]["profileId"];
@@ -73,27 +74,29 @@ async function fixture(
   const batch = must(
     parseReviewBatch({
       sessionId: base.id,
-      attemptId,
       state: { _tag: "Local" },
       summaryBody: "Original summary",
       suggestedEvent: "REQUEST_CHANGES",
-      items: [
-        {
-          _tag: "InlineComment",
-          id: "finding-a",
-          source: "finding",
-          findingId: "finding-a",
-          anchor: {
-            path: "src/a.ts",
-            startLine: 8,
-            line: 8,
-            side: "new",
-          },
-          body: "Original A",
-          include: true,
-          postability: "postable",
-        },
-      ],
+      items: options.prepared
+        ? []
+        : [
+            {
+              _tag: "InlineComment",
+              id: "finding-a",
+              provenance: { _tag: "model", attemptId },
+              source: "finding",
+              findingId: "finding-a",
+              anchor: {
+                path: "src/a.ts",
+                startLine: 8,
+                line: 8,
+                side: "new",
+              },
+              body: "Original A",
+              include: true,
+              postability: "postable",
+            },
+          ],
       receipts: [],
       createdAt,
       updatedAt: createdAt,
@@ -102,8 +105,12 @@ async function fixture(
   );
   const session: ReviewSession = {
     ...base,
-    state: { _tag: "ReviewCompleted", attemptId },
-    currentAttemptId: attemptId,
+    ...(options.prepared
+      ? {}
+      : {
+          state: { _tag: "ReviewCompleted" as const, attemptId },
+          currentAttemptId: attemptId,
+        }),
     batch: { state: batch.state },
     batchContent: batch,
     ...(batch.state._tag === "Submitted"
@@ -127,7 +134,6 @@ function updateInput(
   return {
     profileId: value.profileId,
     sessionId: value.session.id,
-    attemptId: value.batch.attemptId,
     expectedRevision: value.batch.updatedAt,
     command,
   };
@@ -141,6 +147,49 @@ function controller(store: ReviewSessionStore): ReviewBatchController {
 }
 
 describe("ReviewBatchController", () => {
+  it("adds a human comment to an editable prepared snapshot before an AI run", async () => {
+    const value = await fixture({}, { prepared: true });
+
+    const updated = await controller(value.store).update({
+      profileId: value.profileId,
+      sessionId: value.session.id,
+      expectedRevision: value.batch.updatedAt,
+      command: {
+        _tag: "AddInlineComment",
+        anchor: { path: "src/prepared.ts", startLine: 4, line: 4, side: "new" },
+        fingerprint: {
+          path: "src/prepared.ts",
+          side: "new",
+          startLine: 4,
+          line: 4,
+          selectedLines: ["Keep the snapshot-owned guard."],
+          before: [],
+          after: [],
+        },
+        body: "Keep the snapshot-owned guard.",
+      },
+    });
+
+    expect(updated).toMatchObject({
+      _tag: "ok",
+      value: {
+        batch: {
+          items: [
+            {
+              _tag: "InlineComment",
+              provenance: { _tag: "human" },
+              source: "manual",
+              fingerprint: {
+                path: "src/prepared.ts",
+                selectedLines: ["Keep the snapshot-owned guard."],
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("adds a side-aware manual range and returns the canonical durable batch", async () => {
     const value = await fixture();
     const updated = await controller(value.store).update(
@@ -401,16 +450,7 @@ describe("ReviewBatchController", () => {
     ]);
   });
 
-  it("rejects foreign attempts and edits after applying or submission", async () => {
-    const value = await fixture();
-    const service = controller(value.store);
-    await expect(
-      service.update({ ...updateInput(value, { _tag: "RemoveItem", itemId: "finding-a" }), attemptId: "002" }),
-    ).resolves.toEqual({
-      _tag: "err",
-      error: { reason: "batch_attempt_mismatch" },
-    });
-
+  it("rejects edits after applying or submission", async () => {
     for (const state of [
       {
         _tag: "Applying",

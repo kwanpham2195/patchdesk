@@ -112,7 +112,7 @@ const draftStateSchema = v.variant("_tag", [
 ]);
 
 const reviewSessionSchema = v.strictObject({
-  schemaVersion: v.picklist([2, 3]),
+  schemaVersion: v.picklist([2, 3, 4]),
   id: v.string(),
   key: v.strictObject({
     profileId: v.string(),
@@ -635,8 +635,9 @@ export function parseStoredReviewSession(
   if (
     storedBatch.value.batchContent !== undefined &&
     (storedBatch.value.batchContent.sessionId !== id.value ||
-      currentAttemptId === undefined ||
-      storedBatch.value.batchContent.attemptId !== currentAttemptId.value)
+      (storedBatch.value.batchContent.attemptId !== undefined &&
+        (currentAttemptId === undefined ||
+          storedBatch.value.batchContent.attemptId !== currentAttemptId.value)))
   )
     return invalidRead();
 
@@ -689,7 +690,7 @@ export function parseStoredReviewSession(
       };
 
   return ok({
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: id.value,
     key: {
       profileId: profileId.value,
@@ -884,7 +885,7 @@ function parseStoredBatch(
   },
   StorageFailure
 > {
-  if (input.schemaVersion === 3) {
+  if (input.schemaVersion === 4) {
     if (input.draft !== undefined || input.draftContent !== undefined) {
       return invalidRead();
     }
@@ -907,6 +908,30 @@ function parseStoredBatch(
     return ok({
       batch: { state: batchContent.value.state },
       batchContent: batchContent.value,
+    });
+  }
+
+  if (input.schemaVersion === 3) {
+    if (input.draft !== undefined || input.draftContent !== undefined) {
+      return invalidRead();
+    }
+    if ((input.batch === undefined) !== (input.batchContent === undefined)) {
+      return invalidRead();
+    }
+    if (input.batchContent === undefined || input.batch === undefined) {
+      return ok({});
+    }
+    const batchContent = parseReviewBatch(input.batchContent);
+    if (
+      batchContent._tag === "err" ||
+      !isDeepStrictEqual(input.batch.state, batchContent.value.state)
+    ) {
+      return invalidRead();
+    }
+    const migrated = migrateAttemptOwnedBatch(batchContent.value);
+    return ok({
+      batch: { state: migrated.state },
+      batchContent: migrated,
     });
   }
 
@@ -960,6 +985,7 @@ function migrateLocalDraft(
     items.push({
       _tag: "InlineComment",
       id: itemId.value,
+      provenance: { _tag: "model", attemptId: draft.attemptId },
       source: "finding",
       findingId: comment.findingId,
       anchor: {
@@ -985,7 +1011,15 @@ function migrateLocalDraft(
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
   });
-  return migrated._tag === "err" ? invalidRead() : ok(migrated.value);
+  return migrated._tag === "err"
+    ? invalidRead()
+    : ok(migrateAttemptOwnedBatch(migrated.value));
+}
+
+function migrateAttemptOwnedBatch(batch: ReviewBatch): ReviewBatch {
+  const { attemptId: legacyAttemptId, ...snapshotBatch } = batch;
+  void legacyAttemptId;
+  return snapshotBatch;
 }
 
 function parseDraftState(

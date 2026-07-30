@@ -52,6 +52,7 @@ type Commit = {
   readonly walkthrough?: NarrativeWalkthrough;
   readonly recordFailureInput?: ServiceInput;
   readonly recordFailureDetail?: string;
+  readonly recordSuccessInput?: ServiceInput;
 };
 
 const identitySchema = v.strictObject({
@@ -99,6 +100,7 @@ export class NarrativeWalkthroughService {
     const token = (this.tokens.get(key) ?? 0) + 1;
     this.tokens.set(key, token);
     this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: projection("generating") });
+    await this.recordActivity(parsed.value, "walkthrough-started", true);
 
     const decision = await this.runGeneration(parsed.value, loaded.value, token);
 
@@ -147,7 +149,7 @@ export class NarrativeWalkthroughService {
     const latestSession = await this.sessions.load(input.profileId, input.sessionId);
     const snapshotStillCurrent = latestSession._tag === "ok" &&
       latestSession.value.id === input.sessionId &&
-      latestSession.value.state._tag === "ReviewCompleted" &&
+      isReadableWalkthroughSession(latestSession.value) &&
       latestSession.value.key.headSha === loaded.snapshot.headSha;
     const key = recordKey(input.profileId, input.sessionId);
     if (!this.tokenStillCurrent(key, token, currentHash, loaded.snapshot.headSha) || !snapshotStillCurrent) {
@@ -174,7 +176,7 @@ export class NarrativeWalkthroughService {
       if (parsed._tag === "err") return { commit: { token, snapshot: loaded.snapshot, kind: "stale_publish" } };
       return { commit: { token, snapshot: { ...loaded.snapshot, patchHash: parsed.value }, kind: "stale_publish" } };
     }
-    return { commit: { token, snapshot: loaded.snapshot, kind: "ready", walkthrough: normalized.value } };
+    return { commit: { token, snapshot: loaded.snapshot, kind: "ready", walkthrough: normalized.value, recordSuccessInput: input } };
   }
 
   async load(input: unknown): Promise<Result<NarrativeWalkthroughProjection, NarrativeWalkthroughFailure>> {
@@ -213,6 +215,9 @@ export class NarrativeWalkthroughService {
       return ok(projection("stale"));
     }
     if (change.kind === "ready" && change.walkthrough !== undefined) {
+      if (change.recordSuccessInput !== undefined) {
+        await this.recordActivity(change.recordSuccessInput, "walkthrough-completed", false);
+      }
       const readyProjection: NarrativeWalkthroughProjection = {
         lifecycle: "ready",
         noticeKey: "walkthrough-ready",
@@ -269,7 +274,9 @@ export class NarrativeWalkthroughService {
     const session = await this.sessions.load(input.profileId, input.sessionId);
     if (session._tag === "err") return err({ reason: session.error.reason === "not_found" ? "session_not_found" : "storage_unavailable" });
     if (session.value.id !== input.sessionId || session.value.key.profileId !== input.profileId) return err({ reason: "session_not_found" });
-    if (session.value.state._tag !== "ReviewCompleted") return err({ reason: "not_completed" });
+    // A walkthrough reads the immutable prepared patch. Its availability must
+    // not depend on whether optional model review has started or completed.
+    if (!isReadableWalkthroughSession(session.value)) return err({ reason: "not_completed" });
     const patchHash = await contentHash(session.value.patchPath);
     if (patchHash.length === 0) return err({ reason: "stale_snapshot" });
     const parsedPatchHash = parseContentHash(patchHash);
@@ -282,16 +289,45 @@ export class NarrativeWalkthroughService {
 
   private async recordFailure(input: ServiceInput, detail: string): Promise<string | undefined> {
     if (this.diagnostics === undefined) return undefined;
-    const recorded = await this.diagnostics.record({
-      profileId: input.profileId,
-      sessionId: input.sessionId,
-      category: "walkthrough",
-      phase: "walkthrough-generation",
-      retryable: true,
-      detail: `Walkthrough generation failed: ${detail}`,
-    });
-    return recorded._tag === "ok" ? recorded.value.incidentId : undefined;
+    try {
+      const recorded = await this.diagnostics.record({
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        category: "walkthrough",
+        phase: "walkthrough-failed",
+        retryable: true,
+        detail: `walkthrough_${detail}`,
+      });
+      return recorded._tag === "ok" ? recorded.value.incidentId : undefined;
+    } catch {
+      return undefined;
+    }
   }
+
+  private async recordActivity(
+    input: ServiceInput,
+    phase: "walkthrough-started" | "walkthrough-completed",
+    retryable: boolean,
+  ): Promise<void> {
+    try {
+      await this.diagnostics?.record({
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        category: "walkthrough",
+        phase,
+        retryable,
+      });
+    } catch {
+      // Walkthrough generation is independent from best-effort local activity.
+    }
+  }
+}
+
+function isReadableWalkthroughSession(session: ReviewSession): boolean {
+  return session.state._tag === "Created"
+    || session.state._tag === "Running"
+    || session.state._tag === "ReviewCompleted"
+    || session.state._tag === "ReviewFailed";
 }
 
 function recordKey(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): string {

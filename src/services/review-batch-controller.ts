@@ -6,7 +6,6 @@ import {
   parseIsoTimestamp,
   parseLocalReviewItemId,
   parseRepoRelativePath,
-  parseReviewAttemptId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type GitHubThreadId,
@@ -15,6 +14,7 @@ import {
 } from "../domain/ids";
 import {
   parseReviewBatch,
+  type ReviewAnchorFingerprint,
   type ReviewAnchor,
   type ReviewBatch,
   type ReviewBatchItem,
@@ -32,10 +32,21 @@ const anchorSchema = v.strictObject({
   side: v.picklist(["new", "old"]),
 });
 
+const fingerprintSchema = v.strictObject({
+  path: v.string(),
+  side: v.picklist(["new", "old"]),
+  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  selectedLines: v.pipe(v.array(v.string()), v.maxLength(8)),
+  before: v.pipe(v.array(v.string()), v.maxLength(2)),
+  after: v.pipe(v.array(v.string()), v.maxLength(2)),
+});
+
 const commandSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("AddInlineComment"),
     anchor: anchorSchema,
+    fingerprint: v.optional(fingerprintSchema),
     body: v.string(),
   }),
   v.strictObject({
@@ -66,7 +77,6 @@ const commandSchema = v.variant("_tag", [
 const updateSchema = v.strictObject({
   profileId: v.string(),
   sessionId: v.string(),
-  attemptId: v.string(),
   expectedRevision: v.string(),
   command: commandSchema,
 });
@@ -76,6 +86,7 @@ export type ReviewBatchUpdate =
   | {
       readonly _tag: "AddInlineComment";
       readonly anchor: ReviewAnchor;
+      readonly fingerprint?: ReviewAnchorFingerprint;
       readonly body: string;
     }
   | {
@@ -105,7 +116,6 @@ export type ReviewBatchUpdate =
 type ParsedUpdate = {
   readonly profileId: ReviewSession["key"]["profileId"];
   readonly sessionId: ReviewSession["id"];
-  readonly attemptId: ReviewBatch["attemptId"];
   readonly expectedRevision: IsoTimestamp;
   readonly command: ReviewBatchUpdate;
 };
@@ -184,9 +194,8 @@ export class ReviewBatchController {
       return err({ reason: "batch_not_found" });
     }
     if (
-      loaded.value.currentAttemptId !== input.attemptId ||
-      durable.attemptId !== input.attemptId ||
-      durable.sessionId !== loaded.value.id
+      durable.sessionId !== loaded.value.id ||
+      durable.attemptId !== undefined
     ) {
       return err({ reason: "batch_attempt_mismatch" });
     }
@@ -291,12 +300,10 @@ function parseUpdate(
   }
   const profileId = parseWorkspaceProfileId(raw.output.profileId);
   const sessionId = parseReviewSessionId(raw.output.sessionId);
-  const attemptId = parseReviewAttemptId(raw.output.attemptId);
   const expectedRevision = parseIsoTimestamp(raw.output.expectedRevision);
   if (
     profileId._tag === "err" ||
     sessionId._tag === "err" ||
-    attemptId._tag === "err" ||
     expectedRevision._tag === "err"
   ) {
     return err({ reason: "invalid_input" });
@@ -308,7 +315,6 @@ function parseUpdate(
   return ok({
     profileId: profileId.value,
     sessionId: sessionId.value,
-    attemptId: attemptId.value,
     expectedRevision: expectedRevision.value,
     command: command.value,
   });
@@ -331,6 +337,10 @@ function parseCommand(
     ) {
       return err({ reason: "invalid_input" });
     }
+    const parsedFingerprint: Result<ReviewAnchorFingerprint | undefined, ReviewBatchControllerFailure> = command.fingerprint === undefined
+      ? ok(undefined)
+      : parseFingerprint(command.fingerprint, path.value, command.anchor.startLine, command.anchor.line);
+    if (parsedFingerprint._tag === "err") return parsedFingerprint;
     return ok({
       _tag: "AddInlineComment",
       anchor: {
@@ -339,6 +349,7 @@ function parseCommand(
         line: command.anchor.line,
         side: command.anchor.side,
       },
+      ...(parsedFingerprint.value === undefined ? {} : { fingerprint: parsedFingerprint.value }),
       body: command.body,
     });
   }
@@ -375,6 +386,35 @@ function parseCommand(
       });
 }
 
+function parseFingerprint(
+  input: v.InferOutput<typeof fingerprintSchema>,
+  anchorPath: ReviewAnchor["path"],
+  anchorStartLine: number,
+  anchorLine: number,
+): Result<ReviewAnchorFingerprint, ReviewBatchControllerFailure> {
+  const path = parseRepoRelativePath(input.path);
+  if (
+    path._tag === "err" ||
+    path.value !== anchorPath ||
+    input.side === undefined ||
+    input.startLine !== anchorStartLine ||
+    input.line !== anchorLine ||
+    input.line < input.startLine ||
+    input.selectedLines.length !== input.line - input.startLine + 1
+  ) {
+    return err({ reason: "invalid_input" });
+  }
+  return ok({
+    path: path.value,
+    side: input.side,
+    startLine: input.startLine,
+    line: input.line,
+    selectedLines: input.selectedLines,
+    before: input.before,
+    after: input.after,
+  });
+}
+
 function applyLocalUpdate(
   batch: ReviewBatch,
   command: Exclude<ReviewBatchUpdate, { readonly _tag: "DiscardForRerun" }>,
@@ -391,8 +431,10 @@ function applyLocalUpdate(
       {
         _tag: "InlineComment",
         id,
+        provenance: { _tag: "human" },
         source: "manual",
         anchor: command.anchor,
+        ...(command.fingerprint === undefined ? {} : { fingerprint: command.fingerprint }),
         body: command.body,
         include: true,
         postability: "postable",
@@ -433,6 +475,7 @@ function applyLocalUpdate(
       {
         _tag: "ThreadReply",
         id,
+        provenance: { _tag: "human" },
         threadId: command.threadId,
         body: command.body,
         include: true,
@@ -460,6 +503,7 @@ function applyLocalUpdate(
       {
         _tag: "ThreadState",
         id,
+        provenance: { _tag: "human" },
         threadId: command.threadId,
         action: command.action,
         include: true,

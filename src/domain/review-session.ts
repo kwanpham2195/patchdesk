@@ -18,7 +18,6 @@ import {
   type GitHubReviewEvent,
   type ReviewBatch,
 } from "./review-batch";
-import type { ReviewDraft } from "./review-draft";
 import type {
   ReviewAttempt,
   ReviewAttemptState,
@@ -68,7 +67,7 @@ export type MergeDecisionRef = {
 
 export type ReviewSession = {
   /** The in-memory representation is always normalized to the current schema. */
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 4;
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
@@ -87,16 +86,6 @@ export type ReviewSession = {
   readonly batch?: Pick<ReviewBatch, "state">;
   /** Full validated batch retained so interrupted GitHub writes are never guessed or replayed. */
   readonly batchContent?: ReviewBatch;
-  /**
-   * @deprecated Temporary internal type bridge for legacy consumers being
-   * migrated in later workbench tasks. New v3 sessions never persist this field.
-   */
-  readonly draft?: Pick<ReviewDraft, "state">;
-  /**
-   * @deprecated Temporary internal type bridge for legacy consumers being
-   * migrated in later workbench tasks. New v3 sessions never persist this field.
-   */
-  readonly draftContent?: ReviewDraft;
   readonly submittedReview?: SubmittedReviewRef;
   readonly mergeDecision?: MergeDecisionRef;
   readonly visibleResult?: ReviewResult;
@@ -131,7 +120,7 @@ export function createReviewSession(input: {
   readonly batch?: Pick<ReviewBatch, "state">;
 }): ReviewSession {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,
@@ -166,16 +155,10 @@ export function startNextAttempt(
   if (attemptId._tag === "err") {
     return err({ _tag: "CannotAllocateAttempt" });
   }
-  const sessionForNextAttempt =
-    batchEvidence.states[0]?._tag === "Submitted" ||
-    batchEvidence.states[0]?._tag === "Completed"
-      ? withoutReviewBatch(session)
-      : session;
-
   return ok({
     attemptId: attemptId.value,
     session: {
-      ...sessionForNextAttempt,
+      ...session,
       currentAttemptId: attemptId.value,
       state: { _tag: "Running", attemptId: attemptId.value },
     },

@@ -175,7 +175,7 @@ describe("Patchdesk storage", () => {
     });
     expect(parseStoredReviewSession({
       ...session,
-      schemaVersion: 4,
+      schemaVersion: 5,
     })).toMatchObject({
       _tag: "err",
       error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
@@ -215,7 +215,7 @@ describe("Patchdesk storage", () => {
     expect(parseStoredReviewSession(legacy)).toMatchObject({
       _tag: "ok",
       value: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         batch: { state: { _tag: "Local" } },
         batchContent: {
           state: { _tag: "Local" },
@@ -237,6 +237,47 @@ describe("Patchdesk storage", () => {
             postability: "postable",
           }],
           receipts: [],
+        },
+      },
+    });
+  });
+
+  it("migrates a v3 attempt-owned batch into a snapshot-owned model batch", async () => {
+    const paths = await testPaths();
+    const session = sessionFor(paths);
+    const parsed = parseStoredReviewSession({
+      ...session,
+      schemaVersion: 3,
+      currentAttemptId: "001",
+      batch: { state: { _tag: "Local" } },
+      batchContent: {
+        sessionId: session.id,
+        attemptId: "001",
+        state: { _tag: "Local" },
+        summaryBody: "Model review.",
+        suggestedEvent: "COMMENT",
+        items: [{
+          _tag: "InlineComment",
+          id: "finding-1",
+          source: "finding",
+          findingId: "finding-1",
+          anchor: { path: "src/example.ts", startLine: 7, line: 7, side: "new" },
+          body: "Preserve this guard.",
+          include: true,
+          postability: "postable",
+        }],
+        receipts: [],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: {
+        schemaVersion: 4,
+        batchContent: {
+          items: [{ provenance: { _tag: "model", attemptId: "001" } }],
         },
       },
     });

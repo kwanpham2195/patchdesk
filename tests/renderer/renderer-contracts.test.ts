@@ -5,6 +5,13 @@ import {
   parseWalkthroughProjection,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";
+import { normalizeNarrativeWalkthrough } from "../../src/domain/narrative-walkthrough";
+import {
+  parseContentHash,
+  parseGitSha,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "../../src/domain/ids";
 
 const sessionProjection = {
   id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456",
@@ -22,7 +29,7 @@ const completedProjection = {
   state: "completed",
   session: sessionProjection,
   result: { summary: "ok" },
-  draft: { state: { _tag: "LocalDraft" } },
+  batch: { state: { _tag: "Local" } },
   comments: { threads: [] },
   checks: { overall: "passing", checks: [] },
   history: [],
@@ -34,12 +41,28 @@ const completedProjection = {
   refreshedAt: "2026-07-18T00:00:00.000Z",
 };
 
+function must<T>(
+  result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
+): T {
+  if (result._tag === "err") throw new Error("fixture parse failed");
+  return result.value;
+}
+
 describe("parseWorkbenchResponse", () => {
   it("rejects lifecycle and attempt fields from the renderer recovery projection", () => {
     const prepared = parseWorkbenchResponse({
       state: "review_started",
-      session: { ...sessionProjection, state: "ReviewFailed", lastRunFailure: "The review workflow did not complete.", currentAttemptId: "attempt-1" },
-      recoveryView: { noticeKey: "review_failed", tone: "warning", actionKey: "try_again" },
+      session: {
+        ...sessionProjection,
+        state: "ReviewFailed",
+        lastRunFailure: "The review workflow did not complete.",
+        currentAttemptId: "attempt-1",
+      },
+      recoveryView: {
+        noticeKey: "review_failed",
+        tone: "warning",
+        actionKey: "try_again",
+      },
       reviewedHeadSha: "2222222222222222222222222222222222222222",
       freshness: "fresh",
       refreshedAt: "2026-07-18T00:00:00.000Z",
@@ -52,13 +75,21 @@ describe("parseWorkbenchResponse", () => {
     const prepared = parseWorkbenchResponse({
       state: "review_started",
       session: sessionProjection,
-      recoveryView: { noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" },
+      recoveryView: {
+        noticeKey: "review_interrupted",
+        tone: "warning",
+        actionKey: "start_again",
+      },
       reviewedHeadSha: "2222222222222222222222222222222222222222",
       freshness: "fresh",
       refreshedAt: "2026-07-18T00:00:00.000Z",
       checks: { overall: "unknown", checks: [] },
     });
-    expect(prepared?.recoveryView).toEqual({ noticeKey: "review_interrupted", tone: "warning", actionKey: "start_again" });
+    expect(prepared?.recoveryView).toEqual({
+      noticeKey: "review_interrupted",
+      tone: "warning",
+      actionKey: "start_again",
+    });
   });
 
   it("accepts the renderer-safe prepared and completed projections", () => {
@@ -69,8 +100,18 @@ describe("parseWorkbenchResponse", () => {
       freshness: "fresh",
       refreshedAt: "2026-07-18T00:00:00.000Z",
       checks: { overall: "unknown", checks: [] },
+      comments: { threads: [] },
+      batch: { state: { _tag: "Local" } },
+      mergeReadiness: { _tag: "Mergeable", blockers: [], warnings: [] },
     });
     expect(prepared?.state).toBe("review_started");
+    expect(prepared?.comments).toEqual({ threads: [] });
+    expect(prepared?.batch).toEqual({ state: { _tag: "Local" } });
+    expect(prepared?.mergeReadiness).toEqual({
+      _tag: "Mergeable",
+      blockers: [],
+      warnings: [],
+    });
     const completed = parseWorkbenchResponse(completedProjection);
     expect(completed?.state).toBe("completed");
   });
@@ -80,7 +121,8 @@ describe("parseWorkbenchResponse", () => {
       ...completedProjection,
       reviewScope: {
         kind: "incremental",
-        baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000",
+        baseSessionId:
+          "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000",
         baseHeadSha: "1111111111111111111111111111111111111111",
         headSha: "2222222222222222222222222222222222222222",
       },
@@ -118,11 +160,14 @@ describe("parseWorkbenchResponse", () => {
   });
 
   it("rejects a session that carries durable internals", () => {
-    const withDraftContent = {
+    const withBatchContent = {
       ...completedProjection,
-      session: { ...sessionProjection, draftContent: { state: { _tag: "LocalDraft" } } },
+      session: {
+        ...sessionProjection,
+        batchContent: { state: { _tag: "Local" } },
+      },
     };
-    expect(parseWorkbenchResponse(withDraftContent)).toBeUndefined();
+    expect(parseWorkbenchResponse(withBatchContent)).toBeUndefined();
     const withState = {
       ...completedProjection,
       session: { ...sessionProjection, state: { _tag: "ReviewCompleted" } },
@@ -133,7 +178,8 @@ describe("parseWorkbenchResponse", () => {
 
 const walkthroughSnapshot = {
   profileId: "cfw",
-  sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456",
+  sessionId:
+    "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456",
   headSha: "2222222222222222222222222222222222222222",
   patchHash: "0000000000000000000000000000000000000000",
 };
@@ -176,13 +222,85 @@ describe("parseWalkthroughProjection", () => {
     for (const projection of [
       { lifecycle: "idle", noticeKey: "walkthrough-idle" },
       { lifecycle: "generating", noticeKey: "walkthrough-generating" },
-      { lifecycle: "ready", noticeKey: "walkthrough-ready", walkthrough: walkthroughProjectionFixture },
-      { lifecycle: "failed", noticeKey: "walkthrough-failed", actionKey: "walkthrough-retry" },
-      { lifecycle: "failed", noticeKey: "walkthrough-failed", actionKey: "walkthrough-retry", incidentId: "incident-1" },
-      { lifecycle: "stale", noticeKey: "walkthrough-stale", actionKey: "walkthrough-regenerate" },
+      {
+        lifecycle: "ready",
+        noticeKey: "walkthrough-ready",
+        walkthrough: walkthroughProjectionFixture,
+      },
+      {
+        lifecycle: "failed",
+        noticeKey: "walkthrough-failed",
+        actionKey: "walkthrough-retry",
+      },
+      {
+        lifecycle: "failed",
+        noticeKey: "walkthrough-failed",
+        actionKey: "walkthrough-retry",
+        incidentId: "incident-1",
+      },
+      {
+        lifecycle: "stale",
+        noticeKey: "walkthrough-stale",
+        actionKey: "walkthrough-regenerate",
+      },
     ]) {
       expect(parseWalkthroughProjection(projection)).toBeDefined();
     }
+  });
+
+  it("accepts a ready projection emitted from a valid long repository path", () => {
+    const path = `src/${"x".repeat(1_000)}.ts`;
+    const snapshot = {
+      profileId: must(parseWorkspaceProfileId("cfw")),
+      sessionId: must(
+        parseReviewSessionId(
+          "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456",
+        ),
+      ),
+      headSha: must(parseGitSha("2222222222222222222222222222222222222222")),
+      patchHash: must(parseContentHash("a".repeat(64))),
+    };
+    const patch = [
+      `diff --git a/${path} b/${path}`,
+      "index 1111111..2222222 100644",
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      "@@ -1,1 +1,1 @@",
+      "-before",
+      "+after",
+      "",
+    ].join("\n");
+    const normalized = normalizeNarrativeWalkthrough(
+      {
+        title: "Long path walkthrough",
+        focus: "The walkthrough still reaches the renderer.",
+        snapshot,
+        chapters: [
+          {
+            title: "Change",
+            sections: [
+              {
+                title: "Update",
+                prose: "A legal patch changes one line.",
+                hunkIds: ["h1"],
+              },
+            ],
+          },
+        ],
+      },
+      patch,
+      snapshot,
+    );
+
+    expect(normalized._tag).toBe("ok");
+    if (normalized._tag === "err") return;
+    expect(
+      parseWalkthroughProjection({
+        lifecycle: "ready",
+        noticeKey: "walkthrough-ready",
+        walkthrough: normalized.value,
+      }),
+    ).toBeDefined();
   });
 
   it("rejects walkthrough projections whose hunk ids are not alphanumeric", () => {
@@ -291,7 +409,13 @@ describe("parseWalkthroughProjection", () => {
                 title: "Why this snapshot matters",
                 prose: "Background",
                 hunkIds: ["h1"],
-                hunks: [{ ...walkthroughHunk, attemptId: "attempt-1", patchPath: "/tmp/leak" }],
+                hunks: [
+                  {
+                    ...walkthroughHunk,
+                    attemptId: "attempt-1",
+                    patchPath: "/tmp/leak",
+                  },
+                ],
               },
             ],
           },
@@ -319,10 +443,17 @@ describe("parseModelCatalog", () => {
   });
 
   it("rejects a catalog that includes non-string model ids", () => {
-    expect(parseModelCatalog({ models: [{ id: 42, label: "Model" }] })).toBeUndefined();
+    expect(
+      parseModelCatalog({ models: [{ id: 42, label: "Model" }] }),
+    ).toBeUndefined();
   });
 
   it("rejects a catalog that includes an out-of-range reasoning value", () => {
-    expect(parseModelCatalog({ models: [{ id: "model-a", label: "Model A" }], defaultReasoning: "extreme" })).toBeUndefined();
+    expect(
+      parseModelCatalog({
+        models: [{ id: "model-a", label: "Model A" }],
+        defaultReasoning: "extreme",
+      }),
+    ).toBeUndefined();
   });
 });

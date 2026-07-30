@@ -74,7 +74,9 @@ describe("dashboard renderer API flow", () => {
   it("loads profile, watchlist, rows, and archived outcome from authenticated API responses", async () => {
     installApi();
     render(<App />);
-    expect((await screen.findAllByText(/Real dashboard row/)).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText(/Real dashboard row/)).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getAllByText("centraldigital/patchdesk").length,
     ).toBeGreaterThan(0);
@@ -82,7 +84,7 @@ describe("dashboard renderer API flow", () => {
     expect(screen.queryByText(/Submit review|Merge pull request/i)).toBeNull();
   });
 
-  it("keeps Watchlist management in the dedicated queue surface", async () => {
+  it("keeps Watchlist management in Workspace Settings instead of the queue surface", async () => {
     const fetch = installApi({
       suggestionsValue: [
         { host: "github.com", owner: "centraldigital", repo: "new-service" },
@@ -93,31 +95,101 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
 
+    expect(screen.queryByRole("region", { name: "Watchlist" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+
     const watchlist = screen.getByRole("region", { name: "Watchlist" });
     expect(within(watchlist).getByLabelText("Repository")).toBeTruthy();
-    expect(within(watchlist).getByRole("button", { name: "Discover" })).toBeTruthy();
-    expect(within(watchlist).getByRole("button", { name: "Refresh centraldigital/patchdesk" })).toBeTruthy();
-    expect(within(watchlist).getByRole("button", { name: "Archive centraldigital/patchdesk" })).toBeTruthy();
-    expect(within(watchlist).getByRole("button", { name: "Remove centraldigital/patchdesk" })).toBeTruthy();
+    expect(
+      within(watchlist).getByRole("button", { name: "Discover" }),
+    ).toBeTruthy();
+    const openActions = async (): Promise<void> => {
+      await user.click(
+        within(watchlist).getByRole("button", {
+          name: "More actions for centraldigital/patchdesk",
+        }),
+      );
+      await screen.findByRole("menuitem", { name: "Refresh" });
+    };
+    await openActions();
+    expect(await screen.findByRole("menuitem", { name: "Refresh" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Remove" })).toBeTruthy();
+    await user.keyboard("{Escape}");
 
-    await user.type(within(watchlist).getByLabelText("Repository"), "centraldigital/new-service");
-    await user.click(within(watchlist).getByRole("button", { name: "Add repository" }));
-    await user.click(within(watchlist).getByRole("button", { name: "Discover" }));
-    expect(await within(watchlist).findByText("centraldigital/new-service")).toBeTruthy();
-    await user.click(within(watchlist).getByRole("button", { name: "Add suggestion" }));
+    await user.type(
+      within(watchlist).getByLabelText("Repository"),
+      "centraldigital/new-service",
+    );
+    await user.click(
+      within(watchlist).getByRole("button", { name: "Add repository" }),
+    );
+    await user.click(
+      within(watchlist).getByRole("button", { name: "Discover" }),
+    );
+    expect(
+      await within(watchlist).findByText("centraldigital/new-service"),
+    ).toBeTruthy();
+    await user.click(
+      within(watchlist).getByRole("button", { name: "Add suggestion" }),
+    );
 
-    await user.click(within(watchlist).getByRole("button", { name: "Choose folder for centraldigital/patchdesk" }));
-    await user.click(within(watchlist).getByRole("button", { name: "Save path for centraldigital/patchdesk" }));
-    await user.click(within(watchlist).getByRole("button", { name: "Refresh centraldigital/patchdesk" }));
-    await user.click(within(watchlist).getByRole("button", { name: "Archive centraldigital/patchdesk" }));
-    await user.click(within(watchlist).getByRole("button", { name: "Remove centraldigital/patchdesk" }));
+    await user.click(
+      within(watchlist).getByRole("button", {
+        name: "Choose folder for centraldigital/patchdesk",
+      }),
+    );
+    await user.click(
+      within(watchlist).getByRole("button", {
+        name: "Save path for centraldigital/patchdesk",
+      }),
+    );
+    await openActions();
+    await user.click(screen.getByRole("menuitem", { name: "Refresh" }));
+    await openActions();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Archive" }),
+    );
+    await openActions();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove" }),
+    );
     await user.click(screen.getByRole("button", { name: "Confirm removal" }));
 
-    expect(fetch.mock.calls.some(([input]) => String(input).includes("v1/watchlist/suggestions"))).toBe(true);
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist/path") && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true);
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/dashboard/refresh/repository") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist/archive") && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true);
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/watchlist") && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("v1/watchlist/suggestions"),
+      ),
+    ).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/watchlist/path") &&
+          (init as RequestInit | undefined)?.method === "PATCH",
+      ),
+    ).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/dashboard/refresh/repository") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/watchlist/archive") &&
+          (init as RequestInit | undefined)?.method === "PATCH",
+      ),
+    ).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/watchlist") &&
+          (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(true);
   });
 
   it("shows an ordered first-run path with a real Settings action", async () => {
@@ -142,18 +214,34 @@ describe("dashboard renderer API flow", () => {
   });
 
   it("clears an active workbench before switching profiles", async () => {
-    window.localStorage.setItem("patchdesk.destination", "workbench:session-123");
+    window.localStorage.setItem(
+      "patchdesk.destination",
+      "workbench:session-123",
+    );
     installApi({ loadedWorkbench: completedWorkbench });
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Stored review title" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Stored review title" }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    const activeProfile = screen.getByRole("combobox", { name: "Active profile" });
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+    const activeProfile = screen.getByRole("combobox", {
+      name: "Active profile",
+    });
     await user.click(activeProfile);
-    if (activeProfile.getAttribute("aria-expanded") !== "true") await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(activeProfile.getAttribute("aria-expanded")).toBe("true"),
+    );
     await user.click(await screen.findByRole("option", { name: "Enterprise" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Stored review title" })).toBeNull());
-    expect(window.localStorage.getItem("patchdesk.destination")).toBe("dashboard");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "Stored review title" }),
+      ).toBeNull(),
+    );
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
+      "dashboard",
+    );
   });
 
   it("clears dashboard and inbox data when a selected profile reload fails", async () => {
@@ -163,19 +251,34 @@ describe("dashboard renderer API flow", () => {
     await screen.findAllByText(/Real dashboard row/);
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    const activeProfile = screen.getByRole("combobox", { name: "Active profile" });
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+    const activeProfile = screen.getByRole("combobox", {
+      name: "Active profile",
+    });
     await user.click(activeProfile);
-    await waitFor(() => expect(activeProfile.getAttribute("aria-expanded")).toBe("true"));
+    await waitFor(() =>
+      expect(activeProfile.getAttribute("aria-expanded")).toBe("true"),
+    );
     await user.click(await screen.findByRole("option", { name: "Enterprise" }));
 
-    await waitFor(() => expect(fetch.mock.calls.some(([input, init]) =>
-      String(input).includes("v1/profiles/select") && init?.method === "POST",
-    )).toBe(true));
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([input, init]) =>
+            String(input).includes("v1/profiles/select") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
     await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(await screen.findByText("Dashboard could not be loaded")).toBeTruthy();
+    expect(
+      await screen.findByText("Dashboard could not be loaded"),
+    ).toBeTruthy();
     expect(screen.queryByText("Real dashboard row")).toBeNull();
     expect(screen.queryByText("centraldigital/patchdesk")).toBeNull();
-    expect(screen.getByRole("button", { name: "Retry dashboard" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry dashboard" }),
+    ).toBeTruthy();
   });
 
   it("returns focus to the persistent Navigate opener after command-palette Settings", async () => {
@@ -186,7 +289,9 @@ describe("dashboard renderer API flow", () => {
     const navigate = screen.getByRole("button", { name: /Navigate/ });
     await user.click(navigate);
     await user.click(screen.getByRole("option", { name: "Settings" }));
-    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Settings" }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(document.activeElement).toBe(navigate));
   });
@@ -197,8 +302,14 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      await screen.findByRole("dialog", { name: "Settings" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("tab", { name: "General" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getAllByText(/Real dashboard row/).length).toBeGreaterThan(0);
   });
@@ -212,7 +323,9 @@ describe("dashboard renderer API flow", () => {
       "Dashboard could not be loaded",
     );
     await user.click(screen.getByRole("button", { name: "Retry dashboard" }));
-    expect((await screen.findAllByText(/Real dashboard row/)).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText(/Real dashboard row/)).length,
+    ).toBeGreaterThan(0);
     expect(
       fetch.mock.calls.filter(
         ([input]) => new URL(String(input)).pathname === "/v1/inbox",
@@ -321,8 +434,14 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      await screen.findByRole("dialog", { name: "Settings" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("tab", { name: "General" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("refreshes Inbox once from the visible action without using the removed endpoint", async () => {
@@ -334,14 +453,22 @@ describe("dashboard renderer API flow", () => {
       ([input]) => new URL(String(input)).pathname === "/v1/inbox",
     ).length;
 
-    await user.click(screen.getByRole("button", { name: "Refresh all watched repositories" }));
+    await user.click(
+      screen.getByRole("button", { name: "Refresh all watched repositories" }),
+    );
 
-    await waitFor(() => expect(fetch.mock.calls.filter(
-      ([input]) => new URL(String(input)).pathname === "/v1/inbox",
-    )).toHaveLength(inboxReadsBefore + 1));
-    expect(fetch.mock.calls.some(([input]) =>
-      new URL(String(input)).pathname === "/v1/inbox/refresh",
-    )).toBe(false);
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.filter(
+          ([input]) => new URL(String(input)).pathname === "/v1/inbox",
+        ),
+      ).toHaveLength(inboxReadsBefore + 1),
+    );
+    expect(
+      fetch.mock.calls.some(
+        ([input]) => new URL(String(input)).pathname === "/v1/inbox/refresh",
+      ),
+    ).toBe(false);
   });
 
   it("uses the native directory picker before saving a workspace root", async () => {
@@ -350,11 +477,25 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("button", { name: "Add workspace root" }));
-    await user.click(screen.getByRole("button", { name: "Choose workspace root 1" }));
-    expect((screen.getByLabelText("workspace root 1") as HTMLInputElement).value).toBe("/workspace/patchdesk");
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+    await user.click(
+      screen.getByRole("button", { name: "Add workspace root" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Choose folder" }),
+    );
+    expect(
+      (screen.getByLabelText("workspace root 1") as HTMLInputElement).value,
+    ).toBe("/workspace/patchdesk");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/profiles") && (init as RequestInit | undefined)?.method === "PUT" && String((init as RequestInit).body).includes("/workspace/patchdesk"))).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/profiles") &&
+          (init as RequestInit | undefined)?.method === "PUT" &&
+          String((init as RequestInit).body).includes("/workspace/patchdesk"),
+      ),
+    ).toBe(true);
   });
 
   it("keeps the workspace root unchanged when directory selection is cancelled", async () => {
@@ -363,28 +504,24 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("button", { name: "Add workspace root" }));
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+    await user.click(
+      screen.getByRole("button", { name: "Add workspace root" }),
+    );
     const path = screen.getByLabelText("workspace root 1") as HTMLInputElement;
-    await user.click(screen.getByRole("button", { name: "Choose workspace root 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "Choose folder" }),
+    );
     expect(path.value).toBe("");
   });
 
-  it("shows safe environment diagnostics in Settings", async () => {
-    installApi({
-      environmentValue: {
-        productName: "Patchdesk",
-        version: "0.1.0",
-        architecture: "arm64",
-        distribution: "unsigned_internal",
-      },
-    });
+  it("keeps environment diagnostics out of Settings", async () => {
+    installApi();
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByText("Environment diagnostics")).toBeTruthy();
-    expect(screen.getByText("0.1.0")).toBeTruthy();
-    expect(screen.getByText("arm64")).toBeTruthy();
+    expect(screen.queryByText("Environment diagnostics")).toBeNull();
   });
 
   it("confirms local review-data cleanup and keeps exact retention copy", async () => {
@@ -394,10 +531,52 @@ describe("dashboard renderer API flow", () => {
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
-    await user.click(screen.getByRole("button", { name: "Clear local review data" }));
-    expect(screen.getByText("This removes discarded and unusable local review data. Reviews you can still open or resume, and diagnostic reports, stay.")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    );
+    expect(
+      screen.getByText(
+        "This removes completed and failed local reviews. An active review and diagnostic reports stay.",
+      ),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Clear local data" }));
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/storage/clear-local-data") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/storage/clear-local-data") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+
+  it("returns to the inbox after local review-data cleanup deletes the open review", async () => {
+    window.localStorage.setItem(
+      "patchdesk.destination",
+      "workbench:session-123",
+    );
+    installApi({ loadedWorkbench: completedWorkbench });
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Stored review title" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    await user.click(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Clear local data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Maintainer inbox" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Stored review title" }),
+    ).toBeNull();
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
+      "dashboard",
+    );
   });
 
   it("keeps cache cleanup explicit and separate from local review data", async () => {
@@ -408,9 +587,51 @@ describe("dashboard renderer API flow", () => {
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
     await user.click(screen.getByRole("button", { name: "Clear cache" }));
-    expect(screen.getByText("This removes rebuildable local files. Your saved reviews and diagnostic reports stay.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This removes rebuildable local files. Your saved reviews and diagnostic reports stay.",
+      ),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Clear cache" }));
-    expect(fetch.mock.calls.some(([input, init]) => String(input).includes("v1/storage/cache/clear") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
+    expect(
+      fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("v1/storage/cache/clear") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+
+  it("shows only redacted review activity from Settings", async () => {
+    const fetch = installApi({
+      activityEvents: [
+        {
+          at: "2026-07-29T00:00:00.000Z",
+          category: "run",
+          phase: "workflow-failed",
+          retryable: true,
+          durationMs: 17_000,
+          detail: "review_execution_failed",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText(/Real dashboard row/);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    await user.click(screen.getByRole("button", { name: "Load activity" }));
+
+    expect(
+      await screen.findByRole("list", { name: "Review activity log" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Workflow Failed")).toBeTruthy();
+    expect(screen.getByText("review_execution_failed")).toBeTruthy();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("v1/diagnostics?profileId=cfw"),
+      ),
+    ).toBe(true);
   });
 
   it("returns to the inbox after closing Settings", async () => {
@@ -419,21 +640,21 @@ describe("dashboard renderer API flow", () => {
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Settings" }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getAllByText(/Real dashboard row/).length).toBeGreaterThan(0);
   });
 
-  it("shows product version, architecture, and internal distribution status in Settings", async () => {
+  it("keeps product metadata out of Settings", async () => {
     const user = userEvent.setup();
     installApi();
     render(<App />);
     await screen.findAllByText(/Real dashboard row/);
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByText("Environment diagnostics")).toBeTruthy();
-    expect(screen.getByText("0.1.0")).toBeTruthy();
-    expect(screen.getByText("arm64")).toBeTruthy();
-    expect(screen.getByText("unsigned_internal")).toBeTruthy();
+    expect(screen.queryByText("Environment diagnostics")).toBeNull();
+    expect(screen.queryByText("unsigned_internal")).toBeNull();
   });
 
   it("restores an exact persisted workbench destination after restart", async () => {
@@ -480,7 +701,6 @@ describe("dashboard renderer API flow", () => {
       ),
     ).toBe(false);
   });
-
 });
 
 const completedWorkbench = {
@@ -504,11 +724,15 @@ const completedWorkbench = {
     validationPlan: [],
     assumptions: [],
   },
-  draft: {
+  batch: {
+    sessionId: "session-123",
     updatedAt: "2026-07-17T12:00:00.000Z",
     summaryBody: "Stored draft",
-    comments: [],
-    state: { _tag: "LocalDraft" },
+    suggestedEvent: "COMMENT",
+    items: [],
+    receipts: [],
+    createdAt: "2026-07-17T12:00:00.000Z",
+    state: { _tag: "Local" },
   },
   history: [],
   comments: { threads: [] },
@@ -558,6 +782,7 @@ function installApi(
     readonly reviewRecords?: ReadonlyArray<unknown>;
     readonly reviewRecordsPending?: boolean;
     readonly reviewRecordsStatus?: number;
+    readonly activityEvents?: ReadonlyArray<unknown>;
     readonly loadedWorkbench?: unknown;
     readonly captureNavigation?: (
       listener: (destination: "settings") => void,
@@ -565,7 +790,8 @@ function installApi(
   } = {},
 ): ReturnType<typeof vi.fn> {
   let remainingDashboardFailures = options.dashboardFailures ?? 0;
-  let remainingProfileSwitchReloadFailures = options.profileSwitchReloadFailures ?? 0;
+  let remainingProfileSwitchReloadFailures =
+    options.profileSwitchReloadFailures ?? 0;
   let profileSelectionSucceeded = false;
   const request = vi.fn(
     async (request: {
@@ -638,20 +864,31 @@ function installApi(
           headers: { "Content-Type": "application/json" },
         });
     }
-    if (options.dashboardPending === true && (path.includes("v1/dashboard") || path.includes("v1/inbox")))
+    if (
+      options.dashboardPending === true &&
+      (path.includes("v1/dashboard") || path.includes("v1/inbox"))
+    )
       return await new Promise<Response>(() => {});
     if (
       profileSelectionSucceeded &&
-      (path.includes("v1/profiles") || path.includes("v1/dashboard") || path.includes("v1/inbox")) &&
+      (path.includes("v1/profiles") ||
+        path.includes("v1/dashboard") ||
+        path.includes("v1/inbox")) &&
       remainingProfileSwitchReloadFailures > 0
     ) {
       remainingProfileSwitchReloadFailures -= 1;
-      return new Response(JSON.stringify({ error: "profile reload unavailable" }), {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "profile reload unavailable" }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
-    if ((path.includes("v1/dashboard") || path.includes("v1/inbox")) && remainingDashboardFailures > 0) {
+    if (
+      (path.includes("v1/dashboard") || path.includes("v1/inbox")) &&
+      remainingDashboardFailures > 0
+    ) {
       remainingDashboardFailures -= 1;
       return new Response(JSON.stringify({ error: "unavailable" }), {
         status: 503,
@@ -665,49 +902,51 @@ function installApi(
         : path.includes("v1/watchlist/suggestions")
           ? (options.suggestionsValue ?? [])
           : path.includes("v1/environment")
-          ? (options.environmentValue ?? {
-              productName: "Patchdesk",
-              version: "0.1.0",
-              architecture: "arm64",
-              distribution: "unsigned_internal",
-              git: "ready",
-              gh: "ready",
-              githubAuth: "ready",
-              runtime: "bundled",
-              modelConfiguration: "configured",
-            })
-          : path.includes("v1/storage")
-          ? { sessions: [], quarantined: [], cacheBytes: 0 }
-          : path.includes("v1/profiles") && !path.includes("select")
-            ? [
-                {
-                  id: "cfw",
-                  label: "CFW",
-                  githubHost: "github.com",
-                  ghAccount: "pmquan2cfw",
-                },
-                {
-                  id: "enterprise",
-                  label: "Enterprise",
-                  githubHost: "github.example.test",
-                  ghAccount: "enterprise-user",
-                },
-              ]
-            : path.includes("direct-entry")
-              ? {
-                  pr: { owner: "octo", repo: "service", number: 3 },
-                  confirmation: {
-                    required: options.confirmationRequired ?? true,
-                    targetProfileId: "enterprise",
-                  },
-                }
-              : path.includes("v1/inbox")
-                ? inboxFromDashboard(
-                    isDashboardFixture(options.dashboardValue)
-                      ? options.dashboardValue
-                      : dashboard,
-                  )
-                : (options.dashboardValue ?? dashboard);
+            ? (options.environmentValue ?? {
+                productName: "Patchdesk",
+                version: "0.1.0",
+                architecture: "arm64",
+                distribution: "unsigned_internal",
+                git: "ready",
+                gh: "ready",
+                githubAuth: "ready",
+                runtime: "bundled",
+                modelConfiguration: "configured",
+              })
+            : path.includes("v1/diagnostics?")
+              ? { events: options.activityEvents ?? [] }
+              : path.includes("v1/storage")
+                ? { sessions: [], quarantined: [], cacheBytes: 0 }
+                : path.includes("v1/profiles") && !path.includes("select")
+                  ? [
+                      {
+                        id: "cfw",
+                        label: "CFW",
+                        githubHost: "github.com",
+                        ghAccount: "pmquan2cfw",
+                      },
+                      {
+                        id: "enterprise",
+                        label: "Enterprise",
+                        githubHost: "github.example.test",
+                        ghAccount: "enterprise-user",
+                      },
+                    ]
+                  : path.includes("direct-entry")
+                    ? {
+                        pr: { owner: "octo", repo: "service", number: 3 },
+                        confirmation: {
+                          required: options.confirmationRequired ?? true,
+                          targetProfileId: "enterprise",
+                        },
+                      }
+                    : path.includes("v1/inbox")
+                      ? inboxFromDashboard(
+                          isDashboardFixture(options.dashboardValue)
+                            ? options.dashboardValue
+                            : dashboard,
+                        )
+                      : (options.dashboardValue ?? dashboard);
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -736,7 +975,10 @@ function inboxFromDashboard(value: typeof dashboard): unknown {
         updatedAt: "2026-07-18T00:00:00.000Z",
         isDraft: row.badges.includes("draft"),
         changeStats: { additions: 0, deletions: 0, changedFiles: 0 },
-        checks: { overall: row.summary.checkSummary?.overall ?? "unknown", checks: [] },
+        checks: {
+          overall: row.summary.checkSummary?.overall ?? "unknown",
+          checks: [],
+        },
         reviewState: "none",
         mergeability: "unknown",
         categories: ["needs_review"],

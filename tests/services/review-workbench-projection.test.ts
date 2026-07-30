@@ -16,6 +16,7 @@ import {
   type GitSha,
 } from "../../src/domain/ids";
 import { createReviewSession, type ReviewSession, type ReviewSessionState } from "../../src/domain/review-session";
+import { createEmptyReviewBatch } from "../../src/domain/review-batch";
 import type { ReviewAttempt, ReviewAttemptState } from "../../src/domain/review-attempt";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { ReviewWorkbenchProjectionService, type ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
@@ -341,6 +342,7 @@ describe("ReviewWorkbenchProjectionService", () => {
   it("projects a prepared session without attempt history or preparation work", async () => {
     const github = fakeGitHub({
       current: summary(headSha),
+      comments: { threads: [{ id: "thread-1", body: "Existing discussion", state: "open" }] } as never,
       checks: { overall: "pending", checks: [] },
     });
     const { root, paths, projection, sessions } = await setup(github);
@@ -353,13 +355,21 @@ describe("ReviewWorkbenchProjectionService", () => {
         worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, id))), headSha },
         createdAt: now,
       });
-      expect((await sessions.save(session))._tag).toBe("ok");
+      const batch = createEmptyReviewBatch({ sessionId: session.id, createdAt: now });
+      expect((await sessions.save({ ...session, batch: { state: batch.state }, batchContent: batch }))._tag).toBe("ok");
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
       expect(loaded.value.state).toBe("review_started");
       expect(loaded.value.freshness).toBe("fresh");
       expect(loaded.value.checks).toEqual({ overall: "pending", checks: [] });
+      expect(loaded.value.comments).toMatchObject({ threads: [{ id: "thread-1" }] });
+      expect(loaded.value.batch).toMatchObject({ sessionId: session.id, items: [] });
+      expect(loaded.value.mergeReadiness).toEqual({
+        _tag: "Blocked",
+        blockers: ["mergeability_unknown"],
+        warnings: [],
+      });
       expect(loaded.value.session).toEqual({
         id: session.id,
         key: { profileId, host, owner, repo, prNumber: number, headSha },

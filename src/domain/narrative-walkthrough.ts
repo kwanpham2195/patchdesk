@@ -94,6 +94,8 @@ const MAX_SNAPSHOT_ID_LENGTH = 400;
 const MAX_PATCH_LINE_COORDINATE = 1_000_000;
 const MAX_HUNK_LINE_COUNT = 100_000;
 const MAX_HUNK_RAW_LENGTH = 200_000;
+/** Keeps patch file metadata safe and aligned with the renderer projection boundary. */
+export const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
 
 const boundedText = (maxLength: number) => v.pipe(v.string(), v.maxLength(maxLength));
@@ -340,6 +342,7 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     if (file.hunks.length === 0) continue;
     const prefixEnd = file.prefixEnd ?? file.hunks[0]?.start ?? file.start;
     const prefix = lines.slice(file.start, prefixEnd).join("\n");
+    if (prefix.length > MAX_NARRATIVE_FILE_PREFIX_LENGTH) return invalid("invalid_patch");
     const hunks: Array<ParsedHunk> = [];
     for (const hunk of file.hunks) {
       const raw = lines.slice(hunk.start, hunk.end).join("\n").replace(/\n+$/, "");

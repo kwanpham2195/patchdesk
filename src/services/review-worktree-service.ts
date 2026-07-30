@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -91,8 +91,19 @@ export class ReviewWorktreeService {
     if (input.localPath === undefined) return err({ _tag: "UnsafeWorktreeCleanup" });
     let repositoryPath: string;
     try { repositoryPath = await realpath(input.localPath); } catch { return err({ _tag: "GitWorktreeFailed" }); }
+    // Git refuses to remove a worktree with untracked files. This marker is
+    // Patchdesk-owned and was safety-checked above, so remove it first.
+    try { await unlink(joinMetadata(input.targetPath)); } catch { return err({ _tag: "GitWorktreeFailed" }); }
     const removed = await this.git.run(["git", "-C", repositoryPath, "worktree", "remove", input.targetPath]);
-    return removed._tag === "ok" ? ok(undefined) : err({ _tag: "GitWorktreeFailed" });
+    if (removed._tag === "ok") return ok(undefined);
+    // Keep recovery able to prove ownership if Git could not remove the
+    // worktree this time. The next cleanup attempt removes the marker again.
+    try {
+      await writeFile(joinMetadata(input.targetPath), JSON.stringify({ profileId: input.profileId, sessionId: input.sessionId }), "utf8");
+    } catch {
+      // The journal stays retained if this best-effort recovery marker cannot be restored.
+    }
+    return err({ _tag: "GitWorktreeFailed" });
   }
 
   private async matchesMetadata(path: string, profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<boolean> {

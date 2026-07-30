@@ -3,6 +3,7 @@ import * as v from "valibot";
 import {
   parseFindingId,
   parseGitHubThreadId,
+  parseGitSha,
   parseIsoTimestamp,
   parseLocalReviewItemId,
   parseRepoRelativePath,
@@ -10,6 +11,7 @@ import {
   parseReviewSessionId,
   type FindingId,
   type GitHubThreadId,
+  type GitSha,
   type IsoTimestamp,
   type LocalReviewItemId,
   type RepoRelativePath,
@@ -37,31 +39,60 @@ export type ReviewAnchor = {
   readonly side: "new" | "old";
 };
 
+/** Exact diff context retained for conservative automatic carry-forward. */
+export type ReviewAnchorFingerprint = {
+  readonly path: RepoRelativePath;
+  readonly side: "new" | "old";
+  readonly startLine: number;
+  readonly line: number;
+  readonly selectedLines: ReadonlyArray<string>;
+  readonly before: ReadonlyArray<string>;
+  readonly after: ReadonlyArray<string>;
+};
+
+/** Records that a local action was carried from an older immutable snapshot. */
+export type ReviewItemCarryForward = {
+  readonly sourceSessionId: ReviewSessionId;
+  readonly sourceHeadSha: GitSha;
+};
+
+/** Records whether a local item started with a human or an optional model run. */
+export type ReviewItemProvenance =
+  | { readonly _tag: "human" }
+  | { readonly _tag: "model"; readonly attemptId: ReviewAttemptId };
+
 /** One local action included in or excluded from a review batch. */
 export type ReviewBatchItem =
   | {
       readonly _tag: "InlineComment";
       readonly id: LocalReviewItemId;
+      readonly provenance: ReviewItemProvenance;
       readonly source: "finding" | "manual";
       readonly findingId?: FindingId;
       readonly anchor: ReviewAnchor;
+      readonly fingerprint?: ReviewAnchorFingerprint;
       readonly body: string;
       readonly include: boolean;
       readonly postability: Postability;
+      readonly carriedFrom?: ReviewItemCarryForward;
     }
   | {
       readonly _tag: "ThreadReply";
       readonly id: LocalReviewItemId;
+      readonly provenance: ReviewItemProvenance;
       readonly threadId: GitHubThreadId;
       readonly body: string;
       readonly include: boolean;
+      readonly carriedFrom?: ReviewItemCarryForward;
     }
   | {
       readonly _tag: "ThreadState";
       readonly id: LocalReviewItemId;
+      readonly provenance: ReviewItemProvenance;
       readonly threadId: GitHubThreadId;
       readonly action: "resolve" | "reopen";
       readonly include: boolean;
+      readonly carriedFrom?: ReviewItemCarryForward;
     };
 
 /** One durable GitHub write operation planned from a confirmed batch. */
@@ -124,7 +155,8 @@ export type RemoteWriteReceipt =
 /** All local and completed remote review work for one session attempt. */
 export type ReviewBatch = {
   readonly sessionId: ReviewSessionId;
-  readonly attemptId: ReviewAttemptId;
+  /** Present only while the legacy attempt-owned batch shape is being read. */
+  readonly attemptId?: ReviewAttemptId;
   readonly state: ReviewBatchState;
   readonly summaryBody: string;
   readonly suggestedEvent: GitHubReviewEvent;
@@ -141,6 +173,15 @@ export type InvalidReviewBatch = {
 
 const localReviewItemIdSchema = v.string();
 const githubThreadIdSchema = v.string();
+const provenanceSchema = v.variant("_tag", [
+  v.strictObject({ _tag: v.literal("human") }),
+  v.strictObject({ _tag: v.literal("model"), attemptId: v.string() }),
+]);
+
+const carriedFromSchema = v.strictObject({
+  sourceSessionId: v.string(),
+  sourceHeadSha: v.string(),
+});
 
 const operationSchema = v.variant("_tag", [
   v.strictObject({
@@ -195,6 +236,7 @@ const itemSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("InlineComment"),
     id: localReviewItemIdSchema,
+    provenance: v.optional(provenanceSchema),
     source: v.picklist(["finding", "manual"]),
     findingId: v.optional(v.string()),
     anchor: v.strictObject({
@@ -203,8 +245,18 @@ const itemSchema = v.variant("_tag", [
       line: v.pipe(v.number(), v.integer(), v.minValue(1)),
       side: v.picklist(["new", "old"]),
     }),
+    fingerprint: v.optional(v.strictObject({
+      path: v.string(),
+      side: v.picklist(["new", "old"]),
+      startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      selectedLines: v.pipe(v.array(v.string()), v.maxLength(8)),
+      before: v.pipe(v.array(v.string()), v.maxLength(2)),
+      after: v.pipe(v.array(v.string()), v.maxLength(2)),
+    })),
     body: v.string(),
     include: v.boolean(),
+    carriedFrom: v.optional(carriedFromSchema),
     postability: v.picklist([
       "postable",
       "already_reported",
@@ -216,16 +268,20 @@ const itemSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("ThreadReply"),
     id: localReviewItemIdSchema,
+    provenance: v.optional(provenanceSchema),
     threadId: githubThreadIdSchema,
     body: v.string(),
     include: v.boolean(),
+    carriedFrom: v.optional(carriedFromSchema),
   }),
   v.strictObject({
     _tag: v.literal("ThreadState"),
     id: localReviewItemIdSchema,
+    provenance: v.optional(provenanceSchema),
     threadId: githubThreadIdSchema,
     action: v.picklist(["resolve", "reopen"]),
     include: v.boolean(),
+    carriedFrom: v.optional(carriedFromSchema),
   }),
 ]);
 
@@ -249,7 +305,7 @@ const receiptSchema = v.variant("_tag", [
 
 const batchSchema = v.strictObject({
   sessionId: v.string(),
-  attemptId: v.string(),
+  attemptId: v.optional(v.string()),
   state: stateSchema,
   summaryBody: v.string(),
   suggestedEvent: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
@@ -269,12 +325,15 @@ export function parseReviewBatch(
   }
 
   const sessionId = parseReviewSessionId(raw.output.sessionId);
-  const attemptId = parseReviewAttemptId(raw.output.attemptId);
+  const attemptId =
+    raw.output.attemptId === undefined
+      ? undefined
+      : parseReviewAttemptId(raw.output.attemptId);
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   const updatedAt = parseIsoTimestamp(raw.output.updatedAt);
   if (
     sessionId._tag === "err" ||
-    attemptId._tag === "err" ||
+    (attemptId !== undefined && attemptId._tag === "err") ||
     createdAt._tag === "err" ||
     updatedAt._tag === "err"
   ) {
@@ -284,7 +343,10 @@ export function parseReviewBatch(
   const items: ReviewBatchItem[] = [];
   const itemIds = new Set<LocalReviewItemId>();
   for (const item of raw.output.items) {
-    const parsed = parseItem(item);
+    const parsed = parseItem(
+      item,
+      attemptId === undefined ? undefined : attemptId.value,
+    );
     if (parsed._tag === "err" || itemIds.has(parsed.value.id)) {
       return invalidReviewBatch();
     }
@@ -311,7 +373,7 @@ export function parseReviewBatch(
 
   return ok({
     sessionId: sessionId.value,
-    attemptId: attemptId.value,
+    ...(attemptId === undefined ? {} : { attemptId: attemptId.value }),
     state: state.value,
     summaryBody: raw.output.summaryBody,
     suggestedEvent: raw.output.suggestedEvent,
@@ -322,15 +384,39 @@ export function parseReviewBatch(
   });
 }
 
-/** Whether a batch still owns local or incomplete remote work that blocks rerun. */
+/** Create the editable, snapshot-owned batch before any optional model run. */
+export function createEmptyReviewBatch(input: {
+  readonly sessionId: ReviewSessionId;
+  readonly createdAt: IsoTimestamp;
+}): ReviewBatch {
+  return {
+    sessionId: input.sessionId,
+    state: { _tag: "Local" },
+    summaryBody: "",
+    suggestedEvent: "COMMENT",
+    items: [],
+    receipts: [],
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+  };
+}
+
+/** Whether a batch has remote-write evidence that must block a model rerun. */
 export function hasActiveReviewBatch(
   batch: Pick<ReviewBatch, "state">,
 ): boolean {
-  return batch.state._tag !== "Submitted" && batch.state._tag !== "Completed";
+  return (
+    batch.state._tag === "Applying" ||
+    batch.state._tag === "PendingReview" ||
+    batch.state._tag === "Submitted" ||
+    (batch.state._tag === "PartialFailure" &&
+      batch.state.failure.category === "outcome_unknown")
+  );
 }
 
 function parseItem(
   item: v.InferOutput<typeof itemSchema>,
+  legacyAttemptId: ReviewAttemptId | undefined,
 ): Result<ReviewBatchItem, InvalidReviewBatch> {
   const id = parseLocalReviewItemId(item.id);
   if (id._tag === "err") {
@@ -342,31 +428,57 @@ function parseItem(
     if (threadId._tag === "err") {
       return invalidReviewBatch();
     }
+    const provenance = parseProvenance(item.provenance, legacyAttemptId, "human");
+    const carriedFrom = parseCarryForward(item.carriedFrom);
+    if (provenance._tag === "err" || carriedFrom._tag === "err") return invalidReviewBatch();
     return item._tag === "ThreadReply"
       ? ok({
           _tag: "ThreadReply",
           id: id.value,
+          provenance: provenance.value,
           threadId: threadId.value,
           body: item.body,
           include: item.include,
+          ...(carriedFrom.value === undefined ? {} : { carriedFrom: carriedFrom.value }),
         })
       : ok({
           _tag: "ThreadState",
           id: id.value,
+          provenance: provenance.value,
           threadId: threadId.value,
           action: item.action,
           include: item.include,
+          ...(carriedFrom.value === undefined ? {} : { carriedFrom: carriedFrom.value }),
         });
   }
 
   const path = parseRepoRelativePath(item.anchor.path);
   const findingId =
     item.findingId === undefined ? undefined : parseFindingId(item.findingId);
+  const provenance = parseProvenance(
+    item.provenance,
+    legacyAttemptId,
+    item.source === "finding" ? "model" : "human",
+  );
+  const carriedFrom = parseCarryForward(item.carriedFrom);
+  const fingerprintPath = item.fingerprint === undefined
+    ? undefined
+    : parseRepoRelativePath(item.fingerprint.path);
   if (
     path._tag === "err" ||
     item.anchor.line < item.anchor.startLine ||
     (findingId !== undefined && findingId._tag === "err") ||
-    (item.source === "finding") !== (findingId !== undefined)
+    (item.source === "finding") !== (findingId !== undefined) ||
+    provenance._tag === "err" ||
+    carriedFrom._tag === "err" ||
+    (fingerprintPath !== undefined && fingerprintPath._tag === "err") ||
+    (item.fingerprint !== undefined && fingerprintPath?.value !== path.value) ||
+    (item.fingerprint !== undefined && item.fingerprint.line < item.fingerprint.startLine) ||
+    (item.fingerprint !== undefined && item.fingerprint.startLine !== item.anchor.startLine) ||
+    (item.fingerprint !== undefined && item.fingerprint.line !== item.anchor.line) ||
+    (item.fingerprint !== undefined && item.fingerprint.side !== item.anchor.side) ||
+    (item.fingerprint !== undefined && item.fingerprint.selectedLines.length !== item.anchor.line - item.anchor.startLine + 1) ||
+    (item.source === "finding") !== (provenance.value._tag === "model")
   ) {
     return invalidReviewBatch();
   }
@@ -374,6 +486,7 @@ function parseItem(
   return ok({
     _tag: "InlineComment",
     id: id.value,
+    provenance: provenance.value,
     source: item.source,
     ...(findingId === undefined ? {} : { findingId: findingId.value }),
     anchor: {
@@ -382,10 +495,52 @@ function parseItem(
       line: item.anchor.line,
       side: item.anchor.side,
     },
+    ...(item.fingerprint === undefined ? {} : {
+      fingerprint: {
+        path: path.value,
+        side: item.fingerprint.side,
+        startLine: item.fingerprint.startLine,
+        line: item.fingerprint.line,
+        selectedLines: item.fingerprint.selectedLines,
+        before: item.fingerprint.before,
+        after: item.fingerprint.after,
+      },
+    }),
     body: item.body,
     include: item.include,
     postability: item.postability,
+    ...(carriedFrom.value === undefined ? {} : { carriedFrom: carriedFrom.value }),
   });
+}
+
+function parseCarryForward(
+  input: v.InferOutput<typeof carriedFromSchema> | undefined,
+): Result<ReviewItemCarryForward | undefined, InvalidReviewBatch> {
+  if (input === undefined) return ok(undefined);
+  const sourceSessionId = parseReviewSessionId(input.sourceSessionId);
+  const sourceHeadSha = parseGitSha(input.sourceHeadSha);
+  return sourceSessionId._tag === "err" || sourceHeadSha._tag === "err"
+    ? invalidReviewBatch()
+    : ok({ sourceSessionId: sourceSessionId.value, sourceHeadSha: sourceHeadSha.value });
+}
+
+function parseProvenance(
+  input: v.InferOutput<typeof provenanceSchema> | undefined,
+  legacyAttemptId: ReviewAttemptId | undefined,
+  legacyDefault: "human" | "model",
+): Result<ReviewItemProvenance, InvalidReviewBatch> {
+  if (input === undefined) {
+    return legacyDefault === "human"
+      ? ok({ _tag: "human" })
+      : legacyAttemptId === undefined
+        ? invalidReviewBatch()
+        : ok({ _tag: "model", attemptId: legacyAttemptId });
+  }
+  if (input._tag === "human") return ok(input);
+  const attemptId = parseReviewAttemptId(input.attemptId);
+  return attemptId._tag === "err"
+    ? invalidReviewBatch()
+    : ok({ _tag: "model", attemptId: attemptId.value });
 }
 
 function parseState(

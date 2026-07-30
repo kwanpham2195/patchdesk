@@ -71,6 +71,77 @@ function mockApi(
 const ok200 = (body: unknown) => ({ ok: true as const, status: 200, body });
 
 describe("completed review walkthrough generation", () => {
+  it("opens a current prepared session when refresh finds a changed head", async () => {
+    const replaced = vi.fn();
+    const requests: MockRequest[] = [];
+    mockApi((request) => {
+      requests.push(request);
+      if (request.path === "/v1/reviews/models") return ok200(models);
+      if (request.path === "/v1/reviews/refresh")
+        return ok200({
+          freshness: "stale",
+          refreshedAt: "2026-07-30T00:00:00.000Z",
+          comments: { threads: [] },
+          checks: { overall: "passing", checks: [] },
+        });
+      if (request.path === "/v1/reviews/open")
+        return ok200({
+          state: "review_started",
+          session: {
+            id: "session-current",
+            key: {
+              profileId: "cfw",
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              prNumber: 42,
+              headSha: "3333333333333333",
+            },
+          },
+          recoveryView: {
+            noticeKey: "ready_to_review",
+            tone: "positive",
+            actionKey: "run_review",
+          },
+        });
+      throw new Error(`unexpected ${request.path}`);
+    });
+    render(
+      <CompletedReviewFlow
+        workbench={{
+          ...workbench,
+          session: {
+            ...workbench.session,
+            key: {
+              profileId: "cfw",
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              prNumber: 42,
+            },
+          },
+        }}
+        onWorkbenchPatch={() => {}}
+        onWorkbenchReplace={replaced}
+        onNavigationStateChange={() => {}}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    await waitFor(() =>
+      expect(replaced).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: "review_started",
+          session: expect.objectContaining({ id: "session-current" }),
+        }),
+      ),
+    );
+    expect(requests.find((request) => request.path === "/v1/reviews/open")?.body).toMatchObject({
+      previousSessionId: workbench.session.id,
+    });
+  });
+
   it("does not request walkthrough generation on workbench open", async () => {
     const requests: Array<string> = [];
     mockApi((request) => {

@@ -30,7 +30,7 @@ older-version local review data while retaining running and recoverable
 reviews. Both operations are explicit, idempotent, retryable, and unrelated to
 GitHub writes.
 
-Once a review has a stable completed snapshot, the maintainer can explicitly
+Once a prepared snapshot has a stable stored patch, the maintainer can explicitly
 choose `Generate walkthrough`. A model-and-reasoning dialog appears before any
 work starts. A new finite Flue workflow creates bounded semantic sections from
 the stored patch. The main process validates the result against that exact
@@ -70,6 +70,23 @@ starts after a review run completes or merely because a snapshot is opened.
   in their existing stores.
 - GitHub writes require explicit user confirmation and a main-process recheck of
   the expected body/`HEAD` or review write revision.
+- The accepted `src/design/` baseline is normative for every later renderer
+  milestone: retain the chapter rail with continuous reading surface; do not
+  add the rejected linear picker, a full-page Settings destination, or the
+  superseded `settings-default` scenario. A visual or interaction divergence
+  requires a new Design scenario, screenshot evidence, and Decision Log entry
+  before production code changes.
+- Recovery presentation has one status line and one action slot. The renderer
+  maps stable notice/action keys through `src/renderer/src/review-copy.ts` and
+  never derives or displays lifecycle, storage, attempt, session, quarantine,
+  worktree, runtime, path, or raw-error vocabulary.
+- Settings presentation is always a centered General-first overlay over the
+  unchanged route. Data & recovery contains only `Clear cache` and `Clear local
+  review data`, in that order, with the exact retention copy defined in Step 3.
+- Walkthrough presentation is manual and dialog-gated: Model and Reasoning are
+  selected before generation; progress, ready, failure, stale, Support,
+  Reviewed, keyboard/Prev/Next, and `Back to files` follow the accepted rail
+  interactions. Opening or completing a review never starts generation.
 
 ## Progress
 
@@ -77,13 +94,24 @@ starts after a review run completes or merely because a snapshot is opened.
 - [x] 2026-07-26 — The recovery implementation plan and narrative implementation plan were reconciled into this ExecPlan.
 - [x] 2026-07-26 — Settings redesign proposal was reconciled into this aligned workstream.
 - [x] 2026-07-26 — The UI implementation constraint is recorded: compose existing shadcn/Base UI primitives; do not invent parallel controls.
-- [ ] 2026-07-27 — Milestone 1 design grill completed (7 decisions locked, see Decision Log). The design pass itself (new scenarios in `src/design/`, copy map applied to existing 11, mock updates, screenshots) has not been built yet.
-- [ ] Implement the recovery domain, storage cleanup, copy contract, and diagnostics.
-- [ ] Implement the global Settings modal, profile/workspace behavior, and cleanup migration.
-- [ ] Implement the snapshot-bound walkthrough domain, Flue workflow, main-process service, and authenticated API.
-- [ ] Implement the renderer dialog, focused takeover, Pierre hunk surface, and draft parity.
-- [ ] Run focused tests, the full desktop gate, browser coverage, packaged smoke, and dedicated packaged UI QA.
-- [ ] Update this section and `Outcomes & Retrospective` after every milestone.
+- [x] 2026-07-27 — Milestone 0 Design gate built and live-validated in
+  `src/design/`: shared `src/renderer/src/review-copy.ts` copy map;
+  display-safe recovery/cleanup/walkthrough fixtures; exactly 22 permanent
+  Design scenarios (`10` retained + `7` recovery/Settings + `5` walkthrough);
+  chapter rail + continuous reading surface retained after temporary rail and
+  linear comparison screenshots, with the rejected linear source removed;
+  `pnpm test:design` passes 25/25 with console-error checks, visible-copy and
+  interaction assertions; dedicated `$aside-browser` QA verified 22 live
+  scenarios, recovery actions, General-first Settings, cleanup confirmations,
+  walkthrough lifecycle, Support, Back to files, and keyboard navigation with
+  zero page or console errors. Production routes/services/storage/Flue/Electron
+  remain untouched.
+- [x] Implement the recovery domain, storage cleanup, copy contract, and diagnostics.
+- [x] Implement the global Settings modal, profile/workspace behavior, and cleanup migration.
+- [x] Implement the snapshot-bound walkthrough domain, Flue workflow, main-process service, and authenticated API.
+- [x] Implement the renderer dialog, focused takeover, Pierre hunk surface, and draft parity.
+- [x] Run focused tests, the full desktop gate, browser coverage, packaged smoke, and dedicated packaged UI QA. Final evidence is in `.superpowers/sdd/2026-07-27-recovery-settings-walkthrough/task-9-report.md`.
+- [x] Update this section and `Outcomes & Retrospective` after every milestone; Milestone 9 is complete with live GitHub PR data explicitly limited to deterministic fixtures.
 
 ## Surprises & Discoveries
 
@@ -139,14 +167,13 @@ starts after a review run completes or merely because a snapshot is opened.
   `@base-ui/react`; `src/renderer/src/components/ui/` contains the relevant
   components.
 
-- Observation: `src/design/` is the cheapest design-first surface for
-  the Milestone 1 changes. It already reuses the renderer, has a typed
-  mock bridge, runs in a browser at `pnpm dev:design`, and its
-  scenario registry maps to URL handles. A new recovery state or copy
-  change is a scenario entry plus a mock payload, not a domain or
-  adapter change. Decision (see Decision Log) uses the design app as
-  the place to lock the visual + interaction surface before real
-  implementation.
+- Observation: `src/design/` is the cheapest design-first surface for all
+  recovery, Settings, and walkthrough interactions. It already reuses renderer
+  primitives, has a typed mock bridge, runs in a browser at `pnpm dev:design`,
+  and its scenario registry maps to URL handles. A recovery, Settings, or
+  walkthrough interaction can be explored with deterministic mock data rather
+  than a domain, adapter, or Electron change. The Design gate locks the visual
+  and interaction surface before real implementation.
   Evidence: `src/design/scenarios.ts`, `src/design/mock-bridge.ts`,
   `src/design/design-app.tsx`.
 
@@ -180,7 +207,7 @@ starts after a review run completes or merely because a snapshot is opened.
 
 - Decision: Keep narrative generation manual and separate from
   `workflow:review-pr`. Rationale: reviewers request an explanation after they
-  choose to read a completed snapshot; automatic generation would add cost,
+choose to read a prepared snapshot; automatic generation would add cost,
   latency, and an unrequested model action. Date/Author: 2026-07-26, narrative
   walkthrough specification.
 
@@ -208,25 +235,21 @@ starts after a review run completes or merely because a snapshot is opened.
   inconsistent behavior and increase maintenance. Date/Author: 2026-07-26,
   Matthew and Codex.
 
-- Decision: Use `src/design/` as the design-first surface for the
-  Milestone 1 changes (recovery states, copy map, redesigned Data &
-  recovery section) before writing any real implementation. Rationale:
-  `src/design/` already reuses the renderer and the design app's mock
-  bridge is the cheapest way to iterate on the visual + interaction
-  surface without touching production code, persist, or GitHub. The
-  approved scenarios become the screenshot evidence that the
-  implementation must match. Date/Author: 2026-07-27, Matthew and Codex.
+- Decision: Use `src/design/` as the Milestone 0 design gate for recovery,
+  Settings, and walkthrough before production integration. Rationale:
+  `src/design/` already reuses renderer primitives and its mock bridge is the
+  cheapest way to compare interactions without touching persistence, GitHub,
+  Electron, or a model. The accepted permanent scenarios become the screenshot
+  evidence that implementation must match. Date/Author: 2026-07-27, Matthew
+  and Codex.
 
-- Decision: Milestone 1 design pass adds 7 new Design scenarios
-  (`workbench-reconnect`, `workbench-start-again`,
-  `workbench-try-again`, `workbench-prepare-again`,
-  `inbox-recovery-states`, `settings-recovery`,
-  `dialog-clear-local-data`) and updates the 11 existing scenarios to
-  read from the new copy map. `settings-recovery` supersedes
-  `settings-default` for this design pass. No before-snapshot
-  preservation. Rationale: one source of truth for the new copy; the
-  design app becomes an honest preview of the final UI rather than a
-  side-by-side museum. Date/Author: 2026-07-27, Matthew and Codex.
+- Decision: Milestone 0 retains 22 permanent Design scenarios: the 10 retained
+  existing scenarios, seven recovery/Settings scenarios (including the
+  replacement for `settings-default`), and five walkthrough lifecycle scenarios. It compares two temporary walkthrough reading layouts before
+  retaining the selected one; the rejected comparison is removed, not preserved
+  as a museum. `settings-recovery` supersedes `settings-default`. Rationale:
+  one source of truth for friendly copy and chosen interaction behavior.
+  Date/Author: 2026-07-27, Matthew and Codex.
 
 - Decision: The workbench mock carries an explicit display-safe `recoveryView`
   fixture (notice key, tone, and optional action key); the renderer reads it
@@ -253,38 +276,66 @@ starts after a review run completes or merely because a snapshot is opened.
   matches maintainer expectations; explicit copy satisfies the plan's
   "Confirmations state exactly: ... preserves or removes" rule.
   Date/Author: 2026-07-27, Matthew and Codex.
+- Decision: Walkthrough reading layout is the chapter rail with
+  continuous reading surface (persistent left rail, per-section
+  prose, bounded hunk previews, Support coverage, Reviewed controls,
+  and persistent `Back to files`). The linear section picker was
+  considered and removed after the side-by-side Design comparison
+  showed it forced more vertical scanning and obscured keyboard
+  navigation affordances. The permanent `walkthrough-ready` scenario
+  is the rail; the linear picker is not retained as a museum.
+  Date/Author: 2026-07-27, Matthew and Codex.
 
 ## Outcomes & Retrospective
 
-### Milestone 1 — Design pass (decisions locked 2026-07-27, build pending)
+### Milestone 0 — Design gate (built and validated 2026-07-27)
 
-A grilling session on 2026-07-27 locked seven design decisions for
-the Milestone 1 visual + interaction surface (see Decision Log entries
-dated 2026-07-27):
+The complete Design gate is implemented in `src/design/` as the acceptance
+surface for recovery, Settings, and walkthrough before any storage, local API,
+workflow, or Electron work. The temporary chapter-rail and linear-picker
+scenarios used the same fixture; the rail was selected, comparison screenshots
+were preserved under `.superpowers/sdd/2026-07-27-recovery-settings-walkthrough/screenshots/`,
+and the rejected linear source and routes were removed.
 
-- 7 new Design scenarios to add; 11 existing scenarios to update to
-  read from the new copy map; no before-snapshot preservation.
-- Workbench recovery actions share a single primary slot; tone lives
-  in the status line.
-- Settings → Data & recovery is a single card with two severity-ordered
-  outline buttons and explicit "X stays, Y goes" confirm copy.
-- Workbench mock carries an explicit display-safe `recoveryView` fixture;
-  `src/design/mock-bridge.ts` is the source of truth for what each scenario
-  shows.
+The accepted gate proves:
 
-The design pass itself has not been built yet. The next step is to
-implement the design in `src/design/` (new scenarios + copy map +
-mock updates + screenshots) before the real Milestone 1
-implementation begins. The grilled decisions are the acceptance bar
-the build must match.
+- exactly 22 permanent scenarios: 10 retained existing, seven recovery/Settings
+  scenarios (including the `settings-default` replacement), and five walkthrough
+  lifecycle scenarios;
+- display-safe recovery fixtures and one friendly copy map;
+- recovery actions, cleanup confirmations, manual generation, generating
+  progress, ready, failure/stale retry, Support, Reviewed controls, keyboard
+  navigation, and Back to files through deterministic Design interactions; and
+- screenshot-backed browser evidence with no visible lifecycle/storage terms.
 
-### Implementation has not started.
+Evidence: `pnpm test:design` — 25/25; `pnpm typecheck`; `pnpm lint
+--max-warnings=0`; `pnpm test -- --run` — 394/394; and dedicated `$aside-browser`
+QA with 36 screenshots and zero page/console errors. The live QA report is at
+`.superpowers/sdd/2026-07-27-recovery-settings-walkthrough/aside-qa/report.md`.
+Keyboard follow-up evidence is at
+`.superpowers/sdd/2026-07-27-recovery-settings-walkthrough/aside-qa/keyboard-follow-up.md`.
 
-At each completed implementation milestone, record the observable
-proof, commands run, failures or compromises, and whether the next
-milestone still has the same dependencies. At completion, record any
-remaining live-data or packaged-app limitations instead of claiming
-unverified PR scenarios.
+#### Design adherence lock
+
+Every later milestone must preserve the 22-scenario registry, shared friendly
+copy map, one-action recovery slot, centered General-first Settings overlay,
+exact cleanup confirmations, persistent chapter rail, Support, Reviewed
+controls, keyboard navigation, and `Back to files` return behavior. A change to
+any of those choices requires a new Design scenario, screenshots, and a
+Decision Log entry before implementation proceeds.
+
+### Production implementation completed through Milestone 9
+
+Milestones 1–9 are implemented. The final Milestone 9 proof covers the
+snapshot migration, protected local API, Settings overlay, profile and cleanup
+flows, manual walkthrough generation, chapter navigation, Support, Reviewed
+controls, local inline drafts, and Files-state restoration. Browser and
+accessibility evidence uses deterministic fixtures; live PR data for #717,
+#754, and #716 was not available in this local run and is not claimed here.
+
+Final verification records exact commands, pass counts, packaged evidence, and
+remaining environmental limitations in
+`.superpowers/sdd/2026-07-27-recovery-settings-walkthrough/task-9-report.md`.
 
 ## Context and Orientation
 
@@ -332,21 +383,23 @@ normalizes it. The renderer never renders raw model output.
 
 Implement the work in this order:
 
-1. Establish the renderer copy contract and recovery/storage domain contracts.
-2. Implement safe artifact removal, the global centered Settings modal, and
+1. Use `src/design/` to compare, select, and screenshot the recovery, Settings,
+   and walkthrough interaction design before production integration.
+2. Establish the renderer copy contract and recovery/storage domain contracts.
+3. Implement safe artifact removal, the global centered Settings modal, and
    cleanup route migration using existing shadcn/Base UI primitives.
-3. Project explicit recovery state, persist diagnostics, and reconcile old
-   local data without relaunching workflows.
-4. Define and test the snapshot-bound walkthrough domain and raw-patch hunk
+4. Project the user-safe recovery decision, persist diagnostics, and reconcile
+   old local data without relaunching workflows.
+5. Define and test the snapshot-bound walkthrough domain and raw-patch hunk
    filtering.
-5. Add the isolated walkthrough Flue workflow and fixed-command adapter.
-6. Add the main-process walkthrough service, authenticated API, and production
+6. Add the isolated walkthrough Flue workflow and fixed-command adapter.
+7. Add the main-process walkthrough service, authenticated API, and production
    runtime wiring.
-7. Add strict renderer contracts, explicit model/reasoning selection, and the
+8. Add strict renderer contracts, explicit model/reasoning selection, and the
    manual Generate walkthrough entry point.
-8. Add the focused takeover and reparsed Pierre blocks without changing Files
+9. Add the focused takeover and reparsed Pierre blocks without changing Files
    mode.
-9. Migrate persisted/cache data, run the end-to-end/browser/package gates, and
+10. Migrate persisted/cache data, run the end-to-end/browser/package gates, and
     obtain dedicated packaged UI evidence.
 
 Recovery work is a prerequisite for narrative work, but it does not start
@@ -360,51 +413,89 @@ workflow.
 
 ## Milestones
 
-### Milestone 1 — Honest contracts and safe local-data ownership
+### Milestone 0 — Design-first UI acceptance (built and validated 2026-07-27)
 
-Goal: establish stable presentation labels, typed recovery states, and
-path-checked cleanup behavior before changing UI.
+Goal: use the browser-only `src/design/` prototype to make and verify every
+user-facing choice before wiring storage, local API, Flue, or Electron behavior.
+The gate was completed before any production service, route, persistence, or
+workflow work. All later milestones must reproduce its accepted interaction and
+copy baseline.
 
-#### 1a. Design pass (decisions locked 2026-07-27, build pending)
+#### Design gate (accepted)
 
-The visual + interaction surface for Milestone 1 was decided in a
-grilling session on 2026-07-27. Seven new Design scenarios plus
-updates to the 11 existing ones were approved; see the Decision Log
-entries dated 2026-07-27 and the design-pass section in Outcomes &
-Retrospective for the locked choices.
+The completed Design pass covered the complete maintainer journey, not only
+recovery and Settings. It compared two temporary layouts over the same fixture:
+a persistent chapter rail with continuous reading surface and a linear section
+picker above the reading surface. The rail is recorded in the Decision Log; the
+linear source and route were removed after comparison.
 
-The design pass itself has not been built yet. The build is the
-first implementation work for Milestone 1 and must match the
-grilled decisions. The next concrete step is to construct the
-design in `src/design/`:
+The permanent registry contains exactly 22 scenarios: the 10 retained existing scenarios,
+seven recovery/Settings scenarios (`workbench-reconnect`, `workbench-start-again`,
+`workbench-try-again`, `workbench-prepare-again`, `inbox-recovery-states`,
+`settings-recovery`, `dialog-clear-local-data`), and five walkthrough scenarios
+(`walkthrough-generate-dialog`, `walkthrough-generating`, `walkthrough-ready`,
+`walkthrough-failed`, `walkthrough-stale`).
 
-- `src/design/scenarios.ts` — 7 new entries + 11 updated entries
-- `src/design/main.tsx` — scenario wiring
-- `src/design/design-app.tsx` — scenario render paths + copy map
-- `src/design/mock-bridge.ts` — display-safe `recoveryView` fixture on the
-  workbench session mock; new settings/dialog fixtures
-- `src/renderer/src/review-copy.ts` — the single renderer copy map used by
-  Design and production; it maps stable action keys to friendly copy and never
-  accepts persisted labels or internal state names
-- `tests/browser/design.spec.ts` — build and visit every scenario, capture the
-  recovery/Settings confirmations, and assert internal state/storage words are
-  absent from their visible UI
+Files to add or modify:
 
-Commands for the design build and proof:
+- `src/design/scenarios.ts` — permanent scenario IDs and temporary comparison
+  IDs while the walkthrough layout decision is open.
+- `src/design/main.tsx` — Settings overlay and Design-only walkthrough scenario
+  wiring; do not route production `AppDestination` through Settings.
+- `src/design/design-app.tsx` — direct scenario render paths, including the
+  temporary comparison and the selected permanent walkthrough reference.
+- `src/design/design-walkthrough-scenario.tsx` — deterministic, browser-only
+  walkthrough fixture composed from existing renderer primitives; no Electron,
+  GitHub, filesystem, or model calls.
+- `src/design/mock-bridge.ts` — display-safe recovery, Settings, and
+  walkthrough fixtures. A recovery fixture has only notice key, tone, and
+  optional action key; no technical state, paths, IDs, or raw errors.
+- `src/renderer/src/review-copy.ts` — the renderer's single friendly copy map;
+  creating it here is allowed, but it is not wired to production API data until
+  Milestone 1.
+- `tests/browser/design.spec.ts` — visit all permanent scenarios, check the
+  selected walkthrough interaction, capture screenshots, and assert recovery,
+  Settings, and walkthrough UI omit storage/lifecycle terminology.
+
+Run:
 
     pnpm test:design
 
-Expected result: all 18 scenarios are built, opened by Playwright, checked for
-console errors, and captured under `test-results/`. Recovery scenarios show a
-short reassurance and one next action, never state-machine or storage terms;
-the Data & recovery card and confirmation bodies appear on first paint.
+Gate evidence: screenshots under `test-results/` show the two candidate
+walkthrough layouts, the selected layout is recorded in the Decision Log, and
+the permanent 22 scenarios build, open without console errors, and pass their
+visible-copy assertions. Recovery shows one reassurance and one next action;
+Settings confirmations show what stays; walkthrough generation makes its
+read-only behavior, progress, retry, and return path obvious. The final
+`pnpm test:design` run passes 25/25. Dedicated `$aside-browser` QA verifies
+all 22 live scenarios, the Settings and walkthrough interactions, Support,
+Back to files, and keyboard navigation with zero page/console errors. This
+accepted evidence is the visual contract for Milestones 1–9.
 
-Why this reduces risk: the real Milestone 1 implementation below
-matches the grilled design rather than guessing it. Screenshot
-diffing against the design-build evidence is the fastest reviewer
-check for the real implementation.
+Why this reduces risk: visual and interaction mistakes are corrected in the
+fast, deterministic Design surface rather than after trust-boundary or
+persistence work is already coupled to the UI.
 
-#### 1b. Real implementation
+### Milestone 1 — Honest contracts and safe local-data ownership
+
+Goal: establish stable presentation labels, user-safe recovery decisions, and
+path-checked cleanup behavior that implements the accepted Design baseline.
+
+#### Design adherence lock
+
+- Keep `src/renderer/src/review-copy.ts` as the only renderer mapping from
+  stable notice/action keys to visible copy. Persisted labels are tolerated only
+  at the cache boundary and never selected by UI logic.
+- Recovery projections contain only the accepted display-safe shape:
+  `{ noticeKey, tone, actionKey? }`. The workbench has one status line and one
+  action slot: `Run review`/`Reconnect` use the primary blue treatment,
+  `Start again`/`Try again` use outline secondary, and `Prepare again` uses
+  outline amber. Do not expose multiple capability booleans or internal state.
+- Add copy-contract tests for every Design recovery scenario and assert that
+  `session`, `attempt`, `quarantine`, `worktree`, `runtime`, paths, and raw
+  errors cannot reach visible UI.
+
+#### 1a. Real implementation
 
 Work: add the renderer copy map, a pure recovery decision module, durable
 attempt/preparation reconciliation, an exclusive profile lifecycle gate, and
@@ -427,6 +518,26 @@ details.
 
 Goal: make Settings available from every route, fix its scroll ownership, and
 remove the per-review storage-management surface.
+
+#### Design adherence lock
+
+- `settingsOpen` is overlay state only. Gear, `⌘,`, and Navigate preserve the
+  exact underlying `AppDestination`, selected PR, workbench state, and opener
+  focus. There is no Settings destination or full-page replacement.
+- The overlay is centered, labelled, focus-trapped, independently scrollable,
+  and General-first on every open, including cleanup deep links. Compose only
+  the existing Base UI Dialog/Tabs/ScrollArea/Field/Alert/AlertDialog/Select/
+  Button/Separator wrappers.
+- Data & recovery is one `Local review data` card with exactly two outline
+  actions in severity order: `Clear cache`, then `Clear local review data`.
+  Use the exact confirmations: “This removes rebuildable local files. Your
+  saved reviews and diagnostic reports stay.” and “This removes discarded and
+  unusable local review data. Reviews you can still open or resume, and
+  diagnostic reports, stay.” No storage lists, Discard control, quarantine
+  control, or internal terminology may appear.
+- Settings screenshots and browser assertions must prove General-first,
+  independent scroll, focus return, route preservation, and both confirmation
+  bodies before this milestone is accepted.
 
 Work: make `settingsOpen` independent overlay state in
 `src/renderer/src/app.tsx`; keep `AppDestination` and the mounted workbench
@@ -464,6 +575,22 @@ testable without allowing users to manage internal session/quarantine records.
 Goal: make open/run/reconnect/retry behavior reflect durable state and owned
 process state, and preserve enough redacted evidence to debug failures.
 
+#### Design adherence lock
+
+- Map the pure decisions directly to the Design recovery matrix: `Preparing`
+  has no button; usable/discarded snapshots show `Ready to review` + `Run review`;
+  owned live runs show `Review in progress` + `Reconnect`; unowned/interrupted
+  runs show `Review was interrupted` + `Start again`; failed runs show `Review
+  couldn’t finish` + `Try again`; invalid rebuildable evidence shows `Review needs
+  preparation` + `Prepare again`.
+- `PreparedReviewFlow` and `SafeRunPanel` render only the shared friendly copy
+and one action slot. Remove “not running”, “may still be running in the
+background”, Agent, Mode, Access, and all storage/lifecycle vocabulary from the
+user surface. Keep incident IDs/support export behind explicit safe actions.
+- Diagnostics may retain technical evidence only inside bounded redacted JSONL
+and support bundles; the Design projection must contain no path, raw stack,
+credential, complete diff, attempt ID, or operation ID.
+
 Work: introduce a durable `ReviewPreparationOperation` journal and an
 `Interrupted` attempt transition; inject `ReviewRunRegistry`, the preparation
 journal reader, and the pure recovery decision module into
@@ -486,13 +613,26 @@ events contain incident IDs and redacted details without credentials, full
 diffs, or absolute paths.
 
 Why this reduces risk: walkthrough generation will only be enabled for a
-truthful, stable completed snapshot and will inherit the same safe lifecycle
+truthful prepared snapshot with a stable stored patch and will inherit the same safe lifecycle
 projection.
 
 ### Milestone 4 — Snapshot-bound walkthrough domain
 
 Goal: make model output fail closed and guarantee that every source hunk is
 visible exactly once.
+
+#### Design adherence lock
+
+- The normalized result must support the accepted chapter-rail reading model:
+  ordered chapters/sections, bounded prose, explicit hunk groups, and a derived
+  Support section. Do not introduce a linear-picker-only state shape.
+- Preserve the Design fixture's invariants in production: every source hunk is
+  shown once across primary sections or Support; section order is stable;
+  unknown/duplicate/overlapping aliases fail closed; and snapshot identity is
+  explicit before the renderer can enter ready.
+- Keep normalized data renderer-safe: no raw model prose outside bounded fields,
+  arbitrary paths, untrusted line ranges, patch paths, or technical lifecycle
+  details cross the projection boundary.
 
 Work: create `src/domain/narrative-walkthrough.ts` and its tests. Define the
 snapshot key, bounded raw schema, normalized chapters/sections/Support, hunk
@@ -515,6 +655,20 @@ show an arbitrary path, or display stale line references.
 
 Goal: add structured walkthrough generation without changing review execution.
 
+#### Design adherence lock
+
+- Prompt for semantic chapters that fit the selected persistent rail and
+  continuous reading surface: explain behavior before consequences/tests, use
+  aliases exactly, and route mechanical/low-signal changes to Support. Do not
+  prompt for or return a linear section-picker workflow.
+- The workflow remains read-only and finite. It receives only main-process
+  artifacts plus explicit Model/Reasoning, never starts from review completion
+  or snapshot open, and cannot create comments, mutate drafts, or write GitHub.
+- Preserve the Design lifecycle copy as the future renderer contract:
+  generation is requested after the model/reasoning dialog, progress is visible,
+  failures offer retry, and stale results offer regeneration for the current
+  snapshot.
+
 Work: create `src/workflows/generate-walkthrough.ts` and
 `src/services/flue-cli-walkthrough-invoker.ts`. The workflow reads only the
 main-process-supplied patch/context artifacts and explicit model/reasoning.
@@ -536,6 +690,19 @@ adapter and cannot silently mutate review sessions or GitHub data.
 
 Goal: bind generation to one stored snapshot and make retries/stale results
 safe.
+
+#### Design adherence lock
+
+- Expose only the manual, authenticated generate/load seam behind the existing
+  local API. Opening or completing a review must never call this service.
+- Lifecycle responses are renderer-safe projections matching the Design states
+  `idle`, `generating`, `ready`, `failed`, and `stale`; each non-ready state
+  carries concise next-step copy rather than raw errors, paths, run IDs, or
+  workflow names. Preserve the Design actions: retry failed generation and
+  regenerate a stale snapshot.
+- The service must publish only a result whose `{ profileId, sessionId,
+  headSha, patchHash }` still matches the request. A late result is ignored,
+  not shown as a stale success, and never mutates review drafts or GitHub state.
 
 Work: create `src/services/narrative-walkthrough-service.ts`; add
 `POST /v1/reviews/walkthrough/generate` and
@@ -570,6 +737,20 @@ renderer-controlled process access are prevented at the main-process boundary.
 Goal: let a maintainer choose a model and reasoning level deliberately before
 generation.
 
+#### Design adherence lock
+
+- The completed stable snapshot is the only entry point. The action is visibly
+  `Generate walkthrough`; it is absent or disabled in preparation, running,
+  failed, stale, and unavailable states according to the recovery projection.
+- The dialog must match the accepted Design reference: title `Generate a
+  read-only walkthrough`, explicit read-only/no-GitHub-write explanation,
+  `Model` and `Reasoning` controls, `Low`/`Medium`/`High` values, and confirm
+  label `Generate read-only walkthrough`. No request or preference write occurs
+  before the explicit confirmation.
+- Unavailable catalogs use the existing friendly local-review explanation and
+  never expose provider/runtime names. Retry and stale regeneration remain
+  bound to the same validated snapshot identity.
+
 Work: extend `src/renderer/src/renderer-contracts.ts` and
 `src/renderer/src/renderer-models.ts` with strict walkthrough and recovery
 projections. In `src/renderer/src/flows/completed-review-flow.tsx`, load the
@@ -595,6 +776,26 @@ explicit instead of being inferred from completion or run state.
 ### Milestone 8 — Focused takeover and hunk-scoped Pierre surface
 
 Goal: provide a readable narrative mode without mutating Files mode.
+
+#### Design adherence lock
+
+- Implement only the accepted chapter rail + continuous reading surface:
+  persistent chapter navigation, one active section, bounded hunk previews,
+  Support coverage, Reviewed controls, Previous/Next, and a persistent
+  `Back to files`. Do not add the rejected linear picker or a second takeover
+  layout.
+- `Back to files` closes takeover and restores the exact Files state. Opening
+  takeover and moving through sections must not write selected path, passive
+  follow state, inspector state, collapsed paths, diff surface, or diff-view
+  preferences. ArrowLeft/ArrowRight and j/k work only inside the takeover and
+  not inside inputs, selects, or annotation editors; end keys are no-ops.
+- Walkthrough comments use the existing `AddInlineComment` batch path. Pierre
+  receives only filtered, reparsed raw patches; Support receives every
+  uncovered hunk. No walkthrough comment store, parsed-hunk-array filtering,
+  virtual-stream mutation, or GitHub-write bypass is allowed.
+- Renderer tests must cover the Design acceptance sequence: dialog → generating
+  → ready → chapter navigation → section/Support Reviewed → inline draft →
+  Back to files with Files state intact.
 
 Work: create `src/renderer/src/components/narrative-walkthrough.tsx` and
 `narrative-walkthrough-diff.tsx`; add isolated state to
@@ -623,9 +824,47 @@ and current diff controls.
 Why this reduces risk: the new surface is additive and cannot corrupt the
 performance-sensitive all-files virtual stream or existing review comments.
 
+### Milestone 8 — Focused takeover outcome (accepted 2026-07-27)
+
+The chapter-rail takeover is implemented additively over the completed workbench.
+It keeps the Files subtree mounted and hidden, so selection, passive active-file
+state, inspector state, collapsed paths, diff surface, scroll/context state, and
+profile-scoped diff preferences survive the return. Walkthrough sections and
+Support each filter the immutable raw patch by normalized aliases before
+reparsing through the existing ReviewDiffView/Pierre path. Source-session
+hydration, Context, split/unified, wrap, and inline/draft annotations use the
+existing diff surface; local takeover controls never persist Files preferences.
+
+The takeover owns section navigation/review state, supports ArrowLeft/ArrowRight
+and j/k outside editors, renders Support coverage, anchors deletion-only drafts
+on the old side, and restores the opener after Back to files. StrictMode-safe
+focus tests cover no initial focus steal and heading focus after navigation.
+
+Evidence: commits `599d9cd`, `cbc265d`, `3102c76`, `ef5e666`, and `5b435aa`;
+exact Milestone 8 command passes 5 files/31 tests; extended renderer command
+passes 7 files/57 tests; `pnpm typecheck` and `pnpm lint` pass; final independent
+re-review is APPROVED. Live/browser/package proof remains Milestone 9.
+
 ### Milestone 9 — Migration, browser proof, and packaged evidence
 
 Goal: prove the complete user journey and retire ambiguous old local state.
+
+#### Design adherence lock
+
+- Treat the 22 permanent Design scenarios and their screenshots as the browser
+  acceptance matrix. Production routes must reproduce the same friendly copy,
+  one-action recovery slot, centered General-first Settings overlay, exact
+  cleanup confirmations, chapter rail, Support, Reviewed controls, and
+  Back-to-files behavior.
+- Browser and accessibility proof must assert that no visible surface contains
+  `session`, `attempt`, `quarantine`, `worktree`, `runtime`, raw errors, paths,
+  or workflow/provider internals. Any intentional visual or interaction
+  divergence requires a new Design scenario, screenshot baseline, and Decision
+  Log entry before this milestone continues.
+- The end-to-end walkthrough remains manual: click Generate, choose Model and
+  Reasoning, observe progress, navigate the rail, review a section and Support,
+  add an inline draft through the existing batch surface, and return to Files.
+  Opening a completed workbench alone must produce zero generation requests.
 
 Work: add tolerant cache parsing and versioned, idempotent session migration;
 convert stranded attempts to interrupted; quarantine invalid sessions with
@@ -665,38 +904,40 @@ the existing `app-shell.tsx`, `.agents/tasks/codex-subscription-provider/`,
 `.agents/tasks/narrative-walkthrough/` source/research files, and
 `tests/renderer/app-shell.ui.test.tsx` changes. Stage only explicit paths.
 
-### Step 0: Design pass (next thing to do, decisions already locked)
+### Step 0: Build and accept the complete Design baseline
 
-The decisions for the Milestone 1 design pass are locked (see
-Decision Log entries dated 2026-07-27). The pass itself has not
-been built yet. This step constructs the design in `src/design/`
-so the real Milestone 1 implementation below matches an approved,
-screenshot-backed visual surface.
+Do this before changing production routes, services, storage, workflows, or
+Electron composition. Work only in `src/design/`, the shared renderer copy map,
+and Design browser tests. Compose the temporary walkthrough comparison from
+existing UI primitives; it has deterministic fixture data and no bridge call,
+filesystem access, GitHub access, or model request.
 
-Files to add or modify:
-- `src/design/scenarios.ts` — 7 new entries + 11 updated entries
-- `src/design/main.tsx` — wire `settings-recovery`, not the superseded
-  `settings-default`, to the Settings overlay fixture
-- `src/design/design-app.tsx` — scenario render paths and the shared copy map
-- `src/design/mock-bridge.ts` — a display-safe recovery fixture with only a
-  notice key, tone, and optional action key; new Settings/dialog fixtures
-- `src/renderer/src/review-copy.ts` — the shared renderer copy map
-- `tests/browser/design.spec.ts` — visit each scenario and capture the new
-  recovery and Settings confirmation evidence
+1. Create `walkthrough-ready-rail` and `walkthrough-ready-linear` temporary
+   comparison scenarios over the same fixture. Capture both and record the
+   selected reading layout in the Decision Log.
+2. Remove the rejected comparison. Register the 22 permanent scenarios listed
+   in Milestone 0, including all five walkthrough lifecycle scenarios.
+3. Wire `settings-recovery` to the Settings overlay fixture in
+   `src/design/main.tsx`; do not retain `settings-default` as a second final
+   Settings reference.
+4. Make Design recovery fixtures display-safe and use the shared copy map. Make
+   Design walkthrough fixtures show the read-only generation dialog, progress,
+   selected layout, friendly failure/retry, stale regeneration, Support, and
+   Back to files.
+5. Extend `tests/browser/design.spec.ts` to visit every permanent scenario,
+   capture its screenshot, fail on console errors, and assert visible UI omits
+   `session`, `attempt`, `quarantine`, `worktree`, `runtime`, and raw error
+   terms.
 
-Commands from `/Users/kwanpham/Work/cfw/patchdesk`:
+Run from `/Users/kwanpham/Work/cfw/patchdesk`:
 
     pnpm test:design
 
-Expected result: Playwright builds the Design app, visits all 18 scenarios,
-fails on console errors, and records screenshots under `test-results/`. The
-screenshots show a reassurance and one next action—not a lifecycle or storage
-state—plus the locked Data & recovery card and confirmation bodies. They become
-the acceptance bar for the real Milestone 1 implementation.
-
-If a real-implementation step below diverges from the approved
-design, the divergence must be raised before coding and recorded in
-the Decision Log before the implementation lands.
+Expected result: the comparison screenshots identify the chosen walkthrough
+layout; the Decision Log records that choice; all 22 permanent scenarios build,
+open, and capture successfully in `test-results/`. Do not begin Step 1 until
+that evidence is recorded. Any later production UI divergence requires a new
+Design scenario, screenshot, and Decision Log entry before implementation.
 
 ### Step 1: Establish user-safe recovery contracts
 
@@ -1040,7 +1281,7 @@ when live GitHub data is unavailable:
 
 1. PR #717 has invalid local data and can be prepared again without blocking
    another PR.
-2. PR #754 opens its completed snapshot and exposes `Run review` when the prior
+2. PR #754 opens its prepared snapshot and exposes `Run review` when the prior
    attempt is discarded or absent.
 3. PR #716 reports `Reconnect` only when the current process owns the run;
    otherwise it reports `Start again`, never “not running” with a background
@@ -1126,8 +1367,8 @@ Acceptance is behavioral:
   `Clear cache` retains saved reviews and diagnostics, while `Clear local
   review data` removes only disposable local review data and retains every
   review a user can still open, resume, retry, or prepare.
-- Generate walkthrough is manual, available only for a stable completed
-  snapshot, and preceded by model/reasoning selection. Opening or completing a
+- Generate walkthrough is manual, available for a prepared snapshot with a
+  stable stored patch, and preceded by model/reasoning selection. Opening or completing a
   review does not call the generation API.
 - Normalized walkthrough output has bounded prose and covers every source hunk
   exactly once across primary sections and Support. Unknown, duplicate,

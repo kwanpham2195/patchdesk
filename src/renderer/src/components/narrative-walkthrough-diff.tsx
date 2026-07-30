@@ -6,7 +6,11 @@ import {
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
-import { ReviewDiffView, type ReviewInlineAnnotation } from "./review-diff-view";
+import {
+  ReviewDiffView,
+  type LocalCommentAuthoring,
+  type ReviewInlineAnnotation,
+} from "./review-diff-view";
 import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
 
 export type NarrativeHunk = {
@@ -48,6 +52,7 @@ export function NarrativeWalkthroughDiff({
   sourceSession,
   preferences,
   annotations = [],
+  localCommentAuthoring,
 }: {
   readonly blockId: string;
   readonly patch?: string;
@@ -57,6 +62,7 @@ export function NarrativeWalkthroughDiff({
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly preferences?: ReviewViewPreferences;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
 }): React.JSX.Element {
   const sourcePatch = useMemo(
     () => patch ?? buildFallbackPatch(allHunks ?? hunks),
@@ -115,6 +121,7 @@ export function NarrativeWalkthroughDiff({
           onPreferencesChange={(update) => setLocalPreferences((current) => ({ ...current, ...update }))}
           onCollapsedPathsChange={() => undefined}
           {...(sourceSession === undefined ? {} : { sourceSession })}
+          {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
           virtualized={false}
         />
       )}

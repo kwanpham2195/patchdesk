@@ -23,8 +23,8 @@ export class MergeWriteController {
     const acknowledgedWarnings = readObjectField(input, "acknowledgedWarnings");
     if (profileId._tag === "err" || sessionId._tag === "err" || !isMethod(method) || typeof acknowledgedWarnings !== "boolean") return err({ reason: "invalid_input" });
     const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
-    if (profile._tag === "err" || session._tag === "err" || session.value.visibleResult === undefined) return err({ reason: "not_found" });
-    const merged = await mergePullRequest({ profile: profile.value, session: session.value, result: session.value.visibleResult, gateway: this.github, method, supportedMethods: this.methods, acknowledgedWarnings, now: this.now() });
+    if (profile._tag === "err" || session._tag === "err") return err({ reason: "not_found" });
+    const merged = await mergePullRequest({ profile: profile.value, session: session.value, ...(session.value.visibleResult === undefined ? {} : { result: session.value.visibleResult }), gateway: this.github, method, supportedMethods: this.methods, acknowledgedWarnings, now: this.now() });
     if (merged._tag === "err") return err({ reason: mergeReason(merged.error._tag) });
     const saved = await this.sessions.save(merged.value.session);
     return saved._tag === "ok" ? ok({ session: merged.value.session, readiness: merged.value.readiness }) : err({ reason: "storage_failed" });

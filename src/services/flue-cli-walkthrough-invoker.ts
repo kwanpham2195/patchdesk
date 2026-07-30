@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { CommandRunner } from "../adapters/github/command-runner";
+import type { CommandFailure, CommandRunner } from "../adapters/github/command-runner";
 import { err, ok, type Result } from "../domain/result";
 import {
   parseWalkthroughOutput,
@@ -42,7 +42,7 @@ export function walkthroughTimeoutMs(sizes: WalkthroughArtifactSizes): number {
 
 /** Safe classifications for the isolated walkthrough process boundary. */
 export type FlueCliWalkthroughFailure =
-  | { readonly reason: "execution_failed" }
+  | { readonly reason: "authentication_required" | "rate_limited" | "runtime_unavailable" | "timed_out" | "execution_failed" }
   | { readonly reason: "cancelled" }
   | { readonly reason: "invalid_result" };
 
@@ -89,7 +89,7 @@ export class FlueCliWalkthroughInvoker {
     });
 
     if (options?.signal?.aborted) return err({ reason: "cancelled" });
-    if (output._tag === "err") return err({ reason: "execution_failed" });
+    if (output._tag === "err") return err({ reason: walkthroughFailureReason(output.error) });
 
     let terminalJson: unknown;
     try {
@@ -99,6 +99,18 @@ export class FlueCliWalkthroughInvoker {
     }
     const parsed = parseWalkthroughOutput(terminalJson);
     return parsed._tag === "ok" ? ok(parsed.value) : err({ reason: "invalid_result" });
+  }
+}
+
+function walkthroughFailureReason(failure: CommandFailure): FlueCliWalkthroughFailure["reason"] {
+  switch (failure._tag) {
+    case "CommandAuthenticationRequired": return "authentication_required";
+    case "CommandRateLimited": return "rate_limited";
+    case "CommandRuntimeUnavailable":
+    case "CommandUnavailable": return "runtime_unavailable";
+    case "CommandTimedOut": return "timed_out";
+    case "CommandFailed":
+    case "CommandInvalidJson": return "execution_failed";
   }
 }
 

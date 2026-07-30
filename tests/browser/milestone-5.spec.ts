@@ -66,6 +66,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   ).toBe(401);
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByRole("button", { name: "New profile" }).click();
   await page.getByLabel("Profile ID").fill("enterprise");
   await page.getByLabel("Label").fill("Enterprise");
@@ -82,12 +83,12 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByLabel("Active profile")).toContainText("Enterprise updated");
 
-  await page.getByRole("button", { name: "Test GitHub access" }).click();
-  await expect(page.getByText("GitHub access: available")).toBeVisible();
   const settingsRoute = page.url();
+  await page.getByRole("tab", { name: "General" }).click();
   await page.getByLabel("Appearance").click();
   await page.getByRole("option", { name: "Dark" }).click();
   await expect(page).toHaveURL(settingsRoute);
+  await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByLabel("Label").fill("Enterprise dirty");
   await page.getByRole("button", { name: "Close" }).click();
   const dirtyDialog = page.getByRole("alertdialog", { name: "Discard profile changes?" });
@@ -97,6 +98,8 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await page.getByRole("button", { name: "Add suggestion" }).click();
@@ -108,7 +111,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
     page.getByRole("button", { name: "Restore" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Data & recovery" }).click();
   await page.getByRole("button", { name: "Clear cache" }).click();
   await expect(page.getByRole("alertdialog", { name: "Clear cache?" })).toBeVisible();

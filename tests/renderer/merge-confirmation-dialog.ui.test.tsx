@@ -6,6 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import { MergeConfirmationDialog } from "../../src/renderer/src/components/merge-confirmation-dialog";
 
 describe("merge confirmation dialog", () => {
+  it("does not describe a GitHub policy block as a conflict", () => {
+    render(<MergeConfirmationDialog readiness={{ _tag: "Blocked", blockers: ["merge_blocked"], warnings: [] }} context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }} methods={["squash"]} onMerge={async () => ({})} />);
+
+    expect(screen.getByText("blocked by GitHub")).toBeTruthy();
+    expect(screen.queryByText("conflicting changes")).toBeNull();
+  });
+
   it("shows context and requires acknowledgement for merge warnings before one explicit merge", async () => {
     const user = userEvent.setup(); const merge = vi.fn(async () => ({ mergeCommitSha: "abcdef" }));
     render(<MergeConfirmationDialog readiness={{ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] }} context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }} methods={["squash", "merge"]} onMerge={merge} />);

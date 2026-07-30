@@ -3,7 +3,6 @@ export type ReviewViewPreferences = {
   readonly diffStyle: "unified" | "split";
   readonly fileMode: "all" | "selected";
   readonly overflow: "scroll" | "wrap";
-  readonly appRailOpen: boolean;
   readonly reviewRailOpen: boolean;
   readonly detailsRailOpen: boolean;
 };
@@ -13,7 +12,6 @@ export const DEFAULT_REVIEW_VIEW_PREFERENCES: ReviewViewPreferences = {
   diffStyle: "unified",
   fileMode: "all",
   overflow: "scroll",
-  appRailOpen: true,
   reviewRailOpen: true,
   detailsRailOpen: true,
 };
@@ -57,7 +55,6 @@ function parsePreferences(value: unknown): ReviewViewPreferences {
     diffStyle: preferences.diffStyle === "split" ? "split" : "unified",
     fileMode: preferences.fileMode === "selected" ? "selected" : "all",
     overflow: preferences.overflow === "wrap" ? "wrap" : "scroll",
-    appRailOpen: preferences.appRailOpen !== false,
     reviewRailOpen: preferences.reviewRailOpen !== false,
     detailsRailOpen: preferences.detailsRailOpen !== false,
   };

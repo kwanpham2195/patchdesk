@@ -1,8 +1,10 @@
 import type { ReviewAttempt } from "../domain/review-attempt";
 import type {
   ReviewBatch,
+  ReviewAnchor,
   ReviewBatchItem,
 } from "../domain/review-batch";
+import { fingerprintPatchAnchor } from "../domain/review-anchor";
 import type { ReviewFinding, ReviewResult } from "../domain/review-result";
 import {
   discardCurrentAttempt,
@@ -34,6 +36,10 @@ export function createReviewBatch(input: {
   readonly session: ReviewSession;
   readonly attempt: Pick<ReviewAttempt, "id" | "sessionId">;
   readonly result: ReviewResult;
+  /** Current snapshot patch used to retain exact context for model comments. */
+  readonly patch?: string;
+  /** A snapshot-owned local batch may already contain human review items. */
+  readonly existingBatch?: ReviewBatch;
   /** Previously submitted findings remain visible but never start as duplicate comments. */
   readonly alreadyReportedFindingIds?: ReadonlySet<ReviewFinding["id"]>;
   readonly createdAt: IsoTimestamp;
@@ -42,9 +48,19 @@ export function createReviewBatch(input: {
     return err({ _tag: "AttemptSessionMismatch" });
   if (input.session.currentAttemptId !== input.attempt.id)
     return err({ _tag: "AttemptNotCurrent" });
+  if (
+    input.existingBatch !== undefined &&
+    (input.existingBatch.sessionId !== input.session.id ||
+      input.existingBatch.state._tag !== "Local")
+  ) {
+    return err({ _tag: "AttemptNotCurrent" });
+  }
 
-  const items: ReviewBatchItem[] = [];
-  const itemIds = new Set<LocalReviewItemId>();
+  const preservedItems = input.existingBatch?.items.filter(
+    (item) => item.provenance._tag === "human" || item.carriedFrom !== undefined,
+  ) ?? [];
+  const items: ReviewBatchItem[] = [...preservedItems];
+  const itemIds = new Set<LocalReviewItemId>(preservedItems.map((item) => item.id));
   const repositoryFindings: ReviewFinding[] = [];
   for (const finding of input.result.findings) {
     if (!hasPostableLocation(finding)) {
@@ -57,17 +73,23 @@ export function createReviewBatch(input: {
     }
     itemIds.add(itemId);
     const alreadyReported = input.alreadyReportedFindingIds?.has(finding.id) ?? false;
+    const anchor: ReviewAnchor = {
+      path: finding.file,
+      startLine: finding.lineStart,
+      line: finding.lineEnd ?? finding.lineStart,
+      side: finding.diffSide,
+    };
+    const fingerprint = input.patch === undefined
+      ? undefined
+      : fingerprintPatchAnchor(input.patch, anchor);
     items.push({
       _tag: "InlineComment",
       id: itemId,
+      provenance: { _tag: "model", attemptId: input.attempt.id },
       source: "finding",
       findingId: finding.id,
-      anchor: {
-        path: finding.file,
-        startLine: finding.lineStart,
-        line: finding.lineEnd ?? finding.lineStart,
-        side: finding.diffSide,
-      },
+      anchor,
+      ...(fingerprint === undefined ? {} : { fingerprint }),
       body: finding.suggestedComment ?? finding.explanation,
       include: !alreadyReported,
       postability: alreadyReported ? "already_reported" : "postable",
@@ -77,13 +99,12 @@ export function createReviewBatch(input: {
   return ok({
     batch: {
       sessionId: input.session.id,
-      attemptId: input.attempt.id,
       state: { _tag: "Local" },
       summaryBody: input.result.summary,
       suggestedEvent: verdictEvent(input.result.verdict),
       items,
       receipts: [],
-      createdAt: input.createdAt,
+      createdAt: input.existingBatch?.createdAt ?? input.createdAt,
       updatedAt: input.createdAt,
     },
     repositoryFindings,

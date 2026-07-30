@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { ChevronDown } from "lucide-react";
+import type { Mermaid } from "mermaid";
 
 import type { PullRequestRef } from "../../../domain/pull-request";
-import { openPullRequestExternalUrl, resolvePullRequestExternalUrl } from "@/external-links";
+import {
+  openPullRequestExternalUrl,
+  resolvePullRequestExternalUrl,
+} from "@/external-links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -40,6 +44,7 @@ import {
 
 const marked = new Marked({ gfm: true, breaks: false });
 const collapsedDescriptionHeight = 288;
+let mermaidPromise: Promise<Mermaid> | undefined;
 
 export function PullRequestDescription({
   markdown,
@@ -72,7 +77,8 @@ export function PullRequestDescription({
       <CardHeader>
         <CardTitle>Pull request description</CardTitle>
         <CardDescription>
-          Saved Markdown from GitHub. Links open only on this pull request’s GitHub host.
+          Saved Markdown from GitHub. Links open only on this pull request’s
+          GitHub host.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -80,7 +86,9 @@ export function PullRequestDescription({
           <Empty>
             <EmptyHeader>
               <EmptyTitle>No description provided</EmptyTitle>
-              <EmptyDescription>No description was provided on GitHub.</EmptyDescription>
+              <EmptyDescription>
+                No description was provided on GitHub.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -93,12 +101,21 @@ export function PullRequestDescription({
               {truncated ? (
                 <Alert>
                   <AlertTitle>Description truncated</AlertTitle>
-                  <AlertDescription>The saved preview ends at Patchdesk’s safe size limit.</AlertDescription>
+                  <AlertDescription>
+                    The saved preview ends at Patchdesk’s safe size limit.
+                  </AlertDescription>
                 </Alert>
               ) : null}
-              <ScrollArea className={expanded ? "max-h-[36rem]" : "max-h-72"}>
-                <div ref={content} className="pr-3" aria-label="Pull request description rendered from Markdown">
-                  <PullRequestDescriptionPreview markdown={markdown} {...(pullRequest === undefined ? {} : { pullRequest })} />
+              <ScrollArea className={expanded ? undefined : "max-h-72"}>
+                <div
+                  ref={content}
+                  className="pr-3"
+                  aria-label="Pull request description rendered from Markdown"
+                >
+                  <PullRequestDescriptionPreview
+                    markdown={markdown}
+                    {...(pullRequest === undefined ? {} : { pullRequest })}
+                  />
                 </div>
               </ScrollArea>
             </CollapsibleContent>
@@ -108,7 +125,11 @@ export function PullRequestDescription({
       {overflows && open ? (
         <CardFooter>
           <ButtonGroup>
-            <Button variant="outline" size="sm" onClick={() => setExpanded((current) => !current)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExpanded((current) => !current)}
+            >
               {expanded ? "Show less" : "Show more"}
             </Button>
           </ButtonGroup>
@@ -125,66 +146,526 @@ export function PullRequestDescriptionPreview({
   readonly markdown: string;
   readonly pullRequest?: PullRequestRef;
 }): React.JSX.Element {
-  return <div className="flex flex-col gap-3 text-sm leading-6">{renderBlocks(lexSafely(markdown), pullRequest)}</div>;
+  return (
+    <div className="flex flex-col gap-3 text-sm leading-6">
+      {renderBlocks(lexSafely(markdown), pullRequest)}
+    </div>
+  );
 }
 
 function lexSafely(markdown: string): TokensList {
   try {
     return marked.lexer(markdown);
   } catch {
-    return Object.assign([
-      { type: "paragraph", raw: markdown, text: markdown, tokens: [{ type: "text", raw: markdown, text: markdown }] },
-    ], { links: {} }) as TokensList;
+    return Object.assign(
+      [
+        {
+          type: "paragraph",
+          raw: markdown,
+          text: markdown,
+          tokens: [{ type: "text", raw: markdown, text: markdown }],
+        },
+      ],
+      { links: {} },
+    ) as TokensList;
   }
 }
 
-function renderBlocks(tokens: ReadonlyArray<Token>, pullRequest: PullRequestRef | undefined): ReadonlyArray<React.ReactNode> {
+function renderBlocks(
+  tokens: ReadonlyArray<Token>,
+  pullRequest: PullRequestRef | undefined,
+): ReadonlyArray<React.ReactNode> {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
     switch (token.type) {
-      case "space": return null;
+      case "space":
+        return null;
       case "heading": {
-        const Tag = `h${Math.min(Math.max(token.depth, 1), 6)}` as keyof React.JSX.IntrinsicElements;
-        return <Tag key={key} className="font-semibold tracking-tight">{renderInline(tokensOf(token), pullRequest)}</Tag>;
+        const Tag =
+          `h${Math.min(Math.max(token.depth, 1), 6)}` as keyof React.JSX.IntrinsicElements;
+        return (
+          <Tag key={key} className="font-semibold tracking-tight">
+            {renderInline(tokensOf(token), pullRequest)}
+          </Tag>
+        );
       }
-      case "paragraph": return <p key={key} className="whitespace-pre-wrap break-words">{renderInline(tokensOf(token), pullRequest)}</p>;
-      case "blockquote": return <blockquote key={key} className="border-l-2 pl-3 text-muted-foreground">{renderBlocks(tokensOf(token), pullRequest)}</blockquote>;
-      case "code": return <ScrollArea key={key} className="max-h-48"><pre className="p-3"><code>{token.text}</code></pre></ScrollArea>;
+      case "paragraph":
+        return (
+          <p key={key} className="whitespace-pre-wrap break-words">
+            {renderInline(tokensOf(token), pullRequest)}
+          </p>
+        );
+      case "blockquote":
+        return (
+          <blockquote
+            key={key}
+            className="border-l-2 pl-3 text-muted-foreground"
+          >
+            {renderBlocks(tokensOf(token), pullRequest)}
+          </blockquote>
+        );
+      case "code":
+        return token.lang?.toLowerCase() === "mermaid" ? (
+          <MermaidDiagram key={key} source={token.text} />
+        ) : (
+          <pre
+            key={key}
+            className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3"
+          >
+            <code>{token.text}</code>
+          </pre>
+        );
       case "list": {
         const List = token.ordered ? "ol" : "ul";
-        return <List key={key} className={token.ordered ? "list-decimal pl-5" : "list-disc pl-5"}>{token.items.map((item: Tokens.ListItem, itemIndex: number) => <li key={`${key}-${itemIndex}`} className="pl-1">{item.task === true ? <Checkbox checked={item.checked ?? false} disabled aria-label={item.checked ? "Completed task" : "Incomplete task"} /> : null}{renderBlocks(tokensOf(item), pullRequest)}</li>)}</List>;
+        return (
+          <List
+            key={key}
+            className={token.ordered ? "list-decimal pl-5" : "list-disc pl-5"}
+          >
+            {token.items.map((item: Tokens.ListItem, itemIndex: number) => (
+              <li key={`${key}-${itemIndex}`} className="pl-1">
+                {item.task === true ? (
+                  <Checkbox
+                    checked={item.checked ?? false}
+                    disabled
+                    aria-label={
+                      item.checked ? "Completed task" : "Incomplete task"
+                    }
+                  />
+                ) : null}
+                {renderBlocks(tokensOf(item), pullRequest)}
+              </li>
+            ))}
+          </List>
+        );
       }
-      case "hr": return <Separator key={key} />;
-      case "table": return <Table key={key}><TableHeader><TableRow>{token.header.map((cell: Tokens.TableCell, cellIndex: number) => <TableHead key={`${key}-h-${cellIndex}`}>{renderInline(cell.tokens ?? [], pullRequest)}</TableHead>)}</TableRow></TableHeader><TableBody>{token.rows.map((row: Tokens.TableCell[], rowIndex: number) => <TableRow key={`${key}-r-${rowIndex}`}>{row.map((cell: Tokens.TableCell, cellIndex: number) => <TableCell key={`${key}-${rowIndex}-${cellIndex}`}>{renderInline(cell.tokens ?? [], pullRequest)}</TableCell>)}</TableRow>)}</TableBody></Table>;
+      case "hr":
+        return <Separator key={key} />;
+      case "table":
+        return (
+          <Table key={key}>
+            <TableHeader>
+              <TableRow>
+                {token.header.map(
+                  (cell: Tokens.TableCell, cellIndex: number) => (
+                    <TableHead key={`${key}-h-${cellIndex}`}>
+                      {renderInline(cell.tokens ?? [], pullRequest)}
+                    </TableHead>
+                  ),
+                )}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => (
+                <TableRow key={`${key}-r-${rowIndex}`}>
+                  {row.map((cell: Tokens.TableCell, cellIndex: number) => (
+                    <TableCell key={`${key}-${rowIndex}-${cellIndex}`}>
+                      {renderInline(cell.tokens ?? [], pullRequest)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        );
       case "html":
-      case "image": return null;
-      default: return null;
+        return (
+          <HtmlContent key={key} html={token.text} pullRequest={pullRequest} />
+        );
+      case "image":
+        return renderMarkdownImage(token, pullRequest, key);
+      default:
+        return null;
     }
   });
 }
 
-function renderInline(tokens: ReadonlyArray<Token>, pullRequest: PullRequestRef | undefined): ReadonlyArray<React.ReactNode> {
+function renderInline(
+  tokens: ReadonlyArray<Token>,
+  pullRequest: PullRequestRef | undefined,
+): ReadonlyArray<React.ReactNode> {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
     switch (token.type) {
       case "text":
-      case "escape": return token.text;
-      case "codespan": return <code key={key} className="rounded bg-muted px-1 py-0.5 text-xs">{token.text}</code>;
-      case "strong": return <strong key={key}>{renderInline(tokensOf(token), pullRequest)}</strong>;
-      case "em": return <em key={key}>{renderInline(tokensOf(token), pullRequest)}</em>;
-      case "del": return <del key={key}>{renderInline(tokensOf(token), pullRequest)}</del>;
-      case "br": return <br key={key} />;
+      case "escape":
+        return token.text;
+      case "codespan":
+        return (
+          <code key={key} className="rounded bg-muted px-1 py-0.5 text-xs">
+            {token.text}
+          </code>
+        );
+      case "strong":
+        return (
+          <strong key={key}>
+            {renderInline(tokensOf(token), pullRequest)}
+          </strong>
+        );
+      case "em":
+        return <em key={key}>{renderInline(tokensOf(token), pullRequest)}</em>;
+      case "del":
+        return (
+          <del key={key}>{renderInline(tokensOf(token), pullRequest)}</del>
+        );
+      case "br":
+        return <br key={key} />;
       case "link": {
-        if (resolvePullRequestExternalUrl(token.href, pullRequest) === undefined) return <span key={key}>{renderInline(tokensOf(token), pullRequest)}</span>;
-        return <Button key={key} variant="link" size="xs" onClick={() => void openPullRequestExternalUrl(token.href, pullRequest)}>{renderInline(tokensOf(token), pullRequest)}</Button>;
+        if (
+          resolvePullRequestExternalUrl(token.href, pullRequest) === undefined
+        )
+          return (
+            <span key={key}>{renderInline(tokensOf(token), pullRequest)}</span>
+          );
+        return (
+          <Button
+            key={key}
+            variant="link"
+            size="xs"
+            onClick={() =>
+              void openPullRequestExternalUrl(token.href, pullRequest)
+            }
+          >
+            {renderInline(tokensOf(token), pullRequest)}
+          </Button>
+        );
       }
       case "image":
-      case "html": return null;
-      default: return null;
+        return renderMarkdownImage(token, pullRequest, key);
+      case "html":
+        return (
+          <HtmlContent key={key} html={token.text} pullRequest={pullRequest} />
+        );
+      default:
+        return null;
     }
   });
 }
 
 function tokensOf(token: Token): ReadonlyArray<Token> {
-  return "tokens" in token && Array.isArray(token.tokens) ? token.tokens : [token];
+  return "tokens" in token && Array.isArray(token.tokens)
+    ? token.tokens
+    : [token];
+}
+
+function renderMarkdownImage(
+  token: Tokens.Image | Tokens.Generic,
+  pullRequest: PullRequestRef | undefined,
+  key: string,
+): React.ReactNode {
+  if (
+    !("href" in token) ||
+    typeof token.href !== "string" ||
+    !("text" in token) ||
+    typeof token.text !== "string"
+  ) {
+    return null;
+  }
+  const src = resolvePullRequestExternalUrl(token.href, pullRequest);
+  if (src === undefined) return <span key={key}>[Image: {token.text}]</span>;
+  return (
+    <img
+      key={key}
+      src={src}
+      alt={token.text}
+      loading="lazy"
+      className="max-w-full rounded-md"
+    />
+  );
+}
+
+function HtmlContent({
+  html,
+  pullRequest,
+}: {
+  readonly html: string;
+  readonly pullRequest: PullRequestRef | undefined;
+}): React.JSX.Element {
+  if (typeof DOMParser === "undefined") return <span>{html}</span>;
+  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+  return (
+    <>
+      {renderHtmlNodes(
+        Array.from(documentFragment.body.childNodes),
+        pullRequest,
+        "html",
+      )}
+    </>
+  );
+}
+
+function renderHtmlNodes(
+  nodes: ReadonlyArray<Node>,
+  pullRequest: PullRequestRef | undefined,
+  keyPrefix: string,
+): ReadonlyArray<React.ReactNode> {
+  return nodes.map((node, index) =>
+    renderHtmlNode(node, pullRequest, `${keyPrefix}-${index}`),
+  );
+}
+
+function renderHtmlNode(
+  node: Node,
+  pullRequest: PullRequestRef | undefined,
+  key: string,
+): React.ReactNode {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+  if (!(node instanceof Element)) return null;
+
+  const tag = node.tagName.toLowerCase();
+  const children = renderHtmlNodes(
+    Array.from(node.childNodes),
+    pullRequest,
+    key,
+  );
+  switch (tag) {
+    case "script":
+    case "style":
+    case "iframe":
+    case "object":
+    case "embed":
+      return null;
+    case "details":
+      return (
+        <details key={key} open={node.hasAttribute("open")}>
+          {children}
+        </details>
+      );
+    case "summary":
+      return <summary key={key}>{children}</summary>;
+    case "br":
+      return <br key={key} />;
+    case "p":
+      return (
+        <p key={key} className="whitespace-pre-wrap break-words">
+          {children}
+        </p>
+      );
+    case "div":
+    case "section":
+      return <div key={key}>{children}</div>;
+    case "strong":
+    case "b":
+      return <strong key={key}>{children}</strong>;
+    case "em":
+    case "i":
+      return <em key={key}>{children}</em>;
+    case "del":
+    case "s":
+      return <del key={key}>{children}</del>;
+    case "code":
+      return (
+        <code key={key} className="rounded bg-muted px-1 py-0.5 text-xs">
+          {children}
+        </code>
+      );
+    case "pre":
+      return (
+        <pre
+          key={key}
+          className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3"
+        >
+          {children}
+        </pre>
+      );
+    case "ul":
+      return (
+        <ul key={key} className="list-disc pl-5">
+          {children}
+        </ul>
+      );
+    case "ol":
+      return (
+        <ol key={key} className="list-decimal pl-5">
+          {children}
+        </ol>
+      );
+    case "li":
+      return (
+        <li key={key} className="pl-1">
+          {children}
+        </li>
+      );
+    case "blockquote":
+      return (
+        <blockquote key={key} className="border-l-2 pl-3 text-muted-foreground">
+          {children}
+        </blockquote>
+      );
+    case "h1":
+    case "h2":
+    case "h3":
+    case "h4":
+    case "h5":
+    case "h6": {
+      const Heading = tag as keyof React.JSX.IntrinsicElements;
+      return (
+        <Heading key={key} className="font-semibold tracking-tight">
+          {children}
+        </Heading>
+      );
+    }
+    case "a": {
+      const href = node.getAttribute("href");
+      if (
+        href === null ||
+        resolvePullRequestExternalUrl(href, pullRequest) === undefined
+      )
+        return <span key={key}>{children}</span>;
+      return (
+        <Button
+          key={key}
+          variant="link"
+          size="xs"
+          onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
+        >
+          {children}
+        </Button>
+      );
+    }
+    case "img": {
+      const src = node.getAttribute("src");
+      const alt = node.getAttribute("alt") ?? "";
+      if (
+        src === null ||
+        resolvePullRequestExternalUrl(src, pullRequest) === undefined
+      )
+        return <span key={key}>[Image: {alt}]</span>;
+      return (
+        <img
+          key={key}
+          src={resolvePullRequestExternalUrl(src, pullRequest)}
+          alt={alt}
+          loading="lazy"
+          className="max-w-full rounded-md"
+        />
+      );
+    }
+    case "table":
+      return (
+        <div key={key} className="overflow-x-auto">
+          <table className="w-full caption-bottom text-sm">{children}</table>
+        </div>
+      );
+    case "thead":
+      return <thead key={key}>{children}</thead>;
+    case "tbody":
+      return <tbody key={key}>{children}</tbody>;
+    case "tr":
+      return (
+        <tr key={key} className="border-b">
+          {children}
+        </tr>
+      );
+    case "th":
+      return (
+        <th key={key} className="h-10 px-2 text-left align-middle font-medium">
+          {children}
+        </th>
+      );
+    case "td":
+      return (
+        <td key={key} className="p-2 align-middle">
+          {children}
+        </td>
+      );
+    case "sub":
+      return <sub key={key}>{children}</sub>;
+    case "sup":
+      return <sup key={key}>{children}</sup>;
+    case "kbd":
+      return (
+        <kbd key={key} className="rounded border bg-muted px-1 py-0.5 text-xs">
+          {children}
+        </kbd>
+      );
+    default:
+      return <span key={key}>{children}</span>;
+  }
+}
+
+function MermaidDiagram({
+  source,
+}: {
+  readonly source: string;
+}): React.JSX.Element {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const [svg, setSvg] = useState<string>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const renderContainer = document.createElement("div");
+    renderContainer.style.position = "fixed";
+    renderContainer.style.left = "-10000px";
+    renderContainer.style.top = "0";
+    renderContainer.style.width = "800px";
+    renderContainer.style.height = "600px";
+    renderContainer.style.overflow = "hidden";
+    renderContainer.style.visibility = "hidden";
+    document.body.append(renderContainer);
+    setSvg(undefined);
+    setFailed(false);
+    void loadMermaid()
+      .then((mermaid) =>
+        mermaid.render(`patchdesk-mermaid-${id}`, source, renderContainer),
+      )
+      .then((result) => {
+        if (active) setSvg(result.svg);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        renderContainer.remove();
+      });
+    return () => {
+      active = false;
+      renderContainer.remove();
+    };
+  }, [id, source]);
+
+  return (
+    <div
+      role="img"
+      aria-label="Mermaid diagram"
+      className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
+    >
+      {svg === undefined ? (
+        <p className="text-xs text-muted-foreground">
+          {failed
+            ? "Mermaid could not render this diagram."
+            : "Rendering Mermaid diagram…"}
+        </p>
+      ) : (
+        <div
+          aria-hidden="true"
+          className="w-full [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      )}
+      <details open={svg === undefined}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">
+          Mermaid source
+        </summary>
+        <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
+          <code>{source}</code>
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+function loadMermaid(): Promise<Mermaid> {
+  if (mermaidPromise !== undefined) return mermaidPromise;
+  mermaidPromise = import("mermaid").then(({ default: mermaid }) => {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      suppressErrorRendering: true,
+      theme: "base",
+    });
+    return mermaid;
+  });
+  return mermaidPromise;
 }

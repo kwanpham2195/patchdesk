@@ -9,4 +9,9 @@ describe("merge readiness", () => {
     expect(evaluateMergeReadiness({ isCurrentHead: false, isOpen: false, isDraft: true, mergeability: "conflicting", checks: { overall: "failing", checks: [{ name: "unit", required: true, status: "completed", conclusion: "failure" }] }, hasGitHubReviewBlocker: true, hasRequestChanges: true, hasHighSeverityFinding: true })).toEqual({ _tag: "Blocked", blockers: ["stale_head", "closed", "draft", "conflicting", "required_check", "github_review"], warnings: ["request_changes", "high_severity_finding"] });
     expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "mergeable", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: true, hasHighSeverityFinding: true })).toEqual({ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] });
   });
+
+  it("does not report GitHub-blocked or unknown mergeability as a conflict", () => {
+    expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "blocked", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toEqual({ _tag: "Blocked", blockers: ["merge_blocked"], warnings: [] });
+    expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "unknown", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toEqual({ _tag: "Blocked", blockers: ["mergeability_unknown"], warnings: [] });
+  });
 });

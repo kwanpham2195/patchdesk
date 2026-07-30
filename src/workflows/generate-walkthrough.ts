@@ -3,7 +3,7 @@ import * as v from "valibot";
 
 import type { FlueHarness } from "../flue-runtime-types";
 import { err, ok, type Result } from "../domain/result";
-import { readBoundedArtifact } from "./walkthrough-artifact-reader";
+import { readBoundedArtifact } from "../services/walkthrough-artifact-reader";
 
 const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;

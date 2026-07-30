@@ -1,0 +1,10 @@
+{
+  "state": "success",
+  "statuses": [
+    {
+      "context": "AWS CodeBuild",
+      "state": "success",
+      "target_url": "https://example.test/build"
+    }
+  ]
+}

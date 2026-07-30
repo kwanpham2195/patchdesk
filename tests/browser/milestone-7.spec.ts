@@ -15,8 +15,11 @@ test("diff workbench", async ({ page }) => {
       page.getByRole("region", { name: "Diff workbench" }),
     ).toBeVisible();
     await expect(page.getByRole("region", { name: "Review diff" })).toHaveAttribute("data-selected-path", "src/b.ts");
-    await page.getByRole("button", { name: "Review context" }).click();
-    await expect(page.getByRole("dialog", { name: "Review context" })).toContainText("Findings must map to a verified line");
+    await expect(
+      page.getByRole("button", {
+        name: "Exact file contents are unavailable for this review",
+      }),
+    ).toBeDisabled();
     await page.screenshot({
       path: "test-results/milestone-7-browser.png",
       fullPage: true,
@@ -37,16 +40,16 @@ test("constrained diff workbench keeps secondary rails reachable through labelle
     await expect(
       page.getByRole("complementary", { name: "Review navigation" }),
     ).toBeHidden();
-    await expect(
-      page.getByRole("complementary", { name: "Review context" }),
-    ).toBeHidden();
     await page.getByRole("button", { name: "Files", exact: true }).click();
     const filesDialog = page.getByRole("dialog", { name: "Changed files" });
     await expect(filesDialog).toBeVisible();
     await expect(filesDialog.getByRole("treeitem").first()).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Review context" }).click();
-    await expect(page.getByRole("dialog", { name: "Review context" })).toContainText("Findings must map to a verified line");
+    await expect(
+      page.getByRole("button", {
+        name: "Exact file contents are unavailable for this review",
+      }),
+    ).toBeDisabled();
   } finally {
     await close(server);
   }

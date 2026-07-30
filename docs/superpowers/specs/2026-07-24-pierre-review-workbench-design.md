@@ -23,7 +23,7 @@ This is one release. It includes Pierre Tree, infinite diff streaming, inline fi
 
 ### Direct review workbench
 
-Opening a pull request shows a read-only diff workbench immediately. Before analysis has run, the header offers Run review. The header includes only the pull-request identity and compact check status. It does not repeat author, branch, commits, full SHA, or local-review state.
+Opening a pull request shows a read-only diff workbench immediately. Before analysis has run, the header offers Run review. Failed or pending checks remain visible but never block a read-only review or a walkthrough generated from its prepared snapshot. Checks still block merge readiness. The header includes only the pull-request identity and compact check status. It does not repeat author, branch, commits, full SHA, or local-review state.
 
 At desktop widths, the workbench has:
 
@@ -87,7 +87,7 @@ PR details is a separate view opened from the workbench header. It contains:
 - a link to open the pull request on GitHub;
 - the existing merge-confirmation entry point.
 
-Inspect failing checks opens this view on Checks. It is not a primary workbench action. General PR discussion is read-only in this release. Writing is limited to inline review threads where the code context is clear.
+Inspect failing checks opens this view on Checks. It remains available alongside Run review; it is not a primary workbench action. General PR discussion is read-only in this release. Writing is limited to inline review threads where the code context is clear.
 
 ## Drafts, refresh, and GitHub writes
 

@@ -34,10 +34,10 @@ import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { err, ok } from "../domain/result";
-import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
+import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
 import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
 import { NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
-import { resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
+import { resolveWalkthroughRuntimeRoot, resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
@@ -119,13 +119,16 @@ const desktopLifecycle = createDesktopLifecycle({
 
 function createWalkthroughService(): NarrativeWalkthroughService {
   const paths = PatchdeskPaths.default();
+  const workflowRoot = resolveWalkthroughRuntimeRoot(app.getAppPath(), process.cwd());
   return new NarrativeWalkthroughService(
     new ProfileStore(paths),
     new ReviewSessionStore(paths),
     paths,
     new FlueCliWalkthroughInvoker(
       new CommandRunner(),
-      resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd()),
+      workflowRoot,
+      process.execPath,
+      resolveWorkflowCliPath(workflowRoot),
     ),
     diagnostics,
   );
@@ -135,6 +138,7 @@ function createWorkflowInvoker(
   sharedLifecycleGate: ReviewLifecycleGate,
   diagnostics: ReviewDiagnosticService,
 ) {
+  const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
   const completion = new ReviewCompletionService(
     PatchdeskPaths.default(),
     () => new Date().toISOString() as never,
@@ -148,26 +152,65 @@ function createWorkflowInvoker(
   );
   const flue = new FlueCliReviewInvoker(
     new CommandRunner(),
-    resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd()),
+    workflowRoot,
+    process.execPath,
+    resolveWorkflowCliPath(workflowRoot),
   );
   return {
     async invoke(
       input: Parameters<FlueCliReviewInvoker["invoke"]>[0],
       options?: Parameters<FlueCliReviewInvoker["invoke"]>[1],
     ) {
-      const result = await flue.invoke(input, options);
+      const startedAt = Date.now();
+      let diagnosticWrites = Promise.resolve();
+      const record = (
+        phase: string,
+        retryable: boolean,
+        detail?: string,
+        durationMs?: number,
+      ): void => {
+        diagnosticWrites = diagnosticWrites.then(async () => {
+          try {
+            await diagnostics.record({
+              profileId: input.profileId,
+              sessionId: input.sessionId,
+              attemptId: input.attemptId,
+              category: "run",
+              phase,
+              retryable,
+              ...(detail === undefined ? {} : { detail }),
+              ...(durationMs === undefined ? {} : { durationMs }),
+            });
+          } catch {
+            // Workflow completion must not depend on best-effort local activity.
+          }
+        });
+      };
+      record("workflow-started", true);
+      const result = await flue.invoke(input, {
+        onActivity: (step) => {
+          record(`workflow-${step}`, true);
+          options?.onActivity?.(step);
+        },
+      });
+      await diagnosticWrites;
       if (result._tag === "err") {
+        const message = reviewFailureMessage(result.error.reason);
+        record("workflow-failed", true, `review_${result.error.reason}`, Date.now() - startedAt);
+        await diagnosticWrites;
         // Best effort: if this write fails, startup reconciliation is the backstop.
         await failure.fail({
           profileId: input.profileId,
           sessionId: input.sessionId,
           attemptId: input.attemptId,
           category: "flue",
-          message: "The review workflow did not complete.",
+          message,
         });
         return err({ reason: "failed" as const });
       }
       options?.onActivity?.("drafting");
+      record("workflow-drafting", true);
+      await diagnosticWrites;
       const persisted = await completion.complete({
         profileId: input.profileId,
         sessionId: input.sessionId,
@@ -175,6 +218,8 @@ function createWorkflowInvoker(
         result: result.value,
       });
       if (persisted._tag === "err") {
+        record("workflow-save-failed", true, "review_result_storage_unavailable", Date.now() - startedAt);
+        await diagnosticWrites;
         await failure.fail({
           profileId: input.profileId,
           sessionId: input.sessionId,
@@ -184,11 +229,24 @@ function createWorkflowInvoker(
         });
         return err({ reason: "failed" as const });
       }
+      record("workflow-completed", false, undefined, Date.now() - startedAt);
+      await diagnosticWrites;
       // The Flue CLI returns the completed structured result, not a durable
       // provider run identifier. Do not fabricate one from Patchdesk IDs.
       return ok({});
     },
   };
+}
+
+function reviewFailureMessage(reason: FlueCliReviewFailure["reason"]): string {
+  switch (reason) {
+    case "authentication_required": return "The selected review model needs sign-in before it can run.";
+    case "rate_limited": return "The selected review model is rate limited. Try again shortly or choose another model.";
+    case "runtime_unavailable": return "Patchdesk could not start its local review runtime. Repackage or reinstall the app, then try again.";
+    case "timed_out": return "The selected review model did not finish before the review timed out.";
+    case "invalid_result": return "The selected review model returned a result Patchdesk could not use.";
+    case "execution_failed": return "The selected review model stopped before it returned a review.";
+  }
 }
 
 app.setName("Patchdesk");

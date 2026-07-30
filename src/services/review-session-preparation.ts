@@ -19,6 +19,8 @@ import {
 } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { createReviewSession, type ReviewSession } from "../domain/review-session";
+import { createEmptyReviewBatch } from "../domain/review-batch";
+import { carryForwardReviewBatch } from "../domain/review-anchor";
 import type { ReviewScope } from "../domain/review-comparison";
 import type { PriorFindingEvidence } from "../domain/finding-lifecycle";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -47,6 +49,8 @@ export type PrepareReviewSessionInput = {
   readonly profileId: WorkspaceProfileId;
   readonly pullRequest: PullRequestRef;
   readonly mode: ReviewOpenMode;
+  /** Optional predecessor whose local drafts may be carried to this head. */
+  readonly previousSessionId?: ReviewSessionId;
 };
 
 export type PreparedReviewSession = {
@@ -309,7 +313,7 @@ export class ReviewSessionPreparation {
     const current = await deps.github.getPullRequest({ profile, pr: input.pullRequest });
     if (current._tag === "err") return this.abort(journal, { _tag: "GitHubReadUnavailable" });
     if (current.value.headSha !== headSha) return this.abort(journal, { _tag: "HeadChanged" });
-    if (current.value.baseSha === undefined) return this.abort(journal, { _tag: "PreparationUnavailable" });
+    if (current.value.baseSha === undefined) return this.abort(journal, { _tag: "PreparationUnavailable" }, "missing_base_sha");
     const baseSha = current.value.baseSha;
     const matchingRepo = profile.repos.find(
       (candidate) =>
@@ -338,7 +342,7 @@ export class ReviewSessionPreparation {
       sessionId,
       ...(matchingRepo?.localPath === undefined ? {} : { localPath: matchingRepo.localPath }),
     });
-    if (prepared._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" });
+    if (prepared._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" }, "worktree_prepare");
 
     const artifacts = await this.writePatchAndContext(
       input,
@@ -363,7 +367,7 @@ export class ReviewSessionPreparation {
     const parsedPatchPath = parseAbsolutePath(patchPath);
     const parsedWorktreePath = parseAbsolutePath(worktreePath);
     if (parsedPatchPath._tag === "err" || parsedWorktreePath._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(journal, { _tag: "PreparationUnavailable" }, "session_path_parse");
     }
     const session = createReviewSession({
       key: {
@@ -392,10 +396,39 @@ export class ReviewSessionPreparation {
       worktree: { path: parsedWorktreePath.value, headSha },
       createdAt: deps.now(),
     });
-    const saved = await deps.sessions.save(session);
+    const batch = createEmptyReviewBatch({
+      sessionId: session.id,
+      createdAt: session.createdAt,
+    });
+    const predecessor = input.previousSessionId === undefined
+      ? undefined
+      : await deps.sessions.load(input.profileId, input.previousSessionId);
+    if (predecessor?._tag === "err" && predecessor.error.reason !== "not_found") {
+      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    }
+    const predecessorSession = predecessor?._tag === "ok" ? predecessor.value : undefined;
+    const previousBatch = predecessorSession?.batchContent?.state._tag === "Local"
+      ? predecessorSession.batchContent
+      : undefined;
+    const currentPatch = previousBatch === undefined ? undefined : await readFile(patchPath, "utf8").catch(() => undefined);
+    const migratedBatch = previousBatch === undefined || currentPatch === undefined
+      ? batch
+      : carryForwardReviewBatch({
+          source: previousBatch,
+          sourceHeadSha: predecessorSession?.key.headSha ?? headSha,
+          targetSessionId: session.id,
+          currentPatch,
+          now: session.createdAt,
+        }).batch;
+    const preparedSession: ReviewSession = {
+      ...session,
+      batch: { state: migratedBatch.state },
+      batchContent: migratedBatch,
+    };
+    const saved = await deps.sessions.save(preparedSession);
     if (saved._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     await journal.complete();
-    return ok(session);
+    return ok(preparedSession);
   }
 
   private async writePatchAndContext(
@@ -412,7 +445,7 @@ export class ReviewSessionPreparation {
     const deps = this.dependencies;
     const preparedPath = prepared.mode === "worktree" ? parseAbsolutePath(prepared.path) : undefined;
     if (preparedPath !== undefined && preparedPath._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(journal, { _tag: "PreparationUnavailable" }, "worktree_path_parse");
     }
     const fetchedRefs =
       prepared.mode !== "worktree" || preparedPath === undefined
@@ -425,7 +458,7 @@ export class ReviewSessionPreparation {
             headSha,
           });
     if (fetchedRefs !== undefined && fetchedRefs._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(journal, { _tag: "PreparationUnavailable" }, "fetched_diff_refs");
     }
     const [comments, checks, diff] = await Promise.all([
       deps.github.getPullRequestComments({ profile, pr: input.pullRequest }),
@@ -439,7 +472,7 @@ export class ReviewSessionPreparation {
       }),
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(journal, { _tag: "PreparationUnavailable" }, "remote_review_context");
     }
     const recordedPatch = await journal.record(patchPath);
     if (recordedPatch._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
@@ -447,7 +480,7 @@ export class ReviewSessionPreparation {
       await mkdir(dirname(patchPath), { recursive: true });
       await writeFile(patchPath, diff.value, "utf8");
     } catch {
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(journal, { _tag: "PreparationUnavailable" }, "patch_write");
     }
     const artifacts = preparedReviewArtifacts(deps.paths, input.profileId, sessionId);
     for (const artifactPath of [artifacts.contextPath, artifacts.reviewInputPath, artifacts.debugPath]) {
@@ -467,7 +500,7 @@ export class ReviewSessionPreparation {
       patch: { path: patchPath, sha256: "0".repeat(64) },
       rulePaths: profile.rulePaths,
     });
-    if (context._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" });
+    if (context._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" }, "context_prepare");
     return ok(undefined);
   }
 
@@ -489,6 +522,7 @@ export class ReviewSessionPreparation {
   private async abort(
     journal: ReviewPreparationJournal,
     failure: PrepareReviewSessionFailure,
+    diagnosticDetail: string = failure._tag,
   ): Promise<Result<never, PrepareReviewSessionFailure>> {
     const cleaned = await journal.cleanup(this.dependencies.worktrees);
     if (this.dependencies.diagnostics !== undefined) {
@@ -498,7 +532,7 @@ export class ReviewSessionPreparation {
         category: "preparation",
         phase: cleaned._tag === "ok" ? "preparation-failure" : "preparation-cleanup",
         retryable: true,
-        detail: failure._tag,
+        detail: diagnosticDetail,
       });
     }
     return cleaned._tag === "ok" ? err(failure) : err({ _tag: "PreparationCleanupUnavailable" });

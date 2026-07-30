@@ -132,27 +132,23 @@ async function latestReviewFor(
 ): Promise<InboxReviewSummary | undefined> {
   const session = sessions.find((candidate) => candidate.key.host === summary.ref.host && candidate.key.owner === summary.ref.owner && candidate.key.repo === summary.ref.repo && candidate.key.prNumber === summary.ref.number);
   if (session === undefined) return undefined;
-  const draft = session.draftContent?.state._tag;
   const batch = session.batchContent?.state._tag;
   const attempt = session.state._tag === "Running" && session.currentAttemptId !== undefined
     ? await store.loadAttempt(profileId, session.id, session.currentAttemptId)
     : undefined;
-  const state = reviewState(session, batch, draft, attempt?._tag === "ok" ? attempt.value : undefined);
+  const state = reviewState(session, batch, attempt?._tag === "ok" ? attempt.value : undefined);
   return { sessionId: session.id, reviewedHeadSha: session.key.headSha, state, updatedAt: session.updatedAt, matchesCurrentHead: session.key.headSha === summary.headSha };
 }
 
 function reviewState(
   session: ReviewSession,
   batch: "Local" | "Applying" | "PartialFailure" | "PendingReview" | "Submitted" | "Completed" | undefined,
-  draft: "LocalDraft" | "PendingGitHubReview" | "SubmittedGitHubReview" | "DraftFailed" | undefined,
   attempt: ReviewAttempt | undefined,
 ): InboxReviewSummary["state"] {
   if (session.state._tag === "Running") return attempt?.state._tag === "Starting" ? "starting" : "running";
   if (session.state._tag === "Merged") return "merged";
   if (batch === "Local" || batch === "Applying" || batch === "PartialFailure" || batch === "PendingReview") return "draft";
   if (batch === "Submitted") return "submitted";
-  if (draft === "LocalDraft" || draft === "PendingGitHubReview") return "draft";
-  if (draft === "SubmittedGitHubReview") return "submitted";
   return session.state._tag === "ReviewCompleted" ? "completed" : "failed";
 }
 

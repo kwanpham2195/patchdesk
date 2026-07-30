@@ -29,7 +29,6 @@ import {
   type ReviewScopeProjection,
   type RevisionComparison,
 } from "../domain/review-comparison";
-import type { ReviewDraft } from "../domain/review-draft";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
@@ -76,6 +75,9 @@ export type PreparedWorkbenchProjection = {
   readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
   readonly checks: CheckSummary;
+  readonly comments: GitHubComments;
+  readonly batch?: ReviewBatch;
+  readonly mergeReadiness: MergeReadiness;
   readonly recoveryView?: ReviewRecoveryView;
 };
 
@@ -94,7 +96,6 @@ export type CompletedWorkbenchProjection = {
   readonly currentHeadSha?: GitSha;
   readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
-  readonly draft?: ReviewDraft;
   readonly batch?: ReviewBatch;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
@@ -161,7 +162,7 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    if (session.value.visibleResult === undefined || (session.value.batchContent === undefined && session.value.draftContent === undefined)) {
+    if (session.value.visibleResult === undefined) {
       return this.projectPreparedLocal(session.value);
     }
     const [fullPatch, attempts] = await Promise.all([
@@ -192,7 +193,6 @@ export class ReviewWorkbenchProjectionService {
       reviewedHeadSha: session.value.key.headSha,
       freshness: "not_refreshed",
       refreshedAt: session.value.updatedAt,
-      ...(session.value.draftContent === undefined ? {} : { draft: session.value.draftContent }),
       ...(session.value.batchContent === undefined ? {} : { batch: session.value.batchContent }),
       comments: { threads: [] },
       checks: { overall: "unknown", checks: [] },
@@ -214,9 +214,9 @@ export class ReviewWorkbenchProjectionService {
       ...(value.currentHeadSha === undefined ? {} : { currentHeadSha: value.currentHeadSha }),
       freshness: value.freshness,
       refreshedAt: value.refreshedAt,
-      comments: value.state === "completed" ? value.comments : { threads: [] },
+      comments: value.comments,
       checks: value.checks,
-      ...(value.state === "completed" && value.mergeReadiness !== undefined ? { mergeReadiness: value.mergeReadiness } : {}),
+      mergeReadiness: value.mergeReadiness,
     });
   }
 
@@ -229,7 +229,7 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    if (session.value.visibleResult === undefined || (session.value.draftContent === undefined && session.value.batchContent === undefined)) {
+    if (session.value.visibleResult === undefined) {
       return this.projectPrepared(profile.value, session.value);
     }
     return this.projectCompleted(profile.value, session.value);
@@ -245,13 +245,29 @@ export class ReviewWorkbenchProjectionService {
       repo: session.key.repo,
       number: session.key.prNumber,
     };
-    const [fullPatch, checks, current] = await Promise.all([
+    const [fullPatch, comments, checks, current] = await Promise.all([
       readFile(session.patchPath, "utf8").catch(() => undefined),
+      this.github.getPullRequestComments({ profile, pr }),
       this.github.getPullRequestChecks({ profile, pr, headSha: session.key.headSha }),
       this.github.getPullRequest({ profile, pr }),
     ]);
     const currentHeadSha = current._tag === "ok" ? current.value.headSha : undefined;
     const recoveryView = await this.recoveryView(session);
+    const safeChecks = checks._tag === "ok" ? checks.value : { overall: "unknown" as const, checks: [] };
+    const safeComments = comments._tag === "ok" ? comments.value : { threads: [] };
+    const mergeReadiness: MergeReadiness =
+      current._tag === "ok" && checks._tag === "ok"
+        ? evaluateMergeReadiness({
+            isCurrentHead: current.value.headSha === session.key.headSha,
+            isOpen: current.value.isOpen,
+            isDraft: current.value.isDraft,
+            mergeability: current.value.mergeability,
+            checks: checks.value,
+            hasGitHubReviewBlocker: current.value.reviewState === "review_pending",
+            hasRequestChanges: current.value.reviewState === "changes_requested",
+            hasHighSeverityFinding: false,
+          })
+        : { _tag: "Blocked", blockers: ["stale_head"], warnings: [] };
     return ok({
       state: "review_started",
       session: projectSession(session),
@@ -266,7 +282,10 @@ export class ReviewWorkbenchProjectionService {
             ? "fresh"
             : "stale",
       refreshedAt: this.now(),
-      checks: checks._tag === "ok" ? checks.value : { overall: "unknown", checks: [] },
+      checks: safeChecks,
+      comments: safeComments,
+      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
+      mergeReadiness,
       ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
@@ -282,6 +301,9 @@ export class ReviewWorkbenchProjectionService {
       freshness: "not_refreshed",
       refreshedAt: session.updatedAt,
       checks: { overall: "unknown", checks: [] },
+      comments: { threads: [] },
+      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
+      mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
       ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
@@ -290,7 +312,7 @@ export class ReviewWorkbenchProjectionService {
     profile: WorkspaceProfileConfig,
     session: ReviewSession,
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    if (session.visibleResult === undefined || (session.draftContent === undefined && session.batchContent === undefined)) {
+    if (session.visibleResult === undefined) {
       return err({ _tag: "SessionNotFound" });
     }
     const pr = {
@@ -400,7 +422,6 @@ export class ReviewWorkbenchProjectionService {
       ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
       freshness,
       refreshedAt: this.now(),
-      ...(session.draftContent === undefined ? {} : { draft: session.draftContent }),
       ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
       comments: safeComments,
       checks: safeChecks,

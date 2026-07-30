@@ -2,7 +2,16 @@ import type { CheckSummary } from "./github-context";
 
 export type MergeReadiness = {
   readonly _tag: "Ready" | "Blocked" | "NeedsAcknowledgement";
-  readonly blockers: ReadonlyArray<"stale_head" | "closed" | "draft" | "conflicting" | "required_check" | "github_review">;
+  readonly blockers: ReadonlyArray<
+    | "stale_head"
+    | "closed"
+    | "draft"
+    | "conflicting"
+    | "merge_blocked"
+    | "mergeability_unknown"
+    | "required_check"
+    | "github_review"
+  >;
   readonly warnings: ReadonlyArray<"request_changes" | "high_severity_finding">;
 };
 
@@ -21,7 +30,9 @@ export function evaluateMergeReadiness(input: {
   if (!input.isCurrentHead) blockers.push("stale_head");
   if (!input.isOpen) blockers.push("closed");
   if (input.isDraft) blockers.push("draft");
-  if (input.mergeability !== "mergeable") blockers.push("conflicting");
+  if (input.mergeability === "conflicting") blockers.push("conflicting");
+  if (input.mergeability === "blocked") blockers.push("merge_blocked");
+  if (input.mergeability === "unknown") blockers.push("mergeability_unknown");
   if (hasBlockingRequiredCheck(input.checks)) blockers.push("required_check");
   if (input.hasGitHubReviewBlocker) blockers.push("github_review");
 

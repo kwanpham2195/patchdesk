@@ -13,11 +13,13 @@ export function ReviewChecks({
   freshness,
   pullRequest,
   defaultOpen = true,
+  showHeader = true,
 }: {
   readonly checks: CheckSummary;
-  readonly freshness?: "fresh" | "stale" | "unavailable";
+  readonly freshness?: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly pullRequest?: PullRequestRef;
   readonly defaultOpen?: boolean;
+  readonly showHeader?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const grouped = useMemo(() => groupChecks(checks.checks), [checks.checks]);
@@ -25,6 +27,29 @@ export function ReviewChecks({
   const passing = grouped.filter((check) => resultFor(check).kind === "passed");
   const [showPassing, setShowPassing] = useState(passing.length <= 5);
   const rows = showPassing ? grouped : visible;
+  const content = (
+    <>
+      <p className="pb-2 text-xs text-muted-foreground">
+        {freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}
+      </p>
+      {grouped.length === 0 ? <p className="pb-3 text-sm text-muted-foreground">No check details are available.</p> : (
+        <ul className="border-t py-2" aria-label="Pull request checks">
+          {rows.map((check) => <CheckRow key={check.key} check={check} {...(pullRequest === undefined ? {} : { pullRequest })} />)}
+        </ul>
+      )}
+      {!showPassing && passing.length > 0 ? (
+        <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(true)}>
+          Show {passing.length} passing check{passing.length === 1 ? "" : "s"}
+        </Button>
+      ) : null}
+      {showPassing && passing.length > 5 ? (
+        <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(false)}>
+          Hide {passing.length} passing checks
+        </Button>
+      ) : null}
+    </>
+  );
+  if (!showHeader) return <div>{content}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b">
       <div className="flex items-center justify-between gap-3 py-2">
@@ -32,30 +57,11 @@ export function ReviewChecks({
           Checks
           <ChevronDown data-icon="inline-end" className={open ? undefined : "-rotate-90"} aria-hidden="true" />
         </CollapsibleTrigger>
-        <span className="text-xs text-muted-foreground" aria-label={`Checks overall: ${overallLabel(checks.overall)}`}>
-          {overallLabel(checks.overall)}
+        <span className="text-xs text-muted-foreground" aria-label={`Checks overall: ${overallLabel(checks.overall, freshness)}`}>
+          {overallLabel(checks.overall, freshness)}
         </span>
       </div>
-      <CollapsibleContent>
-        <p className="pb-2 text-xs text-muted-foreground">
-          {freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}
-        </p>
-        {grouped.length === 0 ? <p className="pb-3 text-sm text-muted-foreground">No check details are available.</p> : (
-          <ul className="border-t py-2" aria-label="Pull request checks">
-            {rows.map((check) => <CheckRow key={check.key} check={check} {...(pullRequest === undefined ? {} : { pullRequest })} />)}
-          </ul>
-        )}
-        {!showPassing && passing.length > 0 ? (
-          <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(true)}>
-            Show {passing.length} passing check{passing.length === 1 ? "" : "s"}
-          </Button>
-        ) : null}
-        {showPassing && passing.length > 5 ? (
-          <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(false)}>
-            Hide {passing.length} passing checks
-          </Button>
-        ) : null}
-      </CollapsibleContent>
+      <CollapsibleContent>{content}</CollapsibleContent>
     </Collapsible>
   );
 }
@@ -112,6 +118,11 @@ function resultFor(check: CheckRunSummary): { readonly kind: "passed" | "failed"
   return { kind: "other", label: "Unknown" };
 }
 
-function overallLabel(overall: CheckSummary["overall"]): string {
+function overallLabel(
+  overall: CheckSummary["overall"],
+  freshness?: "fresh" | "stale" | "unavailable" | "not_refreshed",
+): string {
+  if (freshness === "not_refreshed") return "Not refreshed";
+  if (freshness === "unavailable") return "Unavailable";
   return overall === "passing" ? "Passing" : overall === "failing" ? "Failing" : overall === "pending" ? "In progress" : overall === "skipped" ? "Skipped" : "Unknown";
 }

@@ -46,10 +46,19 @@ export class ReviewWorkbenchController {
       if (baseSessionId._tag === "err") return err({ reason: "invalid_input" });
       mode = { kind: "incremental", baseSessionId: baseSessionId.value };
     }
+    const previousSessionRaw = readObjectField(input, "previousSessionId");
+    const parsedPreviousSessionId = previousSessionRaw === undefined
+      ? undefined
+      : parseReviewSessionId(previousSessionRaw);
+    if (parsedPreviousSessionId?._tag === "err") return err({ reason: "invalid_input" });
+    const previousSessionId = parsedPreviousSessionId?._tag === "ok"
+      ? parsedPreviousSessionId.value
+      : mode.kind === "incremental" ? mode.baseSessionId : undefined;
     const prepared = await this.preparation.prepare({
       profileId: profileId.value,
       pullRequest: { host: host.value, owner: owner.value, repo: repo.value, number: number.value },
       mode,
+      ...(previousSessionId === undefined ? {} : { previousSessionId }),
     });
     if (prepared._tag === "err") return err(mapPreparationFailure(prepared.error));
     const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
@@ -60,7 +69,7 @@ export class ReviewWorkbenchController {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     if (profileId._tag === "err" || sessionId._tag === "err") return err({ reason: "invalid_input" });
-    const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: sessionId.value });
+    const projected = await this.projection.load({ profileId: profileId.value, sessionId: sessionId.value });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
   }
 
