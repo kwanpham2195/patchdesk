@@ -47,11 +47,11 @@ The header has four jobs:
 When analysis is ready, the primary action is `Run analysis`. When a recovery state applies, its action takes the same position:
 
 - `Reconnect` for an active same-process analysis with no attached view.
-- `Start again` for an interrupted analysis.
-- `Try again` for a retryable failure.
+- `Restart interrupted analysis` when the previous analysis did not finish.
+- `Retry failed analysis` for a retryable failure.
 - `Prepare again` when the stored review data cannot prepare safely.
 
-Patchdesk never shows a recovery action and `Run analysis` as competing primary actions. The stored diff stays readable whenever its snapshot is usable.
+Patchdesk never shows a recovery action and `Run analysis` as competing primary actions. Recovery views always retain `Back to inbox`. They also show `View snapshot` when the stored diff is usable. The stored diff stays readable whenever its snapshot is usable.
 
 ## Walkthrough journey
 
@@ -62,16 +62,18 @@ The walkthrough action reflects its real state:
 - `Generate walkthrough` when no current walkthrough exists.
 - `Generating walkthrough…` while generation runs. Files remain available.
 - `Open walkthrough` when a current walkthrough is ready.
-- `Try again` after generation fails.
+- `Retry generation` after generation fails.
 - `Regenerate walkthrough` when the current walkthrough is stale or the reviewer explicitly wants another one.
+
+Only the action area shows this lifecycle action. Alerts explain the state and the safe next step, but do not repeat the same button.
 
 The generation dialog starts with the enabled default model and reasoning from Review Settings. It resolves an unavailable saved choice to the runtime default or first enabled model. Per-run model and reasoning controls sit under `Advanced options`. Patchdesk keeps the existing enabled-model validation and never accepts a free-text model identifier.
 
 The dialog uses a short explanation: Patchdesk reads the stored patch and does not write to GitHub. It does not repeat the same promise in the title, body, and confirm button.
 
-Opening a walkthrough preserves the selected file and the focused diff location. `Back to files` restores that context.
+Opening a walkthrough preserves the selected file and the focused diff location. `Back to files` restores that context. A stale walkthrough does not show chapters, support content, or annotations from the previous patch. It shows the stale explanation, `Regenerate walkthrough`, and `Back to files` until a current walkthrough is ready.
 
-Walkthrough chapter and support marks are local reading progress. Their labels use reading language, such as `Mark support as read`. They do not use review-batch, GitHub-review, or publish language.
+The walkthrough takeover is a reading surface. It does not show the local review batch, inline-draft composer, add-to-draft controls, review-item edits, or Publish actions. Chapter and support marks are local reading progress only. Their labels use reading language, such as `Mark support as read`. They do not use review-batch, GitHub-review, or publish language.
 
 ## Completed review journey
 
@@ -84,6 +86,8 @@ After analysis completes, the workbench remains Files-first. It groups available
 Findings continue to navigate to their source evidence. A ready walkthrough continues to open from the same snapshot. Local drafts remain visible and durable if a later analysis runs, in line with the snapshot-owned review batch decision.
 
 No GitHub write appears in the ordinary workbench header. Publish actions remain inside their existing confirmation paths and continue to recheck the current GitHub head before writing.
+
+Submit confirmation shows a concise summary of the exact saved batch before the user confirms: the count of new inline comments, replies, and thread-state actions. Merge confirmation names the actual blocking warning beside the acknowledgement checkbox, such as failing required checks or the number of unresolved high-severity findings. It does not use a generic `Merge warnings` label when a concrete warning is available.
 
 ## Renderer boundaries
 
@@ -104,6 +108,7 @@ Each visible lifecycle state has one clear action. Error copy states what remain
 - A failed or interrupted analysis leaves the snapshot readable and keeps walkthrough available when its stored patch is current.
 - A stale GitHub head blocks publish only. It does not block reading, analysis, or walkthrough generation from the stored snapshot.
 - An unavailable model disables walkthrough generation with an actionable explanation. It does not remove Files or analysis controls.
+- A recovery screen never traps the maintainer. It always offers `Back to inbox` and offers `View snapshot` when that snapshot remains readable.
 
 Patchdesk does not expose internal terms such as worktree, attempt ID, session, or runtime in these surfaces.
 
@@ -113,11 +118,11 @@ Renderer and Design coverage must prove:
 
 - A prepared snapshot opens directly in Files with one trust label, one primary analysis or recovery action, secondary walkthrough, and compact checks control.
 - Check status opens PR overview focused on checks. Refresh is available in the overview, not as a persistent workbench-header action.
-- Each recovery state replaces `Run analysis` rather than competing with it.
+- Each recovery state replaces `Run analysis` rather than competing with it. Interrupted and failed analysis use distinct, self-explanatory action labels and retain a safe exit.
 - Walkthrough uses Settings defaults, hides overrides until `Advanced options` opens, and reports an unavailable model safely.
-- Opening and leaving a ready walkthrough preserves the selected file and focused evidence.
-- Reading marks never create, remove, or publish review-batch items.
-- Completed state exposes Understand, Decide, and Publish without moving GitHub writes outside existing confirmations.
+- Opening and leaving a ready walkthrough preserves the selected file and focused evidence. Failed and stale walkthrough states expose only one lifecycle action and do not show stale patch explanations as current content.
+- The walkthrough takeover has no review-batch editor, inline-comment composer, or add-to-draft action. Reading marks never create, remove, or publish review-batch items.
+- Completed state exposes Understand, Decide, and Publish without moving GitHub writes outside existing confirmations. Submit and merge confirmation display concrete action and warning summaries before confirmation.
 - Existing explicit confirmation, fresh-head checks, snapshot ownership, model-item replacement, and human-item preservation continue to pass.
 
 Design and browser scenarios cover prepared, running, failed, walkthrough-ready, walkthrough-failed, and completed states. The final change runs the repository verification order for desktop and renderer work: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`, `pnpm exec playwright test`, `pnpm package:mac`, and `pnpm test:package-smoke`.
@@ -128,5 +133,7 @@ Design and browser scenarios cover prepared, running, failed, walkthrough-ready,
 - A prepared snapshot opens to Files and never requires an intermediate choice screen.
 - The header presents one primary next action and does not repeat refresh or PR overview controls.
 - Walkthrough generation uses valid defaults with optional advanced overrides.
-- Local reading progress cannot be mistaken for a review-batch or GitHub action.
+- Failed and stale walkthrough screens show a single recovery action and no stale content as if it described the current snapshot.
+- Local reading progress cannot be mistaken for a review-batch or GitHub action. The walkthrough takeover cannot create or edit review items.
+- Submit and merge confirmations state the exact actions or warnings that require confirmation.
 - The change preserves every existing read-only and explicit-write safeguard.
