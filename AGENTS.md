@@ -71,9 +71,9 @@ Primary agent does not run these. Spawn a `electron-tester` subagent and hand it
 ## Test layout
 
 - Vitest (Node env): `tests/**/*.test.{ts,tsx}` — covers domain, services, adapters, renderer units, desktop bridge, local API auth, main lifecycle. Alias `@/` → `src/renderer/src/`.
-- Playwright (Chromium, headless): `tests/browser/*.spec.ts` — milestones, accessibility, performance, plus milestone-9 snapshot dir. `tests/browser/design.spec.ts` covers the Patchdesk Design app and runs via `pnpm test:design` (which builds `release/design/` first and serves it locally).
+- Playwright (Chromium, headless): `tests/browser/*.spec.ts` — protected loopback workflow, review workbench, local API workbench, accessibility, performance, and Design. `tests/browser/review-workbench.spec.ts-snapshots/` holds its visual assertion baselines. `tests/browser/design.spec.ts` covers the Patchdesk Design app and runs via `pnpm test:design` (which builds `release/design/` first and serves it locally).
 - Renderer component tests are colocated under `src/renderer/src/` and run with `pnpm test:ui` (filter `dashboard.ui`).
-- Fixtures live under `fixtures/{flue,github,scenarios,screen-states}/` and are loaded by `tests/setup.ts`.
+- Fixtures live under `fixtures/{flue,github}/`. Keep a fixture only when an active test consumes it through a production seam.
 
 ## Conventions
 

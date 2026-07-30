@@ -96,7 +96,7 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
         },
         {
           id: "h4",
-          path: "tests/browser/milestone-9.spec.ts" as never,
+          path: "tests/browser/review-workbench.spec.ts" as never,
           header: "@@ -1 +1 @@",
           raw: "@@ -1 +1 @@\n-old\n+new",
           oldStart: 1,

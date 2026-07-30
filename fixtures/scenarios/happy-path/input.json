@@ -1,4 +1,0 @@
-{
-  "fixture": "happy-path",
-  "expected": "review completes from a clean open pull request"
-}

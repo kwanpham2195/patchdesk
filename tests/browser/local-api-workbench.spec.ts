@@ -30,7 +30,6 @@ test("normal dashboard direct entry opens the review workbench", async ({ page }
     await expect(diff).toBeVisible();
     expect((await diff.boundingBox())?.width).toBeGreaterThan(900);
     await expect(page.getByRole("button", { name: "Run review" })).toBeVisible();
-    await page.screenshot({ path: "test-results/milestone-12-normal-open.png", fullPage: true });
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -57,7 +56,7 @@ test("normal dashboard opens a seeded completed workbench and writes one confirm
     const confirmation = page.getByRole("alertdialog", { name: "Apply this review batch to GitHub?" });
     await confirmation.getByRole("button", { name: "Create pending review" }).click();
     await expect(confirmation).toBeHidden();
-    await expect(overview.getByText("Pending review 9001 created.")).toBeVisible(); expect(creates).toBe(1); await page.screenshot({ path: "test-results/milestone-12-completed-workbench.png", fullPage: true });
+    await expect(overview.getByText("Pending review 9001 created.")).toBeVisible(); expect(creates).toBe(1);
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 

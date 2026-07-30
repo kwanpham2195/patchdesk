@@ -1,4 +1,0 @@
-{
-  "fixture": "renamed-file-finding",
-  "expected": "finding uses the resolved renamed path"
-}

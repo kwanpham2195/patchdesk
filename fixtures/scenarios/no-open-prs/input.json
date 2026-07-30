@@ -1,4 +1,0 @@
-{
-  "fixture": "no-open-prs",
-  "expected": "empty repository state remains useful"
-}

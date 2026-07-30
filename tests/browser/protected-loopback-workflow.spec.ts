@@ -140,10 +140,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
     page.getByRole("dialog", { name: "Switch workspace profile" }),
   ).toBeHidden();
 
-  await page.screenshot({
-    path: "test-results/milestone-5-browser.png",
-    fullPage: true,
-  });
 });
 
 async function serveRenderer(): Promise<Server> {

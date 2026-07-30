@@ -1,4 +1,0 @@
-{
-  "fixture": "merge-method-unsupported",
-  "expected": "unsupported merge method blocks the final action"
-}

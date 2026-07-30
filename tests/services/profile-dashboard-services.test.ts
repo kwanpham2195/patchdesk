@@ -100,7 +100,7 @@ function summary(
   };
 }
 
-describe("Milestone 5 profile and direct-entry services", () => {
+describe("profile settings and direct-entry services", () => {
   it("persists editable owner filters and rule paths while preserving watched repositories", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-editor-`);
     try {
@@ -347,7 +347,7 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
   }
 }
 
-describe("Milestone 5 dashboard service", () => {
+describe("dashboard service", () => {
   it("sorts review-requested, assigned, recent, then draft/authored PRs and keeps missing paths degraded", async () => {
     const adapter = new FakeGitHubAdapter({
       listOpenPullRequests: [

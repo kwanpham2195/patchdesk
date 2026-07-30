@@ -33,10 +33,6 @@ test("Design index lists stable scenario links", async ({ page }) => {
     await expect(
       page.getByRole("link", { name: /Settings \(recovery\)/ }),
     ).toBeVisible();
-    await page.screenshot({
-      path: "test-results/patchdesk-design-index.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -57,10 +53,6 @@ test("default inbox scenario renders the shared product surface", async ({
     ).toBeVisible();
     await page.locator('[role="option"]').first().click();
     await expect(page.getByLabel("Review workbench")).toBeVisible();
-    await page.screenshot({
-      path: "test-results/patchdesk-design-inbox.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -78,16 +70,9 @@ test("settings scenario keeps configuration local", async ({ page }) => {
     await expect(page.getByRole("tab", { name: "General" })).toHaveAttribute(
       "data-active",
     );
-    await page.screenshot({
-      path: "test-results/patchdesk-design-settings-general-1064x1478.png",
-    });
     await page.getByRole("tab", { name: "Data & recovery" }).click();
     await expect(page.getByTestId("local-review-data-card")).toBeVisible();
     await expect(page.getByTestId("clear-local-data-button")).toBeVisible();
-    await page.screenshot({
-      path: "test-results/patchdesk-design-settings.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -149,10 +134,6 @@ test("design surfaces remain readable at the approved desktop and light-theme si
       "data-appearance",
       "light",
     );
-    await page.screenshot({
-      path: "test-results/patchdesk-design-inbox-light-1440.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -214,9 +195,6 @@ test("prepared review scenario opens local PR overview from the checks control",
     await expect(
       page.getByRole("dialog", { name: "PR overview" }),
     ).toBeVisible();
-    await page.screenshot({
-      path: "test-results/patchdesk-design-pr-workbench-overview-1611x976.png",
-    });
     await expect(page.getByText("Required").first()).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Refresh GitHub state" }),
@@ -308,7 +286,7 @@ test("permanent design registry contains exactly 22 stable scenarios", () => {
     expect(ids.has(id)).toBe(true);
 });
 
-test("every permanent scenario opens, captures a screenshot, and uses friendly recovery copy", async ({
+test("every permanent scenario opens and uses friendly recovery copy", async ({
   page,
 }) => {
   for (const scenario of designScenarios) {
@@ -328,10 +306,6 @@ test("every permanent scenario opens, captures a screenshot, and uses friendly r
         ),
       );
       await page.waitForTimeout(50);
-      await page.screenshot({
-        path: `test-results/patchdesk-design-${scenario.id}.png`,
-        fullPage: true,
-      });
       const visibleText = await page.locator("body").innerText();
       for (const term of FORBIDDEN_TERMS) {
         expect(
@@ -427,10 +401,6 @@ test("inbox recovery scenarios expose the recovery chip and omit forbidden terms
         `inbox-recovery-states should not show forbidden term "${term}"`,
       ).toBe(false);
     }
-    await page.screenshot({
-      path: "test-results/patchdesk-design-inbox-recovery.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }

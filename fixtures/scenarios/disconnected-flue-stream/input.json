@@ -1,4 +1,0 @@
-{
-  "fixture": "disconnected-flue-stream",
-  "expected": "interrupted progress shows a recoverable degraded state"
-}

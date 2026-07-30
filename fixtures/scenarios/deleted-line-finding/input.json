@@ -1,4 +1,0 @@
-{
-  "fixture": "deleted-line-finding",
-  "expected": "old-side mapping is visible but not unsafe"
-}

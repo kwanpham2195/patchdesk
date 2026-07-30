@@ -1,4 +1,0 @@
-{
-  "fixture": "check-blocked",
-  "expected": "required check prevents merge confirmation"
-}

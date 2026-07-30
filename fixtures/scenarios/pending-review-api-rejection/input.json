@@ -1,4 +1,0 @@
-{
-  "fixture": "pending-review-api-rejection",
-  "expected": "pending review failure keeps the local draft"
-}

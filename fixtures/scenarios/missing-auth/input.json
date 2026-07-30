@@ -1,4 +1,0 @@
-{
-  "fixture": "missing-auth",
-  "expected": "GitHub access is unavailable without local authentication"
-}

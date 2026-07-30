@@ -544,10 +544,6 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toBeVisible();
-    await page.screenshot({
-      path: "test-results/milestone-9-browser.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -574,10 +570,6 @@ test("PR overview preserves HTML content and renders Mermaid descriptions", asyn
     const bounds = await svg.boundingBox();
     expect(bounds?.width ?? 0).toBeGreaterThan(200);
     expect(bounds?.height ?? 0).toBeGreaterThan(20);
-    await page.screenshot({
-      path: "test-results/pr-overview-mermaid-rendered.png",
-      fullPage: true,
-    });
   } finally {
     await close(server);
   }
@@ -643,10 +635,6 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
         .locator(".review-diff-viewport")
         .evaluate((viewport) => viewport.scrollHeight > viewport.clientHeight);
       expect(diffScroll).toBe(true);
-      await page.screenshot({
-        path: `test-results/workbench-completed-${width}.png`,
-        fullPage: true,
-      });
     }
   } finally {
     await close(server);

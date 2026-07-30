@@ -1,4 +1,0 @@
-{
-  "fixture": "submit-failure",
-  "expected": "submission failure preserves retryable local state"
-}

@@ -10,9 +10,7 @@ import {
 } from "../../src/adapters/github/command-runner";
 import {
   createFetchedDiffRefs,
-  FakeGitHubAdapter,
   GitHubAdapter,
-  type GitHubReader,
 } from "../../src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
@@ -20,7 +18,6 @@ import {
   parseGitHubRepoName,
   parseAbsolutePath,
   parseGitSha,
-  parseIsoTimestamp,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
@@ -725,7 +722,7 @@ describe("GitHubAdapter read boundary", () => {
     });
   });
 
-  it("maps missing local GitHub auth to github_auth and provides a fixture fake", async () => {
+  it("maps missing local GitHub auth to github_auth", async () => {
     const adapter = new GitHubAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
@@ -738,34 +735,9 @@ describe("GitHubAdapter read boundary", () => {
         ]),
       ),
     );
-    const fake: GitHubReader = new FakeGitHubAdapter({
-      listOpenPullRequests: [
-        {
-          ref: pr,
-          title: "Fixture PR",
-          author: "fixture",
-          headBranch: "feat/fixture",
-          baseBranch: "sit",
-          headSha: mustParse(parseGitSha(headSha)),
-          isDraft: false,
-          isOpen: true,
-          reviewState: "unknown",
-          mergeability: "unknown",
-          labels: [],
-          updatedAt: mustParse(parseIsoTimestamp("2026-07-16T12:00:00.000Z")),
-        },
-      ],
-    });
-
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
       _tag: "err",
       error: { _tag: "GitHubAuthenticationFailed", operation: "auth_status" },
-    });
-    expect(
-      await fake.listOpenPullRequests({ profile, repo: pr }),
-    ).toMatchObject({
-      _tag: "ok",
-      value: [{ title: "Fixture PR" }],
     });
   });
 });
