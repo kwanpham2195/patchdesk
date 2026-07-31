@@ -58,6 +58,7 @@ describe("model review runner", () => {
       const changedFiles = [
         "src/allowed.ts",
         "src/outside-link.ts",
+        "src/inside-link/inside.ts",
         "src/directory",
         "src/too-large.ts",
         ...Array.from({ length: 8 }, (_, index) => `src/aggregate-${index}.ts`),
@@ -65,9 +66,12 @@ describe("model review runner", () => {
       ];
       await mkdir(join(root, "src"));
       await mkdir(join(root, "src", "directory"));
+      await mkdir(join(root, "src", "real"));
       await writeFile(join(root, "src", "allowed.ts"), "export const allowed = true;\n", "utf8");
       await writeFile(join(outsideRoot, "protected.ts"), "OUTSIDE_PROTECTED_CONTENT\n", "utf8");
       await symlink(join(outsideRoot, "protected.ts"), join(root, "src", "outside-link.ts"));
+      await writeFile(join(root, "src", "real", "inside.ts"), "ANCESTOR_SYMLINK_PROTECTED_CONTENT\n", "utf8");
+      await symlink(join(root, "src", "real"), join(root, "src", "inside-link"));
       await writeFile(join(root, "src", "too-large.ts"), `OVERSIZED_PROTECTED_CONTENT${"x".repeat(512 * 1024)}\n`, "utf8");
       await Promise.all(Array.from({ length: 8 }, (_, index) => writeFile(join(root, "src", `aggregate-${index}.ts`), "a".repeat(512 * 1024), "utf8")));
       await writeFile(join(root, "src", "aggregate-over-limit.ts"), "AGGREGATE_PROTECTED_CONTENT\n", "utf8");
@@ -100,10 +104,12 @@ describe("model review runner", () => {
 
       expect(inspected.get("src/allowed.ts")).toEqual({ content: "export const allowed = true;" });
       expect(inspected.get("src/outside-link.ts")).toEqual({ denied: true });
+      expect(inspected.get("src/inside-link/inside.ts")).toEqual({ denied: true });
       expect(inspected.get("src/directory")).toEqual({ denied: true });
       expect(inspected.get("src/too-large.ts")).toEqual({ denied: true });
       expect(inspected.get("src/aggregate-over-limit.ts")).toEqual({ denied: true });
       expect(JSON.stringify([...inspected.values()])).not.toContain("OUTSIDE_PROTECTED_CONTENT");
+      expect(JSON.stringify([...inspected.values()])).not.toContain("ANCESTOR_SYMLINK_PROTECTED_CONTENT");
       expect(JSON.stringify([...inspected.values()])).not.toContain("OVERSIZED_PROTECTED_CONTENT");
       expect(JSON.stringify([...inspected.values()])).not.toContain("AGGREGATE_PROTECTED_CONTENT");
     } finally {

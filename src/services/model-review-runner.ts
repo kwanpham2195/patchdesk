@@ -86,19 +86,20 @@ async function snapshotChangedFiles(
     const candidate = resolve(root, path);
     if (!isContainedPath(root, candidate)) continue;
     try {
-      const entry = await lstat(candidate);
-      if (!entry.isFile() || entry.isSymbolicLink()) continue;
-      const resolved = await realpath(candidate);
-      if (!isContainedPath(root, resolved)) continue;
-      const handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const initial = await resolveSafeSnapshotPath(root, path);
+      if (initial === undefined) continue;
+      const handle = await open(initial.resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
         const file = await handle.stat();
         if (!file.isFile() || file.size > MAX_SNAPSHOT_FILE_BYTES) continue;
         if (snapshotBytes + file.size > MAX_SNAPSHOT_TOTAL_BYTES) break;
+        const afterOpen = await resolveSafeSnapshotPath(root, path);
+        if (afterOpen === undefined || !isSameFile(file, afterOpen)) continue;
         const contents = Buffer.alloc(file.size);
         const { bytesRead } = await handle.read(contents, 0, file.size, 0);
         const unchanged = await handle.stat();
-        if (bytesRead !== file.size || unchanged.size !== file.size || unchanged.mtimeMs !== file.mtimeMs) continue;
+        const afterRead = await resolveSafeSnapshotPath(root, path);
+        if (bytesRead !== file.size || unchanged.size !== file.size || unchanged.mtimeMs !== file.mtimeMs || afterRead === undefined || !isSameFile(file, afterRead)) continue;
         snapshots[path] = contents.toString("utf8");
         snapshotBytes += file.size;
       } finally {
@@ -118,6 +119,25 @@ function isSafeRelativePath(path: string): boolean {
 function isContainedPath(root: string, candidate: string): boolean {
   const relativePath = relative(root, candidate);
   return relativePath.length > 0 && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
+
+async function resolveSafeSnapshotPath(root: string, path: string): Promise<{ readonly resolved: string; readonly dev: number; readonly ino: number } | undefined> {
+  let candidate = root;
+  const segments = path.split(sep);
+  for (const [index, segment] of segments.entries()) {
+    candidate = resolve(candidate, segment);
+    const entry = await lstat(candidate);
+    if (entry.isSymbolicLink() || (index < segments.length - 1 && !entry.isDirectory()) || (index === segments.length - 1 && !entry.isFile())) return undefined;
+  }
+  const resolved = await realpath(candidate);
+  if (!isContainedPath(root, resolved)) return undefined;
+  const entry = await lstat(resolved);
+  if (entry.isSymbolicLink() || !entry.isFile()) return undefined;
+  return { resolved, dev: entry.dev, ino: entry.ino };
+}
+
+function isSameFile(file: { readonly dev: number; readonly ino: number }, candidate: { readonly dev: number; readonly ino: number }): boolean {
+  return file.dev === candidate.dev && file.ino === candidate.ino;
 }
 
 function changedFiles(context: string): ReadonlyArray<string> {

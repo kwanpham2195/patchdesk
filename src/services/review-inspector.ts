@@ -1,5 +1,5 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 
 import { err, ok, type Result } from "../domain/result";
 
@@ -13,7 +13,9 @@ export class ReviewInspector {
   private readonly allowedReadCommands: Array<ReadonlyArray<string>> = [];
   constructor(private readonly input: InspectorInput) {}
 
-  async listChangedFiles(): Promise<Result<ReadonlyArray<string>, never>> { return ok(this.input.changedFiles); }
+  async listChangedFiles(): Promise<Result<ReadonlyArray<string>, never>> {
+    return ok(this.input.fileSnapshots === undefined ? this.input.changedFiles : Object.keys(this.input.fileSnapshots));
+  }
 
   async searchFiles(query: string): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
     if (!safeQuery(query)) return err({ _tag: "InspectorDenied" });
@@ -61,9 +63,9 @@ export class ReviewInspector {
     try {
       const root = await realpath(this.input.worktreePath);
       const candidate = resolve(root, path);
-      if (relative(root, candidate).startsWith("..")) return err({ _tag: "InspectorDenied" });
+      if (!isContainedPath(root, candidate)) return err({ _tag: "InspectorDenied" });
       const resolved = await realpath(candidate);
-      if (relative(root, resolved).startsWith("..")) return err({ _tag: "InspectorDenied" });
+      if (!isContainedPath(root, resolved)) return err({ _tag: "InspectorDenied" });
       if (!this.inspectedPaths.includes(path)) { this.inspectedPaths.push(path); await this.persistDebug(); }
       return ok(await readFile(resolved, "utf8"));
     } catch { return err({ _tag: "InspectorDenied" }); }
@@ -77,5 +79,9 @@ export class ReviewInspector {
   }
 }
 
-function isRelative(path: string): boolean { return path.length > 0 && !path.startsWith("/") && !path.includes("\0") && !path.split("/").includes(".."); }
+function isRelative(path: string): boolean { return path.length > 0 && !isAbsolute(path) && !win32.isAbsolute(path) && !path.includes("\0") && !path.split(/[\\/]/).includes(".."); }
+function isContainedPath(root: string, candidate: string): boolean {
+  const relativePath = relative(root, candidate);
+  return relativePath.length > 0 && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
 function safeQuery(query: string): boolean { return query.length > 0 && query.length <= 200 && !query.includes("\0"); }

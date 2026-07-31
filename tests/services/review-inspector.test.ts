@@ -38,4 +38,28 @@ describe("ReviewInspector", () => {
       expect(inspector.debug().inspectedPaths).toEqual([]);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it("lists only authoritative snapshot paths", async () => {
+    const inspector = new ReviewInspector({
+      worktreePath: "/unused",
+      changedFiles: ["src/snapshot.ts", "src/skipped.ts"],
+      fileSnapshots: { "src/snapshot.ts": "prepared content" },
+      gitShow: async () => "commit summary",
+    });
+
+    expect(await inspector.listChangedFiles()).toEqual({ _tag: "ok", value: ["src/snapshot.ts"] });
+  });
+
+  it("denies backslash traversal in the no-snapshot fallback", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "patchdesk-inspector-path-"));
+    const root = join(parent, "worktree");
+    const path = "..\\outside.ts";
+    try {
+      await mkdir(root);
+      await writeFile(process.platform === "win32" ? join(parent, "outside.ts") : join(root, path), "BACKSLASH_PROTECTED_CONTENT\n", "utf8");
+      const inspector = new ReviewInspector({ worktreePath: root, changedFiles: [path], gitShow: async () => "commit summary" });
+
+      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+    } finally { await rm(parent, { recursive: true, force: true }); }
+  });
 });
