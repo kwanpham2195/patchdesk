@@ -1,3 +1,1 @@
 # Codebase
-
-- [[packaged-electron-qa]]
