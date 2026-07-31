@@ -8,7 +8,7 @@ plan fully, honor its STOP conditions, and update the row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Make model file snapshots safe and bounded | P1 | M | — | TODO |
+| 001 | Make model file snapshots safe and bounded | P1 | M | — | DONE |
 | 002 | Validate preparation-journal cleanup paths | P1 | M | — | TODO |
 | 003 | Make walkthrough concurrency coverage deterministic | P1 | S | — | TODO |
 | 004 | Skip terminal sessions during orphan recovery | P1 | S | — | TODO |

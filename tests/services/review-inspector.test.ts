@@ -21,4 +21,21 @@ describe("ReviewInspector", () => {
       expect(await readFile(debugPath, "utf8")).toContain("profileRuleLoadFailures");
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it("denies a missing authoritative snapshot instead of reading live disk", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-inspector-snapshot-"));
+    try {
+      await mkdir(join(root, "src"));
+      await writeFile(join(root, "src", "live.ts"), "LIVE_DISK_CONTENT\n", "utf8");
+      const inspector = new ReviewInspector({
+        worktreePath: root,
+        changedFiles: ["src/live.ts"],
+        fileSnapshots: {},
+        gitShow: async () => "commit summary",
+      });
+
+      expect(await inspector.readFileRange("src/live.ts", 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+      expect(inspector.debug().inspectedPaths).toEqual([]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });

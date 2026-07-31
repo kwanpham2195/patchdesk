@@ -50,8 +50,11 @@ export class ReviewInspector {
 
   private async readWhole(path: string): Promise<Result<string, InspectorDenied>> {
     if (!isRelative(path)) return err({ _tag: "InspectorDenied" });
-    const snapshot = this.input.fileSnapshots?.[path];
-    if (snapshot !== undefined) {
+    const { fileSnapshots } = this.input;
+    if (fileSnapshots !== undefined) {
+      if (!Object.hasOwn(fileSnapshots, path)) return err({ _tag: "InspectorDenied" });
+      const snapshot = fileSnapshots[path];
+      if (snapshot === undefined) return err({ _tag: "InspectorDenied" });
       if (!this.inspectedPaths.includes(path)) this.inspectedPaths.push(path);
       return ok(snapshot);
     }

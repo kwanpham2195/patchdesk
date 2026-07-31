@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,6 +48,67 @@ describe("model review runner", () => {
       expect(inspected).toEqual({ content: "export const review = true;" });
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("denies unsafe and oversized changed-file snapshots to the model", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-snapshots-"));
+    const outsideRoot = await mkdtemp(join(tmpdir(), "patchdesk-model-outside-"));
+    try {
+      const changedFiles = [
+        "src/allowed.ts",
+        "src/outside-link.ts",
+        "src/directory",
+        "src/too-large.ts",
+        ...Array.from({ length: 8 }, (_, index) => `src/aggregate-${index}.ts`),
+        "src/aggregate-over-limit.ts",
+      ];
+      await mkdir(join(root, "src"));
+      await mkdir(join(root, "src", "directory"));
+      await writeFile(join(root, "src", "allowed.ts"), "export const allowed = true;\n", "utf8");
+      await writeFile(join(outsideRoot, "protected.ts"), "OUTSIDE_PROTECTED_CONTENT\n", "utf8");
+      await symlink(join(outsideRoot, "protected.ts"), join(root, "src", "outside-link.ts"));
+      await writeFile(join(root, "src", "too-large.ts"), `OVERSIZED_PROTECTED_CONTENT${"x".repeat(512 * 1024)}\n`, "utf8");
+      await Promise.all(Array.from({ length: 8 }, (_, index) => writeFile(join(root, "src", `aggregate-${index}.ts`), "a".repeat(512 * 1024), "utf8")));
+      await writeFile(join(root, "src", "aggregate-over-limit.ts"), "AGGREGATE_PROTECTED_CONTENT\n", "utf8");
+      const contextPath = join(root, "context.json");
+      const reviewInputPath = join(root, "review-input.md");
+      const patchPath = join(root, "patch.diff");
+      await writeFile(contextPath, JSON.stringify({ changedFiles }), "utf8");
+      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
+      await writeFile(patchPath, "diff --git a/src/allowed.ts b/src/allowed.ts\n", "utf8");
+      const inspected = new Map<string, unknown>();
+      const session: ReviewModelSession = {
+        async prompt(_input, options) {
+          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
+          for (const path of changedFiles) {
+            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
+          }
+          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
+        },
+      };
+
+      await runModelReview({
+        session,
+        worktreePath: root,
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        debugPath: join(root, "debug.json"),
+        gitShow: async () => "commit subject",
+      });
+
+      expect(inspected.get("src/allowed.ts")).toEqual({ content: "export const allowed = true;" });
+      expect(inspected.get("src/outside-link.ts")).toEqual({ denied: true });
+      expect(inspected.get("src/directory")).toEqual({ denied: true });
+      expect(inspected.get("src/too-large.ts")).toEqual({ denied: true });
+      expect(inspected.get("src/aggregate-over-limit.ts")).toEqual({ denied: true });
+      expect(JSON.stringify([...inspected.values()])).not.toContain("OUTSIDE_PROTECTED_CONTENT");
+      expect(JSON.stringify([...inspected.values()])).not.toContain("OVERSIZED_PROTECTED_CONTENT");
+      expect(JSON.stringify([...inspected.values()])).not.toContain("AGGREGATE_PROTECTED_CONTENT");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
     }
   });
 

@@ -1,5 +1,6 @@
-import { readFile, realpath } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { constants } from "node:fs";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { ToolDefinition } from "@flue/runtime";
 import type * as v from "valibot";
@@ -10,6 +11,9 @@ import { parseRevisionComparison, type RevisionComparison, type ReviewScope } fr
 import { ReviewInspector } from "./review-inspector";
 import { createReviewInspectorTools } from "./review-inspector-tools";
 import { composeReviewPrompt } from "./review-rubric";
+
+const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
+const MAX_SNAPSHOT_TOTAL_BYTES = 4 * 1024 * 1024;
 
 export type ReviewModelSession = {
   prompt(text: string, options: {
@@ -76,12 +80,30 @@ async function snapshotChangedFiles(
 ): Promise<Readonly<Record<string, string>>> {
   const root = await realpath(worktreePath);
   const snapshots: Record<string, string> = {};
+  let snapshotBytes = 0;
   for (const path of files) {
     if (!isSafeRelativePath(path)) continue;
     const candidate = resolve(root, path);
-    if (relative(root, candidate).startsWith("..")) continue;
+    if (!isContainedPath(root, candidate)) continue;
     try {
-      snapshots[path] = await readFile(candidate, "utf8");
+      const entry = await lstat(candidate);
+      if (!entry.isFile() || entry.isSymbolicLink()) continue;
+      const resolved = await realpath(candidate);
+      if (!isContainedPath(root, resolved)) continue;
+      const handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const file = await handle.stat();
+        if (!file.isFile() || file.size > MAX_SNAPSHOT_FILE_BYTES) continue;
+        if (snapshotBytes + file.size > MAX_SNAPSHOT_TOTAL_BYTES) break;
+        const contents = Buffer.alloc(file.size);
+        const { bytesRead } = await handle.read(contents, 0, file.size, 0);
+        const unchanged = await handle.stat();
+        if (bytesRead !== file.size || unchanged.size !== file.size || unchanged.mtimeMs !== file.mtimeMs) continue;
+        snapshots[path] = contents.toString("utf8");
+        snapshotBytes += file.size;
+      } finally {
+        await handle.close();
+      }
     } catch {
       // Binary, removed, and unreadable files remain represented by the immutable patch.
     }
@@ -90,7 +112,12 @@ async function snapshotChangedFiles(
 }
 
 function isSafeRelativePath(path: string): boolean {
-  return path.length > 0 && !path.startsWith("/") && !path.includes("\0") && !path.split("/").includes("..");
+  return path.length > 0 && !isAbsolute(path) && !path.includes("\0") && !path.split(sep).includes("..");
+}
+
+function isContainedPath(root: string, candidate: string): boolean {
+  const relativePath = relative(root, candidate);
+  return relativePath.length > 0 && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
 
 function changedFiles(context: string): ReadonlyArray<string> {
