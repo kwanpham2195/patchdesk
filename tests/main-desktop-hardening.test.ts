@@ -146,6 +146,13 @@ describe("desktop hardening", () => {
     expect(contentSecurityPolicy(false)).toContain("ws://localhost:5173");
   });
 
+  it("allows Vite's development bootstrap without weakening packaged scripts", () => {
+    expect(contentSecurityPolicy(false)).toContain(
+      "script-src 'self' 'unsafe-inline'",
+    );
+    expect(contentSecurityPolicy(true)).toContain("script-src 'self';");
+  });
+
   it("restores window geometry onto an available display at a usable size", () => {
     const laptop = { x: 0, y: 0, width: 1440, height: 900 };
     const external = { x: 1440, y: -120, width: 1920, height: 1080 };

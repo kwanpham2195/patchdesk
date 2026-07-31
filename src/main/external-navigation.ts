@@ -95,13 +95,16 @@ export function installWebContentsSecurity(
 
 export function contentSecurityPolicy(packaged: boolean): string {
   const developmentConnect = packaged ? "" : " http://localhost:5173 ws://localhost:5173";
+  const scriptSource = packaged
+    ? "script-src 'self'"
+    : "script-src 'self' 'unsafe-inline'";
   return [
     "default-src 'self'",
     "base-uri 'none'",
     "object-src 'none'",
     "frame-src 'none'",
     "form-action 'none'",
-    "script-src 'self'",
+    scriptSource,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     `connect-src 'self'${developmentConnect}`,
