@@ -5,16 +5,28 @@ import { describe, expect, it } from "vitest";
 
 import { runModelReview, type ReviewModelSession } from "../../src/services/model-review-runner";
 
+function gitBlobReader(blobs: Readonly<Record<string, string>>): (argv: ReadonlyArray<string>) => Promise<string> {
+  return async (argv) => {
+    const object = argv.at(-1);
+    if (object === undefined) return "";
+    const contents = blobs[object];
+    if (contents === undefined) return "";
+    if (argv.includes("-s")) return `${Buffer.byteLength(contents)}\n`;
+    return contents;
+  };
+}
+
 describe("model review runner", () => {
   it("passes the immutable patch, prepared metadata, and only the four inspector tools to a structured model operation", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-review-"));
     try {
+      const headSha = "a".repeat(40);
       await mkdir(join(root, "src"));
       await writeFile(join(root, "src", "review.ts"), "export const review = true;\n", "utf8");
       const contextPath = join(root, "context.json");
       const reviewInputPath = join(root, "review-input.md");
       const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { title: "centraldigital/patchdesk#42", headSha: "abcdef" }, changedFiles: ["src/review.ts"], checks: { overall: "passing" } }), "utf8");
+      await writeFile(contextPath, JSON.stringify({ pr: { title: "centraldigital/patchdesk#42", headSha }, changedFiles: ["src/review.ts"], checks: { overall: "passing" } }), "utf8");
       await writeFile(reviewInputPath, "# PR review input\n\nPR: centraldigital/patchdesk#42\n", "utf8");
       await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n+export const review = true;\n", "utf8");
       let prompt = "";
@@ -37,7 +49,7 @@ describe("model review runner", () => {
         reviewInputPath,
         patchPath,
         debugPath: join(root, "debug.json"),
-        gitShow: async () => "commit subject",
+        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "export const review = true;\n" }),
       });
 
       expect(result).toMatchObject({ verdict: "comment", findings: [] });
@@ -51,10 +63,47 @@ describe("model review runner", () => {
     }
   });
 
+  it("snapshots immutable Git blobs instead of following worktree paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-git-snapshot-"));
+    try {
+      const headSha = "b".repeat(40);
+      await mkdir(join(root, "src"));
+      await writeFile(join(root, "src", "review.ts"), "WORKTREE_PROTECTED_CONTENT\n", "utf8");
+      const contextPath = join(root, "context.json");
+      const reviewInputPath = join(root, "review-input.md");
+      const patchPath = join(root, "patch.diff");
+      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles: ["src/review.ts"] }), "utf8");
+      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
+      await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n", "utf8");
+      let inspected: unknown;
+      const session: ReviewModelSession = {
+        async prompt(_input, options) {
+          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
+          inspected = await readTool?.run({ input: { path: "src/review.ts", startLine: 1, endLine: 1 } });
+          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
+        },
+      };
+
+      await runModelReview({
+        session,
+        worktreePath: root,
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        debugPath: join(root, "debug.json"),
+        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "IMMUTABLE_GIT_SNAPSHOT\n" }),
+      });
+
+      expect(inspected).toEqual({ content: "IMMUTABLE_GIT_SNAPSHOT" });
+      expect(JSON.stringify(inspected)).not.toContain("WORKTREE_PROTECTED_CONTENT");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("denies unsafe and oversized changed-file snapshots to the model", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-snapshots-"));
     const outsideRoot = await mkdtemp(join(tmpdir(), "patchdesk-model-outside-"));
     try {
+      const headSha = "c".repeat(40);
       const changedFiles = [
         "src/allowed.ts",
         "src/outside-link.ts",
@@ -78,7 +127,7 @@ describe("model review runner", () => {
       const contextPath = join(root, "context.json");
       const reviewInputPath = join(root, "review-input.md");
       const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ changedFiles }), "utf8");
+      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
       await writeFile(reviewInputPath, "# PR review input\n", "utf8");
       await writeFile(patchPath, "diff --git a/src/allowed.ts b/src/allowed.ts\n", "utf8");
       const inspected = new Map<string, unknown>();
@@ -99,7 +148,12 @@ describe("model review runner", () => {
         reviewInputPath,
         patchPath,
         debugPath: join(root, "debug.json"),
-        gitShow: async () => "commit subject",
+        gitShow: gitBlobReader({
+          [`${headSha}:src/allowed.ts`]: "export const allowed = true;\n",
+          ...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`${headSha}:src/aggregate-${index}.ts`, "a".repeat(512 * 1024)])),
+          [`${headSha}:src/too-large.ts`]: `OVERSIZED_PROTECTED_CONTENT${"x".repeat(512 * 1024)}\n`,
+          [`${headSha}:src/aggregate-over-limit.ts`]: "AGGREGATE_PROTECTED_CONTENT\n",
+        }),
       });
 
       expect(inspected.get("src/allowed.ts")).toEqual({ content: "export const allowed = true;" });
@@ -151,7 +205,7 @@ describe("model review runner", () => {
         patchPath: fullPatchPath,
         debugPath: join(root, "debug.json"),
         scope: { kind: "incremental", baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000" as never, baseHeadSha: "1".repeat(40) as never, headSha: "2".repeat(40) as never, comparisonPatchPath: comparisonPatchPath as never, comparisonMetadataPath: comparisonMetadataPath as never, previousFindingsPath: previousFindingsPath as never, lifecyclePath: join(root, "lifecycle.json") as never },
-        gitShow: async () => "",
+        gitShow: gitBlobReader({ [`${"2".repeat(40)}:src/changed.ts`]: "export const changed = true;\n" }),
       });
 
       expect(prompt).toContain("Prepared incremental patch:");

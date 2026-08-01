@@ -79,9 +79,10 @@ export class ReviewInspector {
   }
 }
 
-function isRelative(path: string): boolean { return path.length > 0 && !isAbsolute(path) && !win32.isAbsolute(path) && !path.includes("\0") && !path.split(/[\\/]/).includes(".."); }
+function isRelative(path: string): boolean { return path.length > 0 && !isAbsolute(path) && !win32.isAbsolute(path) && !isWindowsDriveRelative(path) && !path.includes("\0") && !path.split(/[\\/]/).includes(".."); }
 function isContainedPath(root: string, candidate: string): boolean {
   const relativePath = relative(root, candidate);
   return relativePath.length > 0 && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
+function isWindowsDriveRelative(path: string): boolean { return /^[a-z]:/i.test(path); }
 function safeQuery(query: string): boolean { return query.length > 0 && query.length <= 200 && !query.includes("\0"); }

@@ -1,6 +1,5 @@
-import { constants } from "node:fs";
-import { lstat, open, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, win32 } from "node:path";
 
 import type { ToolDefinition } from "@flue/runtime";
 import type * as v from "valibot";
@@ -14,6 +13,7 @@ import { composeReviewPrompt } from "./review-rubric";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
 const MAX_SNAPSHOT_TOTAL_BYTES = 4 * 1024 * 1024;
+const GIT_SHA = /^[a-f0-9]{40,64}$/;
 
 export type ReviewModelSession = {
   prompt(text: string, options: {
@@ -52,7 +52,7 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
   const files = incremental === undefined
     ? changedFiles(context)
     : [...new Set([...incremental.comparison.files.map((file) => file.path), ...incremental.priorFindings.flatMap((finding) => finding.file === undefined ? [] : [finding.file])])];
-  const fileSnapshots = await snapshotChangedFiles(input.worktreePath, files);
+  const fileSnapshots = await snapshotChangedFiles(input.worktreePath, reviewHeadSha(context, input.scope), files, input.gitShow);
   const inspector = new ReviewInspector({
     worktreePath: input.worktreePath,
     changedFiles: files,
@@ -76,69 +76,55 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
 
 async function snapshotChangedFiles(
   worktreePath: string,
+  headSha: string | undefined,
   files: ReadonlyArray<string>,
+  gitShow: (argv: ReadonlyArray<string>) => Promise<string>,
 ): Promise<Readonly<Record<string, string>>> {
-  const root = await realpath(worktreePath);
   const snapshots: Record<string, string> = {};
+  if (headSha === undefined) return snapshots;
   let snapshotBytes = 0;
   for (const path of files) {
     if (!isSafeRelativePath(path)) continue;
-    const candidate = resolve(root, path);
-    if (!isContainedPath(root, candidate)) continue;
     try {
-      const initial = await resolveSafeSnapshotPath(root, path);
-      if (initial === undefined) continue;
-      const handle = await open(initial.resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const file = await handle.stat();
-        if (!file.isFile() || file.size > MAX_SNAPSHOT_FILE_BYTES) continue;
-        if (snapshotBytes + file.size > MAX_SNAPSHOT_TOTAL_BYTES) break;
-        const afterOpen = await resolveSafeSnapshotPath(root, path);
-        if (afterOpen === undefined || !isSameFile(file, afterOpen)) continue;
-        const contents = Buffer.alloc(file.size);
-        const { bytesRead } = await handle.read(contents, 0, file.size, 0);
-        const unchanged = await handle.stat();
-        const afterRead = await resolveSafeSnapshotPath(root, path);
-        if (bytesRead !== file.size || unchanged.size !== file.size || unchanged.mtimeMs !== file.mtimeMs || afterRead === undefined || !isSameFile(file, afterRead)) continue;
-        snapshots[path] = contents.toString("utf8");
-        snapshotBytes += file.size;
-      } finally {
-        await handle.close();
-      }
+      const object = `${headSha}:${path}`;
+      const fileBytes = parseBlobByteLength(await gitShow(["git", "-C", worktreePath, "cat-file", "-s", object]));
+      if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES) continue;
+      if (snapshotBytes + fileBytes > MAX_SNAPSHOT_TOTAL_BYTES) break;
+      const contents = await gitShow(["git", "-C", worktreePath, "cat-file", "blob", object]);
+      if (Buffer.byteLength(contents, "utf8") !== fileBytes) continue;
+      snapshots[path] = contents;
+      snapshotBytes += fileBytes;
     } catch {
-      // Binary, removed, and unreadable files remain represented by the immutable patch.
+      // Missing, binary, and unreadable blobs remain represented by the immutable patch.
     }
   }
   return snapshots;
 }
 
 function isSafeRelativePath(path: string): boolean {
-  return path.length > 0 && !isAbsolute(path) && !path.includes("\0") && !path.split(sep).includes("..");
+  return path.length > 0 && !isAbsolute(path) && !win32.isAbsolute(path) && !isWindowsDriveRelative(path) && !path.includes("\0") && !path.split(/[\\/]/).includes("..");
 }
 
-function isContainedPath(root: string, candidate: string): boolean {
-  const relativePath = relative(root, candidate);
-  return relativePath.length > 0 && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+function parseBlobByteLength(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(trimmed)) return undefined;
+  const bytes = Number(trimmed);
+  return Number.isSafeInteger(bytes) ? bytes : undefined;
 }
 
-async function resolveSafeSnapshotPath(root: string, path: string): Promise<{ readonly resolved: string; readonly dev: number; readonly ino: number } | undefined> {
-  let candidate = root;
-  const segments = path.split(sep);
-  for (const [index, segment] of segments.entries()) {
-    candidate = resolve(candidate, segment);
-    const entry = await lstat(candidate);
-    if (entry.isSymbolicLink() || (index < segments.length - 1 && !entry.isDirectory()) || (index === segments.length - 1 && !entry.isFile())) return undefined;
+function reviewHeadSha(context: string, scope: ReviewScope | undefined): string | undefined {
+  if (scope?.kind === "incremental") return GIT_SHA.test(scope.headSha) ? scope.headSha : undefined;
+  try {
+    const parsed: unknown = JSON.parse(context);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const headSha = (parsed as { readonly pr?: { readonly headSha?: unknown } }).pr?.headSha;
+    return typeof headSha === "string" && GIT_SHA.test(headSha) ? headSha : undefined;
+  } catch {
+    return undefined;
   }
-  const resolved = await realpath(candidate);
-  if (!isContainedPath(root, resolved)) return undefined;
-  const entry = await lstat(resolved);
-  if (entry.isSymbolicLink() || !entry.isFile()) return undefined;
-  return { resolved, dev: entry.dev, ino: entry.ino };
 }
 
-function isSameFile(file: { readonly dev: number; readonly ino: number }, candidate: { readonly dev: number; readonly ino: number }): boolean {
-  return file.dev === candidate.dev && file.ino === candidate.ino;
-}
+function isWindowsDriveRelative(path: string): boolean { return /^[a-z]:/i.test(path); }
 
 function changedFiles(context: string): ReadonlyArray<string> {
   try {

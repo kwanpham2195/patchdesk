@@ -62,4 +62,15 @@ describe("ReviewInspector", () => {
       expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
     } finally { await rm(parent, { recursive: true, force: true }); }
   });
+
+  it("denies drive-relative paths in the no-snapshot fallback", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-inspector-drive-"));
+    const path = "C:drive-relative.ts";
+    try {
+      if (process.platform !== "win32") await writeFile(join(root, path), "DRIVE_RELATIVE_PROTECTED_CONTENT\n", "utf8");
+      const inspector = new ReviewInspector({ worktreePath: root, changedFiles: [path], gitShow: async () => "commit summary" });
+
+      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });
