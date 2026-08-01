@@ -87,10 +87,15 @@ async function snapshotChangedFiles(
     if (!isSafeRelativePath(path)) continue;
     try {
       const object = `${headSha}:${path}`;
-      const fileBytes = parseBlobByteLength(await gitShow(["git", "-C", worktreePath, "cat-file", "-s", object]));
+      const git = ["git", "--no-replace-objects", "-C", worktreePath] as const;
+      const mode = await gitShow([...git, "ls-tree", "--format=%(objectmode)", headSha, "--", path]);
+      if (!isRegularTreeEntry(mode)) continue;
+      const type = await gitShow([...git, "cat-file", "-t", object]);
+      if (type.trim() !== "blob") continue;
+      const fileBytes = parseBlobByteLength(await gitShow([...git, "cat-file", "-s", object]));
       if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES) continue;
       if (snapshotBytes + fileBytes > MAX_SNAPSHOT_TOTAL_BYTES) break;
-      const contents = await gitShow(["git", "-C", worktreePath, "cat-file", "blob", object]);
+      const contents = await gitShow([...git, "cat-file", "blob", object]);
       if (Buffer.byteLength(contents, "utf8") !== fileBytes) continue;
       snapshots[path] = contents;
       snapshotBytes += fileBytes;
@@ -102,7 +107,12 @@ async function snapshotChangedFiles(
 }
 
 function isSafeRelativePath(path: string): boolean {
-  return path.length > 0 && !isAbsolute(path) && !win32.isAbsolute(path) && !isWindowsDriveRelative(path) && !path.includes("\0") && !path.split(/[\\/]/).includes("..");
+  return path.length > 0 && path !== "." && !path.startsWith("./") && !path.startsWith(".\\") && !isAbsolute(path) && !win32.isAbsolute(path) && !isWindowsDriveRelative(path) && !path.includes("\0") && !path.split(/[\\/]/).includes("..");
+}
+
+function isRegularTreeEntry(raw: string): boolean {
+  const mode = raw.trim();
+  return mode === "100644" || mode === "100755";
 }
 
 function parseBlobByteLength(raw: string): number | undefined {

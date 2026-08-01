@@ -5,14 +5,30 @@ import { describe, expect, it } from "vitest";
 
 import { runModelReview, type ReviewModelSession } from "../../src/services/model-review-runner";
 
-function gitBlobReader(blobs: Readonly<Record<string, string>>): (argv: ReadonlyArray<string>) => Promise<string> {
+type GitObjectFixture = string | {
+  readonly contents: string;
+  readonly mode?: string;
+  readonly type?: string;
+};
+
+function gitBlobReader(
+  blobs: Readonly<Record<string, GitObjectFixture>>,
+  commands?: Array<ReadonlyArray<string>>,
+): (argv: ReadonlyArray<string>) => Promise<string> {
   return async (argv) => {
-    const object = argv.at(-1);
+    commands?.push(argv);
+    const lsTreeIndex = argv.indexOf("ls-tree");
+    const object = lsTreeIndex === -1
+      ? argv.at(-1)
+      : `${argv[lsTreeIndex + 2]}:${argv.at(-1)}`;
     if (object === undefined) return "";
-    const contents = blobs[object];
-    if (contents === undefined) return "";
-    if (argv.includes("-s")) return `${Buffer.byteLength(contents)}\n`;
-    return contents;
+    const fixture = blobs[object];
+    if (fixture === undefined) return "";
+    const entry = typeof fixture === "string" ? { contents: fixture } : fixture;
+    if (argv.includes("ls-tree")) return `${entry.mode ?? "100644"}\n`;
+    if (argv.includes("-t")) return `${entry.type ?? "blob"}\n`;
+    if (argv.includes("-s")) return `${Buffer.byteLength(entry.contents)}\n`;
+    return entry.contents;
   };
 }
 
@@ -76,6 +92,7 @@ describe("model review runner", () => {
       await writeFile(reviewInputPath, "# PR review input\n", "utf8");
       await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n", "utf8");
       let inspected: unknown;
+      const commands: Array<ReadonlyArray<string>> = [];
       const session: ReviewModelSession = {
         async prompt(_input, options) {
           const readTool = options.tools.find((tool) => tool.name === "read_file_range");
@@ -91,11 +108,102 @@ describe("model review runner", () => {
         reviewInputPath,
         patchPath,
         debugPath: join(root, "debug.json"),
-        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "IMMUTABLE_GIT_SNAPSHOT\n" }),
+        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "IMMUTABLE_GIT_SNAPSHOT\n" }, commands),
       });
 
       expect(inspected).toEqual({ content: "IMMUTABLE_GIT_SNAPSHOT" });
       expect(JSON.stringify(inspected)).not.toContain("WORKTREE_PROTECTED_CONTENT");
+      expect(commands).not.toEqual([]);
+      expect(commands.every((argv) => argv.includes("--no-replace-objects"))).toBe(true);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("denies committed symlink and non-regular tree entries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-git-entry-"));
+    try {
+      const headSha = "d".repeat(40);
+      const changedFiles = ["src/regular.ts", "src/link.ts", "src/directory"];
+      const contextPath = join(root, "context.json");
+      const reviewInputPath = join(root, "review-input.md");
+      const patchPath = join(root, "patch.diff");
+      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
+      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
+      await writeFile(patchPath, "diff --git a/src/regular.ts b/src/regular.ts\n", "utf8");
+      const inspected = new Map<string, unknown>();
+      const session: ReviewModelSession = {
+        async prompt(_input, options) {
+          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
+          for (const path of changedFiles) {
+            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
+          }
+          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
+        },
+      };
+
+      await runModelReview({
+        session,
+        worktreePath: root,
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        debugPath: join(root, "debug.json"),
+        gitShow: gitBlobReader({
+          [`${headSha}:src/regular.ts`]: "export const regular = true;\n",
+          [`${headSha}:src/link.ts`]: { contents: "COMMITTED_SYMLINK_TARGET\n", mode: "120000" },
+          [`${headSha}:src/directory`]: { contents: "NON_REGULAR_TREE_CONTENT\n", mode: "040000", type: "tree" },
+        }),
+      });
+
+      expect(inspected.get("src/regular.ts")).toEqual({ content: "export const regular = true;" });
+      expect(inspected.get("src/link.ts")).toEqual({ denied: true });
+      expect(inspected.get("src/directory")).toEqual({ denied: true });
+      expect(JSON.stringify([...inspected.values()])).not.toContain("COMMITTED_SYMLINK_TARGET");
+      expect(JSON.stringify([...inspected.values()])).not.toContain("NON_REGULAR_TREE_CONTENT");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("denies root-like paths before forming Git objects", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-git-root-"));
+    try {
+      const headSha = "e".repeat(40);
+      const changedFiles = [".", "./review.ts", "src/review.ts"];
+      const contextPath = join(root, "context.json");
+      const reviewInputPath = join(root, "review-input.md");
+      const patchPath = join(root, "patch.diff");
+      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
+      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
+      await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n", "utf8");
+      const inspected = new Map<string, unknown>();
+      const commands: Array<ReadonlyArray<string>> = [];
+      const session: ReviewModelSession = {
+        async prompt(_input, options) {
+          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
+          for (const path of changedFiles) {
+            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
+          }
+          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
+        },
+      };
+
+      await runModelReview({
+        session,
+        worktreePath: root,
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        debugPath: join(root, "debug.json"),
+        gitShow: gitBlobReader({
+          [`${headSha}:.`]: "ROOT_PROTECTED_CONTENT\n",
+          [`${headSha}:./review.ts`]: "DOT_SLASH_PROTECTED_CONTENT\n",
+          [`${headSha}:src/review.ts`]: "export const review = true;\n",
+        }, commands),
+      });
+
+      expect(inspected.get(".")).toEqual({ denied: true });
+      expect(inspected.get("./review.ts")).toEqual({ denied: true });
+      expect(inspected.get("src/review.ts")).toEqual({ content: "export const review = true;" });
+      expect(commands.flat()).not.toContain(`${headSha}:.`);
+      expect(commands.flat()).not.toContain(`${headSha}:./review.ts`);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
