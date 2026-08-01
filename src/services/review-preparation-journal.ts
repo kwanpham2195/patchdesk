@@ -1,5 +1,5 @@
-import { access, mkdir, readdir, rename, rm, rmdir, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { access, lstat, mkdir, readdir, realpath, rename, rm, rmdir, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
@@ -26,6 +26,15 @@ export type ReviewPreparationOperation = {
 
 type JournalWorktree = { readonly path: string; readonly repositoryPath: string };
 
+type ValidatedDeletionSet = {
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
+  readonly journalFile: string;
+  readonly stagingRoot: string;
+  readonly targets: ReadonlyArray<string>;
+  readonly worktree?: JournalWorktree;
+};
+
 /**
  * Durable record of one in-flight Session preparation. It stays in the main
  * process: it is never projected to the renderer and never logged. The
@@ -50,6 +59,7 @@ type JournalContent = {
  */
 export class ReviewPreparationJournal {
   private constructor(
+    private readonly paths: PatchdeskPaths,
     private readonly filePath: string,
     private content: JournalContent,
   ) {}
@@ -62,7 +72,7 @@ export class ReviewPreparationJournal {
   ): Promise<Result<ReviewPreparationJournal, PreparationJournalFailure>> {
     const sessionDirectory = paths.sessionDirectory(profileId, sessionId);
     const stagingRoot = join(sessionDirectory, ".staging");
-    const journal = new ReviewPreparationJournal(journalFile(paths, profileId, sessionId), {
+    const journal = new ReviewPreparationJournal(paths, journalFile(paths, profileId, sessionId), {
       schemaVersion: 1,
       profileId,
       sessionId,
@@ -145,8 +155,10 @@ export class ReviewPreparationJournal {
 
   /** Best-effort journal removal after the Session is durably saved. */
   async complete(): Promise<void> {
-    await rm(this.content.stagingRoot, { recursive: true, force: true }).catch(() => undefined);
-    await rm(this.filePath, { force: true }).catch(() => undefined);
+    const deletion = await this.validatedDeletionSet();
+    if (deletion === undefined) return;
+    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(deletion.journalFile, { force: true }).catch(() => undefined);
   }
 
   /**
@@ -157,27 +169,29 @@ export class ReviewPreparationJournal {
   async cleanup(
     worktrees: ReviewWorktreeService,
   ): Promise<Result<void, PreparationCleanupFailure>> {
+    const deletion = await this.validatedDeletionSet();
+    if (deletion === undefined) return err({ _tag: "PreparationCleanupFailed" });
     let failed = false;
-    for (const target of [...this.content.targets].reverse()) {
+    for (const target of [...deletion.targets].reverse()) {
       await rm(target, { recursive: true, force: true }).catch(() => {
         failed = true;
       });
     }
-    await rm(this.content.stagingRoot, { recursive: true, force: true }).catch(() => {
+    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(() => {
       failed = true;
     });
-    if (this.content.worktree !== undefined && await exists(this.content.worktree.path)) {
+    if (deletion.worktree !== undefined && await exists(deletion.worktree.path)) {
       const removed = await worktrees.cleanup({
-        profileId: this.content.profileId as WorkspaceProfileId,
-        sessionId: this.content.sessionId as ReviewSessionId,
-        localPath: this.content.worktree.repositoryPath,
-        targetPath: this.content.worktree.path,
+        profileId: deletion.profileId,
+        sessionId: deletion.sessionId,
+        localPath: deletion.worktree.repositoryPath,
+        targetPath: deletion.worktree.path,
       });
       if (removed._tag === "err") failed = true;
     }
     if (failed) return err({ _tag: "PreparationCleanupFailed" });
-    await rm(this.filePath, { force: true }).catch(() => undefined);
-    await rmdir(dirname(this.filePath)).catch(() => undefined);
+    await rm(deletion.journalFile, { force: true }).catch(() => undefined);
+    await rmdir(dirname(deletion.journalFile)).catch(() => undefined);
     return ok(undefined);
   }
 
@@ -209,15 +223,15 @@ export class ReviewPreparationJournal {
         await recordRecoveredJournalDiagnostic(diagnostics, filePath, "journal-parse");
         continue;
       }
-      const journal = new ReviewPreparationJournal(filePath, content);
+      const journal = new ReviewPreparationJournal(paths, filePath, content);
       const process = async (): Promise<boolean> => {
+        const deletion = await journal.validatedDeletionSet();
+        if (deletion === undefined) return false;
         if (content.state === "committing") {
-          const profileId = parseWorkspaceProfileId(content.profileId);
-          const sessionId = parseReviewSessionId(content.sessionId);
-          if (profileId._tag === "err" || sessionId._tag === "err" || sessions === undefined) return false;
-          const session = await sessions.load(profileId.value, sessionId.value);
-          if (session._tag !== "ok" || session.value.id !== sessionId.value) return false;
-          return await rm(filePath, { force: true }).then(() => true).catch(() => false);
+          if (sessions === undefined) return false;
+          const session = await sessions.load(deletion.profileId, deletion.sessionId);
+          if (session._tag !== "ok" || session.value.id !== deletion.sessionId) return false;
+          return await rm(deletion.journalFile, { force: true }).then(() => true).catch(() => false);
         }
         const cleaned = await journal.cleanup(worktrees);
         return cleaned._tag === "ok";
@@ -254,6 +268,54 @@ export class ReviewPreparationJournal {
     }
     const written = await writeAtomicJson(this.filePath, this.content);
     return written._tag === "ok" ? ok(undefined) : err({ _tag: "PreparationJournalFailed" });
+  }
+
+  /** Verify every persisted deletion target before the first filesystem removal. */
+  private async validatedDeletionSet(): Promise<ValidatedDeletionSet | undefined> {
+    const profileId = parseWorkspaceProfileId(this.content.profileId);
+    const sessionId = parseReviewSessionId(this.content.sessionId);
+    if (profileId._tag === "err" || sessionId._tag === "err") return undefined;
+
+    const sessionDirectory = this.paths.sessionDirectory(profileId.value, sessionId.value);
+    const expectedJournalFile = journalFile(this.paths, profileId.value, sessionId.value);
+    const expectedStagingRoot = join(sessionDirectory, ".staging");
+    if (this.filePath !== expectedJournalFile || this.content.stagingRoot !== expectedStagingRoot) return undefined;
+
+    if (!(await isSafeOwnedPath(this.paths.dataDirectory(), sessionDirectory, true))) return undefined;
+    if (!(await isSafeOwnedPath(sessionDirectory, expectedJournalFile, true))) return undefined;
+    if (!(await isSafeOwnedPath(sessionDirectory, expectedStagingRoot))) return undefined;
+
+    const allowedTargets = new Set([
+      this.paths.patchFile(profileId.value, sessionId.value),
+      this.paths.preparedContextFile(profileId.value, sessionId.value),
+      this.paths.preparedReviewInputFile(profileId.value, sessionId.value),
+      this.paths.preparedDebugFile(profileId.value, sessionId.value),
+      this.paths.comparisonPatchFile(profileId.value, sessionId.value),
+      this.paths.comparisonMetadataFile(profileId.value, sessionId.value),
+      this.paths.previousFindingsFile(profileId.value, sessionId.value),
+      this.paths.findingLifecycleFile(profileId.value, sessionId.value),
+    ]);
+    for (const target of this.content.targets) {
+      if (!allowedTargets.has(target) || !(await isSafeOwnedPath(sessionDirectory, target))) return undefined;
+    }
+
+    if (
+      this.content.worktree !== undefined &&
+      (
+        this.content.worktree.path !== this.paths.worktreeDirectory(profileId.value, sessionId.value) ||
+        !(await isSafeOwnedPath(this.paths.cacheDirectory(), this.content.worktree.path))
+      )
+    ) {
+      return undefined;
+    }
+    return {
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+      journalFile: expectedJournalFile,
+      stagingRoot: expectedStagingRoot,
+      targets: this.content.targets,
+      ...(this.content.worktree === undefined ? {} : { worktree: this.content.worktree }),
+    };
   }
 }
 
@@ -365,6 +427,31 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function isSafeOwnedPath(root: string, path: string, requirePath: boolean = false): Promise<boolean> {
+  if (!isContainedPath(root, path)) return false;
+  const entry = await lstat(path).catch(() => undefined);
+  if (entry?.isSymbolicLink() || (requirePath && entry === undefined)) return false;
+  const canonicalRoot = await realpath(root).catch(() => undefined);
+  const canonicalParent = await realpathNearestExistingParent(dirname(path));
+  return canonicalRoot !== undefined && canonicalParent !== undefined && isContainedPath(canonicalRoot, canonicalParent);
+}
+
+async function realpathNearestExistingParent(path: string): Promise<string | undefined> {
+  let candidate = path;
+  while (true) {
+    const canonical = await realpath(candidate).catch(() => undefined);
+    if (canonical !== undefined) return canonical;
+    const parent = dirname(candidate);
+    if (parent === candidate) return undefined;
+    candidate = parent;
+  }
+}
+
+function isContainedPath(root: string, path: string): boolean {
+  const relation = relative(resolve(root), resolve(path));
+  return relation === "" || (relation !== ".." && !relation.startsWith(`..${sep}`) && !isAbsolute(relation));
 }
 
 function parseJournalWorktree(input: unknown): JournalWorktree | undefined {
