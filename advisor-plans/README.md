@@ -13,7 +13,7 @@ plan fully, honor its STOP conditions, and update the row when done.
 | 003 | Make walkthrough concurrency coverage deterministic | P1 | S | — | DONE |
 | 004 | Skip terminal sessions during orphan recovery | P1 | S | — | DONE |
 | 005 | Redact inspector debug telemetry | P1 | M | 001 | DONE |
-| 006 | Load configured repository review rules safely | P1 | M | 005 | TODO |
+| 006 | Load configured repository review rules safely | P1 | M | 005 | DONE |
 | 007 | Characterize authenticated review run and merge APIs | P1 | M | — | TODO |
 | 008 | Serialize merge writes and reconcile uncertain outcomes | P1 | L | 007 | TODO |
 | 009 | Fetch authoritative merge-policy state | P1 | L | 007, 008 | TODO |
