@@ -135,7 +135,7 @@ export class ReviewRecoveryService {
         }
         if (active.value !== undefined) continue;
       }
-      if (session.currentAttemptId === undefined) continue;
+      if (session.state._tag !== "Running" || session.currentAttemptId === undefined) continue;
       const attempt = await this.sessions.loadAttempt(profileId, session.id, session.currentAttemptId);
       if (attempt._tag === "err") {
         failed += 1;
