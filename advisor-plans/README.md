@@ -10,7 +10,7 @@ plan fully, honor its STOP conditions, and update the row when done.
 |------|-------|----------|--------|------------|--------|
 | 001 | Make model file snapshots safe and bounded | P1 | M | — | DONE |
 | 002 | Validate preparation-journal cleanup paths | P1 | M | — | DONE |
-| 003 | Make walkthrough concurrency coverage deterministic | P1 | S | — | TODO |
+| 003 | Make walkthrough concurrency coverage deterministic | P1 | S | — | DONE |
 | 004 | Skip terminal sessions during orphan recovery | P1 | S | — | TODO |
 | 005 | Redact inspector debug telemetry | P1 | M | 001 | TODO |
 | 006 | Load configured repository review rules safely | P1 | M | 005 | TODO |

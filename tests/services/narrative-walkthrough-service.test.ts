@@ -335,12 +335,17 @@ describe("NarrativeWalkthroughService", () => {
     let releaseFirst!: (
       value: Result<unknown, { readonly reason: string }>,
     ) => void;
+    let resolveFirstInvocationEntered!: () => void;
+    const firstInvocationEntered = new Promise<void>((resolve) => {
+      resolveFirstInvocationEntered = resolve;
+    });
     const diagnosticPhases: Array<string | undefined> = [];
     let call = 0;
     const invoker: NarrativeWalkthroughInvoker = {
       invoke: async () => {
         call += 1;
         if (call === 1) {
+          resolveFirstInvocationEntered();
           return await new Promise<
             Result<unknown, { readonly reason: string }>
           >((resolve) => {
@@ -392,7 +397,7 @@ describe("NarrativeWalkthroughService", () => {
       model: "model",
       reasoning: "medium",
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await firstInvocationEntered;
     const second = await service.generate({
       profileId,
       sessionId: session.id,
