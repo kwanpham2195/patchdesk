@@ -34,7 +34,7 @@ export class ReviewContextService {
       const debugPath = join(input.attemptDirectory, "debug.json");
       await writeFile(contextPath, rendered, "utf8");
       await writeFile(reviewInputPath, `# PR review input\n\nPR: ${input.pr.title}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`, "utf8");
-      await writeFile(debugPath, JSON.stringify({ inspectedPaths: [], searches: [], allowedReadCommands: [], profileRuleLoadFailures: profileRules.filter((rule) => rule.status === "unavailable").map((rule) => rule.path) }, null, 2), "utf8");
+      await writeFile(debugPath, JSON.stringify({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0, profileRuleLoadFailureCount: profileRules.filter((rule) => rule.status === "unavailable").length }, null, 2), "utf8").catch(() => undefined);
       return ok({ contextPath, reviewInputPath, debugPath, contextHash: createHash("sha256").update(rendered).digest("hex") });
     } catch { return err({ _tag: "ReviewContextFailed" }); }
   }

@@ -5,12 +5,18 @@ import { err, ok, type Result } from "../domain/result";
 
 export type InspectorDenied = { readonly _tag: "InspectorDenied" };
 type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly fileSnapshots?: Readonly<Record<string, string>>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
+type InspectorDebug = {
+  readonly inspectedFileCount: number;
+  readonly searchCount: number;
+  readonly gitShowCount: number;
+  readonly profileRuleLoadFailureCount: number;
+};
 
 /** Session-bound allowlist for model inspection; it intentionally has no arbitrary command method. */
 export class ReviewInspector {
-  private readonly inspectedPaths: Array<string> = [];
-  private readonly searches: Array<string> = [];
-  private readonly allowedReadCommands: Array<ReadonlyArray<string>> = [];
+  private inspectedFileCount = 0;
+  private searchCount = 0;
+  private gitShowCount = 0;
   constructor(private readonly input: InspectorInput) {}
 
   async listChangedFiles(): Promise<Result<ReadonlyArray<string>, never>> {
@@ -19,7 +25,7 @@ export class ReviewInspector {
 
   async searchFiles(query: string): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
     if (!safeQuery(query)) return err({ _tag: "InspectorDenied" });
-    this.searches.push(query);
+    this.searchCount += 1;
     await this.persistDebug();
     const matches: Array<string> = [];
     for (const path of this.input.changedFiles) {
@@ -41,13 +47,18 @@ export class ReviewInspector {
     let worktreePath: string;
     try { worktreePath = await realpath(this.input.worktreePath); } catch { return err({ _tag: "InspectorDenied" }); }
     const argv = ["git", "-C", worktreePath, "show", "--format=", "--no-ext-diff", revision] as const;
-    this.allowedReadCommands.push(argv);
+    this.gitShowCount += 1;
     await this.persistDebug();
     return ok(await this.input.gitShow(argv));
   }
 
-  debug(): { readonly inspectedPaths: ReadonlyArray<string>; readonly searches: ReadonlyArray<string>; readonly allowedReadCommands: ReadonlyArray<ReadonlyArray<string>> } {
-    return { inspectedPaths: this.inspectedPaths, searches: this.searches, allowedReadCommands: this.allowedReadCommands };
+  debug(): InspectorDebug {
+    return {
+      inspectedFileCount: this.inspectedFileCount,
+      searchCount: this.searchCount,
+      gitShowCount: this.gitShowCount,
+      profileRuleLoadFailureCount: 0,
+    };
   }
 
   private async readWhole(path: string): Promise<Result<string, InspectorDenied>> {
@@ -57,7 +68,8 @@ export class ReviewInspector {
       if (!Object.hasOwn(fileSnapshots, path)) return err({ _tag: "InspectorDenied" });
       const snapshot = fileSnapshots[path];
       if (snapshot === undefined) return err({ _tag: "InspectorDenied" });
-      if (!this.inspectedPaths.includes(path)) this.inspectedPaths.push(path);
+      this.inspectedFileCount += 1;
+      await this.persistDebug();
       return ok(snapshot);
     }
     try {
@@ -66,16 +78,23 @@ export class ReviewInspector {
       if (!isContainedPath(root, candidate)) return err({ _tag: "InspectorDenied" });
       const resolved = await realpath(candidate);
       if (!isContainedPath(root, resolved)) return err({ _tag: "InspectorDenied" });
-      if (!this.inspectedPaths.includes(path)) { this.inspectedPaths.push(path); await this.persistDebug(); }
+      this.inspectedFileCount += 1;
+      await this.persistDebug();
       return ok(await readFile(resolved, "utf8"));
     } catch { return err({ _tag: "InspectorDenied" }); }
   }
 
   private async persistDebug(): Promise<void> {
     if (this.input.debugPath === undefined) return;
-    let existing: Record<string, unknown> = {};
-    try { const raw: unknown = JSON.parse(await readFile(this.input.debugPath, "utf8")); if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) existing = raw as Record<string, unknown>; } catch { /* Context owns first write; inspector only adds safe operation fields. */ }
-    await writeFile(this.input.debugPath, JSON.stringify({ ...existing, ...this.debug() }, null, 2), "utf8");
+    let profileRuleLoadFailureCount = 0;
+    try {
+      const raw: unknown = JSON.parse(await readFile(this.input.debugPath, "utf8"));
+      if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+        const count = Object.getOwnPropertyDescriptor(raw, "profileRuleLoadFailureCount")?.value;
+        if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0) profileRuleLoadFailureCount = count;
+      }
+    } catch { /* Context owns the initial diagnostic artifact. */ }
+    await writeFile(this.input.debugPath, JSON.stringify({ ...this.debug(), profileRuleLoadFailureCount }, null, 2), "utf8").catch(() => undefined);
   }
 }
 
