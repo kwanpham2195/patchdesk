@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 describe("ReviewCompletionService", () => {
-  it("validates, persists, and exposes a completed result with a local mapped batch", async () => {
+  it("validates and persists a completed result without mutating the local draft", async () => {
     const fixture = await runningReview();
     const completed = await fixture.service.complete({
       profileId: fixture.profileId,
@@ -41,27 +41,11 @@ describe("ReviewCompletionService", () => {
       _tag: "ok",
       value: {
         session: { state: { _tag: "ReviewCompleted", attemptId: "001" } },
-        batch: {
-          state: { _tag: "Local" },
-          items: [
-            {
-              _tag: "InlineComment",
-              findingId: "mapped",
-              postability: "postable",
-            },
-          ],
-        },
       },
     });
-    expect(await fixture.store.load(fixture.profileId, fixture.session.id)).toMatchObject({
-      _tag: "ok",
-      value: {
-        visibleResult: { changeSummary: "Protect the write boundary" },
-        batchContent: {
-          items: [{ _tag: "InlineComment", findingId: "mapped" }],
-        },
-      },
-    });
+    const savedSession = await fixture.store.load(fixture.profileId, fixture.session.id);
+    expect(savedSession).toMatchObject({ _tag: "ok", value: { visibleResult: { changeSummary: "Protect the write boundary" } } });
+    if (savedSession._tag === "ok") expect(savedSession.value.batchContent).toBeUndefined();
     expect(await fixture.store.loadAttempt(fixture.profileId, fixture.session.id, fixture.attempt.id)).toMatchObject({
       _tag: "ok",
       value: { state: { _tag: "Completed" } },
@@ -104,11 +88,10 @@ describe("ReviewCompletionService", () => {
     expect(completed).toMatchObject({
       _tag: "ok",
       value: {
-        batch: {
-          items: [
-            { id: "manual-1", provenance: { _tag: "human" } },
-            { findingId: "mapped", provenance: { _tag: "model", attemptId: "001" } },
-          ],
+        session: {
+          batchContent: {
+            items: [{ id: "manual-1", provenance: { _tag: "human" } }],
+          },
         },
       },
     });
@@ -165,18 +148,7 @@ describe("ReviewCompletionService", () => {
 
     expect(completed).toMatchObject({
       _tag: "ok",
-      value: {
-        batch: {
-          items: [
-            {
-              _tag: "InlineComment",
-              findingId: "mapped",
-              include: false,
-              postability: "already_reported",
-            },
-          ],
-        },
-      },
+      value: { session: {} },
     });
     expect(JSON.parse(await readFile(scope.lifecyclePath, "utf8"))).toMatchObject([{ status: "still_present", draftPostability: "already_reported" }]);
   });
