@@ -4,8 +4,9 @@ import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 import { err, ok, type Result } from "../domain/result";
 
 export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
+export const MAX_GIT_SHOW_BYTES = 512 * 1024;
 export type InspectorDenied = { readonly _tag: "InspectorDenied"; readonly reason: "invalid_input" | "outside_snapshot" | "budget_exhausted" };
-type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly fileSnapshots?: Readonly<Record<string, string>>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
+type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly fileSnapshots?: Readonly<Record<string, string>>; readonly debugPath?: string; readonly allowedRevisions?: ReadonlyArray<string>; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
 type InspectorDebug = {
   readonly inspectedFileCount: number;
   readonly searchCount: number;
@@ -49,13 +50,17 @@ export class ReviewInspector {
 
   async gitShow(revision: string): Promise<Result<string, InspectorDenied>> {
     if (!this.consume()) return denied("budget_exhausted");
-    if (revision !== "HEAD" && !/^[a-f0-9]{40,64}$/.test(revision)) return denied("invalid_input");
+    const allowedRevisions = this.input.allowedRevisions ?? ["HEAD"];
+    if (!allowedRevisions.includes(revision)) return denied("invalid_input");
     let worktreePath: string;
     try { worktreePath = await realpath(this.input.worktreePath); } catch { return denied("outside_snapshot"); }
-    const argv = ["git", "-C", worktreePath, "show", "--format=", "--no-ext-diff", revision] as const;
+    const argv = ["git", "--no-replace-objects", "-C", worktreePath, "show", "--format=", "--no-ext-diff", revision] as const;
     this.gitShowCount += 1;
     await this.persistDebug();
-    return ok(await this.input.gitShow(argv));
+    const output = await this.input.gitShow(argv);
+    return Buffer.byteLength(output, "utf8") > MAX_GIT_SHOW_BYTES
+      ? denied("outside_snapshot")
+      : ok(output);
   }
 
   debug(): InspectorDebug {

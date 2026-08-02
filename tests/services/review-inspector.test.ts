@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -24,6 +24,25 @@ describe("ReviewInspector", () => {
       expect(serializedDebug).not.toContain("two");
       expect(serializedDebug).not.toContain('"git"');
       expect(serializedDebug).not.toContain("HEAD");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("bounds git_show to the session revisions and output size", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-inspector-git-show-"));
+    try {
+      const calls: Array<ReadonlyArray<string>> = [];
+      const inspector = new ReviewInspector({
+        worktreePath: root,
+        changedFiles: [],
+        allowedRevisions: ["HEAD", "a".repeat(40)],
+        gitShow: async (argv) => { calls.push(argv); return "small"; },
+      });
+      expect(await inspector.gitShow("b".repeat(40))).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "invalid_input" } });
+      expect(await inspector.gitShow("a".repeat(40))).toEqual({ _tag: "ok", value: "small" });
+      expect(calls[0]).toEqual(["git", "--no-replace-objects", "-C", await realpath(root), "show", "--format=", "--no-ext-diff", "a".repeat(40)]);
+
+      const oversized = new ReviewInspector({ worktreePath: root, changedFiles: [], gitShow: async () => "x".repeat(512 * 1024 + 1) });
+      expect(await oversized.gitShow("HEAD")).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "outside_snapshot" } });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

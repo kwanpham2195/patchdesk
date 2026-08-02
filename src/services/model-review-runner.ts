@@ -52,12 +52,14 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
   const files = incremental === undefined
     ? changedFiles(context)
     : [...new Set([...incremental.comparison.files.map((file) => file.path), ...incremental.priorFindings.flatMap((finding) => finding.file === undefined ? [] : [finding.file])])];
-  const fileSnapshots = await snapshotChangedFiles(input.worktreePath, reviewHeadSha(context, input.scope), files, input.gitShow);
+  const headSha = reviewHeadSha(context, input.scope);
+  const fileSnapshots = await snapshotChangedFiles(input.worktreePath, headSha, files, input.gitShow);
   const inspector = new ReviewInspector({
     worktreePath: input.worktreePath,
     changedFiles: files,
     fileSnapshots,
     debugPath: input.debugPath,
+    allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
     gitShow: input.gitShow,
   });
   const response = await input.session.prompt(composeReviewPrompt({
