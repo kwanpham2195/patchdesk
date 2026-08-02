@@ -1,0 +1,76 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { InsightStore } from "../../src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
+import { createReview } from "../../src/domain/review";
+import { createReviewSession } from "../../src/domain/review-session";
+import { ok, type Result } from "../../src/domain/result";
+import { InsightRunCoordinator, type InsightInvoker } from "../../src/services/insight-run-coordinator";
+
+const must = <T>(result: Result<T, unknown>): T => { if (result._tag === "ok") return result.value; throw new Error("fixture"); };
+const profileId = must(parseWorkspaceProfileId("cfw"));
+const headSha = must(parseGitSha("a".repeat(40)));
+const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+
+async function fixture(invokers: { readonly analysis: InsightInvoker; readonly walkthrough: InsightInvoker }) {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-coordinator-"));
+  const paths = PatchdeskPaths.forTest(root);
+  const sessions = new ReviewSessionStore(paths);
+  const reviews = new ReviewStore(paths);
+  const sessionSeed = createReviewSession({ key: { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: now });
+  const session = { ...sessionSeed, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionSeed.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, sessionSeed.id))), headSha } };
+  const review = createReview({ identity: { profileId, host: session.key.host, owner: session.key.owner, repo: session.key.repo, prNumber: session.key.prNumber }, currentSessionId: session.id, headSha, createdAt: now });
+  await mkdir(dirname(session.patchPath), { recursive: true });
+  await writeFile(session.patchPath, "diff --git a/src/a.ts b/src/a.ts\n+change\n", "utf8");
+  await sessions.save(session);
+  await reviews.save(review);
+  const coordinator = new InsightRunCoordinator(reviews, sessions, new InsightStore(paths), paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now);
+  return { root, coordinator, review };
+}
+
+const successful = (): InsightInvoker => ({ async invoke() { return ok({ summary: "result" }); } });
+
+describe("InsightRunCoordinator", () => {
+  it("rejects same-type concurrency but allows Analysis and Walkthrough together", async () => {
+    const fixtureValue = await fixture({ analysis: successful(), walkthrough: successful() });
+    try {
+      const first = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      expect(first._tag).toBe("ok");
+      const duplicate = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      expect(duplicate).toEqual({ _tag: "err", error: "already_running" });
+      const walkthrough = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "walkthrough", model: "model", reasoning: "medium" });
+      expect(walkthrough._tag).toBe("ok");
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("retains a successful result and exposes completion after the process settles", async () => {
+    const fixtureValue = await fixture({ analysis: successful(), walkthrough: successful() });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "low" });
+      if (started._tag === "err") throw new Error("expected run");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("persists cancelling before aborting the owned process", async () => {
+    let signal: AbortSignal | undefined;
+    const invoker: InsightInvoker = { async invoke(_input, options) { signal = options.signal; await new Promise((resolve) => options.signal.addEventListener("abort", resolve, { once: true })); return { _tag: "err", error: { reason: "cancelled" } }; } };
+    const fixtureValue = await fixture({ analysis: invoker, walkthrough: successful() });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      if (started._tag === "err") throw new Error("expected run");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(signal).toBeDefined();
+      await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelling" } });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelled" } });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+});

@@ -51,6 +51,14 @@ describe("FlueCliReviewInvoker", () => {
     }]);
   });
 
+  it("maps caller cancellation to a safe cancelled result", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const invoker = new FlueCliReviewInvoker(new CommandRunner(new FakeExecutor({ _tag: "Exited", exitCode: 0, stdout: "{}", stderr: "" })), "/workspace/patchdesk");
+    const input = { profileId: "cfw", sessionId: "session", attemptId: "001", contextPath: "/tmp/context.json", reviewInputPath: "/tmp/review-input.md", patchPath: "/tmp/patch.diff", worktreePath: "/tmp/worktree" } as never;
+    await expect(invoker.invoke(input, { signal: controller.signal })).resolves.toEqual({ _tag: "err", error: { reason: "cancelled" } });
+  });
+
   it("turns invalid model output and process failures into safe failures", async () => {
     const invalid = new FlueCliReviewInvoker(new CommandRunner(new FakeExecutor({ _tag: "Exited", exitCode: 0, stdout: "{}", stderr: "" })), "/workspace/patchdesk");
     const failed = new FlueCliReviewInvoker(new CommandRunner(new FakeExecutor({ _tag: "Exited", exitCode: 1, stdout: "model output", stderr: "credential failure" })), "/workspace/patchdesk");

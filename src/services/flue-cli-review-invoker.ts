@@ -8,6 +8,7 @@ import type { ReviewActivityStep } from "./run-projection";
 
 export type FlueCliReviewFailure = {
   readonly reason:
+    | "cancelled"
     | "authentication_required"
     | "rate_limited"
     | "runtime_unavailable"
@@ -27,15 +28,18 @@ export class FlueCliReviewInvoker {
 
   async invoke(
     input: ReviewWorkflowInput,
-    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+    options?: { readonly signal?: AbortSignal; readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
   ): Promise<Result<ModelReviewResult, FlueCliReviewFailure>> {
+    if (options?.signal?.aborted) return err({ reason: "cancelled" });
     options?.onActivity?.("inspecting");
     const output = await this.commands.runJson({
       argv: [this.runtimeExecutable, this.cliPath, "run", "workflow:review-pr", "--input", JSON.stringify(input)],
       cwd: this.projectRoot,
       timeoutMs: 10 * 60_000,
       environment: { ELECTRON_RUN_AS_NODE: "1" },
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
     });
+    if (options?.signal?.aborted) return err({ reason: "cancelled" });
     if (output._tag === "err") return err({ reason: reviewFailureReason(output.error) });
     options?.onActivity?.("validating");
     const parsed = parseModelReviewResult(output.value);

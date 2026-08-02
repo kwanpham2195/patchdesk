@@ -34,12 +34,12 @@ export type ReviewWorkflowInvoker = {
    */
   invoke(
     input: ReviewWorkflowInput,
-    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
-  ): Promise<Result<{ readonly runId?: string }, { readonly reason: "unavailable" | "failed" }>>;
+    options?: { readonly signal?: AbortSignal; readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+  ): Promise<Result<{ readonly runId?: string }, { readonly reason: "unavailable" | "failed" | "cancelled" }>>;
 };
 
 export type ReviewWorkflowStartFailure = {
-  readonly reason: "invalid_input" | "not_found" | "not_current" | "unavailable" | "failed";
+  readonly reason: "invalid_input" | "not_found" | "not_current" | "unavailable" | "failed" | "cancelled";
 };
 
 /** Loads the selected persisted attempt before any Flue interaction can occur. */
@@ -51,7 +51,7 @@ export class ReviewWorkflowStarter {
 
   async start(
     input: unknown,
-    options?: { readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+    options?: { readonly signal?: AbortSignal; readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
   ): Promise<Result<{ readonly runId?: string }, ReviewWorkflowStartFailure>> {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));

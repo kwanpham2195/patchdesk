@@ -240,6 +240,7 @@ function createWorkflowInvoker(
 
 function reviewFailureMessage(reason: FlueCliReviewFailure["reason"]): string {
   switch (reason) {
+    case "cancelled": return "The review was cancelled.";
     case "authentication_required": return "The selected review model needs sign-in before it can run.";
     case "rate_limited": return "The selected review model is rate limited. Try again shortly or choose another model.";
     case "runtime_unavailable": return "Patchdesk could not start its local review runtime. Repackage or reinstall the app, then try again.";
