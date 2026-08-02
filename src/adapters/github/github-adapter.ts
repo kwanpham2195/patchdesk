@@ -370,6 +370,9 @@ export interface GitHubReviewWriter {
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
   createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
   setReviewThreadState?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>>;
+  updateReviewComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>>;
+  deleteReviewComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>>;
+  dismissReview?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly reviewId: string; readonly message: string }): Promise<Result<void, GitHubWriteFailure>>;
 }
 
 export interface GitHubMergeWriter {
@@ -1026,6 +1029,21 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
   async setReviewThreadState(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>> {
     const mutation = input.state === "resolved" ? "resolveReviewThread" : "unresolveReviewThread";
     const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=mutation($threadId:ID!){${mutation}(input:{threadId:$threadId}){thread{id}}}`, "-F", `threadId=${input.threadId}`], timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
+  }
+
+  async updateReviewComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "PATCH", `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`, "--input", "-"], stdin: JSON.stringify({ body: input.body }), timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
+  }
+
+  async deleteReviewComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "DELETE", `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`], timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
+  }
+
+  async dismissReview(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly reviewId: string; readonly message: string }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "PUT", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/dismissals`, "--input", "-"], stdin: JSON.stringify({ message: input.message }), timeoutMs: commandTimeoutMs });
     return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
   }
 

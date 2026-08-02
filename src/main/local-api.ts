@@ -48,6 +48,7 @@ import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
 import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
+import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../services/published-feedback-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
@@ -68,6 +69,7 @@ import { ReviewWorktreeService, type GitReadExecutor } from "../services/review-
 import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
+import { ReviewWriteGate } from "../services/review-write-gate";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import { readObjectField } from "../services/read-object-field";
@@ -114,6 +116,9 @@ const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(
 const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
 const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
 const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
+const publishedCommentEditSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commentId: pipe(string(), minLength(1)), body: string() });
+const publishedCommentDeleteSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commentId: pipe(string(), minLength(1)), confirmation: boolean() });
+const publishedReviewDismissSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), publishedReviewId: pipe(string(), minLength(1)), message: string(), confirmation: boolean() });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -310,6 +315,7 @@ export async function startLocalApiServer(
     reviews,
     insights,
   );
+  const reviewWriteGate = new ReviewWriteGate(profiles, reviews, sessions, remoteReviews);
   const reviewRefresh = new ReviewRefreshService({
     profiles,
     reviews,
@@ -325,6 +331,10 @@ export async function startLocalApiServer(
       snapshot,
       refreshedAt,
     }),
+  });
+  const publishedFeedback = new PublishedFeedbackService(reviewWriteGate, github, async ({ profileId, reviewId }) => {
+    const refreshed = await reviewRefresh.refresh({ profileId, reviewId });
+    return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
   });
   const reviewCommits = new ReviewCommitService(reviews, remoteReviews, sessions, readOnlyGit);
   const reviewWorkbench = new ReviewWorkbenchController(
@@ -577,6 +587,9 @@ export async function startLocalApiServer(
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(context, await reviewWrites.confirmPublication(await jsonBody(context))),
   );
+  app.post("/v1/reviews/published-comments/edit", async (context) => publishedFeedbackResponse(context, publishedFeedback, "edit", await jsonBody(context)));
+  app.post("/v1/reviews/published-comments/delete", async (context) => publishedFeedbackResponse(context, publishedFeedback, "delete", await jsonBody(context)));
+  app.post("/v1/reviews/published-reviews/dismiss", async (context) => publishedFeedbackResponse(context, publishedFeedback, "dismiss", await jsonBody(context)));
   app.post("/v1/reviews/submit-batch", async (context) =>
     reviewWrites === undefined
       ? context.json({ error: "review_write_unavailable" }, 503)
@@ -857,6 +870,37 @@ function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
+}
+
+async function publishedFeedbackResponse(context: Context, service: PublishedFeedbackService, action: "edit" | "delete" | "dismiss", body: unknown): Promise<Response> {
+  const result = action === "edit" ? await parsePublishedEdit(service, body) : action === "delete" ? await parsePublishedDelete(service, body) : await parsePublishedDismiss(service, body);
+  if (result._tag === "err") {
+    if (result.error === "invalid_input") return context.json({ error: result.error }, 400);
+    const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "confirmation_required" || result.error === "permission_denied" ? 409 : result.error === "github_read_failed" || result.error === "refresh_required" ? 503 : 400;
+    return context.json({ error: result.error }, status);
+  }
+  return context.json({ status: "ok" });
+}
+
+async function parsePublishedEdit(service: PublishedFeedbackService, body: unknown): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
+  const parsed = safeParse(publishedCommentEditSchema, body);
+  if (!parsed.success) return err("invalid_input");
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId); const reviewId = parseReviewId(parsed.output.reviewId);
+  return profileId._tag === "err" || reviewId._tag === "err" ? err("invalid_input") : service.editComment({ profileId: profileId.value, reviewId: reviewId.value, commentId: parsed.output.commentId, body: parsed.output.body });
+}
+
+async function parsePublishedDelete(service: PublishedFeedbackService, body: unknown): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
+  const parsed = safeParse(publishedCommentDeleteSchema, body);
+  if (!parsed.success) return err("invalid_input");
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId); const reviewId = parseReviewId(parsed.output.reviewId);
+  return profileId._tag === "err" || reviewId._tag === "err" ? err("invalid_input") : service.deleteComment({ profileId: profileId.value, reviewId: reviewId.value, commentId: parsed.output.commentId, confirmation: parsed.output.confirmation });
+}
+
+async function parsePublishedDismiss(service: PublishedFeedbackService, body: unknown): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
+  const parsed = safeParse(publishedReviewDismissSchema, body);
+  if (!parsed.success) return err("invalid_input");
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId); const reviewId = parseReviewId(parsed.output.reviewId);
+  return profileId._tag === "err" || reviewId._tag === "err" ? err("invalid_input") : service.dismissReview({ profileId: profileId.value, reviewId: reviewId.value, publishedReviewId: parsed.output.publishedReviewId, message: parsed.output.message, confirmation: parsed.output.confirmation });
 }
 
 async function publicationPreviewResponse(context: Context, service: PublicationPreviewService, body: unknown): Promise<Response> {
