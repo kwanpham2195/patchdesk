@@ -5,11 +5,13 @@ import {
   parseGitHubThreadId,
   parseIsoTimestamp,
   parseFindingId,
+  parseInsightRunId,
   parseLocalReviewItemId,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type FindingId,
+  type InsightRunId,
   type GitHubThreadId,
   type IsoTimestamp,
   type LocalReviewItemId,
@@ -49,6 +51,20 @@ const commandSchema = v.variant("_tag", [
     _tag: v.literal("AddInlineComment"),
     anchor: anchorSchema,
     fingerprint: v.optional(fingerprintSchema),
+    body: v.string(),
+  }),
+  v.strictObject({
+    _tag: v.literal("AddFindingInlineComment"),
+    findingId: v.string(),
+    runId: v.string(),
+    anchor: anchorSchema,
+    fingerprint: fingerprintSchema,
+    body: v.string(),
+  }),
+  v.strictObject({
+    _tag: v.literal("AddFindingGeneralComment"),
+    findingId: v.string(),
+    runId: v.string(),
     body: v.string(),
   }),
   v.strictObject({
@@ -98,6 +114,20 @@ export type ReviewBatchUpdate =
       readonly _tag: "AddInlineComment";
       readonly anchor: ReviewAnchor;
       readonly fingerprint?: ReviewAnchorFingerprint;
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "AddFindingInlineComment";
+      readonly findingId: FindingId;
+      readonly runId: InsightRunId;
+      readonly anchor: ReviewAnchor;
+      readonly fingerprint: ReviewAnchorFingerprint;
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "AddFindingGeneralComment";
+      readonly findingId: FindingId;
+      readonly runId: InsightRunId;
       readonly body: string;
     }
   | {
@@ -373,6 +403,21 @@ function parseCommand(
       body: command.body,
     });
   }
+  if (command._tag === "AddFindingInlineComment") {
+    const findingId = parseFindingId(command.findingId);
+    const runId = parseInsightRunId(command.runId);
+    const path = parseRepoRelativePath(command.anchor.path);
+    const fingerprint = path._tag === "ok" ? parseFingerprint(command.fingerprint, path.value, command.anchor.startLine, command.anchor.line) : err({ reason: "invalid_input" as const });
+    if (findingId._tag === "err" || runId._tag === "err" || path._tag === "err" || fingerprint._tag === "err" || command.anchor.line < command.anchor.startLine || isEmptyBody(command.body)) return err({ reason: "invalid_input" });
+    return ok({ _tag: "AddFindingInlineComment", findingId: findingId.value, runId: runId.value, anchor: { path: path.value, startLine: command.anchor.startLine, line: command.anchor.line, side: command.anchor.side }, fingerprint: fingerprint.value, body: command.body });
+  }
+  if (command._tag === "AddFindingGeneralComment") {
+    const findingId = parseFindingId(command.findingId);
+    const runId = parseInsightRunId(command.runId);
+    return findingId._tag === "err" || runId._tag === "err" || isEmptyBody(command.body)
+      ? err({ reason: "invalid_input" })
+      : ok({ _tag: "AddFindingGeneralComment", findingId: findingId.value, runId: runId.value, body: command.body });
+  }
   if (command._tag === "AddGeneralComment") {
     const findingId = command.findingId === undefined ? undefined : parseFindingId(command.findingId);
     return findingId !== undefined && findingId._tag === "err" || isEmptyBody(command.body)
@@ -470,6 +515,33 @@ function applyLocalUpdate(
         postability: "postable",
       },
     ];
+  } else if (command._tag === "AddFindingInlineComment") {
+    const id = nextItemId("finding-inline-1", batch.items);
+    if (id === undefined) return err({ reason: "invalid_input" });
+    items = [...batch.items, {
+      _tag: "InlineComment",
+      id,
+      provenance: { _tag: "insight", runId: command.runId },
+      source: "finding",
+      findingId: command.findingId,
+      anchor: command.anchor,
+      fingerprint: command.fingerprint,
+      body: command.body,
+      include: true,
+      postability: "postable",
+    }];
+  } else if (command._tag === "AddFindingGeneralComment") {
+    const id = nextItemId("finding-general-1", batch.items);
+    if (id === undefined) return err({ reason: "invalid_input" });
+    items = [...batch.items, {
+      _tag: "GeneralComment",
+      id,
+      provenance: { _tag: "insight", runId: command.runId },
+      source: "finding",
+      findingId: command.findingId,
+      body: command.body,
+      include: true,
+    }];
   } else if (command._tag === "AddGeneralComment") {
     const id = nextItemId("general-1", batch.items);
     if (id === undefined) return err({ reason: "invalid_input" });

@@ -365,6 +365,7 @@ const insightFields = {
 const analysisInsightSchema = v.strictObject({
   ...insightFields,
   retained: v.optional(v.strictObject({
+    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
     sessionId: v.pipe(v.string(), v.minLength(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
     generatedAt: v.pipe(v.string(), v.isoTimestamp()),
@@ -374,6 +375,7 @@ const analysisInsightSchema = v.strictObject({
 const walkthroughInsightSchema = v.strictObject({
   ...insightFields,
   retained: v.optional(v.strictObject({
+    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
     sessionId: v.pipe(v.string(), v.minLength(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
     generatedAt: v.pipe(v.string(), v.isoTimestamp()),
@@ -388,6 +390,7 @@ const carriedFromSchema = v.strictObject({
 const provenanceSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("human") }),
   v.strictObject({ _tag: v.literal("model"), attemptId: v.pipe(v.string(), v.minLength(1)) }),
+  v.strictObject({ _tag: v.literal("insight"), runId: v.pipe(v.string(), v.minLength(1)) }),
 ]);
 const anchorSchema = v.strictObject({
   path: repoRelativePathSchema,

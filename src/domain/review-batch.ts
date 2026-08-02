@@ -4,6 +4,7 @@ import {
   parseFindingId,
   parseGitHubThreadId,
   parseGitSha,
+  parseInsightRunId,
   parseIsoTimestamp,
   parseLocalReviewItemId,
   parseRepoRelativePath,
@@ -12,6 +13,7 @@ import {
   type FindingId,
   type GitHubThreadId,
   type GitSha,
+  type InsightRunId,
   type IsoTimestamp,
   type LocalReviewItemId,
   type RepoRelativePath,
@@ -67,7 +69,8 @@ export type ReviewItemCarryForward = {
 /** Records whether a local item started with a human or an optional model run. */
 export type ReviewItemProvenance =
   | { readonly _tag: "human" }
-  | { readonly _tag: "model"; readonly attemptId: ReviewAttemptId };
+  | { readonly _tag: "model"; readonly attemptId: ReviewAttemptId }
+  | { readonly _tag: "insight"; readonly runId: InsightRunId };
 
 /** One local action included in or excluded from a review batch. */
 export type ReviewBatchItem =
@@ -195,6 +198,7 @@ const githubThreadIdSchema = v.string();
 const provenanceSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("human") }),
   v.strictObject({ _tag: v.literal("model"), attemptId: v.string() }),
+  v.strictObject({ _tag: v.literal("insight"), runId: v.string() }),
 ]);
 
 const carriedFromSchema = v.strictObject({
@@ -468,7 +472,7 @@ function parseItem(
     const findingId = item.findingId === undefined ? undefined : parseFindingId(item.findingId);
     const provenance = parseProvenance(item.provenance, legacyAttemptId, item.source === "finding" ? "model" : "human");
     const carriedFrom = parseCarryForward(item.carriedFrom);
-    if (findingId !== undefined && findingId._tag === "err" || provenance._tag === "err" || carriedFrom._tag === "err" || (item.source === "finding") !== (findingId !== undefined) || (item.source === "finding") !== (provenance._tag === "ok" && provenance.value._tag === "model")) return invalidReviewBatch();
+    if (findingId !== undefined && findingId._tag === "err" || provenance._tag === "err" || carriedFrom._tag === "err" || (item.source === "finding") !== (findingId !== undefined) || (item.source === "finding") !== (provenance._tag === "ok" && (provenance.value._tag === "model" || provenance.value._tag === "insight"))) return invalidReviewBatch();
     return ok({
       _tag: "GeneralComment",
       id: id.value,
@@ -540,7 +544,7 @@ function parseItem(
     (item.fingerprint !== undefined && item.fingerprint.line !== item.anchor.line) ||
     (item.fingerprint !== undefined && item.fingerprint.side !== item.anchor.side) ||
     (item.fingerprint !== undefined && item.fingerprint.selectedLines.length !== item.anchor.line - item.anchor.startLine + 1) ||
-    (item.source === "finding") !== (provenance.value._tag === "model") ||
+    (item.source === "finding") !== (provenance.value._tag === "model" || provenance.value._tag === "insight") ||
     (item.postability === "needs_attention") !== (attention.value !== undefined)
   ) {
     return invalidReviewBatch();
@@ -645,6 +649,12 @@ function parseProvenance(
         : ok({ _tag: "model", attemptId: legacyAttemptId });
   }
   if (input._tag === "human") return ok(input);
+  if (input._tag === "insight") {
+    const runId = parseInsightRunId(input.runId);
+    return runId._tag === "err"
+      ? invalidReviewBatch()
+      : ok({ _tag: "insight", runId: runId.value });
+  }
   const attemptId = parseReviewAttemptId(input.attemptId);
   return attemptId._tag === "err"
     ? invalidReviewBatch()

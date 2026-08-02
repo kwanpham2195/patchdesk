@@ -1,12 +1,18 @@
+import { readFile, readdir } from "node:fs/promises";
+
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
-import { parseContentHash, parseInsightRunId, parseIsoTimestamp, type ContentHash, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseInsightRunId, parseIsoTimestamp, parseWorkspaceProfileId, type ContentHash, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewScope } from "../domain/review-comparison";
 import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRevision, type InsightType } from "../domain/insight-record";
+import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
+import { parseModelReviewResult, parseReviewResult } from "../domain/review-result";
+import { normalizeNarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
 
@@ -22,13 +28,14 @@ export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
 
   constructor(
-    private readonly reviews: Pick<ReviewStore, "load"> & { readonly findOwner?: (reviewId: ReviewId) => Promise<Result<WorkspaceProfileId | undefined, StorageFailure>> },
+    private readonly reviews: Pick<ReviewStore, "load"> & { readonly findOwner?: (reviewId: ReviewId) => Promise<Result<WorkspaceProfileId | undefined, StorageFailure>>; readonly list?: ReviewStore["list"] },
     private readonly sessions: Pick<ReviewSessionStore, "load" | "loadAttempt">,
     private readonly insights: InsightStore,
     private readonly paths: PatchdeskPaths,
     private readonly catalog: PiRuntimeModelCatalog,
     private readonly invokers: Readonly<{ readonly analysis: InsightInvoker; readonly walkthrough: InsightInvoker }>,
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
+    private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ) {}
 
   async start(input: InsightCoordinatorInput): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
@@ -103,6 +110,31 @@ export class InsightRunCoordinator {
     return ok({ runId: active.id, type: input.type, status: "failed" });
   }
 
+  async recoverAll(): Promise<void> {
+    if (this.reviews.list === undefined) return;
+    let profileEntries: ReadonlyArray<string>;
+    try {
+      profileEntries = await readdir(this.paths.dataProfilesDirectory());
+    } catch {
+      return;
+    }
+    for (const entry of profileEntries) {
+      const profileId = parseWorkspaceProfileId(entry);
+      if (profileId._tag === "err") continue;
+      const reviews = await this.reviews.list(profileId.value);
+      if (reviews._tag === "err") {
+        await this.recordRecoveryDiagnostic(profileId.value, undefined, "review_list_failed");
+        continue;
+      }
+      for (const review of reviews.value) {
+        for (const type of ["analysis", "walkthrough"] as const) {
+          const recovered = await this.recover({ profileId: profileId.value, reviewId: review.id, type });
+          if (recovered._tag === "err") await this.recordRecoveryDiagnostic(profileId.value, review.currentSessionId, `${type}_recovery_failed`);
+        }
+      }
+    }
+  }
+
   async observe(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly runId: InsightRunId }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const ownership = await this.ensureOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
@@ -130,19 +162,112 @@ export class InsightRunCoordinator {
       const latestSession = latestReview._tag === "ok" ? await this.sessions.load(input.profileId, latestReview.value.currentSessionId) : err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const });
       const latestHash = latestSession._tag === "ok" ? parseContentHash(await contentHash(latestSession.value.patchPath)) : err({ _tag: "InvalidDomainValue" as const, field: "patchHash" });
       const timestamp = parseIsoTimestamp(this.now());
-      if (timestamp._tag === "err") return;
+      if (timestamp._tag === "err") {
+        await this.recordExecutionFailure(input, type, runId, "invalid_timestamp");
+        return;
+      }
+      const current = latestReview._tag === "ok" && latestSession._tag === "ok" && latestHash._tag === "ok" && latestReview.value.currentSessionId === input.sessionId && latestSession.value.id === input.sessionId && latestHash.value === startedHash;
+      if (!current) {
+        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        return;
+      }
+      if (invocation._tag === "err" || controller.signal.aborted) {
+        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: controller.signal.aborted || invocation._tag === "err" && invocation.error.reason === "cancelled" ? "cancelled" : "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        return;
+      }
+      const validated = await this.validateResult(type, invocation.value, input, {
+        sessionId: input.sessionId,
+        headSha: latestSession.value.key.headSha,
+        patchHash: latestHash.value,
+      });
+      if (validated._tag === "err") {
+        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "invalid_result", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        await this.recordDiagnostic(input, type, "invalid_result");
+        return;
+      }
       await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
-        const current = latestReview._tag === "ok" && latestSession._tag === "ok" && latestHash._tag === "ok" && latestReview.value.currentSessionId === input.sessionId && active.revision.sessionId === latestSession.value.id && active.revision.headSha === latestSession.value.key.headSha && active.revision.patchHash === latestHash.value && latestHash.value === startedHash;
-        if (!current) return failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value);
-        if (invocation._tag === "err" || controller.signal.aborted) return failInsightRun(record, runId, { runId, reason: controller.signal.aborted || invocation._tag === "err" && invocation.error.reason === "cancelled" ? "cancelled" : "failed", retryable: true, failedAt: timestamp.value }, timestamp.value);
-        return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: invocation.value }, timestamp.value);
+        if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
+          return failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value);
+        }
+        return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
       } });
+    } catch (cause: unknown) {
+      await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));
     } finally {
       this.active.delete(runId);
     }
   }
+
+  private async validateResult(type: InsightType, value: unknown, input: InsightInvocationInput, revision: InsightRevision): Promise<Result<unknown, "invalid_result">> {
+    const patch = await readFile(input.patchPath, "utf8").catch(() => undefined);
+    if (patch === undefined) return err("invalid_result");
+    if (type === "analysis") {
+      const stored = parseReviewResult(value);
+      if (stored._tag === "ok") return stored;
+      const model = parseModelReviewResult(value);
+      if (model._tag === "err") return err("invalid_result");
+      const files = parseUnifiedPatch(patch);
+      const mapped = parseReviewResult({
+        changeSummary: model.value.changeSummary,
+        verdict: model.value.verdict,
+        summary: model.value.summary,
+        validationPlan: model.value.validationPlan,
+        assumptions: model.value.assumptions,
+        ...(model.value.coverage === undefined ? {} : { coverage: model.value.coverage }),
+        ...(model.value.overallConfidence === undefined ? {} : { overallConfidence: model.value.overallConfidence }),
+        ...(model.value.unresolvedItems === undefined ? {} : { unresolvedItems: model.value.unresolvedItems }),
+        ...(model.value.callouts === undefined ? {} : { callouts: model.value.callouts }),
+        findings: model.value.findings.map((finding) => {
+          const location = mapFindingLocation(files, finding);
+          return {
+            ...finding,
+            mappingStatus: location.mappingStatus,
+            ...(location.path === undefined ? {} : { file: location.path }),
+            ...(location.side === undefined ? {} : { diffSide: location.side }),
+            ...(location.line === undefined ? {} : { lineStart: location.startLine ?? location.line }),
+            ...(location.startLine === undefined ? {} : { lineEnd: location.line }),
+          };
+        }),
+      });
+      return mapped._tag === "ok" ? mapped : err("invalid_result");
+    }
+    const normalized = normalizeNarrativeWalkthrough(value, patch, { profileId: input.profileId, sessionId: revision.sessionId, headSha: revision.headSha, patchHash: revision.patchHash });
+    return normalized._tag === "ok" ? normalized : err("invalid_result");
+  }
+
+  private async recordExecutionFailure(input: InsightInvocationInput, type: InsightType, runId: InsightRunId, detail: string): Promise<void> {
+    try {
+      const timestamp = parseIsoTimestamp(this.now());
+      if (timestamp._tag === "ok") {
+        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+      }
+    } catch {
+      // A storage failure must not escape the detached execution boundary.
+    }
+    await this.recordDiagnostic(input, type, detail);
+  }
+
+  private async recordDiagnostic(input: InsightInvocationInput, type: InsightType, detail: string): Promise<void> {
+    try {
+      await this.diagnostics?.record({ profileId: input.profileId, sessionId: input.sessionId, category: "run", phase: `insight-${type}-failed`, retryable: true, detail: `insight_${type}_${detail}` });
+    } catch {
+      // Diagnostics are best effort and never become an unhandled rejection.
+    }
+  }
+
+  private async recordRecoveryDiagnostic(profileId: WorkspaceProfileId, sessionId: ReviewSessionId | undefined, detail: string): Promise<void> {
+    try {
+      await this.diagnostics?.record({ profileId, ...(sessionId === undefined ? {} : { sessionId }), category: "recovery", phase: "insight-recovery-failed", retryable: true, detail });
+    } catch {
+      // Diagnostics are best effort and never become an unhandled rejection.
+    }
+  }
+}
+
+function safeFailureDetail(cause: unknown): string {
+  return cause instanceof Error && cause.name.length > 0 ? cause.name.toLowerCase().replace(/[^a-z0-9]+/g, "_") : "unknown";
 }
 
 function isRetainedRun(value: unknown, runId: InsightRunId): boolean {

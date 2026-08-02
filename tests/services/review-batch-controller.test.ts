@@ -190,6 +190,40 @@ describe("ReviewBatchController", () => {
     });
   });
 
+  it("persists Finding-derived draft provenance and the exact anchor fingerprint", async () => {
+    const value = await fixture({}, { prepared: true });
+    const updated = await controller(value.store).update(updateInput(value, {
+      _tag: "AddFindingInlineComment",
+      findingId: "analysis-finding",
+      runId: `insight-analysis-1-aaaaaaaaaaaa-${value.session.id}`,
+      anchor: { path: "src/prepared.ts", startLine: 4, line: 4, side: "new" },
+      fingerprint: {
+        path: "src/prepared.ts",
+        side: "new",
+        startLine: 4,
+        line: 4,
+        selectedLines: ["Keep the snapshot-owned guard."],
+        before: [],
+        after: [],
+      },
+      body: "Keep the snapshot-owned guard.",
+    }));
+    expect(updated).toMatchObject({
+      _tag: "ok",
+      value: {
+        batch: {
+          items: [{
+            _tag: "InlineComment",
+            provenance: { _tag: "insight", runId: `insight-analysis-1-aaaaaaaaaaaa-${value.session.id}` },
+            source: "finding",
+            findingId: "analysis-finding",
+            fingerprint: { selectedLines: ["Keep the snapshot-owned guard."] },
+          }],
+        },
+      },
+    });
+  });
+
   it("adds general feedback and converts an inline item without losing identity", async () => {
     const prepared = await fixture({}, { prepared: true });
     const added = await controller(prepared.store).update(updateInput(prepared, {

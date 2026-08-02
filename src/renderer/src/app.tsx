@@ -26,7 +26,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import { PatchdeskApiError, requestJson } from "./api-client";
-import { parseInboxResponse, type InboxResponse } from "./renderer-contracts";
+import { parseInboxResponse, type InboxResponse, type WorkbenchResponse } from "./renderer-contracts";
 import {
   InboxRefreshScheduler,
   inboxFreshnessLabel,
@@ -475,9 +475,17 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           })
         }
         onWorkbenchPatch={(patch) =>
-          setWorkbench((current) =>
-            current === undefined ? current : { ...current, ...patch },
-          )
+          setWorkbench((current) => {
+            if (current === undefined) return current;
+            const { insights, ...rest } = patch;
+            return {
+              ...current,
+              ...rest,
+              ...(insights === undefined
+                ? {}
+                : { insights: { ...current.insights, ...insights } as WorkbenchResponse["insights"] }),
+            };
+          })
         }
         onWorkbenchReplace={(next) => setWorkbench(next)}
         onNavigationStateChange={setNavigationState}

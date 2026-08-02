@@ -466,6 +466,7 @@ function projectStoredInsight<T>(
   const retained = record?.retained === undefined
     ? undefined
     : {
+        runId: record.retained.runId,
         sessionId: record.retained.revision.sessionId,
         headSha: record.retained.revision.headSha,
         generatedAt: record.retained.generatedAt,

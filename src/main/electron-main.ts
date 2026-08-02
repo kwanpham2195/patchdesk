@@ -78,7 +78,7 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
-        insights: createInsightCoordinator(),
+        insights: await recoverInsights(),
         lifecycleGate,
         diagnostics,
         modelCatalog: new LocalPiRuntimeModelCatalog(),
@@ -141,7 +141,13 @@ function createInsightCoordinator(): InsightRunCoordinator {
       return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
     },
   };
-  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough });
+  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough }, undefined, diagnostics);
+}
+
+async function recoverInsights(): Promise<InsightRunCoordinator> {
+  const coordinator = createInsightCoordinator();
+  await coordinator.recoverAll();
+  return coordinator;
 }
 
 function createWorkflowInvoker(

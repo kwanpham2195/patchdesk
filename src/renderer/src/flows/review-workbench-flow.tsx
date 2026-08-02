@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { parseRepoRelativePath } from "../../../domain/ids";
+import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseReviewBatch } from "../../../domain/review-batch";
 import { requestJson } from "../api-client";
 import { ReviewWorkbench } from "../components/review-workbench";
@@ -14,11 +17,15 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseCommitDiffResponse, parseModelCatalog, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
 
+export type ReviewWorkbenchPatch = Omit<Partial<WorkbenchResponse>, "insights"> & {
+  readonly insights?: Partial<WorkbenchResponse["insights"]>;
+};
+
 export type ReviewWorkbenchFlowProps = {
   readonly workbench: WorkbenchResponse;
   readonly initialSection?: "diff" | "checks";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
-  readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
+  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onNavigationStateChange: (state: "clear" | "dirty_draft" | "write_pending") => void;
   readonly onNavigate: (section: "diff" | "checks") => void;
 };
@@ -148,7 +155,7 @@ function InsightsSlot({
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
-  readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
+  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): React.JSX.Element {
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
@@ -156,8 +163,11 @@ function InsightsSlot({
   const [catalogError, setCatalogError] = useState(false);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
-  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", onWorkbenchReplace });
-  const walkthroughRun = useInsightRun({ profileId, reviewId, type: "walkthrough", onWorkbenchReplace });
+  const onInsightPatch = useCallback((type: "analysis" | "walkthrough", projection: WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"]): void => {
+    onWorkbenchPatch({ insights: { [type]: projection } });
+  }, [onWorkbenchPatch]);
+  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", onWorkbenchReplace, onInsightPatch });
+  const walkthroughRun = useInsightRun({ profileId, reviewId, type: "walkthrough", onWorkbenchReplace, onInsightPatch });
 
   useEffect(() => {
     let active = true;
@@ -186,10 +196,37 @@ function InsightsSlot({
   const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
   const addFinding = async (finding: AnalysisFinding): Promise<void> => {
     const batch = workbench.draft;
-    if (batch === undefined) return;
-    const command = finding.mappingStatus === "mapped" && finding.file !== undefined && finding.lineStart !== undefined
-      ? { _tag: "AddInlineComment", anchor: { path: finding.file, startLine: finding.lineStart, line: finding.lineEnd ?? finding.lineStart, side: finding.diffSide ?? "new" }, body: finding.suggestedComment ?? finding.explanation }
-      : { _tag: "AddGeneralComment", findingId: finding.id, body: finding.suggestedComment ?? finding.explanation };
+    const runId = workbench.insights.analysis.retained?.runId;
+    if (batch === undefined || runId === undefined) return;
+    const body = finding.suggestedComment ?? finding.explanation;
+    let command:
+      | { readonly _tag: "AddFindingInlineComment"; readonly findingId: string; readonly runId: string; readonly anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" }; readonly fingerprint: NonNullable<ReturnType<typeof fingerprintPatchAnchor>>; readonly body: string }
+      | { readonly _tag: "AddFindingGeneralComment"; readonly findingId: string; readonly runId: string; readonly body: string };
+    if (finding.mappingStatus === "mapped" && finding.file !== undefined && finding.lineStart !== undefined && workbench.fullPatch !== undefined) {
+      const mapped = mapFindingLocation(parseUnifiedPatch(workbench.fullPatch), {
+        file: finding.file,
+        lineStart: finding.lineStart,
+        ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }),
+        ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }),
+      });
+      const path = mapped.path === undefined ? undefined : parseRepoRelativePath(mapped.path);
+      const line = mapped.line;
+      const side = mapped.side;
+      if (path !== undefined && path._tag === "ok" && line !== undefined && side !== undefined) {
+        const startLine = mapped.startLine ?? line;
+        const anchor = { path: path.value, startLine, line, side };
+        const fingerprint = fingerprintPatchAnchor(workbench.fullPatch, anchor);
+        if (fingerprint !== undefined) {
+          command = { _tag: "AddFindingInlineComment", findingId: finding.id, runId, anchor, fingerprint, body };
+        } else {
+          command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+        }
+      } else {
+        command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+      }
+    } else {
+      command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+    }
     const value = await requestJson("/v1/reviews/batch", { method: "POST", body: { profileId, sessionId: workbench.session.id, expectedRevision: batch.updatedAt, command } });
     const next = parseBatchResponse(value);
     if (next === undefined) throw new Error("Invalid Review batch response");
@@ -319,7 +356,7 @@ function DraftSlot({
   onWorkbenchPatch,
 }: {
   readonly workbench: WorkbenchResponse;
-  readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
+  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): React.JSX.Element | null {
   if (workbench.draft === undefined) return null;
   const batch = parseReviewBatch(workbench.draft);

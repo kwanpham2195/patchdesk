@@ -1,4 +1,4 @@
-import type { GitSha, IsoTimestamp, ReviewSessionId } from "./ids";
+import type { GitSha, InsightRunId, IsoTimestamp, ReviewSessionId } from "./ids";
 export type InsightStatus =
   | "not_generated"
   | "running"
@@ -9,6 +9,7 @@ export type InsightStatus =
 export type InsightProjection<T> = {
   readonly status: InsightStatus;
   readonly retained?: {
+    readonly runId?: InsightRunId;
     readonly sessionId: ReviewSessionId;
     readonly headSha: GitSha;
     readonly generatedAt: IsoTimestamp;

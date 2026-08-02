@@ -20,15 +20,20 @@ export function useInsightRun(input: {
   readonly profileId: string;
   readonly reviewId: string;
   readonly type: InsightRunType;
-  readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
+  readonly onInsightPatch?: (type: InsightRunType, projection: WorkbenchResponse["insights"][InsightRunType]) => void;
 }): InsightRunController {
-  const { profileId, reviewId, type, onWorkbenchReplace } = input;
+  const { profileId, reviewId, type, onWorkbenchReplace, onInsightPatch } = input;
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
   const [starting, setStarting] = useState(false);
   const activeRunRef = useRef<string | undefined>(undefined);
   const startingRef = useRef(false);
+  const onWorkbenchReplaceRef = useRef(onWorkbenchReplace);
+  const onInsightPatchRef = useRef(onInsightPatch);
+  onWorkbenchReplaceRef.current = onWorkbenchReplace;
+  onInsightPatchRef.current = onInsightPatch;
 
   const run = useCallback((model: string, reasoning: "low" | "medium" | "high"): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
@@ -85,7 +90,13 @@ export function useInsightRun(input: {
           });
           const workbench = parseWorkbenchResponse(workbenchValue);
           if (workbench === undefined) throw new Error("Invalid Review projection response");
-          if (!cancelled && activeRunRef.current === runId) onWorkbenchReplace(workbench);
+          if (!cancelled && activeRunRef.current === runId) {
+            if (onInsightPatchRef.current !== undefined) {
+              onInsightPatchRef.current(type, workbench.insights[type]);
+            } else {
+              onWorkbenchReplaceRef.current?.(workbench);
+            }
+          }
           activeRunRef.current = undefined;
           setRunId(undefined);
           return;
@@ -106,7 +117,7 @@ export function useInsightRun(input: {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [onWorkbenchReplace, profileId, reviewId, runId, type]);
+  }, [profileId, reviewId, runId, type]);
 
   return {
     status,
