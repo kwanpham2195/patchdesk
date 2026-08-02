@@ -34,10 +34,10 @@ test("canonical Review entry opens the review workbench", async ({ page }) => {
     const diff = page.getByLabel("Review diff");
     await expect(diff).toBeVisible();
     expect((await diff.boundingBox())?.width).toBeGreaterThan(900);
-  } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
+  } finally { await page.close(); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
-test("completed Review stays readable and hides local draft write actions", async ({ page }) => {
+test("normal dashboard opens a seeded completed workbench with publication preview", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-complete-")); let api: LocalApiServer | undefined;
   try {
     const paths = PatchdeskPaths.forTest(root);
@@ -51,9 +51,10 @@ test("completed Review stays readable and hides local draft write actions", asyn
     await page.goto(origin(renderer));
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${reviewId}`);
     await expect(page.getByRole("main")).toContainText("Persisted review result");
-    await expect(page.getByRole("heading", { name: "Review batch" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Create pending review" })).toHaveCount(0);
-  } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
+    await page.getByRole("button", { name: /Review draft/ }).click();
+    await expect(page.getByRole("heading", { name: "Review batch" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Preview publication" })).toBeVisible();
+  } finally { await page.close(); await new Promise((resolve) => setTimeout(resolve, 25)); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
 function summary() { return { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Persisted review result", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", baseSha: "0123456789abcdef0123456789abcdef01234567", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" }; }

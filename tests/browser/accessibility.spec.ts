@@ -180,6 +180,8 @@ test("Settings modal has a named, trapped, independently scrollable surface", as
 test("walkthrough takeover exposes rail, Reviewed controls, and Back to files focus", async ({
   page,
 }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => localStorage.setItem("patchdesk.appearance.v1", "light"));
   await page.goto(`${origin(renderer)}/#walkthrough-fixture`);
   await page.getByRole("button", { name: "Generate walkthrough" }).click();
   const dialog = page.getByTestId("walkthrough-generate-dialog");
