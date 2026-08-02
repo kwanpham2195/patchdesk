@@ -126,6 +126,16 @@ describe("ReviewCompletionService", () => {
     await expect(access(fixture.resultPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("rejects prior-finding assessments on a full review", async () => {
+    const fixture = await runningReview();
+    expect(await fixture.service.complete({
+      profileId: fixture.profileId,
+      sessionId: fixture.session.id,
+      attemptId: fixture.attempt.id,
+      result: { ...result(), priorFindingAssessments: [{ priorFindingToken: "a".repeat(64), disposition: "resolved" as const, explanation: "Unsupported for a full review." }] },
+    })).toEqual({ _tag: "err", error: { reason: "invalid_result" } });
+  });
+
   it("projects incremental lifecycle evidence and excludes previously submitted comments by default", async () => {
     const fixture = await runningReview();
     const scope = {

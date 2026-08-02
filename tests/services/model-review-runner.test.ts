@@ -2,8 +2,11 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import * as v from "valibot";
 
-import { runModelReview, type ReviewModelSession } from "../../src/services/model-review-runner";
+import type { modelReviewResultSchema } from "../../src/domain/review-result";
+import { runModelReview } from "../../src/services/model-review-runner";
+import type { ReviewModelSession } from "../../src/services/model-review-runner";
 
 type GitObjectFixture = string | {
   readonly contents: string;
@@ -48,13 +51,18 @@ describe("model review runner", () => {
       let prompt = "";
       let toolNames: ReadonlyArray<string> = [];
       let inspected: unknown;
+      let resultSchema: typeof modelReviewResultSchema | undefined;
+      let malformed = false;
       const session: ReviewModelSession = {
         async prompt(input, options) {
           prompt = input;
+          resultSchema = options.result;
           toolNames = options.tools.map((tool) => tool.name);
           const readTool = options.tools.find((tool) => tool.name === "read_file_range");
           inspected = await readTool?.run({ input: { path: "src/review.ts", startLine: 1, endLine: 1 } });
-          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "One issue found.", findings: [], validationPlan: ["pnpm test"], assumptions: [] } };
+          return { data: malformed
+            ? { changeSummary: "Review complete.", verdict: "comment" as const, summary: "One issue found.", findings: [], validationPlan: ["pnpm test"], assumptions: [], rawNotes: "must reject" }
+            : { changeSummary: "Review complete.", verdict: "comment" as const, summary: "One issue found.", findings: [], validationPlan: ["pnpm test"], assumptions: [] } };
         },
       };
 
@@ -74,6 +82,18 @@ describe("model review runner", () => {
       expect(prompt).toContain("export const review");
       expect(toolNames).toEqual(["list_changed_files", "search_files", "read_file_range", "git_show"]);
       expect(inspected).toEqual({ content: "export const review = true;" });
+      if (resultSchema === undefined) throw new Error("expected result schema");
+      expect(v.safeParse(resultSchema, { changeSummary: "ok", verdict: "approve", summary: "ok", findings: [], validationPlan: [], assumptions: [], rawNotes: "must reject" }).success).toBe(false);
+      malformed = true;
+      await expect(runModelReview({
+        session,
+        worktreePath: root,
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        debugPath: join(root, "debug.json"),
+        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "export const review = true;\n" }),
+      })).rejects.toThrow("Invalid model review result");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

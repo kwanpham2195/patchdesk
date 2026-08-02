@@ -27,6 +27,7 @@ describe("review inspector Flue tools", () => {
       await expect(tools[0]?.run({ input: {} })).resolves.toEqual({ files: ["src/review.ts"] });
       await expect(tools[2]?.run({ input: { path: "src/review.ts", startLine: 2, endLine: 2 } })).resolves.toEqual({ content: "second" });
       await expect(tools[2]?.run({ input: { path: "../outside", startLine: 1, endLine: 1 } })).resolves.toEqual({ denied: true });
+      await expect(tools[3]?.run({ input: { revision: "HEAD~1" } })).resolves.toEqual({ denied: true });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

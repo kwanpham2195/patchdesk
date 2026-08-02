@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, win32 } from "node:path";
 
 import type { ToolDefinition } from "@flue/runtime";
-import type * as v from "valibot";
+import * as v from "valibot";
 
 import { modelReviewResultSchema } from "../domain/review-result";
 import { parsePriorFindingEvidence, type PriorFindingEvidence } from "../domain/finding-lifecycle";
@@ -21,7 +21,7 @@ export type ReviewModelSession = {
     readonly tools: ReadonlyArray<ToolDefinition>;
     readonly model?: string;
     readonly thinkingLevel?: "low" | "medium" | "high";
-  }): Promise<{ readonly data: WorkflowModelReviewResult }>;
+  }): Promise<{ readonly data: unknown }>;
 };
 
 export type WorkflowModelReviewResult = v.InferOutput<typeof modelReviewResultSchema>;
@@ -71,7 +71,9 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
     ...(input.model === undefined ? {} : { model: input.model }),
     ...(input.reasoning === undefined ? {} : { thinkingLevel: input.reasoning }),
   });
-  return response.data;
+  const parsed = v.safeParse(modelReviewResultSchema, response.data);
+  if (!parsed.success) throw new Error("Invalid model review result");
+  return parsed.output;
 }
 
 async function snapshotChangedFiles(
