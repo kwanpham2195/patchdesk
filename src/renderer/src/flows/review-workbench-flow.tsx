@@ -9,7 +9,8 @@ import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { ReviewWorkbench } from "../components/review-workbench";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
-import { ReviewBatchPanel, type ReviewBatchPanelActions } from "../components/review-batch-panel";
+import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
+import { ReviewDraftDock } from "../components/review-draft-dock";
 import { PublishedFeedbackPanel } from "../components/published-feedback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -452,7 +453,7 @@ function DraftSlot({
       if (next !== undefined) onWorkbenchPatch({ draft: next });
     },
   };
-  return <div className="border-t px-4 py-4"><ReviewBatchPanel batch={batch.value} {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })} writeBlocked={workbench.revision.freshness !== "fresh"} actions={actions} /></div>;
+  return <ReviewDraftDock batch={batch.value} {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })} writeBlocked={workbench.revision.freshness !== "fresh"} actions={actions} />;
 }
 
 function parseBatchResponse(value: unknown): WorkbenchResponse["draft"] | undefined {
