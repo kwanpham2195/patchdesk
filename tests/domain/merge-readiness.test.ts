@@ -15,6 +15,14 @@ describe("merge readiness", () => {
     expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "unknown", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toEqual({ _tag: "Blocked", blockers: ["mergeability_unknown"], warnings: [] });
   });
 
+  it("applies the configured Analysis policy only to current high-severity findings", () => {
+    const base = { isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "mergeable" as const, checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false, analysisFindingCount: 1 };
+    expect(evaluateMergeReadiness({ ...base, analysisMergePolicy: "advisory" })).toMatchObject({ _tag: "NeedsAcknowledgement", warnings: ["analysis_finding"] });
+    expect(evaluateMergeReadiness({ ...base, analysisMergePolicy: "require_acknowledgement" })).toMatchObject({ _tag: "NeedsAcknowledgement", warnings: ["analysis_finding"] });
+    expect(evaluateMergeReadiness({ ...base, analysisMergePolicy: "require_acknowledgement", analysisAcknowledged: true })).toMatchObject({ _tag: "Ready" });
+    expect(evaluateMergeReadiness({ ...base, analysisMergePolicy: "block" })).toMatchObject({ _tag: "Blocked", blockers: ["analysis_finding"] });
+  });
+
   it("fails closed when required-check classification is unknown", () => {
     expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "mergeable", checks: { overall: "unknown", checks: [{ name: "unit", required: "unknown", status: "completed", conclusion: "success" }] }, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toMatchObject({ _tag: "Blocked", blockers: ["required_check"] });
   });

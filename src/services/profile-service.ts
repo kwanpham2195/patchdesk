@@ -121,6 +121,7 @@ export function createDefaultCfwProfile(): Result<
     workspaceRoots: [root.value],
     rulePaths: [],
     repos: [],
+    analysisMergePolicy: "require_acknowledgement",
   });
 }
 

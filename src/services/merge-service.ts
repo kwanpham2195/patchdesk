@@ -55,6 +55,11 @@ export async function mergePullRequest(input: {
     hasHighSeverityFinding: (input.result?.findings ?? []).some(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ),
+    analysisFindingCount: (input.result?.findings ?? []).filter(
+      (finding) => finding.severity === "P0" || finding.severity === "P1",
+    ).length,
+    ...(input.profile.analysisMergePolicy === undefined ? {} : { analysisMergePolicy: input.profile.analysisMergePolicy }),
+    analysisAcknowledged: input.acknowledgedWarnings,
   });
   if (readiness._tag === "Blocked") return err({ _tag: "MergeBlocked", readiness });
   if (readiness._tag === "NeedsAcknowledgement" && !input.acknowledgedWarnings)
