@@ -9,6 +9,7 @@ import type {
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { ReviewBatch } from "../../../domain/review-batch";
 import type { ReviewFinding } from "../../../domain/review-result";
+import type { WorkbenchResponse } from "../renderer-contracts";
 import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { ReviewBatchPanel, ReviewBatchWriteActions, type ReviewBatchPanelActions } from "./review-batch-panel";
@@ -57,7 +58,7 @@ export type CanonicalReviewOverview = {
     readonly complete?: boolean;
     readonly threads: ReadonlyArray<{ readonly id: string; readonly state: string; readonly comments: ReadonlyArray<{ readonly author: string; readonly body: string }> }>;
   };
-  readonly publishedFeedbackCount: number;
+  readonly publishedFeedback: WorkbenchResponse["publishedFeedback"];
   readonly mergeReadiness: { readonly _tag: string; readonly blockers: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
   readonly terminalState?: "merged" | "closed";
 };
@@ -96,8 +97,8 @@ export function CanonicalReviewOverviewSheet({
             {overview.comments.threads.length === 0 ? <p className="text-sm text-muted-foreground">No existing review threads.</p> : <ul className="flex flex-col gap-3">{overview.comments.threads.map((thread) => <li key={thread.id} className="rounded-md border p-3"><p className="mb-2 text-xs text-muted-foreground">{thread.state}</p><div className="flex flex-col gap-2">{thread.comments.map((comment) => <div key={`${thread.id}-${comment.author}-${comment.body}`}><p className="font-medium">{comment.author}</p><p className="text-sm text-muted-foreground">{comment.body}</p></div>)}</div></li>)}</ul>}
           </OverviewRow>
           <Separator />
-          <OverviewRow title="Published feedback" trailing={String(overview.publishedFeedbackCount)}>
-            <p className="text-sm text-muted-foreground">Published GitHub feedback is read-only here.</p>
+          <OverviewRow title="Published feedback" trailing={overview.publishedFeedback.complete === false ? `${overview.publishedFeedback.reviews.length + overview.publishedFeedback.comments.length}+` : String(overview.publishedFeedback.reviews.length + overview.publishedFeedback.comments.length)}>
+            {overview.publishedFeedback.reviews.length === 0 && overview.publishedFeedback.comments.length === 0 ? <p className="text-sm text-muted-foreground">No published GitHub feedback was loaded.</p> : <div className="flex flex-col gap-3">{overview.publishedFeedback.complete === false ? <p className="text-xs text-muted-foreground">This list is incomplete; refresh GitHub state to load more.</p> : null}{overview.publishedFeedback.reviews.map((review) => <article key={review.id} className="rounded-md border p-3"><p className="text-xs font-medium">{review.author} · {review.event}</p><p className="mt-1 whitespace-pre-wrap text-sm">{review.body || "No review body."}</p></article>)}{overview.publishedFeedback.comments.map((comment) => <article key={comment.id} className="rounded-md border p-3"><p className="text-xs font-medium">{comment.author}</p><p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>{comment.location === undefined ? null : <p className="mt-1 text-xs text-muted-foreground">{comment.location.path}:{comment.location.line ?? "?"}</p>}</article>)}</div>}
           </OverviewRow>
           <Separator />
           <OverviewRow title="Merge readiness" trailing={overview.mergeReadiness._tag}>

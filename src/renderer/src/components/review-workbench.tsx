@@ -149,7 +149,7 @@ export function ReviewWorkbench({
     summary: retainedAnalysis?.value.summary ?? "No retained Analysis is available for this snapshot.",
     checks: { overall: model.checks.overall, checks: model.checks.checks.map((check) => ({ name: check.name, status: check.status, ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }) })) },
     comments: { ...(model.comments.complete === undefined ? {} : { complete: model.comments.complete }), threads: model.comments.threads.map((thread) => ({ id: thread.id, state: thread.state, comments: thread.comments.map((comment) => ({ author: comment.author, body: comment.body })) })) },
-    publishedFeedbackCount: model.publishedFeedback.reviews.length + model.publishedFeedback.comments.length,
+    publishedFeedback: model.publishedFeedback,
     mergeReadiness: model.mergeReadiness,
     ...(model.review.status === "open" ? {} : { terminalState: model.review.status }),
   };

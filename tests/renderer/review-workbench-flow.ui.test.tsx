@@ -119,6 +119,7 @@ describe("ReviewWorkbenchFlow", () => {
       ...base,
       pullRequest: { ...base.pullRequest, description: "Current PR description" },
       comments: { threads: [{ id: "thread-1", state: "open" as const, comments: [{ id: "comment-1", author: "reviewer", body: "Existing thread", createdAt: "2026-08-01T00:00:00.000Z" }] }] },
+      publishedFeedback: { reviews: [{ id: "published-1", author: "maintainer", body: "Published review body", event: "COMMENTED" as const, submittedAt: "2026-08-01T00:00:00.000Z", canDismiss: false }], comments: [] },
     };
     const user = userEvent.setup();
     render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
@@ -130,6 +131,8 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.getByRole("button", { name: "Existing threads" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Checks" }));
     expect(screen.getByText("No checks reported.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Published feedback" }));
+    expect(screen.getAllByText("Published review body").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
     expect(document.body.style.overflow).toBe("hidden");
     await user.keyboard("{Escape}");
