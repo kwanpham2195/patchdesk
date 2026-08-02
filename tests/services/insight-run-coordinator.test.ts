@@ -61,12 +61,14 @@ describe("InsightRunCoordinator", () => {
 
   it("persists cancelling before aborting the owned process", async () => {
     let signal: AbortSignal | undefined;
-    const invoker: InsightInvoker = { async invoke(_input, options) { signal = options.signal; await new Promise((resolve) => options.signal.addEventListener("abort", resolve, { once: true })); return { _tag: "err", error: { reason: "cancelled" } }; } };
+    let resolveInvoked: () => void = () => undefined;
+    const invoked = new Promise<void>((resolve) => { resolveInvoked = resolve; });
+    const invoker: InsightInvoker = { async invoke(_input, options) { signal = options.signal; resolveInvoked(); await new Promise((resolve) => options.signal.addEventListener("abort", resolve, { once: true })); return { _tag: "err", error: { reason: "cancelled" } }; } };
     const fixtureValue = await fixture({ analysis: invoker, walkthrough: successful() });
     try {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       if (started._tag === "err") throw new Error("expected run");
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await invoked;
       expect(signal).toBeDefined();
       await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelling" } });
       await new Promise((resolve) => setTimeout(resolve, 10));
