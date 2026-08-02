@@ -19,10 +19,13 @@ const headSha = must(parseGitSha("a".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 
 class FailingInsightStore extends InsightStore {
-  failWrites = false;
+  failWritesRemaining = 0;
 
   override save(...args: Parameters<InsightStore["save"]>): ReturnType<InsightStore["save"]> {
-    if (this.failWrites) return Promise.resolve(err({ _tag: "StorageFailure", operation: "write", reason: "io" }));
+    if (this.failWritesRemaining > 0) {
+      this.failWritesRemaining -= 1;
+      return Promise.resolve(err({ _tag: "StorageFailure", operation: "write", reason: "io" }));
+    }
     return super.save(...args);
   }
 }
@@ -142,10 +145,8 @@ describe("InsightRunCoordinator", () => {
     try {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       if (started._tag === "err") throw new Error("expected run");
-      fixtureValue.insights.failWrites = true;
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      fixtureValue.insights.failWrites = false;
-      await expect(fixtureValue.coordinator.recover({ profileId, reviewId: fixtureValue.review.id, type: "analysis" })).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
+      fixtureValue.insights.failWritesRemaining = 1;
+      await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "failed");
       const retried = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       expect(retried._tag).toBe("ok");
       if (retried._tag === "ok") await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: retried.value.runId }), "completed");
