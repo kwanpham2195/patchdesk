@@ -111,7 +111,7 @@ const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
 const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
-const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
+const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -856,10 +856,11 @@ async function publicationPreviewResponse(context: Context, service: Publication
   const parsed = safeParse(publicationPreviewSchema, body);
   if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
   const sessionId = parseReviewSessionId(parsed.output.sessionId);
   const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
-  if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = await service.preview({ profileId: profileId.value, sessionId: sessionId.value, expectedRevision: expectedRevision.value, event: parsed.output.event });
+  if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.preview({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, expectedRevision: expectedRevision.value, event: parsed.output.event });
   if (result._tag === "ok") return context.json(result.value);
   const status = result.error === "profile_not_found" || result.error === "session_not_found" ? 404 : result.error === "revision_conflict" || result.error === "stale_head" || result.error === "needs_attention" ? 409 : result.error === "github_read_failed" ? 503 : 400;
   return context.json({ error: result.error }, status);

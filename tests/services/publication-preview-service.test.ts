@@ -19,6 +19,6 @@ it("builds the exact local draft publication preview from main-process state", a
     { async load() { return { _tag: "ok" as const, value: session as never }; } },
     { async getPullRequest() { return { _tag: "ok" as const, value: { headSha: session.key.headSha } as never }; } },
   );
-  const result = await service.preview({ profileId: "cfw" as never, sessionId: session.id as never, expectedRevision: session.batchContent.updatedAt as never, event: "COMMENT" });
+  const result = await service.preview({ profileId: "cfw" as never, reviewId: "github.com__centraldigital__patchdesk__pr-1__review-aaaaaaaaaaaa" as never, sessionId: session.id as never, expectedRevision: session.batchContent.updatedAt as never, event: "COMMENT" });
   expect(result).toMatchObject({ _tag: "ok", value: { body: "Summary", headSha: session.key.headSha, inlineComments: [{ itemId: "comment", path: "src/a.ts", startLine: 2, line: 3, side: "new", body: "Check this." }] } });
 });
