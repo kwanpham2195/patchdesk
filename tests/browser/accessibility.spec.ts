@@ -62,7 +62,18 @@ for (const fixture of [
     if (fixture === "") {
       await expect(page.getByLabel("Pull request reference")).toBeVisible();
     }
+    await forceLightAppearance(page);
     expect(await seriousProductViolations(page)).toEqual([]);
+  });
+}
+
+async function forceLightAppearance(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    root.classList.remove("dark");
+    document.querySelectorAll(".dark").forEach((element) => element.classList.remove("dark"));
+    root.dataset.appearance = "light";
+    root.style.colorScheme = "light";
   });
 }
 
@@ -228,12 +239,9 @@ test("walkthrough takeover exposes rail, Reviewed controls, and Back to files fo
   await expect(
     page.getByRole("button", { name: "Previous section" }),
   ).toBeEnabled();
-  await page.locator("html").evaluate((root) => {
-    root.classList.remove("dark");
-    document.querySelectorAll(".dark").forEach((element) => element.classList.remove("dark"));
-    root.dataset.appearance = "light";
-    root.style.colorScheme = "light";
-  });
+  await forceLightAppearance(page);
+  await page.waitForTimeout(50);
+  await forceLightAppearance(page);
   await expect(await seriousProductViolations(page)).toEqual([]);
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(
