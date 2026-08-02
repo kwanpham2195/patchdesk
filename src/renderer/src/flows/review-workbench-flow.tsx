@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { parseReviewBatch } from "../../../domain/review-batch";
 import { requestJson } from "../api-client";
 import { ReviewWorkbench } from "../components/review-workbench";
+import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import { ReviewBatchPanel, type ReviewBatchPanelActions } from "../components/review-batch-panel";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -75,6 +76,33 @@ export function ReviewWorkbenchFlow({
     }
   }, [onWorkbenchReplace, refreshing, workbench]);
 
+  const saveInlineComment = useCallback(async (input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0]): Promise<void> => {
+    const batch = workbench.draft;
+    if (batch === undefined) throw new Error("The saved Review draft is unavailable");
+    const value = await requestJson("/v1/reviews/batch", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        sessionId: workbench.session.id,
+        expectedRevision: batch.updatedAt,
+        command: {
+          _tag: "AddInlineComment",
+          anchor: { path: input.path, startLine: input.startLine, line: input.line, side: input.side },
+          ...(input.fingerprint === undefined ? {} : { fingerprint: input.fingerprint }),
+          body: input.body,
+        },
+      },
+    });
+    const next = parseBatchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review batch response");
+    onWorkbenchPatch({ draft: next });
+  }, [onWorkbenchPatch, workbench]);
+
+  const localCommentAuthoring: LocalCommentAuthoring | undefined =
+    workbench.review.status === "open" && workbench.revision.freshness === "fresh" && workbench.draft !== undefined
+      ? { enabled: true, onSave: saveInlineComment }
+      : undefined;
+
   return (
     <>
       <ReviewWorkbench
@@ -91,6 +119,7 @@ export function ReviewWorkbenchFlow({
             if (parsed === undefined) throw new Error("Invalid commit diff response");
             return parsed;
           },
+          ...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring }),
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{
@@ -135,15 +164,25 @@ function InsightsSlot({
     void requestJson("/v1/reviews/models").then((value) => {
       if (!active) return;
       const catalog = parseModelCatalog(value);
-      if (catalog === undefined) { setCatalogError(true); return; }
+      if (catalog === undefined) {
+        setModels([]);
+        setModel(null);
+        setCatalogError(true);
+        return;
+      }
       setModels(catalog.models);
       setModel(catalog.defaultModel ?? catalog.models[0]?.id ?? null);
       setCatalogError(false);
-    }).catch(() => { if (active) setCatalogError(true); });
+    }).catch(() => {
+      if (!active) return;
+      setModels([]);
+      setModel(null);
+      setCatalogError(true);
+    });
     return () => { active = false; };
-  }, []);
+  }, [profileId]);
 
-  const runEnabled = model !== null && workbench.review.status === "open";
+  const runEnabled = !catalogError && model !== null && workbench.review.status === "open";
   const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
   const addFinding = async (finding: AnalysisFinding): Promise<void> => {
     const batch = workbench.draft;
@@ -259,7 +298,7 @@ function InsightCard({
       </CardContent>
       <CardFooter className="flex gap-2">
         {busy ? <Button variant="outline" onClick={onCancel}>Cancel</Button> : <Button onClick={onRun} disabled={disabled}>{projection.retained === undefined ? "Run" : "Regenerate"}</Button>}
-        {projection.retained !== undefined ? <Button variant="ghost">Open</Button> : null}
+
       </CardFooter>
     </Card>
   );

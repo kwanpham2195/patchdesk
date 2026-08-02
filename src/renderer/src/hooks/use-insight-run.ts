@@ -26,9 +26,14 @@ export function useInsightRun(input: {
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
+  const [starting, setStarting] = useState(false);
   const activeRunRef = useRef<string | undefined>(undefined);
+  const startingRef = useRef(false);
 
   const run = useCallback((model: string, reasoning: "low" | "medium" | "high"): void => {
+    if (startingRef.current || activeRunRef.current !== undefined) return;
+    startingRef.current = true;
+    setStarting(true);
     setError(false);
     void requestJson(`/v1/reviews/insights/${type}/run`, {
       method: "POST",
@@ -37,9 +42,13 @@ export function useInsightRun(input: {
       const parsed = parseInsightRunResponse(value);
       if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight run response");
       activeRunRef.current = parsed.runId;
+      startingRef.current = false;
+      setStarting(false);
       setRunId(parsed.runId);
       setStatus(parsed.status);
     }).catch(() => {
+      startingRef.current = false;
+      setStarting(false);
       setError(true);
       setStatus("error");
     });
@@ -103,7 +112,7 @@ export function useInsightRun(input: {
     status,
     ...(runId === undefined ? {} : { runId }),
     error,
-    busy: runId !== undefined,
+    busy: starting || runId !== undefined,
     run,
     cancel,
   };

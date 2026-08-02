@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NarrativeWalkthrough, type NarrativeWalkthroughActions } from "../../src/renderer/src/components/narrative-walkthrough";
+import type { LocalCommentAuthoring } from "../../src/renderer/src/components/review-diff-view";
 import type { NarrativeWalkthrough as NarrativeWalkthroughModel, NarrativeSnapshot } from "../../src/domain/narrative-walkthrough";
 
 afterEach(() => {
@@ -141,6 +142,21 @@ describe("narrative walkthrough takeover", () => {
     expect(screen.getByText("The stored patch changes how the recovery path picks its next action.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Mark section reviewed" })).toBeTruthy();
     expect(screen.getByText("Support")).toBeTruthy();
+  });
+
+  it("offers local comment authoring in the accessible diff fallback", () => {
+    const authoring: LocalCommentAuthoring = { enabled: true, onSave: vi.fn(async () => undefined) };
+    render(
+      <NarrativeWalkthrough
+        walkthrough={buildWalkthrough()}
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        rawPatch="diff --git a/src/recovery/projection.ts b/src/recovery/projection.ts\n--- a/src/recovery/projection.ts\n+++ b/src/recovery/projection.ts\n@@ -42 +42 @@\n-old\n+new\n"
+        localCommentAuthoring={authoring}
+        actions={buildActions()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Add local comment on src/recovery/projection.ts" })).toBeTruthy();
   });
 
   it("shows the back to files control and never mutates Files state", () => {

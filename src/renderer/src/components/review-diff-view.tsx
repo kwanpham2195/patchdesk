@@ -250,6 +250,17 @@ function ReviewDiffSurface({
     setAuthoringSelection(null);
     viewer.current?.clearSelectedLines();
   }, []);
+  const beginAccessibleAuthoring = useCallback((path: string, line: number, side: "additions" | "deletions"): void => {
+    if (localCommentAuthoring?.enabled !== true) return;
+    const location: LocalCommentLocation = {
+      path,
+      startLine: line,
+      line,
+      side: side === "additions" ? "new" : "old",
+    };
+    if (localCommentAuthoring.canAuthor?.(location) === false) return;
+    setAuthoringSelection({ id: path, range: { start: line, end: line, side } });
+  }, [localCommentAuthoring]);
   const saveAuthoring = useCallback(async (body: string): Promise<void> => {
     if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return;
     const side: "new" | "old" = authoringSelection.range.side === "additions" ? "new" : "old";
@@ -726,6 +737,7 @@ function ReviewDiffSurface({
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
           {...(selectedRange === undefined ? {} : { selectedRange })}
+          {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring, onAuthorLine: beginAccessibleAuthoring })}
         />
       ) : !virtualized ? (
         selectedFile === undefined ? (
@@ -880,6 +892,7 @@ function useLargeDiffSelection(
 type AccessibleLine = {
   readonly content: string;
   readonly kind: "Added" | "Deleted" | "Hunk" | "Context";
+  readonly path?: string;
   readonly oldLine?: number;
   readonly newLine?: number;
 };
@@ -887,9 +900,13 @@ type AccessibleLine = {
 function AccessiblePatch({
   patch,
   selectedRange,
+  localCommentAuthoring,
+  onAuthorLine,
 }: {
   readonly patch: string;
   readonly selectedRange?: SelectedDiffRange;
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
+  readonly onAuthorLine?: (path: string, line: number, side: "additions" | "deletions") => void;
 }): React.JSX.Element {
   const lines = useMemo(() => parseAccessibleLines(patch), [patch]);
   const selectedRef = useRef<HTMLLIElement | null>(null);
@@ -924,6 +941,7 @@ function AccessiblePatch({
               ref={firstSelected ? selectedRef : undefined}
               className={`grid grid-cols-[3.5rem_3.5rem_1fr] gap-2 rounded-sm px-1 ${selected ? "bg-primary/20 ring-1 ring-inset ring-primary/50" : ""}`}
               data-selected-line={selected ? "true" : undefined}
+              data-line-type={line.kind === "Added" ? "change-addition" : line.kind === "Deleted" ? "change-deletion" : undefined}
               data-line-number={lineNumber}
               data-diff-side={selectedRange?.side}
               tabIndex={firstSelected ? -1 : undefined}
@@ -942,6 +960,13 @@ function AccessiblePatch({
                   : `${line.oldLine ?? ""}${line.oldLine !== undefined && line.newLine !== undefined ? "/" : ""}${line.newLine ?? ""}`}
               </span>
               <code className="whitespace-pre">{line.content || " "}</code>
+              {localCommentAuthoring?.enabled === true && line.path !== undefined && (line.kind === "Added" || line.kind === "Deleted") ? (() => {
+                const path = line.path;
+                const side = line.kind === "Added" ? "additions" as const : "deletions" as const;
+                const lineNumber = side === "additions" ? line.newLine : line.oldLine;
+                if (lineNumber === undefined || localCommentAuthoring.canAuthor?.({ path, startLine: lineNumber, line: lineNumber, side: side === "additions" ? "new" : "old" }) === false) return null;
+                return <button type="button" className="rounded px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Add local comment on ${path}`} onClick={() => onAuthorLine?.(path, lineNumber, side)}>+</button>;
+              })() : null}
             </li>
           );
         })}
@@ -953,12 +978,20 @@ function AccessiblePatch({
 function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
   let oldLine: number | undefined;
   let newLine: number | undefined;
+  let path: string | undefined;
   return patch.split("\n").map((content) => {
+    const file = /^diff --git a\/(.+) b\/(.+)$/.exec(content);
+    if (file !== null) {
+      path = file[2];
+      oldLine = undefined;
+      newLine = undefined;
+      return { content, kind: "Context", ...(path === undefined ? {} : { path }) };
+    }
     const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(content);
     if (hunk !== null) {
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
-      return { content, kind: "Hunk" };
+      return { content, kind: "Hunk", ...(path === undefined ? {} : { path }) };
     }
     if (
       oldLine === undefined ||
@@ -968,16 +1001,16 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
       return { content, kind: "Context" };
     }
     if (content.startsWith("+") && !content.startsWith("+++")) {
-      const line = { content, kind: "Added" as const, newLine };
+      const line = { content, kind: "Added" as const, ...(path === undefined ? {} : { path }), newLine };
       newLine += 1;
       return line;
     }
     if (content.startsWith("-") && !content.startsWith("---")) {
-      const line = { content, kind: "Deleted" as const, oldLine };
+      const line = { content, kind: "Deleted" as const, ...(path === undefined ? {} : { path }), oldLine };
       oldLine += 1;
       return line;
     }
-    const line = { content, kind: "Context" as const, oldLine, newLine };
+    const line = { content, kind: "Context" as const, ...(path === undefined ? {} : { path }), oldLine, newLine };
     oldLine += 1;
     newLine += 1;
     return line;
