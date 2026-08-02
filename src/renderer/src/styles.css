@@ -4,6 +4,9 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+.walkthrough-support-copy { color: #374151; }
+.dark .walkthrough-support-copy { color: #d1d5db; }
+
 :root {
   color-scheme: light dark;
   --radius: 0.625rem;
@@ -18,7 +21,7 @@
   --secondary: oklch(0.96 0 0);
   --secondary-foreground: oklch(0.2 0 0);
   --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.5 0 0);
+  --muted-foreground: oklch(0.42 0 0);
   --accent: oklch(0.95 0.02 280);
   --accent-foreground: oklch(0.2 0 0);
   --destructive: oklch(0.704 0.191 22.216);

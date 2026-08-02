@@ -332,11 +332,11 @@ export function NarrativeWalkthrough({
               />
             </CollapsibleTrigger>
             <CollapsibleContent motion="disclosure" className="pt-2">
-              <p className="px-1 text-xs text-foreground/85">
+              <p className="walkthrough-support-copy px-1 text-xs">
                 Every hunk the model did not cover.
               </p>
               <ul
-                className="mt-2 space-y-1 px-1 text-xs text-foreground/85"
+                className="walkthrough-support-copy mt-2 space-y-1 px-1 text-xs"
                 aria-label="Support hunks"
               >
                 {walkthrough.support.hunks.map((hunk) => (
