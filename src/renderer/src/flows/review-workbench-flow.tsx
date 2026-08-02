@@ -122,7 +122,7 @@ function InsightsSlot({
   readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
 }): React.JSX.Element {
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
-  const [model, setModel] = useState<string>();
+  const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
   const [catalogError, setCatalogError] = useState(false);
   const profileId = workbench.session.key.profileId;
@@ -137,13 +137,13 @@ function InsightsSlot({
       const catalog = parseModelCatalog(value);
       if (catalog === undefined) { setCatalogError(true); return; }
       setModels(catalog.models);
-      setModel(catalog.defaultModel ?? catalog.models[0]?.id);
+      setModel(catalog.defaultModel ?? catalog.models[0]?.id ?? null);
       setCatalogError(false);
     }).catch(() => { if (active) setCatalogError(true); });
     return () => { active = false; };
   }, []);
 
-  const runEnabled = model !== undefined && workbench.review.status === "open";
+  const runEnabled = model !== null && workbench.review.status === "open";
   const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
   const addFinding = async (finding: AnalysisFinding): Promise<void> => {
     const batch = workbench.draft;
@@ -164,7 +164,7 @@ function InsightsSlot({
           <p className="text-sm text-muted-foreground">Run independent, read-only explanations for this Review snapshot.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={model} onValueChange={(value) => setModel(value ?? undefined)}>
+          <Select value={model} onValueChange={(value) => setModel(value ?? null)}>
             <SelectTrigger size="sm" aria-label="Insight model"><SelectValue placeholder="Model" /></SelectTrigger>
             <SelectContent><SelectContentGroup models={models} /></SelectContent>
           </Select>
@@ -186,7 +186,7 @@ function InsightsSlot({
           projection={workbench.insights.analysis}
           runStatus={analysisRun.status}
           busy={analysisRun.busy}
-          onRun={() => { if (model !== undefined) analysisRun.run(model, reasoning); }}
+          onRun={() => { if (model !== null) analysisRun.run(model, reasoning); }}
           onCancel={analysisRun.cancel}
           disabled={!runEnabled}
           {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}
@@ -200,7 +200,7 @@ function InsightsSlot({
           projection={workbench.insights.walkthrough}
           runStatus={walkthroughRun.status}
           busy={walkthroughRun.busy}
-          onRun={() => { if (model !== undefined) walkthroughRun.run(model, reasoning); }}
+          onRun={() => { if (model !== null) walkthroughRun.run(model, reasoning); }}
           onCancel={walkthroughRun.cancel}
           disabled={!runEnabled}
         >
