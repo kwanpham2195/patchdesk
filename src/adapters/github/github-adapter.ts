@@ -979,8 +979,8 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly summaryBody: string;
     readonly comments: ReadonlyArray<PendingReviewComment>;
   }): Promise<Result<{ readonly reviewId: string; readonly state: "PENDING" }, GitHubWriteFailure>> {
-    if (input.comments.length === 0)
-      return err({ _tag: "GitHubWriteFailure", category: "rejected", message: "No postable comments are selected." });
+    if (input.comments.length === 0 && input.summaryBody.trim().length === 0)
+      return err({ _tag: "GitHubWriteFailure", category: "rejected", message: "No review content is selected." });
     const response = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`, "--input", "-"],
       stdin: JSON.stringify({

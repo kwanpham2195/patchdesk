@@ -41,6 +41,11 @@ const profile = { githubHost: "github.com", ghAccount: "pmquan2cfw" } as never;
 const now = "2026-07-16T00:01:00.000Z" as never;
 
 describe("review submission service", () => {
+  it("plans a pending review for body-only publication", () => {
+    const batch = { sessionId: session.id, state: { _tag: "Local" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [], createdAt: now, updatedAt: now };
+    expect(planBatchOperations(batch as never)).toEqual([{ _tag: "CreatePendingReview", itemIds: [] }]);
+  });
+
   it("persists a partial failure after GitHub rejects a confirmed batch operation", async () => {
     const persisted: ReviewSession[] = [];
     const batch = {
