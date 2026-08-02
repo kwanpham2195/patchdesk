@@ -2,15 +2,20 @@ import { readFile } from "node:fs/promises";
 
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { parseContentHash, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseReviewSessionId, parseLocalReviewItemId, type InsightRunId, type IsoTimestamp, type LocalReviewItemId, type ReviewSessionId, type WorkspaceProfileId, type ReviewId } from "../domain/ids";
 import { createEmptyReviewBatch, type ReviewAnchor, type ReviewBatch, type ReviewBatchItem } from "../domain/review-batch";
+import { parseUnifiedPatch } from "../domain/patch";
 import { fingerprintPatchAnchor } from "../domain/review-anchor";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { RetainedInsight } from "../domain/insight-record";
 import type { ReviewSession } from "../domain/review-session";
+import type { PullRequestCommit, PullRequestSummary } from "../domain/github-context";
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 import { contentHash } from "./review-artifact-hash";
+import { withReviewSessionMutationLock } from "./review-session-mutation-lock";
 import { renderAnalysisReviewBody, type AnalysisReviewBodyScope } from "./analysis-review-body";
 
 export type AnalysisDraftPreview = {
@@ -27,7 +32,7 @@ export type AnalysisDraftFailure =
   | { readonly reason: "replacement_acknowledgement_required" }
   | { readonly reason: "invalid_item_id" };
 
-export type CurrentAnalysisInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly scope: AnalysisReviewBodyScope; readonly now: IsoTimestamp };
+export type CurrentAnalysisInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedRevision: IsoTimestamp; readonly now: IsoTimestamp };
 
 export type AnalysisDraftStoreFailure = { readonly reason: "invalid_input" | "not_found" | "stale_request" | "storage_failed" | "draft_not_empty"; readonly merge?: AnalysisDraftPreview; readonly replacement?: AnalysisDraftPreview };
 
@@ -42,7 +47,7 @@ export type AnalysisDraftInput = {
 
 /** Builds deterministic Analysis content and applies only explicit draft transitions. */
 export class AnalysisDraftService {
-  constructor(private readonly stores?: { readonly sessions: Pick<ReviewSessionStore, "load" | "save">; readonly insights: Pick<InsightStore, "loadTyped"> }) {}
+  constructor(private readonly stores?: { readonly sessions: Pick<ReviewSessionStore, "load" | "save">; readonly insights: Pick<InsightStore, "loadTyped">; readonly reviews: Pick<ReviewStore, "load">; readonly remote: Pick<ReviewRemoteStore, "load"> }) {}
 
   seed(input: AnalysisDraftInput & { readonly current?: ReviewBatch }): Result<ReviewBatch, AnalysisDraftFailure> {
     const current = input.current;
@@ -53,11 +58,29 @@ export class AnalysisDraftService {
   }
 
   async seedCurrent(input: CurrentAnalysisInput): Promise<Result<ReviewBatch, AnalysisDraftStoreFailure>> {
-    const loaded = await this.loadCurrent(input);
-    if (loaded._tag === "err") return loaded;
-    const seeded = this.seed({ ...loaded.value.draft, ...(loaded.value.current === undefined ? {} : { current: loaded.value.current }) });
-    if (seeded._tag === "err") return seeded.error.reason === "draft_not_empty" ? err({ reason: "draft_not_empty", merge: seeded.error.merge, replacement: seeded.error.replacement }) : err({ reason: "invalid_input" });
-    return this.saveCurrent(loaded.value.session, seeded.value, input.now);
+    return withReviewSessionMutationLock(`${input.profileId}:${input.sessionId}`, async () => {
+      const loaded = await this.loadCurrent(input);
+      if (loaded._tag === "err") return loaded;
+      if (loaded.value.current?.updatedAt !== input.expectedRevision) return err({ reason: "stale_request" });
+      const seeded = this.seed({ ...loaded.value.draft, ...(loaded.value.current === undefined ? {} : { current: loaded.value.current }) });
+      if (seeded._tag === "err") return seeded.error.reason === "draft_not_empty" ? err({ reason: "draft_not_empty", merge: seeded.error.merge, replacement: seeded.error.replacement }) : err({ reason: "invalid_input" });
+      return this.saveCurrent(loaded.value.session, seeded.value, input.now);
+    });
+  }
+
+  async addFindingCurrent(input: CurrentAnalysisInput & { readonly findingId: string }): Promise<Result<ReviewBatch, AnalysisDraftStoreFailure>> {
+    return withReviewSessionMutationLock(`${input.profileId}:${input.sessionId}`, async () => {
+      const loaded = await this.loadCurrent(input);
+      if (loaded._tag === "err") return loaded;
+      if (loaded.value.current === undefined || loaded.value.current.updatedAt !== input.expectedRevision) return err({ reason: "stale_request" });
+      const finding = loaded.value.draft.result.findings.find((candidate) => candidate.id === input.findingId);
+      if (finding === undefined) return err({ reason: "not_found" });
+      const alreadyAdded = loaded.value.current.items.some((item) => isFindingItem(item) && item.findingId === finding.id && item.provenance._tag === "insight" && item.provenance.runId === input.analysisRunId);
+      if (alreadyAdded) return ok(loaded.value.current);
+      const item = findingItem(finding, input.analysisRunId, loaded.value.draft.patch);
+      const next = { ...loaded.value.current, items: [...loaded.value.current.items, item], updatedAt: input.now };
+      return this.saveCurrent(loaded.value.session, next, input.now);
+    });
   }
 
   async previewMergeCurrent(input: CurrentAnalysisInput): Promise<Result<AnalysisDraftPreview & { readonly draftRevision: IsoTimestamp }, AnalysisDraftStoreFailure>> {
@@ -75,25 +98,32 @@ export class AnalysisDraftService {
   }
 
   async mergeCurrent(input: CurrentAnalysisInput & { readonly expectedRevision: IsoTimestamp }): Promise<Result<ReviewBatch, AnalysisDraftStoreFailure>> {
-    const loaded = await this.loadCurrent(input);
-    if (loaded._tag === "err") return loaded;
-    const current = loaded.value.current ?? createEmptyReviewBatch({ sessionId: input.sessionId, createdAt: input.now });
-    const merged = this.merge({ ...loaded.value.draft, current, expectedRevision: input.expectedRevision });
-    if (merged._tag === "err") return mapDraftFailure(merged.error);
-    return this.saveCurrent(loaded.value.session, merged.value, input.now);
+    return withReviewSessionMutationLock(`${input.profileId}:${input.sessionId}`, async () => {
+      const loaded = await this.loadCurrent(input);
+      if (loaded._tag === "err") return loaded;
+      const current = loaded.value.current ?? createEmptyReviewBatch({ sessionId: input.sessionId, createdAt: input.now });
+      const merged = this.merge({ ...loaded.value.draft, current, expectedRevision: input.expectedRevision });
+      if (merged._tag === "err") return mapDraftFailure(merged.error);
+      return this.saveCurrent(loaded.value.session, merged.value, input.now);
+    });
   }
 
   async replaceCurrent(input: CurrentAnalysisInput & { readonly expectedRevision: IsoTimestamp; readonly acknowledgement: boolean }): Promise<Result<ReviewBatch, AnalysisDraftStoreFailure>> {
-    const loaded = await this.loadCurrent(input);
-    if (loaded._tag === "err") return loaded;
-    const current = loaded.value.current ?? createEmptyReviewBatch({ sessionId: input.sessionId, createdAt: input.now });
-    const replaced = this.replace({ ...loaded.value.draft, current, expectedRevision: input.expectedRevision, acknowledgement: input.acknowledgement });
-    if (replaced._tag === "err") return mapDraftFailure(replaced.error);
-    return this.saveCurrent(loaded.value.session, replaced.value, input.now);
+    return withReviewSessionMutationLock(`${input.profileId}:${input.sessionId}`, async () => {
+      const loaded = await this.loadCurrent(input);
+      if (loaded._tag === "err") return loaded;
+      const current = loaded.value.current ?? createEmptyReviewBatch({ sessionId: input.sessionId, createdAt: input.now });
+      const replaced = this.replace({ ...loaded.value.draft, current, expectedRevision: input.expectedRevision, acknowledgement: input.acknowledgement });
+      if (replaced._tag === "err") return mapDraftFailure(replaced.error);
+      return this.saveCurrent(loaded.value.session, replaced.value, input.now);
+    });
   }
 
   private async loadCurrent(input: CurrentAnalysisInput): Promise<Result<{ readonly session: ReviewSession; readonly current?: ReviewBatch; readonly draft: AnalysisDraftInput }, AnalysisDraftStoreFailure>> {
     if (this.stores === undefined) return err({ reason: "storage_failed" });
+    const review = await this.stores.reviews.load(input.profileId, input.reviewId);
+    if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage_failed" });
+    if (review.value.status._tag !== "Open" || review.value.currentSessionId !== input.sessionId) return err({ reason: "stale_request" });
     const session = await this.stores.sessions.load(input.profileId, input.sessionId);
     if (session._tag === "err") return err({ reason: session.error.reason === "not_found" ? "not_found" : "storage_failed" });
     const analysis = await this.stores.insights.loadTyped(input.profileId, input.reviewId, "analysis", parseRetainedAnalysis);
@@ -107,7 +137,9 @@ export class AnalysisDraftService {
     } catch {
       return err({ reason: "storage_failed" });
     }
-    return ok({ session: session.value, ...(session.value.batchContent === undefined ? {} : { current: session.value.batchContent }), draft: { sessionId: input.sessionId, analysisRunId: input.analysisRunId, result: retained.value, scope: input.scope, patch, now: input.now } });
+    const remote = await this.stores.remote.load({ profileId: input.profileId, reviewId: input.reviewId });
+    if (remote._tag === "err") return err({ reason: "storage_failed" });
+    return ok({ session: session.value, ...(session.value.batchContent === undefined ? {} : { current: session.value.batchContent }), draft: { sessionId: input.sessionId, analysisRunId: input.analysisRunId, result: retained.value, scope: deriveScope(session.value, remote.value.pullRequest, remote.value.commits, patch), patch, now: input.now } });
   }
 
   private async saveCurrent(session: ReviewSession, batch: ReviewBatch, now: IsoTimestamp): Promise<Result<ReviewBatch, AnalysisDraftStoreFailure>> {
@@ -184,6 +216,19 @@ function mapDraftFailure(failure: AnalysisDraftFailure): Result<never, AnalysisD
   return err({ reason: "invalid_input" });
 }
 
+function deriveScope(session: ReviewSession, pullRequest: PullRequestSummary, commits: ReadonlyArray<PullRequestCommit>, patch: string): AnalysisReviewBodyScope {
+  const files = parseUnifiedPatch(patch);
+  return {
+    baseShort: (pullRequest.baseSha ?? (session.scope.kind === "incremental" ? session.scope.baseHeadSha : "base")).slice(0, 7),
+    headShort: session.key.headSha.slice(0, 7),
+    commitCount: commits.length,
+    fileCount: pullRequest.changedFileCount ?? files.length,
+    additions: pullRequest.additions ?? 0,
+    deletions: pullRequest.deletions ?? 0,
+    changedFiles: files.map((file) => ({ path: file.newPath, additions: file.newLines.size, deletions: file.oldLines.size })),
+  };
+}
+
 function parseRetainedAnalysis(input: unknown): Result<RetainedInsight<ReviewResult>, unknown> {
   const revision = readObjectField(input, "revision");
   const runId = parseInsightRunId(readObjectField(input, "runId"));
@@ -201,14 +246,24 @@ function mappedFindingItems(result: ReviewResult, runId: InsightRunId, patch: st
   const items: ReviewBatchItem[] = [];
   for (const finding of result.findings) {
     if (finding.mappingStatus !== "mapped" || finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined) continue;
-    const id = nextItemId(finding.id, used);
-    if (id === undefined) continue;
-    used.add(id);
-    const anchor: ReviewAnchor = { path: finding.file, startLine: finding.lineStart, line: finding.lineEnd ?? finding.lineStart, side: finding.diffSide };
-    const fingerprint = patch === undefined ? undefined : fingerprintPatchAnchor(patch, anchor);
-    items.push({ _tag: "InlineComment", id, provenance: { _tag: "insight", runId }, source: "finding", findingId: finding.id, anchor, ...(fingerprint === undefined ? {} : { fingerprint }), body: finding.suggestedComment ?? finding.explanation, include: true, postability: fingerprint === undefined ? "needs_attention" : "postable" });
+    const item = findingItem(finding, runId, patch, used);
+    used.add(item.id);
+    items.push(item);
   }
   return items;
+}
+
+function findingItem(finding: ReviewResult["findings"][number], runId: InsightRunId, patch: string | undefined, used: ReadonlySet<LocalReviewItemId> = new Set()): ReviewBatchItem {
+  const id = nextItemId(finding.id, used);
+  if (id === undefined) {
+    const fallback = parseLocalReviewItemId(`analysis-${finding.id}`);
+    if (fallback._tag === "err") throw new Error("Unable to allocate Analysis Finding item ID");
+    return { _tag: "GeneralComment", id: fallback.value, provenance: { _tag: "insight", runId }, source: "finding", findingId: finding.id, body: finding.suggestedComment ?? finding.explanation, include: true };
+  }
+  if (finding.mappingStatus !== "mapped" || finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined) return { _tag: "GeneralComment", id, provenance: { _tag: "insight", runId }, source: "finding", findingId: finding.id, body: finding.suggestedComment ?? finding.explanation, include: true };
+  const anchor: ReviewAnchor = { path: finding.file, startLine: finding.lineStart, line: finding.lineEnd ?? finding.lineStart, side: finding.diffSide };
+  const fingerprint = patch === undefined ? undefined : fingerprintPatchAnchor(patch, anchor);
+  return { _tag: "InlineComment", id, provenance: { _tag: "insight", runId }, source: "finding", findingId: finding.id, anchor, ...(fingerprint === undefined ? {} : { fingerprint }), body: finding.suggestedComment ?? finding.explanation, include: true, postability: fingerprint === undefined ? "needs_attention" : "postable" };
 }
 
 function nextItemId(findingId: ReviewResult["findings"][number]["id"], used: ReadonlySet<LocalReviewItemId>): LocalReviewItemId | undefined {

@@ -44,6 +44,7 @@ import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import { readObjectField } from "./read-object-field";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
+import { withReviewSessionMutationLock } from "./review-session-mutation-lock";
 
 const anchorSchema = v.strictObject({
   path: v.string(),
@@ -248,8 +249,6 @@ export type ReviewBatchControllerFailure = {
  * batch remains authoritative for identity, lifecycle, anchors, and receipts.
  */
 export class ReviewBatchController {
-  private readonly locks = new Map<string, Promise<void>>();
-
   constructor(
     private readonly sessions: ReviewSessionStore,
     private readonly now: () => IsoTimestamp,
@@ -270,9 +269,7 @@ export class ReviewBatchController {
       return parsed;
     }
     const key = `${parsed.value.profileId}:${parsed.value.sessionId}`;
-    return this.exclusive(key, async () =>
-      this.updateExclusive(parsed.value),
-    );
+    return withReviewSessionMutationLock(key, () => this.updateExclusive(parsed.value));
   }
 
   private async updateExclusive(
@@ -407,27 +404,6 @@ export class ReviewBatchController {
     return expected !== undefined && sameFingerprint(expected, command.fingerprint) ? ok(undefined) : err({ reason: "invalid_input" });
   }
 
-  private async exclusive<T>(
-    key: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const previous = this.locks.get(key) ?? Promise.resolve();
-    let release = (): void => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const tail = previous.then(() => gate);
-    this.locks.set(key, tail);
-    await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.locks.get(key) === tail) {
-        this.locks.delete(key);
-      }
-    }
-  }
 }
 
 type StoredAnalysis = {

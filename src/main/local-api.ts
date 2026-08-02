@@ -15,7 +15,6 @@ import {
   pipe,
   string,
   strictObject,
-  type InferOutput,
 } from "valibot";
 
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
@@ -103,8 +102,8 @@ const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLengt
 const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
-const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), scope: strictObject({ baseShort: string(), headShort: string(), commitCount: pipe(number(), integer()), fileCount: pipe(number(), integer()), additions: pipe(number(), integer()), deletions: pipe(number(), integer()), changedFiles: array(strictObject({ path: string(), additions: pipe(number(), integer()), deletions: pipe(number(), integer()) })) }) });
-const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, expectedRevision: pipe(string(), minLength(1)), acknowledgement: optional(boolean()) });
+const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
+const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -150,7 +149,7 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned durable Review Insight lifecycle seam. */
   readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress">>;
-  readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent" | "previewMergeCurrent" | "previewReplaceCurrent" | "mergeCurrent" | "replaceCurrent">;
+  readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent" | "previewMergeCurrent" | "previewReplaceCurrent" | "mergeCurrent" | "replaceCurrent" | "addFindingCurrent">;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -267,8 +266,8 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     { reviews, insights },
   );
-  const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights });
-  const remoteReviews = new ReviewRemoteStore(paths);
+  const remoteReviews = new ReviewRemoteStore(paths, reviews);
+  const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights, reviews, remote: remoteReviews });
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
     sessions,
@@ -646,6 +645,7 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/draft/replace-preview", async (context) => analysisDraftPreviewResponse(context, analysisDrafts, "replace", await jsonBody(context)));
   app.post("/v1/reviews/draft/merge", async (context) => analysisDraftMutationResponse(context, analysisDrafts, "merge", await jsonBody(context)));
   app.post("/v1/reviews/draft/replace", async (context) => analysisDraftMutationResponse(context, analysisDrafts, "replace", await jsonBody(context)));
+  app.post("/v1/reviews/draft/findings/:findingId/add", async (context) => analysisDraftFindingResponse(context, analysisDrafts, context.req.param("findingId"), await jsonBody(context)));
 
   app.post("/v1/reviews/complete", async (context) =>
     response(context, await reviewCompletion.complete(await jsonBody(context))),
@@ -906,8 +906,7 @@ async function insightFindingResponse(context: Context, coordinator: LocalApiCon
   return insightResultResponse(context, result);
 }
 
-type AnalysisDraftRequest = InferOutput<typeof analysisDraftSchema>;
-type ParsedAnalysisDraftRequest = { readonly profileId: ReturnType<typeof parseWorkspaceProfileId> extends Result<infer T, unknown> ? T : never; readonly reviewId: ReturnType<typeof parseReviewId> extends Result<infer T, unknown> ? T : never; readonly sessionId: ReturnType<typeof parseReviewSessionId> extends Result<infer T, unknown> ? T : never; readonly analysisRunId: ReturnType<typeof parseInsightRunId> extends Result<infer T, unknown> ? T : never; readonly scope: AnalysisDraftRequest["scope"] };
+type ParsedAnalysisDraftRequest = { readonly profileId: ReturnType<typeof parseWorkspaceProfileId> extends Result<infer T, unknown> ? T : never; readonly reviewId: ReturnType<typeof parseReviewId> extends Result<infer T, unknown> ? T : never; readonly sessionId: ReturnType<typeof parseReviewSessionId> extends Result<infer T, unknown> ? T : never; readonly analysisRunId: ReturnType<typeof parseInsightRunId> extends Result<infer T, unknown> ? T : never; readonly expectedRevision: ReturnType<typeof parseIsoTimestamp> extends Result<infer T, unknown> ? T : never };
 
 function parseAnalysisDraftRequest(body: unknown): Result<ParsedAnalysisDraftRequest, "invalid_input"> {
   const parsed = safeParse(analysisDraftSchema, body);
@@ -916,7 +915,8 @@ function parseAnalysisDraftRequest(body: unknown): Result<ParsedAnalysisDraftReq
   const reviewId = parseReviewId(parsed.output.reviewId);
   const sessionId = parseReviewSessionId(parsed.output.sessionId);
   const analysisRunId = parseInsightRunId(parsed.output.analysisRunId);
-  return profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || analysisRunId._tag === "err" ? err("invalid_input") : ok({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, analysisRunId: analysisRunId.value, scope: parsed.output.scope });
+  const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
+  return profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || analysisRunId._tag === "err" || expectedRevision._tag === "err" ? err("invalid_input") : ok({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, analysisRunId: analysisRunId.value, expectedRevision: expectedRevision.value });
 }
 
 function analysisDraftFailureResponse(context: Context, failure: { readonly reason: string; readonly merge?: unknown; readonly replacement?: unknown }): Response {
@@ -939,15 +939,22 @@ async function analysisDraftPreviewResponse(context: Context, service: Pick<Anal
   return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
 }
 
+async function analysisDraftFindingResponse(context: Context, service: Pick<AnalysisDraftService, "addFindingCurrent">, findingIdInput: string, body: unknown): Promise<Response> {
+  const parsed = parseAnalysisDraftRequest(body);
+  const findingId = parseFindingId(findingIdInput);
+  if (parsed._tag === "err" || findingId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.addFindingCurrent({ ...parsed.value, findingId: findingId.value, now: new Date().toISOString() as never });
+  return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
+}
+
 async function analysisDraftMutationResponse(context: Context, service: Pick<AnalysisDraftService, "mergeCurrent" | "replaceCurrent">, action: "merge" | "replace", body: unknown): Promise<Response> {
   const parsed = safeParse(analysisDraftMutationSchema, body);
   if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-  const base = parseAnalysisDraftRequest({ profileId: parsed.output.profileId, reviewId: parsed.output.reviewId, sessionId: parsed.output.sessionId, analysisRunId: parsed.output.analysisRunId, scope: parsed.output.scope });
-  const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
-  if (base._tag === "err" || expectedRevision._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const base = parseAnalysisDraftRequest(parsed.output);
+  if (base._tag === "err") return context.json({ error: "invalid_input" }, 400);
   const result = action === "merge"
-    ? await service.mergeCurrent({ ...base.value, expectedRevision: expectedRevision.value, now: new Date().toISOString() as never })
-    : await service.replaceCurrent({ ...base.value, expectedRevision: expectedRevision.value, acknowledgement: parsed.output.acknowledgement === true, now: new Date().toISOString() as never });
+    ? await service.mergeCurrent({ ...base.value, now: new Date().toISOString() as never })
+    : await service.replaceCurrent({ ...base.value, acknowledgement: parsed.output.acknowledgement === true, now: new Date().toISOString() as never });
   return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
 }
 
