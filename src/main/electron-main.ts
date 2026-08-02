@@ -33,6 +33,9 @@ import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { ReviewStore } from "../adapters/storage/review-store";
+import { InsightStore } from "../adapters/storage/insight-store";
+import { parseAbsolutePath } from "../domain/ids";
 import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
 import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
@@ -44,6 +47,7 @@ import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import { InsightRunCoordinator, type InsightInvocationInput } from "../services/insight-run-coordinator";
 
 const rendererOrigin = getRendererOrigin();
 let runningLocalApi: LocalApiServer | undefined;
@@ -76,6 +80,7 @@ const desktopLifecycle = createDesktopLifecycle({
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
         walkthroughs: createWalkthroughService(),
+        insights: createInsightCoordinator(),
         lifecycleGate,
         diagnostics,
         modelCatalog: new LocalPiRuntimeModelCatalog(),
@@ -132,6 +137,30 @@ function createWalkthroughService(): NarrativeWalkthroughService {
     ),
     diagnostics,
   );
+}
+
+function createInsightCoordinator(): InsightRunCoordinator {
+  const paths = PatchdeskPaths.default();
+  const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
+  const reviewInvoker = new FlueCliReviewInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
+  const walkthroughInvoker = new FlueCliWalkthroughInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
+  const analysis = {
+    async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
+      if (input.attemptId === undefined || input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" });
+      const contextPath = parseAbsolutePath(input.contextPath);
+      const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
+      const patchPath = parseAbsolutePath(input.patchPath);
+      const worktreePath = parseAbsolutePath(input.worktreePath);
+      if (contextPath._tag === "err" || reviewInputPath._tag === "err" || patchPath._tag === "err" || worktreePath._tag === "err") return err({ reason: "execution_failed" });
+      return reviewInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, attemptId: input.attemptId, contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, patchPath: patchPath.value, worktreePath: worktreePath.value, scope: input.scope, model: input.model, reasoning: input.reasoning }, options);
+    },
+  };
+  const walkthrough = {
+    async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
+      return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
+    },
+  };
+  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough });
 }
 
 function createWorkflowInvoker(

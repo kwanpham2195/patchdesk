@@ -1,6 +1,7 @@
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import { parseContentHash, parseInsightRunId, parseIsoTimestamp, type ContentHash, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
+import type { ReviewScope } from "../domain/review-comparison";
 import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRevision, type InsightType } from "../domain/insight-record";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -8,7 +9,7 @@ import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
 
-export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
+export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly scope?: ReviewScope; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
 export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>> };
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
@@ -77,7 +78,7 @@ export class InsightRunCoordinator {
       const review = await this.reviews.load(input.profileId, input.reviewId);
       const session = review._tag === "ok" ? await this.sessions.load(input.profileId, review.value.currentSessionId) : err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const });
       const attempt = session._tag === "ok" && session.value.currentAttemptId !== undefined ? await this.sessions.loadAttempt(input.profileId, session.value.id, session.value.currentAttemptId) : undefined;
-      const invocation = session._tag === "ok" ? await this.invokers[input.type].invoke({ profileId: input.profileId, reviewId: input.reviewId, sessionId, ...(attempt?._tag === "ok" ? { attemptId: attempt.value.id, reviewInputPath: attempt.value.reviewInputPath } : {}), runId, contextPath: this.paths.preparedContextFile(input.profileId, session.value.id), patchPath, worktreePath, model: input.model, reasoning: input.reasoning }, { signal: controller.signal }) : err({ reason: "storage_unavailable" });
+      const invocation = session._tag === "ok" ? await this.invokers[input.type].invoke({ profileId: input.profileId, reviewId: input.reviewId, sessionId, ...(attempt?._tag === "ok" ? { attemptId: attempt.value.id, reviewInputPath: attempt.value.reviewInputPath } : {}), runId, contextPath: attempt?._tag === "ok" ? attempt.value.contextPath : this.paths.preparedContextFile(input.profileId, session.value.id), patchPath, worktreePath, scope: session.value.scope, model: input.model, reasoning: input.reasoning }, { signal: controller.signal }) : err({ reason: "storage_unavailable" });
       const latestReview = await this.reviews.load(input.profileId, input.reviewId);
       const latestSession = latestReview._tag === "ok" ? await this.sessions.load(input.profileId, latestReview.value.currentSessionId) : err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const });
       const latestHash = latestSession._tag === "ok" ? parseContentHash(await contentHash(latestSession.value.patchPath)) : err({ _tag: "InvalidDomainValue" as const, field: "patchHash" });
