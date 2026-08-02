@@ -130,7 +130,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly github: Pick<
       GitHubReader,
       "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"
-    >,
+    > & Partial<Pick<GitHubReader, "getPullRequestPublishedFeedback">>,
     private readonly now: () => IsoTimestamp,
     private readonly recovery?: {
       readonly paths?: PatchdeskPaths;
@@ -183,7 +183,7 @@ export class ReviewWorkbenchProjectionService {
       repo: session.value.key.repo,
       number: session.value.key.prNumber,
     };
-    const [current, comments, checks] = await Promise.all([
+    const [current, comments, checks, publishedFeedback] = await Promise.all([
       this.github.getPullRequest({ profile: profile.value, pr }),
       this.github.getPullRequestComments({ profile: profile.value, pr }),
       this.github.getPullRequestChecks({
@@ -191,11 +191,15 @@ export class ReviewWorkbenchProjectionService {
         pr,
         headSha: session.value.key.headSha,
       }),
+      this.github.getPullRequestPublishedFeedback === undefined
+        ? Promise.resolve(ok({ reviews: [], comments: [] } as GitHubPublishedFeedback))
+        : this.github.getPullRequestPublishedFeedback({ profile: profile.value, pr }),
     ]);
     return this.project(session.value, {
       current,
       comments,
       checks,
+      publishedFeedback,
     }, "live");
   }
 
@@ -237,6 +241,7 @@ export class ReviewWorkbenchProjectionService {
       readonly comments: Awaited<ReturnType<GitHubReader["getPullRequestComments"]>>;
       readonly commits?: ReadonlyArray<PullRequestCommit>;
       readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
+      readonly publishedFeedback?: Awaited<ReturnType<NonNullable<GitHubReader["getPullRequestPublishedFeedback"]>>>;
     } | undefined,
     source: "local" | "represented" | "live",
     representedAt?: IsoTimestamp,
@@ -342,7 +347,7 @@ export class ReviewWorkbenchProjectionService {
         walkthrough,
       },
       ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
-      publishedFeedback: { reviews: [], comments: [] },
+      publishedFeedback: remote?.publishedFeedback?._tag === "ok" ? remote.publishedFeedback.value : { reviews: [], comments: [] },
       comments,
       checks,
       mergeReadiness,

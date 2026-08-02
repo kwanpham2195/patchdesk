@@ -7,6 +7,9 @@ import type {
   GitHubComment,
   GitHubComments,
   GitHubConversationThread,
+  GitHubPublishedFeedback,
+  PublishedReview,
+  PublishedReviewComment,
   PullRequestCommit,
   PullRequestSummary,
   MergePolicySnapshot,
@@ -51,6 +54,27 @@ const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefName mergeable reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 const maxMergePolicyPages = 3;
 const maxPullRequestCommits = 250;
+const publishedReviewSchema = v.array(v.looseObject({
+  id: v.union([v.string(), v.number()]),
+  user: v.nullish(v.looseObject({ login: v.string() })),
+  body: v.nullish(v.string()),
+  state: v.string(),
+  submitted_at: v.string(),
+}));
+const publishedCommentSchema = v.array(v.looseObject({
+  id: v.union([v.string(), v.number()]),
+  user: v.nullish(v.looseObject({ login: v.string() })),
+  body: v.string(),
+  created_at: v.string(),
+  updated_at: v.optional(v.nullable(v.string())),
+  html_url: v.optional(v.string()),
+  path: v.optional(v.nullable(v.string())),
+  line: v.optional(v.nullable(v.number())),
+  start_line: v.optional(v.nullable(v.number())),
+  side: v.optional(v.nullable(v.string())),
+  pull_request_review_id: v.optional(v.nullable(v.union([v.string(), v.number()]))),
+}));
+
 const pullRequestCommitSchema = v.looseObject({
   sha: v.string(),
   html_url: v.optional(v.string()),
@@ -271,6 +295,10 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>>;
+  getPullRequestPublishedFeedback?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
   getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -447,6 +475,7 @@ type GitHubReadOperation =
   | "get_pr"
   | "get_merge_policy"
   | "get_comments"
+  | "get_reviews"
   | "get_pr_commits"
   | "get_checks"
   | "get_diff"
@@ -737,6 +766,35 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     cursor = nextCursor;
     }
     return ok({ threads, complete: false, incompleteReason: "thread_cap" });
+  }
+
+  async getPullRequestPublishedFeedback(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
+    const [reviews, comments] = await Promise.all([
+      this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`], timeoutMs: commandTimeoutMs }),
+      this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`], timeoutMs: commandTimeoutMs }),
+    ]);
+    if (reviews._tag === "err") return commandFailure("get_reviews", reviews.error);
+    if (comments._tag === "err") return commandFailure("get_comments", comments.error);
+    const parsedReviews = v.safeParse(publishedReviewSchema, reviews.value);
+    const parsedComments = v.safeParse(publishedCommentSchema, comments.value);
+    if (!parsedReviews.success || !parsedComments.success) return invalid("get_reviews");
+    const publishedReviews: PublishedReview[] = [];
+    for (const review of parsedReviews.output) {
+      const submittedAt = parseGitHubTimestamp(review.submitted_at);
+      if (submittedAt._tag === "err") return invalid("get_reviews");
+      const event = review.state.toUpperCase();
+      if (event !== "APPROVED" && event !== "COMMENTED" && event !== "CHANGES_REQUESTED" && event !== "DISMISSED") continue;
+      publishedReviews.push({ id: String(review.id), author: review.user?.login ?? "ghost", body: review.body ?? "", event, submittedAt: submittedAt.value, canDismiss: false });
+    }
+    const publishedComments: PublishedReviewComment[] = [];
+    for (const comment of parsedComments.output) {
+      const createdAt = parseGitHubTimestamp(comment.created_at);
+      const updatedAt = comment.updated_at === undefined || comment.updated_at === null ? undefined : parseGitHubTimestamp(comment.updated_at);
+      if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err")) return invalid("get_comments");
+      const location = parseLocation(comment.path, comment.line, undefined, comment.start_line, comment.side, undefined);
+      publishedComments.push({ id: String(comment.id), author: comment.user?.login ?? "ghost", body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: false, canDelete: false });
+    }
+    return ok({ reviews: publishedReviews, comments: publishedComments });
   }
 
   private async loadThreadReplies(profile: WorkspaceProfileConfig, threadId: string, initial: ReadonlyArray<GitHubComment>, initialCursor: string | null, remainingComments: number): Promise<{ readonly comments: ReadonlyArray<GitHubComment>; readonly complete: boolean }> {
