@@ -87,13 +87,21 @@ describe("ReviewWorkbenchFlow", () => {
     };
     const user = userEvent.setup();
     render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: "PR overview" }));
+    const overviewTrigger = screen.getByRole("button", { name: "PR overview" });
+    await user.click(overviewTrigger);
     expect(screen.getByRole("heading", { name: "PR overview" })).toBeTruthy();
     expect(screen.getByText("Current PR description")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Checks" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Existing threads" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
+    expect(document.body.style.overflow).toBe("hidden");
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "PR overview" })).toBeNull());
+    expect(document.activeElement).toBe(overviewTrigger);
+    await user.click(overviewTrigger);
+    const overlay = document.querySelector<HTMLElement>('[data-slot="sheet-overlay"]');
+    if (overlay === null) throw new Error("Expected overview backdrop");
+    await user.click(overlay);
     await waitFor(() => expect(screen.queryByRole("heading", { name: "PR overview" })).toBeNull());
   });
 
