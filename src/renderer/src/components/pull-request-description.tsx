@@ -640,7 +640,7 @@ function MermaidDiagram({
       ) : (
         <div
           aria-hidden="true"
-          className="w-full [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
+          className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       )}

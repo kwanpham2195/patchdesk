@@ -70,40 +70,30 @@ function mockApi(
 
 const ok200 = (body: unknown) => ({ ok: true as const, status: 200, body });
 
+function refreshedProjection(sessionId: string, headSha: string) {
+  return {
+    state: "review",
+    review: { id: "review-2", status: "open" },
+    session: { id: sessionId, key: { profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", prNumber: 42, headSha } },
+    revision: { reviewedHeadSha: headSha, currentHeadSha: headSha, freshness: "fresh", refreshedAt: "2026-07-30T00:00:00.000Z" },
+    commits: [],
+    insights: { analysis: { status: "not_generated" }, walkthrough: { status: "not_generated" } },
+    publishedFeedback: { reviews: [], comments: [] },
+    comments: { threads: [] },
+    checks: { overall: "passing", checks: [] },
+    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+  };
+}
+
 describe("completed review walkthrough generation", () => {
-  it("opens a current prepared session when refresh finds a changed head", async () => {
+  it("atomically replaces the workbench when refresh finds a changed head", async () => {
     const replaced = vi.fn();
     const requests: MockRequest[] = [];
     mockApi((request) => {
       requests.push(request);
       if (request.path === "/v1/reviews/models") return ok200(models);
       if (request.path === "/v1/reviews/refresh")
-        return ok200({
-          freshness: "stale",
-          refreshedAt: "2026-07-30T00:00:00.000Z",
-          comments: { threads: [] },
-          checks: { overall: "passing", checks: [] },
-        });
-      if (request.path === "/v1/reviews/open")
-        return ok200({
-          state: "review_started",
-          session: {
-            id: "session-current",
-            key: {
-              profileId: "cfw",
-              host: "github.com",
-              owner: "centraldigital",
-              repo: "patchdesk",
-              prNumber: 42,
-              headSha: "3333333333333333",
-            },
-          },
-          recoveryView: {
-            noticeKey: "ready_to_review",
-            tone: "positive",
-            actionKey: "run_review",
-          },
-        });
+        return ok200(refreshedProjection("session-current", "3333333333333333"));
       throw new Error(`unexpected ${request.path}`);
     });
     render(
@@ -132,13 +122,15 @@ describe("completed review walkthrough generation", () => {
     await waitFor(() =>
       expect(replaced).toHaveBeenCalledWith(
         expect.objectContaining({
-          state: "review_started",
+          state: "review",
           session: expect.objectContaining({ id: "session-current" }),
         }),
       ),
     );
-    expect(requests.find((request) => request.path === "/v1/reviews/open")?.body).toMatchObject({
-      previousSessionId: workbench.session.id,
+    expect(requests.map((request) => request.path)).not.toContain("/v1/reviews/open");
+    expect(requests.find((request) => request.path === "/v1/reviews/refresh")?.body).toMatchObject({
+      profileId: "cfw",
+      reviewId: expect.any(String),
     });
   });
 

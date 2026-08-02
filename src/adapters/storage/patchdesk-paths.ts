@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type {
   ReviewAttemptId,
+  ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
 } from "../../domain/ids";
@@ -73,11 +74,30 @@ export class PatchdeskPaths {
     return join(this.dataDirectory(), "profiles", profileId, "reviews");
   }
 
+  profileWorkbenchesDirectory(profileId: WorkspaceProfileId): string {
+    return join(this.dataDirectory(), "profiles", profileId, "workbenches");
+  }
+
+  reviewDirectory(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
+    return join(this.profileWorkbenchesDirectory(profileId), reviewId);
+  }
+
+  reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
+    return join(this.reviewDirectory(profileId, reviewId), "review.json");
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
   ): string {
     return join(this.sessionDirectory(profileId, sessionId), "session.json");
+  }
+
+  mergeOperationFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(this.sessionDirectory(profileId, sessionId), "merge-operation.json");
   }
 
   patchFile(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): string {

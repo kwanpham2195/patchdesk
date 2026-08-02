@@ -4,9 +4,11 @@ import { CompletedReviewWorkbench } from "../components/completed-review-workben
 import { requestJson } from "../api-client";
 import { useWalkthroughController } from "../hooks/use-walkthrough-controller";
 import { parseWorkbenchResponse } from "../renderer-contracts";
+import { reviewIdForSession } from "../review-identity";
 
 export type CompletedReviewFlowWorkbench = {
   readonly state: "completed";
+  readonly review?: { readonly id: string; readonly status: "open" | "merged" | "closed" };
   readonly session: {
     readonly id: string;
     readonly key: {
@@ -60,6 +62,7 @@ export function CompletedReviewFlow({
   >({});
   const currentWorkbench = { ...workbench, ...remoteContext };
   const profileId = currentWorkbench.session.key.profileId;
+  const reviewId = currentWorkbench.review?.id ?? reviewIdForSession(currentWorkbench.session.key);
   const sessionId = currentWorkbench.session.id;
   const batch = currentWorkbench.batch as
     { readonly updatedAt?: unknown } | undefined;
@@ -71,39 +74,26 @@ export function CompletedReviewFlow({
   });
 
   const refreshRemote = async (): Promise<void> => {
+    if (reviewId === undefined) throw new Error("Stable review identity is unavailable");
     const value = await requestJson("/v1/reviews/refresh", {
       method: "POST",
-      body: { profileId, sessionId },
+      body: { profileId, reviewId },
     });
-    if (!isRemoteReviewContext(value))
-      throw new Error("Review refresh was rejected");
-    if (
-      value.freshness === "stale" &&
-      onWorkbenchReplace !== undefined &&
-      currentWorkbench.session.key.host !== undefined &&
-      currentWorkbench.session.key.owner !== undefined &&
-      currentWorkbench.session.key.repo !== undefined &&
-      currentWorkbench.session.key.prNumber !== undefined
-    ) {
-      const reopened = await requestJson("/v1/reviews/open", {
-        method: "POST",
-        body: {
-          profileId,
-          host: currentWorkbench.session.key.host,
-          owner: currentWorkbench.session.key.owner,
-          repo: currentWorkbench.session.key.repo,
-          number: currentWorkbench.session.key.prNumber,
-          mode: "full",
-          previousSessionId: sessionId,
-        },
-      });
-      const parsed = parseWorkbenchResponse(reopened);
-      if (parsed === undefined)
-        throw new Error("Current review session could not be prepared");
-      onWorkbenchReplace(parsed);
+    const refreshed = parseWorkbenchResponse(value);
+    if (refreshed === undefined) throw new Error("Review refresh was rejected");
+    if (onWorkbenchReplace !== undefined) {
+      onWorkbenchReplace(refreshed);
       return;
     }
-    setRemoteContext(value);
+    setRemoteContext({
+      ...(refreshed.pullRequest === undefined ? {} : { pullRequest: refreshed.pullRequest }),
+      ...(refreshed.revision.currentHeadSha === undefined ? {} : { currentHeadSha: refreshed.revision.currentHeadSha }),
+      freshness: refreshed.revision.freshness,
+      refreshedAt: refreshed.revision.refreshedAt,
+      comments: refreshed.comments,
+      checks: refreshed.checks,
+      mergeReadiness: refreshed.mergeReadiness,
+    });
   };
 
   const reviewWrite = async (
@@ -275,16 +265,6 @@ function isMergeWrite(value: unknown): value is {
   };
 } {
   return isRecord(value) && isRecord(value.session);
-}
-
-function isRemoteReviewContext(
-  value: unknown,
-): value is Partial<CompletedReviewFlowWorkbench> {
-  return (
-    isRecord(value) &&
-    typeof value.freshness === "string" &&
-    typeof value.refreshedAt === "string"
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

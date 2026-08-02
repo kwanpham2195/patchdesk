@@ -148,6 +148,44 @@ export class ReviewSessionPreparation {
     if (stored._tag === "ok") {
       const preparedPatch = await readFile(stored.value.patchPath, "utf8").catch(() => undefined);
       if (preparedPatch !== undefined || stored.value.state._tag === "ReviewCompleted") {
+        // A deterministic target session can already exist when a refresh is
+        // retried. Do not let that empty target hide a predecessor draft.
+        const predecessor = input.previousSessionId === undefined
+          ? undefined
+          : await deps.sessions.load(input.profileId, input.previousSessionId);
+        if (predecessor?._tag === "err" && predecessor.error.reason !== "not_found") {
+          return err({ _tag: "SessionStorageUnavailable" });
+        }
+        const predecessorSession = predecessor?._tag === "ok" ? predecessor.value : undefined;
+        const previousBatch = predecessorSession?.batchContent === undefined || predecessorSession.batchContent.state._tag === "Completed" || predecessorSession.batchContent.state._tag === "Submitted"
+          ? undefined
+          : predecessorSession.batchContent;
+        const targetBatch = stored.value.batchContent;
+        const targetHasDraft = targetBatch !== undefined && (
+          targetBatch.items.length > 0 ||
+          targetBatch.summaryBody.length > 0 ||
+          targetBatch.state._tag !== "Local"
+        );
+        if (previousBatch !== undefined && !targetHasDraft) {
+          if (preparedPatch === undefined || predecessorSession === undefined) {
+            return err({ _tag: "SessionStorageUnavailable" });
+          }
+          const migratedBatch = carryForwardReviewBatch({
+            source: previousBatch,
+            sourceHeadSha: predecessorSession.key.headSha,
+            targetSessionId: stored.value.id,
+            currentPatch: preparedPatch,
+            now: deps.now(),
+          }).batch;
+          const migrated = await deps.sessions.save({
+            ...stored.value,
+            batch: { state: migratedBatch.state },
+            batchContent: migratedBatch,
+            updatedAt: migratedBatch.updatedAt,
+          });
+          if (migrated._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+          return ok({ session: { ...stored.value, batch: { state: migratedBatch.state }, batchContent: migratedBatch, updatedAt: migratedBatch.updatedAt }, disposition: "resumed" });
+        }
         return ok({ session: stored.value, disposition: "resumed" });
       }
     }
@@ -407,9 +445,9 @@ export class ReviewSessionPreparation {
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     }
     const predecessorSession = predecessor?._tag === "ok" ? predecessor.value : undefined;
-    const previousBatch = predecessorSession?.batchContent?.state._tag === "Local"
-      ? predecessorSession.batchContent
-      : undefined;
+    const previousBatch = predecessorSession?.batchContent === undefined || predecessorSession.batchContent.state._tag === "Completed" || predecessorSession.batchContent.state._tag === "Submitted"
+      ? undefined
+      : predecessorSession.batchContent;
     const currentPatch = previousBatch === undefined ? undefined : await readFile(patchPath, "utf8").catch(() => undefined);
     const migratedBatch = previousBatch === undefined || currentPatch === undefined
       ? batch

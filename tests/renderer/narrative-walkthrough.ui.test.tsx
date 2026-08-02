@@ -4,11 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@pierre/diffs/react", () => ({
-  PatchDiff: ({ patch }: { patch: string }) => <div data-pierre-mock="true" data-patch={patch} />,
-  FileDiff: ({ renderGutterUtility, lineAnnotations, renderAnnotation }: { readonly renderGutterUtility?: (getHoveredLine: () => unknown) => React.ReactNode; readonly lineAnnotations?: ReadonlyArray<{ readonly side: "additions" | "deletions"; readonly lineNumber: number; readonly metadata: unknown }>; readonly renderAnnotation?: (annotation: { readonly side: "additions" | "deletions"; readonly lineNumber: number; readonly metadata: unknown }) => React.ReactNode }) => <div>{renderGutterUtility?.(() => ({ lineNumber: 42, side: "additions" }))}{lineAnnotations?.map((annotation, index) => <div key={index}>{renderAnnotation?.(annotation)}</div>)}</div>,
-}));
-
 import { NarrativeWalkthrough, type NarrativeWalkthroughActions } from "../../src/renderer/src/components/narrative-walkthrough";
 import type { NarrativeWalkthrough as NarrativeWalkthroughModel, NarrativeSnapshot } from "../../src/domain/narrative-walkthrough";
 
@@ -224,40 +219,6 @@ describe("narrative walkthrough takeover", () => {
     expect(onMarkSupportReviewed).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the local composer on a changed walkthrough line", async () => {
-    Object.defineProperty(CSSStyleSheet.prototype, "replaceSync", { configurable: true, value: () => undefined });
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    render(
-      <NarrativeWalkthrough
-        walkthrough={buildWalkthrough()}
-        reviewedSectionIds={[]}
-        supportReviewed={false}
-        localCommentAuthoring={{ enabled: true, onSave }}
-        actions={buildActions()}
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: "Add local comment on src/recovery/projection.ts" }));
-    await user.type(screen.getByLabelText("Local comment"), "Use a safe path.");
-    await user.click(screen.getByRole("button", { name: "Save local comment" }));
-    expect(onSave).toHaveBeenCalledWith({
-      path: "src/recovery/projection.ts",
-      startLine: 42,
-      line: 42,
-      side: "new",
-      body: "Use a safe path.",
-      fingerprint: {
-        path: "src/recovery/projection.ts",
-        startLine: 42,
-        line: 42,
-        side: "new",
-        selectedLines: ["new"],
-        before: [],
-        after: [],
-      },
-    });
-  });
-
   it("preserves reviewed indicators and disables the toggle when already reviewed", () => {
     const onMarkSectionReviewed = vi.fn();
     const actions = buildActions({ onMarkSectionReviewed });
@@ -362,28 +323,6 @@ describe("narrative walkthrough takeover", () => {
     takeover.focus();
     await userEvent.keyboard("{k}");
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
-  });
-
-  it("does not move sections when an input inside the walkthrough is focused", async () => {
-    const onSelectSection = vi.fn();
-    const actions = buildActions({ onSelectSection });
-    Object.defineProperty(CSSStyleSheet.prototype, "replaceSync", { configurable: true, value: () => undefined });
-    render(
-      <NarrativeWalkthrough
-        walkthrough={buildWalkthrough()}
-        reviewedSectionIds={[]}
-        supportReviewed={false}
-        localCommentAuthoring={{ enabled: true, onSave: vi.fn().mockResolvedValue(undefined) }}
-        actions={actions}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Add local comment on src/recovery/projection.ts" }));
-    const bodyInput = screen.getByLabelText("Local comment");
-    bodyInput.focus();
-    // With the input focused, the k keypress fires on the input and bubbles up to the takeover.
-    // The handler must early-return for INPUT/SELECT/TEXTAREA targets so the section does not advance.
-    await userEvent.keyboard("{k}");
-    expect(onSelectSection).not.toHaveBeenCalled();
   });
 
   it("returns focus to the back to files button on Escape without closing", () => {

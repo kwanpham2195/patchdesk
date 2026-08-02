@@ -1,27 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@pierre/diffs/react", () => ({
-  PatchDiff: ({
-    patch,
-    options,
-    className,
-  }: {
-    patch: string;
-    options: { diffStyle: "unified" | "split"; overflow: "scroll" | "wrap" };
-    className?: string;
-  }) => (
-    <div
-      data-pierre-mock="true"
-      className={className}
-      data-diff-style={options.diffStyle}
-      data-overflow={options.overflow}
-      data-patch={patch}
-    />
-  ),
-}));
+import { afterEach, describe, expect, it } from "vitest";
 
 import { NarrativeWalkthroughDiff } from "../../src/renderer/src/components/narrative-walkthrough-diff";
 import type { NarrativeHunk } from "../../src/domain/narrative-walkthrough";

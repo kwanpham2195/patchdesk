@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseCommitDiffResponse,
   parseModelCatalog,
   parseWalkthroughProjection,
   parseWorkbenchResponse,
@@ -25,20 +26,24 @@ const sessionProjection = {
   },
 };
 
-const completedProjection = {
-  state: "completed",
+const reviewProjection = {
+  state: "review",
+  review: { id: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456", status: "open" },
   session: sessionProjection,
-  result: { summary: "ok" },
-  batch: { state: { _tag: "Local" } },
+  revision: {
+    reviewedHeadSha: "2222222222222222222222222222222222222222",
+    freshness: "fresh",
+    refreshedAt: "2026-07-18T00:00:00.000Z",
+  },
+  commits: [],
+  insights: {
+    analysis: { status: "not_generated" },
+    walkthrough: { status: "not_generated" },
+  },
+  publishedFeedback: { reviews: [], comments: [] },
   comments: { threads: [] },
   checks: { overall: "passing", checks: [] },
-  history: [],
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
-  reviewScope: { kind: "full" },
-  comparisonAvailability: "not_requested",
-  reviewedHeadSha: "2222222222222222222222222222222222222222",
-  freshness: "fresh",
-  refreshedAt: "2026-07-18T00:00:00.000Z",
 };
 
 function must<T>(
@@ -48,131 +53,140 @@ function must<T>(
   return result.value;
 }
 
+describe("commit diff response", () => {
+  it("parses bounded data and rejects unknown fields", () => {
+    const valid = parseCommitDiffResponse({
+      commit: { sha: "1".repeat(40), message: "Commit", author: "Author", authoredAt: "2026-08-01T00:00:00.000Z", isHead: true },
+      position: 1,
+      total: 1,
+      patch: "diff --git a/file.ts b/file.ts",
+    });
+    expect(valid?.position).toBe(1);
+    expect(parseCommitDiffResponse({
+      commit: { sha: "1".repeat(40), message: "Commit", author: "Author", authoredAt: "2026-08-01T00:00:00.000Z", isHead: true, prompt: "secret" },
+      position: 1,
+      total: 1,
+      patch: "",
+    })).toBeUndefined();
+  });
+});
+
 describe("parseWorkbenchResponse", () => {
-  it("rejects lifecycle and attempt fields from the renderer recovery projection", () => {
-    const prepared = parseWorkbenchResponse({
-      state: "review_started",
-      session: {
-        ...sessionProjection,
-        state: "ReviewFailed",
-        lastRunFailure: "The review workflow did not complete.",
-        currentAttemptId: "attempt-1",
-      },
-      recoveryView: {
-        noticeKey: "review_failed",
-        tone: "warning",
-        actionKey: "try_again",
-      },
-      reviewedHeadSha: "2222222222222222222222222222222222222222",
-      freshness: "fresh",
-      refreshedAt: "2026-07-18T00:00:00.000Z",
-      checks: { overall: "unknown", checks: [] },
-    });
-    expect(prepared).toBeUndefined();
+  it("accepts one strict review projection", () => {
+    expect(parseWorkbenchResponse(reviewProjection)).toMatchObject({ state: "review" });
   });
 
-  it("accepts a display-safe recovery view", () => {
-    const prepared = parseWorkbenchResponse({
-      state: "review_started",
-      session: sessionProjection,
-      recoveryView: {
-        noticeKey: "review_interrupted",
-        tone: "warning",
-        actionKey: "start_again",
-      },
-      reviewedHeadSha: "2222222222222222222222222222222222222222",
-      freshness: "fresh",
-      refreshedAt: "2026-07-18T00:00:00.000Z",
-      checks: { overall: "unknown", checks: [] },
-    });
-    expect(prepared?.recoveryView).toEqual({
-      noticeKey: "review_interrupted",
-      tone: "warning",
-      actionKey: "start_again",
-    });
-  });
-
-  it("accepts the renderer-safe prepared and completed projections", () => {
-    const prepared = parseWorkbenchResponse({
-      state: "review_started",
-      session: sessionProjection,
-      reviewedHeadSha: "2222222222222222222222222222222222222222",
-      freshness: "fresh",
-      refreshedAt: "2026-07-18T00:00:00.000Z",
-      checks: { overall: "unknown", checks: [] },
-      comments: { threads: [] },
-      batch: { state: { _tag: "Local" } },
-      mergeReadiness: { _tag: "Mergeable", blockers: [], warnings: [] },
-    });
-    expect(prepared?.state).toBe("review_started");
-    expect(prepared?.comments).toEqual({ threads: [] });
-    expect(prepared?.batch).toEqual({ state: { _tag: "Local" } });
-    expect(prepared?.mergeReadiness).toEqual({
-      _tag: "Mergeable",
-      blockers: [],
-      warnings: [],
-    });
-    const completed = parseWorkbenchResponse(completedProjection);
-    expect(completed?.state).toBe("completed");
-  });
-
-  it("accepts an incremental scope that carries no artifact paths", () => {
-    const parsed = parseWorkbenchResponse({
-      ...completedProjection,
-      reviewScope: {
-        kind: "incremental",
-        baseSessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000",
-        baseHeadSha: "1111111111111111111111111111111111111111",
-        headSha: "2222222222222222222222222222222222222222",
-      },
-    });
-    expect(parsed?.state).toBe("completed");
-  });
-
-  it("rejects every artifact-path-bearing field", () => {
-    const pathFields = [
-      "patchPath",
-      "worktree",
-      "comparisonPatchPath",
-      "comparisonMetadataPath",
-      "previousFindingsPath",
-      "lifecyclePath",
-    ];
-    for (const field of pathFields) {
-      const withSessionLeak = {
-        ...completedProjection,
-        session: { ...sessionProjection, [field]: "/tmp/secret" },
-      };
-      expect(parseWorkbenchResponse(withSessionLeak), field).toBeUndefined();
-      const withScopeLeak = {
-        ...completedProjection,
-        reviewScope: {
-          kind: "incremental",
-          baseSessionId: "base",
-          baseHeadSha: "1111111111111111111111111111111111111111",
-          headSha: "2222222222222222222222222222222222222222",
-          [field]: "/tmp/secret",
-        },
-      };
-      expect(parseWorkbenchResponse(withScopeLeak), field).toBeUndefined();
+  it("rejects paths, worktree data, provider events, prompt text, and raw errors", () => {
+    for (const field of ["patchPath", "worktree", "contextPath", "providerEvent", "prompt", "errorDetail"]) {
+      expect(parseWorkbenchResponse({ ...reviewProjection, [field]: "/tmp/secret" }), field).toBeUndefined();
     }
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      session: { ...sessionProjection, worktree: "/tmp/secret" },
+    })).toBeUndefined();
   });
 
-  it("rejects a session that carries durable internals", () => {
-    const withBatchContent = {
-      ...completedProjection,
-      session: {
-        ...sessionProjection,
-        batchContent: { state: { _tag: "Local" } },
+  it("rejects forbidden or unknown fields at every nested projection boundary", () => {
+    const legalCheck = {
+      name: "CI",
+      required: true,
+      status: "completed",
+      conclusion: "success",
+    };
+    const legalComment = {
+      id: "comment-1",
+      author: "reviewer",
+      body: "Looks good",
+      createdAt: "2026-07-18T00:00:00.000Z",
+    };
+    const legalThread = {
+      id: "thread-1",
+      state: "open",
+      comments: [legalComment],
+    };
+    const legalResult = {
+      changeSummary: "A safe change",
+      verdict: "comment",
+      summary: "One comment",
+      findings: [],
+      validationPlan: [],
+      assumptions: [],
+    };
+    const legalDraft = {
+      sessionId: sessionProjection.id,
+      state: { _tag: "Local" },
+      summaryBody: "Draft",
+      suggestedEvent: "COMMENT",
+      items: [],
+      receipts: [],
+      createdAt: "2026-07-18T00:00:00.000Z",
+      updatedAt: "2026-07-18T00:00:00.000Z",
+    };
+
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      checks: { overall: "passing", checks: [{ ...legalCheck, providerEvent: "raw" }] },
+    })).toBeUndefined();
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      comments: { threads: [{ ...legalThread, comments: [{ ...legalComment, prompt: "secret" }] }] },
+    })).toBeUndefined();
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      insights: {
+        analysis: {
+          status: "current",
+          retained: {
+            sessionId: sessionProjection.id,
+            headSha: sessionProjection.key.headSha,
+            generatedAt: "2026-07-18T00:00:00.000Z",
+            value: { ...legalResult, error: { stack: "secret" } },
+          },
+        },
+        walkthrough: { status: "not_generated" },
       },
-    };
-    expect(parseWorkbenchResponse(withBatchContent)).toBeUndefined();
-    const withState = {
-      ...completedProjection,
-      session: { ...sessionProjection, state: { _tag: "ReviewCompleted" } },
-    };
-    expect(parseWorkbenchResponse(withState)).toBeUndefined();
+    })).toBeUndefined();
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      draft: { ...legalDraft, items: [{ _tag: "ThreadReply", id: "item-1", provenance: { _tag: "human" }, threadId: "thread-1", body: "reply", include: true, localPath: "/tmp/secret" }] },
+    })).toBeUndefined();
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      publishedFeedback: {
+        reviews: [],
+        comments: [{ ...legalComment, canEdit: true, canDelete: false, location: { path: "/tmp/secret" } }],
+      },
+    })).toBeUndefined();
+
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
+      checks: { overall: "passing", checks: [legalCheck] },
+      comments: { threads: [legalThread], complete: true },
+      commits: [{
+        sha: sessionProjection.key.headSha,
+        message: "A legal commit",
+        author: "author",
+        authoredAt: "2026-07-18T00:00:00.000Z",
+        isHead: true,
+      }],
+      insights: {
+        analysis: {
+          status: "current",
+          retained: {
+            sessionId: sessionProjection.id,
+            headSha: sessionProjection.key.headSha,
+            generatedAt: "2026-07-18T00:00:00.000Z",
+            value: legalResult,
+          },
+        },
+        walkthrough: { status: "not_generated" },
+      },
+      draft: legalDraft,
+      publishedFeedback: {
+        reviews: [],
+        comments: [{ ...legalComment, canEdit: true, canDelete: false, location: { path: "src/review.ts", line: 3 } }],
+      },
+    })).toBeDefined();
   });
 });
 

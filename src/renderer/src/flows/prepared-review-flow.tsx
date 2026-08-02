@@ -35,10 +35,8 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { requestJson } from "../api-client";
-import {
-  parseRemoteReviewContext,
-  parseWorkbenchResponse,
-} from "../renderer-contracts";
+import { parseWorkbenchResponse } from "../renderer-contracts";
+import { reviewIdForSession } from "../review-identity";
 import { useWalkthroughController } from "../hooks/use-walkthrough-controller";
 import { recoveryActionLabel, recoveryCopy, walkthroughCopy } from "../review-copy";
 import {
@@ -49,6 +47,7 @@ import {
 
 export type PreparedReviewFlowWorkbench = {
   readonly state: "review_started";
+  readonly review?: { readonly id: string; readonly status: "open" | "merged" | "closed" };
   readonly session: {
     readonly id: string;
     readonly key: {
@@ -127,6 +126,7 @@ export function PreparedReviewFlow({
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [walkthroughSectionId, setWalkthroughSectionId] = useState<string>();
   const profileId = workbench.session.key.profileId;
+  const reviewId = workbench.review?.id ?? reviewIdForSession(workbench.session.key);
   const recoveryAction = workbench.recoveryView?.actionKey;
   const walkthrough = useWalkthroughController({
     profileId,
@@ -173,17 +173,14 @@ export function PreparedReviewFlow({
     setRefreshingRemote(true);
     setRemoteRefreshError(false);
     try {
+      if (reviewId === undefined) throw new Error("Stable review identity is unavailable");
       const value = await requestJson("/v1/reviews/refresh", {
         method: "POST",
-        body: { profileId, sessionId: workbench.session.id },
+        body: { profileId, reviewId },
       });
-      const refreshed = parseRemoteReviewContext(value);
+      const refreshed = parseWorkbenchResponse(value);
       if (refreshed === undefined) throw new Error("Invalid refresh response");
-      if (refreshed.freshness === "stale") {
-        if (!(await refreshPrepared())) setRemoteRefreshError(true);
-      } else {
-        onWorkbenchReplace({ ...workbench, ...refreshed });
-      }
+      onWorkbenchReplace(refreshed);
     } catch {
       setRemoteRefreshError(true);
     }
@@ -193,14 +190,14 @@ export function PreparedReviewFlow({
   useEffect(() => {
     let active = true;
     const timer = window.setInterval(() => {
-      void requestJson("/v1/reviews/refresh", {
+      if (reviewId === undefined) return;
+      void requestJson("/v1/reviews/detect-updates", {
         method: "POST",
-        body: { profileId, sessionId: workbench.session.id },
+        body: { profileId, reviewId },
       })
         .then((value) => {
-          const refreshed = parseRemoteReviewContext(value);
-          if (active && refreshed !== undefined)
-            onWorkbenchReplace({ ...workbench, ...refreshed });
+          const detected = parseDetectionResult(value);
+          if (active && detected?.updatesAvailable === true) setRemoteRefreshError(false);
         })
         .catch(() => undefined);
     }, 60_000);
@@ -329,9 +326,10 @@ export function PreparedReviewFlow({
   };
 
   const reloadAfterSettle = async (): Promise<void> => {
+    if (reviewId === undefined) throw new Error("Stable review identity is unavailable");
     const value = await requestJson("/v1/reviews/load", {
       method: "POST",
-      body: { profileId, sessionId: workbench.session.id },
+      body: { profileId, reviewId },
     });
     const parsed = parseWorkbenchResponse(value);
     if (parsed !== undefined) onWorkbenchReplace(parsed);
@@ -953,6 +951,12 @@ export function PreparedReviewFlow({
       </div>
     </section>
   );
+}
+
+function parseDetectionResult(value: unknown): { readonly updatesAvailable: boolean } | undefined {
+  return typeof value === "object" && value !== null && "updatesAvailable" in value && typeof value.updatesAvailable === "boolean"
+    ? { updatesAvailable: value.updatesAvailable }
+    : undefined;
 }
 
 function isModelCatalog(value: unknown): value is {

@@ -14,6 +14,8 @@ describe("desktop request bridge", () => {
         method: "POST",
       }),
     ).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/detect-updates", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/commit-diff", method: "POST" })).toBe(true);
     // The explicit, main-process-owned review flow needs both the current
     // runtime catalog and the validated run-start route. These are not
     // GitHub-write capabilities, but omitting either makes the dialog appear

@@ -137,7 +137,7 @@ describe("review workbench", () => {
 
       expect(opened).toMatchObject({
         _tag: "ok",
-        value: { state: "review_started" },
+        value: { state: "review" },
       });
       if (opened._tag === "err") return;
       // The projection is renderer-safe: no patch, worktree, or artifact paths cross.
@@ -155,7 +155,8 @@ describe("review workbench", () => {
       expect(reopened).toMatchObject({
         _tag: "ok",
         value: {
-          freshness: "fresh",
+          state: "review",
+          revision: { freshness: "fresh" },
           checks: { overall: "passing" },
         },
       });

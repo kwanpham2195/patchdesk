@@ -34,6 +34,7 @@ export type BatchSubmitFailure =
   | { readonly _tag: "InvalidSubmitReview" }
   | { readonly _tag: "PendingReviewRequired" }
   | { readonly _tag: "ReviewAlreadySubmitted" }
+  | { readonly _tag: "NeedsAttentionBlocksWrite" }
   | { readonly _tag: "GitHubHeadReadFailed" }
   | { readonly _tag: "StaleHeadBlocksWrite"; readonly session: ReviewSession; readonly batch: ReviewBatch }
   | { readonly _tag: "GitHubSubmitFailed"; readonly session: ReviewSession; readonly batch: ReviewBatch };
@@ -51,6 +52,7 @@ export async function submitReviewBatch(input: {
     return err({ _tag: "InvalidSubmitReview" });
   if (input.session.submittedReview !== undefined) return err({ _tag: "ReviewAlreadySubmitted" });
   if (input.batch.state._tag !== "PendingReview") return err({ _tag: "PendingReviewRequired" });
+  if (hasIncludedNeedsAttention(input.batch)) return err({ _tag: "NeedsAttentionBlocksWrite" });
 
   const currentHead = await verifiedCurrentHead(input.profile, input.session, input.gateway);
   if (currentHead._tag === "err") return currentHead;
@@ -101,6 +103,9 @@ export function planBatchOperations(
   batch: ReviewBatch,
   options: { readonly allowInline?: boolean } = {},
 ): ReadonlyArray<BatchOperation> {
+  if (hasIncludedNeedsAttention(batch)) {
+    throw new Error("Included review items need attention before posting.");
+  }
   const allowInline = options.allowInline ?? true;
   const inline = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && allowInline && item.include && item.postability === "postable" && !hasReceiptForItem(batch, item.id));
   const thread = batch.items.filter((item) => item.include && (item._tag === "ThreadReply" || item._tag === "ThreadState") && !hasReceiptForItem(batch, item.id));
@@ -110,7 +115,7 @@ export function planBatchOperations(
   ];
 }
 
-export type BatchApplyFailure = { readonly _tag: "StaleHeadBlocksWrite" | "BatchOutcomeUnknown" | "BatchWriteRejected" | "BatchWriterUnavailable"; readonly session: ReviewSession; readonly batch: ReviewBatch };
+export type BatchApplyFailure = { readonly _tag: "StaleHeadBlocksWrite" | "BatchOutcomeUnknown" | "BatchWriteRejected" | "BatchWriterUnavailable" | "NeedsAttentionBlocksWrite"; readonly session: ReviewSession; readonly batch: ReviewBatch };
 
 /** Applies one confirmed batch, durably recording the state before every remote operation. */
 export async function applyReviewBatch(input: {
@@ -139,6 +144,9 @@ export async function applyReviewBatch(input: {
   }
   if (current._tag === "err") {
     return err({ _tag: "StaleHeadBlocksWrite", session, batch });
+  }
+  if (hasIncludedNeedsAttention(batch)) {
+    return err({ _tag: "NeedsAttentionBlocksWrite", session, batch });
   }
   const operations = planBatchOperations(batch, { allowInline: isFresh });
   if (operations.length === 0 && !isFresh) {
@@ -210,6 +218,12 @@ export async function applyReviewBatch(input: {
   };
   session = { ...session, batch: { state: batch.state }, batchContent: batch, updatedAt: input.now };
   return (await input.persist(session)) ? ok({ session, batch }) : err({ _tag: "BatchOutcomeUnknown", session, batch });
+}
+
+function hasIncludedNeedsAttention(batch: ReviewBatch): boolean {
+  return batch.items.some(
+    (item) => item._tag === "InlineComment" && item.include && item.postability === "needs_attention",
+  );
 }
 
 function hasReceiptForItem(batch: ReviewBatch, itemId: ReviewBatchItem["id"]): boolean {

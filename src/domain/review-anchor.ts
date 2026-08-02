@@ -1,5 +1,11 @@
-import type { GitSha, IsoTimestamp, ReviewSessionId } from "./ids";
-import type { ReviewAnchor, ReviewAnchorFingerprint, ReviewBatch, ReviewBatchItem } from "./review-batch";
+import type { GitSha, IsoTimestamp, LocalReviewItemId, ReviewSessionId } from "./ids";
+import type {
+  ReviewAnchor,
+  ReviewAnchorAttention,
+  ReviewAnchorFingerprint,
+  ReviewBatch,
+  ReviewBatchItem,
+} from "./review-batch";
 
 type PatchLine = {
   readonly path: string;
@@ -89,56 +95,79 @@ export function matchPatchAnchor(
 }
 
 /** Carry local actions into a new current-head batch without guessing coordinates. */
+export type CarryForwardReviewBatchResult = {
+  readonly batch: ReviewBatch;
+  readonly attentionItemIds: ReadonlyArray<LocalReviewItemId>;
+};
+
 export function carryForwardReviewBatch(input: {
   readonly source: ReviewBatch;
   readonly sourceHeadSha: GitSha;
   readonly targetSessionId: ReviewSessionId;
   readonly currentPatch: string;
   readonly now: IsoTimestamp;
-}): { readonly batch: ReviewBatch; readonly droppedItemIds: ReadonlyArray<string> } {
+}): CarryForwardReviewBatchResult {
   const items: ReviewBatchItem[] = [];
-  const droppedItemIds: string[] = [];
+  const attentionItemIds: LocalReviewItemId[] = [];
+  const carriedFrom = {
+    sourceSessionId: input.source.sessionId,
+    sourceHeadSha: input.sourceHeadSha,
+  };
   for (const item of input.source.items) {
     if (item._tag !== "InlineComment") {
-      items.push({
-        ...item,
-        carriedFrom: { sourceSessionId: input.source.sessionId, sourceHeadSha: input.sourceHeadSha },
-      });
+      items.push({ ...item, carriedFrom });
       continue;
     }
+    const attention = (reason: ReviewAnchorAttention["reason"]): ReviewBatchItem => ({
+      ...item,
+      postability: "needs_attention",
+      attention: {
+        reason,
+        originalAnchor: item.anchor,
+        ...(item.fingerprint === undefined
+          ? {}
+          : { originalFingerprint: item.fingerprint }),
+      },
+      carriedFrom,
+    });
     if (item.fingerprint === undefined) {
-      droppedItemIds.push(item.id);
+      attentionItemIds.push(item.id);
+      items.push(attention("fingerprint_missing"));
       continue;
     }
     const matches = matchPatchAnchor(input.currentPatch, item.fingerprint);
     const match = matches.length === 1 ? matches[0] : undefined;
     if (match === undefined) {
-      droppedItemIds.push(item.id);
+      attentionItemIds.push(item.id);
+      items.push(attention(matches.length === 0 ? "missing" : "ambiguous"));
       continue;
     }
     const fingerprint = fingerprintPatchAnchor(input.currentPatch, match);
     if (fingerprint === undefined) {
-      droppedItemIds.push(item.id);
+      attentionItemIds.push(item.id);
+      items.push(attention("fingerprint_missing"));
       continue;
     }
+    const { attention: _previousAttention, ...itemWithoutAttention } = item;
+    void _previousAttention;
     items.push({
-      ...item,
+      ...itemWithoutAttention,
       anchor: match,
       fingerprint,
       postability: "postable",
-      carriedFrom: { sourceSessionId: input.source.sessionId, sourceHeadSha: input.sourceHeadSha },
+      carriedFrom,
     });
   }
   return {
-    droppedItemIds,
+    attentionItemIds,
     batch: {
       sessionId: input.targetSessionId,
-      state: { _tag: "Local" },
-      summaryBody: "",
-      suggestedEvent: "COMMENT",
+      state: input.source.state,
+      summaryBody: input.source.summaryBody,
+      suggestedEvent: input.source.suggestedEvent,
       items,
-      receipts: [],
-      createdAt: input.now,
+      receipts: input.source.receipts,
+      createdAt: input.source.createdAt,
       updatedAt: input.now,
     },
   };

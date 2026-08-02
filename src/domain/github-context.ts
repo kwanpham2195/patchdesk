@@ -22,6 +22,8 @@ export type GitHubConversationThread = {
   readonly id: GitHubThreadId;
   readonly state: "open" | "resolved" | "outdated" | "unknown";
   readonly comments: ReadonlyArray<GitHubComment>;
+  /** False when a bounded GitHub page could not contain every reply. */
+  readonly complete?: boolean;
   readonly location?: DiffLocation;
 };
 
@@ -37,6 +39,48 @@ export type CheckRunSummary = {
 export type CheckSummary = {
   readonly overall: "passing" | "failing" | "pending" | "skipped" | "unknown";
   readonly checks: ReadonlyArray<CheckRunSummary>;
+};
+
+/** Fresh, exact-head policy evidence required before Patchdesk may request a merge. */
+export type MergePolicySnapshot = {
+  readonly pr: PullRequestRef;
+  readonly headSha: GitSha;
+  readonly isOpen: boolean;
+  readonly isDraft: boolean;
+  readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
+  readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
+  readonly checks: CheckSummary;
+  readonly complete: boolean;
+  readonly incompleteReason?: "head_mismatch" | "pagination" | "permission" | "unavailable" | "mapping";
+};
+
+export type PullRequestCommit = {
+  readonly sha: GitSha;
+  readonly message: string;
+  readonly author: string;
+  readonly authoredAt: IsoTimestamp;
+  readonly url?: string;
+  readonly isHead: boolean;
+};
+
+export type PublishedReview = {
+  readonly id: string;
+  readonly author: string;
+  readonly body: string;
+  readonly event: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED";
+  readonly submittedAt: IsoTimestamp;
+  readonly canDismiss: boolean;
+};
+
+export type PublishedReviewComment = GitHubComment & {
+  readonly reviewId?: string;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
+};
+
+export type GitHubPublishedFeedback = {
+  readonly reviews: ReadonlyArray<PublishedReview>;
+  readonly comments: ReadonlyArray<PublishedReviewComment>;
 };
 
 export type PullRequestSnapshot = {
@@ -70,4 +114,7 @@ export type PullRequestSummary = PullRequestSnapshot & {
 
 export type GitHubComments = {
   readonly threads: ReadonlyArray<GitHubConversationThread>;
+  /** Omitted only for legacy persisted/test values; adapter reads always set it. */
+  readonly complete?: boolean;
+  readonly incompleteReason?: "thread_cap" | "comment_cap" | "pagination" | "unavailable";
 };

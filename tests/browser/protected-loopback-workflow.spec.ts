@@ -72,8 +72,8 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByLabel("Label").fill("Enterprise");
   await page.getByLabel("GitHub host").fill("github.example.test");
   await page.getByLabel("GitHub account").fill("enterprise-user");
-  await page.getByLabel("workspace root 1").fill("/workspace/enterprise");
-  await page.getByLabel("owner filter 1").fill("enterprise");
+  await page.getByRole("textbox", { name: "workspace root 1", exact: true }).fill("/workspace/enterprise");
+  await page.getByRole("textbox", { name: "owner filter 1", exact: true }).fill("enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByLabel("Active profile").click();
   const enterpriseOption = page.getByRole("option", { name: "Enterprise" });
@@ -103,12 +103,14 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await page.getByRole("button", { name: "Add suggestion" }).click();
+  await page.getByRole("button", { name: "More actions for acme/discovered" }).click();
   await expect(
-    page.getByRole("button", { name: "Archive" }),
+    page.getByRole("menuitem", { name: "Archive" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Archive" }).click();
+  await page.getByRole("menuitem", { name: "Archive" }).click();
+  await page.getByRole("button", { name: "More actions for acme/discovered" }).click();
   await expect(
-    page.getByRole("button", { name: "Restore" }),
+    page.getByRole("menuitem", { name: "Restore" }),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Data & recovery" }).click();
@@ -123,7 +125,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(clearLocalDialog).toBeHidden();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("button", { name: "Inbox", exact: true }).click();
   await page.getByLabel("Pull request reference").fill("acme/service#3");
   await page.getByRole("button", { name: "Preview pull request" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Could not open review" })).toContainText("Could not prepare acme/service#3.");

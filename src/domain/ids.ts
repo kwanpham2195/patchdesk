@@ -11,6 +11,7 @@ export type GitHubOwner = Brand<string, "GitHubOwner">;
 export type GitHubRepoName = Brand<string, "GitHubRepoName">;
 export type PullRequestNumber = Brand<number, "PullRequestNumber">;
 export type GitSha = Brand<string, "GitSha">;
+export type ReviewId = Brand<string, "ReviewId">;
 export type ReviewSessionId = Brand<string, "ReviewSessionId">;
 export type ReviewAttemptId = Brand<string, "ReviewAttemptId">;
 export type FindingId = Brand<string, "FindingId">;
@@ -36,6 +37,8 @@ const safeSlug = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
 const attemptFolderSyntax = /^\d{3}$/;
+const reviewIdSyntax =
+  /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__review-[a-f0-9]{12}$/;
 const sessionIdSyntax =
   /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__sha-[a-f0-9]{8}__[a-f0-9]{12}$/;
 const isoTimestampSyntax = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -114,6 +117,35 @@ export function parseGitHubThreadId(
   input: unknown,
 ): Result<GitHubThreadId, InvalidDomainValue> {
   return parseSafeSlug<"GitHubThreadId">(input, "githubThreadId");
+}
+
+/** Parse the path-safe deterministic Review identifier. */
+export function parseReviewId(input: unknown): Result<ReviewId, InvalidDomainValue> {
+  if (typeof input !== "string" || !reviewIdSyntax.test(input)) {
+    return err({ _tag: "InvalidDomainValue", field: "reviewId" });
+  }
+
+  return ok(brand(input));
+}
+
+/** Build the deterministic identifier for one pull request across all heads. */
+export function createReviewId(key: {
+  readonly profileId: WorkspaceProfileId;
+  readonly host: GitHubHost;
+  readonly owner: GitHubOwner;
+  readonly repo: GitHubRepoName;
+  readonly prNumber: PullRequestNumber;
+}): ReviewId {
+  const readable = `${key.host}__${key.owner}__${key.repo}__pr-${key.prNumber}`;
+  const collisionInput = [
+    key.profileId,
+    key.host,
+    key.owner,
+    key.repo,
+    key.prNumber,
+  ].join("\n");
+
+  return brand(`${readable}__review-${fnv1a64(collisionInput).slice(0, 12)}`);
 }
 
 /** Parse the path-safe deterministic session folder identifier. */

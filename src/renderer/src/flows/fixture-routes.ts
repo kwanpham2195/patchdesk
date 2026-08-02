@@ -19,7 +19,7 @@ export function isFixtureHash(hash: string): boolean {
 export function fixtureDestination(hash: string): AppDestination {
   return {
     kind: "workbench",
-    sessionId:
+    reviewId:
       hash === "#performance-fixture"
         ? "performance-fixture"
         : hash === "#diff-fixture"

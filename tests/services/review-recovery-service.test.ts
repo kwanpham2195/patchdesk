@@ -7,6 +7,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewArtifactStorage, type QuarantineFailure } from "../../src/adapters/storage/review-artifact-storage";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -22,6 +23,8 @@ import {
 } from "../../src/domain/ids";
 import type { ReviewAttempt, ReviewAttemptState } from "../../src/domain/review-attempt";
 import { createReviewSession } from "../../src/domain/review-session";
+import { markMergeOutcomeUnknown, requestMergeOperation } from "../../src/domain/merge-operation";
+import { ok } from "../../src/domain/result";
 import type { ReviewSession, ReviewSessionState } from "../../src/domain/review-session";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
@@ -200,6 +203,26 @@ it("reports an inconsistent attempt lifecycle for a Running session", async () =
   } finally {
     await fixture.cleanup();
   }
+});
+
+it("reconciles a merged outcome-unknown operation without a merge write", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-merge-recovery-"));
+  try {
+    const paths = PatchdeskPaths.forTest(root);
+    const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+    const profiles = new ProfileStore(paths); await profiles.save(profile);
+    const sessions = new ReviewSessionStore(paths);
+    const key = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha };
+    const session = createReviewSession({ key, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: timestamp });
+    await sessions.save(session);
+    const operations = new MergeOperationStore(paths);
+    const requested = must(requestMergeOperation({ operationId: "merge-001", profileId, sessionId: session.id, pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, expectedHeadSha: headSha, method: "squash", acknowledgedWarningCodes: [], startedAt: timestamp }));
+    await operations.begin(must(markMergeOutcomeUnknown(requested)));
+    const service = new ReviewRecoveryService(profiles, sessions, () => timestamp, { mergeOperations: operations, github: { async getMergeOutcome() { return ok({ state: "merged" as const, mergedAt: timestamp }); } } });
+    await service.reconcile();
+    await expect(sessions.load(profileId, session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "Merged" } } });
+    await expect(operations.load(profileId, session.id)).resolves.toMatchObject({ _tag: "err", error: { reason: "not_found" } });
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 async function recoveryFixture(

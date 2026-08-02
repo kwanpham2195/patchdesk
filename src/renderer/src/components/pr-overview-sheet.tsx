@@ -102,7 +102,7 @@ export function PullRequestOverviewSheet({
             </OverviewRow>
           </div>
           <Separator />
-          <OverviewRow title="Existing threads" trailing={comments.threads.length === 0 ? "None" : String(comments.threads.length)}>
+          <OverviewRow title="Existing threads" trailing={threadCountLabel(comments)}>
             <ReviewThreads comments={comments} {...(batch === undefined ? {} : { batch })} {...(actions.batch === undefined ? {} : { actions: actions.batch })} />
           </OverviewRow>
           <Separator />
@@ -181,13 +181,22 @@ function ReviewThreads({
   readonly actions?: ReviewBatchPanelActions;
 }): React.JSX.Element {
   if (comments.threads.length === 0) return <p className="text-sm text-muted-foreground">No existing review threads.</p>;
-  return <ul className="space-y-3">{comments.threads.map((thread) => (
+  return <><IncompleteConversationNotice comments={comments} /><ul className="space-y-3">{comments.threads.map((thread) => (
     <li key={thread.id} className="rounded-md border p-3">
       {thread.state === "outdated" ? <div className="mb-2 flex items-center gap-2"><Badge variant="outline">Outdated</Badge></div> : null}
       <div className="space-y-2">{thread.comments.map((comment) => <div key={comment.id}><p className="font-medium">{comment.author}</p><p className="text-muted-foreground">{comment.body}</p></div>)}</div>
       {actions === undefined || batch?.state._tag !== "Local" ? null : <ThreadBatchActions threadId={thread.id} state={thread.state} actions={actions} />}
     </li>
-  ))}</ul>;
+  ))}</ul></>;
+}
+
+function threadCountLabel(comments: GitHubComments): string {
+  if (comments.threads.length === 0) return "None";
+  return comments.complete === false ? `${comments.threads.length}+` : String(comments.threads.length);
+}
+
+function IncompleteConversationNotice({ comments }: { readonly comments: GitHubComments }): React.JSX.Element | null {
+  return comments.complete === false ? <p className="mb-3 text-sm text-muted-foreground">Some conversation was not loaded.</p> : null;
 }
 
 function ThreadBatchActions({

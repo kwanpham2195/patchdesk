@@ -7,6 +7,7 @@ afterEach(cleanup);
 
 const workbench: PreparedReviewFlowWorkbench = {
   state: "review_started",
+  review: { id: "review-1", status: "open" },
   session: {
     id: "session-1",
     key: { profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", prNumber: 42, headSha: "abcdef1234567890" },
@@ -26,6 +27,23 @@ function mockApi(handler: (request: MockRequest) => { readonly ok: boolean; read
 }
 
 const ok200 = (body: unknown) => ({ ok: true as const, status: 200, body });
+
+function refreshedProjection(input: { readonly sessionId?: string; readonly headSha?: string; readonly checks?: unknown; readonly freshness?: "fresh" | "updates_available" | "unavailable" | "not_refreshed" }) {
+  const sessionId = input.sessionId ?? "session-1";
+  const headSha = input.headSha ?? "abcdef1234567890";
+  return {
+    state: "review",
+    review: { id: "review-1", status: "open" },
+    session: { id: sessionId, key: { ...workbench.session.key, headSha } },
+    revision: { reviewedHeadSha: headSha, currentHeadSha: headSha, freshness: input.freshness ?? "fresh", refreshedAt: "2026-07-30T00:00:00.000Z" },
+    commits: [],
+    insights: { analysis: { status: "not_generated" }, walkthrough: { status: "not_generated" } },
+    publishedFeedback: { reviews: [], comments: [] },
+    comments: { threads: [] },
+    checks: input.checks ?? { overall: "passing", checks: [] },
+    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+  };
+}
 
 async function startFromDialog() {
   fireEvent.click(await screen.findByRole("button", { name: "Run review" }));
@@ -85,10 +103,7 @@ describe("prepared review run start", () => {
     mockApi((request) => {
       if (request.path === "/v1/reviews/models") return ok200(models);
       if (request.path === "/v1/reviews/refresh")
-        return ok200({
-          freshness: "fresh",
-          refreshedAt: "2026-07-30T00:00:00.000Z",
-          comments: { threads: [] },
+        return ok200(refreshedProjection({
           checks: {
             overall: "passing",
             checks: [
@@ -100,8 +115,7 @@ describe("prepared review run start", () => {
               },
             ],
           },
-          mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
-        });
+        }));
       throw new Error(`unexpected ${request.path}`);
     });
     render(
@@ -120,46 +134,21 @@ describe("prepared review run start", () => {
     await waitFor(() =>
       expect(replaced).toHaveBeenCalledWith(
         expect.objectContaining({
-          freshness: "fresh",
+          revision: expect.objectContaining({ freshness: "fresh" }),
           checks: { overall: "passing", checks: expect.any(Array) },
         }),
       ),
     );
   });
 
-  it("reopens the prepared session after refresh detects a changed head", async () => {
+  it("atomically replaces the workbench after refresh detects a changed head", async () => {
     const replaced = vi.fn();
     const requests: MockRequest[] = [];
     mockApi((request) => {
       requests.push(request);
       if (request.path === "/v1/reviews/models") return ok200(models);
       if (request.path === "/v1/reviews/refresh")
-        return ok200({
-          freshness: "stale",
-          refreshedAt: "2026-07-30T00:00:00.000Z",
-          comments: { threads: [] },
-          checks: { overall: "passing", checks: [] },
-        });
-      if (request.path === "/v1/reviews/open")
-        return ok200({
-          state: "review_started",
-          session: {
-            id: "session-2",
-            key: {
-              profileId: "cfw",
-              host: "github.com",
-              owner: "centraldigital",
-              repo: "patchdesk",
-              prNumber: 42,
-              headSha: "fedcba9876543210",
-            },
-          },
-          recoveryView: {
-            noticeKey: "ready_to_review",
-            tone: "positive",
-            actionKey: "run_review",
-          },
-        });
+        return ok200(refreshedProjection({ sessionId: "session-2", headSha: "fedcba9876543210", freshness: "fresh" }));
       throw new Error(`unexpected ${request.path}`);
     });
     render(
@@ -183,8 +172,8 @@ describe("prepared review run start", () => {
       ),
     );
     expect(requests.map((request) => request.path)).toContain("/v1/reviews/refresh");
-    expect(requests.map((request) => request.path)).toContain("/v1/reviews/open");
-    expect(requests.find((request) => request.path === "/v1/reviews/open")?.body).toMatchObject({ previousSessionId: "session-1" });
+    expect(requests.map((request) => request.path)).not.toContain("/v1/reviews/open");
+    expect(requests.find((request) => request.path === "/v1/reviews/refresh")?.body).toMatchObject({ profileId: "cfw", reviewId: "review-1" });
   });
 
   it("applies runId and attemptId so the workbench enters live progress", async () => {

@@ -11,7 +11,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 
-type MergeGateway = Pick<GitHubReader, "getPullRequest" | "getPullRequestChecks"> &
+type MergeGateway = Pick<GitHubReader, "getMergePolicy"> &
   GitHubMergeWriter;
 
 export type MergeFailure =
@@ -37,27 +37,21 @@ export async function mergePullRequest(input: {
     return err({ _tag: "MergeMethodUnsupported" });
 
   const pr = sessionPr(input.session);
-  // Check status is useful evidence, but the PR snapshot below remains the last remote read before the write.
-  const checks = await input.gateway.getPullRequestChecks({
-    profile: input.profile,
-    pr,
-    headSha: input.session.key.headSha,
-  });
-  if (checks._tag === "err") return err({ _tag: "GitHubMergeReadFailed" });
-
-  const current = await input.gateway.getPullRequest({ profile: input.profile, pr });
-  if (current._tag === "err") return err({ _tag: "GitHubMergeReadFailed" });
-  if (current.value.headSha !== input.session.key.headSha)
-    return err({ _tag: "StaleHeadBlocksMerge", currentHeadSha: current.value.headSha });
+  // This is the final remote read before the explicit merge request. A partial
+  // answer is intentionally represented as unknown mergeability and blocks.
+  const policy = await input.gateway.getMergePolicy({ profile: input.profile, pr, expectedHeadSha: input.session.key.headSha });
+  if (policy._tag === "err") return err({ _tag: "GitHubMergeReadFailed" });
+  if (policy.value.headSha !== input.session.key.headSha)
+    return err({ _tag: "StaleHeadBlocksMerge", currentHeadSha: policy.value.headSha });
 
   const readiness = evaluateMergeReadiness({
     isCurrentHead: true,
-    isOpen: current.value.isOpen,
-    isDraft: current.value.isDraft,
-    mergeability: current.value.mergeability,
-    checks: checks.value,
-    hasGitHubReviewBlocker: current.value.reviewState === "review_pending",
-    hasRequestChanges: current.value.reviewState === "changes_requested",
+    isOpen: policy.value.isOpen,
+    isDraft: policy.value.isDraft,
+    mergeability: policy.value.complete ? policy.value.mergeability : "unknown",
+    checks: policy.value.checks,
+    hasGitHubReviewBlocker: policy.value.reviewDecision === "review_required" || policy.value.reviewDecision === "unknown",
+    hasRequestChanges: policy.value.reviewDecision === "changes_requested",
     hasHighSeverityFinding: (input.result?.findings ?? []).some(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ),

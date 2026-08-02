@@ -14,4 +14,8 @@ describe("merge readiness", () => {
     expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "blocked", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toEqual({ _tag: "Blocked", blockers: ["merge_blocked"], warnings: [] });
     expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "unknown", checks: passing, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toEqual({ _tag: "Blocked", blockers: ["mergeability_unknown"], warnings: [] });
   });
+
+  it("fails closed when required-check classification is unknown", () => {
+    expect(evaluateMergeReadiness({ isCurrentHead: true, isOpen: true, isDraft: false, mergeability: "mergeable", checks: { overall: "unknown", checks: [{ name: "unit", required: "unknown", status: "completed", conclusion: "success" }] }, hasGitHubReviewBlocker: false, hasRequestChanges: false, hasHighSeverityFinding: false })).toMatchObject({ _tag: "Blocked", blockers: ["required_check"] });
+  });
 });

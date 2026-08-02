@@ -1,0 +1,99 @@
+import { useMemo } from "react";
+
+import { parseUnifiedPatch } from "../../../domain/patch";
+import type { WorkbenchResponse } from "../renderer-contracts";
+import { parseReviewDiff } from "../review-diff-data";
+import { Badge } from "./ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
+
+export type ReviewNavigatorSection = "files" | "findings" | "commits";
+type Finding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
+
+type ReviewNavigatorProps = {
+  readonly patch: string;
+  readonly commits: WorkbenchResponse["commits"];
+  readonly findings: ReadonlyArray<Finding>;
+  readonly section: ReviewNavigatorSection;
+  readonly selectedPath?: string;
+  readonly selectedCommitSha?: string;
+  readonly onSectionChange: (section: ReviewNavigatorSection) => void;
+  readonly onFileSelect: (path: string) => void;
+  readonly onFindingSelect: (finding: Finding) => void;
+  readonly onCommitSelect: (sha: string) => void;
+};
+
+/** The one review navigator owns Files, Findings, and Commits selection. */
+export function ReviewNavigator({
+  patch,
+  commits,
+  findings,
+  section,
+  selectedPath,
+  selectedCommitSha,
+  onSectionChange,
+  onFileSelect,
+  onFindingSelect,
+  onCommitSelect,
+}: ReviewNavigatorProps): React.JSX.Element {
+  const parsed = useMemo(() => {
+    const files = parseUnifiedPatch(patch);
+    const diff = parseReviewDiff(patch);
+    const items: ReadonlyArray<PierreFileTreeItem> = files.map((file) => ({
+      path: file.newPath,
+      stats: diff.statsByPath.get(file.newPath) ?? { path: file.newPath, additions: 0, deletions: 0 },
+      gitStatus: diff.gitStatusByPath.get(file.newPath),
+    }));
+    return { files: items, firstPath: items[0]?.path };
+  }, [patch]);
+
+  const activePath = selectedPath ?? parsed.firstPath;
+  return (
+    <aside aria-label="Review navigation" className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
+      <Tabs value={section} onValueChange={(value) => onSectionChange(value as ReviewNavigatorSection)} className="flex min-h-0 flex-1 flex-col">
+        <TabsList aria-label="Review navigator" className="mx-3 mt-3 shrink-0">
+          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="findings">Findings</TabsTrigger>
+          <TabsTrigger value="commits">Commits</TabsTrigger>
+        </TabsList>
+        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden p-3" keepMounted>
+          {parsed.files.length === 0 ? (
+            <p className="p-2 text-sm text-muted-foreground">No changed files.</p>
+          ) : (
+            <PierreFileTree files={parsed.files} {...(selectedPath === undefined ? {} : { selectedPath })} {...(activePath === undefined ? {} : { activePath })} onSelect={onFileSelect} />
+          )}
+        </TabsContent>
+        <TabsContent value="findings" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
+          <div className="flex flex-col gap-1" aria-label="Review findings">
+            {findings.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No current mapped findings.</p> : findings.map((finding) => (
+              <button key={finding.id} type="button" className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => onFindingSelect(finding)}>
+                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><span className="truncate">{finding.title}</span></span>
+                <span className="w-full truncate text-xs text-muted-foreground">{finding.file ?? "No file"}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`}</span>
+              </button>
+            ))}
+          </div>
+        </TabsContent>
+        <TabsContent value="commits" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
+          <div className="flex flex-col gap-1" aria-label="Review commits">
+            {commits.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No commits recorded.</p> : commits.map((commit) => (
+              <button key={commit.sha} type="button" aria-pressed={selectedCommitSha === commit.sha} className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent" onClick={() => onCommitSelect(commit.sha)}>
+                <span className="flex w-full items-center gap-2"><span className="truncate font-medium">{commit.message.split("\n", 1)[0]}</span>{commit.isHead ? <Badge variant="secondary">HEAD</Badge> : null}</span>
+                <span className="text-xs text-muted-foreground">{commit.author} · {commit.sha.slice(0, 8)} · {formatCommitDate(commit.authoredAt)}</span>
+              </button>
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </aside>
+  );
+}
+
+function formatCommitDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return value;
+  const seconds = Math.round((timestamp - Date.now()) / 1_000);
+  const units: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3_600], ["minute", 60]];
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  for (const [unit, divisor] of units) if (Math.abs(seconds) >= divisor) return formatter.format(Math.round(seconds / divisor), unit);
+  return formatter.format(seconds, "second");
+}

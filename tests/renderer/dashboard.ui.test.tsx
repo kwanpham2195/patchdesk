@@ -216,7 +216,7 @@ describe("dashboard renderer API flow", () => {
   it("clears an active workbench before switching profiles", async () => {
     window.localStorage.setItem(
       "patchdesk.destination",
-      "workbench:session-123",
+      "workbench:review-123",
     );
     installApi({ loadedWorkbench: completedWorkbench });
     const user = userEvent.setup();
@@ -552,7 +552,7 @@ describe("dashboard renderer API flow", () => {
   it("returns to the inbox after local review-data cleanup deletes the open review", async () => {
     window.localStorage.setItem(
       "patchdesk.destination",
-      "workbench:session-123",
+      "workbench:review-123",
     );
     installApi({ loadedWorkbench: completedWorkbench });
     const user = userEvent.setup();
@@ -660,7 +660,7 @@ describe("dashboard renderer API flow", () => {
   it("restores an exact persisted workbench destination after restart", async () => {
     window.localStorage.setItem(
       "patchdesk.destination",
-      "workbench:session-123",
+      "workbench:review-123",
     );
     const fetch = installApi({ loadedWorkbench: completedWorkbench });
     const user = userEvent.setup();
@@ -669,12 +669,13 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Stored review title" }),
     ).toBeTruthy();
+    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(2);
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>
           String(input).includes("v1/reviews/load") &&
           String((init as RequestInit | undefined)?.body).includes(
-            '"sessionId":"session-123"',
+            '"reviewId":"review-123"',
           ),
       ),
     ).toBe(true);
@@ -704,7 +705,8 @@ describe("dashboard renderer API flow", () => {
 });
 
 const completedWorkbench = {
-  state: "completed",
+  state: "review",
+  review: { id: "review-123", status: "open" },
   session: {
     id: "session-123",
     key: {
@@ -716,29 +718,12 @@ const completedWorkbench = {
       headSha: "abcdef1234567890abcdef1234567890abcdef12",
     },
   },
-  result: {
-    changeSummary: "Stored review",
-    verdict: "comment",
-    summary: "Stored local result",
-    findings: [],
-    validationPlan: [],
-    assumptions: [],
+  revision: {
+    reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
+    currentHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
+    freshness: "fresh",
+    refreshedAt: "2026-07-17T12:00:00.000Z",
   },
-  batch: {
-    sessionId: "session-123",
-    updatedAt: "2026-07-17T12:00:00.000Z",
-    summaryBody: "Stored draft",
-    suggestedEvent: "COMMENT",
-    items: [],
-    receipts: [],
-    createdAt: "2026-07-17T12:00:00.000Z",
-    state: { _tag: "Local" },
-  },
-  history: [],
-  comments: { threads: [] },
-  checks: { overall: "passing", checks: [] },
-  reviewScope: { kind: "full" },
-  comparisonAvailability: "not_requested",
   fullPatch:
     "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
   pullRequest: {
@@ -760,10 +745,39 @@ const completedWorkbench = {
     labels: [],
     updatedAt: "2026-07-17T12:00:00.000Z",
   },
-  reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
-  currentHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
-  freshness: "fresh",
-  refreshedAt: "2026-07-17T12:00:00.000Z",
+  commits: [],
+  insights: {
+    analysis: {
+      status: "current",
+      retained: {
+        sessionId: "session-123",
+        headSha: "abcdef1234567890abcdef1234567890abcdef12",
+        generatedAt: "2026-07-17T12:00:00.000Z",
+        value: {
+          changeSummary: "Stored review",
+          verdict: "comment",
+          summary: "Stored local result",
+          findings: [],
+          validationPlan: [],
+          assumptions: [],
+        },
+      },
+    },
+    walkthrough: { status: "not_generated" },
+  },
+  draft: {
+    sessionId: "session-123",
+    updatedAt: "2026-07-17T12:00:00.000Z",
+    summaryBody: "Stored draft",
+    suggestedEvent: "COMMENT",
+    items: [],
+    receipts: [],
+    createdAt: "2026-07-17T12:00:00.000Z",
+    state: { _tag: "Local" },
+  },
+  publishedFeedback: { reviews: [], comments: [] },
+  comments: { threads: [] },
+  checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
 } as const;
 

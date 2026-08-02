@@ -30,6 +30,11 @@ export function DiffWorkbench({
   className,
   fillViewport = true,
   localCommentAuthoring,
+  controlledSelectedPath,
+  onSelectedPathChange,
+  hideFileNavigation = false,
+  diffTitle,
+  diffSubtitle,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -37,13 +42,19 @@ export function DiffWorkbench({
   readonly className?: string;
   readonly fillViewport?: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  readonly controlledSelectedPath?: string;
+  readonly onSelectedPathChange?: (path: string) => void;
+  readonly hideFileNavigation?: boolean;
+  readonly diffTitle?: string;
+  readonly diffSubtitle?: string;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const [selectedPath, setSelectedPath] = useState<string | undefined>(
+  const [internalSelectedPath, setInternalSelectedPath] = useState<string | undefined>(
     files[0]?.newPath,
   );
+  const selectedPath = controlledSelectedPath ?? internalSelectedPath;
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
@@ -79,7 +90,8 @@ export function DiffWorkbench({
   }, [pendingLargeFileMode]);
   const selectFile = useCallback(
     (path: string): void => {
-      setSelectedPath(path);
+      if (controlledSelectedPath === undefined) setInternalSelectedPath(path);
+      onSelectedPathChange?.(path);
       setActivePath(path);
       const targetIndex = files.findIndex((file) => file.newPath === path);
       // A direct jump deep into an exceptionally large stream would require
@@ -93,7 +105,7 @@ export function DiffWorkbench({
         setPendingLargeFileMode(undefined);
       }
     },
-    [files],
+    [controlledSelectedPath, files, onSelectedPathChange],
   );
   const fileRows = useMemo(
     () =>
@@ -115,19 +127,22 @@ export function DiffWorkbench({
   useEffect(() => {
     if (mappedPath !== undefined) selectFile(mappedPath);
   }, [mappedPath, selectFile]);
+  useEffect(() => {
+    if (controlledSelectedPath !== undefined) setActivePath(controlledSelectedPath);
+  }, [controlledSelectedPath]);
   return (
     <section
       aria-label="Diff workbench"
       data-patch-bytes={patch.length}
       className={cn(
-        "grid min-w-0 overflow-hidden min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1",
+        `grid min-w-0 overflow-hidden ${hideFileNavigation ? "grid-cols-1" : "min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1"}`,
         fillViewport
           ? "min-h-[calc(100vh-3.5rem)] min-[1100px]:h-[calc(100vh-3.5rem)]"
           : "h-full min-h-0",
         className,
       )}
     >
-      <aside
+      {hideFileNavigation ? null : <aside
         aria-label="Review navigation"
         className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
       >
@@ -137,19 +152,19 @@ export function DiffWorkbench({
           {...(activePath === undefined ? {} : { activePath })}
           onSelect={selectFile}
         />
-      </aside>
+      </aside>}
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
         <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
-              {selectedPath ?? "No file selected"}
+              {diffTitle ?? selectedPath ?? "No file selected"}
             </p>
             <p className="text-xs text-muted-foreground">
-              Stored unified patch · read only
+              {diffSubtitle ?? "Stored unified patch · read only"}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+            {hideFileNavigation ? null : <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
               <SheetTrigger
                 render={<Button variant="outline" size="sm" className="max-[1099px]:inline-flex min-[1100px]:hidden" />}
               >
@@ -174,7 +189,7 @@ export function DiffWorkbench({
                   />
                 </div>
               </SheetContent>
-            </Sheet>
+            </Sheet>}
           </div>
         </header>
         <ReviewDiffView

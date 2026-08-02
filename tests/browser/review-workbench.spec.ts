@@ -118,7 +118,6 @@ test("Settings stays a centered General-first overlay on dashboard, Inbox, and w
     }
 
     await page.goto(origin(server));
-    await page.getByRole("button", { name: "Inbox", exact: true }).click();
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(
       page

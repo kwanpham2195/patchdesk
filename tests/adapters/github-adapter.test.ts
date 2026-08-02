@@ -197,6 +197,92 @@ describe("CommandRunner", () => {
   });
 });
 
+describe("GitHubAdapter merge outcome", () => {
+  it("reads merged, open, and closed-unmerged outcomes without a write command", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ state: "closed", merged_at: "2026-08-01T00:00:00Z", merge_commit_sha: headSha }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ state: "open" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ state: "closed", merged_at: null }), stderr: "" },
+    ])));
+
+    await expect(adapter.getMergeOutcome({ profile, pr })).resolves.toMatchObject({ _tag: "ok", value: { state: "merged", mergeCommitSha: headSha } });
+    await expect(adapter.getMergeOutcome({ profile, pr })).resolves.toEqual({ _tag: "ok", value: { state: "open" } });
+    await expect(adapter.getMergeOutcome({ profile, pr })).resolves.toEqual({ _tag: "ok", value: { state: "closed_unmerged" } });
+  });
+});
+
+describe("GitHubAdapter merge policy", () => {
+  it("joins the exact-head rollup to required branch contexts", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ contexts: ["unit"], checks: [] }), stderr: "" },
+    ])));
+
+    await expect(adapter.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toEqual({
+      _tag: "ok",
+      value: expect.objectContaining({
+        headSha,
+        complete: true,
+        reviewDecision: "approved",
+        checks: { overall: "passing", checks: [expect.objectContaining({ name: "unit", required: true, conclusion: "success" })] },
+      }),
+    });
+  });
+
+  it("fails closed for a head mismatch, policy pagination cap, or branch-protection denial", async () => {
+    const headMismatch = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload({ headRefOid: baseSha })), stderr: "" },
+    ])));
+    await expect(headMismatch.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toMatchObject({ _tag: "ok", value: { complete: false, incompleteReason: "head_mismatch" } });
+
+    const pages = [0, 1, 2].map((index) => ({
+      _tag: "Exited" as const,
+      exitCode: 0,
+      stdout: JSON.stringify(mergePolicyPayload({ pageInfo: { hasNextPage: true, endCursor: `cursor-${index}` } })),
+      stderr: "",
+    }));
+    const pagination = new GitHubAdapter(
+      new CommandRunner(new FakeProcessExecutor(pages)),
+    );
+    await expect(pagination.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toMatchObject({ _tag: "ok", value: { complete: false, incompleteReason: "pagination" } });
+
+    const denied = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 403: Resource not accessible" },
+    ])));
+    await expect(denied.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toMatchObject({ _tag: "ok", value: { complete: false, incompleteReason: "permission" } });
+  });
+});
+
+function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly pageInfo?: { readonly hasNextPage: boolean; readonly endCursor: string | null } } = {}): Record<string, unknown> {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          state: "OPEN",
+          isDraft: false,
+          headRefOid: overrides.headRefOid ?? headSha,
+          baseRefName: "sit",
+          mergeable: "MERGEABLE",
+          reviewDecision: "APPROVED",
+          commits: {
+            nodes: [{
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [{ __typename: "CheckRun", name: "unit", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://example.test/unit" }],
+                    pageInfo: overrides.pageInfo ?? { hasNextPage: false, endCursor: null },
+                  },
+                },
+              },
+            }],
+          },
+        },
+      },
+    },
+  };
+}
+
 describe("GitHubAdapter read boundary", () => {
   it("returns parsed GraphQL inbox rows and marks a capped listing incomplete", async () => {
     const page = (hasNextPage: boolean, endCursor: string | null) => ({
@@ -356,8 +442,10 @@ describe("GitHubAdapter read boundary", () => {
     expect(await adapter.getPullRequestComments({ profile, pr })).toEqual({
       _tag: "ok",
       value: {
+        complete: true,
         threads: [
           {
+            complete: true,
             id: "thread-1",
             state: "open",
             location: { path: "src/review.ts", line: 5, lineEnd: 7, diffSide: "new" },
@@ -419,6 +507,95 @@ describe("GitHubAdapter read boundary", () => {
         golden("auth-status"),
       ]),
     ).resolves.toEqual(executor.requests);
+  });
+
+  it("paginates review threads and retains their server ordering", async () => {
+    const first = JSON.parse(await payload("get-comments.json"));
+    const second = structuredClone(first);
+    first.data.repository.pullRequest.reviewThreads.pageInfo = {
+      hasNextPage: true,
+      endCursor: "threads-page-2",
+    };
+    second.data.repository.pullRequest.reviewThreads.nodes[0].id = "thread-2";
+    second.data.repository.pullRequest.reviewThreads.nodes[0].comments.nodes[0].id = "comment-2";
+    second.data.repository.pullRequest.reviewThreads.pageInfo = {
+      hasNextPage: false,
+      endCursor: null,
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(first), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(second), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+
+    await expect(adapter.getPullRequestComments({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { complete: true, threads: [{ id: "thread-1" }, { id: "thread-2" }] },
+    });
+    expect(executor.requests[1]).toContain("cursor=threads-page-2");
+  });
+
+  it("marks a repeated review-thread cursor incomplete", async () => {
+    const first = JSON.parse(await payload("get-comments.json"));
+    const second = structuredClone(first);
+    first.data.repository.pullRequest.reviewThreads.pageInfo = { hasNextPage: true, endCursor: "repeat" };
+    second.data.repository.pullRequest.reviewThreads.pageInfo = { hasNextPage: true, endCursor: "repeat" };
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(first), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(second), stderr: "" },
+    ])));
+
+    await expect(adapter.getPullRequestComments({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { complete: false, incompleteReason: "pagination" },
+    });
+  });
+
+  it("loads a second reply page and preserves earlier replies when that page fails", async () => {
+    const outer = JSON.parse(await payload("get-comments.json"));
+    outer.data.repository.pullRequest.reviewThreads.nodes[0].comments.pageInfo = { hasNextPage: true, endCursor: "replies-page-2" };
+    const replies = {
+      data: {
+        node: {
+          comments: {
+            nodes: [{
+              id: "comment-2", body: "A later reply.", createdAt: "2026-07-16T12:01:00Z", updatedAt: null,
+              url: "https://example.test/comment/2", author: { login: "reviewer" }, path: "src/review.ts",
+            }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    };
+    const complete = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(outer), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(replies), stderr: "" },
+    ])));
+    await expect(complete.getPullRequestComments({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok", value: { complete: true, threads: [{ complete: true, comments: [{ id: "comment-1" }, { id: "comment-2" }] }] },
+    });
+
+    const partial = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(outer), stderr: "" },
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "network unavailable" },
+    ])));
+    await expect(partial.getPullRequestComments({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok", value: { complete: false, incompleteReason: "comment_cap", threads: [{ complete: false, comments: [{ id: "comment-1" }] }] },
+    });
+  });
+
+  it("stops after the bounded review-thread page cap", async () => {
+    const fixture = JSON.parse(await payload("get-comments.json"));
+    const responses = Array.from({ length: 10 }, (_, index) => {
+      const page = structuredClone(fixture);
+      page.data.repository.pullRequest.reviewThreads.pageInfo = { hasNextPage: true, endCursor: `page-${index}` };
+      return { _tag: "Exited" as const, exitCode: 0, stdout: JSON.stringify(page), stderr: "" };
+    });
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor(responses)));
+
+    await expect(adapter.getPullRequestComments({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok", value: { complete: false, incompleteReason: "thread_cap" },
+    });
   });
 
   it("returns a degraded summary when optional GitHub metadata is absent", async () => {
@@ -738,6 +915,48 @@ describe("GitHubAdapter read boundary", () => {
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
       _tag: "err",
       error: { _tag: "GitHubAuthenticationFailed", operation: "auth_status" },
+    });
+  });
+  it("lists pull request commits with immutable parsing and head marking", async () => {
+    const olderSha = "1111111111111111111111111111111111111111";
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([[{
+        sha: olderSha,
+        html_url: "https://github.com/centraldigital/patchdesk/commit/111",
+        commit: { message: "Older change", author: { name: "Older", date: "2026-07-16T11:00:00Z" } },
+      }], [{
+        sha: headSha,
+        html_url: "https://github.com/centraldigital/patchdesk/commit/head",
+        commit: { message: "Head change", author: { name: "Head", date: "2026-07-16T12:00:00Z" } },
+      }]]), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getPullRequestCommits({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok",
+      value: [
+        { sha: headSha, message: "Head change", isHead: true },
+        { sha: olderSha, message: "Older change", isHead: false },
+      ],
+    });
+    expect(executor.requests[1]).toEqual([
+      "gh", "api", "--paginate", "--slurp", "--hostname", "github.com",
+      "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+    ]);
+  });
+
+  it("rejects a commit listing that reaches the deliberate cap", async () => {
+    const commits = Array.from({ length: 251 }, (_, index) => ({
+      sha: `${"a".repeat(39)}${(index % 16).toString(16)}`,
+      commit: { message: `Commit ${index}`, author: { name: "Author", date: "2026-07-16T12:00:00Z" } },
+    }));
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([commits]), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getPullRequestCommits({ profile, pr })).resolves.toEqual({
+      _tag: "err", error: { _tag: "GitHubResponseInvalid", operation: "get_pr_commits" },
     });
   });
 });

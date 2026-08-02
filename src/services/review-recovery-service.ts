@@ -9,6 +9,10 @@ import { ReviewPreparationJournal } from "./review-preparation-journal";
 import { recoverOrphanedWorkbenchAttempt } from "./review-workbench";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
+import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import type { GitHubReader } from "../adapters/github/github-adapter";
+import { markSessionMerged } from "../domain/review-session";
+import { rejectMergeOperation } from "../domain/merge-operation";
 
 export type RecoveryDiagnostic = {
   readonly profileId: WorkspaceProfileId;
@@ -28,6 +32,8 @@ export class ReviewRecoveryService {
       readonly recordDiagnostic?: (event: RecoveryDiagnostic) => Promise<void>;
       readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
       readonly lifecycleGate?: ReviewLifecycleGate;
+      readonly mergeOperations?: MergeOperationStore;
+      readonly github?: Pick<GitHubReader, "getMergeOutcome">;
     } = {},
   ) {}
 
@@ -79,6 +85,31 @@ export class ReviewRecoveryService {
   private async reconcileProfile(
     profileId: WorkspaceProfileId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    if (this.options.mergeOperations !== undefined && this.options.github !== undefined) {
+      const pending = await this.options.mergeOperations.listPending(profileId);
+      if (pending._tag === "ok") {
+        const profile = await this.profiles.load(profileId);
+        if (profile._tag === "err") return { recovered: 0, failed: 1 };
+        for (const operation of pending.value) {
+          const outcome = await this.options.github.getMergeOutcome({ profile: profile.value, pr: operation.pr });
+          if (outcome._tag === "err") {
+            await this.options.diagnostics?.record({ profileId, sessionId: operation.sessionId, category: "recovery", phase: "merge-outcome-read", retryable: true, detail: "Merge outcome could not be reconciled safely." });
+            continue;
+          }
+          if (outcome.value.state === "merged") {
+            const session = await this.sessions.load(profileId, operation.sessionId);
+            if (session._tag === "err") continue;
+            const merged = markSessionMerged(session.value, outcome.value.mergedAt);
+            if (merged._tag === "err") continue;
+            const saved = await this.sessions.save({ ...merged.value, mergeDecision: { mergedAt: outcome.value.mergedAt, ...(outcome.value.mergeCommitSha === undefined ? {} : { mergeCommitSha: outcome.value.mergeCommitSha }) } });
+            if (saved._tag === "ok") await this.options.mergeOperations.removeAfterSessionReceipt(profileId, operation.sessionId);
+            continue;
+          }
+          const rejected = rejectMergeOperation(operation, outcome.value.state === "open" ? "merge_failed" : "merge_blocked");
+          if (rejected._tag === "ok") await this.options.mergeOperations.reject(rejected.value);
+        }
+      }
+    }
     const scan = await this.sessions.scanSessionEntries(profileId);
     if (scan._tag === "err") {
       if (this.options.diagnostics !== undefined) {

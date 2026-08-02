@@ -1,0 +1,235 @@
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+
+import * as v from "valibot";
+
+import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
+import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseGitHubThreadId, parseIsoTimestamp, parsePullRequestNumber, parseRepoRelativePath, type ContentHash, type ReviewId, type WorkspaceProfileId } from "../../domain/ids";
+import { err, ok, type Result } from "../../domain/result";
+import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
+import type { PatchdeskPaths } from "./patchdesk-paths";
+import type { ReviewStore } from "./review-store";
+
+export type ReviewRemoteSnapshot = {
+  readonly schemaVersion: 1;
+  readonly pullRequest: PullRequestSummary;
+  readonly comments: GitHubComments;
+  readonly commits: ReadonlyArray<PullRequestCommit>;
+  readonly checks: CheckSummary;
+  readonly mergePolicy?: MergePolicySnapshot;
+};
+
+export type ReviewRemoteStoreFailure = StorageFailure;
+
+const commentSchema = v.strictObject({
+  id: v.string(), author: v.string(), body: v.string(), createdAt: v.string(),
+  updatedAt: v.optional(v.string()), url: v.optional(v.string()),
+  location: v.optional(v.strictObject({
+    path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
+  })),
+});
+const commentsSchema = v.strictObject({
+  threads: v.array(v.strictObject({
+    id: v.string(), state: v.picklist(["open", "resolved", "outdated", "unknown"]),
+    comments: v.array(commentSchema), complete: v.optional(v.boolean()),
+    incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+    location: v.optional(v.strictObject({
+      path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
+    })),
+  })),
+  complete: v.optional(v.boolean()),
+  incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+});
+const checksSchema = v.strictObject({
+  overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
+  checks: v.array(v.strictObject({
+    name: v.string(), required: v.union([v.boolean(), v.literal("unknown")]),
+    status: v.picklist(["queued", "in_progress", "completed", "unknown"]),
+    conclusion: v.optional(v.picklist(["success", "failure", "cancelled", "timed_out", "skipped", "neutral"])),
+    url: v.optional(v.string()),
+  })),
+});
+const pullRequestSchema = v.strictObject({
+  headSha: v.string(), baseSha: v.optional(v.string()), isDraft: v.boolean(), isOpen: v.boolean(),
+  ref: v.strictObject({ host: v.string(), owner: v.string(), repo: v.string(), number: v.number() }),
+  title: v.string(), description: v.optional(v.string()), author: v.string(), headBranch: v.string(), baseBranch: v.string(),
+  reviewState: v.picklist(["none", "review_pending", "approved", "changes_requested", "unknown"]),
+  mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]), labels: v.array(v.string()),
+  requestedReviewers: v.optional(v.array(v.string())), assignees: v.optional(v.array(v.string())), updatedAt: v.string(),
+  changedFileCount: v.optional(v.number()), additions: v.optional(v.number()), deletions: v.optional(v.number()),
+});
+const mergePolicySchema = v.strictObject({
+  pr: v.strictObject({ host: v.string(), owner: v.string(), repo: v.string(), number: v.number() }),
+  headSha: v.string(), isOpen: v.boolean(), isDraft: v.boolean(), mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  reviewDecision: v.picklist(["approved", "changes_requested", "review_required", "unknown"]), checks: checksSchema, complete: v.boolean(),
+  incompleteReason: v.optional(v.picklist(["head_mismatch", "pagination", "permission", "unavailable", "mapping"])),
+});
+const commitSchema = v.strictObject({ sha: v.string(), message: v.string(), author: v.string(), authoredAt: v.string(), url: v.optional(v.string()), isHead: v.boolean() });
+const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, mergePolicy: v.optional(mergePolicySchema) });
+
+/** Content-addressed storage for the complete remote snapshot represented by a Review. */
+export class ReviewRemoteStore {
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly reviews?: Pick<ReviewStore, "load">,
+  ) {}
+
+  async saveCandidate(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly snapshot: ReviewRemoteSnapshot;
+  }): Promise<Result<{ readonly snapshotHash: ContentHash }, ReviewRemoteStoreFailure>> {
+    const parsed = parseSnapshot(input.snapshot);
+    if (parsed._tag === "err") return parsed;
+    const snapshotHash = hashSnapshot(parsed.value);
+    const saved = await writeAtomicJson(remoteSnapshotPath(this.paths, input.profileId, input.reviewId, snapshotHash), parsed.value);
+    return saved._tag === "err" ? saved : ok({ snapshotHash });
+  }
+
+  async load(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly snapshotHash?: ContentHash;
+  }): Promise<Result<ReviewRemoteSnapshot, ReviewRemoteStoreFailure>> {
+    let snapshotHash = input.snapshotHash;
+    if (snapshotHash === undefined) {
+      if (this.reviews === undefined) return invalidRead();
+      const review = await this.reviews.load(input.profileId, input.reviewId);
+      if (review._tag === "err" || review.value.representedRemote === undefined) return review._tag === "err" ? review : invalidRead();
+      snapshotHash = review.value.representedRemote.snapshotHash;
+    }
+    const stored = await readJsonFile(remoteSnapshotPath(this.paths, input.profileId, input.reviewId, snapshotHash));
+    if (stored._tag === "err") return stored;
+    const parsed = parseSnapshot(stored.value);
+    if (parsed._tag === "err") return parsed;
+    if (hashSnapshot(parsed.value) !== snapshotHash) return invalidRead();
+    return parsed;
+  }
+}
+
+export function parseReviewRemoteSnapshot(input: unknown): Result<ReviewRemoteSnapshot, StorageFailure> {
+  const parsed = v.safeParse(snapshotSchema, input);
+  if (!parsed.success) return invalidRead();
+  const pr = parsePullRequest(parsed.output.pullRequest);
+  const comments = parseComments(parsed.output.comments);
+  const checks = parseChecks(parsed.output.checks);
+  const commits = parseCommits(parsed.output.commits, pr._tag === "ok" ? pr.value.headSha : undefined);
+  const mergePolicy = parsed.output.mergePolicy === undefined ? ok(undefined) : parseMergePolicy(parsed.output.mergePolicy);
+  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || mergePolicy._tag === "err") return invalidRead();
+  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }) });
+}
+
+export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
+  const canonical = canonicalJson({ ...snapshot, checks: withoutCheckUrls(snapshot.checks), ...(snapshot.mergePolicy === undefined ? {} : { mergePolicy: { ...snapshot.mergePolicy, checks: withoutCheckUrls(snapshot.mergePolicy.checks) } }) });
+  return createHash("sha256").update(canonical).digest("hex") as ContentHash;
+}
+
+function parseSnapshot(input: unknown): Result<ReviewRemoteSnapshot, StorageFailure> {
+  return parseReviewRemoteSnapshot(input);
+}
+
+function parsePullRequest(input: v.InferOutput<typeof pullRequestSchema>): Result<PullRequestSummary, StorageFailure> {
+  const refHost = parseGitHubHost(input.ref.host), owner = parseGitHubOwner(input.ref.owner), repo = parseGitHubRepoName(input.ref.repo), number = parsePullRequestNumber(input.ref.number), head = parseGitSha(input.headSha), base = input.baseSha === undefined ? ok(undefined) : parseGitSha(input.baseSha), updatedAt = parseIsoTimestamp(input.updatedAt);
+  if (refHost._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err" || head._tag === "err" || base._tag === "err" || updatedAt._tag === "err") return invalidRead();
+  return ok({
+    headSha: head.value,
+    ...(base.value === undefined ? {} : { baseSha: base.value }),
+    isDraft: input.isDraft, isOpen: input.isOpen,
+    ref: { host: refHost.value, owner: owner.value, repo: repo.value, number: number.value },
+    title: input.title,
+    ...(input.description === undefined ? {} : { description: input.description }),
+    author: input.author, headBranch: input.headBranch, baseBranch: input.baseBranch,
+    reviewState: input.reviewState, mergeability: input.mergeability, labels: input.labels,
+    ...(input.requestedReviewers === undefined ? {} : { requestedReviewers: input.requestedReviewers }),
+    ...(input.assignees === undefined ? {} : { assignees: input.assignees }),
+    updatedAt: updatedAt.value,
+    ...(input.changedFileCount === undefined ? {} : { changedFileCount: input.changedFileCount }),
+    ...(input.additions === undefined ? {} : { additions: input.additions }),
+    ...(input.deletions === undefined ? {} : { deletions: input.deletions }),
+  });
+}
+
+function parseCommits(input: v.InferOutput<typeof snapshotSchema>["commits"], expectedHeadSha?: ReturnType<typeof parseGitSha> extends Result<infer T, unknown> ? T : undefined): Result<ReadonlyArray<PullRequestCommit>, StorageFailure> {
+  const commits: PullRequestCommit[] = [];
+  for (const commit of input) {
+    const sha = parseGitSha(commit.sha);
+    const authoredAt = parseIsoTimestamp(commit.authoredAt);
+    if (sha._tag === "err" || authoredAt._tag === "err") return invalidRead();
+    commits.push({ sha: sha.value, message: commit.message, author: commit.author, authoredAt: authoredAt.value, ...(commit.url === undefined ? {} : { url: commit.url }), isHead: commit.isHead });
+  }
+  const heads = commits.filter((commit) => commit.isHead);
+  if (commits.length > 250 || (commits.length > 0 && (heads.length !== 1 || expectedHeadSha === undefined || heads[0]?.sha !== expectedHeadSha))) return invalidRead();
+  return ok(commits);
+}
+
+function parseChecks(input: v.InferOutput<typeof checksSchema>): Result<CheckSummary, StorageFailure> {
+  return ok({ overall: input.overall, checks: input.checks.map((check): CheckRunSummary => ({
+    name: check.name, required: check.required, status: check.status,
+    ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }),
+    ...(check.url === undefined ? {} : { url: check.url }),
+  })) });
+}
+
+function parseComments(input: v.InferOutput<typeof commentsSchema>): Result<GitHubComments, StorageFailure> {
+  const threads: GitHubComments["threads"][number][] = [];
+  for (const thread of input.threads) {
+    const id = parseGitHubThreadId(thread.id);
+    if (id._tag === "err") return invalidRead();
+    const comments: GitHubComment[] = [];
+    for (const comment of thread.comments) {
+      const createdAt = parseIsoTimestamp(comment.createdAt);
+      const updatedAt = comment.updatedAt === undefined ? undefined : parseIsoTimestamp(comment.updatedAt);
+      const location = comment.location === undefined ? undefined : parseLocation(comment.location);
+      if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err") || (location !== undefined && location._tag === "err")) return invalidRead();
+      comments.push({ id: comment.id, author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(location === undefined ? {} : { location: location.value }) });
+    }
+    const location = thread.location === undefined ? undefined : parseLocation(thread.location);
+    if (location?._tag === "err") return invalidRead();
+    threads.push({
+      id: id.value, state: thread.state, comments,
+      ...(thread.complete === undefined ? {} : { complete: thread.complete }),
+      ...(thread.incompleteReason === undefined ? {} : { incompleteReason: thread.incompleteReason }),
+      ...(location === undefined ? {} : { location: location.value }),
+    });
+  }
+  return ok({ threads, ...(input.complete === undefined ? {} : { complete: input.complete }), ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
+}
+
+function parseLocation(input: { path: string; line?: number | undefined; lineEnd?: number | undefined; diffSide?: "new" | "old" | undefined }): Result<{ readonly path: ReturnType<typeof parseRepoRelativePath> extends Result<infer T, unknown> ? T : never; readonly line?: number; readonly lineEnd?: number; readonly diffSide?: "new" | "old" }, StorageFailure> {
+  const path = parseRepoRelativePath(input.path);
+  if (path._tag === "err") return invalidRead();
+  return ok({ path: path.value, ...(input.line === undefined ? {} : { line: input.line }), ...(input.lineEnd === undefined ? {} : { lineEnd: input.lineEnd }), ...(input.diffSide === undefined ? {} : { diffSide: input.diffSide }) });
+}
+
+function parseMergePolicy(input: v.InferOutput<typeof mergePolicySchema>): Result<MergePolicySnapshot, StorageFailure> {
+  const host = parseGitHubHost(input.pr.host), owner = parseGitHubOwner(input.pr.owner), repo = parseGitHubRepoName(input.pr.repo), number = parsePullRequestNumber(input.pr.number), head = parseGitSha(input.headSha);
+  const checks = parseChecks(input.checks);
+  if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err" || head._tag === "err" || checks._tag === "err") return invalidRead();
+  return ok({ pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value }, headSha: head.value, isOpen: input.isOpen, isDraft: input.isDraft, mergeability: input.mergeability, reviewDecision: input.reviewDecision, checks: checks.value, complete: input.complete, ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
+}
+
+function withoutCheckUrls(checks: CheckSummary): CheckSummary {
+  return {
+    overall: checks.overall,
+    checks: checks.checks.map((check) => ({
+      name: check.name,
+      required: check.required,
+      status: check.status,
+      ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }),
+    })),
+  };
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") return `{${Object.keys(value as object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+}
+
+function remoteSnapshotPath(paths: PatchdeskPaths, profileId: WorkspaceProfileId, reviewId: ReviewId, snapshotHash: ContentHash): string {
+  return join(paths.reviewDirectory(profileId, reviewId), "remote", `${snapshotHash}.json`);
+}
+
+function invalidRead(): Result<never, StorageFailure> {
+  return err({ _tag: "StorageFailure", operation: "read", reason: "invalid_stored_value" });
+}

@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import type { Stats } from "node:fs";
 
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -7,13 +8,31 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../domain/ids";
-import { parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitReadExecutor } from "./review-worktree-service";
 import { readObjectField } from "./read-object-field";
+import { ReviewPatchIndex } from "./review-patch-index";
 
 const maxHydratedFileBytes = 1024 * 1024;
+const maxCachedPatchBytes = 32 * 1024 * 1024;
+const maxCachedPatchSessions = 8;
+
+type CachedPatch = {
+  readonly index: ReviewPatchIndex;
+  readonly size: number;
+  readonly modifiedAtMs: number;
+};
+
+export type PreparedPatchReader = {
+  stat(path: string): Promise<Pick<Stats, "size" | "mtimeMs">>;
+  read(path: string): Promise<string>;
+};
+
+const filesystemPatchReader: PreparedPatchReader = {
+  stat,
+  read: async (path) => await readFile(path, "utf8"),
+};
 
 export type ReviewDiffSource =
   | {
@@ -43,10 +62,13 @@ export type ReviewDiffSourceFailure = {
  * bounded text that matches the immutable saved patch.
  */
 export class ReviewDiffSourceService {
+  private readonly patches = new Map<string, CachedPatch>();
+  private cachedPatchBytes = 0;
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
     private readonly git: GitReadExecutor,
+    private readonly patchReader: PreparedPatchReader = filesystemPatchReader,
   ) {}
 
   async load(input: unknown): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
@@ -69,18 +91,13 @@ export class ReviewDiffSourceService {
       return err({ reason: "not_found" });
     }
 
-    const patch = await readFile(session.value.patchPath, "utf8").catch(
-      () => undefined,
-    );
-    if (patch === undefined) {
+    const index = await this.loadPatchIndex(profileId.value, session.value);
+    if (index === undefined) {
       return ok({ state: "unavailable", reason: "patch_unavailable" });
     }
-    const file = parseUnifiedPatch(patch).find(
-      (candidate) =>
-        candidate.newPath === requestedPath.value ||
-        candidate.oldPath === requestedPath.value,
-    );
-    const rawFilePatch = patchForPath(patch, requestedPath.value);
+    const entry = index.get(requestedPath.value);
+    const file = entry?.file;
+    const rawFilePatch = index.slice(requestedPath.value);
     if (
       file === undefined ||
       rawFilePatch === undefined ||
@@ -125,6 +142,32 @@ export class ReviewDiffSourceService {
         ? {}
         : { newFile: { name: file.newPath, contents: newContents } }),
     });
+  }
+
+  private async loadPatchIndex(profileId: string, session: ReviewSession): Promise<ReviewPatchIndex | undefined> {
+    const identity = await this.patchReader.stat(session.patchPath).catch(() => undefined);
+    if (identity === undefined) return undefined;
+    const key = `${profileId}:${session.id}`;
+    const cached = this.patches.get(key);
+    if (cached !== undefined && cached.size === identity.size && cached.modifiedAtMs === identity.mtimeMs) {
+      this.patches.delete(key);
+      this.patches.set(key, cached);
+      return cached.index;
+    }
+    const source = await this.patchReader.read(session.patchPath).catch(() => undefined);
+    if (source === undefined) return undefined;
+    const next = { index: ReviewPatchIndex.create(source), size: identity.size, modifiedAtMs: identity.mtimeMs };
+    if (cached !== undefined) this.cachedPatchBytes -= cached.size;
+    this.patches.delete(key);
+    this.patches.set(key, next);
+    this.cachedPatchBytes += next.size;
+    while (this.patches.size > maxCachedPatchSessions || this.cachedPatchBytes > maxCachedPatchBytes) {
+      const oldest = this.patches.entries().next().value as [string, CachedPatch] | undefined;
+      if (oldest === undefined) break;
+      this.patches.delete(oldest[0]);
+      this.cachedPatchBytes -= oldest[1].size;
+    }
+    return next.index;
   }
 
   private async readBlob(
@@ -224,14 +267,4 @@ function splitLines(contents: string): ReadonlyArray<string> {
   const lines = normalized.split("\n");
   if (lines.at(-1) === "") lines.pop();
   return lines;
-}
-
-function patchForPath(patch: string, path: string): string | undefined {
-  return patch
-    .split(/(?=^diff --git )/m)
-    .find(
-      (candidate) =>
-        candidate.startsWith("diff --git ") &&
-        (candidate.includes(` a/${path} b/`) || candidate.includes(` b/${path}\n`)),
-    );
 }

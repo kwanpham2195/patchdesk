@@ -4,6 +4,9 @@ import {
   optional,
   safeParse,
   minLength,
+  number,
+  integer,
+  minValue,
   object,
   picklist,
   pipe,
@@ -17,6 +20,9 @@ import type { LocalApiStartupResult } from "./app-lifecycle";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { ReviewStore } from "../adapters/storage/review-store";
+import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
+import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import {
   StorageManagementService,
@@ -35,8 +41,10 @@ import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
+import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
 import { ReviewWorkbenchProjectionService } from "../services/review-workbench-projection";
+import { ReviewCommitService } from "../services/review-commit-service";
 import { ReviewPreparationJournal } from "../services/review-preparation-journal";
 import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewCompletionService } from "../services/review-completion-service";
@@ -88,6 +96,13 @@ const walkthroughLoadSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   sessionId: pipe(string(), minLength(1)),
 });
+const reviewOpenSchema = strictObject({
+  profileId: pipe(string(), minLength(1)), host: pipe(string(), minLength(1)), owner: pipe(string(), minLength(1)), repo: pipe(string(), minLength(1)), number: pipe(number(), integer(), minValue(1)),
+  mode: optional(picklist(["full", "incremental"])), baseSessionId: optional(pipe(string(), minLength(1))), previousSessionId: optional(pipe(string(), minLength(1))),
+});
+const reviewLoadSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
+const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
+const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -216,7 +231,7 @@ export async function startLocalApiServer(
     profiles,
     sessions,
     () => new Date().toISOString() as never,
-    { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate },
+    { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate, mergeOperations: new MergeOperationStore(paths), github },
   ).reconcile();
   const dashboard = new DashboardController(
     profiles,
@@ -246,34 +261,56 @@ export async function startLocalApiServer(
     sessions,
     () => new Date().toISOString() as never,
   );
-  const reviewWorkbench = new ReviewWorkbenchController(
-    new ReviewSessionPreparation({
-      profiles,
-      sessions,
-      github,
+  const reviews = new ReviewStore(paths);
+  const remoteReviews = new ReviewRemoteStore(paths);
+  const reviewPreparation = new ReviewSessionPreparation({
+    profiles,
+    sessions,
+    github,
+    paths,
+    now: () => new Date().toISOString() as never,
+    worktrees: new ReviewWorktreeService(paths, readOnlyGit),
+    context: new ReviewContextService(),
+    comparisons: new ReviewComparisonService(
       paths,
-      now: () => new Date().toISOString() as never,
-      worktrees: new ReviewWorktreeService(paths, readOnlyGit),
-      context: new ReviewContextService(),
-      comparisons: new ReviewComparisonService(
-        paths,
-        readOnlyGit,
-        () => new Date().toISOString() as never,
-      ),
-      artifacts: new ReviewArtifactStorage(
-        paths,
-        () => new Date().toISOString() as never,
-      ),
-      lifecycleGate,
-      diagnostics,
-    }),
-    new ReviewWorkbenchProjectionService(
-      profiles,
-      sessions,
-      github,
+      readOnlyGit,
       () => new Date().toISOString() as never,
-      { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
     ),
+    artifacts: new ReviewArtifactStorage(
+      paths,
+      () => new Date().toISOString() as never,
+    ),
+    lifecycleGate,
+    diagnostics,
+  });
+  const reviewProjection = new ReviewWorkbenchProjectionService(
+    profiles,
+    sessions,
+    github,
+    () => new Date().toISOString() as never,
+    { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
+    reviews,
+  );
+  const reviewRefresh = new ReviewRefreshService({
+    profiles,
+    reviews,
+    sessions,
+    remote: remoteReviews,
+    github,
+    preparation: reviewPreparation,
+    now: () => new Date().toISOString() as never,
+    project: ({ profileId, sessionId, snapshot, refreshedAt }) => reviewProjection.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt,
+    }),
+  });
+  const reviewCommits = new ReviewCommitService(reviews, remoteReviews, sessions, readOnlyGit);
+  const reviewWorkbench = new ReviewWorkbenchController(
+    reviewPreparation,
+    reviewProjection,
+    { reviews, remote: remoteReviews, refresh: reviewRefresh, commits: reviewCommits },
   );
   const reviewCompletion = new ReviewCompletionService(
     paths,
@@ -321,12 +358,12 @@ export async function startLocalApiServer(
           profiles,
           sessions,
           {
-            getPullRequest: github.getPullRequest.bind(github),
-            getPullRequestChecks: github.getPullRequestChecks.bind(github),
+            getMergePolicy: github.getMergePolicy.bind(github),
             mergePullRequest: merger.mergePullRequest.bind(merger),
           },
           ["squash", "merge", "rebase"],
           () => new Date().toISOString() as never,
+          new MergeOperationStore(paths),
         );
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();
@@ -523,9 +560,12 @@ export async function startLocalApiServer(
           await reviewWrites.submitBatch(await jsonBody(context)),
         ),
   );
-  app.post("/v1/reviews/open", async (context) =>
-    response(context, await reviewWorkbench.open(await jsonBody(context))),
-  );
+  app.post("/v1/reviews/open", async (context) => {
+    const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.open(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
   app.get("/v1/reviews", async (context) => {
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
     if (profileId._tag === "err")
@@ -548,9 +588,12 @@ export async function startLocalApiServer(
       })),
     });
   });
-  app.post("/v1/reviews/load", async (context) =>
-    response(context, await reviewWorkbench.load(await jsonBody(context))),
-  );
+  app.post("/v1/reviews/load", async (context) => {
+    const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.load(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
   app.post("/v1/reviews/walkthrough/generate", async (context) => {
     const parsed = safeParse(walkthroughRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -563,9 +606,24 @@ export async function startLocalApiServer(
     if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     return walkthroughResponse(context, await configuration.walkthroughs.load(parsed.output));
   });
-  app.post("/v1/reviews/refresh", async (context) =>
-    response(context, await reviewWorkbench.refresh(await jsonBody(context))),
-  );
+  app.post("/v1/reviews/detect-updates", async (context) => {
+    const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.detectUpdates(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
+  app.post("/v1/reviews/refresh", async (context) => {
+    const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.refresh(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
+  app.post("/v1/reviews/commit-diff", async (context) => {
+    const parsed = safeParse(reviewCommitDiffSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.commitDiff(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
@@ -815,7 +873,7 @@ function storageResponse(
     return context.json({ error: "not_found" }, 404);
   }
   if (tag === "ProfileUnavailable" || tag === "StorageUnavailable") {
-    return context.json({ error: "storage_unavailable" }, 500);
+    return context.json({ error: "storage_unavailable" }, 503);
   }
   if (tag === "SessionRunning" || tag === "SessionImmutable" || tag === "SessionNotDiscardable") {
     return context.json({ error: tag }, 409);
@@ -826,7 +884,7 @@ function storageResponse(
   if (tag === "TrashUnavailable") {
     return context.json({ error: "trash_unavailable" }, 503);
   }
-  return context.json({ error: "storage" }, 500);
+  return context.json({ error: "storage" }, 503);
 }
 
 function statusForReason(
@@ -837,12 +895,17 @@ function statusForReason(
   if (
     reason === "revision_conflict" ||
     reason === "stale_head" ||
+    reason === "head_changed" ||
+    reason === "terminal" ||
+    reason === "not_fresh" ||
+    reason === "merge_outcome_unknown" ||
     reason.endsWith("_in_progress")
   )
     return 409;
   if (reason === "github_rejected") return 422;
   if (reason.includes("ambiguous")) return 502;
-  if (reason.includes("storage")) return 500;
+  if (reason === "github_read" || reason === "storage") return 503;
+  if (reason.includes("storage")) return 503;
   if (reason.includes("unavailable")) return 503;
   return 400;
 }

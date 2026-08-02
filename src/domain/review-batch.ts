@@ -29,7 +29,8 @@ export type Postability =
   | "already_reported"
   | "invalid_line"
   | "stale_sha"
-  | "api_rejected";
+  | "api_rejected"
+  | "needs_attention";
 
 /** A side-aware line or range in one repository-relative file. */
 export type ReviewAnchor = {
@@ -48,6 +49,13 @@ export type ReviewAnchorFingerprint = {
   readonly selectedLines: ReadonlyArray<string>;
   readonly before: ReadonlyArray<string>;
   readonly after: ReadonlyArray<string>;
+};
+
+/** Preserves an inline draft that cannot be safely mapped to the current diff. */
+export type ReviewAnchorAttention = {
+  readonly reason: "missing" | "ambiguous" | "fingerprint_missing";
+  readonly originalAnchor: ReviewAnchor;
+  readonly originalFingerprint?: ReviewAnchorFingerprint;
 };
 
 /** Records that a local action was carried from an older immutable snapshot. */
@@ -74,6 +82,7 @@ export type ReviewBatchItem =
       readonly body: string;
       readonly include: boolean;
       readonly postability: Postability;
+      readonly attention?: ReviewAnchorAttention;
       readonly carriedFrom?: ReviewItemCarryForward;
     }
   | {
@@ -183,6 +192,29 @@ const carriedFromSchema = v.strictObject({
   sourceHeadSha: v.string(),
 });
 
+const anchorSchema = v.strictObject({
+  path: v.string(),
+  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  side: v.picklist(["new", "old"]),
+});
+
+const fingerprintSchema = v.strictObject({
+  path: v.string(),
+  side: v.picklist(["new", "old"]),
+  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  selectedLines: v.pipe(v.array(v.string()), v.maxLength(8)),
+  before: v.pipe(v.array(v.string()), v.maxLength(2)),
+  after: v.pipe(v.array(v.string()), v.maxLength(2)),
+});
+
+const attentionSchema = v.strictObject({
+  reason: v.picklist(["missing", "ambiguous", "fingerprint_missing"]),
+  originalAnchor: anchorSchema,
+  originalFingerprint: v.optional(fingerprintSchema),
+});
+
 const operationSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("CreatePendingReview"),
@@ -239,23 +271,11 @@ const itemSchema = v.variant("_tag", [
     provenance: v.optional(provenanceSchema),
     source: v.picklist(["finding", "manual"]),
     findingId: v.optional(v.string()),
-    anchor: v.strictObject({
-      path: v.string(),
-      startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      side: v.picklist(["new", "old"]),
-    }),
-    fingerprint: v.optional(v.strictObject({
-      path: v.string(),
-      side: v.picklist(["new", "old"]),
-      startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      selectedLines: v.pipe(v.array(v.string()), v.maxLength(8)),
-      before: v.pipe(v.array(v.string()), v.maxLength(2)),
-      after: v.pipe(v.array(v.string()), v.maxLength(2)),
-    })),
+    anchor: anchorSchema,
+    fingerprint: v.optional(fingerprintSchema),
     body: v.string(),
     include: v.boolean(),
+    attention: v.optional(attentionSchema),
     carriedFrom: v.optional(carriedFromSchema),
     postability: v.picklist([
       "postable",
@@ -263,6 +283,7 @@ const itemSchema = v.variant("_tag", [
       "invalid_line",
       "stale_sha",
       "api_rejected",
+      "needs_attention",
     ]),
   }),
   v.strictObject({
@@ -461,6 +482,9 @@ function parseItem(
     item.source === "finding" ? "model" : "human",
   );
   const carriedFrom = parseCarryForward(item.carriedFrom);
+  const attention = item.attention === undefined
+    ? ok(undefined)
+    : parseAttention(item.attention);
   const fingerprintPath = item.fingerprint === undefined
     ? undefined
     : parseRepoRelativePath(item.fingerprint.path);
@@ -471,6 +495,7 @@ function parseItem(
     (item.source === "finding") !== (findingId !== undefined) ||
     provenance._tag === "err" ||
     carriedFrom._tag === "err" ||
+    attention._tag === "err" ||
     (fingerprintPath !== undefined && fingerprintPath._tag === "err") ||
     (item.fingerprint !== undefined && fingerprintPath?.value !== path.value) ||
     (item.fingerprint !== undefined && item.fingerprint.line < item.fingerprint.startLine) ||
@@ -478,7 +503,8 @@ function parseItem(
     (item.fingerprint !== undefined && item.fingerprint.line !== item.anchor.line) ||
     (item.fingerprint !== undefined && item.fingerprint.side !== item.anchor.side) ||
     (item.fingerprint !== undefined && item.fingerprint.selectedLines.length !== item.anchor.line - item.anchor.startLine + 1) ||
-    (item.source === "finding") !== (provenance.value._tag === "model")
+    (item.source === "finding") !== (provenance.value._tag === "model") ||
+    (item.postability === "needs_attention") !== (attention.value !== undefined)
   ) {
     return invalidReviewBatch();
   }
@@ -509,7 +535,52 @@ function parseItem(
     body: item.body,
     include: item.include,
     postability: item.postability,
+    ...(attention.value === undefined ? {} : { attention: attention.value }),
     ...(carriedFrom.value === undefined ? {} : { carriedFrom: carriedFrom.value }),
+  });
+}
+
+function parseAttention(
+  input: v.InferOutput<typeof attentionSchema>,
+): Result<ReviewAnchorAttention, InvalidReviewBatch> {
+  const path = parseRepoRelativePath(input.originalAnchor.path);
+  const fingerprintPath = input.originalFingerprint === undefined
+    ? undefined
+    : parseRepoRelativePath(input.originalFingerprint.path);
+  if (
+    path._tag === "err" ||
+    (fingerprintPath !== undefined && fingerprintPath._tag === "err") ||
+    input.originalAnchor.line < input.originalAnchor.startLine ||
+    (input.originalFingerprint !== undefined && (
+      fingerprintPath?.value !== path.value ||
+      input.originalFingerprint.line < input.originalFingerprint.startLine ||
+      input.originalFingerprint.startLine !== input.originalAnchor.startLine ||
+      input.originalFingerprint.line !== input.originalAnchor.line ||
+      input.originalFingerprint.side !== input.originalAnchor.side ||
+      input.originalFingerprint.selectedLines.length !== input.originalAnchor.line - input.originalAnchor.startLine + 1
+    ))
+  ) {
+    return invalidReviewBatch();
+  }
+  return ok({
+    reason: input.reason,
+    originalAnchor: {
+      path: path.value,
+      startLine: input.originalAnchor.startLine,
+      line: input.originalAnchor.line,
+      side: input.originalAnchor.side,
+    },
+    ...(input.originalFingerprint === undefined ? {} : {
+      originalFingerprint: {
+        path: path.value,
+        side: input.originalFingerprint.side,
+        startLine: input.originalFingerprint.startLine,
+        line: input.originalFingerprint.line,
+        selectedLines: input.originalFingerprint.selectedLines,
+        before: input.originalFingerprint.before,
+        after: input.originalFingerprint.after,
+      },
+    }),
   });
 }
 

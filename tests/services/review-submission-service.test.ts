@@ -162,6 +162,59 @@ describe("review submission service", () => {
     expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "Local" } } });
   });
 
+  it("rejects included needs-attention drafts before any writer operation", async () => {
+    const writes: string[] = [];
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "Local" as const },
+      summaryBody: "Review summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [
+        {
+          _tag: "InlineComment" as const,
+          id: "unsafe" as never,
+          provenance: { _tag: "human" as const },
+          source: "manual" as const,
+          anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const },
+          body: "Unsafe draft",
+          include: true,
+          postability: "needs_attention" as const,
+          attention: {
+            reason: "missing" as const,
+            originalAnchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const },
+          },
+        },
+        {
+          _tag: "ThreadReply" as const,
+          id: "reply" as never,
+          provenance: { _tag: "human" as const },
+          threadId: "thread-1" as never,
+          body: "Reply",
+          include: true,
+        },
+      ],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    expect(() => planBatchOperations(batch as never)).toThrow("need attention");
+    const result = await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async () => true,
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview() { writes.push("inline"); return { _tag: "ok" as const, value: { reviewId: "unused", state: "PENDING" as const } }; },
+        async submitPendingReview() { writes.push("submit"); return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+        async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "unused" } }; },
+      } as never,
+    });
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "NeedsAttentionBlocksWrite" } });
+    expect(writes).toEqual([]);
+  });
+
   it("plans one pending review before saved replies and thread actions", () => {
     expect(planBatchOperations({
       sessionId: session.id,
@@ -195,6 +248,43 @@ describe("review submission service", () => {
     const fake = gateway(movedHeadSha);
     const batch = { sessionId: session.id, state: { _tag: "PendingReview" as const, reviewId: "9001" }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [], createdAt: now, updatedAt: now };
     await expect(submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale" } } } });
+    expect(fake.writes).toEqual([]);
+  });
+
+  it("blocks submitting a pending review that includes needs-attention drafts", async () => {
+    const fake = gateway();
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "PendingReview" as const, reviewId: "9001" },
+      summaryBody: "Summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [{
+        _tag: "InlineComment" as const,
+        id: "unsafe" as never,
+        provenance: { _tag: "human" as const },
+        source: "manual" as const,
+        anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const },
+        body: "Unsafe draft",
+        include: true,
+        postability: "needs_attention" as const,
+        attention: {
+          reason: "missing" as const,
+          originalAnchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const },
+        },
+      }],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await expect(submitReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      event: "COMMENT",
+      gateway: fake.gateway as never,
+      now,
+    })).resolves.toMatchObject({ _tag: "err", error: { _tag: "NeedsAttentionBlocksWrite" } });
     expect(fake.writes).toEqual([]);
   });
 });

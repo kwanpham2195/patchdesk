@@ -3,10 +3,6 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@pierre/diffs/react", () => ({
-  PatchDiff: ({ patch }: { readonly patch: string }) => <div data-pierre-mock="true" data-patch={patch} />,
-}));
-
 import { CompletedReviewWorkbench } from "../../src/renderer/src/components/completed-review-workbench";
 
 afterEach(() => {
@@ -307,6 +303,8 @@ describe("completed review workbench", () => {
           ],
         }}
         comments={{
+          complete: false,
+          incompleteReason: "comment_cap",
           threads: [
             {
               id: "thread-1",
@@ -348,6 +346,8 @@ describe("completed review workbench", () => {
     expect(screen.getByText("Unmapped evidence — inspect before drafting a comment")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "PR overview" }));
     await user.click(screen.getByRole("button", { name: "Existing threads" }));
+    expect(screen.getByText("1+")).toBeTruthy();
+    expect(screen.getByText("Some conversation was not loaded.")).toBeTruthy();
     expect(screen.getByText("Existing review comment")).toBeTruthy();
     expect(screen.getByText("unit")).toBeTruthy();
     expect(screen.getByText("Required")).toBeTruthy();

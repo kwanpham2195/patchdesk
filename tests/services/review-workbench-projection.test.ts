@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import type { GitHubReader } from "../../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
 import type { CheckSummary, GitHubComments, PullRequestSummary } from "../../src/domain/github-context";
 import {
   createReviewSessionId,
@@ -15,6 +16,7 @@ import {
   parseIsoTimestamp,
   type GitSha,
 } from "../../src/domain/ids";
+import { createReview, type Review } from "../../src/domain/review";
 import { createReviewSession, type ReviewSession, type ReviewSessionState } from "../../src/domain/review-session";
 import { createEmptyReviewBatch } from "../../src/domain/review-batch";
 import type { ReviewAttempt, ReviewAttemptState } from "../../src/domain/review-attempt";
@@ -197,6 +199,14 @@ async function setup(github: ReturnType<typeof fakeGitHub>): Promise<{
 }
 
 describe("ReviewWorkbenchProjectionService", () => {
+  it("uses normal type imports for projection dependencies", async () => {
+    const source = await readFile(
+      new URL("../../src/services/review-workbench-projection.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/import\(['"][^'"]+['"]\)\./);
+  });
+
   it("opens saved local work without reading GitHub", async () => {
     const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const { root, paths, projection, sessions } = await setup(github);
@@ -209,8 +219,8 @@ describe("ReviewWorkbenchProjectionService", () => {
       expect(loaded).toMatchObject({
         _tag: "ok",
         value: {
-          state: "completed",
-          freshness: "not_refreshed",
+          state: "review",
+          revision: { freshness: "not_refreshed" },
           recoveryView: {
             noticeKey: "ready_to_review",
             tone: "positive",
@@ -218,6 +228,27 @@ describe("ReviewWorkbenchProjectionService", () => {
           },
         },
       });
+      expect(github.calls).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads only the Review-represented snapshot without reading GitHub", async () => {
+    const github = fakeGitHub({ current: { ...summary(headSha), title: "Live title" }, comments: { threads: [{ id: "live-thread" as never, state: "open", comments: [] }] }, checks: { overall: "failing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const represented = {
+        schemaVersion: 1 as const,
+        pullRequest: { ...summary(headSha), title: "Represented title" },
+        comments: { threads: [], complete: true },
+        commits: [],
+        checks: { overall: "passing" as const, checks: [] },
+      };
+      const loaded = await projection.loadRepresented({ profileId, sessionId: session.id, snapshot: represented, refreshedAt: now, updatesAvailable: true });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { pullRequest: { title: "Represented title" }, checks: { overall: "passing" }, revision: { freshness: "updates_available", refreshedAt: now } } });
       expect(github.calls).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -256,10 +287,9 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
-      expect(loaded.value.state).toBe("completed");
-      if (loaded.value.state !== "completed") return;
+      expect(loaded.value.state).toBe("review");
       expect(loaded.value.fullPatch).toBeUndefined();
-      expect(loaded.value.freshness).toBe("fresh");
+      expect(loaded.value.revision.freshness).toBe("fresh");
       const serialized = JSON.stringify(loaded.value);
       for (const leaked of ["patchPath", "worktree", "comparisonPatchPath", "comparisonMetadataPath", "previousFindingsPath", "lifecyclePath", root]) {
         expect(serialized).not.toContain(leaked);
@@ -278,9 +308,13 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
-      if (loaded.value.state !== "completed") throw new Error("expected completed");
-      expect(loaded.value.freshness).toBe("unavailable");
-      expect(loaded.value.comments).toEqual({ threads: [] });
+      expect(loaded.value.state).toBe("review");
+      expect(loaded.value.revision.freshness).toBe("unavailable");
+      expect(loaded.value.comments).toEqual({
+        threads: [],
+        complete: false,
+        incompleteReason: "unavailable",
+      });
       expect(loaded.value.checks).toEqual({ overall: "unknown", checks: [] });
       expect(loaded.value.pullRequest).toMatchObject({ title: "Stored review title", reviewState: "unknown" });
       expect(loaded.value.mergeReadiness).toEqual({ _tag: "Blocked", blockers: ["stale_head"], warnings: [] });
@@ -302,11 +336,11 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
-      if (loaded.value.state !== "completed") throw new Error("expected completed");
-      expect(loaded.value.freshness).toBe("stale");
-      expect(loaded.value.currentHeadSha).toBe(staleHeadSha);
-      expect(loaded.value.reviewedHeadSha).toBe(headSha);
-      expect(loaded.value.result).toMatchObject({ summary: "Persisted review result" });
+      expect(loaded.value.state).toBe("review");
+      expect(loaded.value.revision.freshness).toBe("updates_available");
+      expect(loaded.value.revision.currentHeadSha).toBe(staleHeadSha);
+      expect(loaded.value.revision.reviewedHeadSha).toBe(headSha);
+      expect(loaded.value.insights.analysis.retained?.value).toMatchObject({ summary: "Persisted review result" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -325,15 +359,10 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
-      if (loaded.value.state !== "completed") throw new Error("expected completed");
-      expect(loaded.value.comparisonAvailability).toBe("missing");
-      expect(loaded.value.comparison).toBeUndefined();
-      expect(loaded.value.reviewScope).toEqual({
-        kind: "incremental",
-        baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000",
-        baseHeadSha: "1111111111111111111111111111111111111111",
-        headSha,
-      });
+      expect(loaded.value.state).toBe("review");
+      expect(loaded.value.insights.analysis.status).toBe("current");
+      expect(loaded.value.commits).toEqual([]);
+      expect(loaded.value.publishedFeedback).toEqual({ reviews: [], comments: [] });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -360,11 +389,11 @@ describe("ReviewWorkbenchProjectionService", () => {
       const loaded = await projection.load({ profileId, sessionId: session.id });
       expect(loaded._tag).toBe("ok");
       if (loaded._tag === "err") return;
-      expect(loaded.value.state).toBe("review_started");
-      expect(loaded.value.freshness).toBe("fresh");
+      expect(loaded.value.state).toBe("review");
+      expect(loaded.value.revision.freshness).toBe("fresh");
       expect(loaded.value.checks).toEqual({ overall: "pending", checks: [] });
       expect(loaded.value.comments).toMatchObject({ threads: [{ id: "thread-1" }] });
-      expect(loaded.value.batch).toMatchObject({ sessionId: session.id, items: [] });
+      expect(loaded.value.draft).toMatchObject({ sessionId: session.id, items: [] });
       expect(loaded.value.mergeReadiness).toEqual({
         _tag: "Blocked",
         blockers: ["mergeability_unknown"],
@@ -375,6 +404,71 @@ describe("ReviewWorkbenchProjectionService", () => {
         key: { profileId, host, owner, repo, prNumber: number, headSha },
       });
       expect(loaded.value.recoveryView).toEqual({ noticeKey: "ready_to_review", tone: "positive", actionKey: "run_review" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("projects the analysis matrix into one Review envelope", async () => {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly state: ReviewSessionState;
+      readonly expected: "not_generated" | "running" | "current" | "outdated" | "failed";
+      readonly visibleResult?: boolean;
+      readonly current?: PullRequestSummary;
+    }> = [
+      { name: "no analysis", state: { _tag: "Created" }, expected: "not_generated" },
+      { name: "running", state: { _tag: "Running", attemptId: "001" as never }, expected: "running" },
+      { name: "current", state: { _tag: "ReviewCompleted", attemptId: "001" as never }, expected: "current", visibleResult: true },
+      { name: "outdated", state: { _tag: "ReviewCompleted", attemptId: "001" as never }, expected: "outdated", visibleResult: true, current: summary(staleHeadSha) },
+      { name: "failed replacement", state: { _tag: "ReviewFailed", attemptId: "001" as never, error: { category: "flue", message: "safe" } }, expected: "failed", visibleResult: true },
+    ];
+    for (const fixture of cases) {
+      const github = fakeGitHub({ current: fixture.current ?? summary(headSha), checks: { overall: "passing", checks: [] } });
+      const { root, paths, projection, sessions } = await setup(github);
+      try {
+        const base = preparedSession(paths, fixture.state, "001");
+        const session: ReviewSession = fixture.visibleResult === true
+          ? { ...base, visibleResult: { changeSummary: "saved", verdict: "comment", summary: "saved", findings: [], validationPlan: [], assumptions: [] } as never }
+          : base;
+        expect((await sessions.save(session))._tag).toBe("ok");
+        if (fixture.state._tag === "Running" || fixture.state._tag === "ReviewCompleted" || fixture.state._tag === "ReviewFailed") {
+          expect((await sessions.saveAttempt(profileId, session.id, attemptFor(paths, session, fixture.state._tag === "Running" ? { _tag: "Running", flueRunId: "flue-1" } : fixture.state._tag === "ReviewFailed" ? { _tag: "Failed", error: { category: "flue", message: "safe" } } : { _tag: "Completed", resultPath: must(parseAbsolutePath(paths.attemptResultFile(profileId, session.id, "001" as never))) })))._tag).toBe("ok");
+        }
+        const loaded = await projection.load({ profileId, sessionId: session.id });
+        expect(loaded._tag).toBe("ok");
+        if (loaded._tag === "ok") expect(loaded.value.insights.analysis.status, fixture.name).toBe(fixture.expected);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("projects terminal status from the stable Review aggregate", async () => {
+    const github = fakeGitHub({ current: summary(headSha), checks: { overall: "passing", checks: [] } });
+    const { root, paths, sessions } = await setup(github);
+    try {
+      const session = preparedSession(paths, { _tag: "Merged", mergedAt: now });
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const reviews = new ReviewStore(paths);
+      const stableReview: Review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha, createdAt: now });
+      expect((await reviews.save(stableReview))._tag).toBe("ok");
+      const projection = new ReviewWorkbenchProjectionService(new ProfileStore(paths), sessions, github, () => now, undefined, reviews);
+      const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { review: { status: "open" } } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("projects a terminal Review status without exposing session internals", async () => {
+    const github = fakeGitHub({ current: summary(headSha), checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = preparedSession(paths, { _tag: "Merged", mergedAt: now });
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { state: "review", review: { status: "merged" } } });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

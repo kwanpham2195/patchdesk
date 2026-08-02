@@ -49,7 +49,7 @@ import type { InboxResponse } from "../renderer-contracts";
 
 export function InboxFlow({
   destination,
-  sessionId,
+  reviewId,
   dashboard,
   inbox,
   state,
@@ -60,7 +60,7 @@ export function InboxFlow({
   onOpenWorkbench,
 }: {
   readonly destination: "dashboard" | "workbench";
-  readonly sessionId?: string;
+  readonly reviewId?: string;
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
   readonly state: DashboardScreenState;
@@ -79,11 +79,11 @@ export function InboxFlow({
   const [openError, setOpenError] = useState<string>();
   const previewTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (destination !== "workbench" || dashboard === undefined || sessionId === undefined) return;
+    if (destination !== "workbench" || dashboard === undefined || reviewId === undefined) return;
     let active = true;
-    void openStoredSessionById(dashboard.profile.id, sessionId, () => active);
+    void openStoredReviewById(dashboard.profile.id, reviewId, () => active);
     return () => { active = false; };
-  }, [dashboard?.profile.id, destination, sessionId]);
+  }, [dashboard?.profile.id, destination, reviewId]);
 
   const openPullRequest = async (
     pr: Preview["pr"],
@@ -147,9 +147,9 @@ export function InboxFlow({
     setPreview(undefined);
   };
 
-  async function openStoredSessionById(profileId: string, sessionId: string, isActive: () => boolean = () => true): Promise<void> {
+  async function openStoredReviewById(profileId: string, reviewId: string, isActive: () => boolean = () => true): Promise<void> {
     try {
-      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, sessionId } });
+      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, reviewId } });
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined || !isActive()) return;
       onOpenWorkbench(parsed as unknown as WorkbenchPayload);
@@ -175,7 +175,7 @@ export function InboxFlow({
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onOpenReview={(row, mode, initialSection) => void openPullRequest(row.identity, mode, initialSection, row.recommendedAction.kind === "review_updates" ? row.recommendedAction.baseSessionId : undefined)}
-      onOpenSession={(sessionId) => void openStoredSessionById(dashboard.profile.id, sessionId)}
+      onOpenSession={(reviewId) => void openStoredReviewById(dashboard.profile.id, reviewId)}
     />
   ) : (
     <Pending

@@ -3,33 +3,33 @@ import { readFile } from "node:fs/promises";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
   GitHubComments,
+  GitHubPublishedFeedback,
+  PullRequestCommit,
   PullRequestSummary,
 } from "../domain/github-context";
-import type {
-  GitHubHost,
-  GitHubOwner,
-  GitHubRepoName,
-  GitSha,
-  IsoTimestamp,
-  PullRequestNumber,
-  ReviewAttemptId,
-  ReviewSessionId,
-  WorkspaceProfileId,
-} from "../domain/ids";
-import type { FindingLifecycleEntry } from "../domain/finding-lifecycle";
-import type { ReviewAttempt } from "../domain/review-attempt";
-import { evaluateMergeReadiness, type MergeReadiness } from "../domain/merge-readiness";
 import {
-  parseRevisionComparison,
-  projectReviewScope,
-  type ReviewScopeProjection,
-  type RevisionComparison,
-} from "../domain/review-comparison";
+  createReviewId,
+  type GitHubHost,
+  type GitHubOwner,
+  type GitSha,
+  type IsoTimestamp,
+  type PullRequestNumber,
+  type ReviewId,
+  type GitHubRepoName,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "../domain/ids";
+import type { InsightProjection } from "../domain/insight";
+import type { MergeReadiness } from "../domain/merge-readiness";
+import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { ReviewBatch } from "../domain/review-batch";
+import type { ReviewAttempt } from "../domain/review-attempt";
 import type { ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
 import {
@@ -39,11 +39,8 @@ import {
 } from "../domain/review-recovery";
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 import type { ReviewRunRegistry } from "./review-run-registry";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { err, ok, type Result } from "../domain/result";
-
-export type { ReviewScopeProjection };
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
 export type WorkbenchSessionProjection = {
@@ -58,61 +55,43 @@ export type WorkbenchSessionProjection = {
   };
 };
 
-/** Bounded attempt history item; it leaks no adapter or workflow mechanics. */
-export type ReviewHistoryItem = {
-  readonly id: ReviewAttemptId;
-  readonly state: string;
-  readonly startedAt: IsoTimestamp;
-};
-
-export type PreparedWorkbenchProjection = {
-  readonly state: "review_started";
+export type ReviewWorkbenchProjection = {
+  readonly state: "review";
+  readonly review: {
+    readonly id: ReviewId;
+    readonly status: "open" | "merged" | "closed";
+  };
   readonly session: WorkbenchSessionProjection;
+  readonly revision: {
+    readonly reviewedHeadSha: GitSha;
+    readonly currentHeadSha?: GitSha;
+    readonly freshness:
+      | "fresh"
+      | "updates_available"
+      | "unavailable"
+      | "not_refreshed";
+    readonly refreshedAt: IsoTimestamp;
+  };
   readonly fullPatch?: string;
   readonly pullRequest?: PullRequestSummary;
-  readonly reviewedHeadSha: GitSha;
-  readonly currentHeadSha?: GitSha;
-  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
-  readonly refreshedAt: IsoTimestamp;
-  readonly checks: CheckSummary;
+  readonly commits: ReadonlyArray<PullRequestCommit>;
+  readonly insights: {
+    readonly analysis: InsightProjection<ReviewResult>;
+    readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
+  };
+  readonly draft?: ReviewBatch;
+  readonly publishedFeedback: GitHubPublishedFeedback;
   readonly comments: GitHubComments;
-  readonly batch?: ReviewBatch;
+  readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
   readonly recoveryView?: ReviewRecoveryView;
 };
-
-export type CompletedWorkbenchProjection = {
-  readonly state: "completed";
-  readonly session: WorkbenchSessionProjection;
-  readonly result: ReviewResult;
-  readonly reviewScope: ReviewScopeProjection;
-  readonly fullPatch?: string;
-  readonly comparison?: RevisionComparison;
-  readonly comparisonPatch?: string;
-  readonly lifecycle?: ReadonlyArray<FindingLifecycleEntry>;
-  readonly comparisonAvailability: "available" | "not_requested" | "incomplete" | "missing";
-  readonly pullRequest?: PullRequestSummary;
-  readonly reviewedHeadSha: GitSha;
-  readonly currentHeadSha?: GitSha;
-  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
-  readonly refreshedAt: IsoTimestamp;
-  readonly batch?: ReviewBatch;
-  readonly comments: GitHubComments;
-  readonly checks: CheckSummary;
-  readonly history: ReadonlyArray<ReviewHistoryItem>;
-  readonly mergeReadiness: MergeReadiness;
-  readonly recoveryView?: ReviewRecoveryView;
-};
-
-export type ReviewWorkbenchProjection =
-  | PreparedWorkbenchProjection
-  | CompletedWorkbenchProjection;
 
 /** Current GitHub context is ephemeral and never replaces the saved local batch. */
 export type RemoteReviewContext = {
   readonly pullRequest?: PullRequestSummary;
   readonly currentHeadSha?: GitSha;
-  readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
+  readonly freshness: "fresh" | "updates_available" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
@@ -130,10 +109,10 @@ export type WorkbenchProjectionFailure =
   | { readonly _tag: "SessionStorageUnavailable" };
 
 /**
- * Read-side owner of the safe Workbench model for one persisted Session. It
- * assembles bounded saved artifacts plus current GitHub context, owns safe
- * defaults, freshness, comparison availability, and merge readiness. It never
- * prepares a Session, reruns a review, or mutates a draft or Attempt.
+ * Read-side owner of the renderer-safe Review model for one local session.
+ * Stable Review persistence and explicit remote snapshots are introduced by
+ * later tasks; this foundation derives the Review identity from the session
+ * and deliberately projects empty commit and published-feedback collections.
  */
 export class ReviewWorkbenchProjectionService {
   constructor(
@@ -150,74 +129,33 @@ export class ReviewWorkbenchProjectionService {
       readonly preparation?: Pick<typeof ReviewPreparationJournal, "activeFor">;
       readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
     },
+    private readonly reviews?: Pick<ReviewStore, "load">,
   ) {}
 
-  /** Opens durable local evidence without polling GitHub. */
   async loadLocal(
     input: LoadWorkbenchInput,
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const [profile, session] = await Promise.all([
-      this.profiles.load(input.profileId),
-      this.sessions.load(input.profileId, input.sessionId),
-    ]);
-    if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
-    if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    if (session.value.visibleResult === undefined) {
-      return this.projectPreparedLocal(session.value);
-    }
-    const [fullPatch, attempts] = await Promise.all([
-      readFile(session.value.patchPath, "utf8").catch(() => undefined),
-      this.sessions.listAttempts(session.value.key.profileId, session.value.id),
-    ]);
-    if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
-    const recoveryView = await this.recoveryView(session.value, attempts.value);
-    const pr = session.value.prContext === undefined ? undefined : {
-      ref: { host: session.value.key.host, owner: session.value.key.owner, repo: session.value.key.repo, number: session.value.key.prNumber },
-      ...session.value.prContext,
-      headSha: session.value.key.headSha,
-      isDraft: session.value.pr.isDraft,
-      isOpen: session.value.pr.isOpen,
-      reviewState: "unknown" as const,
-      mergeability: "unknown" as const,
-      labels: [],
-      updatedAt: session.value.updatedAt,
-    };
-    return ok({
-      state: "completed",
-      session: projectSession(session.value),
-      result: session.value.visibleResult,
-      reviewScope: projectReviewScope(session.value.scope),
-      ...(fullPatch === undefined ? {} : { fullPatch }),
-      comparisonAvailability: session.value.scope.kind === "full" ? "not_requested" : "missing",
-      ...(pr === undefined ? {} : { pullRequest: pr }),
-      reviewedHeadSha: session.value.key.headSha,
-      freshness: "not_refreshed",
-      refreshedAt: session.value.updatedAt,
-      ...(session.value.batchContent === undefined ? {} : { batch: session.value.batchContent }),
-      comments: { threads: [] },
-      checks: { overall: "unknown", checks: [] },
-      history: attempts.value.map((attempt) => ({ id: attempt.id, state: attempt.state._tag, startedAt: attempt.startedAt })),
-      mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
-      ...(recoveryView === undefined ? {} : { recoveryView }),
-    });
+    const session = await this.loadSession(input);
+    if (session._tag === "err") return session;
+    return this.project(session.value, undefined, "local");
   }
 
-  /** Fetches current GitHub data without saving or changing any local review work. */
-  async refreshRemote(
-    input: LoadWorkbenchInput,
-  ): Promise<Result<RemoteReviewContext, WorkbenchProjectionFailure>> {
-    const projected = await this.load(input);
-    if (projected._tag === "err") return projected;
-    const value = projected.value;
-    return ok({
-      ...(value.pullRequest === undefined ? {} : { pullRequest: value.pullRequest }),
-      ...(value.currentHeadSha === undefined ? {} : { currentHeadSha: value.currentHeadSha }),
-      freshness: value.freshness,
-      refreshedAt: value.refreshedAt,
-      comments: value.comments,
-      checks: value.checks,
-      mergeReadiness: value.mergeReadiness,
-    });
+  /** Projects the exact remote snapshot represented by the durable Review. */
+  async loadRepresented(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly snapshot: ReviewRemoteSnapshot;
+    readonly refreshedAt: IsoTimestamp;
+    readonly updatesAvailable?: boolean;
+  }): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
+    const session = await this.loadSession({ profileId: input.profileId, sessionId: input.sessionId });
+    if (session._tag === "err") return session;
+    return this.project(session.value, {
+      current: { _tag: "ok", value: input.snapshot.pullRequest },
+      comments: { _tag: "ok", value: input.snapshot.comments },
+      commits: input.snapshot.commits,
+      checks: { _tag: "ok", value: input.snapshot.checks },
+    }, "represented", input.refreshedAt, input.updatesAvailable === true);
   }
 
   async load(
@@ -229,207 +167,162 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    if (session.value.visibleResult === undefined) {
-      return this.projectPrepared(profile.value, session.value);
-    }
-    return this.projectCompleted(profile.value, session.value);
-  }
-
-  private async projectPrepared(
-    profile: WorkspaceProfileConfig,
-    session: ReviewSession,
-  ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const pr = {
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      number: session.key.prNumber,
+      host: session.value.key.host,
+      owner: session.value.key.owner,
+      repo: session.value.key.repo,
+      number: session.value.key.prNumber,
     };
-    const [fullPatch, comments, checks, current] = await Promise.all([
-      readFile(session.patchPath, "utf8").catch(() => undefined),
-      this.github.getPullRequestComments({ profile, pr }),
-      this.github.getPullRequestChecks({ profile, pr, headSha: session.key.headSha }),
-      this.github.getPullRequest({ profile, pr }),
+    const [current, comments, checks] = await Promise.all([
+      this.github.getPullRequest({ profile: profile.value, pr }),
+      this.github.getPullRequestComments({ profile: profile.value, pr }),
+      this.github.getPullRequestChecks({
+        profile: profile.value,
+        pr,
+        headSha: session.value.key.headSha,
+      }),
     ]);
-    const currentHeadSha = current._tag === "ok" ? current.value.headSha : undefined;
-    const recoveryView = await this.recoveryView(session);
-    const safeChecks = checks._tag === "ok" ? checks.value : { overall: "unknown" as const, checks: [] };
-    const safeComments = comments._tag === "ok" ? comments.value : { threads: [] };
-    const mergeReadiness: MergeReadiness =
-      current._tag === "ok" && checks._tag === "ok"
-        ? evaluateMergeReadiness({
-            isCurrentHead: current.value.headSha === session.key.headSha,
-            isOpen: current.value.isOpen,
-            isDraft: current.value.isDraft,
-            mergeability: current.value.mergeability,
-            checks: checks.value,
-            hasGitHubReviewBlocker: current.value.reviewState === "review_pending",
-            hasRequestChanges: current.value.reviewState === "changes_requested",
-            hasHighSeverityFinding: false,
-          })
-        : { _tag: "Blocked", blockers: ["stale_head"], warnings: [] };
+    return this.project(session.value, {
+      current,
+      comments,
+      checks,
+    }, "live");
+  }
+
+  async refreshRemote(
+    input: LoadWorkbenchInput,
+  ): Promise<Result<RemoteReviewContext, WorkbenchProjectionFailure>> {
+    const projected = await this.load(input);
+    if (projected._tag === "err") return projected;
+    const value = projected.value;
     return ok({
-      state: "review_started",
-      session: projectSession(session),
-      ...(fullPatch === undefined ? {} : { fullPatch }),
-      ...(current._tag === "ok" ? { pullRequest: current.value } : {}),
-      reviewedHeadSha: session.key.headSha,
-      ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
-      freshness:
-        currentHeadSha === undefined
-          ? "unavailable"
-          : currentHeadSha === session.key.headSha
-            ? "fresh"
-            : "stale",
-      refreshedAt: this.now(),
-      checks: safeChecks,
-      comments: safeComments,
-      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
-      mergeReadiness,
-      ...(recoveryView === undefined ? {} : { recoveryView }),
+      ...(value.pullRequest === undefined ? {} : { pullRequest: value.pullRequest }),
+      ...(value.revision.currentHeadSha === undefined
+        ? {}
+        : { currentHeadSha: value.revision.currentHeadSha }),
+      freshness: value.revision.freshness,
+      refreshedAt: value.revision.refreshedAt,
+      comments: value.comments,
+      checks: value.checks,
+      mergeReadiness: value.mergeReadiness,
     });
   }
 
-  private async projectPreparedLocal(session: ReviewSession): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const fullPatch = await readFile(session.patchPath, "utf8").catch(() => undefined);
-    const recoveryView = await this.recoveryView(session);
-    return ok({
-      state: "review_started",
-      session: projectSession(session),
-      ...(fullPatch === undefined ? {} : { fullPatch }),
-      reviewedHeadSha: session.key.headSha,
-      freshness: "not_refreshed",
-      refreshedAt: session.updatedAt,
-      checks: { overall: "unknown", checks: [] },
-      comments: { threads: [] },
-      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
-      mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
-      ...(recoveryView === undefined ? {} : { recoveryView }),
-    });
+  private async loadSession(
+    input: LoadWorkbenchInput,
+  ): Promise<Result<ReviewSession, WorkbenchProjectionFailure>> {
+    const [profile, session] = await Promise.all([
+      this.profiles.load(input.profileId),
+      this.sessions.load(input.profileId, input.sessionId),
+    ]);
+    if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
+    if (session._tag === "err") return err({ _tag: "SessionNotFound" });
+    return ok(session.value);
   }
 
-  private async projectCompleted(
-    profile: WorkspaceProfileConfig,
+  private async project(
     session: ReviewSession,
+    remote: {
+      readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
+      readonly comments: Awaited<ReturnType<GitHubReader["getPullRequestComments"]>>;
+      readonly commits?: ReadonlyArray<PullRequestCommit>;
+      readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
+    } | undefined,
+    source: "local" | "represented" | "live",
+    representedAt?: IsoTimestamp,
+    updatesAvailable = false,
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    if (session.visibleResult === undefined) {
-      return err({ _tag: "SessionNotFound" });
-    }
-    const pr = {
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      number: session.key.prNumber,
-    };
-    const [fullPatch, rawComparison, comparisonPatch, rawLifecycle, comments, checks, current, attempts] =
-      await Promise.all([
-        readFile(session.patchPath, "utf8").catch(() => undefined),
-        session.scope.kind === "incremental"
-          ? readFile(session.scope.comparisonMetadataPath, "utf8").catch(() => undefined)
-          : Promise.resolve(undefined),
-        session.scope.kind === "incremental"
-          ? readFile(session.scope.comparisonPatchPath, "utf8").catch(() => undefined)
-          : Promise.resolve(undefined),
-        session.scope.kind === "incremental"
-          ? readFile(session.scope.lifecyclePath, "utf8").catch(() => undefined)
-          : Promise.resolve(undefined),
-        this.github.getPullRequestComments({ profile, pr }),
-        this.github.getPullRequestChecks({ profile, pr, headSha: session.key.headSha }),
-        this.github.getPullRequest({ profile, pr }),
-        this.sessions.listAttempts(session.key.profileId, session.id),
-      ]);
+    const [fullPatch, attempts] = await Promise.all([
+      readFile(session.patchPath, "utf8").catch(() => undefined),
+      this.sessions.listAttempts(session.key.profileId, session.id),
+    ]);
     if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+
+    const current = remote?.current;
+    const currentHeadSha = current?._tag === "ok" ? current.value.headSha : undefined;
+    const pullRequest = current?._tag === "ok"
+      ? current.value
+      : session.prContext === undefined
+        ? undefined
+        : {
+            ref: {
+              host: session.key.host,
+              owner: session.key.owner,
+              repo: session.key.repo,
+              number: session.key.prNumber,
+            },
+            ...session.prContext,
+            headSha: session.key.headSha,
+            isDraft: session.pr.isDraft,
+            isOpen: session.pr.isOpen,
+            reviewState: "unknown" as const,
+            mergeability: "unknown" as const,
+            labels: [],
+            updatedAt: session.updatedAt,
+          };
+    const checks: CheckSummary = remote?.checks?._tag === "ok"
+      ? remote.checks.value
+      : { overall: "unknown", checks: [] };
+    const comments: GitHubComments = remote?.comments?._tag === "ok"
+      ? remote.comments.value
+      : source !== "local"
+        ? { threads: [], complete: false, incompleteReason: "unavailable" }
+        : { threads: [], complete: true };
+    const freshness = source === "local"
+      ? "not_refreshed" as const
+      : updatesAvailable
+        ? "updates_available" as const
+        : currentHeadSha === undefined
+          ? "unavailable" as const
+          : currentHeadSha === session.key.headSha
+            ? "fresh" as const
+            : "updates_available" as const;
+    const refreshedAt = source === "live"
+      ? this.now()
+      : source === "represented"
+        ? representedAt ?? session.updatedAt
+        : session.updatedAt;
+    const mergeReadiness = current?._tag === "ok" && remote?.checks?._tag === "ok"
+      ? evaluateReadiness(current.value, remote.checks.value, session)
+      : { _tag: "Blocked" as const, blockers: ["stale_head" as const], warnings: [] };
     const recoveryView = await this.recoveryView(session, attempts.value);
-    let comparison: RevisionComparison | undefined;
-    let lifecycle: ReadonlyArray<FindingLifecycleEntry> | undefined;
-    if (rawComparison !== undefined) {
-      try {
-        const parsed = parseRevisionComparison(JSON.parse(rawComparison));
-        if (parsed._tag === "ok") comparison = parsed.value;
-      } catch {
-        comparison = undefined;
-      }
-    }
-    if (rawLifecycle !== undefined) {
-      try {
-        const parsed: unknown = JSON.parse(rawLifecycle);
-        if (Array.isArray(parsed)) lifecycle = parsed as ReadonlyArray<FindingLifecycleEntry>;
-      } catch {
-        lifecycle = undefined;
-      }
-    }
-    const comparisonAvailability =
-      session.scope.kind === "full"
-        ? ("not_requested" as const)
-        : comparison?.completeness === "incomplete"
-          ? ("incomplete" as const)
-          : comparison !== undefined && comparisonPatch !== undefined
-            ? ("available" as const)
-            : ("missing" as const);
-    const githubAvailable = comments._tag === "ok" && checks._tag === "ok" && current._tag === "ok";
-    const safeComments: GitHubComments = comments._tag === "ok" ? comments.value : { threads: [] };
-    const safeChecks: CheckSummary = checks._tag === "ok" ? checks.value : { overall: "unknown", checks: [] };
-    const currentHeadSha = current._tag === "ok" ? current.value.headSha : undefined;
-    const pullRequest: PullRequestSummary | undefined =
-      current._tag === "ok"
-        ? current.value
-        : session.prContext === undefined
-          ? undefined
-          : {
-              ref: pr,
-              ...session.prContext,
-              headSha: session.key.headSha,
-              isDraft: session.pr.isDraft,
-              isOpen: session.pr.isOpen,
-              reviewState: "unknown",
-              mergeability: "unknown",
-              labels: [],
-              updatedAt: session.updatedAt,
-            };
-    const freshness =
-      currentHeadSha === undefined
-        ? ("unavailable" as const)
-        : currentHeadSha === session.key.headSha
-          ? ("fresh" as const)
-          : ("stale" as const);
-    const mergeReadiness: MergeReadiness =
-      githubAvailable && current._tag === "ok" && checks._tag === "ok"
-        ? evaluateMergeReadiness({
-            isCurrentHead: current.value.headSha === session.key.headSha,
-            isOpen: current.value.isOpen,
-            isDraft: current.value.isDraft,
-            mergeability: current.value.mergeability,
-            checks: checks.value,
-            hasGitHubReviewBlocker: current.value.reviewState === "review_pending",
-            hasRequestChanges: current.value.reviewState === "changes_requested",
-            hasHighSeverityFinding: session.visibleResult.findings.some(
-              (finding) => finding.severity === "P0" || finding.severity === "P1",
-            ),
-          })
-        : { _tag: "Blocked" as const, blockers: ["stale_head" as const], warnings: [] };
+    const analysis = projectAnalysis(session, attempts.value, currentHeadSha, source !== "local");
+    const stableReview = this.reviews === undefined
+      ? undefined
+      : await this.reviews.load(session.key.profileId, createReviewId(session.key));
+    const reviewStatus = stableReview?._tag === "ok"
+      ? stableReview.value.status._tag === "Terminal"
+        ? stableReview.value.status.state
+        : "open" as const
+      : this.reviews !== undefined
+        ? "open" as const
+        : session.state._tag === "Merged"
+          ? "merged" as const
+          : session.pr.isOpen
+            ? "open" as const
+            : "closed" as const;
+
     return ok({
-      state: "completed",
+      state: "review",
+      review: { id: createReviewId(session.key), status: reviewStatus },
       session: projectSession(session),
-      result: session.visibleResult,
-      reviewScope: projectReviewScope(session.scope),
+      revision: {
+        reviewedHeadSha: session.key.headSha,
+        ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
+        freshness,
+        refreshedAt,
+      },
       ...(fullPatch === undefined ? {} : { fullPatch }),
-      ...(comparison === undefined ? {} : { comparison }),
-      ...(comparisonPatch === undefined ? {} : { comparisonPatch }),
-      ...(lifecycle === undefined ? {} : { lifecycle }),
-      comparisonAvailability,
       ...(pullRequest === undefined ? {} : { pullRequest }),
-      reviewedHeadSha: session.key.headSha,
-      ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
-      freshness,
-      refreshedAt: this.now(),
-      ...(session.batchContent === undefined ? {} : { batch: session.batchContent }),
-      comments: safeComments,
-      checks: safeChecks,
-      history: attempts.value.map((attempt) => ({
-        id: attempt.id,
-        state: attempt.state._tag,
-        startedAt: attempt.startedAt,
-      })),
+      commits: remote?.commits ?? [],
+      insights: {
+        analysis,
+        walkthrough: { status: "not_generated" },
+      },
+      ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
+      publishedFeedback: { reviews: [], comments: [] },
+      comments,
+      checks,
       mergeReadiness,
       ...(recoveryView === undefined ? {} : { recoveryView }),
     });
@@ -437,7 +330,7 @@ export class ReviewWorkbenchProjectionService {
 
   private async recoveryView(
     session: ReviewSession,
-    attempts?: ReadonlyArray<ReviewAttempt>,
+    attempts: ReadonlyArray<ReviewAttempt>,
   ): Promise<ReviewRecoveryView | undefined> {
     const activePreparation = this.recovery?.paths === undefined
       ? undefined
@@ -460,21 +353,16 @@ export class ReviewWorkbenchProjectionService {
       }
       return projectReviewRecovery({ _tag: "Preparing" });
     }
-    const latestAttempt = attempts === undefined && session.currentAttemptId !== undefined
-      ? await this.sessions.loadAttempt(session.key.profileId, session.id, session.currentAttemptId)
-      : undefined;
-    const foundAttempt = attempts?.find((attempt) => attempt.id === session.currentAttemptId)
-      ?? (latestAttempt?._tag === "ok" ? latestAttempt.value : undefined);
+    const foundAttempt = attempts.find((attempt) => attempt.id === session.currentAttemptId);
     const liveRun = foundAttempt === undefined || this.recovery?.runs === undefined
       ? undefined
       : this.recovery.runs.find({ sessionId: session.id, attemptId: foundAttempt.id }) !== undefined;
-    const decision = decideReviewRecovery({
+    return projectReviewRecovery(decideReviewRecovery({
       session,
       ...(foundAttempt === undefined ? {} : { latestAttempt: foundAttempt }),
       ...(activePreparation?._tag === "ok" && activePreparation.value !== undefined ? { activePreparation: true } : {}),
       ...(liveRun === undefined ? {} : { liveRun }),
-    });
-    return projectReviewRecovery(decision);
+    }));
   }
 }
 
@@ -489,5 +377,69 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       prNumber: session.key.prNumber,
       headSha: session.key.headSha,
     },
+  };
+}
+
+function evaluateReadiness(
+  current: PullRequestSummary,
+  checks: CheckSummary,
+  session: ReviewSession,
+): MergeReadiness {
+  const blockers: MergeReadiness["blockers"][number][] = [];
+  if (current.headSha !== session.key.headSha) blockers.push("stale_head");
+  if (!current.isOpen) blockers.push("closed");
+  if (current.isDraft) blockers.push("draft");
+  if (current.mergeability === "conflicting") blockers.push("conflicting");
+  if (current.mergeability === "blocked") blockers.push("merge_blocked");
+  if (current.mergeability === "unknown") blockers.push("mergeability_unknown");
+  if (checks.overall === "failing") blockers.push("required_check");
+  if (current.reviewState === "review_pending") blockers.push("github_review");
+  const warnings: MergeReadiness["warnings"][number][] = [];
+  if (current.reviewState === "changes_requested") warnings.push("request_changes");
+  if (session.visibleResult?.findings.some((finding) => finding.severity === "P0" || finding.severity === "P1")) {
+    warnings.push("high_severity_finding");
+  }
+  return {
+    _tag: blockers.length > 0 ? "Blocked" : warnings.length > 0 ? "NeedsAcknowledgement" : "Ready",
+    blockers,
+    warnings,
+  };
+}
+
+function projectAnalysis(
+  session: ReviewSession,
+  attempts: ReadonlyArray<ReviewAttempt>,
+  currentHeadSha: GitSha | undefined,
+  isRemote: boolean,
+): InsightProjection<ReviewResult> {
+  const retained = session.visibleResult === undefined
+    ? undefined
+    : {
+        sessionId: session.id,
+        headSha: session.key.headSha,
+        generatedAt: session.updatedAt,
+        value: session.visibleResult,
+      };
+  const attempt = attempts.find((candidate) => candidate.id === session.currentAttemptId);
+  if (session.state._tag === "Running") {
+    return {
+      status: "running",
+      ...(retained === undefined ? {} : { retained }),
+      ...(attempt === undefined ? {} : { activeRun: { sessionId: session.id, startedAt: attempt.startedAt } }),
+    };
+  }
+  if (session.state._tag === "ReviewFailed") {
+    return {
+      status: "failed",
+      ...(retained === undefined ? {} : { retained }),
+      replacementFailure: { retryable: true },
+    };
+  }
+  if (retained === undefined) return { status: "not_generated" };
+  return {
+    status: isRemote && currentHeadSha !== undefined && currentHeadSha !== session.key.headSha
+      ? "outdated"
+      : "current",
+    retained,
   };
 }

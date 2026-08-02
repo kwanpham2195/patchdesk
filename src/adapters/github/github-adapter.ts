@@ -7,7 +7,9 @@ import type {
   GitHubComment,
   GitHubComments,
   GitHubConversationThread,
+  PullRequestCommit,
   PullRequestSummary,
+  MergePolicySnapshot,
 } from "../../domain/github-context";
 import {
   parseGitSha,
@@ -17,6 +19,7 @@ import {
   parseRepoRelativePath,
   type AbsolutePath,
   type GitSha,
+  type IsoTimestamp,
   type GitHubThreadId,
   type GitHubHost,
   type GitHubOwner,
@@ -35,9 +38,27 @@ const commandTimeoutMs = 15_000;
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path } } } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
+const maxReviewThreadPages = 10;
+const maxReviewThreads = 1_000;
+const threadCommentsQuery =
+  "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url author { login } path } pageInfo { hasNextPage endCursor } } } } }";
+const maxReviewCommentPages = 10;
+const maxReviewComments = 5_000;
 const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
+const mergePolicyQuery =
+  "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefName mergeable reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
+const maxMergePolicyPages = 3;
+const maxPullRequestCommits = 250;
+const pullRequestCommitSchema = v.looseObject({
+  sha: v.string(),
+  html_url: v.optional(v.string()),
+  commit: v.looseObject({
+    message: v.string(),
+    author: v.nullable(v.looseObject({ name: v.string(), date: v.string() })),
+  }),
+});
 
 const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -117,10 +138,25 @@ const threadResponseSchema = v.looseObject({
                     path: v.optional(v.nullable(v.string())),
                   }),
                 ),
+                pageInfo: v.optional(v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) })),
               }),
             }),
           ),
+          pageInfo: v.optional(v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) })),
         }),
+      }),
+    }),
+  }),
+});
+
+const threadCommentsResponseSchema = v.looseObject({
+  data: v.looseObject({
+    node: v.looseObject({
+      comments: v.looseObject({
+        nodes: v.array(v.looseObject({
+          id: v.string(), body: v.string(), createdAt: v.string(), updatedAt: v.optional(v.nullable(v.string())), url: v.optional(v.nullable(v.string())), author: v.nullish(v.looseObject({ login: v.string() })), path: v.optional(v.nullable(v.string())),
+        })),
+        pageInfo: v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) }),
       }),
     }),
   }),
@@ -167,6 +203,47 @@ const maintainerInboxResponseSchema = v.looseObject({
   }),
 });
 
+const mergePolicyResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      pullRequest: v.looseObject({
+        state: v.string(),
+        isDraft: v.boolean(),
+        headRefOid: v.string(),
+        baseRefName: v.string(),
+        mergeable: v.string(),
+        reviewDecision: v.nullish(v.string()),
+        commits: v.looseObject({
+          nodes: v.array(v.looseObject({
+            commit: v.looseObject({
+              statusCheckRollup: v.nullish(v.looseObject({
+                contexts: v.looseObject({
+                  nodes: v.array(v.looseObject({
+                    __typename: v.string(),
+                    name: v.optional(v.string()),
+                    status: v.optional(v.string()),
+                    conclusion: v.optional(v.nullish(v.string())),
+                    detailsUrl: v.optional(v.nullish(v.string())),
+                    context: v.optional(v.string()),
+                    state: v.optional(v.string()),
+                    targetUrl: v.optional(v.nullish(v.string())),
+                  })),
+                  pageInfo: v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) }),
+                }),
+              })),
+            }),
+          })),
+        }),
+      }),
+    }),
+  }),
+});
+
+const requiredStatusChecksSchema = v.looseObject({
+  contexts: v.optional(v.array(v.string())),
+  checks: v.optional(v.array(v.looseObject({ context: v.string() }))),
+});
+
 /** The typed read-only operations product code may request from GitHub. */
 export interface GitHubReader {
   listOpenPullRequests(input: {
@@ -181,10 +258,23 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>>;
+  getMergePolicy(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly expectedHeadSha: GitSha;
+  }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>>;
+  getMergeOutcome(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<MergeOutcome, GitHubReadFailure>>;
   getPullRequestComments(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>>;
+  getPullRequestCommits(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>>;
   getPullRequestChecks(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -215,6 +305,22 @@ export interface GitHubReader {
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
+
+export type MergeOutcome =
+  | { readonly state: "open" | "closed_unmerged" }
+  | { readonly state: "merged"; readonly mergedAt: IsoTimestamp; readonly mergeCommitSha?: GitSha };
+
+type MergePolicyPage = {
+  readonly headSha: GitSha;
+  readonly baseBranch: string;
+  readonly isOpen: boolean;
+  readonly isDraft: boolean;
+  readonly mergeability: MergePolicySnapshot["mergeability"];
+  readonly reviewDecision: MergePolicySnapshot["reviewDecision"];
+  readonly contexts: ReadonlyArray<CheckRunSummary>;
+  readonly hasNextPage: boolean;
+  readonly endCursor?: string;
+};
 
 export type MaintainerPullRequest = {
   readonly summary: PullRequestSummary;
@@ -336,7 +442,9 @@ type GitHubReadOperation =
   | "list_open_prs"
   | "list_maintainer_prs"
   | "get_pr"
+  | "get_merge_policy"
   | "get_comments"
+  | "get_pr_commits"
   | "get_checks"
   | "get_diff"
   | "get_file"
@@ -448,10 +556,104 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     return parsed._tag === "ok" ? parsed : invalid("get_pr");
   }
 
+  async getMergePolicy(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly expectedHeadSha: GitSha;
+  }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>> {
+    const contexts: Array<CheckRunSummary> = [];
+    let cursor: string | undefined;
+    let policyPage: MergePolicyPage | undefined;
+    for (let page = 0; page < maxMergePolicyPages; page += 1) {
+      const response = await this.commands.runJson({
+        argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=${mergePolicyQuery}`, "-F", `owner=${input.pr.owner}`, "-F", `name=${input.pr.repo}`, "-F", `number=${input.pr.number}`, ...(cursor === undefined ? [] : ["-F", `cursor=${cursor}`])],
+        timeoutMs: commandTimeoutMs,
+      });
+      if (response._tag === "err") return commandFailure("get_merge_policy", response.error);
+      const parsed = parseMergePolicyPage(response.value);
+      if (parsed === undefined) return invalid("get_merge_policy");
+      if (policyPage !== undefined && parsed.headSha !== policyPage.headSha) return ok(incompleteMergePolicy(input.pr, parsed, contexts, "mapping"));
+      policyPage = parsed;
+      contexts.push(...parsed.contexts);
+      if (!parsed.hasNextPage) break;
+      cursor = parsed.endCursor;
+      if (cursor === undefined) return ok(incompleteMergePolicy(input.pr, parsed, contexts, "pagination"));
+    }
+    if (policyPage === undefined) return invalid("get_merge_policy");
+    if (policyPage.hasNextPage) return ok(incompleteMergePolicy(input.pr, policyPage, contexts, "pagination"));
+    if (policyPage.headSha !== input.expectedHeadSha) return ok(incompleteMergePolicy(input.pr, policyPage, contexts, "head_mismatch"));
+
+    const required = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(policyPage.baseBranch)}/protection/required_status_checks`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (required._tag === "err") return ok(incompleteMergePolicy(input.pr, policyPage, contexts, "permission"));
+    const requiredContexts = parseRequiredContexts(required.value);
+    if (requiredContexts === undefined) return ok(incompleteMergePolicy(input.pr, policyPage, contexts, "mapping"));
+    return ok(completeMergePolicy(input.pr, policyPage, contexts, requiredContexts));
+  }
+
+  async getMergeOutcome(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`], timeoutMs: commandTimeoutMs });
+    if (response._tag === "err") return commandFailure("get_pr", response.error);
+    return parseMergeOutcome(response.value);
+  }
+
+  async getPullRequestCommits(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
+    const current = await this.getPullRequest(input);
+    if (current._tag === "err") return current;
+    const response = await this.commands.runJson({
+      argv: [
+        "gh",
+        "api",
+        "--paginate",
+        "--slurp",
+        "--hostname",
+        input.profile.githubHost,
+        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/commits?per_page=100`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return commandFailure("get_pr_commits", response.error);
+    const parsed = v.safeParse(v.array(v.array(pullRequestCommitSchema)), response.value);
+    if (!parsed.success) return invalid("get_pr_commits");
+    const rawCommits = parsed.output.flat();
+    // GitHub caps this endpoint at 250 entries; without continuation metadata,
+    // accepting exactly 250 could persist a truncated list as complete.
+    if (rawCommits.length === 0 || rawCommits.length >= maxPullRequestCommits) return invalid("get_pr_commits");
+    const commits: PullRequestCommit[] = [];
+    for (const raw of rawCommits) {
+      const sha = parseGitSha(raw.sha);
+      const authoredAt = raw.commit.author === null ? err({ _tag: "Invalid" as const }) : parseGitHubTimestamp(raw.commit.author.date);
+      if (sha._tag === "err" || authoredAt._tag === "err") return invalid("get_pr_commits");
+      commits.push({
+        sha: sha.value,
+        message: raw.commit.message,
+        author: raw.commit.author?.name ?? "ghost",
+        authoredAt: authoredAt.value,
+        ...(raw.html_url === undefined ? {} : { url: raw.html_url }),
+        isHead: sha.value === current.value.headSha,
+      });
+    }
+    commits.sort((left, right) => right.authoredAt.localeCompare(left.authoredAt));
+    return ok(commits);
+  }
+
   async getPullRequestComments(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>> {
+    const threads: Array<GitHubConversationThread> = [];
+    let totalComments = 0;
+    let cursor: string | undefined;
+    const cursors = new Set<string>();
+    for (let page = 0; page < maxReviewThreadPages && threads.length < maxReviewThreads; page += 1) {
     const response = await this.commands.runJson({
       argv: [
         "gh",
@@ -467,6 +669,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
         `name=${input.pr.repo}`,
         "-F",
         `number=${input.pr.number}`,
+        ...(cursor === undefined ? [] : ["-F", `cursor=${cursor}`]),
       ],
       timeoutMs: commandTimeoutMs,
     });
@@ -475,15 +678,23 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     const parsed = v.safeParse(threadResponseSchema, response.value);
     if (!parsed.success) return invalid("get_comments");
 
-    const threads: Array<GitHubConversationThread> = [];
     for (const rawThread of parsed.output.data.repository.pullRequest
       .reviewThreads.nodes) {
       const comments: Array<GitHubComment> = [];
       for (const rawComment of rawThread.comments.nodes) {
+        if (totalComments >= maxReviewComments) {
+          return ok({ threads, complete: false, incompleteReason: "comment_cap" });
+        }
         const comment = parseComment(rawComment);
         if (comment._tag === "err") return invalid("get_comments");
         comments.push(comment.value);
+        totalComments += 1;
       }
+      const replyPage = rawThread.comments.pageInfo;
+      const replies = replyPage !== undefined && replyPage.hasNextPage
+        ? await this.loadThreadReplies(input.profile, rawThread.id, comments, replyPage.endCursor ?? null, maxReviewComments - totalComments)
+        : { comments, complete: true };
+      totalComments += replies.comments.length - comments.length;
       const threadId = parseGitHubThreadId(rawThread.id);
       if (threadId._tag === "err") return invalid("get_comments");
       const location = parseLocation(
@@ -504,11 +715,46 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
           : rawThread.isOutdated
             ? "outdated"
             : "open",
-        comments,
+        comments: replies.comments,
+        complete: replies.complete,
         ...(location === undefined ? {} : { location }),
       });
     }
-    return ok({ threads });
+    const pageInfo = parsed.output.data.repository.pullRequest.reviewThreads.pageInfo;
+    if (pageInfo === undefined) return ok({ threads, complete: false, incompleteReason: "pagination" });
+    if (!pageInfo.hasNextPage) {
+      const complete = threads.every((thread) => thread.complete !== false);
+      return ok({ threads, complete, ...(complete ? {} : { incompleteReason: "comment_cap" as const }) });
+    }
+    const nextCursor = pageInfo.endCursor;
+    if (nextCursor === null || nextCursor === undefined) return ok({ threads, complete: false, incompleteReason: "pagination" });
+    if (threads.length >= maxReviewThreads) return ok({ threads, complete: false, incompleteReason: "thread_cap" });
+    if (cursors.has(nextCursor)) return ok({ threads, complete: false, incompleteReason: "pagination" });
+    cursors.add(nextCursor);
+    cursor = nextCursor;
+    }
+    return ok({ threads, complete: false, incompleteReason: "thread_cap" });
+  }
+
+  private async loadThreadReplies(profile: WorkspaceProfileConfig, threadId: string, initial: ReadonlyArray<GitHubComment>, initialCursor: string | null, remainingComments: number): Promise<{ readonly comments: ReadonlyArray<GitHubComment>; readonly complete: boolean }> {
+    const comments = [...initial];
+    let cursor = initialCursor;
+    for (let page = 0; page < maxReviewCommentPages && comments.length - initial.length < remainingComments; page += 1) {
+      if (cursor === null) return { comments, complete: false };
+      const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", profile.githubHost, "-f", `query=${threadCommentsQuery}`, "-F", `id=${threadId}`, "-F", `cursor=${cursor}`], timeoutMs: commandTimeoutMs });
+      if (response._tag === "err") return { comments, complete: false };
+      const parsed = v.safeParse(threadCommentsResponseSchema, response.value);
+      if (!parsed.success) return { comments, complete: false };
+      for (const rawComment of parsed.output.data.node.comments.nodes) {
+        const comment = parseComment(rawComment);
+        if (comment._tag === "err") return { comments, complete: false };
+        comments.push(comment.value);
+      }
+      const pageInfo = parsed.output.data.node.comments.pageInfo;
+      if (!pageInfo.hasNextPage) return { comments, complete: true };
+      cursor = pageInfo.endCursor ?? null;
+    }
+    return { comments, complete: false };
   }
 
   async getPullRequestChecks(input: {
@@ -893,6 +1139,33 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       : ok(this.values.pullRequest);
   }
 
+  async getMergePolicy(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly expectedHeadSha: GitSha;
+  }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>> {
+    if (this.values.mergePolicy !== undefined) return ok(this.values.mergePolicy);
+    const current = await this.getPullRequest(input);
+    if (current._tag === "err") return current;
+    return ok({ pr: input.pr, headSha: current.value.headSha, isOpen: current.value.isOpen, isDraft: current.value.isDraft, mergeability: current.value.mergeability, reviewDecision: current.value.reviewState === "approved" ? "approved" : current.value.reviewState === "changes_requested" ? "changes_requested" : current.value.reviewState === "review_pending" ? "review_required" : "unknown", checks: this.values.checks ?? { overall: "unknown", checks: [] }, complete: current.value.headSha === input.expectedHeadSha && current.value.reviewState !== "none" && current.value.reviewState !== "unknown" && this.values.checks !== undefined, ...(current.value.headSha === input.expectedHeadSha ? {} : { incompleteReason: "head_mismatch" }) });
+  }
+
+  async getMergeOutcome(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
+    void input;
+    return this.values.mergeOutcome === undefined ? missing("get_pr") : ok(this.values.mergeOutcome);
+  }
+
+  async getPullRequestCommits(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
+    void input;
+    return ok(this.values.commits ?? []);
+  }
+
   async getPullRequestComments(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -1004,7 +1277,10 @@ export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
   readonly maintainerPullRequests: MaintainerPullRequestListing;
   readonly pullRequest: PullRequestSummary;
+  readonly mergePolicy: MergePolicySnapshot;
+  readonly mergeOutcome: MergeOutcome;
   readonly comments: GitHubComments;
+  readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly checks: CheckSummary;
   readonly diff: string;
   readonly fileContents: GitHubFileContents;
@@ -1061,6 +1337,20 @@ function parseMaintainerPullRequest(
   };
   const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
   return ok({ summary, checks: rollupCheckSummary(rollup) });
+}
+
+function parseMergeOutcome(input: unknown): Result<MergeOutcome, GitHubReadFailure> {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return invalid("get_pr");
+  const state = "state" in input ? input.state : undefined;
+  if (state === "open") return ok({ state: "open" });
+  if (state !== "closed") return invalid("get_pr");
+  const mergedAt = "merged_at" in input ? input.merged_at : undefined;
+  if (mergedAt === null || mergedAt === undefined) return ok({ state: "closed_unmerged" });
+  const parsedMergedAt = typeof mergedAt === "string" ? parseGitHubTimestamp(mergedAt) : parseIsoTimestamp(mergedAt);
+  const mergeCommitSha = "merge_commit_sha" in input ? input.merge_commit_sha : undefined;
+  const parsedCommit = mergeCommitSha === null || mergeCommitSha === undefined ? undefined : parseGitSha(mergeCommitSha);
+  if (parsedMergedAt._tag === "err" || (parsedCommit !== undefined && parsedCommit._tag === "err")) return invalid("get_pr");
+  return ok({ state: "merged", mergedAt: parsedMergedAt.value, ...(parsedCommit === undefined ? {} : { mergeCommitSha: parsedCommit.value }) });
 }
 
 function parseGitHubComparison(
@@ -1159,6 +1449,90 @@ function rollupCheckSummary(value: string | undefined): CheckSummary {
     case "PENDING": return { overall: "pending", checks: [] };
     default: return { overall: "unknown", checks: [] };
   }
+}
+
+function parseMergePolicyPage(input: unknown): MergePolicyPage | undefined {
+  const parsed = v.safeParse(mergePolicyResponseSchema, input);
+  if (!parsed.success) return undefined;
+  const pullRequest = parsed.output.data.repository.pullRequest;
+  const headSha = parseGitSha(pullRequest.headRefOid);
+  const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup;
+  if (headSha._tag === "err" || rollup === null || rollup === undefined) return undefined;
+  const contexts: Array<CheckRunSummary> = [];
+  for (const context of rollup.contexts.nodes) {
+    const summary = parsePolicyContext(context);
+    if (summary === undefined) return undefined;
+    contexts.push(summary);
+  }
+  return {
+    headSha: headSha.value,
+    baseBranch: pullRequest.baseRefName,
+    isOpen: pullRequest.state === "OPEN",
+    isDraft: pullRequest.isDraft,
+    mergeability: mapMergeability(pullRequest.mergeable),
+    reviewDecision: mapMergePolicyReviewDecision(pullRequest.reviewDecision),
+    contexts,
+    hasNextPage: rollup.contexts.pageInfo.hasNextPage,
+    ...(typeof rollup.contexts.pageInfo.endCursor === "string" ? { endCursor: rollup.contexts.pageInfo.endCursor } : {}),
+  };
+}
+
+function parsePolicyContext(input: unknown): CheckRunSummary | undefined {
+  if (!isObject(input) || typeof input.__typename !== "string") return undefined;
+  const name = typeof input.name === "string" ? input.name : undefined;
+  const status = typeof input.status === "string" ? input.status : undefined;
+  if (input.__typename === "CheckRun" && name !== undefined && status !== undefined) {
+    const conclusion = mapCheckConclusion(typeof input.conclusion === "string" ? input.conclusion.toLowerCase() : undefined);
+    const url = typeof input.detailsUrl === "string" ? input.detailsUrl : undefined;
+    return {
+      name,
+      required: "unknown",
+      status: mapCheckStatus(status.toLowerCase()),
+      ...(conclusion === undefined ? {} : { conclusion }),
+      ...(url === undefined ? {} : { url }),
+    };
+  }
+  const context = typeof input.context === "string" ? input.context : undefined;
+  const stateValue = typeof input.state === "string" ? input.state : undefined;
+  if (input.__typename === "StatusContext" && context !== undefined && stateValue !== undefined) {
+    const state = stateValue.toLowerCase();
+    const url = typeof input.targetUrl === "string" ? input.targetUrl : undefined;
+    return {
+      name: context,
+      required: "unknown",
+      status: state === "pending" || state === "expected" ? "in_progress" : "completed",
+      ...(state === "success" ? { conclusion: "success" as const } : state === "failure" || state === "error" ? { conclusion: "failure" as const } : {}),
+      ...(url === undefined ? {} : { url }),
+    };
+  }
+  return undefined;
+}
+
+function parseRequiredContexts(input: unknown): ReadonlySet<string> | undefined {
+  const parsed = v.safeParse(requiredStatusChecksSchema, input);
+  if (!parsed.success) return undefined;
+  const values = [...(parsed.output.contexts ?? []), ...(parsed.output.checks ?? []).map((check) => check.context)];
+  return new Set(values);
+}
+
+function completeMergePolicy(pr: PullRequestRef, page: MergePolicyPage, contexts: ReadonlyArray<CheckRunSummary>, requiredContexts: ReadonlySet<string>): MergePolicySnapshot {
+  const matched = contexts.map((check) => ({ ...check, required: requiredContexts.has(check.name) }));
+  const seen = new Set(matched.map((check) => check.name));
+  for (const name of requiredContexts) {
+    if (!seen.has(name)) matched.push({ name, required: true, status: "unknown" });
+  }
+  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(matched), checks: matched }, complete: true };
+}
+
+function incompleteMergePolicy(pr: PullRequestRef, page: MergePolicyPage, contexts: ReadonlyArray<CheckRunSummary>, incompleteReason: Exclude<MergePolicySnapshot["incompleteReason"], undefined>): MergePolicySnapshot {
+  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(contexts), checks: contexts.map((check) => ({ ...check, required: "unknown" })) }, complete: false, incompleteReason };
+}
+
+function mapMergePolicyReviewDecision(value: string | null | undefined): MergePolicySnapshot["reviewDecision"] {
+  if (value === "APPROVED") return "approved";
+  if (value === "CHANGES_REQUESTED") return "changes_requested";
+  if (value === "REVIEW_REQUIRED") return "review_required";
+  return "unknown";
 }
 
 function parsePullRequest(

@@ -49,7 +49,8 @@ export function evaluateMergeReadiness(input: {
 function hasBlockingRequiredCheck(checks: CheckSummary): boolean {
   return checks.checks.some(
     (check) =>
-      check.required === true &&
-      (check.status !== "completed" || check.conclusion !== "success"),
+      check.required === "unknown" ||
+      (check.required === true &&
+        (check.status !== "completed" || check.conclusion !== "success")),
   );
 }

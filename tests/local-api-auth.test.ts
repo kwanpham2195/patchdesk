@@ -1,8 +1,8 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   startLocalApiServer,
@@ -14,8 +14,11 @@ import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../src/domain/review-session";
+import { createReview } from "../src/domain/review";
+import { ReviewStore } from "../src/adapters/storage/review-store";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { ProfileSettingsService } from "../src/services/profile-service";
+import { err, ok } from "../src/domain/result";
 
 const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";
@@ -29,6 +32,112 @@ afterEach(async () => {
 });
 
 describe("local API capability boundary", () => {
+  it("keeps review-run and merge endpoints behind the capability and origin boundary", async () => {
+    const startup = await startLocalApiServer({
+      capability,
+      allowedOrigin,
+      supportedReviewModels: ["fixture-model"],
+      workflowInvoker: { async invoke() { return ok({}); } },
+    });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+
+    for (const path of ["v1/reviews/run", "v1/reviews/merge", "v1/reviews/detect-updates", "v1/reviews/refresh", "v1/reviews/commit-diff"]) {
+      const missing = await fetch(new URL(path, localApi.url), { method: "POST", headers: { Origin: allowedOrigin, "Content-Type": "application/json" }, body: "{}" });
+      expect(missing.status).toBe(401);
+      const wrongOrigin = await fetch(new URL(path, localApi.url), { method: "POST", headers: { Origin: "http://evil.invalid", "X-Patchdesk-Capability": capability, "Content-Type": "application/json" }, body: "{}" });
+      expect(wrongOrigin.status).toBe(403);
+    }
+  });
+
+  it("maps authenticated review-run parsing, catalog, and missing-session failures", async () => {
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const configured = await startLocalApiServer({ capability, allowedOrigin, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke() { return ok({}); } } });
+    if (configured._tag !== "started") throw new Error("Expected local API startup");
+    localApi = configured.server;
+    const invalid = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers, body: JSON.stringify({}) });
+    expect(invalid.status).toBe(400);
+    const invalidCommitDiff = await fetch(new URL("v1/reviews/commit-diff", localApi.url), { method: "POST", headers, body: JSON.stringify({}) });
+    expect(invalidCommitDiff.status).toBe(400);
+    const missing = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456", model: "fixture-model", reasoning: "medium" }) });
+    expect(missing.status).toBe(404);
+    await localApi.stop();
+    localApi = undefined;
+
+    const unavailable = await startLocalApiServer({ capability, allowedOrigin, workflowInvoker: { async invoke() { return ok({}); } } });
+    if (unavailable._tag !== "started") throw new Error("Expected local API startup");
+    localApi = unavailable.server;
+    const catalog = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456", model: "fixture-model", reasoning: "medium" }) });
+    expect(catalog.status).toBe(503);
+  });
+
+  it("returns a flattened canonical projection from an authenticated refresh", async () => {
+    const fixture = await persistedReviewFixture();
+    const review = createReview({ identity: { profileId: fixture.profileId, host: fixture.session.key.host, owner: fixture.session.key.owner, repo: fixture.session.key.repo, prNumber: fixture.session.key.prNumber }, currentSessionId: fixture.session.id, headSha: fixture.session.key.headSha, createdAt: fixture.session.createdAt });
+    expect((await new ReviewStore(fixture.paths).save(review))._tag).toBe("ok");
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const response = await fetch(new URL("v1/reviews/refresh", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, reviewId: review.id }) });
+    const body = await response.json();
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(body).toMatchObject({ state: "review", review: { id: review.id } });
+  });
+
+  it("starts one authenticated review run from persisted server-owned artifacts", async () => {
+    const fixture = await reviewRunFixture();
+    localApi = fixture.api;
+
+    const response = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, sessionId: fixture.session.id, model: "fixture-model", reasoning: "medium" }) });
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ attemptId: "001", model: "fixture-model", reasoning: "medium" });
+    await vi.waitFor(() => expect(fixture.workflowInputs).toHaveLength(1));
+    expect(fixture.workflowInputs[0]).toMatchObject({ profileId: fixture.profileId, sessionId: fixture.session.id, attemptId: "001", patchPath: fixture.session.patchPath });
+  });
+
+  it("maps stale and non-runnable authenticated review runs", async () => {
+    const stale = await persistedReviewFixture();
+    await mkdir(stale.paths.preparedDirectory(stale.profileId, stale.session.id), { recursive: true });
+    await Promise.all([writeFile(stale.session.patchPath, "diff", "utf8"), writeFile(stale.paths.preparedContextFile(stale.profileId, stale.session.id), "{}", "utf8"), writeFile(stale.paths.preparedReviewInputFile(stale.profileId, stale.session.id), "Review", "utf8"), writeFile(stale.paths.preparedDebugFile(stale.profileId, stale.session.id), "{}", "utf8")]);
+    const changedHead = must(parseGitSha("1234567890abcdef1234567890abcdef12345678"));
+    const staleGitHub = new FakeGitHubAdapter({ pullRequest: { ref: { host: stale.session.key.host, owner: stale.session.key.owner, repo: stale.session.key.repo, number: stale.session.key.prNumber }, headSha: changedHead, isDraft: false, isOpen: true, title: "Fixture PR", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: "2026-08-01T00:00:00.000Z" as never } });
+    const staleStartup = await startLocalApiServer({ capability, allowedOrigin, paths: stale.paths, github: staleGitHub, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke() { return ok({}); } } });
+    if (staleStartup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = staleStartup.server;
+    const body = { profileId: stale.profileId, sessionId: stale.session.id, model: "fixture-model", reasoning: "medium" };
+    expect((await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(body) })).status).toBe(409);
+    await localApi.stop();
+    localApi = undefined;
+
+    const terminal = await reviewRunFixture();
+    await new ReviewSessionStore(terminal.paths).save({ ...terminal.session, state: { _tag: "Merged", mergedAt: "2026-08-01T00:00:00.000Z" as never } });
+    await terminal.api.stop();
+    const terminalStartup = await startLocalApiServer({ capability, allowedOrigin, paths: terminal.paths, github: terminal.github, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke() { return ok({}); } } });
+    if (terminalStartup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = terminalStartup.server;
+    expect((await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: terminal.profileId, sessionId: terminal.session.id, model: "fixture-model", reasoning: "medium" }) })).status).toBe(400);
+  });
+
+  it("delegates an authenticated merge and returns its persisted session", async () => {
+    const fixture = await mergeApiFixture();
+    localApi = fixture.api;
+
+    const response = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, sessionId: fixture.session.id, method: "squash", acknowledgedWarnings: true }) });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ session: { state: { _tag: "Merged" } } });
+    expect(fixture.methods).toEqual(["squash"]);
+  });
+
+  it("maps malformed and failed authenticated merge requests", async () => {
+    const fixture = await persistedReviewFixture();
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github, mergeWriter: { async mergePullRequest() { return err({ _tag: "GitHubWriteFailure" as const, category: "unavailable" as const, message: "Fixture unavailable." }); } } });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const malformed = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, sessionId: fixture.session.id, method: "unknown", acknowledgedWarnings: true }) });
+    expect(malformed.status).toBe(400);
+    const failed = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, sessionId: fixture.session.id, method: "squash", acknowledgedWarnings: true }) });
+    expect(failed.status).toBe(400);
+  });
   it("returns a safe typed failure for invalid startup configuration", async () => {
     const startup = await startLocalApiServer({
       capability: "",
@@ -525,6 +634,42 @@ describe("local API capability boundary", () => {
     expect(unauthorized.status).toBe(401);
   });
 });
+
+async function reviewRunFixture() {
+  const fixture = await persistedReviewFixture();
+  await mkdir(fixture.paths.preparedDirectory(fixture.profileId, fixture.session.id), { recursive: true });
+  await Promise.all([
+    writeFile(fixture.session.patchPath, "diff --git a/a.ts b/a.ts\n", "utf8"),
+    writeFile(fixture.paths.preparedContextFile(fixture.profileId, fixture.session.id), "{}", "utf8"),
+    writeFile(fixture.paths.preparedReviewInputFile(fixture.profileId, fixture.session.id), "Review fixture.", "utf8"),
+    writeFile(fixture.paths.preparedDebugFile(fixture.profileId, fixture.session.id), "{}", "utf8"),
+  ]);
+  const workflowInputs: unknown[] = [];
+  const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke(input) { workflowInputs.push(input); return ok({}); } } });
+  if (startup._tag !== "started") throw new Error("Expected local API startup");
+  return { ...fixture, api: startup.server, workflowInputs };
+}
+
+async function mergeApiFixture() {
+  const fixture = await persistedReviewFixture();
+  const methods: string[] = [];
+  const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github, mergeWriter: { async mergePullRequest(input) { methods.push(input.method); return ok({}); } } });
+  if (startup._tag !== "started") throw new Error("Expected local API startup");
+  return { ...fixture, api: startup.server, methods };
+}
+
+async function persistedReviewFixture() {
+  const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-run-")));
+  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const key = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")) };
+  const seeded = createReviewSession({ key, pr: { headSha: key.headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha: key.headSha }, createdAt: must(parseIsoTimestamp("2026-08-01T00:00:00.000Z")) });
+  const session = { ...seeded, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, seeded.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, seeded.id))), headSha: key.headSha } };
+  const profile = must(parseWorkspaceProfileConfig({ id: profileId, label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+  await new ProfileStore(paths).save(profile);
+  await new ReviewSessionStore(paths).save(session);
+  const github = new FakeGitHubAdapter({ pullRequest: { ref: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isDraft: false, isOpen: true, title: "Fixture PR", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: "2026-08-01T00:00:00.000Z" as never }, mergePolicy: { pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable", reviewDecision: "approved", checks: { overall: "passing", checks: [] }, complete: true }, checks: { overall: "passing", checks: [] }, comments: { threads: [], complete: true } });
+  return { paths, profileId, session, github };
+}
 
 async function startTestLocalApi(): Promise<LocalApiServer> {
   const startup = await startLocalApiServer({ capability, allowedOrigin });

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "./components/app-shell";
-import { PreparedReviewFlow } from "./flows/prepared-review-flow";
-import { CompletedReviewFlow } from "./flows/completed-review-flow";
+import { ReviewWorkbenchFlow } from "./flows/review-workbench-flow";
 import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
@@ -460,19 +459,18 @@ export function App({ initialState }: AppProps): React.JSX.Element {
       fixtureDestination(fixtureHash),
     );
 
-  if (workbench?.state === "review_started") {
+  if (workbench?.state === "review") {
     return shell(
-      <PreparedReviewFlow
-        workbench={workbench as never}
+      <ReviewWorkbenchFlow
+        workbench={workbench}
         {...(destination.kind === "workbench" &&
-        (destination.initialSection === "diff" ||
-          destination.initialSection === "checks")
+        (destination.initialSection === "diff" || destination.initialSection === "checks")
           ? { initialSection: destination.initialSection }
           : {})}
         onNavigate={(initialSection) =>
           navigate({
             kind: "workbench",
-            sessionId: workbench.session.id,
+            reviewId: workbench.review.id,
             initialSection,
           })
         }
@@ -481,21 +479,10 @@ export function App({ initialState }: AppProps): React.JSX.Element {
             current === undefined ? current : { ...current, ...patch },
           )
         }
-        onWorkbenchReplace={(next) => setWorkbench(next as WorkbenchPayload)}
-      />,
-      { kind: "workbench", sessionId: workbench.session.id },
-    );
-  }
-
-  if (workbench?.state === "completed" && dashboard !== undefined) {
-    return shell(
-      <CompletedReviewFlow
-        workbench={workbench as never}
-        onWorkbenchPatch={(patch) => setWorkbench((current) => current === undefined ? current : { ...current, ...(patch as Partial<WorkbenchPayload>) })}
-        onWorkbenchReplace={(next) => setWorkbench(next as WorkbenchPayload)}
+        onWorkbenchReplace={(next) => setWorkbench(next)}
         onNavigationStateChange={setNavigationState}
       />,
-      { kind: "workbench", sessionId: workbench.session.id },
+      { kind: "workbench", reviewId: workbench.review.id },
     );
   }
 
@@ -503,7 +490,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
           destination={destination.kind}
-          {...(destination.kind === "workbench" ? { sessionId: destination.sessionId } : {})}
+          {...(destination.kind === "workbench" ? { reviewId: destination.reviewId } : {})}
           {...(dashboard === undefined ? {} : { dashboard })}
           {...(inbox === undefined ? {} : { inbox })}
           state={state}
@@ -519,7 +506,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           onWorkspaceReload={loadWorkspace}
           onOpenWorkbench={(next, initialSection) => {
             setWorkbench(next);
-            navigate({ kind: "workbench", sessionId: next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
+            navigate({ kind: "workbench", reviewId: next.review?.id ?? next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
           }}
         />
     </div>,

@@ -20,11 +20,10 @@ const result = { findings: [], changeSummary: "summary", verdict: "approve", sum
 const profile = { githubHost: "github.com", ghAccount: "pmquan2cfw" } as never;
 const now = "2026-07-16T00:02:00.000Z" as never;
 
-function gateway(input: { readonly head?: typeof headSha; readonly reviewState?: "approved" | "changes_requested" | "review_pending"; readonly mergeability?: "mergeable" | "conflicting"; readonly checks?: "success" | "failure" } = {}) {
+function gateway(input: { readonly head?: typeof headSha; readonly reviewDecision?: "approved" | "changes_requested" | "review_required" | "unknown"; readonly mergeability?: "mergeable" | "conflicting"; readonly checks?: "success" | "failure"; readonly complete?: boolean } = {}) {
   const writes: Array<string> = [];
   return { writes, gateway: {
-    async getPullRequestChecks() { return { _tag: "ok" as const, value: { overall: input.checks === "failure" ? "failing" as const : "passing" as const, checks: [{ name: "unit", required: true as const, status: "completed" as const, conclusion: input.checks === "failure" ? "failure" as const : "success" as const }] } }; },
-    async getPullRequest() { return { _tag: "ok" as const, value: { headSha: input.head ?? headSha, isOpen: true, isDraft: false, mergeability: input.mergeability ?? "mergeable", reviewState: input.reviewState ?? "approved" } }; },
+    async getMergePolicy() { return { _tag: "ok" as const, value: { pr: { host: "github.com" as never, owner: "centraldigital" as never, repo: "patchdesk" as never, number: 1 as never }, headSha: input.head ?? headSha, isOpen: true, isDraft: false, mergeability: input.mergeability ?? "mergeable", reviewDecision: input.reviewDecision ?? "approved", checks: { overall: input.checks === "failure" ? "failing" as const : "passing" as const, checks: [{ name: "unit", required: true as const, status: "completed" as const, conclusion: input.checks === "failure" ? "failure" as const : "success" as const }] }, complete: input.complete ?? true, ...(input.complete === false ? { incompleteReason: "permission" as const } : {}) } }; },
     async mergePullRequest(value: Parameters<GitHubMergeWriter["mergePullRequest"]>[0]) { writes.push(value.method); return { _tag: "ok" as const, value: { mergeCommitSha: headSha } }; },
   } };
 }
@@ -65,7 +64,7 @@ describe("merge service", () => {
   });
 
   it("requires acknowledgement for request changes or P0/P1 findings, then records the terminal merge", async () => {
-    const warning = gateway({ reviewState: "changes_requested" });
+    const warning = gateway({ reviewDecision: "changes_requested" });
     await expect(mergePullRequest({ profile, session, result, gateway: warning.gateway as never, method: "squash", supportedMethods: ["squash", "merge"], acknowledgedWarnings: false, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "MergeAcknowledgementRequired", readiness: { warnings: ["request_changes"] } } });
     expect(warning.writes).toEqual([]);
 
@@ -73,5 +72,15 @@ describe("merge service", () => {
     const merged = await mergePullRequest({ profile, session, result, gateway: success.gateway as never, method: "squash", supportedMethods: ["squash", "merge"], acknowledgedWarnings: true, now });
     expect(merged).toMatchObject({ _tag: "ok", value: { session: { state: { _tag: "Merged" }, mergeDecision: { mergeCommitSha: headSha } } } });
     expect(success.writes).toEqual(["squash"]);
+  });
+
+  it("never writes when fresh policy evidence is incomplete or requires review", async () => {
+    const incomplete = gateway({ complete: false });
+    await expect(mergePullRequest({ profile, session, gateway: incomplete.gateway as never, method: "squash", supportedMethods: ["squash"], acknowledgedWarnings: true, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "MergeBlocked", readiness: { blockers: ["mergeability_unknown"] } } });
+    expect(incomplete.writes).toEqual([]);
+
+    const review = gateway({ reviewDecision: "review_required" });
+    await expect(mergePullRequest({ profile, session, gateway: review.gateway as never, method: "squash", supportedMethods: ["squash"], acknowledgedWarnings: true, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "MergeBlocked", readiness: { blockers: ["github_review"] } } });
+    expect(review.writes).toEqual([]);
   });
 });
