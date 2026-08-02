@@ -128,6 +128,8 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.getByText("Current PR description")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Checks" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Existing threads" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Checks" }));
+    expect(screen.getByText("No checks reported.")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
     expect(document.body.style.overflow).toBe("hidden");
     await user.keyboard("{Escape}");

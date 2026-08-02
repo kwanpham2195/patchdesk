@@ -225,7 +225,7 @@ function OverviewRow({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="py-3">
       <div className="flex items-center justify-between gap-3">
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="-ml-2 px-2" />}>
+        <CollapsibleTrigger className="-ml-2 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[0.8rem] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
           {title}
           <ChevronDown data-disclosure-motion="chevron" className={open ? "size-4" : "size-4 -rotate-90"} aria-hidden="true" />
         </CollapsibleTrigger>
