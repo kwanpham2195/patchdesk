@@ -3,7 +3,8 @@ import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 
 import { err, ok, type Result } from "../domain/result";
 
-export type InspectorDenied = { readonly _tag: "InspectorDenied" };
+export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
+export type InspectorDenied = { readonly _tag: "InspectorDenied"; readonly reason: "invalid_input" | "outside_snapshot" | "budget_exhausted" };
 type InspectorInput = { readonly worktreePath: string; readonly changedFiles: ReadonlyArray<string>; readonly fileSnapshots?: Readonly<Record<string, string>>; readonly debugPath?: string; readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string> };
 type InspectorDebug = {
   readonly inspectedFileCount: number;
@@ -17,14 +18,17 @@ export class ReviewInspector {
   private inspectedFileCount = 0;
   private searchCount = 0;
   private gitShowCount = 0;
+  private inspectionCallCount = 0;
   constructor(private readonly input: InspectorInput) {}
 
-  async listChangedFiles(): Promise<Result<ReadonlyArray<string>, never>> {
+  async listChangedFiles(): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
+    if (!this.consume()) return denied("budget_exhausted");
     return ok(this.input.fileSnapshots === undefined ? this.input.changedFiles : Object.keys(this.input.fileSnapshots));
   }
 
   async searchFiles(query: string): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
-    if (!safeQuery(query)) return err({ _tag: "InspectorDenied" });
+    if (!this.consume()) return denied("budget_exhausted");
+    if (!safeQuery(query)) return denied("invalid_input");
     this.searchCount += 1;
     await this.persistDebug();
     const matches: Array<string> = [];
@@ -36,16 +40,18 @@ export class ReviewInspector {
   }
 
   async readFileRange(path: string, startLine: number, endLine: number): Promise<Result<string, InspectorDenied>> {
-    if (!Number.isSafeInteger(startLine) || !Number.isSafeInteger(endLine) || startLine < 1 || endLine < startLine) return err({ _tag: "InspectorDenied" });
+    if (!this.consume()) return denied("budget_exhausted");
+    if (!Number.isSafeInteger(startLine) || !Number.isSafeInteger(endLine) || startLine < 1 || endLine < startLine) return denied("invalid_input");
     const file = await this.readWhole(path);
     if (file._tag === "err") return file;
     return ok(file.value.split("\n").slice(startLine - 1, endLine).join("\n"));
   }
 
   async gitShow(revision: string): Promise<Result<string, InspectorDenied>> {
-    if (revision !== "HEAD" && !/^[a-f0-9]{40,64}$/.test(revision)) return err({ _tag: "InspectorDenied" });
+    if (!this.consume()) return denied("budget_exhausted");
+    if (revision !== "HEAD" && !/^[a-f0-9]{40,64}$/.test(revision)) return denied("invalid_input");
     let worktreePath: string;
-    try { worktreePath = await realpath(this.input.worktreePath); } catch { return err({ _tag: "InspectorDenied" }); }
+    try { worktreePath = await realpath(this.input.worktreePath); } catch { return denied("outside_snapshot"); }
     const argv = ["git", "-C", worktreePath, "show", "--format=", "--no-ext-diff", revision] as const;
     this.gitShowCount += 1;
     await this.persistDebug();
@@ -62,12 +68,12 @@ export class ReviewInspector {
   }
 
   private async readWhole(path: string): Promise<Result<string, InspectorDenied>> {
-    if (!isRelative(path)) return err({ _tag: "InspectorDenied" });
+    if (!isRelative(path)) return denied("invalid_input");
     const { fileSnapshots } = this.input;
     if (fileSnapshots !== undefined) {
-      if (!Object.hasOwn(fileSnapshots, path)) return err({ _tag: "InspectorDenied" });
+      if (!Object.hasOwn(fileSnapshots, path)) return denied("outside_snapshot");
       const snapshot = fileSnapshots[path];
-      if (snapshot === undefined) return err({ _tag: "InspectorDenied" });
+      if (snapshot === undefined) return denied("outside_snapshot");
       this.inspectedFileCount += 1;
       await this.persistDebug();
       return ok(snapshot);
@@ -75,13 +81,19 @@ export class ReviewInspector {
     try {
       const root = await realpath(this.input.worktreePath);
       const candidate = resolve(root, path);
-      if (!isContainedPath(root, candidate)) return err({ _tag: "InspectorDenied" });
+      if (!isContainedPath(root, candidate)) return denied("outside_snapshot");
       const resolved = await realpath(candidate);
-      if (!isContainedPath(root, resolved)) return err({ _tag: "InspectorDenied" });
+      if (!isContainedPath(root, resolved)) return denied("outside_snapshot");
       this.inspectedFileCount += 1;
       await this.persistDebug();
       return ok(await readFile(resolved, "utf8"));
-    } catch { return err({ _tag: "InspectorDenied" }); }
+    } catch { return denied("outside_snapshot"); }
+  }
+
+  private consume(): boolean {
+    if (this.inspectionCallCount >= MAX_ANALYSIS_INSPECTION_CALLS) return false;
+    this.inspectionCallCount += 1;
+    return true;
   }
 
   private async persistDebug(): Promise<void> {
@@ -105,3 +117,4 @@ function isContainedPath(root: string, candidate: string): boolean {
 }
 function isWindowsDriveRelative(path: string): boolean { return /^[a-z]:/i.test(path); }
 function safeQuery(query: string): boolean { return query.length > 0 && query.length <= 200 && !query.includes("\0"); }
+function denied(reason: InspectorDenied["reason"]): Result<never, InspectorDenied> { return err({ _tag: "InspectorDenied", reason }); }

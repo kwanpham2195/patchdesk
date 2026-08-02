@@ -13,7 +13,7 @@ describe("ReviewInspector", () => {
       await writeFile(debugPath, JSON.stringify({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0, profileRuleLoadFailureCount: 1 }), "utf8");
       const inspector = new ReviewInspector({ worktreePath: root, changedFiles: ["src/a.ts"], debugPath, gitShow: async () => "commit summary" });
       expect(await inspector.readFileRange("src/a.ts", 2, 2)).toEqual({ _tag: "ok", value: "two" });
-      expect(await inspector.readFileRange("../etc/passwd", 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+      expect(await inspector.readFileRange("../etc/passwd", 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "invalid_input" } });
       expect(await inspector.searchFiles("two")).toEqual({ _tag: "ok", value: ["src/a.ts"] });
       expect(await inspector.gitShow("HEAD")).toEqual({ _tag: "ok", value: "commit summary" });
       expect(inspector.debug()).toEqual({ inspectedFileCount: 2, searchCount: 1, gitShowCount: 1, profileRuleLoadFailureCount: 0 });
@@ -39,7 +39,7 @@ describe("ReviewInspector", () => {
         gitShow: async () => "commit summary",
       });
 
-      expect(await inspector.readFileRange("src/live.ts", 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+      expect(await inspector.readFileRange("src/live.ts", 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "outside_snapshot" } });
       expect(inspector.debug()).toEqual({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0, profileRuleLoadFailureCount: 0 });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -79,8 +79,20 @@ describe("ReviewInspector", () => {
       await writeFile(process.platform === "win32" ? join(parent, "outside.ts") : join(root, path), "BACKSLASH_PROTECTED_CONTENT\n", "utf8");
       const inspector = new ReviewInspector({ worktreePath: root, changedFiles: [path], gitShow: async () => "commit summary" });
 
-      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "invalid_input" } });
     } finally { await rm(parent, { recursive: true, force: true }); }
+  });
+
+  it("enforces one shared eight-call inspection budget", async () => {
+    const inspector = new ReviewInspector({
+      worktreePath: "/unused",
+      changedFiles: ["src/a.ts"],
+      fileSnapshots: { "src/a.ts": "fixture" },
+      gitShow: async () => "commit summary",
+    });
+    for (let index = 0; index < 8; index += 1) expect((await inspector.listChangedFiles())._tag).toBe("ok");
+    expect(await inspector.searchFiles("fixture")).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "budget_exhausted" } });
+    expect(await inspector.gitShow("HEAD")).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "budget_exhausted" } });
   });
 
   it("denies drive-relative paths in the no-snapshot fallback", async () => {
@@ -90,7 +102,7 @@ describe("ReviewInspector", () => {
       if (process.platform !== "win32") await writeFile(join(root, path), "DRIVE_RELATIVE_PROTECTED_CONTENT\n", "utf8");
       const inspector = new ReviewInspector({ worktreePath: root, changedFiles: [path], gitShow: async () => "commit summary" });
 
-      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied" } });
+      expect(await inspector.readFileRange(path, 1, 1)).toEqual({ _tag: "err", error: { _tag: "InspectorDenied", reason: "invalid_input" } });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
