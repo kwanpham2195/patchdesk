@@ -28,6 +28,17 @@ export class AnalysisCompletionService {
     return saved._tag === "ok" ? ok(undefined) : err("storage_failed");
   }
 
+  async consumeForPublication(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly headSha: GitSha; readonly event: GitHubReviewEvent; readonly authorizationId: PublicationAuthorizationId; readonly consumedAt: IsoTimestamp }): Promise<Result<void, AnalysisCompletionFailure>> {
+    const loaded = await this.store.load(input.profileId, input.reviewId);
+    if (loaded._tag === "err") return loaded.error.reason === "not_found" ? err("not_found") : err("storage_failed");
+    const authorization = loaded.value;
+    if (authorization.id !== input.authorizationId || authorization.sessionId !== input.sessionId || authorization.headSha !== input.headSha || authorization.event !== input.event) return err("authorization_mismatch");
+    const consumed = consumePublicationAuthorization(authorization, input.consumedAt);
+    if (consumed._tag === "err") return err("not_armed");
+    const saved = await this.store.save(consumed.value);
+    return saved._tag === "ok" ? ok(undefined) : err("storage_failed");
+  }
+
   async consume(input: CompletionIdentity & { readonly authorizationId: PublicationAuthorizationId; readonly consumedAt: IsoTimestamp }): Promise<Result<void, AnalysisCompletionFailure>> {
     const loaded = await this.store.load(input.profileId, input.reviewId);
     if (loaded._tag === "err") return loaded.error.reason === "not_found" ? err("not_found") : err("storage_failed");

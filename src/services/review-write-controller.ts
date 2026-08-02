@@ -2,10 +2,11 @@ import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { GitHubReviewEvent } from "../domain/review-batch";
-import { parseIsoTimestamp, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
+import { parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { AnalysisCompletionService } from "./analysis-completion-service";
 import { applyReviewBatch, submitReviewBatch } from "./review-submission-service";
 import { readObjectField } from "./read-object-field";
 
@@ -25,6 +26,7 @@ export class ReviewWriteController {
     private readonly sessions: ReviewSessionStore,
     private readonly github: Pick<GitHubReader, "getPullRequest"> & GitHubReviewWriter,
     private readonly now: () => IsoTimestamp,
+    private readonly completion?: Pick<AnalysisCompletionService, "consumeForPublication">,
   ) {}
 
   async submitBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
@@ -44,12 +46,38 @@ export class ReviewWriteController {
   }
 
   async confirmPublication(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
-    const applied = await this.applyBatch(input);
-    if (applied._tag === "err") return applied;
-    const batch = applied.value.batch as NonNullable<ReviewSession["batchContent"]> | undefined;
-    if (batch === undefined) return err({ reason: "review_write_failed" });
-    const next = { ...(typeof input === "object" && input !== null ? input : {}), expectedRevision: batch.updatedAt };
-    return this.submitBatch(next);
+    const suppliedAuthorizationId = readObjectField(input, "authorizationId");
+    const completion = this.completion;
+    if (suppliedAuthorizationId === undefined || completion === undefined) {
+      const applied = await this.applyBatch(input);
+      if (applied._tag === "err") return applied;
+      const batch = applied.value.batch as NonNullable<ReviewSession["batchContent"]> | undefined;
+      if (batch === undefined) return err({ reason: "review_write_failed" });
+      const next = { ...(typeof input === "object" && input !== null ? input : {}), expectedRevision: batch.updatedAt };
+      return this.submitBatch(next);
+    }
+    return this.withLoadedBatch(input, async ({ profile, session, batch }) => {
+      const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+      const reviewId = parseReviewId(readObjectField(input, "reviewId"));
+      const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+      const authorizationId = parsePublicationAuthorizationId(suppliedAuthorizationId);
+      const event = readObjectField(input, "event");
+      if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || authorizationId._tag === "err" || !isReviewEvent(event)) return err({ reason: "invalid_input" });
+      const consumed = await completion.consumeForPublication({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, headSha: session.key.headSha, event, authorizationId: authorizationId.value, consumedAt: this.now() });
+      if (consumed._tag === "err") return err({ reason: consumed.error });
+      const applied = await applyReviewBatch({ profile, session, batch, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
+      if (applied._tag === "err") {
+        await this.persistFailure(applied.error);
+        return err({ reason: failureReason(applied.error._tag) });
+      }
+      const submitted = await submitReviewBatch({ profile, session: applied.value.session, batch: applied.value.batch, event, gateway: this.github, now: this.now() });
+      if (submitted._tag === "err") {
+        await this.persistFailure(submitted.error);
+        return err({ reason: failureReason(submitted.error._tag) });
+      }
+      const persisted = await this.sessions.save(submitted.value.session);
+      return persisted._tag === "ok" ? ok({ session: submitted.value.session, batch: submitted.value.batch }) : err({ reason: "storage_failed" });
+    });
   }
 
   async applyBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {

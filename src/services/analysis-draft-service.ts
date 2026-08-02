@@ -61,7 +61,7 @@ export class AnalysisDraftService {
     return withReviewSessionMutationLock(`${input.profileId}:${input.sessionId}`, async () => {
       const loaded = await this.loadCurrent(input);
       if (loaded._tag === "err") return loaded;
-      if (loaded.value.current?.updatedAt !== input.expectedRevision) return err({ reason: "stale_request" });
+      if (loaded.value.current !== undefined && loaded.value.current.updatedAt !== input.expectedRevision) return err({ reason: "stale_request" });
       const seeded = this.seed({ ...loaded.value.draft, ...(loaded.value.current === undefined ? {} : { current: loaded.value.current }) });
       if (seeded._tag === "err") return seeded.error.reason === "draft_not_empty" ? err({ reason: "draft_not_empty", merge: seeded.error.merge, replacement: seeded.error.replacement }) : err({ reason: "invalid_input" });
       return this.saveCurrent(loaded.value.session, seeded.value, input.now);

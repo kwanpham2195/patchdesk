@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
-import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
+import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseGitHubThreadId, parseIsoTimestamp, parsePullRequestNumber, parseRepoRelativePath, type ContentHash, type ReviewId, type WorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
 import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
@@ -16,6 +16,7 @@ export type ReviewRemoteSnapshot = {
   readonly comments: GitHubComments;
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly checks: CheckSummary;
+  readonly publishedFeedback?: GitHubPublishedFeedback;
   readonly mergePolicy?: MergePolicySnapshot;
 };
 
@@ -65,7 +66,13 @@ const mergePolicySchema = v.strictObject({
   incompleteReason: v.optional(v.picklist(["head_mismatch", "pagination", "permission", "unavailable", "mapping"])),
 });
 const commitSchema = v.strictObject({ sha: v.string(), message: v.string(), author: v.string(), authoredAt: v.string(), url: v.optional(v.string()), isHead: v.boolean() });
-const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, mergePolicy: v.optional(mergePolicySchema) });
+const publishedFeedbackSchema = v.strictObject({
+  reviews: v.array(v.strictObject({ id: v.string(), author: v.string(), body: v.string(), event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]), submittedAt: v.string(), canDismiss: v.boolean() })),
+  comments: v.array(v.strictObject({ ...commentSchema.entries, reviewId: v.optional(v.string()), canEdit: v.boolean(), canDelete: v.boolean() })),
+  complete: v.optional(v.boolean()),
+  incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
+});
+const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), mergePolicy: v.optional(mergePolicySchema) });
 
 /** Content-addressed storage for the complete remote snapshot represented by a Review. */
 export class ReviewRemoteStore {
@@ -115,8 +122,9 @@ export function parseReviewRemoteSnapshot(input: unknown): Result<ReviewRemoteSn
   const checks = parseChecks(parsed.output.checks);
   const commits = parseCommits(parsed.output.commits, pr._tag === "ok" ? pr.value.headSha : undefined);
   const mergePolicy = parsed.output.mergePolicy === undefined ? ok(undefined) : parseMergePolicy(parsed.output.mergePolicy);
-  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || mergePolicy._tag === "err") return invalidRead();
-  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }) });
+  const publishedFeedback = parsed.output.publishedFeedback === undefined ? ok(undefined) : parsePublishedFeedback(parsed.output.publishedFeedback);
+  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || mergePolicy._tag === "err") return invalidRead();
+  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }) });
 }
 
 export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
@@ -168,6 +176,24 @@ function parseChecks(input: v.InferOutput<typeof checksSchema>): Result<CheckSum
     ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }),
     ...(check.url === undefined ? {} : { url: check.url }),
   })) });
+}
+
+function parsePublishedFeedback(input: v.InferOutput<typeof publishedFeedbackSchema>): Result<GitHubPublishedFeedback, StorageFailure> {
+  const reviews: Array<GitHubPublishedFeedback["reviews"][number]> = [];
+  for (const review of input.reviews) {
+    const submittedAt = parseIsoTimestamp(review.submittedAt);
+    if (submittedAt._tag === "err") return invalidRead();
+    reviews.push({ id: review.id, author: review.author, body: review.body, event: review.event, submittedAt: submittedAt.value, canDismiss: review.canDismiss });
+  }
+  const comments: Array<GitHubPublishedFeedback["comments"][number]> = [];
+  for (const comment of input.comments) {
+    const createdAt = parseIsoTimestamp(comment.createdAt);
+    const updatedAt = comment.updatedAt === undefined ? undefined : parseIsoTimestamp(comment.updatedAt);
+    const location = comment.location === undefined ? undefined : parseLocation(comment.location);
+    if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err") || (location !== undefined && location._tag === "err")) return invalidRead();
+    comments.push({ id: comment.id, author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(location === undefined ? {} : { location: location.value }), ...(comment.reviewId === undefined ? {} : { reviewId: comment.reviewId }), canEdit: comment.canEdit, canDelete: comment.canDelete });
+  }
+  return ok({ reviews, comments, ...(input.complete === undefined ? {} : { complete: input.complete }), ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
 }
 
 function parseComments(input: v.InferOutput<typeof commentsSchema>): Result<GitHubComments, StorageFailure> {

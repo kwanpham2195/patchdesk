@@ -20,6 +20,20 @@ const analysisRunId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-re
 const authorizationId = must(parsePublicationAuthorizationId("publication-analysis-1"));
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 
+it("consumes a matching publication authorization exactly once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-completion-service-consume-"));
+  try {
+    const store = new PublicationAuthorizationStore(PatchdeskPaths.forTest(root));
+    await store.save(createPublicationAuthorization({ id: authorizationId, profileId, reviewId, sessionId, headSha, patchHash, analysisRunId, expectedDraftRevision: at, event: "COMMENT", createdAt: at }));
+    const service = new AnalysisCompletionService(store);
+    const input = { profileId, reviewId, authorizationId, sessionId, headSha, event: "COMMENT" as const, consumedAt: at };
+    expect(await service.consumeForPublication(input)).toEqual({ _tag: "ok", value: undefined });
+    expect(await service.consumeForPublication(input)).toEqual({ _tag: "err", error: "not_armed" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it("revokes an armed authorization and refuses a mismatched consume", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-completion-service-"));
   try {

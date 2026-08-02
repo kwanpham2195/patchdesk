@@ -24,11 +24,17 @@ export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { 
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
 export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
+export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly authorizationId: string; readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES" }) => Promise<void>;
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
 export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
+  private completionHandler: InsightCompletionHandler | undefined;
+
+  configureCompletion(handler: InsightCompletionHandler): void {
+    this.completionHandler = handler;
+  }
 
   constructor(
     private readonly reviews: Pick<ReviewStore, "load"> & { readonly findOwner?: (reviewId: ReviewId) => Promise<Result<WorkspaceProfileId | undefined, StorageFailure>>; readonly list?: ReviewStore["list"] },
@@ -262,7 +268,7 @@ export class InsightRunCoordinator {
         await this.recordDiagnostic(input, type, "invalid_result");
         return;
       }
-      await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
+      const persisted = await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
         if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
@@ -270,6 +276,10 @@ export class InsightRunCoordinator {
         }
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
       }, "completion");
+      if (persisted && type === "analysis" && input.completion?._tag === "PublishWhenComplete" && this.completionHandler !== undefined) {
+        const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
+        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, authorizationId: input.completion.authorizationId, event: input.completion.event });
+      }
     } catch (cause: unknown) {
       await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));
     } finally {
@@ -321,10 +331,11 @@ export class InsightRunCoordinator {
     at: IsoTimestamp,
     operation: (record: InsightRecord<unknown>) => Result<InsightRecord<unknown>, "superseded">,
     detail: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: at, operation });
-      if (changed._tag === "ok" || changed.error === "superseded") return;
+      if (changed._tag === "ok") return true;
+      if (changed.error === "superseded") return false;
     } catch {
       // Fall through to orphan recovery and diagnostic reporting.
     }
@@ -332,6 +343,7 @@ export class InsightRunCoordinator {
     const recovered = await this.recover({ profileId: input.profileId, reviewId: input.reviewId, type });
     if (recovered._tag === "err") await this.recordDiagnostic(input, type, `${detail}_recovery_failed`);
     await this.recordDiagnostic(input, type, `${detail}_persist_failed`);
+    return false;
   }
 
   private async revokeAuthorization(input: InsightInvocationInput, reason: "updates_available" | "analysis_failed" | "analysis_cancelled" | "validation_failed"): Promise<void> {

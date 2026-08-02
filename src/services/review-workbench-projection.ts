@@ -165,6 +165,7 @@ export class ReviewWorkbenchProjectionService {
       comments: { _tag: "ok", value: input.snapshot.comments },
       commits: input.snapshot.commits,
       checks: { _tag: "ok", value: input.snapshot.checks },
+      publishedFeedback: input.snapshot.publishedFeedback === undefined ? ok({ reviews: [], comments: [] } as GitHubPublishedFeedback) : ok(input.snapshot.publishedFeedback),
     }, "represented", input.refreshedAt, input.updatesAvailable === true);
   }
 

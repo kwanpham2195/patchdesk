@@ -30,6 +30,7 @@ import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
+import { AnalysisCompletionService } from "../services/analysis-completion-service";
 import {
   StorageManagementService,
   type TrashMover,
@@ -163,7 +164,7 @@ export type LocalApiConfiguration = {
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned durable Review Insight lifecycle seam. */
-  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress">>;
+  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "configureCompletion">>;
   readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent" | "previewMergeCurrent" | "previewReplaceCurrent" | "mergeCurrent" | "replaceCurrent" | "addFindingCurrent">;
 };
 
@@ -256,6 +257,8 @@ export async function startLocalApiServer(
     configuration.origins ?? new WorkspaceOriginFinder(commands),
     paths,
   );
+  const publicationAuthorizations = new PublicationAuthorizationStore(paths);
+  const analysisCompletion = new AnalysisCompletionService(publicationAuthorizations);
   const writer =
     configuration.reviewWriter ??
     (isGitHubReviewWriter(github) ? github : undefined);
@@ -273,11 +276,11 @@ export async function startLocalApiServer(
             ...(writer.setReviewThreadState === undefined ? {} : { setReviewThreadState: writer.setReviewThreadState.bind(writer) }),
           },
           () => new Date().toISOString() as never,
+          analysisCompletion,
         );
   const reviews = new ReviewStore(paths);
   const migration = new UnifiedReviewMigration(sessions, reviews);
   const insights = new InsightStore(paths);
-  const publicationAuthorizations = new PublicationAuthorizationStore(paths);
   const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
@@ -285,6 +288,17 @@ export async function startLocalApiServer(
   );
   const remoteReviews = new ReviewRemoteStore(paths, reviews);
   const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights, reviews, remote: remoteReviews });
+  if (configuration.insights?.configureCompletion !== undefined && reviewWrites !== undefined && analysisDrafts !== undefined) {
+    configuration.insights.configureCompletion(async (input) => {
+      const seeded = await analysisDrafts.seedCurrent({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: input.analysisRunId, expectedRevision: input.expectedDraftRevision, now: new Date().toISOString() as never });
+      if (seeded._tag === "err") {
+        await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.authorizationId as never, reason: seeded.error.reason === "draft_not_empty" ? "draft_not_empty" : "needs_attention" });
+        return;
+      }
+      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.authorizationId, event: input.event });
+      if (published._tag === "err") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.authorizationId as never, reason: "needs_attention" });
+    });
+  }
   const publicationPreviews = new PublicationPreviewService(profiles, sessions, github);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,

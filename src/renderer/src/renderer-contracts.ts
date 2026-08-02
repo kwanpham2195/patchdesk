@@ -465,6 +465,8 @@ const publishedFeedbackSchema = v.strictObject({
     ...githubCommentSchema.entries,
     reviewId: v.optional(v.pipe(v.string(), v.minLength(1))), canEdit: v.boolean(), canDelete: v.boolean(),
   })),
+  complete: v.optional(v.boolean()),
+  incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
 });
 const githubCommentsSchema = v.strictObject({
   threads: v.array(githubThreadSchema),

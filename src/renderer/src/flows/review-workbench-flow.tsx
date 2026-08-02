@@ -10,6 +10,7 @@ import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { ReviewWorkbench } from "../components/review-workbench";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import { ReviewBatchPanel, type ReviewBatchPanelActions } from "../components/review-batch-panel";
+import { PublishedFeedbackPanel } from "../components/published-feedback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
@@ -133,7 +134,7 @@ export function ReviewWorkbenchFlow({
         }}
         slots={{
           insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} />,
-          publishedFeedback: <PublishedFeedbackSlot workbench={workbench} />,
+          publishedFeedback: <PublishedFeedbackSlot workbench={workbench} onRefresh={refresh} />,
           mergeAction: null,
           draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} />,
         }}
@@ -385,9 +386,25 @@ function insightLiveStatus(analysis: string, walkthrough: string): string {
   return active.length === 0 ? "" : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
 }
 
-function PublishedFeedbackSlot({ workbench }: { readonly workbench: WorkbenchResponse }): React.JSX.Element | null {
-  const count = workbench.publishedFeedback.reviews.length + workbench.publishedFeedback.comments.length;
-  return count === 0 ? null : <p className="border-t px-4 py-2 text-sm text-muted-foreground">Published feedback · {count}</p>;
+function PublishedFeedbackSlot({ workbench, onRefresh }: { readonly workbench: WorkbenchResponse; readonly onRefresh: () => Promise<void> }): React.JSX.Element | null {
+  return <PublishedFeedbackPanel
+    feedback={workbench.publishedFeedback}
+    freshness={workbench.revision.freshness}
+    actions={{
+      editComment: async (commentId, body) => {
+        await requestJson("/v1/reviews/published-comments/edit", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, commentId, body } });
+        await onRefresh();
+      },
+      deleteComment: async (commentId) => {
+        await requestJson("/v1/reviews/published-comments/delete", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, commentId, confirmation: true } });
+        await onRefresh();
+      },
+      dismissReview: async (publishedReviewId, message) => {
+        await requestJson("/v1/reviews/published-reviews/dismiss", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, publishedReviewId, message, confirmation: true } });
+        await onRefresh();
+      },
+    }}
+  />;
 }
 
 function DraftSlot({

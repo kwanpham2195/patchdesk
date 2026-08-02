@@ -81,6 +81,8 @@ export type PublishedReviewComment = GitHubComment & {
 export type GitHubPublishedFeedback = {
   readonly reviews: ReadonlyArray<PublishedReview>;
   readonly comments: ReadonlyArray<PublishedReviewComment>;
+  readonly complete?: boolean;
+  readonly incompleteReason?: "pagination" | "unavailable";
 };
 
 export type PullRequestSnapshot = {

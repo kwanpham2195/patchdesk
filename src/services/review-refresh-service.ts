@@ -28,7 +28,7 @@ export type ReviewRefreshDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
   readonly sessions: Pick<ReviewSessionStore, "load" | "save">;
   readonly remote: Pick<ReviewRemoteStore, "load" | "saveCandidate">;
-  readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestCommits" | "getPullRequestChecks" | "getMergePolicy"> & Partial<Pick<GitHubReader, "getMergeOutcome">>;
+  readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestCommits" | "getPullRequestChecks" | "getMergePolicy"> & Partial<Pick<GitHubReader, "getMergeOutcome" | "getPullRequestPublishedFeedback">>;
   readonly preparation: Pick<ReviewSessionPreparation, "prepare">;
   readonly now: () => IsoTimestamp;
   readonly publicationAuthorizations?: Pick<PublicationAuthorizationStore, "load" | "save">;
@@ -115,17 +115,18 @@ export class ReviewRefreshService {
       const pullRequest = ref(review);
       const current = await this.dependencies.github.getPullRequest({ profile, pr: pullRequest });
       if (current._tag === "err") return err({ reason: "github_read" });
-      const [comments, commits, checks, mergePolicy] = await Promise.all([
+      const [comments, commits, checks, mergePolicy, publishedFeedback] = await Promise.all([
         this.dependencies.github.getPullRequestComments({ profile, pr: pullRequest }),
         this.dependencies.github.getPullRequestCommits({ profile, pr: pullRequest }),
         this.dependencies.github.getPullRequestChecks({ profile, pr: pullRequest, headSha: current.value.headSha }),
         this.dependencies.github.getMergePolicy({ profile, pr: pullRequest, expectedHeadSha: current.value.headSha }),
+        this.dependencies.github.getPullRequestPublishedFeedback === undefined ? Promise.resolve(ok(undefined)) : this.dependencies.github.getPullRequestPublishedFeedback({ profile, pr: pullRequest }),
       ]);
-      if (comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || mergePolicy._tag === "err") return err({ reason: "github_read" });
+      if (comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || mergePolicy._tag === "err" || publishedFeedback._tag === "err") return err({ reason: "github_read" });
       const verified = await this.dependencies.github.getPullRequest({ profile, pr: pullRequest });
       if (verified._tag === "err") return err({ reason: "github_read" });
       if (verified.value.headSha !== current.value.headSha) return err({ reason: "head_changed" });
-      const candidate: ReviewRemoteSnapshot = { schemaVersion: 1, pullRequest: current.value, comments: comments.value, commits: commits.value, checks: checks.value, mergePolicy: mergePolicy.value };
+      const candidate: ReviewRemoteSnapshot = { schemaVersion: 1, pullRequest: current.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), mergePolicy: mergePolicy.value };
       const savedCandidate = await this.dependencies.remote.saveCandidate({ profileId: input.profileId, reviewId: input.reviewId, snapshot: candidate });
       if (savedCandidate._tag === "err") return err({ reason: "storage" });
       let sessionId = review.currentSessionId;

@@ -75,6 +75,19 @@ describe("InsightRunCoordinator", () => {
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
+  it("invokes the configured completion handler after a successful authorized Analysis", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      const authorizationId = must(parsePublicationAuthorizationId("publication-analysis-2"));
+      let completion: unknown;
+      fixtureValue.coordinator.configureCompletion(async (input) => { completion = input; });
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium", completion: { _tag: "PublishWhenComplete", event: "COMMENT", authorizationId } });
+      if (started._tag === "err") throw new Error("expected run");
+      await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+      expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, analysisRunId: started.value.runId, authorizationId, event: "COMMENT" });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
   it("starts Analysis from session-owned prepared artifacts without a Review attempt", async () => {
     const capture: { value?: Parameters<InsightInvoker["invoke"]>[0] } = {};
     const fixtureValue = await fixture({ analysis: successfulAnalysis(capture), walkthrough: successfulWalkthrough });
