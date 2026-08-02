@@ -846,7 +846,8 @@ function insightResultResponse(
 ): Response {
   if (result._tag === "ok") return context.json(result.value, successStatus);
   const status = result.error === "invalid_request" || result.error === "model_unavailable" ? 400
-    : result.error === "not_found" ? 404
+    : result.error === "ownership_mismatch" ? 403
+      : result.error === "not_found" ? 404
       : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" ? 409
         : 503;
   return context.json({ error: result.error }, status);

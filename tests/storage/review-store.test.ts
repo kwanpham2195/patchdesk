@@ -123,6 +123,14 @@ describe("ReviewStore", () => {
     });
   });
 
+  it("reports an existing Review owner without crossing the load boundary", async () => {
+    const { store } = await storeFixture();
+    const review = makeReview();
+    await expect(store.save(review)).resolves.toMatchObject({ _tag: "ok" });
+    await expect(store.findOwner(review.id)).resolves.toEqual({ _tag: "ok", value: profileId });
+    await expect(store.findOwner(createReviewId({ ...review.identity, repo: anotherRepo }))).resolves.toEqual({ _tag: "ok", value: undefined });
+  });
+
   it("rejects a review whose identity does not match its destination", async () => {
     const { store } = await storeFixture();
     const review = makeReview();

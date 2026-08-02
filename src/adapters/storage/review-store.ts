@@ -5,7 +5,7 @@ import type {
   ReviewId,
   WorkspaceProfileId,
 } from "../../domain/ids";
-import { parseReviewId } from "../../domain/ids";
+import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
 import { parseReview, type Review } from "../../domain/review";
 import {
@@ -84,6 +84,26 @@ export class ReviewStore {
         value,
       );
     });
+  }
+
+  async findOwner(
+    reviewId: ReviewId,
+  ): Promise<Result<WorkspaceProfileId | undefined, StorageFailure>> {
+    let profileEntries: ReadonlyArray<string>;
+    try {
+      profileEntries = await readdir(this.paths.dataProfilesDirectory());
+    } catch (cause: unknown) {
+      if (isNotFound(cause)) return ok(undefined);
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+    for (const entry of profileEntries) {
+      const profileId = parseWorkspaceProfileId(entry);
+      if (profileId._tag === "err") continue;
+      const review = await this.load(profileId.value, reviewId);
+      if (review._tag === "ok") return ok(profileId.value);
+      if (review.error.reason !== "not_found") return review;
+    }
+    return ok(undefined);
   }
 
   async list(

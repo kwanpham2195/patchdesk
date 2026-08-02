@@ -482,6 +482,18 @@ const workbenchProjectionSchema = v.strictObject({
   draft: v.optional(reviewBatchSchema), publishedFeedback: publishedFeedbackSchema, comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
+
+const insightRunResponseSchema = v.strictObject({
+  runId: v.pipe(v.string(), v.minLength(1)),
+  type: v.picklist(["analysis", "walkthrough"]),
+  status: v.picklist(["queued", "running", "cancelling", "completed", "failed", "cancelled"]),
+});
+export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
+export function parseInsightRunResponse(input: unknown): InsightRunResponse | undefined {
+  const parsed = v.safeParse(insightRunResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 /** Reject malformed local API review projections before they influence renderer state. */
 export function parseWorkbenchResponse(input: unknown): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);

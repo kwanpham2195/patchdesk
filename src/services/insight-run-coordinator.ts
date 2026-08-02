@@ -4,6 +4,7 @@ import { parseContentHash, parseInsightRunId, parseIsoTimestamp, type ContentHas
 import type { ReviewScope } from "../domain/review-comparison";
 import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRevision, type InsightType } from "../domain/insight-record";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { contentHash } from "./review-artifact-hash";
@@ -13,7 +14,7 @@ export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; r
 export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>> };
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
-export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active";
+export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active";
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
@@ -21,7 +22,7 @@ export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
 
   constructor(
-    private readonly reviews: Pick<ReviewStore, "load">,
+    private readonly reviews: Pick<ReviewStore, "load"> & { readonly findOwner?: (reviewId: ReviewId) => Promise<Result<WorkspaceProfileId | undefined, StorageFailure>> },
     private readonly sessions: Pick<ReviewSessionStore, "load" | "loadAttempt">,
     private readonly insights: InsightStore,
     private readonly paths: PatchdeskPaths,
@@ -32,7 +33,13 @@ export class InsightRunCoordinator {
 
   async start(input: InsightCoordinatorInput): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const review = await this.reviews.load(input.profileId, input.reviewId);
-    if (review._tag === "err") return err(review.error.reason === "not_found" ? "not_found" : "storage_unavailable");
+    if (review._tag === "err") {
+      if (review.error.reason !== "not_found") return err("storage_unavailable");
+      const owner = await this.reviews.findOwner?.(input.reviewId);
+      if (owner?._tag === "err") return err("storage_unavailable");
+      if (owner?.value !== undefined && owner.value !== input.profileId) return err("ownership_mismatch");
+      return err("not_found");
+    }
     if (review.value.status._tag === "Terminal") return err("terminal_review");
     const models = await this.catalog.get();
     if (models._tag === "err") return err("catalog_unavailable");
@@ -70,6 +77,8 @@ export class InsightRunCoordinator {
   }
 
   async cancel(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly runId: InsightRunId }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
     const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (record) => requestInsightCancellation(record, input.runId, timestamp.value) });
@@ -95,12 +104,23 @@ export class InsightRunCoordinator {
   }
 
   async observe(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly runId: InsightRunId }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
     const record = await this.insights.load(input.profileId, input.reviewId, input.type);
     if (record._tag === "err") return err(record.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     if (record.value.activeRun?.id === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.activeRun.status });
     if (isRetainedRun(record.value.retained, input.runId)) return ok({ runId: input.runId, type: input.type, status: "completed" });
     if (record.value.replacementFailure?.runId === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.replacementFailure.reason === "cancelled" ? "cancelled" : "failed" });
     return err("not_active");
+  }
+
+  private async ensureOwned(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<void, InsightCoordinatorFailure>> {
+    const review = await this.reviews.load(profileId, reviewId);
+    if (review._tag === "ok") return ok(undefined);
+    if (review.error.reason !== "not_found") return err("storage_unavailable");
+    const owner = await this.reviews.findOwner?.(reviewId);
+    if (owner?._tag === "err") return err("storage_unavailable");
+    return owner?.value !== undefined && owner.value !== profileId ? err("ownership_mismatch") : err("not_found");
   }
 
   private async execute(input: InsightInvocationInput, type: InsightType, runId: InsightRunId, startedHash: ContentHash, controller: AbortController): Promise<void> {

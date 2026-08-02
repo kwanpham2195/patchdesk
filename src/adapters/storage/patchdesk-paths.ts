@@ -58,6 +58,10 @@ export class PatchdeskPaths {
     return join(this.configDirectory(), "profiles", `${profileId}.json`);
   }
 
+  dataProfilesDirectory(): string {
+    return join(this.dataDirectory(), "profiles");
+  }
+
   sessionDirectory(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
