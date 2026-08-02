@@ -47,6 +47,7 @@ export function ReviewWorkbenchFlow({
   void onNavigate;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
+  const [autoOpenPublication, setAutoOpenPublication] = useState(false);
   const detectUpdates = useCallback(async (): Promise<void> => {
     if (workbench.review.status !== "open") return;
     try {
@@ -134,10 +135,10 @@ export function ReviewWorkbenchFlow({
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{
-          insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} />,
+          insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} onAnalysisCompletion={() => setAutoOpenPublication(true)} />,
           publishedFeedback: <PublishedFeedbackSlot workbench={workbench} onRefresh={refresh} />,
           mergeAction: null,
-          draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} />,
+          draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} autoOpenPublication={autoOpenPublication} onAutoOpenPublicationConsumed={() => setAutoOpenPublication(false)} />,
         }}
       />
       {refreshError ? (
@@ -156,15 +157,17 @@ function InsightsSlot({
   workbench,
   onWorkbenchReplace,
   onWorkbenchPatch,
+  onAnalysisCompletion,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly onAnalysisCompletion: () => void;
 }): React.JSX.Element {
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
-  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft">("none");
+  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft" | "OpenPreviewWhenComplete">("none");
   const [catalogError, setCatalogError] = useState(false);
   const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
   const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
@@ -177,7 +180,7 @@ function InsightsSlot({
   const onInsightPatch = useCallback((type: "analysis" | "walkthrough", projection: WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"]): void => {
     onWorkbenchPatch({ insights: { [type]: projection } });
   }, [onWorkbenchPatch]);
-  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", onWorkbenchReplace, onInsightPatch });
+  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", onWorkbenchReplace, onInsightPatch, onCompleted: () => { if (analysisCompletion === "OpenPreviewWhenComplete") onAnalysisCompletion(); } });
   const walkthroughRun = useInsightRun({ profileId, reviewId, type: "walkthrough", onWorkbenchReplace, onInsightPatch });
 
   useEffect(() => {
@@ -285,6 +288,7 @@ function InsightsSlot({
             <SelectContent>
               <SelectItem value="none">Keep result only</SelectItem>
               <SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem>
+              <SelectItem value="OpenPreviewWhenComplete">Open preview when complete</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -419,9 +423,13 @@ function PublishedFeedbackSlot({ workbench, onRefresh }: { readonly workbench: W
 function DraftSlot({
   workbench,
   onWorkbenchPatch,
+  autoOpenPublication,
+  onAutoOpenPublicationConsumed,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly autoOpenPublication: boolean;
+  readonly onAutoOpenPublicationConsumed: () => void;
 }): React.JSX.Element | null {
   if (workbench.draft === undefined) return null;
   const batch = parseReviewBatch(workbench.draft);
@@ -485,6 +493,8 @@ function DraftSlot({
     writeBlocked={workbench.revision.freshness !== "fresh"}
     actions={actions}
     {...(publication === undefined ? {} : { publication })}
+  autoOpenPublication={autoOpenPublication}
+  onAutoOpenPublicationConsumed={onAutoOpenPublicationConsumed}
   />;
 }
 

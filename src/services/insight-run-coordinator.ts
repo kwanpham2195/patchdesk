@@ -268,7 +268,11 @@ export class InsightRunCoordinator {
         await this.recordDiagnostic(input, type, "invalid_result");
         return;
       }
-      const persisted = await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
+      if (type === "analysis" && input.completion !== undefined && this.completionHandler !== undefined) {
+        const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
+        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, completion: input.completion });
+      }
+      await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
         if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
@@ -276,10 +280,6 @@ export class InsightRunCoordinator {
         }
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
       }, "completion");
-      if (persisted && type === "analysis" && input.completion !== undefined && this.completionHandler !== undefined) {
-        const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
-        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, completion: input.completion });
-      }
     } catch (cause: unknown) {
       await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));
     } finally {

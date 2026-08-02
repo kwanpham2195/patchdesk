@@ -23,8 +23,9 @@ export function useInsightRun(input: {
   readonly type: InsightRunType;
   readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
   readonly onInsightPatch?: (type: InsightRunType, projection: WorkbenchResponse["insights"][InsightRunType]) => void;
+  readonly onCompleted?: () => void;
 }): InsightRunController {
-  const { profileId, reviewId, type, onWorkbenchReplace, onInsightPatch } = input;
+  const { profileId, reviewId, type, onWorkbenchReplace, onInsightPatch, onCompleted } = input;
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
@@ -33,8 +34,10 @@ export function useInsightRun(input: {
   const startingRef = useRef(false);
   const onWorkbenchReplaceRef = useRef(onWorkbenchReplace);
   const onInsightPatchRef = useRef(onInsightPatch);
+  const onCompletedRef = useRef(onCompleted);
   onWorkbenchReplaceRef.current = onWorkbenchReplace;
   onInsightPatchRef.current = onInsightPatch;
+  onCompletedRef.current = onCompleted;
 
   const run = useCallback((model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
@@ -98,6 +101,7 @@ export function useInsightRun(input: {
               onWorkbenchReplaceRef.current?.(workbench);
             }
           }
+          onCompletedRef.current?.();
           activeRunRef.current = undefined;
           setRunId(undefined);
           return;

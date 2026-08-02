@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { PublicationPreviewResponse } from "../renderer-contracts";
 import { Button } from "./ui/button";
@@ -9,11 +9,15 @@ export function PublicationPreviewDialog({
   onPreview,
   onConfirm,
   disabled,
+  autoOpen = false,
+  onAutoOpenConsumed,
 }: {
   readonly preview?: PublicationPreviewResponse;
   readonly onPreview: () => Promise<PublicationPreviewResponse>;
   readonly onConfirm: () => Promise<void>;
   readonly disabled?: boolean;
+  readonly autoOpen?: boolean;
+  readonly onAutoOpenConsumed?: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [loadedPreview, setLoadedPreview] = useState<PublicationPreviewResponse>();
@@ -24,6 +28,12 @@ export function PublicationPreviewDialog({
     setError(false);
     try { setLoadedPreview(await onPreview()); setOpen(true); } catch { setError(true); } finally { setLoading(false); }
   };
+  useEffect(() => {
+    if (!autoOpen || disabled === true) return;
+    onAutoOpenConsumed?.();
+    void openPreview();
+  // The caller toggles autoOpen after this one-shot request.
+  }, [autoOpen, disabled]);
   const confirm = async (): Promise<void> => {
     setLoading(true);
     setError(false);
