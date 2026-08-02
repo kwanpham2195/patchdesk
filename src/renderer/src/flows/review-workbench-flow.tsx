@@ -164,6 +164,7 @@ function InsightsSlot({
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft" | "OpenPreviewWhenComplete">("none");
   const [catalogError, setCatalogError] = useState(false);
   const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
   const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
@@ -279,6 +280,14 @@ function InsightsSlot({
               <SelectItem value="high">High</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={analysisCompletion} onValueChange={(value) => setAnalysisCompletion(value as typeof analysisCompletion)}>
+            <SelectTrigger size="sm" aria-label="Analysis completion"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Keep result only</SelectItem>
+              <SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem>
+              <SelectItem value="OpenPreviewWhenComplete">Seed and open preview</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
       {catalogError ? <p role="alert" className="text-sm text-destructive">Insight models are unavailable.</p> : null}
@@ -290,7 +299,7 @@ function InsightsSlot({
           projection={workbench.insights.analysis}
           runStatus={analysisRun.status}
           busy={analysisRun.busy}
-          onRun={() => { if (model !== null) analysisRun.run(model, reasoning); }}
+          onRun={() => { if (model !== null) analysisRun.run(model, reasoning, analysisCompletion === "none" ? undefined : { _tag: analysisCompletion }); }}
           onCancel={analysisRun.cancel}
           disabled={!runEnabled}
           {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}

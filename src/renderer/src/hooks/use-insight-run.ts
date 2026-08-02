@@ -4,6 +4,7 @@ import { requestJson } from "../api-client";
 import { parseInsightRunResponse, parseWorkbenchResponse, type InsightRunResponse, type WorkbenchResponse } from "../renderer-contracts";
 
 export type InsightRunType = "analysis" | "walkthrough";
+export type InsightCompletionAction = { readonly _tag: "SaveAsReviewDraft" } | { readonly _tag: "OpenPreviewWhenComplete" } | { readonly _tag: "PublishWhenComplete"; readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES"; readonly authorizationId: string };
 
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
 
@@ -12,7 +13,7 @@ export type InsightRunController = {
   readonly runId?: string;
   readonly error: boolean;
   readonly busy: boolean;
-  readonly run: (model: string, reasoning: "low" | "medium" | "high") => void;
+  readonly run: (model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction) => void;
   readonly cancel: () => void;
 };
 
@@ -35,14 +36,14 @@ export function useInsightRun(input: {
   onWorkbenchReplaceRef.current = onWorkbenchReplace;
   onInsightPatchRef.current = onInsightPatch;
 
-  const run = useCallback((model: string, reasoning: "low" | "medium" | "high"): void => {
+  const run = useCallback((model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
     startingRef.current = true;
     setStarting(true);
     setError(false);
     void requestJson(`/v1/reviews/insights/${type}/run`, {
       method: "POST",
-      body: { profileId, reviewId, type, model, reasoning },
+      body: { profileId, reviewId, type, model, reasoning, ...(completion === undefined ? {} : { completion }) },
     }).then((value) => {
       const parsed = parseInsightRunResponse(value);
       if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight run response");

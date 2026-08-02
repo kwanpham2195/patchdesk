@@ -24,7 +24,7 @@ export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { 
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
 export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
-export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly authorizationId: string; readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES" }) => Promise<void>;
+export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly completion: AnalysisCompletionAction }) => Promise<void>;
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
@@ -276,9 +276,9 @@ export class InsightRunCoordinator {
         }
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
       }, "completion");
-      if (persisted && type === "analysis" && input.completion?._tag === "PublishWhenComplete" && this.completionHandler !== undefined) {
+      if (persisted && type === "analysis" && input.completion !== undefined && this.completionHandler !== undefined) {
         const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
-        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, authorizationId: input.completion.authorizationId, event: input.completion.event });
+        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, completion: input.completion });
       }
     } catch (cause: unknown) {
       await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));

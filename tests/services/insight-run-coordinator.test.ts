@@ -85,7 +85,21 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
       for (let attempt = 0; attempt < 100 && completion === undefined; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, analysisRunId: started.value.runId, authorizationId, event: "COMMENT" });
+      expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, analysisRunId: started.value.runId, completion: { _tag: "PublishWhenComplete", authorizationId, event: "COMMENT" } });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("invokes the configured completion handler for explicit draft seeding", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      let completion: unknown;
+      fixtureValue.coordinator.configureCompletion(async (input) => { completion = input; });
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium", completion: { _tag: "SaveAsReviewDraft" } });
+      if (started._tag === "err") throw new Error("expected run");
+      await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+      for (let attempt = 0; attempt < 100 && completion === undefined; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(completion).toMatchObject({ completion: { _tag: "SaveAsReviewDraft" } });
+      expect(await fixtureValue.publications.load(profileId, fixtureValue.review.id)).toMatchObject({ _tag: "err", error: { reason: "not_found" } });
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 

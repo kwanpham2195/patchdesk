@@ -292,11 +292,12 @@ export async function startLocalApiServer(
     configuration.insights.configureCompletion(async (input) => {
       const seeded = await analysisDrafts.seedCurrent({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: input.analysisRunId, expectedRevision: input.expectedDraftRevision, now: new Date().toISOString() as never });
       if (seeded._tag === "err") {
-        await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.authorizationId as never, reason: seeded.error.reason === "draft_not_empty" ? "draft_not_empty" : "needs_attention" });
+        if (input.completion._tag === "PublishWhenComplete") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: seeded.error.reason === "draft_not_empty" ? "draft_not_empty" : "needs_attention" });
         return;
       }
-      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.authorizationId, event: input.event });
-      if (published._tag === "err") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.authorizationId as never, reason: "needs_attention" });
+      if (input.completion._tag !== "PublishWhenComplete") return;
+      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.completion.authorizationId, event: input.completion.event });
+      if (published._tag === "err") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: "needs_attention" });
     });
   }
   const publicationPreviews = new PublicationPreviewService(profiles, sessions, github);
