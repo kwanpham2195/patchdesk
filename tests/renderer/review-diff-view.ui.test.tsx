@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
@@ -48,5 +49,40 @@ describe("review diff hydration", () => {
     );
 
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("saves a fingerprinted local comment through the accessible fallback", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    const onSave = vi.fn(async () => undefined);
+    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const parsed = parseReviewDiff(patch);
+    const user = userEvent.setup();
+    try {
+      render(
+        <ReviewDiffView
+          patch={patch}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath="src/a.ts"
+          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          localCommentAuthoring={{ enabled: true, onSave }}
+          virtualized={false}
+        />,
+      );
+      const addition = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
+      const commentButton = addition?.querySelector<HTMLButtonElement>('button[aria-label="Add local comment on src/a.ts"]');
+      if (commentButton === null || commentButton === undefined) throw new Error("Expected a local comment action");
+      await user.click(commentButton);
+      await user.type(screen.getByRole("textbox", { name: "Local comment" }), "Keep this local");
+      await user.click(screen.getByRole("button", { name: "Save local comment" }));
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ path: "src/a.ts", startLine: 1, line: 1, side: "new", fingerprint: expect.objectContaining({ path: "src/a.ts", startLine: 1, line: 1, side: "new" }) }));
+    } finally {
+      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
+    }
   });
 });
