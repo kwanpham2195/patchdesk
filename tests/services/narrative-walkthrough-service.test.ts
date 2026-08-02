@@ -161,7 +161,7 @@ describe("NarrativeWalkthroughService", () => {
       model: "model",
       reasoning: "medium",
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(releaseFirst).toBeTypeOf("function"));
     const second = await service.generate({
       profileId,
       sessionId,
