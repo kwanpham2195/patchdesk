@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { InsightStore } from "../../src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -10,7 +10,7 @@ import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import { InsightRunCoordinator, type InsightInvoker, type InsightRunResponse } from "../../src/services/insight-run-coordinator";
 
 const must = <T>(result: Result<T, unknown>): T => { if (result._tag === "ok") return result.value; throw new Error("fixture"); };
@@ -18,12 +18,21 @@ const profileId = must(parseWorkspaceProfileId("cfw"));
 const headSha = must(parseGitSha("a".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 
+class FailingInsightStore extends InsightStore {
+  failWrites = false;
+
+  override save(...args: Parameters<InsightStore["save"]>): ReturnType<InsightStore["save"]> {
+    if (this.failWrites) return Promise.resolve(err({ _tag: "StorageFailure", operation: "write", reason: "io" }));
+    return super.save(...args);
+  }
+}
+
 async function fixture(invokers: { readonly analysis: InsightInvoker; readonly walkthrough: InsightInvoker }) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-coordinator-"));
   const paths = PatchdeskPaths.forTest(root);
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
-  const insights = new InsightStore(paths);
+  const insights = new FailingInsightStore(paths);
   const sessionSeed = createReviewSession({ key: { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: now });
   const session = { ...sessionSeed, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionSeed.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, sessionSeed.id))), headSha } };
   const review = createReview({ identity: { profileId, host: session.key.host, owner: session.key.owner, repo: session.key.repo, prNumber: session.key.prNumber }, currentSessionId: session.id, headSha, createdAt: now });
@@ -133,9 +142,9 @@ describe("InsightRunCoordinator", () => {
     try {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       if (started._tag === "err") throw new Error("expected run");
-      const failedMutation = vi.spyOn(fixtureValue.insights, "mutate").mockResolvedValue({ _tag: "err", error: { _tag: "StorageFailure", operation: "write", reason: "io" } });
+      fixtureValue.insights.failWrites = true;
       await new Promise((resolve) => setTimeout(resolve, 30));
-      failedMutation.mockRestore();
+      fixtureValue.insights.failWrites = false;
       await expect(fixtureValue.coordinator.recover({ profileId, reviewId: fixtureValue.review.id, type: "analysis" })).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
       const retried = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       expect(retried._tag).toBe("ok");
