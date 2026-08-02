@@ -145,7 +145,8 @@ export class ReviewWorkbenchController {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     if (profileId._tag === "err") return err({ reason: "invalid_input" });
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    if (this.lifecycle !== undefined && reviewId._tag === "err") return err({ reason: "invalid_input" });
+    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    if (this.lifecycle !== undefined && reviewId._tag === "err" && sessionId._tag === "err") return err({ reason: "invalid_input" });
     if (reviewId._tag === "ok" && this.lifecycle !== undefined) {
       const review = await this.lifecycle.reviews.load(profileId.value, reviewId.value);
       if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage" });
@@ -168,7 +169,6 @@ export class ReviewWorkbenchController {
       });
       return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
-    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     if (sessionId._tag === "err") return err({ reason: "invalid_input" });
     const projected = await this.projection.load({ profileId: profileId.value, sessionId: sessionId.value });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;

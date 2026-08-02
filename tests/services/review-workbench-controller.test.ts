@@ -20,7 +20,7 @@ const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha 
 const representedRemote = { headSha: firstSha, pullRequestUpdatedAt: now, snapshotHash: "a".repeat(64) as never, refreshedAt: now };
 
 function projection(): never { return { state: "review" } as never; }
-function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly commits?: unknown }) {
+function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown }) {
   const prepareCalls = options.prepareCalls ?? vi.fn();
   const save = options.save ?? vi.fn(async () => ok(undefined));
   const review = options.existing;
@@ -29,7 +29,8 @@ function controller(options: { readonly existing?: Review; readonly preparedSess
   const remote = { async load() { return ok({} as never); } };
   const loadLocal = options.loadLocal ?? vi.fn(async () => ok(projection()));
   const loadRepresented = options.loadRepresented ?? vi.fn(async () => ok(projection()));
-  const projectionService = { load: async () => ok(projection()), loadLocal, loadRepresented };
+  const load = options.load ?? vi.fn(async () => ok(projection()));
+  const projectionService = { load, loadLocal, loadRepresented };
   const value = new ReviewWorkbenchController(prep as never, projectionService as never, { reviews, remote, refresh: {}, ...(options.commits === undefined ? {} : { commits: options.commits }) } as never);
   return { value, prepareCalls, save };
 }
@@ -81,6 +82,14 @@ describe("ReviewWorkbenchController stable open", () => {
     expect(opened._tag).toBe("ok");
     expect(prepareCalls).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("loads a saved workbench by session identity", async () => {
+    const load = vi.fn(async () => ok(projection()));
+    const { value } = controller({ existing: review(), load });
+    const result = await value.load({ profileId: "cfw", sessionId: firstSessionId });
+    expect(result).toEqual({ _tag: "ok", value: { state: "review" } });
+    expect(load).toHaveBeenCalledWith({ profileId, sessionId: firstSessionId });
   });
 
   it("validates and delegates commit diff requests", async () => {
