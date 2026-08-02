@@ -33,6 +33,7 @@ import {
   type ReviewAnchor,
   type ReviewBatch,
   type ReviewBatchItem,
+  type GitHubReviewEvent,
 } from "../domain/review-batch";
 import {
   discardBatchForRerun,
@@ -84,6 +85,10 @@ const commandSchema = v.variant("_tag", [
     runId: v.string(),
     body: v.string(),
   }),
+  v.strictObject({ _tag: v.literal("UpdateBody"), body: v.string() }),
+  v.strictObject({ _tag: v.literal("SetSuggestedEvent"), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) }),
+  v.strictObject({ _tag: v.literal("SetItemIncluded"), itemId: v.string(), include: v.boolean() }),
+  v.strictObject({ _tag: v.literal("RepairInlineAnchor"), itemId: v.string(), anchor: anchorSchema, fingerprint: fingerprintSchema }),
   v.strictObject({
     _tag: v.literal("EditItem"),
     itemId: v.string(),
@@ -147,6 +152,25 @@ export type ReviewBatchUpdate =
       readonly findingId: FindingId;
       readonly runId: InsightRunId;
       readonly body: string;
+    }
+  | {
+      readonly _tag: "UpdateBody";
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "SetSuggestedEvent";
+      readonly event: GitHubReviewEvent;
+    }
+  | {
+      readonly _tag: "SetItemIncluded";
+      readonly itemId: LocalReviewItemId;
+      readonly include: boolean;
+    }
+  | {
+      readonly _tag: "RepairInlineAnchor";
+      readonly itemId: LocalReviewItemId;
+      readonly anchor: ReviewAnchor;
+      readonly fingerprint: ReviewAnchorFingerprint;
     }
   | {
       readonly _tag: "EditItem";
@@ -315,6 +339,10 @@ export class ReviewBatchController {
       const valid = await this.validateFindingCommand(input.profileId, input.sessionId, loaded.value, input.command);
       if (valid._tag === "err") return valid;
     }
+    if (input.command._tag === "RepairInlineAnchor") {
+      const valid = await validateRepairAnchor(loaded.value, input.command);
+      if (valid._tag === "err") return valid;
+    }
     const transitioned = applyLocalUpdate(
       durable,
       input.command,
@@ -414,6 +442,18 @@ function parseStoredAnalysis(input: unknown): Result<StoredAnalysis, unknown> {
   return ok({ runId: runId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value, value: value.value });
 }
 
+async function validateRepairAnchor(
+  session: ReviewSession,
+  command: Extract<ReviewBatchUpdate, { readonly _tag: "RepairInlineAnchor" }>,
+): Promise<Result<void, ReviewBatchControllerFailure>> {
+  const current = session.batchContent?.items.find((item) => item.id === command.itemId);
+  if (current === undefined || current._tag !== "InlineComment") return err({ reason: "item_not_found" });
+  const patch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+  if (patch === undefined) return err({ reason: "invalid_input" });
+  const expected = fingerprintPatchAnchor(patch, command.anchor);
+  return expected !== undefined && sameFingerprint(expected, command.fingerprint) ? ok(undefined) : err({ reason: "invalid_input" });
+}
+
 function sameFingerprint(left: ReviewAnchorFingerprint, right: ReviewAnchorFingerprint): boolean {
   return left.path === right.path && left.side === right.side && left.startLine === right.startLine && left.line === right.line && sameStrings(left.selectedLines, right.selectedLines) && sameStrings(left.before, right.before) && sameStrings(left.after, right.after);
 }
@@ -458,6 +498,18 @@ function parseCommand(
     return command.acknowledgement
       ? ok({ _tag: "DiscardForRerun", acknowledgement: true })
       : err({ reason: "acknowledgement_required" });
+  }
+  if (command._tag === "UpdateBody") return ok({ _tag: "UpdateBody", body: command.body });
+  if (command._tag === "SetSuggestedEvent") return ok({ _tag: "SetSuggestedEvent", event: command.event });
+  if (command._tag === "SetItemIncluded") {
+    const itemId = parseLocalReviewItemId(command.itemId);
+    return itemId._tag === "err" ? err({ reason: "invalid_input" }) : ok({ _tag: "SetItemIncluded", itemId: itemId.value, include: command.include });
+  }
+  if (command._tag === "RepairInlineAnchor") {
+    const itemId = parseLocalReviewItemId(command.itemId);
+    const path = parseRepoRelativePath(command.anchor.path);
+    const fingerprint = path._tag === "ok" ? parseFingerprint(command.fingerprint, path.value, command.anchor.startLine, command.anchor.line) : err({ reason: "invalid_input" as const });
+    return itemId._tag === "err" || path._tag === "err" || fingerprint._tag === "err" || command.anchor.line < command.anchor.startLine ? err({ reason: "invalid_input" }) : ok({ _tag: "RepairInlineAnchor", itemId: itemId.value, anchor: { path: path.value, startLine: command.anchor.startLine, line: command.anchor.line, side: command.anchor.side }, fingerprint: fingerprint.value });
   }
   if (command._tag === "AddInlineComment") {
     const path = parseRepoRelativePath(command.anchor.path);
@@ -578,7 +630,25 @@ function applyLocalUpdate(
   updatedAt: IsoTimestamp,
 ): Result<ReviewBatch, ReviewBatchControllerFailure> {
   let items: ReadonlyArray<ReviewBatchItem>;
-  if (command._tag === "AddInlineComment") {
+  if (command._tag === "UpdateBody") {
+    const parsed = parseReviewBatch({ ...batch, summaryBody: command.body, updatedAt });
+    return parsed._tag === "ok" ? parsed : err({ reason: "invalid_input" });
+  } else if (command._tag === "SetSuggestedEvent") {
+    const parsed = parseReviewBatch({ ...batch, suggestedEvent: command.event, updatedAt });
+    return parsed._tag === "ok" ? parsed : err({ reason: "invalid_input" });
+  } else if (command._tag === "SetItemIncluded") {
+    if (!batch.items.some((item) => item.id === command.itemId)) return err({ reason: "item_not_found" });
+    items = batch.items.map((item) => item.id === command.itemId ? { ...item, include: command.include } : item);
+  } else if (command._tag === "RepairInlineAnchor") {
+    const current = batch.items.find((item) => item.id === command.itemId);
+    if (current === undefined || current._tag !== "InlineComment") return err({ reason: "item_not_found" });
+    items = batch.items.map((item) => {
+      if (item.id !== command.itemId || item._tag !== "InlineComment") return item;
+      const { attention: _attention, ...withoutAttention } = item;
+      void _attention;
+      return { ...withoutAttention, anchor: command.anchor, fingerprint: command.fingerprint, postability: "postable" as const };
+    });
+  } else if (command._tag === "AddInlineComment") {
     const id = nextItemId("manual-1", batch.items);
     if (id === undefined) {
       return err({ reason: "invalid_input" });

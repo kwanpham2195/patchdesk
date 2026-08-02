@@ -240,7 +240,30 @@ describe("ReviewBatchController", () => {
     }
   });
 
-  it("adds general feedback and converts an inline item without losing identity", async () => {
+  it("updates the draft body, event, and item inclusion through CAS commands", async () => {
+  const value = await fixture();
+  const body = await controller(value.store).update(updateInput(value, { _tag: "UpdateBody", body: "Updated summary" }));
+  expect(body).toMatchObject({ _tag: "ok", value: { batch: { summaryBody: "Updated summary" } } });
+  if (body._tag === "err") return;
+  const event = await controller(value.store).update({ ...updateInput(value, { _tag: "SetSuggestedEvent", event: "COMMENT" }), expectedRevision: body.value.revision });
+  expect(event).toMatchObject({ _tag: "ok", value: { batch: { suggestedEvent: "COMMENT" } } });
+  if (event._tag === "err") return;
+  const included = await controller(value.store).update({ ...updateInput(value, { _tag: "SetItemIncluded", itemId: "finding-a", include: false }), expectedRevision: event.value.revision });
+  expect(included).toMatchObject({ _tag: "ok", value: { batch: { items: [{ id: "finding-a", include: false }] } } });
+});
+
+it("rejects anchor repair when the supplied fingerprint is not exact", async () => {
+  const value = await fixture();
+  const repaired = await controller(value.store).update(updateInput(value, {
+    _tag: "RepairInlineAnchor",
+    itemId: "finding-a",
+    anchor: { path: "src/a.ts", startLine: 8, line: 8, side: "new" },
+    fingerprint: { path: "src/a.ts", side: "new", startLine: 8, line: 8, selectedLines: ["not in the patch"], before: [], after: [] },
+  }));
+  expect(repaired).toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+});
+
+it("adds general feedback and converts an inline item without losing identity", async () => {
     const prepared = await fixture({}, { prepared: true });
     const added = await controller(prepared.store).update(updateInput(prepared, {
       _tag: "AddGeneralComment",
