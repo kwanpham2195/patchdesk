@@ -44,6 +44,7 @@ import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
+import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -101,6 +102,7 @@ const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLengt
 const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
+const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), scope: strictObject({ baseShort: string(), headShort: string(), commitCount: pipe(number(), integer()), fileCount: pipe(number(), integer()), additions: pipe(number(), integer()), deletions: pipe(number(), integer()), changedFiles: array(strictObject({ path: string(), additions: pipe(number(), integer()), deletions: pipe(number(), integer()) })) }) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -146,6 +148,7 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned durable Review Insight lifecycle seam. */
   readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress">>;
+  readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent">;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -262,6 +265,7 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     { reviews, insights },
   );
+  const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights });
   const remoteReviews = new ReviewRemoteStore(paths);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
@@ -635,6 +639,8 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/batch", async (context) =>
     response(context, await reviewBatches.update(await jsonBody(context))),
   );
+  app.post("/v1/reviews/draft/seed-analysis", async (context) => seedAnalysisDraftResponse(context, analysisDrafts, await jsonBody(context)));
+
   app.post("/v1/reviews/complete", async (context) =>
     response(context, await reviewCompletion.complete(await jsonBody(context))),
   );
@@ -892,6 +898,21 @@ async function insightFindingResponse(context: Context, coordinator: LocalApiCon
       ? err("storage_unavailable" as const)
       : await coordinator.addFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value });
   return insightResultResponse(context, result);
+}
+
+async function seedAnalysisDraftResponse(context: Context, service: Pick<AnalysisDraftService, "seedCurrent">, body: unknown): Promise<Response> {
+  const parsed = safeParse(analysisDraftSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const sessionId = parseReviewSessionId(parsed.output.sessionId);
+  const analysisRunId = parseInsightRunId(parsed.output.analysisRunId);
+  if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || analysisRunId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.seedCurrent({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, analysisRunId: analysisRunId.value, scope: parsed.output.scope, now: new Date().toISOString() as never });
+  if (result._tag === "ok") return context.json(result.value);
+  if (result.error.reason === "draft_not_empty") return context.json({ error: result.error.reason, merge: result.error.merge, replacement: result.error.replacement }, 409);
+  const status = result.error.reason === "not_found" ? 404 : result.error.reason === "stale_request" ? 409 : result.error.reason === "invalid_input" ? 400 : 503;
+  return context.json({ error: result.error.reason }, status);
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
