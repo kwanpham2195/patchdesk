@@ -431,6 +431,7 @@ const itemSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("InlineComment"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), source: v.picklist(["finding", "manual"]), findingId: v.optional(v.pipe(v.string(), v.minLength(1))), anchor: anchorSchema, fingerprint: v.optional(fingerprintSchema), body: v.string(), include: v.boolean(), postability: v.picklist(["postable", "already_reported", "invalid_line", "stale_sha", "api_rejected", "needs_attention"]), attention: v.optional(attentionSchema), carriedFrom: v.optional(carriedFromSchema),
   }),
+  v.strictObject({ _tag: v.literal("GeneralComment"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), source: v.picklist(["finding", "manual"]), findingId: v.optional(v.pipe(v.string(), v.minLength(1))), body: v.string(), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
   v.strictObject({ _tag: v.literal("ThreadReply"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), threadId: v.pipe(v.string(), v.minLength(1)), body: v.string(), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
   v.strictObject({ _tag: v.literal("ThreadState"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), threadId: v.pipe(v.string(), v.minLength(1)), action: v.picklist(["resolve", "reopen"]), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
 ]);

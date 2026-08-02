@@ -174,7 +174,7 @@ export function ReviewBatchWriteActions({
 }
 
 function BatchItem({ item, editable, onRemove }: { readonly item: ReviewBatchItem; readonly editable: boolean; readonly onRemove: (id: string) => Promise<void> }): React.JSX.Element {
-  const detail = item._tag === "InlineComment" ? `${item.anchor.path}:${item.anchor.startLine}–${item.anchor.line}` : item._tag === "ThreadReply" ? `Reply to ${item.threadId}` : `${item.action} ${item.threadId}`;
-  const body = item._tag === "InlineComment" || item._tag === "ThreadReply" ? item.body : undefined;
+  const detail = item._tag === "InlineComment" ? `${item.anchor.path}:${item.anchor.startLine}–${item.anchor.line}` : item._tag === "GeneralComment" ? "General feedback" : item._tag === "ThreadReply" ? `Reply to ${item.threadId}` : `${item.action} ${item.threadId}`;
+  const body = item._tag === "InlineComment" || item._tag === "GeneralComment" || item._tag === "ThreadReply" ? item.body : undefined;
   return <li className="rounded-md border p-2 text-sm"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{detail}</p>{item._tag === "InlineComment" && item.postability === "stale_sha" ? <Badge variant="outline">Old location</Badge> : null}</div>{body === undefined ? null : <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{body}</p>}</div>{editable ? <Button size="xs" variant="ghost" onClick={() => void onRemove(item.id)}>Remove</Button> : null}</div></li>;
 }

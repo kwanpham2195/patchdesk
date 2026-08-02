@@ -190,6 +190,22 @@ describe("ReviewBatchController", () => {
     });
   });
 
+  it("adds general feedback and converts an inline item without losing identity", async () => {
+    const prepared = await fixture({}, { prepared: true });
+    const added = await controller(prepared.store).update(updateInput(prepared, {
+      _tag: "AddGeneralComment",
+      body: "Please document the migration boundary.",
+    }));
+    expect(added).toMatchObject({ _tag: "ok", value: { batch: { items: [{ _tag: "GeneralComment", id: "general-1", source: "manual", body: "Please document the migration boundary." }] } } });
+
+    const existing = await fixture();
+    const converted = await controller(existing.store).update(updateInput(existing, {
+      _tag: "ConvertInlineToGeneral",
+      itemId: "finding-a",
+    }));
+    expect(converted).toMatchObject({ _tag: "ok", value: { batch: { items: [{ _tag: "GeneralComment", id: "finding-a", provenance: { _tag: "model" }, findingId: "finding-a", body: "Original A" }] } } });
+  });
+
   it("adds a side-aware manual range and returns the canonical durable batch", async () => {
     const value = await fixture();
     const updated = await controller(value.store).update(

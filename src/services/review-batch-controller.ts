@@ -4,10 +4,12 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import {
   parseGitHubThreadId,
   parseIsoTimestamp,
+  parseFindingId,
   parseLocalReviewItemId,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type FindingId,
   type GitHubThreadId,
   type IsoTimestamp,
   type LocalReviewItemId,
@@ -55,6 +57,15 @@ const commandSchema = v.variant("_tag", [
     body: v.string(),
   }),
   v.strictObject({
+    _tag: v.literal("AddGeneralComment"),
+    findingId: v.optional(v.string()),
+    body: v.string(),
+  }),
+  v.strictObject({
+    _tag: v.literal("ConvertInlineToGeneral"),
+    itemId: v.string(),
+  }),
+  v.strictObject({
     _tag: v.literal("RemoveItem"),
     itemId: v.string(),
   }),
@@ -93,6 +104,15 @@ export type ReviewBatchUpdate =
       readonly _tag: "EditItem";
       readonly itemId: LocalReviewItemId;
       readonly body: string;
+    }
+  | {
+      readonly _tag: "AddGeneralComment";
+      readonly findingId?: FindingId;
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "ConvertInlineToGeneral";
+      readonly itemId: LocalReviewItemId;
     }
   | {
       readonly _tag: "RemoveItem";
@@ -353,6 +373,16 @@ function parseCommand(
       body: command.body,
     });
   }
+  if (command._tag === "AddGeneralComment") {
+    const findingId = command.findingId === undefined ? undefined : parseFindingId(command.findingId);
+    return findingId !== undefined && findingId._tag === "err" || isEmptyBody(command.body)
+      ? err({ reason: "invalid_input" })
+      : ok({ _tag: "AddGeneralComment", ...(findingId === undefined ? {} : { findingId: findingId.value }), body: command.body });
+  }
+  if (command._tag === "ConvertInlineToGeneral") {
+    const itemId = parseLocalReviewItemId(command.itemId);
+    return itemId._tag === "err" ? err({ reason: "invalid_input" }) : ok({ _tag: "ConvertInlineToGeneral", itemId: itemId.value });
+  }
   if (command._tag === "EditItem" || command._tag === "RemoveItem") {
     const itemId = parseLocalReviewItemId(command.itemId);
     if (
@@ -440,6 +470,32 @@ function applyLocalUpdate(
         postability: "postable",
       },
     ];
+  } else if (command._tag === "AddGeneralComment") {
+    const id = nextItemId("general-1", batch.items);
+    if (id === undefined) return err({ reason: "invalid_input" });
+    items = [...batch.items, {
+      _tag: "GeneralComment",
+      id,
+      provenance: { _tag: "human" },
+      source: "manual",
+      ...(command.findingId === undefined ? {} : { findingId: command.findingId }),
+      body: command.body,
+      include: true,
+    }];
+  } else if (command._tag === "ConvertInlineToGeneral") {
+    const current = batch.items.find((item) => item.id === command.itemId);
+    if (current === undefined || current._tag !== "InlineComment") return err({ reason: "item_not_found" });
+    const converted: ReviewBatchItem = {
+      _tag: "GeneralComment",
+      id: current.id,
+      provenance: current.provenance,
+      source: current.source,
+      ...(current.findingId === undefined ? {} : { findingId: current.findingId }),
+      body: current.body,
+      include: current.include,
+      ...(current.carriedFrom === undefined ? {} : { carriedFrom: current.carriedFrom }),
+    };
+    items = batch.items.map((item) => item.id === command.itemId ? converted : item);
   } else if (command._tag === "EditItem") {
     const current = batch.items.find((item) => item.id === command.itemId);
     if (current === undefined) {

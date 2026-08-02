@@ -86,6 +86,16 @@ export type ReviewBatchItem =
       readonly carriedFrom?: ReviewItemCarryForward;
     }
   | {
+      readonly _tag: "GeneralComment";
+      readonly id: LocalReviewItemId;
+      readonly provenance: ReviewItemProvenance;
+      readonly source: "finding" | "manual";
+      readonly findingId?: FindingId;
+      readonly body: string;
+      readonly include: boolean;
+      readonly carriedFrom?: ReviewItemCarryForward;
+    }
+  | {
       readonly _tag: "ThreadReply";
       readonly id: LocalReviewItemId;
       readonly provenance: ReviewItemProvenance;
@@ -287,6 +297,16 @@ const itemSchema = v.variant("_tag", [
     ]),
   }),
   v.strictObject({
+    _tag: v.literal("GeneralComment"),
+    id: localReviewItemIdSchema,
+    provenance: v.optional(provenanceSchema),
+    source: v.picklist(["finding", "manual"]),
+    findingId: v.optional(v.string()),
+    body: v.string(),
+    include: v.boolean(),
+    carriedFrom: v.optional(carriedFromSchema),
+  }),
+  v.strictObject({
     _tag: v.literal("ThreadReply"),
     id: localReviewItemIdSchema,
     provenance: v.optional(provenanceSchema),
@@ -442,6 +462,23 @@ function parseItem(
   const id = parseLocalReviewItemId(item.id);
   if (id._tag === "err") {
     return invalidReviewBatch();
+  }
+
+  if (item._tag === "GeneralComment") {
+    const findingId = item.findingId === undefined ? undefined : parseFindingId(item.findingId);
+    const provenance = parseProvenance(item.provenance, legacyAttemptId, item.source === "finding" ? "model" : "human");
+    const carriedFrom = parseCarryForward(item.carriedFrom);
+    if (findingId !== undefined && findingId._tag === "err" || provenance._tag === "err" || carriedFrom._tag === "err" || (item.source === "finding") !== (findingId !== undefined) || (item.source === "finding") !== (provenance._tag === "ok" && provenance.value._tag === "model")) return invalidReviewBatch();
+    return ok({
+      _tag: "GeneralComment",
+      id: id.value,
+      provenance: provenance.value,
+      source: item.source,
+      ...(findingId === undefined ? {} : { findingId: findingId.value }),
+      body: item.body,
+      include: item.include,
+      ...(carriedFrom.value === undefined ? {} : { carriedFrom: carriedFrom.value }),
+    });
   }
 
   if (item._tag === "ThreadReply" || item._tag === "ThreadState") {
