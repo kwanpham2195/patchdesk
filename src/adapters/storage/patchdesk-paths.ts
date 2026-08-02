@@ -99,6 +99,10 @@ export class PatchdeskPaths {
     return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
   }
 
+  publicationAuthorizationFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
+    return join(this.insightDirectory(profileId, reviewId), "publication.json");
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

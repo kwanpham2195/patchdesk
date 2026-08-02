@@ -15,6 +15,7 @@ import {
   pipe,
   string,
   strictObject,
+  variant,
 } from "valibot";
 
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
@@ -74,7 +75,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok, type Result } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseFindingId, parseInsightRunId, parseIsoTimestamp, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
+import { parseFindingId, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
@@ -99,7 +100,12 @@ const reviewOpenSchema = strictObject({
 const reviewLoadSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
-const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
+const insightCompletionSchema = variant("_tag", [
+  strictObject({ _tag: picklist(["SaveAsReviewDraft"] as const) }),
+  strictObject({ _tag: picklist(["OpenPreviewWhenComplete"] as const) }),
+  strictObject({ _tag: picklist(["PublishWhenComplete"] as const), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), authorizationId: pipe(string(), minLength(1)) }),
+]);
+const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]), completion: optional(insightCompletionSchema) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
@@ -844,7 +850,11 @@ async function insightRunResponse(context: Context, coordinator: LocalApiConfigu
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
   const reviewId = parseReviewId(parsed.output.reviewId);
   if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning });
+  const completion = parsed.output.completion === undefined ? undefined : parsed.output.completion._tag === "PublishWhenComplete"
+    ? (() => { const authorizationId = parsePublicationAuthorizationId(parsed.output.completion.authorizationId); return authorizationId._tag === "err" ? undefined : { ...parsed.output.completion, authorizationId: authorizationId.value } as const; })()
+    : parsed.output.completion;
+  if (parsed.output.completion?._tag === "PublishWhenComplete" && completion === undefined) return context.json({ error: "invalid_input" }, 400);
+  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning, ...(completion === undefined ? {} : { completion }) });
   return insightResultResponse(context, result, 202);
 }
 

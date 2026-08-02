@@ -4,11 +4,13 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { InsightStore } from "../../src/adapters/storage/insight-store";
+import { PublicationAuthorizationStore } from "../../src/adapters/storage/publication-authorization-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { parseAbsolutePath, parseFindingId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { createReview } from "../../src/domain/review";
+import { parsePublicationAuthorizationId } from "../../src/domain/ids";
 import { createReviewSession } from "../../src/domain/review-session";
 import { err, ok, type Result } from "../../src/domain/result";
 import { InsightRunCoordinator, type InsightInvoker, type InsightRunResponse } from "../../src/services/insight-run-coordinator";
@@ -36,6 +38,7 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const insights = new FailingInsightStore(paths);
+  const publications = new PublicationAuthorizationStore(paths);
   const sessionSeed = createReviewSession({ key: { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: now });
   const session = { ...sessionSeed, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionSeed.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, sessionSeed.id))), headSha } };
   const review = createReview({ identity: { profileId, host: session.key.host, owner: session.key.owner, repo: session.key.repo, prNumber: session.key.prNumber }, currentSessionId: session.id, headSha, createdAt: now });
@@ -43,8 +46,8 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   await writeFile(session.patchPath, "diff --git a/src/a.ts b/src/a.ts\n+change\n", "utf8");
   await sessions.save(session);
   await reviews.save(review);
-  const coordinator = new InsightRunCoordinator(reviews, sessions, insights, paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now);
-  return { root, coordinator, review, paths, reviews, sessions, insights };
+  const coordinator = new InsightRunCoordinator(reviews, sessions, insights, paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now, undefined, publications);
+  return { root, coordinator, review, paths, reviews, sessions, insights, publications };
 }
 
 const successfulAnalysis = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } });
@@ -61,6 +64,17 @@ async function eventually(action: () => Promise<Result<InsightRunResponse, unkno
 }
 
 describe("InsightRunCoordinator", () => {
+  it("arms one immutable publication authorization for Publish when complete", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      const authorizationId = must(parsePublicationAuthorizationId("publication-analysis-1"));
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium", completion: { _tag: "PublishWhenComplete", event: "COMMENT", authorizationId } });
+      expect(started).toMatchObject({ _tag: "ok", value: { authorizationId } });
+      expect(await fixtureValue.publications.load(profileId, fixtureValue.review.id)).toMatchObject({ _tag: "ok", value: { id: authorizationId, event: "COMMENT", state: { _tag: "Armed" } } });
+      if (started._tag === "ok") await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
   it("starts Analysis from session-owned prepared artifacts without a Review attempt", async () => {
     const capture: { value?: Parameters<InsightInvoker["invoke"]>[0] } = {};
     const fixtureValue = await fixture({ analysis: successfulAnalysis(capture), walkthrough: successfulWalkthrough });

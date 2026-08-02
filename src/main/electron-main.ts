@@ -35,6 +35,7 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
+import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import { parseAbsolutePath } from "../domain/ids";
 import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
@@ -141,7 +142,7 @@ function createInsightCoordinator(): InsightRunCoordinator {
       return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
     },
   };
-  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough }, undefined, diagnostics);
+  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths));
 }
 
 async function recoverInsights(): Promise<InsightRunCoordinator> {

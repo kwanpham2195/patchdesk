@@ -24,6 +24,7 @@ export type RepoRelativePath = Brand<string, "RepoRelativePath">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
 export type ContentHash = Brand<string, "ContentHash">;
 export type InsightRunId = Brand<string, "InsightRunId">;
+export type PublicationAuthorizationId = Brand<string, "PublicationAuthorizationId">;
 
 export type InvalidDomainValue = {
   readonly _tag: "InvalidDomainValue";
@@ -124,6 +125,12 @@ export function parseGitHubThreadId(
 /** Parse a durable Insight run identifier. */
 export function parseInsightRunId(input: unknown): Result<InsightRunId, InvalidDomainValue> {
   if (typeof input !== "string" || !insightRunIdSyntax.test(input)) return err({ _tag: "InvalidDomainValue", field: "insightRunId" });
+  return ok(brand(input));
+}
+
+/** Parse the opaque identifier for one per-run publication authorization. */
+export function parsePublicationAuthorizationId(input: unknown): Result<PublicationAuthorizationId, InvalidDomainValue> {
+  if (typeof input !== "string" || !/^publication-[a-zA-Z0-9._-]+$/.test(input)) return err({ _tag: "InvalidDomainValue", field: "publicationAuthorizationId" });
   return ok(brand(input));
 }
 
