@@ -83,9 +83,21 @@ describe("InsightRecord", () => {
     if (progress._tag === "err") return;
     const activeRun = started.value.activeRun;
     if (activeRun === undefined) throw new Error("expected active run");
-    const next = beginInsightRun(progress.value, { ...activeRun, id: must(parseInsightRunId(`insight-walkthrough-2-${headSha.slice(0, 12)}-${reviewId}`)), startedAt: later });
-    if (next._tag === "err") throw new Error("expected replacement run");
-    expect(next.value.walkthroughProgress).toBeUndefined();
+    const replacementId = must(parseInsightRunId(`insight-walkthrough-2-${headSha.slice(0, 12)}-${reviewId}`));
+    const next = beginInsightRun(progress.value, { ...activeRun, id: replacementId, startedAt: later });
+    if (next._tag === "err" || next.value.activeRun === undefined) throw new Error("expected replacement run");
+    expect(next.value.walkthroughProgress).toMatchObject({ reviewedSectionIds: ["section-a"], supportReviewed: true });
+    const failed = failInsightRun(next.value, replacementId, { runId: replacementId, reason: "failed", retryable: true, failedAt: later }, later);
+    if (failed._tag === "err") throw new Error("expected failed replacement");
+    expect(failed.value.walkthroughProgress).toMatchObject({ reviewedSectionIds: ["section-a"], supportReviewed: true });
+    const retry = beginInsightRun(failed.value, { ...activeRun, id: must(parseInsightRunId(`insight-walkthrough-3-${headSha.slice(0, 12)}-${reviewId}`)), startedAt: later });
+    if (retry._tag === "err" || retry.value.activeRun === undefined) throw new Error("expected retry run");
+    const cancelled = requestInsightCancellation(retry.value, retry.value.activeRun.id, later);
+    if (cancelled._tag === "err") throw new Error("expected cancellation");
+    expect(cancelled.value.walkthroughProgress).toMatchObject({ reviewedSectionIds: ["section-a"], supportReviewed: true });
+    const completed = completeInsightRun(retry.value, retry.value.activeRun.id, { runId: retry.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: {} }, later);
+    if (completed._tag === "err") throw new Error("expected successful replacement");
+    expect(completed.value.walkthroughProgress).toBeUndefined();
   });
 
   it("accepts only the active token and replaces retained output on completion", () => {

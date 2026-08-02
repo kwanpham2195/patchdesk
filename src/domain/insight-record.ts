@@ -18,8 +18,7 @@ export function beginInsightRun(record: InsightRecord<unknown>, input: { readonl
   if (record.activeRun !== undefined) return err("already_running");
   const { replacementFailure: _replacementFailure, ...withoutFailure } = record;
   void _replacementFailure;
-  const next = record.type === "walkthrough" ? withoutWalkthroughProgress(withoutFailure) : withoutFailure;
-  return ok({ ...next, nextToken: record.nextToken + 1, activeRun: { ...input, type: record.type, token: record.nextToken, status: "queued" }, updatedAt: input.startedAt });
+  return ok({ ...withoutFailure, nextToken: record.nextToken + 1, activeRun: { ...input, type: record.type, token: record.nextToken, status: "queued" }, updatedAt: input.startedAt });
 }
 
 function withoutWalkthroughProgress(record: InsightRecord<unknown>): Omit<InsightRecord<unknown>, "walkthroughProgress"> {
@@ -39,7 +38,8 @@ export function completeInsightRun<T>(record: InsightRecord<unknown>, runId: Ins
   void _activeRun;
   void _replacementFailure;
   void _dismissals;
-  return ok({ ...withoutActiveRun, retained, updatedAt: at });
+  const next = record.type === "walkthrough" ? withoutWalkthroughProgress(withoutActiveRun) : withoutActiveRun;
+  return ok({ ...next, retained, updatedAt: at });
 }
 
 export function dismissInsightFinding(
