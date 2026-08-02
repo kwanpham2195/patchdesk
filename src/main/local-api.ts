@@ -15,6 +15,7 @@ import {
   pipe,
   string,
   strictObject,
+  union,
   variant,
 } from "valibot";
 
@@ -103,7 +104,10 @@ const reviewOpenSchema = strictObject({
   profileId: pipe(string(), minLength(1)), host: pipe(string(), minLength(1)), owner: pipe(string(), minLength(1)), repo: pipe(string(), minLength(1)), number: pipe(number(), integer(), minValue(1)),
   mode: optional(picklist(["full", "incremental"])), baseSessionId: optional(pipe(string(), minLength(1))), previousSessionId: optional(pipe(string(), minLength(1))),
 });
-const reviewLoadSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
+const reviewLoadSchema = union([
+  strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) }),
+  strictObject({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)) }),
+]);
 const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
 const insightCompletionSchema = variant("_tag", [

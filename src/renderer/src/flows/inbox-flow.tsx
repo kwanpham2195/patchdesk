@@ -148,8 +148,16 @@ export function InboxFlow({
   };
 
   async function openStoredReviewById(profileId: string, reviewId: string, isActive: () => boolean = () => true): Promise<void> {
+    await openStoredReview(profileId, { reviewId }, isActive);
+  }
+
+  async function openStoredReviewBySessionId(profileId: string, sessionId: string): Promise<void> {
+    await openStoredReview(profileId, { sessionId });
+  }
+
+  async function openStoredReview(profileId: string, reference: { readonly reviewId: string } | { readonly sessionId: string }, isActive: () => boolean = () => true): Promise<void> {
     try {
-      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, reviewId } });
+      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, ...reference } });
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined || !isActive()) return;
       onOpenWorkbench(parsed as unknown as WorkbenchPayload);
@@ -175,7 +183,7 @@ export function InboxFlow({
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onOpenReview={(row, mode, initialSection) => void openPullRequest(row.identity, mode, initialSection, row.recommendedAction.kind === "review_updates" ? row.recommendedAction.baseSessionId : undefined)}
-      onOpenSession={(reviewId) => void openStoredReviewById(dashboard.profile.id, reviewId)}
+      onOpenSession={(sessionId) => void openStoredReviewBySessionId(dashboard.profile.id, sessionId)}
     />
   ) : (
     <Pending
