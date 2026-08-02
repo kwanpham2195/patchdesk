@@ -11,7 +11,7 @@ import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoNa
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import { ok, type Result } from "../../src/domain/result";
-import { InsightRunCoordinator, type InsightInvoker } from "../../src/services/insight-run-coordinator";
+import { InsightRunCoordinator, type InsightInvoker, type InsightRunResponse } from "../../src/services/insight-run-coordinator";
 
 const must = <T>(result: Result<T, unknown>): T => { if (result._tag === "ok") return result.value; throw new Error("fixture"); };
 const profileId = must(parseWorkspaceProfileId("cfw"));
@@ -36,6 +36,16 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
 
 const successful = (): InsightInvoker => ({ async invoke() { return ok({ summary: "result" }); } });
 
+async function eventually(action: () => Promise<Result<InsightRunResponse, unknown>>, expected: InsightRunResponse["status"]): Promise<Result<InsightRunResponse, unknown>> {
+  let latest = await action();
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (latest._tag === "ok" && latest.value.status === expected) return latest;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    latest = await action();
+  }
+  return latest;
+}
+
 describe("InsightRunCoordinator", () => {
   it("rejects same-type concurrency but allows Analysis and Walkthrough together", async () => {
     const fixtureValue = await fixture({ analysis: successful(), walkthrough: successful() });
@@ -54,8 +64,8 @@ describe("InsightRunCoordinator", () => {
     try {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "low" });
       if (started._tag === "err") throw new Error("expected run");
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      await expect(fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
+      const observed = await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+      expect(observed).toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
@@ -71,8 +81,7 @@ describe("InsightRunCoordinator", () => {
       await invoked;
       expect(signal).toBeDefined();
       await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelling" } });
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      await expect(fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelled" } });
+      await expect(eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "cancelled")).resolves.toMatchObject({ _tag: "ok", value: { status: "cancelled" } });
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 });
