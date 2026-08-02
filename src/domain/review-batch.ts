@@ -25,6 +25,13 @@ import { err, ok, type Result } from "./result";
 /** The GitHub review verdict submitted after a pending review is ready. */
 export type GitHubReviewEvent = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
 
+/** Safe error returned by an attempted GitHub write. */
+export type GitHubWriteFailure = {
+  readonly _tag: "GitHubWriteFailure";
+  readonly category: "auth" | "rejected" | "unavailable";
+  readonly message: string;
+};
+
 /** Whether an inline comment can currently be sent to GitHub. */
 export type Postability =
   | "postable"

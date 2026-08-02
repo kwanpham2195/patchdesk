@@ -6,6 +6,7 @@ import {
   createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
+  parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -13,9 +14,12 @@ import {
   parseLocalReviewItemId,
   parseIsoTimestamp,
   parsePullRequestNumber,
+  parseRepoRelativePath,
   parseReviewAttemptId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type FindingId,
+  type RepoRelativePath,
   type ReviewAttemptId,
   type ReviewSessionId,
   type WorkspaceProfileId,
@@ -25,11 +29,6 @@ import type {
   ReviewAttempt,
   ReviewAttemptState,
 } from "../../domain/review-attempt";
-import {
-  parseReviewDraft,
-  type ReviewDraft,
-  type ReviewDraftState,
-} from "../../domain/review-draft";
 import {
   parseReviewBatch,
   type ReviewBatch,
@@ -93,6 +92,19 @@ const githubWriteFailureSchema = v.strictObject({
   message: v.pipe(v.string(), v.minLength(1)),
 });
 
+const legacyDraftContentSchema = v.strictObject({
+  sessionId: v.string(),
+  attemptId: v.string(),
+  state: v.variant("_tag", [v.strictObject({ _tag: v.literal("LocalDraft") })]),
+  summaryBody: v.string(),
+  suggestedEvent: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+  comments: v.array(v.strictObject({
+    findingId: v.string(), include: v.boolean(), originalSuggestedBody: v.string(), body: v.string(), path: v.string(), line: v.pipe(v.number(), v.integer(), v.minValue(1)), lineEnd: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))), diffSide: v.picklist(["new", "old"]), postability: v.picklist(["postable", "already_reported", "invalid_line", "stale_sha", "api_rejected"]),
+  })),
+  createdAt: v.string(),
+  updatedAt: v.string(),
+});
+
 const draftStateSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("LocalDraft") }),
   v.strictObject({
@@ -110,6 +122,28 @@ const draftStateSchema = v.variant("_tag", [
     error: githubWriteFailureSchema,
   }),
 ]);
+
+type LegacyDraftComment = {
+  readonly findingId: FindingId;
+  readonly include: boolean;
+  readonly originalSuggestedBody: string;
+  readonly body: string;
+  readonly path: RepoRelativePath;
+  readonly line: number;
+  readonly lineEnd?: number;
+  readonly diffSide: "new" | "old";
+  readonly postability: "postable" | "already_reported" | "invalid_line" | "stale_sha" | "api_rejected";
+};
+type LegacyReviewDraft = {
+  readonly sessionId: ReviewSession["id"];
+  readonly attemptId: ReviewAttemptId;
+  readonly state: { readonly _tag: "LocalDraft" };
+  readonly summaryBody: string;
+  readonly suggestedEvent: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+  readonly comments: ReadonlyArray<LegacyDraftComment>;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
+};
 
 const reviewSessionSchema = v.strictObject({
   schemaVersion: v.picklist([2, 3, 4]),
@@ -945,16 +979,8 @@ function parseStoredBatch(
     return ok({});
   }
 
-  const draftState = parseDraftState(input.draft.state);
-  const draftContent = parseReviewDraft(input.draftContent);
-  if (
-    draftState._tag === "err" ||
-    draftContent._tag === "err" ||
-    draftState.value._tag !== "LocalDraft" ||
-    draftContent.value.state._tag !== draftState.value._tag
-  ) {
-    return invalidRead();
-  }
+  const draftContent = parseLegacyDraft(input.draftContent);
+  if (draftContent._tag === "err") return invalidRead();
 
   const migrated = migrateLocalDraft(draftContent.value);
   return migrated._tag === "err"
@@ -966,7 +992,7 @@ function parseStoredBatch(
 }
 
 function migrateLocalDraft(
-  draft: ReviewDraft,
+  draft: LegacyReviewDraft,
 ): Result<ReviewBatch, StorageFailure> {
   const items: ReviewBatch["items"][number][] = [];
   const itemIds = new Set<string>();
@@ -1022,10 +1048,22 @@ function migrateAttemptOwnedBatch(batch: ReviewBatch): ReviewBatch {
   return snapshotBatch;
 }
 
-function parseDraftState(
-  input: v.InferOutput<typeof draftStateSchema>,
-): Result<ReviewDraftState, StorageFailure> {
-  return ok(input);
+function parseLegacyDraft(input: unknown): Result<LegacyReviewDraft, StorageFailure> {
+  const parsed = v.safeParse(legacyDraftContentSchema, input);
+  if (!parsed.success) return invalidRead();
+  const sessionId = parseReviewSessionId(parsed.output.sessionId);
+  const attemptId = parseReviewAttemptId(parsed.output.attemptId);
+  const createdAt = parseIsoTimestamp(parsed.output.createdAt);
+  const updatedAt = parseIsoTimestamp(parsed.output.updatedAt);
+  if (sessionId._tag === "err" || attemptId._tag === "err" || createdAt._tag === "err" || updatedAt._tag === "err") return invalidRead();
+  const comments: Array<LegacyDraftComment> = [];
+  for (const comment of parsed.output.comments) {
+    const findingId = parseFindingId(comment.findingId);
+    const path = parseRepoRelativePath(comment.path);
+    if (findingId._tag === "err" || path._tag === "err" || (comment.lineEnd !== undefined && comment.lineEnd < comment.line)) return invalidRead();
+    comments.push({ findingId: findingId.value, include: comment.include, originalSuggestedBody: comment.originalSuggestedBody, body: comment.body, path: path.value, line: comment.line, ...(comment.lineEnd === undefined ? {} : { lineEnd: comment.lineEnd }), diffSide: comment.diffSide, postability: comment.postability });
+  }
+  return ok({ sessionId: sessionId.value, attemptId: attemptId.value, state: { _tag: "LocalDraft" }, summaryBody: parsed.output.summaryBody, suggestedEvent: parsed.output.suggestedEvent, comments, createdAt: createdAt.value, updatedAt: updatedAt.value });
 }
 
 function parseSubmittedReview(input: {

@@ -30,7 +30,7 @@ import {
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-draft";
+import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-batch";
 import type { RevisionComparison } from "../../domain/review-comparison";
 
 const commandTimeoutMs = 15_000;
