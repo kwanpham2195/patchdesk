@@ -23,6 +23,7 @@ export type AbsolutePath = Brand<string, "AbsolutePath">;
 export type RepoRelativePath = Brand<string, "RepoRelativePath">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
 export type ContentHash = Brand<string, "ContentHash">;
+export type InsightRunId = Brand<string, "InsightRunId">;
 
 export type InvalidDomainValue = {
   readonly _tag: "InvalidDomainValue";
@@ -43,6 +44,7 @@ const sessionIdSyntax =
   /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__sha-[a-f0-9]{8}__[a-f0-9]{12}$/;
 const isoTimestampSyntax = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const contentHashSyntax = /^[a-f0-9]{64}$/;
+const insightRunIdSyntax = /^insight-(analysis|walkthrough)-[1-9]\d*-[a-f0-9]{12}-.+$/;
 
 /** Parse a path-safe workspace profile identifier. */
 export function parseWorkspaceProfileId(
@@ -117,6 +119,12 @@ export function parseGitHubThreadId(
   input: unknown,
 ): Result<GitHubThreadId, InvalidDomainValue> {
   return parseSafeSlug<"GitHubThreadId">(input, "githubThreadId");
+}
+
+/** Parse a durable Insight run identifier. */
+export function parseInsightRunId(input: unknown): Result<InsightRunId, InvalidDomainValue> {
+  if (typeof input !== "string" || !insightRunIdSyntax.test(input)) return err({ _tag: "InvalidDomainValue", field: "insightRunId" });
+  return ok(brand(input));
 }
 
 /** Parse the path-safe deterministic Review identifier. */

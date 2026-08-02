@@ -7,6 +7,7 @@ import type {
   ReviewSessionId,
   WorkspaceProfileId,
 } from "../../domain/ids";
+import type { InsightType } from "../../domain/insight-record";
 
 export type PatchdeskPathRoots = {
   readonly configDirectory: string;
@@ -84,6 +85,14 @@ export class PatchdeskPaths {
 
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");
+  }
+
+  insightDirectory(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
+    return join(this.reviewDirectory(profileId, reviewId), "insights");
+  }
+
+  insightFile(profileId: WorkspaceProfileId, reviewId: ReviewId, type: InsightType): string {
+    return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
   }
 
   sessionFile(
