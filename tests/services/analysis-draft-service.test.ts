@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { AnalysisDraftService } from "../../src/services/analysis-draft-service";
-import { parseFindingId, parseInsightRunId, parseIsoTimestamp, parseReviewSessionId, type FindingId, type InsightRunId, type IsoTimestamp, type ReviewSessionId } from "../../src/domain/ids";
+import { AnalysisDraftService, createAnalysisFindingItem } from "../../src/services/analysis-draft-service";
+import { parseFindingId, parseInsightRunId, parseIsoTimestamp, parseLocalReviewItemId, parseReviewSessionId, type FindingId, type InsightRunId, type IsoTimestamp, type LocalReviewItemId, type ReviewSessionId } from "../../src/domain/ids";
 import type { ReviewBatch, ReviewBatchItem } from "../../src/domain/review-batch";
+import { parseUnifiedPatch } from "../../src/domain/patch";
 import type { ReviewResult } from "../../src/domain/review-result";
 import type { Result } from "../../src/domain/result";
 
@@ -58,6 +59,19 @@ describe("AnalysisDraftService", () => {
     if (seeded._tag === "ok" || seeded.error.reason !== "draft_not_empty") return;
     expect(seeded.error.merge.preservedItems).toHaveLength(1);
     expect(seeded.error.replacement.removedItems).toHaveLength(1);
+  });
+
+  it("counts only added and deleted lines, not unchanged patch context", () => {
+    const files = parseUnifiedPatch("diff --git a/src/a.ts b/src/a.ts\n@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n");
+    expect(files[0]).toMatchObject({ additions: 1, deletions: 1 });
+  });
+
+  it("allocates a suffix when the same Finding is added from a later Analysis run", () => {
+    const finding = result.findings[0];
+    if (finding === undefined) throw new Error("fixture finding missing");
+    const priorId: LocalReviewItemId = must(parseLocalReviewItemId("finding-1"));
+    const item = createAnalysisFindingItem(finding, must(parseInsightRunId("insight-analysis-2-aaaaaaaaaaaa-review-42")), patch, new Set([priorId]));
+    expect(item.id).toBe("finding-1-2");
   });
 
   it("merges only new insight findings and enforces CAS plus replacement acknowledgement", () => {

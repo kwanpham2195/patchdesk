@@ -77,7 +77,8 @@ export class AnalysisDraftService {
       if (finding === undefined) return err({ reason: "not_found" });
       const alreadyAdded = loaded.value.current.items.some((item) => isFindingItem(item) && item.findingId === finding.id && item.provenance._tag === "insight" && item.provenance.runId === input.analysisRunId);
       if (alreadyAdded) return ok(loaded.value.current);
-      const item = findingItem(finding, input.analysisRunId, loaded.value.draft.patch);
+      const usedIds = new Set(loaded.value.current.items.map((item) => item.id));
+      const item = createAnalysisFindingItem(finding, input.analysisRunId, loaded.value.draft.patch, usedIds);
       const next = { ...loaded.value.current, items: [...loaded.value.current.items, item], updatedAt: input.now };
       return this.saveCurrent(loaded.value.session, next, input.now);
     });
@@ -225,7 +226,7 @@ function deriveScope(session: ReviewSession, pullRequest: PullRequestSummary, co
     fileCount: pullRequest.changedFileCount ?? files.length,
     additions: pullRequest.additions ?? 0,
     deletions: pullRequest.deletions ?? 0,
-    changedFiles: files.map((file) => ({ path: file.newPath, additions: file.newLines.size, deletions: file.oldLines.size })),
+    changedFiles: files.map((file) => ({ path: file.newPath, additions: file.additions, deletions: file.deletions })),
   };
 }
 
@@ -246,14 +247,14 @@ function mappedFindingItems(result: ReviewResult, runId: InsightRunId, patch: st
   const items: ReviewBatchItem[] = [];
   for (const finding of result.findings) {
     if (finding.mappingStatus !== "mapped" || finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined) continue;
-    const item = findingItem(finding, runId, patch, used);
+    const item = createAnalysisFindingItem(finding, runId, patch, used);
     used.add(item.id);
     items.push(item);
   }
   return items;
 }
 
-function findingItem(finding: ReviewResult["findings"][number], runId: InsightRunId, patch: string | undefined, used: ReadonlySet<LocalReviewItemId> = new Set()): ReviewBatchItem {
+export function createAnalysisFindingItem(finding: ReviewResult["findings"][number], runId: InsightRunId, patch: string | undefined, used: ReadonlySet<LocalReviewItemId> = new Set()): ReviewBatchItem {
   const id = nextItemId(finding.id, used);
   if (id === undefined) {
     const fallback = parseLocalReviewItemId(`analysis-${finding.id}`);
