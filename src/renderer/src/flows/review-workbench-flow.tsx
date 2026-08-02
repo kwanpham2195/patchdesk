@@ -94,7 +94,7 @@ export function ReviewWorkbenchFlow({
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{
-          insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} />,
+          insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} />,
           publishedFeedback: <PublishedFeedbackSlot workbench={workbench} />,
           mergeAction: null,
           draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} />,
@@ -110,12 +110,16 @@ export function ReviewWorkbenchFlow({
   );
 }
 
+type AnalysisFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
+
 function InsightsSlot({
   workbench,
   onWorkbenchReplace,
+  onWorkbenchPatch,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
 }): React.JSX.Element {
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string>();
@@ -140,6 +144,18 @@ function InsightsSlot({
   }, []);
 
   const runEnabled = model !== undefined && workbench.review.status === "open";
+  const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
+  const addFinding = async (finding: AnalysisFinding): Promise<void> => {
+    const batch = workbench.draft;
+    if (batch === undefined) return;
+    const command = finding.mappingStatus === "mapped" && finding.file !== undefined && finding.lineStart !== undefined
+      ? { _tag: "AddInlineComment", anchor: { path: finding.file, startLine: finding.lineStart, line: finding.lineEnd ?? finding.lineStart, side: finding.diffSide ?? "new" }, body: finding.suggestedComment ?? finding.explanation }
+      : { _tag: "AddGeneralComment", findingId: finding.id, body: finding.suggestedComment ?? finding.explanation };
+    const value = await requestJson("/v1/reviews/batch", { method: "POST", body: { profileId, sessionId: workbench.session.id, expectedRevision: batch.updatedAt, command } });
+    const next = parseBatchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review batch response");
+    onWorkbenchPatch({ draft: next });
+  };
   return (
     <section aria-label="Review insights" className="mx-auto flex w-full max-w-4xl flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -173,6 +189,8 @@ function InsightsSlot({
           onRun={() => { if (model !== undefined) analysisRun.run(model, reasoning); }}
           onCancel={analysisRun.cancel}
           disabled={!runEnabled}
+          {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}
+          onAddFinding={addFinding}
         >
           {workbench.insights.analysis.retained?.value.summary}
         </InsightCard>
@@ -208,6 +226,8 @@ function InsightCard({
   onRun,
   onCancel,
   disabled,
+  findings,
+  onAddFinding,
   children,
 }: {
   readonly title: string;
@@ -218,6 +238,8 @@ function InsightCard({
   readonly onRun: () => void;
   readonly onCancel: () => void;
   readonly disabled: boolean;
+  readonly findings?: ReadonlyArray<AnalysisFinding>;
+  readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const status = busy && runStatus !== "idle" ? runStatus : projection.status;
@@ -233,6 +255,7 @@ function InsightCard({
       <CardContent className="flex min-h-20 flex-col gap-2">
         {busy ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Generating a bounded result…</div> : null}
         {children !== undefined ? <p className="line-clamp-4 text-sm text-muted-foreground">{children}</p> : <p className="text-sm text-muted-foreground">No retained result for this revision.</p>}
+        {findings === undefined || findings.length === 0 || onAddFinding === undefined ? null : <ul className="flex flex-col gap-2 border-t pt-2">{findings.slice(0, 5).map((finding) => <li key={finding.id} className="flex items-start justify-between gap-2 text-xs"><span className="min-w-0 truncate">{finding.title}</span><Button size="xs" variant="outline" onClick={() => void onAddFinding(finding)}>Add</Button></li>)}</ul>}
       </CardContent>
       <CardFooter className="flex gap-2">
         {busy ? <Button variant="outline" onClick={onCancel}>Cancel</Button> : <Button onClick={onRun} disabled={disabled}>{projection.retained === undefined ? "Run" : "Regenerate"}</Button>}
