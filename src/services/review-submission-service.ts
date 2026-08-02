@@ -109,8 +109,10 @@ export function planBatchOperations(
   const allowInline = options.allowInline ?? true;
   const inline = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && allowInline && item.include && item.postability === "postable" && !hasReceiptForItem(batch, item.id));
   const thread = batch.items.filter((item) => item.include && (item._tag === "ThreadReply" || item._tag === "ThreadState") && !hasReceiptForItem(batch, item.id));
+  const hasPendingReceipt = batch.receipts.some((receipt) => receipt._tag === "PendingReviewCreated");
+  const createBodyReview = inline.length === 0 && !hasPendingReceipt && batch.summaryBody.trim().length > 0;
   return [
-    ...(inline.length === 0 ? [] : [{ _tag: "CreatePendingReview" as const, itemIds: inline.map((item) => item.id) }]),
+    ...(inline.length === 0 && !createBodyReview ? [] : [{ _tag: "CreatePendingReview" as const, itemIds: inline.map((item) => item.id) }]),
     ...thread.map((item) => item._tag === "ThreadReply" ? ({ _tag: "Reply" as const, itemId: item.id }) : ({ _tag: "ThreadState" as const, itemId: item.id })),
   ];
 }

@@ -567,6 +567,11 @@ export async function startLocalApiServer(
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(context, await reviewWrites.applyBatch(await jsonBody(context))),
   );
+  app.post("/v1/reviews/publication/confirm", async (context) =>
+    reviewWrites === undefined
+      ? context.json({ error: "review_write_unavailable" }, 503)
+      : response(context, await reviewWrites.confirmPublication(await jsonBody(context))),
+  );
   app.post("/v1/reviews/submit-batch", async (context) =>
     reviewWrites === undefined
       ? context.json({ error: "review_write_unavailable" }, 503)

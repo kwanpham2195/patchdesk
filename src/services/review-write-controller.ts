@@ -43,6 +43,15 @@ export class ReviewWriteController {
     });
   }
 
+  async confirmPublication(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
+    const applied = await this.applyBatch(input);
+    if (applied._tag === "err") return applied;
+    const batch = applied.value.batch as NonNullable<ReviewSession["batchContent"]> | undefined;
+    if (batch === undefined) return err({ reason: "review_write_failed" });
+    const next = { ...(typeof input === "object" && input !== null ? input : {}), expectedRevision: batch.updatedAt };
+    return this.submitBatch(next);
+  }
+
   async applyBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
     return this.withLoadedBatch(input, async ({ profile, session, batch }) => {
       const applied = await applyReviewBatch({ profile, session, batch, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
