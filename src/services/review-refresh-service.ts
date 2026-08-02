@@ -9,6 +9,8 @@ import type { IsoTimestamp, ReviewId, ReviewSessionId, WorkspaceProfileId } from
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSessionPreparation } from "./review-session-preparation";
+import type { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
+import { revokePublicationAuthorization } from "../domain/publication-authorization";
 import type { ReviewWorkbenchProjection, WorkbenchProjectionFailure } from "./review-workbench-projection";
 import { hashSnapshot } from "../adapters/storage/review-remote-store";
 
@@ -29,6 +31,7 @@ export type ReviewRefreshDependencies = {
   readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestCommits" | "getPullRequestChecks" | "getMergePolicy"> & Partial<Pick<GitHubReader, "getMergeOutcome">>;
   readonly preparation: Pick<ReviewSessionPreparation, "prepare">;
   readonly now: () => IsoTimestamp;
+  readonly publicationAuthorizations?: Pick<PublicationAuthorizationStore, "load" | "save">;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
     readonly sessionId: ReviewSessionId;
@@ -68,7 +71,9 @@ export class ReviewRefreshService {
       if (reason !== undefined) {
         const marked = markDetectedUpdate(review, { detectedAt, reason }, detectedAt);
         const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
-        return saved._tag === "err" ? err({ reason: "storage" }) : ok({ updatesAvailable: true, detectedAt });
+        if (saved._tag === "err") return err({ reason: "storage" });
+        await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
+        return ok({ updatesAvailable: true, detectedAt });
       }
       const [checks, represented] = await Promise.all([
         this.dependencies.github.getPullRequestChecks({ profile, pr, headSha: representedHead }),
@@ -80,7 +85,9 @@ export class ReviewRefreshService {
       if (!checksChanged) return ok({ updatesAvailable: false, detectedAt });
       const marked = markDetectedUpdate(review, { detectedAt, reason: "checks" }, detectedAt);
       const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
-      return saved._tag === "err" ? err({ reason: "storage" }) : ok({ updatesAvailable: true, detectedAt });
+      if (saved._tag === "err") return err({ reason: "storage" });
+      await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
+      return ok({ updatesAvailable: true, detectedAt });
     });
   }
 
@@ -93,6 +100,7 @@ export class ReviewRefreshService {
       if (loaded._tag === "err") return loaded;
       const { review, profile } = loaded.value;
       if (review.status._tag === "Terminal") return err({ reason: "terminal" });
+      await this.revokeAuthorization(input.profileId, input.reviewId, "refresh");
       const currentSession = await this.dependencies.sessions.load(input.profileId, review.currentSessionId);
       if (currentSession._tag === "err") {
         return currentSession.error.reason === "not_found"
@@ -157,6 +165,13 @@ export class ReviewRefreshService {
         ? projected
         : err({ reason: "storage" });
     });
+  }
+
+  private async revokeAuthorization(profileId: WorkspaceProfileId, reviewId: ReviewId, reason: "updates_available" | "refresh"): Promise<void> {
+    const store = this.dependencies.publicationAuthorizations;
+    if (store === undefined) return;
+    const loaded = await store.load(profileId, reviewId);
+    if (loaded._tag === "ok") await store.save(revokePublicationAuthorization(loaded.value, reason));
   }
 
   private async authoritativeTerminalState(

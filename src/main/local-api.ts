@@ -29,6 +29,7 @@ import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
+import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import {
   StorageManagementService,
   type TrashMover,
@@ -269,6 +270,7 @@ export async function startLocalApiServer(
         );
   const reviews = new ReviewStore(paths);
   const insights = new InsightStore(paths);
+  const publicationAuthorizations = new PublicationAuthorizationStore(paths);
   const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
@@ -314,6 +316,7 @@ export async function startLocalApiServer(
     github,
     preparation: reviewPreparation,
     now: () => new Date().toISOString() as never,
+    publicationAuthorizations,
     project: ({ profileId, sessionId, snapshot, refreshedAt }) => reviewProjection.loadRepresented({
       profileId,
       sessionId,
