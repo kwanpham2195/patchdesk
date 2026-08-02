@@ -442,6 +442,10 @@ function DraftSlot({
     removeItem: async (itemId) => postCommand({ _tag: "RemoveItem", itemId }),
     addThreadReply: async (threadId, body) => postCommand({ _tag: "AddThreadReply", threadId, body }),
     setThreadState: async (threadId, action) => postCommand({ _tag: "SetThreadState", threadId, action }),
+    updateBody: async (body) => postCommand({ _tag: "UpdateBody", body }),
+    setSuggestedEvent: async (event) => postCommand({ _tag: "SetSuggestedEvent", event }),
+    setItemIncluded: async (itemId, include) => postCommand({ _tag: "SetItemIncluded", itemId, include }),
+    editItem: async (itemId, body) => postCommand({ _tag: "EditItem", itemId, body }),
     apply: async () => {
       const value = await requestJson("/v1/reviews/apply-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: workbench.draft?.updatedAt, acknowledgement: true } });
       const next = parseBatchResponse(value);

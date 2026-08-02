@@ -35,7 +35,7 @@ export function ReviewDraftDock({
           <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog disabled={writeBlocked} onPreview={publication.preview} onConfirm={publication.confirm} />}</div>
         </div>
         <CollapsibleContent motion="disclosure" className="pt-3">
-          <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} writeBlocked={writeBlocked} actions={actions} showWriteActions={publication === undefined} />
+          <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} writeBlocked={writeBlocked} actions={actions} showDraftControls showWriteActions={publication === undefined} />
         </CollapsibleContent>
       </Collapsible>
     </section>

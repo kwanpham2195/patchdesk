@@ -38,6 +38,10 @@ export type ReviewBatchPanelActions = {
   readonly removeItem: (itemId: string) => Promise<void>;
   readonly addThreadReply: (threadId: string, body: string) => Promise<void>;
   readonly setThreadState: (threadId: string, action: "resolve" | "reopen") => Promise<void>;
+  readonly updateBody?: (body: string) => Promise<void>;
+  readonly setSuggestedEvent?: (event: GitHubReviewEvent) => Promise<void>;
+  readonly setItemIncluded?: (itemId: string, include: boolean) => Promise<void>;
+  readonly editItem?: (itemId: string, body: string) => Promise<void>;
   readonly apply: () => Promise<void>;
   readonly submit: (event: GitHubReviewEvent) => Promise<void>;
 };
@@ -50,6 +54,7 @@ export function ReviewBatchPanel({
   actions,
   showWriteActions = true,
   defaultApplyOpen = false,
+  showDraftControls = false,
 }: {
   readonly batch?: ReviewBatch;
   readonly patch?: string;
@@ -60,6 +65,7 @@ export function ReviewBatchPanel({
   readonly showWriteActions?: boolean;
   /** Design scenarios can show the confirmation state without performing a write. */
   readonly defaultApplyOpen?: boolean;
+  readonly showDraftControls?: boolean;
 }): React.JSX.Element {
   const [body, setBody] = useState("");
   const canAdd = !writeBlocked && selectedFinding?.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined && selectedFinding.lineEnd !== undefined && body.trim().length > 0 && batch?.state._tag === "Local";
@@ -84,6 +90,7 @@ export function ReviewBatchPanel({
       <p className="mt-1 text-xs text-muted-foreground">Review comments stay local until you explicitly confirm the GitHub write.</p>
       {batch === undefined ? <p className="mt-3 text-sm text-muted-foreground">This saved review predates review batches. Re-run it to create a current local batch.</p> : <>
         <p className="mt-3 text-sm">{batch.items.length} planned {batch.items.length === 1 ? "action" : "actions"} · {batch.state._tag.replaceAll(/([A-Z])/g, " $1").trim()}</p>
+        {showDraftControls ? <DraftControls batch={batch} writeBlocked={writeBlocked} actions={actions} /> : null}
         <ul className="mt-2 space-y-2">
           {batch.items.map((item) => <BatchItem key={item.id} item={item} editable={batch.state._tag === "Local"} onRemove={actions.removeItem} />)}
         </ul>
@@ -171,6 +178,26 @@ export function ReviewBatchWriteActions({
         </AlertDialogContent>
       </AlertDialog>
   </>;
+}
+
+function DraftControls({ batch, writeBlocked, actions }: { readonly batch: ReviewBatch; readonly writeBlocked: boolean; readonly actions: ReviewBatchPanelActions }): React.JSX.Element {
+  const [summaryBody, setSummaryBody] = useState(batch.summaryBody);
+  return <div className="mt-3 space-y-3 border-y py-3">
+    <label className="grid gap-1 text-sm font-medium" htmlFor="review-summary-body">Review body</label>
+    <Textarea id="review-summary-body" aria-label="Review body" value={summaryBody} disabled={writeBlocked || batch.state._tag !== "Local"} onChange={(event) => setSummaryBody(event.target.value)} onBlur={() => { if (summaryBody !== batch.summaryBody && actions.updateBody !== undefined) void actions.updateBody(summaryBody); }} />
+    <label className="grid gap-1 text-sm font-medium">Suggested decision
+      <Select value={batch.suggestedEvent} disabled={writeBlocked || batch.state._tag !== "Local"} onValueChange={(value) => { if (actions.setSuggestedEvent !== undefined) void actions.setSuggestedEvent(value as GitHubReviewEvent); }}>
+        <SelectTrigger aria-label="Suggested decision"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="COMMENT">Comment</SelectItem><SelectItem value="APPROVE">Approve</SelectItem><SelectItem value="REQUEST_CHANGES">Request changes</SelectItem></SelectContent>
+      </Select>
+    </label>
+    <ul className="space-y-2">{batch.items.map((item) => <li key={item.id} className="flex items-start gap-2 text-xs"><input type="checkbox" aria-label={`Include ${item.id}`} checked={item.include} disabled={writeBlocked || batch.state._tag !== "Local"} onChange={(event) => { if (actions.setItemIncluded !== undefined) void actions.setItemIncluded(item.id, event.target.checked); }} />{item._tag === "InlineComment" || item._tag === "GeneralComment" || item._tag === "ThreadReply" ? <EditableItemBody item={item} disabled={writeBlocked || batch.state._tag !== "Local"} {...(actions.editItem === undefined ? {} : { onSave: actions.editItem })} /> : <span>{item._tag === "ThreadState" ? `${item.action} thread ${item.threadId}` : "Draft item"}</span>}</li>)}</ul>
+  </div>;
+}
+
+function EditableItemBody({ item, disabled, onSave }: { readonly item: Extract<ReviewBatchItem, { readonly _tag: "InlineComment" | "GeneralComment" | "ThreadReply" }>; readonly disabled: boolean; readonly onSave?: (itemId: string, body: string) => Promise<void> }): React.JSX.Element {
+  const [body, setBody] = useState(item.body);
+  return <Textarea aria-label={`Feedback ${item.id}`} className="min-h-16" value={body} disabled={disabled} onChange={(event) => setBody(event.target.value)} onBlur={() => { if (body !== item.body && onSave !== undefined) void onSave(item.id, body); }} />;
 }
 
 function BatchItem({ item, editable, onRemove }: { readonly item: ReviewBatchItem; readonly editable: boolean; readonly onRemove: (id: string) => Promise<void> }): React.JSX.Element {
