@@ -794,7 +794,8 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       const location = parseLocation(comment.path, comment.line, undefined, comment.start_line, comment.side, undefined);
       publishedComments.push({ id: String(comment.id), author: comment.user?.login ?? "ghost", body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: false, canDelete: false });
     }
-    return ok({ reviews: publishedReviews, comments: publishedComments });
+    const complete = parsedReviews.output.length < 100 && parsedComments.output.length < 100;
+    return ok({ reviews: publishedReviews, comments: publishedComments, complete, ...(complete ? {} : { incompleteReason: "pagination" as const }) });
   }
 
   private async loadThreadReplies(profile: WorkspaceProfileConfig, threadId: string, initial: ReadonlyArray<GitHubComment>, initialCursor: string | null, remainingComments: number): Promise<{ readonly comments: ReadonlyArray<GitHubComment>; readonly complete: boolean }> {
