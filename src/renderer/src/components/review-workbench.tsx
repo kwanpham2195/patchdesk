@@ -1,15 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
+import { parseRepoRelativePath } from "../../../domain/ids";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
 import { DiffWorkbench } from "./diff-workbench";
+import type { LocalCommentAuthoring, LocalCommentLocation } from "./review-diff-view";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
+import { useCommitDiff } from "../hooks/use-commit-diff";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+
+function createCommitCommentAuthoring(base: LocalCommentAuthoring | undefined, fullPatch: string): LocalCommentAuthoring | undefined {
+  if (base?.enabled !== true) return undefined;
+  const files = parseUnifiedPatch(fullPatch);
+  const map = (location: LocalCommentLocation) => mapFindingLocation(files, { file: location.path, lineStart: location.startLine, lineEnd: location.line, diffSide: location.side });
+  return {
+    enabled: true,
+    canAuthor: (location) => map(location).mappingStatus === "mapped",
+    onSave: async (input) => {
+      const mapped = map(input);
+      if (mapped.mappingStatus !== "mapped" || mapped.path === undefined || mapped.side === undefined || mapped.line === undefined) return;
+      const parsedPath = parseRepoRelativePath(mapped.path);
+      if (parsedPath._tag === "err") return;
+      const startLine = mapped.startLine ?? mapped.line;
+      const anchor = { path: parsedPath.value, startLine, line: mapped.line, side: mapped.side };
+      const fingerprint = fingerprintPatchAnchor(fullPatch, anchor);
+      await base.onSave({ ...input, path: mapped.path, startLine, line: mapped.line, side: mapped.side, ...(fingerprint === undefined ? {} : { fingerprint }) });
+    },
+  };
+}
 
 export type ReviewWorkbenchActions = {
   readonly detectUpdates: () => Promise<void>;
   readonly refresh: () => Promise<void>;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
+  readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -57,9 +83,6 @@ export function ReviewWorkbench({
   const [selectedPath, setSelectedPath] = useState<string>();
   const [selectedFinding, setSelectedFinding] = useState<WorkbenchResponse["insights"]["analysis"]["retained"] extends infer Retained ? Retained extends { value: { findings: infer Findings } } ? Findings extends ReadonlyArray<infer Finding> ? Finding : never : never : never>();
   const [selectedCommitSha, setSelectedCommitSha] = useState<string>();
-  const [commitDiff, setCommitDiff] = useState<CommitDiffResponse>();
-  const [commitDiffError, setCommitDiffError] = useState(false);
-  const requestToken = useRef(0);
   const retainedAnalysis = model.insights.analysis.retained;
   const analysisIsCurrent = model.insights.analysis.status === "current" && retainedAnalysis?.sessionId === model.session.id && retainedAnalysis.headSha === model.revision.reviewedHeadSha;
   const findings = analysisIsCurrent ? retainedAnalysis.value.findings.filter((finding) => finding.mappingStatus === "mapped") : [];
@@ -68,26 +91,12 @@ export function ReviewWorkbench({
     setSection("commits");
     setSelectedFinding(undefined);
     setSelectedCommitSha(sha);
-    setCommitDiff(undefined);
-    setCommitDiffError(false);
-    const token = requestToken.current + 1;
-    requestToken.current = token;
-    void actions.loadCommitDiff(sha).then((value) => {
-      if (requestToken.current !== token) return;
-      setCommitDiff(value);
-    }).catch(() => {
-      if (requestToken.current !== token) return;
-      setCommitDiffError(true);
-    });
-  }, [actions]);
+  }, []);
   const selectSection = useCallback((next: ReviewNavigatorSection): void => {
     setSection(next);
     setSelectedFinding(undefined);
     if (next !== "commits") {
-      requestToken.current += 1;
       setSelectedCommitSha(undefined);
-      setCommitDiff(undefined);
-      setCommitDiffError(false);
     }
     if (next === "commits" && selectedCommitSha === undefined && model.commits[0] !== undefined) loadCommit(model.commits[0].sha);
   }, [loadCommit, model.commits, selectedCommitSha]);
@@ -97,18 +106,19 @@ export function ReviewWorkbench({
   const selectFinding = useCallback((finding: typeof findings[number]): void => {
     setSection("findings");
     setSelectedCommitSha(undefined);
-    setCommitDiff(undefined);
     setSelectedFinding(finding);
     if (finding.file !== undefined) setSelectedPath(finding.file);
   }, []);
   useEffect(() => {
     setSelectedCommitSha(undefined);
-    setCommitDiff(undefined);
     setSelectedFinding(undefined);
     setSelectedPath(undefined);
     setSection("files");
-    requestToken.current += 1;
   }, [model.revision.reviewedHeadSha]);
+  const commitDiffState = useCommitDiff({ ...(selectedCommitSha === undefined ? {} : { selectedSha: selectedCommitSha }), revisionKey: model.revision.reviewedHeadSha, loadCommitDiff: actions.loadCommitDiff });
+  const commitCommentAuthoring = useMemo(() => selectedCommitSha === undefined || model.fullPatch === undefined ? undefined : createCommitCommentAuthoring(actions.localCommentAuthoring, model.fullPatch), [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha]);
+  const commitDiff = commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
+  const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const selectedFindingLocation = selectedFinding === undefined ? undefined : {
     ...(selectedFinding.file === undefined ? {} : { file: selectedFinding.file }),
@@ -117,6 +127,7 @@ export function ReviewWorkbench({
     ...(selectedFinding.diffSide === undefined ? {} : { diffSide: selectedFinding.diffSide }),
   };
   const commitHeader = selectedCommit === undefined || commitDiff === undefined ? undefined : {
+    sha: selectedCommit.sha,
     title: selectedCommit.message.split("\n", 1)[0] ?? selectedCommit.sha.slice(0, 8),
     subtitle: `${selectedCommit.author} · ${selectedCommit.sha} · ${selectedCommit.authoredAt} · ${commitDiff.position} of ${commitDiff.total}`,
   };
@@ -169,7 +180,7 @@ export function ReviewWorkbench({
                 onCommitSelect={selectCommit}
               />
               <div className="min-h-0 min-w-0">
-                {selectedCommitSha !== undefined && commitDiff === undefined ? (
+                {selectedCommitSha !== undefined && commitDiffState._tag === "Loading" ? (
                   <p className="p-6 text-sm text-muted-foreground" role="status">Loading commit diff…</p>
                 ) : displayedPatch === undefined ? (
                   <p className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</p>
@@ -180,8 +191,9 @@ export function ReviewWorkbench({
                     {...(selectedCommitSha === undefined ? { sourceSession: { profileId: model.session.key.profileId, sessionId: model.session.id } } : {})}
                     {...(selectedFindingLocation === undefined || selectedCommitSha !== undefined ? {} : { finding: selectedFindingLocation })}
                     {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: setSelectedPath })}
+                    {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
                     hideFileNavigation
-                    {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle })}
+                    {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}
                     className="min-h-0 h-full"
                     fillViewport={false}
                   />

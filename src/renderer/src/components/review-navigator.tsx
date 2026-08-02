@@ -67,7 +67,7 @@ export function ReviewNavigator({
           <div className="flex flex-col gap-1" aria-label="Review findings">
             {findings.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No current mapped findings.</p> : findings.map((finding) => (
               <button key={finding.id} type="button" className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => onFindingSelect(finding)}>
-                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><span className="truncate">{finding.title}</span></span>
+                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><Badge variant="secondary">Mapped</Badge><span className="truncate">{finding.title}</span></span>
                 <span className="w-full truncate text-xs text-muted-foreground">{finding.file ?? "No file"}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`}</span>
               </button>
             ))}

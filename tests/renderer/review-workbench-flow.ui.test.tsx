@@ -77,6 +77,41 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
+  it("shows only current mapped Findings and focuses their evidence", async () => {
+    const value = {
+      ...projection(),
+      fullPatch: "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1,2 @@\\n-old\\n+new\\n+mapped\\n",
+      insights: {
+        analysis: {
+          status: "current" as const,
+          retained: {
+            sessionId: "session-a",
+            headSha: "a".repeat(40),
+            generatedAt: "2026-08-01T00:00:00.000Z",
+            value: {
+              changeSummary: "Findings",
+              verdict: "comment" as const,
+              summary: "Findings",
+              findings: [
+                { id: "mapped", severity: "P1" as const, title: "Mapped finding", file: "src/a.ts", lineStart: 2, diffSide: "new" as const, explanation: "Mapped", confidence: "high" as const, mappingStatus: "mapped" as const },
+                { id: "unmapped", severity: "P2" as const, title: "Outdated finding", explanation: "Outdated", confidence: "medium" as const, mappingStatus: "unmapped" as const },
+              ],
+              validationPlan: [],
+              assumptions: [],
+            },
+          },
+        },
+        walkthrough: { status: "not_generated" as const },
+      },
+    };
+    render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Findings" }));
+    expect(screen.getByRole("button", { name: /Mapped finding/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Outdated finding/ })).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: /Mapped finding/ }));
+    expect(screen.getByLabelText("Review diff").getAttribute("data-selected-path")).toBe("src/a.ts");
+  });
+
   it("selects the newest commit and suppresses stale commit responses", async () => {
     const value = {
       ...projection(),

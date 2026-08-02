@@ -95,8 +95,16 @@ export type ReviewInlineAnnotation = {
   };
 };
 
+export type LocalCommentLocation = {
+  readonly path: string;
+  readonly startLine: number;
+  readonly line: number;
+  readonly side: "new" | "old";
+};
+
 export type LocalCommentAuthoring = {
   readonly enabled: boolean;
+  readonly canAuthor?: (input: LocalCommentLocation) => boolean;
   readonly onSave: (input: {
     readonly path: string;
     readonly startLine: number;
@@ -604,16 +612,18 @@ function ReviewDiffSurface({
     if (localCommentAuthoring?.enabled !== true || selection === null) return;
     const range = selection.range;
     if ((range.side !== "additions" && range.side !== "deletions") || (range.endSide !== undefined && range.endSide !== range.side)) return;
+    const location: LocalCommentLocation = { path: selection.id, startLine: range.start, line: range.end, side: range.side === "additions" ? "new" : "old" };
+    if (localCommentAuthoring.canAuthor?.(location) === false) return;
     setAuthoringSelection(selection);
-  }, [localCommentAuthoring?.enabled]);
+  }, [localCommentAuthoring]);
   const renderGutterUtility = useCallback((getHoveredLine: () => { readonly lineNumber: number; readonly side: "additions" | "deletions" } | undefined, item: { readonly id: string; readonly type: "diff" | "file" }) => {
     if (localCommentAuthoring?.enabled !== true || item.type !== "diff") return null;
+    const hovered = getHoveredLine();
+    if (hovered === undefined || localCommentAuthoring.canAuthor?.({ path: item.id, startLine: hovered.lineNumber, line: hovered.lineNumber, side: hovered.side === "additions" ? "new" : "old" }) === false) return null;
     return <button type="button" className="rounded px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Add local comment on ${item.id}`} onClick={() => {
-      const hovered = getHoveredLine();
-      if (hovered === undefined) return;
       beginAuthoring({ id: item.id, range: { start: hovered.lineNumber, end: hovered.lineNumber, side: hovered.side } });
     }}>+</button>;
-  }, [beginAuthoring, localCommentAuthoring?.enabled]);
+  }, [beginAuthoring, localCommentAuthoring]);
 
   return (
     <>

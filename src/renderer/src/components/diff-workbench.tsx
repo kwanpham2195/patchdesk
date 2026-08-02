@@ -35,6 +35,7 @@ export function DiffWorkbench({
   hideFileNavigation = false,
   diffTitle,
   diffSubtitle,
+  copyValue,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -47,6 +48,7 @@ export function DiffWorkbench({
   readonly hideFileNavigation?: boolean;
   readonly diffTitle?: string;
   readonly diffSubtitle?: string;
+  readonly copyValue?: string;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
@@ -164,6 +166,7 @@ export function DiffWorkbench({
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
+            {copyValue === undefined ? null : <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(copyValue)}>Copy commit SHA</Button>}
             {hideFileNavigation ? null : <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
               <SheetTrigger
                 render={<Button variant="outline" size="sm" className="max-[1099px]:inline-flex min-[1100px]:hidden" />}
