@@ -37,26 +37,22 @@ test("canonical Review entry opens the review workbench", async ({ page }) => {
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
-test("normal dashboard opens a seeded completed workbench and writes one confirmed pending review", async ({ page }) => {
-  const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-complete-")); let api: LocalApiServer | undefined; let creates = 0;
+test("completed Review stays readable and hides local draft write actions", async ({ page }) => {
+  const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-complete-")); let api: LocalApiServer | undefined;
   try {
     const paths = PatchdeskPaths.forTest(root);
     const reviewId = await seedCompleted(paths);
     await new ProfileStore(paths).saveConfig({ lastSelectedProfileId: "cfw", recentPrs: [] });
     const github = new FakeGitHubAdapter({ authenticatedAccount: { host: "github.com", account: "fixture" }, listOpenPullRequests: [], pullRequest: summary() as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
-    const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github, reviewWriter: { async createPendingReview() { creates += 1; return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; }, async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; } } });
+    const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
     await installTestDesktopBridge(page, api.url.toString(), "cap");
     await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), reviewId);
     await page.goto(origin(renderer));
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${reviewId}`);
     await expect(page.getByRole("main")).toContainText("Persisted review result");
-    await expect(page.getByRole("heading", { name: "Review batch" })).toBeVisible();
-    await page.getByRole("button", { name: "Create pending review" }).click();
-    const confirmation = page.getByRole("alertdialog", { name: "Apply this review batch to GitHub?" });
-    await confirmation.getByRole("button", { name: "Create pending review" }).click();
-    await expect(confirmation).toBeHidden();
-    await expect(page.getByText("Pending review 9001 created.")).toBeVisible(); expect(creates).toBe(1);
+    await expect(page.getByRole("heading", { name: "Review batch" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create pending review" })).toHaveCount(0);
   } finally { if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
