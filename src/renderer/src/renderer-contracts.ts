@@ -298,6 +298,7 @@ const reviewResultSchema = v.strictObject({
     whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1))),
     suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1))),
     mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
+    disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
   })),
   validationPlan: v.array(v.string()),
   assumptions: v.array(v.string()),

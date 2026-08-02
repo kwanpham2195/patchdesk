@@ -7,7 +7,7 @@ import { InsightStore } from "../../src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
+import { parseAbsolutePath, parseFindingId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import { err, ok, type Result } from "../../src/domain/result";
@@ -104,6 +104,30 @@ describe("InsightRunCoordinator", () => {
       const observed = await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
       expect(observed).toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
       await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual(observed);
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("dismisses a Finding only for the retained current Analysis run", async () => {
+    const findingId = must(parseFindingId("finding-1"));
+    const fixtureValue = await fixture({
+      analysis: { async invoke() { return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [{ id: findingId, severity: "P1", title: "Guard", explanation: "The guard is missing.", confidence: "high", mappingStatus: "mapped", file: "src/a.ts", lineStart: 1, diffSide: "new" }], validationPlan: [], assumptions: [] }); } },
+      walkthrough: successfulWalkthrough,
+    });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      if (started._tag === "err") throw new Error("expected run");
+      await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+      const dismissed = await fixtureValue.coordinator.dismissFinding({ profileId, reviewId: fixtureValue.review.id, runId: started.value.runId, findingId, reason: "Not applicable." });
+      expect(dismissed).toEqual({ _tag: "ok", value: { findingId, status: "dismissed" } });
+      expect(await fixtureValue.insights.load(profileId, fixtureValue.review.id, "analysis")).toMatchObject({ _tag: "ok", value: { dismissals: [{ findingId, reason: "Not applicable." }] } });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("rejects adding a Finding until the draft controller is available", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      const result = await fixtureValue.coordinator.addFinding({ profileId, reviewId: fixtureValue.review.id, runId: "insight-analysis-1-aaaaaaaaaaaa-test" as never, findingId: "finding-1" as never });
+      expect(result).toEqual({ _tag: "err", error: "draft_unavailable" });
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 

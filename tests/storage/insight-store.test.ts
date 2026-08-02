@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { InsightStore } from "../../src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createInsightRecord } from "../../src/domain/insight-record";
-import { createReviewId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
+import { createInsightRecord, type InsightRecord } from "../../src/domain/insight-record";
+import { createReviewId, parseFindingId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -16,6 +16,7 @@ const profileId = must(parseWorkspaceProfileId("cfw"));
 const otherProfileId = must(parseWorkspaceProfileId("other"));
 const reviewId = createReviewId({ profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)) });
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+const findingId = must(parseFindingId("finding-1"));
 
 describe("InsightStore", () => {
   it("round-trips one type and isolates profile paths", async () => {
@@ -25,6 +26,17 @@ describe("InsightStore", () => {
     expect((await store.save(profileId, record))._tag).toBe("ok");
     expect((await store.load(profileId, reviewId, "analysis"))).toMatchObject({ _tag: "ok", value: { reviewId, type: "analysis", nextToken: 1 } });
     expect((await store.load(otherProfileId, reviewId, "analysis"))).toMatchObject({ _tag: "err", error: { reason: "not_found" } });
+  });
+
+  it("round-trips validated finding dismissals", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join("/tmp", "patchdesk-insight-")));
+    const store = new InsightStore(paths);
+    const record: InsightRecord<unknown> = {
+      ...createInsightRecord({ reviewId, type: "analysis", updatedAt: now }),
+      dismissals: [{ findingId, reason: "Not applicable.", dismissedAt: now }],
+    };
+    expect((await store.save(profileId, record))._tag).toBe("ok");
+    expect(await store.load(profileId, reviewId, "analysis")).toMatchObject({ _tag: "ok", value: { dismissals: [{ findingId: "finding-1", reason: "Not applicable." }] } });
   });
 
   it("creates and reloads through a serialized mutation", async () => {

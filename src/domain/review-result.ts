@@ -20,6 +20,7 @@ export type FindingCategory =
   | "maintainability"
   | "docs";
 export type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
+export type FindingDisposition = "open" | "added" | "dismissed";
 export type ReviewConfidence = "high" | "medium" | "low";
 export type ReviewCalloutCategory =
   | "migration"
@@ -71,6 +72,8 @@ export type ModelReviewResult = {
 
 export type ReviewFinding = ModelReviewFinding & {
   readonly mappingStatus: FindingMappingStatus;
+  /** Renderer-side disposition; absent on raw validated model results. */
+  readonly disposition?: FindingDisposition;
 };
 
 export type ReviewResult = Omit<ModelReviewResult, "findings" | "priorFindingAssessments"> & {

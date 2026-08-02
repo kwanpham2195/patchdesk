@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { beginInsightRun, completeInsightRun, createInsightRecord, failInsightRun, requestInsightCancellation, type InsightRecord } from "../../src/domain/insight-record";
-import { createReviewId, parseContentHash, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePullRequestNumber, parseReviewSessionId, parseWorkspaceProfileId } from "../../src/domain/ids";
+import { beginInsightRun, completeInsightRun, createInsightRecord, dismissInsightFinding, failInsightRun, requestInsightCancellation, type InsightRecord } from "../../src/domain/insight-record";
+import { createReviewId, parseContentHash, parseFindingId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePullRequestNumber, parseReviewSessionId, parseWorkspaceProfileId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -46,6 +46,29 @@ describe("InsightRecord", () => {
     const cancelled = requestInsightCancellation(startedAgain.value, activeRunAgain.id, later);
     expect(cancelled._tag).toBe("ok");
     if (cancelled._tag === "ok") expect(cancelled.value.activeRun?.status).toBe("cancelling");
+  });
+
+  it("trims valid dismissal reasons and rejects blank or oversized reasons", () => {
+    const findingId = must(parseFindingId("finding-1"));
+    const runId = must(parseInsightRunId(`insight-analysis-1-${headSha.slice(0, 12)}-${reviewId}`));
+    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, value: {} } };
+    const dismissed = dismissInsightFinding(withRetained, findingId, "  Not applicable.  ", later);
+    expect(dismissed).toMatchObject({ _tag: "ok", value: { dismissals: [{ findingId, reason: "Not applicable." }] } });
+    expect(dismissInsightFinding(withRetained, findingId, "   ", later)).toEqual({ _tag: "err", error: "invalid_reason" });
+    expect(dismissInsightFinding(withRetained, findingId, "x".repeat(501), later)).toEqual({ _tag: "err", error: "invalid_reason" });
+  });
+
+  it("starts a replacement with a fresh dismissal set on successful completion", () => {
+    const findingId = must(parseFindingId("finding-1"));
+    const runId = must(parseInsightRunId(`insight-analysis-1-${headSha.slice(0, 12)}-${reviewId}`));
+    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, value: {} } };
+    const dismissed = dismissInsightFinding(withRetained, findingId, "Not applicable.", now);
+    if (dismissed._tag === "err") throw new Error("expected dismissal");
+    const started = beginInsightRun(dismissed.value, runInput(dismissed.value));
+    if (started._tag === "err" || started.value.activeRun === undefined) throw new Error("expected run");
+    const completed = completeInsightRun(started.value, started.value.activeRun.id, { runId: started.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: {} }, later);
+    expect(completed).toMatchObject({ _tag: "ok", value: { retained: { value: {} } } });
+    if (completed._tag === "ok") expect(completed.value.dismissals).toBeUndefined();
   });
 
   it("accepts only the active token and replaces retained output on completion", () => {

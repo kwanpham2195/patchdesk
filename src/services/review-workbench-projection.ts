@@ -35,7 +35,7 @@ import {
 import type { InsightProjection } from "../domain/insight";
 import { normalizeNarrativeWalkthrough, type NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { MergeReadiness } from "../domain/merge-readiness";
-import type { InsightRecord, RetainedInsight } from "../domain/insight-record";
+import type { InsightFindingDismissal, InsightRecord, RetainedInsight } from "../domain/insight-record";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewAttempt } from "../domain/review-attempt";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
@@ -305,7 +305,7 @@ export class ReviewWorkbenchProjectionService {
     const recoveryView = await this.recoveryView(session, attempts.value);
     const analysis = storedInsights === undefined
       ? projectAnalysis(session, attempts.value, currentHeadSha, source !== "local")
-      : projectStoredInsight(storedInsights.value.analysis, session, patchHash);
+      : projectStoredInsight(storedInsights.value.analysis, session, patchHash, (value, record) => projectAnalysisFindings(value, record, session));
     const walkthrough = storedInsights === undefined
       ? { status: "not_generated" as const }
       : projectStoredInsight(storedInsights.value.walkthrough, session, patchHash);
@@ -462,6 +462,7 @@ function projectStoredInsight<T>(
   record: InsightRecord<RetainedInsight<T>> | undefined,
   session: ReviewSession,
   patchHash: string | undefined,
+  decorate: (value: T, record: InsightRecord<RetainedInsight<T>>) => T = (value) => value,
 ): InsightProjection<T> {
   const retained = record?.retained === undefined
     ? undefined
@@ -470,7 +471,7 @@ function projectStoredInsight<T>(
         sessionId: record.retained.revision.sessionId,
         headSha: record.retained.revision.headSha,
         generatedAt: record.retained.generatedAt,
-        value: record.retained.value,
+        value: decorate(record.retained.value, record),
       };
   if (record?.activeRun !== undefined) {
     return {
@@ -498,6 +499,28 @@ function projectStoredInsight<T>(
     && retainedRecord.revision.headSha === session.key.headSha
     && retainedRecord.revision.patchHash === patchHash;
   return { status: isCurrent ? "current" : "outdated", retained };
+}
+
+function projectAnalysisFindings(
+  value: ReviewResult,
+  record: InsightRecord<RetainedInsight<ReviewResult>>,
+  session: ReviewSession,
+): ReviewResult {
+  const dismissed = new Set((record.dismissals ?? []).map((entry: InsightFindingDismissal) => entry.findingId));
+  const added = new Set(
+    (session.batchContent?.items ?? []).flatMap((item) =>
+      "findingId" in item && item.findingId !== undefined && item.provenance?._tag === "insight" && item.provenance.runId === record.retained?.runId
+        ? [item.findingId]
+        : [],
+    ),
+  );
+  return {
+    ...value,
+    findings: value.findings.map((finding) => ({
+      ...finding,
+      disposition: dismissed.has(finding.id) ? "dismissed" : added.has(finding.id) ? "added" : "open",
+    })),
+  };
 }
 
 function parseRetainedBase(input: unknown): Result<RetainedInsight<unknown>, undefined> {

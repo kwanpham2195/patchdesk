@@ -7,6 +7,7 @@ import {
   number,
   integer,
   minValue,
+  maxLength,
   object,
   picklist,
   pipe,
@@ -70,7 +71,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseInsightRunId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
+import { parseFindingId, parseInsightRunId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
@@ -97,6 +98,7 @@ const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
 const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
+const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -141,7 +143,7 @@ export type LocalApiConfiguration = {
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned durable Review Insight lifecycle seam. */
-  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe">;
+  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding">;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -595,6 +597,8 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/insights/walkthrough/run", async (context) => insightRunResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/cancel", async (context) => insightCancelResponse(context, configuration.insights, "analysis", await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/cancel", async (context) => insightCancelResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
+  app.post("/v1/reviews/insights/analysis/findings/:findingId/dismiss", async (context) => insightFindingResponse(context, configuration.insights, "dismiss", context.req.param("findingId"), await jsonBody(context)));
+  app.post("/v1/reviews/insights/analysis/findings/:findingId/add", async (context) => insightFindingResponse(context, configuration.insights, "add", context.req.param("findingId"), await jsonBody(context)));
   app.get("/v1/reviews/insights/runs/:runId", async (context) => {
     if (configuration.insights === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
@@ -843,16 +847,35 @@ async function insightCancelResponse(context: Context, coordinator: LocalApiConf
 
 function insightResultResponse(
   context: Context,
-  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>>,
+  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["addFinding"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
   if (result._tag === "ok") return context.json(result.value, successStatus);
   const status = result.error === "invalid_request" || result.error === "model_unavailable" ? 400
     : result.error === "ownership_mismatch" ? 403
       : result.error === "not_found" ? 404
-      : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" ? 409
+      : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" || result.error === "stale_request" || result.error === "not_available" || result.error === "draft_unavailable" ? 409
         : 503;
   return context.json({ error: result.error }, status);
+}
+
+async function insightFindingResponse(context: Context, coordinator: LocalApiConfiguration["insights"], action: "add" | "dismiss", findingIdInput: string, body: unknown): Promise<Response> {
+  if (coordinator === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+  const parsed = safeParse(insightFindingSchema, body);
+  const findingId = parseFindingId(findingIdInput);
+  if (!parsed.success || findingId._tag === "err" || (action === "dismiss" && parsed.output.reason === undefined)) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = action === "dismiss"
+    ? coordinator.dismissFinding === undefined
+      ? err("storage_unavailable" as const)
+      : await coordinator.dismissFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value, reason: parsed.output.reason ?? "" })
+    : coordinator.addFinding === undefined
+      ? err("storage_unavailable" as const)
+      : await coordinator.addFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value });
+  return insightResultResponse(context, result);
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {

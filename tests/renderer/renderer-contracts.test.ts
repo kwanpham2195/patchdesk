@@ -76,6 +76,33 @@ describe("parseWorkbenchResponse", () => {
     expect(parseWorkbenchResponse(reviewProjection)).toMatchObject({ state: "review" });
   });
 
+  it("accepts Patchdesk-owned Finding dispositions", () => {
+    const projection = {
+      ...reviewProjection,
+      insights: {
+        ...reviewProjection.insights,
+        analysis: {
+          status: "current" as const,
+          retained: {
+            runId: "insight-analysis-1-aaaaaaaaaaaa-review-abcdef123456",
+            sessionId: sessionProjection.id,
+            headSha: sessionProjection.key.headSha,
+            generatedAt: "2026-07-18T00:00:00.000Z",
+            value: {
+              changeSummary: "A change",
+              verdict: "comment" as const,
+              summary: "A finding",
+              findings: [{ id: "finding-1", severity: "P1" as const, title: "Guard", explanation: "Missing guard.", confidence: "high" as const, mappingStatus: "mapped" as const, disposition: "dismissed" as const }],
+              validationPlan: [],
+              assumptions: [],
+            },
+          },
+        },
+      },
+    };
+    expect(parseWorkbenchResponse(projection)?.insights.analysis.retained?.value.findings[0]?.disposition).toBe("dismissed");
+  });
+
   it("rejects paths, worktree data, provider events, prompt text, and raw errors", () => {
     for (const field of ["patchPath", "worktree", "contextPath", "providerEvent", "prompt", "errorDetail"]) {
       expect(parseWorkbenchResponse({ ...reviewProjection, [field]: "/tmp/secret" }), field).toBeUndefined();

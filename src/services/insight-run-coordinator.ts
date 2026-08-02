@@ -2,9 +2,9 @@ import { readFile, readdir } from "node:fs/promises";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
-import { parseContentHash, parseInsightRunId, parseIsoTimestamp, parseWorkspaceProfileId, type ContentHash, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseReviewSessionId, parseWorkspaceProfileId, type ContentHash, type FindingId, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewScope } from "../domain/review-comparison";
-import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRecord, type InsightRevision, type InsightType } from "../domain/insight-record";
+import { beginInsightRun, completeInsightRun, dismissInsightFinding, failInsightRun, requestInsightCancellation, type InsightRecord, type InsightRevision, type InsightType } from "../domain/insight-record";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { parseModelReviewResult, parseReviewResult } from "../domain/review-result";
 import { normalizeNarrativeWalkthrough } from "../domain/narrative-walkthrough";
@@ -15,12 +15,13 @@ import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
+import { readObjectField } from "./read-object-field";
 
 export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly scope?: ReviewScope; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
 export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>> };
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
-export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active";
+export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
@@ -96,6 +97,50 @@ export class InsightRunCoordinator {
     }
     this.active.get(input.runId)?.controller.abort();
     return ok({ runId: input.runId, type: input.type, status: "cancelling" });
+  }
+
+  async dismissFinding(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly runId: InsightRunId; readonly findingId: FindingId; readonly reason: string }): Promise<Result<{ readonly findingId: FindingId; readonly status: "dismissed" }, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
+    const review = await this.reviews.load(input.profileId, input.reviewId);
+    if (review._tag === "err") return err("storage_unavailable");
+    const session = await this.sessions.load(input.profileId, review.value.currentSessionId);
+    if (session._tag === "err") return err(session.error.reason === "not_found" ? "not_found" : "storage_unavailable");
+    const currentHash = parseContentHash(await contentHash(session.value.patchPath));
+    if (currentHash._tag === "err") return err("storage_unavailable");
+    const retained = await this.insights.load(input.profileId, input.reviewId, "analysis");
+    if (retained._tag === "err") return err(retained.error.reason === "not_found" ? "not_found" : "storage_unavailable");
+    const retainedRecord = retained.value.retained;
+    const retainedRunId = parseInsightRunId(readObjectField(retainedRecord, "runId"));
+    const retainedRevision = readObjectField(retainedRecord, "revision");
+    if (retainedRunId._tag === "err" || retainedRunId.value !== input.runId) return err("not_found");
+    const retainedSession = parseReviewSessionId(readObjectField(retainedRevision, "sessionId"));
+    const retainedHead = parseGitSha(readObjectField(retainedRevision, "headSha"));
+    const retainedPatch = parseContentHash(readObjectField(retainedRevision, "patchHash"));
+    const retainedValue = parseReviewResult(readRetainedValue(retainedRecord));
+    if (retainedSession._tag === "err" || retainedHead._tag === "err" || retainedPatch._tag === "err" || retainedValue._tag === "err") return err("not_found");
+    if (retainedSession.value !== session.value.id || retainedHead.value !== session.value.key.headSha || retainedPatch.value !== currentHash.value) return err("stale_request");
+    if (!retainedValue.value.findings.some((finding) => finding.id === input.findingId)) return err("not_found");
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "err") return err("storage_unavailable");
+    const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: "analysis", now: timestamp.value, operation: (record) => {
+      if (record.activeRun !== undefined || record.retained === undefined || !isRetainedRun(record.retained, input.runId)) return err("not_available" as const);
+      const parsed = parseReviewResult(readRetainedValue(record.retained));
+      if (parsed._tag === "err" || !parsed.value.findings.some((finding) => finding.id === input.findingId)) return err("not_available" as const);
+      return dismissInsightFinding(record, input.findingId, input.reason, timestamp.value);
+    } });
+    if (changed._tag === "err") {
+      if (changed.error === "invalid_reason") return err("invalid_request");
+      if (changed.error === "not_available") return err("not_available");
+      return err("storage_unavailable");
+    }
+    return ok({ findingId: input.findingId, status: "dismissed" });
+  }
+
+  async addFinding(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly runId: InsightRunId; readonly findingId: FindingId }): Promise<Result<never, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
+    return err("draft_unavailable");
   }
 
   async recover(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType }): Promise<Result<InsightRunResponse | undefined, InsightCoordinatorFailure>> {
@@ -288,6 +333,10 @@ function safeFailureDetail(cause: unknown): string {
 
 function isRetainedRun(value: unknown, runId: InsightRunId): boolean {
   return typeof value === "object" && value !== null && "runId" in value && value.runId === runId;
+}
+
+function readRetainedValue(value: unknown): unknown {
+  return typeof value === "object" && value !== null && "value" in value ? value.value : undefined;
 }
 
 function currentIsoTimestamp(): IsoTimestamp {

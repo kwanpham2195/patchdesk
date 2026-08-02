@@ -16,6 +16,7 @@ import {
   createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
+  parseFindingId,
   parseGitSha,
   parseInsightRunId,
   parseIsoTimestamp,
@@ -393,7 +394,47 @@ describe("ReviewWorkbenchProjectionService", () => {
     }
   });
 
-  it("reports a missing incremental comparison truthfully", async () => {
+  it("projects persisted Finding dismissals without changing retained Analysis", async () => {
+  const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+  const { root, paths, projection, sessions } = await setup(github, true);
+  try {
+    const session = completedSession(paths);
+    const patch = "diff --git a/src/a.ts b/src/a.ts\\n+change\\n";
+    await mkdir(dirname(session.patchPath), { recursive: true });
+    await writeFile(session.patchPath, patch, "utf8");
+    expect((await sessions.save(session))._tag).toBe("ok");
+    const patchHash = must(parseContentHash(createHash("sha256").update(patch).digest("hex")));
+    const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
+    const findingId = must(parseFindingId("finding-1"));
+    expect((await new InsightStore(paths).save(profileId, {
+      schemaVersion: 1,
+      reviewId: createReviewId(session.key),
+      type: "analysis",
+      nextToken: 2,
+      retained: {
+        runId,
+        revision: { sessionId: session.id, headSha, patchHash },
+        generatedAt: now,
+        value: {
+          changeSummary: "Durable analysis",
+          verdict: "comment",
+          summary: "Durable analysis",
+          findings: [{ id: findingId, severity: "P1", title: "Guard", explanation: "Missing guard.", confidence: "high", mappingStatus: "mapped", file: "src/a.ts", lineStart: 1, diffSide: "new" }],
+          validationPlan: [],
+          assumptions: [],
+        },
+      },
+      dismissals: [{ findingId, reason: "Not applicable.", dismissedAt: now }],
+      updatedAt: now,
+    }))._tag).toBe("ok");
+    const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+    expect(loaded).toMatchObject({ _tag: "ok", value: { insights: { analysis: { retained: { value: { findings: [{ id: findingId, disposition: "dismissed" }] } } } } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("reports a missing incremental comparison truthfully", async () => {
     const github = fakeGitHub({
       current: summary(headSha),
       comments: { threads: [] },

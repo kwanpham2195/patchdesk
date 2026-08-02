@@ -59,6 +59,8 @@ describe("local API capability boundary", () => {
       async start(input) { return ok({ runId: runId as never, type: input.type, status: "queued" as const }); },
       async cancel(input) { return ok({ runId: input.runId, type: input.type, status: "cancelling" as const }); },
       async observe(input) { return ok({ runId: input.runId, type: input.type, status: "running" as const }); },
+      async dismissFinding(input) { return ok({ findingId: input.findingId, status: "dismissed" as const }); },
+      async addFinding() { return err("draft_unavailable" as const); },
     };
     const startup = await startLocalApiServer({ capability, allowedOrigin, insights });
     if (startup._tag !== "started") throw new Error("Expected local API startup");
@@ -74,6 +76,12 @@ describe("local API capability boundary", () => {
     const cancelled = await fetch(new URL("v1/reviews/insights/analysis/cancel", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, type: "analysis", runId }) });
     expect(cancelled.status).toBe(200);
     expect(await cancelled.json()).toEqual({ runId, type: "analysis", status: "cancelling" });
+    const dismissed = await fetch(new URL("v1/reviews/insights/analysis/findings/finding-1/dismiss", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, runId, reason: "Not applicable." }) });
+    expect(dismissed.status).toBe(200);
+    expect(await dismissed.json()).toEqual({ findingId: "finding-1", status: "dismissed" });
+    const added = await fetch(new URL("v1/reviews/insights/analysis/findings/finding-1/add", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, runId }) });
+    expect(added.status).toBe(409);
+    expect(await added.json()).toEqual({ error: "draft_unavailable" });
   });
 
   it("maps authenticated review-run parsing, catalog, and missing-session failures", async () => {
