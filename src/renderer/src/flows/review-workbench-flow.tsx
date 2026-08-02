@@ -5,6 +5,8 @@ import { parseRepoRelativePath } from "../../../domain/ids";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseReviewBatch } from "../../../domain/review-batch";
 import { requestJson } from "../api-client";
+import { AnalysisReader } from "../components/analysis-reader";
+import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { ReviewWorkbench } from "../components/review-workbench";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import { ReviewBatchPanel, type ReviewBatchPanelActions } from "../components/review-batch-panel";
@@ -161,6 +163,11 @@ function InsightsSlot({
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
   const [catalogError, setCatalogError] = useState(false);
+  const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
+  const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
+  const [reviewedWalkthroughSections, setReviewedWalkthroughSections] = useState<ReadonlyArray<string>>([]);
+  const [supportReviewed, setSupportReviewed] = useState(false);
+  const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<string | undefined>(undefined);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
   const onInsightPatch = useCallback((type: "analysis" | "walkthrough", projection: WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"]): void => {
@@ -267,6 +274,7 @@ function InsightsSlot({
           disabled={!runEnabled}
           {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}
           onAddFinding={addFinding}
+          {...(workbench.insights.analysis.retained === undefined ? {} : { onOpen: () => setAnalysisReaderOpen(true) })}
         >
           {workbench.insights.analysis.retained?.value.summary}
         </InsightCard>
@@ -279,10 +287,13 @@ function InsightsSlot({
           onRun={() => { if (model !== null) walkthroughRun.run(model, reasoning); }}
           onCancel={walkthroughRun.cancel}
           disabled={!runEnabled}
+          {...(workbench.insights.walkthrough.retained === undefined ? {} : { onOpen: () => setWalkthroughReaderOpen(true) })}
         >
           {workbench.insights.walkthrough.retained?.value.focus}
         </InsightCard>
       </div>
+      {analysisReaderOpen && workbench.insights.analysis.retained !== undefined ? <AnalysisReader result={workbench.insights.analysis.retained.value} onBack={() => setAnalysisReaderOpen(false)} onAddFinding={addFinding} /> : null}
+      {walkthroughReaderOpen && workbench.insights.walkthrough.retained !== undefined ? <NarrativeWalkthrough walkthrough={workbench.insights.walkthrough.retained.value} {...(workbench.fullPatch === undefined ? {} : { rawPatch: workbench.fullPatch })} reviewedSectionIds={reviewedWalkthroughSections} supportReviewed={supportReviewed} {...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection })} actions={{ onBackToFiles: () => setWalkthroughReaderOpen(false), onMarkSectionReviewed: (sectionId) => setReviewedWalkthroughSections((current) => current.includes(sectionId) ? current : [...current, sectionId]), onMarkSupportReviewed: () => setSupportReviewed(true), onSelectSection: setCurrentWalkthroughSection }} /> : null}
       <p className="sr-only" aria-live="polite">{insightLiveStatus(analysisRun.status, walkthroughRun.status)}</p>
     </section>
   );
@@ -304,6 +315,7 @@ function InsightCard({
   disabled,
   findings,
   onAddFinding,
+  onOpen,
   children,
 }: {
   readonly title: string;
@@ -316,6 +328,7 @@ function InsightCard({
   readonly disabled: boolean;
   readonly findings?: ReadonlyArray<AnalysisFinding>;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
+  readonly onOpen?: () => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const status = busy && runStatus !== "idle" ? runStatus : projection.status;
@@ -334,8 +347,8 @@ function InsightCard({
         {findings === undefined || findings.length === 0 || onAddFinding === undefined ? null : <ul className="flex flex-col gap-2 border-t pt-2">{findings.slice(0, 5).map((finding) => <li key={finding.id} className="flex items-start justify-between gap-2 text-xs"><span className="min-w-0 truncate">{finding.title}</span><Button size="xs" variant="outline" onClick={() => void onAddFinding(finding)}>Add</Button></li>)}</ul>}
       </CardContent>
       <CardFooter className="flex gap-2">
+        {onOpen !== undefined ? <Button variant="outline" onClick={onOpen} aria-label={`Open ${title}`}>Open</Button> : null}
         {busy ? <Button variant="outline" onClick={onCancel}>Cancel</Button> : <Button onClick={onRun} disabled={disabled}>{projection.retained === undefined ? "Run" : "Regenerate"}</Button>}
-
       </CardFooter>
     </Card>
   );

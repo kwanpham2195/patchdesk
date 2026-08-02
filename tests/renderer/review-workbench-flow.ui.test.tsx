@@ -77,6 +77,41 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
+  it("opens the retained Analysis reader from the Insights card", async () => {
+    const value = {
+      ...projection(),
+      insights: {
+        analysis: {
+          status: "current" as const,
+          retained: {
+            runId: "insight-analysis-1-aaaaaaaaaaaa-review-42",
+            sessionId: "session-a",
+            headSha: "a".repeat(40),
+            generatedAt: "2026-08-01T00:00:00.000Z",
+            value: {
+              changeSummary: "Protect the write boundary",
+              verdict: "request_changes" as const,
+              summary: "One finding needs attention.",
+              findings: [{ id: "finding-1", severity: "P1" as const, title: "Missing guard", explanation: "The guard is missing.", confidence: "high" as const, mappingStatus: "mapped" as const, file: "src/a.ts", lineStart: 1, disposition: "open" as const }],
+              validationPlan: ["pnpm test"],
+              assumptions: [],
+            },
+          },
+        },
+        walkthrough: { status: "not_generated" as const },
+      },
+    };
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    const insightsTab = screen.getAllByRole("tab", { name: "Insights" })[0];
+    if (insightsTab === undefined) throw new Error("Expected Insights tab");
+    await user.click(insightsTab);
+    await user.click(screen.getByRole("button", { name: "Open Analysis" }));
+    expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Protect the write boundary" })).toBeTruthy();
+    expect(screen.getAllByText("Missing guard").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("opens the PR overview without replacing the workbench", async () => {
     const base = projection();
     if (base.pullRequest === undefined) throw new Error("Expected pull request fixture");
