@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +18,7 @@ import {
 } from "../../src/domain/ids";
 import { parseReviewBatch, type ReviewBatch } from "../../src/domain/review-batch";
 import { createReviewSession, type ReviewSession } from "../../src/domain/review-session";
+import { contentHash } from "../../src/services/review-artifact-hash";
 import { ReviewBatchController } from "../../src/services/review-batch-controller";
 
 function must<T>(
@@ -139,10 +140,11 @@ function updateInput(
   };
 }
 
-function controller(store: ReviewSessionStore): ReviewBatchController {
+function controller(store: ReviewSessionStore, authority?: ConstructorParameters<typeof ReviewBatchController>[2]): ReviewBatchController {
   return new ReviewBatchController(
     store,
     () => must(parseIsoTimestamp("2026-07-16T00:01:00.000Z")),
+    authority,
   );
 }
 
@@ -192,10 +194,18 @@ describe("ReviewBatchController", () => {
 
   it("persists Finding-derived draft provenance and the exact anchor fingerprint", async () => {
     const value = await fixture({}, { prepared: true });
-    const updated = await controller(value.store).update(updateInput(value, {
+    await writeFile(value.session.patchPath, "diff --git a/src/prepared.ts b/src/prepared.ts\n@@ -4,1 +4,1 @@\n+Keep the snapshot-owned guard.\n", "utf8");
+    const runId = `insight-analysis-1-aaaaaaaaaaaa-${value.session.id}`;
+    const reviewId = "github.com__centraldigital__patchdesk__pr-42__review-439aa21713b5";
+    const patchHash = await contentHash(value.session.patchPath);
+    const updated = await controller(value.store, {
+      reviews: { load: async () => ({ _tag: "ok", value: { currentSessionId: value.session.id, status: { _tag: "Open" } } }) as never },
+      insights: { loadTyped: async () => ({ _tag: "ok", value: { retained: { runId, sessionId: value.session.id, headSha: value.session.key.headSha, patchHash, value: { changeSummary: "Change", verdict: "comment", summary: "Review", findings: [{ id: "analysis-finding", severity: "P1", title: "Keep the guard", file: "src/prepared.ts", lineStart: 4, lineEnd: 4, diffSide: "new", explanation: "Keep it", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } } } }) as never },
+    }).update(updateInput(value, {
       _tag: "AddFindingInlineComment",
+      reviewId,
       findingId: "analysis-finding",
-      runId: `insight-analysis-1-aaaaaaaaaaaa-${value.session.id}`,
+      runId,
       anchor: { path: "src/prepared.ts", startLine: 4, line: 4, side: "new" },
       fingerprint: {
         path: "src/prepared.ts",
@@ -214,7 +224,7 @@ describe("ReviewBatchController", () => {
         batch: {
           items: [{
             _tag: "InlineComment",
-            provenance: { _tag: "insight", runId: `insight-analysis-1-aaaaaaaaaaaa-${value.session.id}` },
+            provenance: { _tag: "insight", runId },
             source: "finding",
             findingId: "analysis-finding",
             fingerprint: { selectedLines: ["Keep the snapshot-owned guard."] },
@@ -222,6 +232,12 @@ describe("ReviewBatchController", () => {
         },
       },
     });
+    if (updated._tag === "ok") {
+      await expect(controller(value.store, {
+        reviews: { load: async () => ({ _tag: "ok", value: { currentSessionId: value.session.id, status: { _tag: "Open" } } }) as never },
+        insights: { loadTyped: async () => ({ _tag: "ok", value: { retained: { runId, sessionId: value.session.id, headSha: value.session.key.headSha, patchHash, value: { changeSummary: "Change", verdict: "comment", summary: "Review", findings: [{ id: "analysis-finding", severity: "P1", title: "Keep the guard", file: "src/prepared.ts", lineStart: 4, lineEnd: 4, diffSide: "new", explanation: "Keep it", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } } } }) as never },
+      }).update({ ...updateInput(value, { _tag: "AddFindingGeneralComment", reviewId, findingId: "analysis-finding", runId: `${runId}-stale`, body: "Stale" }), expectedRevision: updated.value.revision })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+    }
   });
 
   it("adds general feedback and converts an inline item without losing identity", async () => {
@@ -406,6 +422,18 @@ describe("ReviewBatchController", () => {
           _tag: "AddThreadReply",
           threadId: "thread-1",
           body: "   ",
+        }),
+      ),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "invalid_input" },
+    });
+    await expect(
+      service.update(
+        updateInput(value, {
+          _tag: "AddGeneralComment",
+          findingId: "should-not-be-accepted",
+          body: "Manual comments cannot claim a Finding.",
         }),
       ),
     ).resolves.toEqual({

@@ -1,17 +1,28 @@
+import { readFile } from "node:fs/promises";
 import * as v from "valibot";
 
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
+import type { InsightStore } from "../adapters/storage/insight-store";
 import {
   parseGitHubThreadId,
+  parseGitSha,
+  parseContentHash,
   parseIsoTimestamp,
   parseFindingId,
   parseInsightRunId,
   parseLocalReviewItemId,
+  parseReviewId,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type ContentHash,
   type FindingId,
+  type GitSha,
   type InsightRunId,
+  type ReviewId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
   type GitHubThreadId,
   type IsoTimestamp,
   type LocalReviewItemId,
@@ -27,6 +38,10 @@ import {
   discardBatchForRerun,
   type ReviewSession,
 } from "../domain/review-session";
+import { fingerprintPatchAnchor } from "../domain/review-anchor";
+import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+import { readObjectField } from "./read-object-field";
+import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
 
 const anchorSchema = v.strictObject({
@@ -55,6 +70,7 @@ const commandSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddFindingInlineComment"),
+    reviewId: v.string(),
     findingId: v.string(),
     runId: v.string(),
     anchor: anchorSchema,
@@ -63,6 +79,7 @@ const commandSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddFindingGeneralComment"),
+    reviewId: v.string(),
     findingId: v.string(),
     runId: v.string(),
     body: v.string(),
@@ -74,7 +91,6 @@ const commandSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddGeneralComment"),
-    findingId: v.optional(v.string()),
     body: v.string(),
   }),
   v.strictObject({
@@ -118,6 +134,7 @@ export type ReviewBatchUpdate =
     }
   | {
       readonly _tag: "AddFindingInlineComment";
+      readonly reviewId: ReviewId;
       readonly findingId: FindingId;
       readonly runId: InsightRunId;
       readonly anchor: ReviewAnchor;
@@ -126,6 +143,7 @@ export type ReviewBatchUpdate =
     }
   | {
       readonly _tag: "AddFindingGeneralComment";
+      readonly reviewId: ReviewId;
       readonly findingId: FindingId;
       readonly runId: InsightRunId;
       readonly body: string;
@@ -137,7 +155,6 @@ export type ReviewBatchUpdate =
     }
   | {
       readonly _tag: "AddGeneralComment";
-      readonly findingId?: FindingId;
       readonly body: string;
     }
   | {
@@ -162,6 +179,12 @@ export type ReviewBatchUpdate =
       readonly _tag: "DiscardForRerun";
       readonly acknowledgement: true;
     };
+
+type FindingCommand = Extract<ReviewBatchUpdate, { readonly _tag: "AddFindingInlineComment" | "AddFindingGeneralComment" }>;
+
+function isFindingCommand(command: ReviewBatchUpdate): command is FindingCommand {
+  return command._tag === "AddFindingInlineComment" || command._tag === "AddFindingGeneralComment";
+}
 
 type ParsedUpdate = {
   readonly profileId: ReviewSession["key"]["profileId"];
@@ -206,6 +229,10 @@ export class ReviewBatchController {
   constructor(
     private readonly sessions: ReviewSessionStore,
     private readonly now: () => IsoTimestamp,
+    private readonly authority?: {
+      readonly reviews: Pick<ReviewStore, "load">;
+      readonly insights: Pick<InsightStore, "loadTyped">;
+    },
   ) {}
 
   /** Parse and apply one local batch command. */
@@ -284,6 +311,10 @@ export class ReviewBatchController {
     if (durable.state._tag !== "Local") {
       return err({ reason: "batch_not_editable" });
     }
+    if (isFindingCommand(input.command)) {
+      const valid = await this.validateFindingCommand(input.profileId, input.sessionId, loaded.value, input.command);
+      if (valid._tag === "err") return valid;
+    }
     const transitioned = applyLocalUpdate(
       durable,
       input.command,
@@ -318,6 +349,29 @@ export class ReviewBatchController {
     });
   }
 
+  private async validateFindingCommand(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    session: ReviewSession,
+    command: FindingCommand,
+  ): Promise<Result<void, ReviewBatchControllerFailure>> {
+    if (this.authority === undefined) return err({ reason: "invalid_input" });
+    const review = await this.authority.reviews.load(profileId, command.reviewId);
+    if (review._tag === "err" || review.value.status._tag !== "Open" || review.value.currentSessionId !== sessionId) return err({ reason: "invalid_input" });
+    const analysis = await this.authority.insights.loadTyped(profileId, command.reviewId, "analysis", parseStoredAnalysis);
+    if (analysis._tag === "err" || analysis.value.retained === undefined) return err({ reason: "invalid_input" });
+    const retained = analysis.value.retained;
+    if (retained.runId !== command.runId || retained.sessionId !== sessionId || retained.headSha !== session.key.headSha) return err({ reason: "invalid_input" });
+    const patch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    if (patch === undefined || await contentHash(session.patchPath) !== retained.patchHash) return err({ reason: "invalid_input" });
+    const finding = retained.value.findings.find((candidate) => candidate.id === command.findingId);
+    if (finding === undefined) return err({ reason: "invalid_input" });
+    if (command._tag === "AddFindingGeneralComment") return ok(undefined);
+    if (finding.mappingStatus !== "mapped" || finding.file !== command.anchor.path || finding.lineStart !== command.anchor.startLine || (finding.lineEnd ?? finding.lineStart) !== command.anchor.line || (finding.diffSide ?? "new") !== command.anchor.side) return err({ reason: "invalid_input" });
+    const expected = fingerprintPatchAnchor(patch, command.anchor);
+    return expected !== undefined && sameFingerprint(expected, command.fingerprint) ? ok(undefined) : err({ reason: "invalid_input" });
+  }
+
   private async exclusive<T>(
     key: string,
     operation: () => Promise<T>,
@@ -339,6 +393,33 @@ export class ReviewBatchController {
       }
     }
   }
+}
+
+type StoredAnalysis = {
+  readonly runId: InsightRunId;
+  readonly sessionId: ReviewSessionId;
+  readonly headSha: GitSha;
+  readonly patchHash: ContentHash;
+  readonly value: ReviewResult;
+};
+
+function parseStoredAnalysis(input: unknown): Result<StoredAnalysis, unknown> {
+  const revision = readObjectField(input, "revision");
+  const runId = parseInsightRunId(readObjectField(input, "runId"));
+  const sessionId = parseReviewSessionId(readObjectField(revision, "sessionId"));
+  const headSha = parseGitSha(readObjectField(revision, "headSha"));
+  const patchHash = parseContentHash(readObjectField(revision, "patchHash"));
+  const value = parseReviewResult(readObjectField(input, "value"));
+  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || value._tag === "err") return err(undefined);
+  return ok({ runId: runId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value, value: value.value });
+}
+
+function sameFingerprint(left: ReviewAnchorFingerprint, right: ReviewAnchorFingerprint): boolean {
+  return left.path === right.path && left.side === right.side && left.startLine === right.startLine && left.line === right.line && sameStrings(left.selectedLines, right.selectedLines) && sameStrings(left.before, right.before) && sameStrings(left.after, right.after);
+}
+
+function sameStrings(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function parseUpdate(
@@ -404,25 +485,26 @@ function parseCommand(
     });
   }
   if (command._tag === "AddFindingInlineComment") {
+    const reviewId = parseReviewId(command.reviewId);
     const findingId = parseFindingId(command.findingId);
     const runId = parseInsightRunId(command.runId);
     const path = parseRepoRelativePath(command.anchor.path);
     const fingerprint = path._tag === "ok" ? parseFingerprint(command.fingerprint, path.value, command.anchor.startLine, command.anchor.line) : err({ reason: "invalid_input" as const });
-    if (findingId._tag === "err" || runId._tag === "err" || path._tag === "err" || fingerprint._tag === "err" || command.anchor.line < command.anchor.startLine || isEmptyBody(command.body)) return err({ reason: "invalid_input" });
-    return ok({ _tag: "AddFindingInlineComment", findingId: findingId.value, runId: runId.value, anchor: { path: path.value, startLine: command.anchor.startLine, line: command.anchor.line, side: command.anchor.side }, fingerprint: fingerprint.value, body: command.body });
+    if (reviewId._tag === "err" || findingId._tag === "err" || runId._tag === "err" || path._tag === "err" || fingerprint._tag === "err" || command.anchor.line < command.anchor.startLine || isEmptyBody(command.body)) return err({ reason: "invalid_input" });
+    return ok({ _tag: "AddFindingInlineComment", reviewId: reviewId.value, findingId: findingId.value, runId: runId.value, anchor: { path: path.value, startLine: command.anchor.startLine, line: command.anchor.line, side: command.anchor.side }, fingerprint: fingerprint.value, body: command.body });
   }
   if (command._tag === "AddFindingGeneralComment") {
+    const reviewId = parseReviewId(command.reviewId);
     const findingId = parseFindingId(command.findingId);
     const runId = parseInsightRunId(command.runId);
-    return findingId._tag === "err" || runId._tag === "err" || isEmptyBody(command.body)
+    return reviewId._tag === "err" || findingId._tag === "err" || runId._tag === "err" || isEmptyBody(command.body)
       ? err({ reason: "invalid_input" })
-      : ok({ _tag: "AddFindingGeneralComment", findingId: findingId.value, runId: runId.value, body: command.body });
+      : ok({ _tag: "AddFindingGeneralComment", reviewId: reviewId.value, findingId: findingId.value, runId: runId.value, body: command.body });
   }
   if (command._tag === "AddGeneralComment") {
-    const findingId = command.findingId === undefined ? undefined : parseFindingId(command.findingId);
-    return findingId !== undefined && findingId._tag === "err" || isEmptyBody(command.body)
+    return isEmptyBody(command.body)
       ? err({ reason: "invalid_input" })
-      : ok({ _tag: "AddGeneralComment", ...(findingId === undefined ? {} : { findingId: findingId.value }), body: command.body });
+      : ok({ _tag: "AddGeneralComment", body: command.body });
   }
   if (command._tag === "ConvertInlineToGeneral") {
     const itemId = parseLocalReviewItemId(command.itemId);
@@ -550,7 +632,6 @@ function applyLocalUpdate(
       id,
       provenance: { _tag: "human" },
       source: "manual",
-      ...(command.findingId === undefined ? {} : { findingId: command.findingId }),
       body: command.body,
       include: true,
     }];

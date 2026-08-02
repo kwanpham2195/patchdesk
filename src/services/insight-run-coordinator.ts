@@ -4,7 +4,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import { parseContentHash, parseInsightRunId, parseIsoTimestamp, parseWorkspaceProfileId, type ContentHash, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewScope } from "../domain/review-comparison";
-import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRevision, type InsightType } from "../domain/insight-record";
+import { beginInsightRun, completeInsightRun, failInsightRun, requestInsightCancellation, type InsightRecord, type InsightRevision, type InsightType } from "../domain/insight-record";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { parseModelReviewResult, parseReviewResult } from "../domain/review-result";
 import { normalizeNarrativeWalkthrough } from "../domain/narrative-walkthrough";
@@ -168,11 +168,11 @@ export class InsightRunCoordinator {
       }
       const current = latestReview._tag === "ok" && latestSession._tag === "ok" && latestHash._tag === "ok" && latestReview.value.currentSessionId === input.sessionId && latestSession.value.id === input.sessionId && latestHash.value === startedHash;
       if (!current) {
-        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        await this.persistTerminal(input, type, runId, timestamp.value, (record) => failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value), "superseded");
         return;
       }
       if (invocation._tag === "err" || controller.signal.aborted) {
-        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: controller.signal.aborted || invocation._tag === "err" && invocation.error.reason === "cancelled" ? "cancelled" : "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        await this.persistTerminal(input, type, runId, timestamp.value, (record) => failInsightRun(record, runId, { runId, reason: controller.signal.aborted || invocation._tag === "err" && invocation.error.reason === "cancelled" ? "cancelled" : "failed", retryable: true, failedAt: timestamp.value }, timestamp.value), "invocation");
         return;
       }
       const validated = await this.validateResult(type, invocation.value, input, {
@@ -181,18 +181,18 @@ export class InsightRunCoordinator {
         patchHash: latestHash.value,
       });
       if (validated._tag === "err") {
-        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "invalid_result", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+        await this.persistTerminal(input, type, runId, timestamp.value, (record) => failInsightRun(record, runId, { runId, reason: "invalid_result", retryable: true, failedAt: timestamp.value }, timestamp.value), "invalid_result");
         await this.recordDiagnostic(input, type, "invalid_result");
         return;
       }
-      await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => {
+      await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
         if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
           return failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value);
         }
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
-      } });
+      }, "completion");
     } catch (cause: unknown) {
       await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));
     } finally {
@@ -237,14 +237,30 @@ export class InsightRunCoordinator {
     return normalized._tag === "ok" ? normalized : err("invalid_result");
   }
 
-  private async recordExecutionFailure(input: InsightInvocationInput, type: InsightType, runId: InsightRunId, detail: string): Promise<void> {
+  private async persistTerminal(
+    input: InsightInvocationInput,
+    type: InsightType,
+    runId: InsightRunId,
+    at: IsoTimestamp,
+    operation: (record: InsightRecord<unknown>) => Result<InsightRecord<unknown>, "superseded">,
+    detail: string,
+  ): Promise<void> {
     try {
-      const timestamp = parseIsoTimestamp(this.now());
-      if (timestamp._tag === "ok") {
-        await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => failInsightRun(record, runId, { runId, reason: "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
-      }
+      const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: at, operation });
+      if (changed._tag === "ok" || changed.error === "superseded") return;
     } catch {
-      // A storage failure must not escape the detached execution boundary.
+      // Fall through to orphan recovery and diagnostic reporting.
+    }
+    this.active.delete(runId);
+    const recovered = await this.recover({ profileId: input.profileId, reviewId: input.reviewId, type });
+    if (recovered._tag === "err") await this.recordDiagnostic(input, type, `${detail}_recovery_failed`);
+    await this.recordDiagnostic(input, type, `${detail}_persist_failed`);
+  }
+
+  private async recordExecutionFailure(input: InsightInvocationInput, type: InsightType, runId: InsightRunId, detail: string): Promise<void> {
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "ok") {
+      await this.persistTerminal(input, type, runId, timestamp.value, (record) => failInsightRun(record, runId, { runId, reason: "failed", retryable: true, failedAt: timestamp.value }, timestamp.value), detail);
     }
     await this.recordDiagnostic(input, type, detail);
   }

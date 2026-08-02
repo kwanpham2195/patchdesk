@@ -251,11 +251,13 @@ export async function startLocalApiServer(
           },
           () => new Date().toISOString() as never,
         );
+  const reviews = new ReviewStore(paths);
+  const insights = new InsightStore(paths);
   const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
+    { reviews, insights },
   );
-  const reviews = new ReviewStore(paths);
   const remoteReviews = new ReviewRemoteStore(paths);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
@@ -284,7 +286,7 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
     reviews,
-    new InsightStore(paths),
+    insights,
   );
   const reviewRefresh = new ReviewRefreshService({
     profiles,

@@ -200,8 +200,8 @@ function InsightsSlot({
     if (batch === undefined || runId === undefined) return;
     const body = finding.suggestedComment ?? finding.explanation;
     let command:
-      | { readonly _tag: "AddFindingInlineComment"; readonly findingId: string; readonly runId: string; readonly anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" }; readonly fingerprint: NonNullable<ReturnType<typeof fingerprintPatchAnchor>>; readonly body: string }
-      | { readonly _tag: "AddFindingGeneralComment"; readonly findingId: string; readonly runId: string; readonly body: string };
+      | { readonly _tag: "AddFindingInlineComment"; readonly reviewId: string; readonly findingId: string; readonly runId: string; readonly anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" }; readonly fingerprint: NonNullable<ReturnType<typeof fingerprintPatchAnchor>>; readonly body: string }
+      | { readonly _tag: "AddFindingGeneralComment"; readonly reviewId: string; readonly findingId: string; readonly runId: string; readonly body: string };
     if (finding.mappingStatus === "mapped" && finding.file !== undefined && finding.lineStart !== undefined && workbench.fullPatch !== undefined) {
       const mapped = mapFindingLocation(parseUnifiedPatch(workbench.fullPatch), {
         file: finding.file,
@@ -217,15 +217,15 @@ function InsightsSlot({
         const anchor = { path: path.value, startLine, line, side };
         const fingerprint = fingerprintPatchAnchor(workbench.fullPatch, anchor);
         if (fingerprint !== undefined) {
-          command = { _tag: "AddFindingInlineComment", findingId: finding.id, runId, anchor, fingerprint, body };
+          command = { _tag: "AddFindingInlineComment", reviewId, findingId: finding.id, runId, anchor, fingerprint, body };
         } else {
-          command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+          command = { _tag: "AddFindingGeneralComment", reviewId, findingId: finding.id, runId, body };
         }
       } else {
-        command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+        command = { _tag: "AddFindingGeneralComment", reviewId, findingId: finding.id, runId, body };
       }
     } else {
-      command = { _tag: "AddFindingGeneralComment", findingId: finding.id, runId, body };
+      command = { _tag: "AddFindingGeneralComment", reviewId, findingId: finding.id, runId, body };
     }
     const value = await requestJson("/v1/reviews/batch", { method: "POST", body: { profileId, sessionId: workbench.session.id, expectedRevision: batch.updatedAt, command } });
     const next = parseBatchResponse(value);

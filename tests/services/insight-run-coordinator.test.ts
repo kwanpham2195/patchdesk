@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { InsightStore } from "../../src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -23,6 +23,7 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   const paths = PatchdeskPaths.forTest(root);
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
+  const insights = new InsightStore(paths);
   const sessionSeed = createReviewSession({ key: { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: now });
   const session = { ...sessionSeed, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionSeed.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, sessionSeed.id))), headSha } };
   const review = createReview({ identity: { profileId, host: session.key.host, owner: session.key.owner, repo: session.key.repo, prNumber: session.key.prNumber }, currentSessionId: session.id, headSha, createdAt: now });
@@ -30,8 +31,8 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   await writeFile(session.patchPath, "diff --git a/src/a.ts b/src/a.ts\n+change\n", "utf8");
   await sessions.save(session);
   await reviews.save(review);
-  const coordinator = new InsightRunCoordinator(reviews, sessions, new InsightStore(paths), paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now);
-  return { root, coordinator, review, paths, reviews, sessions };
+  const coordinator = new InsightRunCoordinator(reviews, sessions, insights, paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now);
+  return { root, coordinator, review, paths, reviews, sessions, insights };
 }
 
 const successfulAnalysis = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } });
@@ -125,6 +126,21 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       await expect(eventually(() => invalid.coordinator.observe({ profileId, reviewId: invalid.review.id, type: "analysis", runId: started.value.runId }), "failed")).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
     } finally { await rm(invalid.root, { recursive: true, force: true }); }
+  });
+
+  it("recovers after a terminal persistence failure instead of leaving the run permanently active", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      if (started._tag === "err") throw new Error("expected run");
+      const failedMutation = vi.spyOn(fixtureValue.insights, "mutate").mockResolvedValue({ _tag: "err", error: { _tag: "StorageFailure", operation: "write", reason: "io" } });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      failedMutation.mockRestore();
+      await expect(fixtureValue.coordinator.recover({ profileId, reviewId: fixtureValue.review.id, type: "analysis" })).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
+      const retried = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      expect(retried._tag).toBe("ok");
+      if (retried._tag === "ok") await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: retried.value.runId }), "completed");
+    } finally { await new Promise((resolve) => setTimeout(resolve, 50)); await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
   it("persists cancelling before aborting the owned process", async () => {
