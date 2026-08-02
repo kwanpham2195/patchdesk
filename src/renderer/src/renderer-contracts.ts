@@ -483,6 +483,10 @@ const workbenchProjectionSchema = v.strictObject({
   draft: v.optional(reviewBatchSchema), publishedFeedback: publishedFeedbackSchema, comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
+export function parseReviewBatchProjection(input: unknown): WorkbenchResponse["draft"] | undefined {
+  const parsed = v.safeParse(reviewBatchSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
 
 const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),

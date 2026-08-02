@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { parseReviewBatch } from "../../../domain/review-batch";
 import { requestJson } from "../api-client";
 import { ReviewWorkbench } from "../components/review-workbench";
+import { ReviewBatchPanel, type ReviewBatchPanelActions } from "../components/review-batch-panel";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Spinner } from "../components/ui/spinner";
 import type { WorkbenchResponse } from "../renderer-contracts";
-import { parseCommitDiffResponse, parseModelCatalog, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
+import { parseCommitDiffResponse, parseModelCatalog, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
 
 export type ReviewWorkbenchFlowProps = {
@@ -95,7 +97,7 @@ export function ReviewWorkbenchFlow({
           insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} />,
           publishedFeedback: <PublishedFeedbackSlot workbench={workbench} />,
           mergeAction: null,
-          draftDock: <DraftSlot workbench={workbench} />,
+          draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} />,
         }}
       />
       {refreshError ? (
@@ -250,9 +252,57 @@ function PublishedFeedbackSlot({ workbench }: { readonly workbench: WorkbenchRes
   return count === 0 ? null : <p className="border-t px-4 py-2 text-sm text-muted-foreground">Published feedback · {count}</p>;
 }
 
-function DraftSlot({ workbench }: { readonly workbench: WorkbenchResponse }): React.JSX.Element | null {
+function DraftSlot({
+  workbench,
+  onWorkbenchPatch,
+}: {
+  readonly workbench: WorkbenchResponse;
+  readonly onWorkbenchPatch: (patch: Partial<WorkbenchResponse>) => void;
+}): React.JSX.Element | null {
   if (workbench.draft === undefined) return null;
-  return <p className="border-t px-4 py-2 text-sm text-muted-foreground">Review draft · {workbench.draft.items.length} items</p>;
+  const batch = parseReviewBatch(workbench.draft);
+  if (batch._tag === "err") return null;
+  const postCommand = async (command: unknown): Promise<void> => {
+    const value = await requestJson("/v1/reviews/batch", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        sessionId: workbench.session.id,
+        expectedRevision: workbench.draft?.updatedAt,
+        command,
+      },
+    });
+    const next = parseBatchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review batch response");
+    onWorkbenchPatch({ draft: next });
+  };
+  const actions: ReviewBatchPanelActions = {
+    addInlineComment: async (input) => postCommand({
+      _tag: "AddInlineComment",
+      anchor: { path: input.path, startLine: input.startLine, line: input.line, side: input.side },
+      ...(input.fingerprint === undefined ? {} : { fingerprint: input.fingerprint }),
+      body: input.body,
+    }),
+    removeItem: async (itemId) => postCommand({ _tag: "RemoveItem", itemId }),
+    addThreadReply: async (threadId, body) => postCommand({ _tag: "AddThreadReply", threadId, body }),
+    setThreadState: async (threadId, action) => postCommand({ _tag: "SetThreadState", threadId, action }),
+    apply: async () => {
+      const value = await requestJson("/v1/reviews/apply-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: workbench.draft?.updatedAt, acknowledgement: true } });
+      const next = parseBatchResponse(value);
+      if (next !== undefined) onWorkbenchPatch({ draft: next });
+    },
+    submit: async (event) => {
+      const value = await requestJson("/v1/reviews/submit-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: workbench.draft?.updatedAt, acknowledgement: true, event } });
+      const next = parseBatchResponse(value);
+      if (next !== undefined) onWorkbenchPatch({ draft: next });
+    },
+  };
+  return <div className="border-t px-4 py-4"><ReviewBatchPanel batch={batch.value} {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })} writeBlocked={workbench.revision.freshness !== "fresh"} actions={actions} /></div>;
+}
+
+function parseBatchResponse(value: unknown): WorkbenchResponse["draft"] | undefined {
+  if (typeof value !== "object" || value === null || !("batch" in value)) return undefined;
+  return parseReviewBatchProjection(value.batch);
 }
 
 function insightStatusLabel(status: string): string {
