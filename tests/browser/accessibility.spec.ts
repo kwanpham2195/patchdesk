@@ -228,6 +228,7 @@ test("walkthrough takeover exposes rail, Reviewed controls, and Back to files fo
   ).toBeEnabled();
   await page.locator("html").evaluate((root) => {
     root.classList.remove("dark");
+    document.querySelectorAll(".dark").forEach((element) => element.classList.remove("dark"));
     root.dataset.appearance = "light";
     root.style.colorScheme = "light";
   });
