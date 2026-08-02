@@ -210,12 +210,9 @@ test("walkthrough takeover exposes rail, Reviewed controls, and Back to files fo
     page.getByRole("button", { name: "Mark Support reviewed" }),
   ).toBeVisible();
   const walkthroughDiff = page.locator('[data-walkthrough-diff-block="section-1::h1::0"]');
-  const addedLine = walkthroughDiff.locator('[data-line-type="change-addition"]').first();
-  await addedLine.hover();
-  await walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }).click();
-  const editor = page.getByRole("textbox", { name: "Local comment" });
-  await editor.focus();
-  await page.keyboard.press("ArrowRight");
+  await expect(
+    walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Keep the review local" }),
   ).toBeVisible();

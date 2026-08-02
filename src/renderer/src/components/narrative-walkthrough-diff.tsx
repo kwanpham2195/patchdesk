@@ -8,12 +8,9 @@ import { parseReviewDiff } from "@/review-diff-data";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import {
   ReviewDiffView,
-  type LocalCommentAuthoring,
   type ReviewInlineAnnotation,
 } from "./review-diff-view";
 import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 
 export type NarrativeHunk = {
   readonly id: string;
@@ -54,7 +51,6 @@ export function NarrativeWalkthroughDiff({
   sourceSession,
   preferences,
   annotations = [],
-  localCommentAuthoring,
 }: {
   readonly blockId: string;
   readonly patch?: string;
@@ -64,7 +60,6 @@ export function NarrativeWalkthroughDiff({
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly preferences?: ReviewViewPreferences;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
-  readonly localCommentAuthoring?: LocalCommentAuthoring;
 }): React.JSX.Element {
   const sourcePatch = useMemo(
     () => patch ?? buildFallbackPatch(allHunks ?? hunks),
@@ -97,22 +92,6 @@ export function NarrativeWalkthroughDiff({
     [annotations, hunks],
   );
   const selectedPath = hunks[0]?.path;
-  const [commentOpen, setCommentOpen] = useState(false);
-  const [commentBody, setCommentBody] = useState("");
-  const [commentSaving, setCommentSaving] = useState(false);
-  const commentHunk = hunks[0];
-  const canAddComment = localCommentAuthoring?.enabled === true && commentHunk !== undefined && localCommentAuthoring.canAuthor?.({ path: commentHunk.path, startLine: commentHunk.newStart, line: commentHunk.newStart, side: "new" }) !== false;
-  const saveComment = async (): Promise<void> => {
-    if (!canAddComment || commentHunk === undefined || commentBody.trim().length === 0 || commentSaving) return;
-    setCommentSaving(true);
-    try {
-      await localCommentAuthoring?.onSave({ path: commentHunk.path, startLine: commentHunk.newStart, line: commentHunk.newStart, side: "new", body: commentBody });
-      setCommentBody("");
-      setCommentOpen(false);
-    } finally {
-      setCommentSaving(false);
-    }
-  };
 
   return (
     <div
@@ -124,9 +103,7 @@ export function NarrativeWalkthroughDiff({
           {hunks.map((hunk) => hunk.path).filter((path, index, paths) => paths.indexOf(path) === index).join(", ")}
         </span>
         <span className="shrink-0 text-muted-foreground">{hunks.length} hunk{hunks.length === 1 ? "" : "s"}</span>
-        {canAddComment ? <Button size="xs" variant="ghost" onClick={() => setCommentOpen(true)}>Add local comment on {commentHunk?.path}</Button> : null}
       </div>
-      {commentOpen && canAddComment ? <div className="border-b p-3"><Textarea aria-label="Local comment" value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder="Write a local inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" disabled={commentBody.trim().length === 0 || commentSaving} onClick={() => void saveComment()}>{commentSaving ? "Saving…" : "Save local comment"}</Button><Button size="sm" variant="outline" disabled={commentSaving} onClick={() => { setCommentOpen(false); setCommentBody(""); }}>Cancel</Button></div></div> : null}
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">Stored patch unavailable for this section.</p>
       ) : (

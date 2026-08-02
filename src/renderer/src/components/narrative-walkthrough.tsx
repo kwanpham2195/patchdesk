@@ -39,10 +39,7 @@ import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
-import type {
-  LocalCommentAuthoring,
-  ReviewInlineAnnotation,
-} from "./review-diff-view";
+import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 
 type NarrativeHunk = {
@@ -108,7 +105,6 @@ export function NarrativeWalkthrough({
   rawPatch,
   sourceSession,
   annotations,
-  localCommentAuthoring,
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
   readonly reviewedSectionIds: ReadonlyArray<string>;
@@ -117,7 +113,6 @@ export function NarrativeWalkthrough({
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
-  readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly onActionRef?: (ref: NarrativeWalkthroughRefAction) => void;
   readonly actions: NarrativeWalkthroughActions;
   readonly preferences?: ReviewViewPreferences;
@@ -415,7 +410,6 @@ export function NarrativeWalkthrough({
                   allHunks={allHunks}
                   {...(annotations === undefined ? {} : { annotations })}
                   {...(preferences === undefined ? {} : { preferences })}
-                  {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
                 />
               ))
             )}
@@ -506,7 +500,6 @@ export function NarrativeWalkthrough({
                         allHunks={allHunks}
                         {...(annotations === undefined ? {} : { annotations })}
                         {...(preferences === undefined ? {} : { preferences })}
-                        {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
                       />
                     ))}
                   </div>

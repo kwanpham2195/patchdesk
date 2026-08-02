@@ -57,20 +57,9 @@ test("production walkthrough stays manual, supports review actions, and returns 
     const walkthroughDiff = page.locator(
       '[data-walkthrough-diff-block="section-1::h1::0"]',
     );
-    const addedLine = walkthroughDiff
-      .locator('[data-line-type="change-addition"]')
-      .first();
-    await addedLine.hover();
-    await walkthroughDiff
-      .getByRole("button", { name: "Add local comment on src/a.ts" })
-      .click();
-    await page
-      .getByRole("textbox", { name: "Local comment" })
-      .fill("Keep this draft local");
-    await page.getByRole("button", { name: "Save local comment" }).click();
-    await expect(page.getByRole("status")).toContainText(
-      "Draft added to review batch",
-    );
+    await expect(
+      walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }),
+    ).toHaveCount(0);
     await page.getByRole("button", { name: "Next section" }).click();
     await expect(
       page.getByRole("heading", { name: "Follow the changed path" }),

@@ -490,16 +490,6 @@ export function PreparedReviewFlow({
           ? {}
           : { rawPatch: workbench.fullPatch })}
         sourceSession={{ profileId, sessionId: workbench.session.id }}
-        {...(batch?.state._tag === "Local" &&
-        workbench.freshness === "fresh" &&
-        batchActions !== undefined
-          ? {
-              localCommentAuthoring: {
-                enabled: true,
-                onSave: batchActions.addInlineComment,
-              },
-            }
-          : {})}
         actions={{
           onBackToFiles: () => setWalkthroughOpen(false),
           onMarkSectionReviewed: () => undefined,

@@ -541,16 +541,6 @@ export function CompletedReviewWorkbench({
           supportReviewed={walkthroughSupportReviewed}
           {...(props.fullPatch === undefined ? {} : { rawPatch: props.fullPatch })}
           {...(props.sourceSession === undefined ? {} : { sourceSession: props.sourceSession })}
-          {...(props.batch?.state._tag === "Local" &&
-          !writeBlocked &&
-          props.batchActions !== undefined
-            ? {
-                localCommentAuthoring: {
-                  enabled: true,
-                  onSave: props.batchActions.addInlineComment,
-                },
-              }
-            : {})}
           annotations={walkthroughAnnotations}
           preferences={preferences}
           actions={{
