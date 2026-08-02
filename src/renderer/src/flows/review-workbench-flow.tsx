@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Spinner } from "../components/ui/spinner";
 import type { WorkbenchResponse } from "../renderer-contracts";
-import { parseCommitDiffResponse, parseModelCatalog, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
+import { parseCommitDiffResponse, parseModelCatalog, parsePublicationPreview, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
 
 export type ReviewWorkbenchPatch = Omit<Partial<WorkbenchResponse>, "insights"> & {
@@ -453,7 +453,26 @@ function DraftSlot({
       if (next !== undefined) onWorkbenchPatch({ draft: next });
     },
   };
-  return <ReviewDraftDock batch={batch.value} {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })} writeBlocked={workbench.revision.freshness !== "fresh"} actions={actions} />;
+  return <ReviewDraftDock
+    batch={batch.value}
+    {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })}
+    writeBlocked={workbench.revision.freshness !== "fresh"}
+    actions={actions}
+    publication={{
+      preview: async () => {
+        const value = await requestJson("/v1/reviews/publication/preview", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, event: batch.value.suggestedEvent } });
+        const parsed = parsePublicationPreview(value);
+        if (parsed === undefined) throw new Error("Invalid publication preview response");
+        return parsed;
+      },
+      confirm: async () => {
+        const value = await requestJson("/v1/reviews/publication/confirm", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, acknowledgement: true, event: batch.value.suggestedEvent } });
+        const next = parseBatchResponse(value);
+        if (next === undefined) throw new Error("Invalid publication response");
+        onWorkbenchPatch({ draft: next });
+      },
+    }}
+  />;
 }
 
 function parseBatchResponse(value: unknown): WorkbenchResponse["draft"] | undefined {

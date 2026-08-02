@@ -525,6 +525,18 @@ export function parseCommitDiffResponse(input: unknown): CommitDiffResponse | un
   if (!parsed.success || parsed.output.position > parsed.output.total) return undefined;
   return parsed.output;
 }
+
+const publicationPreviewSchema = v.strictObject({
+  reviewId: v.pipe(v.string(), v.minLength(1)), sessionId: v.pipe(v.string(), v.minLength(1)), headSha: v.pipe(v.string(), v.minLength(7)), draftRevision: v.pipe(v.string(), v.isoTimestamp()), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), body: v.string(),
+  inlineComments: v.array(v.strictObject({ itemId: v.pipe(v.string(), v.minLength(1)), path: v.string(), startLine: v.number(), line: v.number(), side: v.picklist(["new", "old"]), body: v.string() })),
+  threadActions: v.array(v.strictObject({ itemId: v.pipe(v.string(), v.minLength(1)), action: v.picklist(["reply", "resolve", "reopen"]), body: v.optional(v.string()) })),
+  warnings: v.array(v.picklist(["no_inline_comments", "github_decision_changed"])),
+});
+export type PublicationPreviewResponse = v.InferOutput<typeof publicationPreviewSchema>;
+export function parsePublicationPreview(input: unknown): PublicationPreviewResponse | undefined {
+  const parsed = v.safeParse(publicationPreviewSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
 const remoteReviewContextSchema = v.strictObject({
   pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema),
 });
