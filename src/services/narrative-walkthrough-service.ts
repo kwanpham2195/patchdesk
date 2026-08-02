@@ -84,7 +84,7 @@ export class NarrativeWalkthroughService {
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ) {}
 
-  async generate(input: unknown): Promise<Result<NarrativeWalkthroughProjection, NarrativeWalkthroughFailure>> {
+  async generate(input: unknown, options?: { readonly signal?: AbortSignal }): Promise<Result<NarrativeWalkthroughProjection, NarrativeWalkthroughFailure>> {
     const parsed = this.parseInput(input);
     if (parsed._tag === "err") return parsed;
     const loaded = await this.loadSnapshot(parsed.value);
@@ -102,7 +102,7 @@ export class NarrativeWalkthroughService {
     this.records.set(key, { token, snapshot: loaded.value.snapshot, projection: projection("generating") });
     await this.recordActivity(parsed.value, "walkthrough-started", true);
 
-    const decision = await this.runGeneration(parsed.value, loaded.value, token);
+    const decision = await this.runGeneration(parsed.value, loaded.value, token, options?.signal);
 
     // The commit section is the only mutation of `this.records` that can
     // overwrite an existing projection. It re-checks the token and snapshot
@@ -129,6 +129,7 @@ export class NarrativeWalkthroughService {
     input: ServiceInput,
     loaded: { readonly session: ReviewSession; readonly snapshot: NarrativeSnapshot },
     token: number,
+    signal?: AbortSignal,
   ): Promise<{ readonly commit: Commit }> {
     if (this.invoker === undefined) return { commit: { token, snapshot: loaded.snapshot, kind: "stale_publish" } };
     let invoked: Result<unknown, { readonly reason: string }>;
@@ -140,7 +141,7 @@ export class NarrativeWalkthroughService {
         patchPath: loaded.session.patchPath,
         model: input.model ?? "",
         reasoning: input.reasoning ?? "medium",
-      });
+      }, signal === undefined ? {} : { signal });
     } catch {
       invoked = err({ reason: "execution_failed" });
     }

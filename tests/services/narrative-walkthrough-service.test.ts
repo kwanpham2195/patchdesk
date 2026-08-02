@@ -176,6 +176,25 @@ describe("NarrativeWalkthroughService", () => {
     expect(late._tag === "ok" ? late.value.lifecycle : "").toBe("stale");
   });
 
+  it("propagates caller cancellation to the walkthrough invoker", async () => {
+    let signal: AbortSignal | undefined;
+    const invoker: NarrativeWalkthroughInvoker = {
+      invoke: async (_input, options) => {
+        signal = options?.signal;
+        await new Promise((resolve) => options?.signal?.addEventListener("abort", resolve, { once: true }));
+        return err({ reason: "cancelled" });
+      },
+    };
+    const { service, sessionId } = await serviceFixture(invoker);
+    const controller = new AbortController();
+    const pending = service.generate({ profileId, sessionId, model: "model", reasoning: "low" }, { signal: controller.signal });
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    controller.abort();
+    const result = await pending;
+    expect(signal?.aborted).toBe(true);
+    expect(result._tag === "ok" ? result.value.lifecycle : "").toBe("failed");
+  });
+
   it("returns failed with an incident and allows a retry", async () => {
     let attempts = 0;
     const invoker: NarrativeWalkthroughInvoker = {
