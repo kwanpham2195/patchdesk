@@ -48,6 +48,7 @@ import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
 import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
+import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -269,6 +270,7 @@ export async function startLocalApiServer(
           () => new Date().toISOString() as never,
         );
   const reviews = new ReviewStore(paths);
+  const migration = new UnifiedReviewMigration(sessions, reviews);
   const insights = new InsightStore(paths);
   const publicationAuthorizations = new PublicationAuthorizationStore(paths);
   const reviewBatches = new ReviewBatchController(
@@ -593,6 +595,8 @@ export async function startLocalApiServer(
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
     if (profileId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
+    const adopted = await migration.migrateProfile(profileId.value);
+    if (adopted._tag === "err") return context.json({ error: "storage" }, 500);
     const listed = await new ReviewSessionStore(paths).listSessions(
       profileId.value,
     );
