@@ -59,7 +59,11 @@ export class InsightRunCoordinator {
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
     const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (record) => requestInsightCancellation(record, input.runId, timestamp.value) });
-    if (changed._tag === "err") return changed.error === "not_active" ? err("not_active") : err("storage_unavailable");
+    if (changed._tag === "err") {
+      if (changed.error !== "not_active") return err("storage_unavailable");
+      const observed = await this.observe(input);
+      return observed._tag === "ok" ? observed : err("not_active");
+    }
     this.active.get(input.runId)?.controller.abort();
     return ok({ runId: input.runId, type: input.type, status: "cancelling" });
   }

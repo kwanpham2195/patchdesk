@@ -66,6 +66,7 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       const observed = await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
       expect(observed).toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
+      await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual(observed);
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
