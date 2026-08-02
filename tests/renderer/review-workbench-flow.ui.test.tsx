@@ -77,6 +77,26 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
+  it("opens the PR overview without replacing the workbench", async () => {
+    const base = projection();
+    if (base.pullRequest === undefined) throw new Error("Expected pull request fixture");
+    const value = {
+      ...base,
+      pullRequest: { ...base.pullRequest, description: "Current PR description" },
+      comments: { threads: [{ id: "thread-1", state: "open" as const, comments: [{ id: "comment-1", author: "reviewer", body: "Existing thread", createdAt: "2026-08-01T00:00:00.000Z" }] }] },
+    };
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "PR overview" }));
+    expect(screen.getByRole("heading", { name: "PR overview" })).toBeTruthy();
+    expect(screen.getByText("Current PR description")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Checks" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Existing threads" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "PR overview" })).toBeNull());
+  });
+
   it("shows only current mapped Findings and focuses their evidence", async () => {
     const value = {
       ...projection(),

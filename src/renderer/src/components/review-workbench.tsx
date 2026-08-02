@@ -6,6 +6,7 @@ import { parseRepoRelativePath } from "../../../domain/ids";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
 import { DiffWorkbench } from "./diff-workbench";
 import type { LocalCommentAuthoring, LocalCommentLocation } from "./review-diff-view";
+import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview } from "./pr-overview-sheet";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { Button } from "./ui/button";
@@ -79,6 +80,7 @@ export function ReviewWorkbench({
             : "Unknown";
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title = model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [section, setSection] = useState<ReviewNavigatorSection>("files");
   const [selectedPath, setSelectedPath] = useState<string>();
   const [selectedFinding, setSelectedFinding] = useState<WorkbenchResponse["insights"]["analysis"]["retained"] extends infer Retained ? Retained extends { value: { findings: infer Findings } } ? Findings extends ReadonlyArray<infer Finding> ? Finding : never : never : never>();
@@ -126,6 +128,18 @@ export function ReviewWorkbench({
     ...(selectedFinding.lineEnd === undefined ? {} : { lineEnd: selectedFinding.lineEnd }),
     ...(selectedFinding.diffSide === undefined ? {} : { diffSide: selectedFinding.diffSide }),
   };
+  const overview: CanonicalReviewOverview = {
+    repository,
+    prNumber: model.session.key.prNumber,
+    title,
+    ...(model.pullRequest?.description === undefined ? {} : { description: model.pullRequest.description }),
+    summary: retainedAnalysis?.value.summary ?? "No retained Analysis is available for this snapshot.",
+    checks: { overall: model.checks.overall, checks: model.checks.checks.map((check) => ({ name: check.name, status: check.status, ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }) })) },
+    comments: { ...(model.comments.complete === undefined ? {} : { complete: model.comments.complete }), threads: model.comments.threads.map((thread) => ({ id: thread.id, state: thread.state, comments: thread.comments.map((comment) => ({ author: comment.author, body: comment.body })) })) },
+    publishedFeedbackCount: model.publishedFeedback.reviews.length + model.publishedFeedback.comments.length,
+    mergeReadiness: model.mergeReadiness,
+    ...(model.review.status === "open" ? {} : { terminalState: model.review.status }),
+  };
   const commitHeader = selectedCommit === undefined || commitDiff === undefined ? undefined : {
     sha: selectedCommit.sha,
     title: selectedCommit.message.split("\n", 1)[0] ?? selectedCommit.sha.slice(0, 8),
@@ -145,6 +159,7 @@ export function ReviewWorkbench({
           </p>
         </div>
         <div className="flex flex-wrap gap-2" aria-label="Pull request actions">
+          <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
           <Button
             variant={hasUpdates ? "default" : "outline"}
             size="sm"
@@ -207,6 +222,8 @@ export function ReviewWorkbench({
           {slots.insights}
         </TabsContent>
       </Tabs>
+
+      <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} />
 
       {slots.publishedFeedback}
       {slots.mergeAction}

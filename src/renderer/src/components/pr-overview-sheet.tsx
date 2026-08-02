@@ -43,6 +43,73 @@ export type PullRequestOverviewActions = {
   readonly merge?: PullRequestOverviewMerge;
 };
 
+export type CanonicalReviewOverview = {
+  readonly repository: string;
+  readonly prNumber: number;
+  readonly title: string;
+  readonly description?: string;
+  readonly summary: string;
+  readonly checks: {
+    readonly overall: string;
+    readonly checks: ReadonlyArray<{ readonly name: string; readonly status: string; readonly conclusion?: string }>;
+  };
+  readonly comments: {
+    readonly complete?: boolean;
+    readonly threads: ReadonlyArray<{ readonly id: string; readonly state: string; readonly comments: ReadonlyArray<{ readonly author: string; readonly body: string }> }>;
+  };
+  readonly publishedFeedbackCount: number;
+  readonly mergeReadiness: { readonly _tag: string; readonly blockers: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+  readonly terminalState?: "merged" | "closed";
+};
+
+/** Canonical read-only PR context for the unified Review workbench. */
+export function CanonicalReviewOverviewSheet({
+  open,
+  onOpenChange,
+  overview,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly overview: CanonicalReviewOverview;
+}): React.JSX.Element {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[370px] max-w-[calc(100vw-24px)] gap-0 sm:max-w-[370px]">
+        <SheetHeader className="border-b px-5 py-4 pr-12">
+          <SheetTitle>PR overview</SheetTitle>
+          <p className="truncate text-xs text-muted-foreground">{overview.repository}#{overview.prNumber} · {overview.title}</p>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
+          <OverviewRow title="Description" defaultOpen>
+            <p className="whitespace-pre-wrap text-sm">{overview.description?.trim() || "No description was provided on GitHub."}</p>
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Summary / change context" defaultOpen>
+            <p className="whitespace-pre-wrap text-sm">{overview.summary}</p>
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Checks" trailing={overview.checks.overall}>
+            <ul className="flex flex-col gap-2 text-sm">{overview.checks.checks.length === 0 ? <li className="text-muted-foreground">No checks reported.</li> : overview.checks.checks.map((check) => <li key={check.name} className="flex items-center justify-between gap-3"><span className="truncate">{check.name}</span><span className="shrink-0 text-xs text-muted-foreground">{check.conclusion ?? check.status}</span></li>)}</ul>
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Existing threads" trailing={overview.comments.complete === false ? `${overview.comments.threads.length}+` : String(overview.comments.threads.length)}>
+            {overview.comments.threads.length === 0 ? <p className="text-sm text-muted-foreground">No existing review threads.</p> : <ul className="flex flex-col gap-3">{overview.comments.threads.map((thread) => <li key={thread.id} className="rounded-md border p-3"><p className="mb-2 text-xs text-muted-foreground">{thread.state}</p><div className="flex flex-col gap-2">{thread.comments.map((comment) => <div key={`${thread.id}-${comment.author}-${comment.body}`}><p className="font-medium">{comment.author}</p><p className="text-sm text-muted-foreground">{comment.body}</p></div>)}</div></li>)}</ul>}
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Published feedback" trailing={String(overview.publishedFeedbackCount)}>
+            <p className="text-sm text-muted-foreground">Published GitHub feedback is read-only here.</p>
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Merge readiness" trailing={overview.mergeReadiness._tag}>
+            <div className="flex flex-col gap-2 text-sm">{overview.mergeReadiness.blockers.map((blocker) => <p key={`blocker-${blocker}`} className="text-destructive">{blocker}</p>)}{overview.mergeReadiness.warnings.map((warning) => <p key={`warning-${warning}`} className="text-muted-foreground">{warning}</p>)}{overview.mergeReadiness.blockers.length === 0 && overview.mergeReadiness.warnings.length === 0 ? <p className="text-muted-foreground">No merge blockers or warnings.</p> : null}</div>
+          </OverviewRow>
+        </div>
+        {overview.terminalState === undefined ? null : <SheetFooter className="border-t px-5 py-4"><p className="text-sm text-muted-foreground">This Review is {overview.terminalState} and remains readable.</p></SheetFooter>}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 /** Shared read and confirmation surface for prepared and completed snapshots. */
 export function PullRequestOverviewSheet({
   open,
