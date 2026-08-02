@@ -164,7 +164,7 @@ function InsightsSlot({
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
-  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft" | "OpenPreviewWhenComplete">("none");
+  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft">("none");
   const [catalogError, setCatalogError] = useState(false);
   const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
   const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
@@ -285,7 +285,6 @@ function InsightsSlot({
             <SelectContent>
               <SelectItem value="none">Keep result only</SelectItem>
               <SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem>
-              <SelectItem value="OpenPreviewWhenComplete">Seed and open preview</SelectItem>
             </SelectContent>
           </Select>
         </div>
