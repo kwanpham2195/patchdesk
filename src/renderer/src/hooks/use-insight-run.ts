@@ -12,6 +12,7 @@ export type InsightRunController = {
   readonly status: InsightRunState;
   readonly runId?: string;
   readonly error: boolean;
+  readonly failureReason?: InsightRunResponse["failureReason"];
   readonly busy: boolean;
   readonly run: (model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction) => void;
   readonly cancel: () => void;
@@ -29,6 +30,7 @@ export function useInsightRun(input: {
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
+  const [failureReason, setFailureReason] = useState<InsightRunResponse["failureReason"]>();
   const [starting, setStarting] = useState(false);
   const activeRunRef = useRef<string | undefined>(undefined);
   const startingRef = useRef(false);
@@ -44,6 +46,7 @@ export function useInsightRun(input: {
     startingRef.current = true;
     setStarting(true);
     setError(false);
+    setFailureReason(undefined);
     void requestJson(`/v1/reviews/insights/${type}/run`, {
       method: "POST",
       body: { profileId, reviewId, type, model, reasoning, ...(completion === undefined ? {} : { completion }) },
@@ -87,6 +90,7 @@ export function useInsightRun(input: {
         const parsed = parseInsightRunResponse(value);
         if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight status response");
         setStatus(parsed.status);
+        setFailureReason(parsed.failureReason);
         if (parsed.status === "completed" || parsed.status === "failed" || parsed.status === "cancelled") {
           const workbenchValue = await requestJson("/v1/reviews/load", {
             method: "POST",
@@ -128,6 +132,7 @@ export function useInsightRun(input: {
     status,
     ...(runId === undefined ? {} : { runId }),
     error,
+    ...(failureReason === undefined ? {} : { failureReason }),
     busy: starting || runId !== undefined,
     run,
     cancel,

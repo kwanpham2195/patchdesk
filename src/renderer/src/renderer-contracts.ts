@@ -499,6 +499,7 @@ const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),
   type: v.picklist(["analysis", "walkthrough"]),
   status: v.picklist(["queued", "running", "cancelling", "completed", "failed", "cancelled"]),
+  failureReason: v.optional(v.picklist(["cancelled", "failed", "invalid_result", "superseded"])),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(input: unknown): InsightRunResponse | undefined {

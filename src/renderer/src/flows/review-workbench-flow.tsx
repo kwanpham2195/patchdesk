@@ -301,6 +301,7 @@ function InsightsSlot({
           description="Findings, verdict, validation plan, and bounded evidence."
           projection={workbench.insights.analysis}
           runStatus={analysisRun.status}
+          {...(analysisRun.failureReason === undefined ? {} : { failureReason: analysisRun.failureReason })}
           busy={analysisRun.busy}
           onRun={() => { if (model !== null) analysisRun.run(model, reasoning, analysisCompletion === "none" ? undefined : { _tag: analysisCompletion }); }}
           onCancel={analysisRun.cancel}
@@ -316,6 +317,7 @@ function InsightsSlot({
           description="A narrative guide through the changed code and supporting hunks."
           projection={workbench.insights.walkthrough}
           runStatus={walkthroughRun.status}
+          {...(walkthroughRun.failureReason === undefined ? {} : { failureReason: walkthroughRun.failureReason })}
           busy={walkthroughRun.busy}
           onRun={() => { if (model !== null) walkthroughRun.run(model, reasoning); }}
           onCancel={walkthroughRun.cancel}
@@ -342,6 +344,7 @@ function InsightCard({
   description,
   projection,
   runStatus,
+  failureReason,
   busy,
   onRun,
   onCancel,
@@ -355,6 +358,7 @@ function InsightCard({
   readonly description: string;
   readonly projection: InsightProjection;
   readonly runStatus: string;
+  readonly failureReason?: "cancelled" | "failed" | "invalid_result" | "superseded";
   readonly busy: boolean;
   readonly onRun: () => void;
   readonly onCancel: () => void;
@@ -382,6 +386,9 @@ function InsightCard({
       </CardHeader>
       <CardContent className="flex min-h-20 flex-col gap-2">
         {actionError ? <p role="alert" className="text-xs text-destructive">The Finding action could not be saved. Try again.</p> : null}
+        {failureReason === "failed" ? <p role="alert" className="text-xs text-destructive">The provider could not complete this run. Check model access, credentials, or usage limits, then try again.</p> : null}
+        {failureReason === "invalid_result" ? <p role="alert" className="text-xs text-destructive">The provider returned an invalid result. Try again with a different model.</p> : null}
+        {failureReason === "superseded" ? <p role="alert" className="text-xs text-destructive">This run became outdated after the Review changed. Refresh before trying again.</p> : null}
         {busy ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Generating a bounded result…</div> : null}
         {children !== undefined ? <p className="line-clamp-4 text-sm text-muted-foreground">{children}</p> : <p className="text-sm text-muted-foreground">No retained result for this revision.</p>}
         {findings === undefined || findings.length === 0 || onAddFinding === undefined ? null : <ul className="flex flex-col gap-2 border-t pt-2">{findings.slice(0, 5).map((finding) => <li key={finding.id} className="flex items-start justify-between gap-2 text-xs"><span className="min-w-0 truncate">{finding.title}</span><Button size="xs" variant="outline" onClick={() => addFinding(finding)}>Add</Button></li>)}</ul>}

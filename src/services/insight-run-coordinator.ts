@@ -21,7 +21,7 @@ import { readObjectField } from "./read-object-field";
 
 export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly scope?: ReviewScope; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
 export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>> };
-export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string };
+export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string; readonly failureReason?: "cancelled" | "failed" | "invalid_result" | "superseded" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
 export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
 export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly completion: AnalysisCompletionAction }) => Promise<void>;
@@ -187,7 +187,7 @@ export class InsightRunCoordinator {
     if (timestamp._tag === "err") return err("storage_unavailable");
     const failed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (current) => failInsightRun(current, active.id, { runId: active.id, reason: "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
     if (failed._tag === "err") return err("storage_unavailable");
-    return ok({ runId: active.id, type: input.type, status: "failed" });
+    return ok({ runId: active.id, type: input.type, status: "failed", failureReason: "failed" });
   }
 
   async recoverAll(): Promise<void> {
@@ -222,7 +222,7 @@ export class InsightRunCoordinator {
     if (record._tag === "err") return err(record.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     if (record.value.activeRun?.id === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.activeRun.status });
     if (isRetainedRun(record.value.retained, input.runId)) return ok({ runId: input.runId, type: input.type, status: "completed" });
-    if (record.value.replacementFailure?.runId === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.replacementFailure.reason === "cancelled" ? "cancelled" : "failed" });
+    if (record.value.replacementFailure?.runId === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.replacementFailure.reason === "cancelled" ? "cancelled" : "failed", failureReason: record.value.replacementFailure.reason });
     return err("not_active");
   }
 

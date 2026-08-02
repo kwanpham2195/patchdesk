@@ -185,7 +185,7 @@ describe("InsightRunCoordinator", () => {
       await invoked;
       const restarted = new InsightRunCoordinator(fixtureValue.reviews, fixtureValue.sessions, new InsightStore(fixtureValue.paths), fixtureValue.paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, { analysis: successfulAnalysis(), walkthrough: successfulWalkthrough }, () => now);
       await expect(restarted.recoverAll()).resolves.toBeUndefined();
-      await expect(restarted.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "failed" } });
+      await expect(restarted.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "failed", failureReason: "failed" } });
       release();
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
