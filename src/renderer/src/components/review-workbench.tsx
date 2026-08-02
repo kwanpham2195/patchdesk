@@ -5,10 +5,11 @@ import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseRepoRelativePath } from "../../../domain/ids";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
 import { DiffWorkbench } from "./diff-workbench";
-import type { LocalCommentAuthoring, LocalCommentLocation } from "./review-diff-view";
+import type { LocalCommentAuthoring, LocalCommentLocation, ReviewInlineAnnotation } from "./review-diff-view";
 import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview } from "./pr-overview-sheet";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
 import { useCommitDiff } from "../hooks/use-commit-diff";
+import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -81,8 +82,11 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title = model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [navigatorVisible, setNavigatorVisible] = useState(true);
+  const [preferences, setPreferences] = useState<ReviewViewPreferences>(() => loadReviewViewPreferences(model.session.key.profileId));
   const [section, setSection] = useState<ReviewNavigatorSection>("files");
   const [selectedPath, setSelectedPath] = useState<string>();
+  const [activePath, setActivePath] = useState<string>();
   const [selectedFinding, setSelectedFinding] = useState<WorkbenchResponse["insights"]["analysis"]["retained"] extends infer Retained ? Retained extends { value: { findings: infer Findings } } ? Findings extends ReadonlyArray<infer Finding> ? Finding : never : never : never>();
   const [selectedCommitSha, setSelectedCommitSha] = useState<string>();
   const retainedAnalysis = model.insights.analysis.retained;
@@ -109,17 +113,26 @@ export function ReviewWorkbench({
     setSection("findings");
     setSelectedCommitSha(undefined);
     setSelectedFinding(finding);
-    if (finding.file !== undefined) setSelectedPath(finding.file);
+    if (finding.file !== undefined) { setSelectedPath(finding.file); setActivePath(finding.file); }
   }, []);
   useEffect(() => {
     setSelectedCommitSha(undefined);
     setSelectedFinding(undefined);
     setSelectedPath(undefined);
+    setActivePath(undefined);
     setSection("files");
   }, [model.revision.reviewedHeadSha]);
+  const updatePreferences = useCallback((update: Partial<ReviewViewPreferences>): void => {
+    setPreferences((current) => {
+      const next = { ...current, ...update };
+      saveReviewViewPreferences(model.session.key.profileId, update);
+      return next;
+    });
+  }, [model.session.key.profileId]);
   const commitDiffState = useCommitDiff({ ...(selectedCommitSha === undefined ? {} : { selectedSha: selectedCommitSha }), revisionKey: model.revision.reviewedHeadSha, loadCommitDiff: actions.loadCommitDiff });
   const commitCommentAuthoring = useMemo(() => selectedCommitSha === undefined || model.fullPatch === undefined ? undefined : createCommitCommentAuthoring(actions.localCommentAuthoring, model.fullPatch), [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha]);
   const commitDiff = commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
+  const annotations: ReadonlyArray<ReviewInlineAnnotation> = findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]);
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const selectedFindingLocation = selectedFinding === undefined ? undefined : {
@@ -148,9 +161,9 @@ export function ReviewWorkbench({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Review workbench">
-      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
+      <header data-review-workbench-toolbar className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+          <h1 className="text-2xl font-semibold" title={title}>{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {repository}#{model.session.key.prNumber} · {freshnessLabel} · snapshot {model.revision.reviewedHeadSha.slice(0, 12)}
           </p>
@@ -177,23 +190,25 @@ export function ReviewWorkbench({
           <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
         </TabsList>
-        <TabsContent value="files" className="min-h-0 flex-1" keepMounted>
+        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden" keepMounted>
           {model.fullPatch === undefined ? (
             <div className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</div>
           ) : (
-            <div className="grid min-h-0 flex-1 min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]">
-              <ReviewNavigator
+            <div className="grid h-full min-h-0 flex-1 min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]">
+              {navigatorVisible ? <ReviewNavigator
                 patch={model.fullPatch}
                 commits={model.commits}
                 findings={findings}
                 section={section}
                 {...(selectedPath === undefined ? {} : { selectedPath })}
+                {...(activePath === undefined ? {} : { activePath })}
                 {...(selectedCommitSha === undefined ? {} : { selectedCommitSha })}
                 onSectionChange={selectSection}
-                onFileSelect={(path) => { setSection("files"); setSelectedFinding(undefined); setSelectedPath(path); }}
+                onFileSelect={(path) => { setSection("files"); setSelectedFinding(undefined); setSelectedPath(path); setActivePath(path); }}
                 onFindingSelect={selectFinding}
                 onCommitSelect={selectCommit}
-              />
+                onCollapse={() => setNavigatorVisible(false)}
+              /> : <div className="flex items-start p-2"><Button size="xs" variant="outline" onClick={() => setNavigatorVisible(true)}>Show review navigator</Button></div>}
               <div className="min-h-0 min-w-0">
                 {selectedCommitSha !== undefined && commitDiffState._tag === "Loading" ? (
                   <p className="p-6 text-sm text-muted-foreground" role="status">Loading commit diff…</p>
@@ -205,12 +220,16 @@ export function ReviewWorkbench({
                     patch={displayedPatch}
                     {...(selectedCommitSha === undefined ? { sourceSession: { profileId: model.session.key.profileId, sessionId: model.session.id } } : {})}
                     {...(selectedFindingLocation === undefined || selectedCommitSha !== undefined ? {} : { finding: selectedFindingLocation })}
-                    {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: setSelectedPath })}
+                    {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: (path: string) => { setSelectedPath(path); setActivePath(path); } })}
+                    {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
+                    {...(selectedCommitSha === undefined ? { annotations } : {})}
                     {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
                     hideFileNavigation
                     {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}
                     className="min-h-0 h-full"
                     fillViewport={false}
+                    preferences={preferences}
+                    onPreferencesChange={updatePreferences}
                   />
                 )}
                 {commitDiffError ? <p role="alert" className="border-t px-4 py-2 text-sm text-destructive">This commit diff could not be loaded.</p> : null}

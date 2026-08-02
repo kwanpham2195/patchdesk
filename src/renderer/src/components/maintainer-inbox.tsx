@@ -377,7 +377,7 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
     case "run_review": return recoveryActionLabel("run_review");
     case "continue_review": return "View review progress";
     case "review_updates": return "Review updates";
-    case "open_saved_review": return "Open saved review";
+    case "open_saved_review": return "Open Review";
     case "open_merge_readiness": return "Open merge readiness";
     case "open_discussion": return "Review author response";
   }

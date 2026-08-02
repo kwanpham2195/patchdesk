@@ -40,7 +40,7 @@ const actionSchema = v.variant("kind", [
   }),
   v.strictObject({
     kind: v.literal("open_saved_review"),
-    label: v.literal("Open saved review"),
+    label: v.literal("Open Review"),
     sessionId: v.pipe(v.string(), v.minLength(1)),
   }),
   v.strictObject({

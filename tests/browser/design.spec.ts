@@ -441,7 +441,7 @@ test("walkthrough generate dialog keeps model overrides behind advanced options"
     await page.goto(`${origin(server)}/?scenario=walkthrough-generate-dialog`);
     const dialog = page.getByTestId("walkthrough-generate-dialog");
     await expect(dialog).toBeVisible();
-    await expect(page.getByText("Generate a read-only walkthrough")).toBeVisible();
+    await expect(page.getByText("Generate Walkthrough")).toBeVisible();
     await expect(page.getByRole("button", { name: "Advanced options" })).toBeVisible();
     await expect(dialog.getByRole("combobox")).toHaveCount(0);
     await page.getByRole("button", { name: "Advanced options" }).click();
@@ -533,7 +533,7 @@ test("walkthrough interaction: dialog → generating → ready, navigate, mark r
     const dialog = page.getByTestId("walkthrough-generate-dialog");
     await expect(dialog).toBeVisible();
     await expect(
-      page.getByText("Generate a read-only walkthrough"),
+      page.getByText("Generate Walkthrough"),
     ).toBeVisible();
     await expect(dialog.getByRole("combobox")).toHaveCount(0);
     await page.getByTestId("generate-walkthrough-confirm").click();

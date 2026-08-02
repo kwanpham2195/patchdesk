@@ -18,7 +18,7 @@ export type InboxRecommendedAction =
   | { readonly kind: "run_review"; readonly label: "Run review" }
   | { readonly kind: "review_updates"; readonly label: "Review updates"; readonly baseSessionId: ReviewSessionId }
   | { readonly kind: "continue_review"; readonly label: "View review progress"; readonly sessionId: ReviewSessionId }
-  | { readonly kind: "open_saved_review"; readonly label: "Open saved review"; readonly sessionId: ReviewSessionId }
+  | { readonly kind: "open_saved_review"; readonly label: "Open Review"; readonly sessionId: ReviewSessionId }
   | { readonly kind: "open_merge_readiness"; readonly label: "Open merge readiness"; readonly sessionId: ReviewSessionId }
   | { readonly kind: "open_discussion"; readonly label: "Review author response"; readonly sessionId: ReviewSessionId };
 
@@ -112,7 +112,7 @@ function recommendedActionFor(input: {
   readonly dataFreshness: "fresh" | "cached";
 }): InboxRecommendedAction {
   if (input.review?.matchesCurrentHead && (input.review.state === "starting" || input.review.state === "running")) return { kind: "continue_review", label: "View review progress", sessionId: input.review.sessionId };
-  if (input.review?.matchesCurrentHead && input.review.state === "draft") return { kind: "open_saved_review", label: "Open saved review", sessionId: input.review.sessionId };
+  if (input.review?.matchesCurrentHead && input.review.state === "draft") return { kind: "open_saved_review", label: "Open Review", sessionId: input.review.sessionId };
   if (input.categories.includes("updated_since_review") && input.review !== undefined) return { kind: "review_updates", label: "Review updates", baseSessionId: input.review.sessionId };
   if (input.dataFreshness === "fresh" && input.categories.includes("ready_to_merge") && input.review !== undefined) return { kind: "open_merge_readiness", label: "Open merge readiness", sessionId: input.review.sessionId };
   if (input.categories.includes("needs_review")) return { kind: "run_review", label: "Run review" };

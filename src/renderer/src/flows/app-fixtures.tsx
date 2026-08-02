@@ -1,11 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { requestJson } from "../api-client";
-import { CompletedReviewWorkbench } from "../components/completed-review-workbench";
+import { ReviewWorkbench } from "../components/review-workbench";
+import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { MergeConfirmationDialog } from "../components/merge-confirmation-dialog";
 import { ReviewBatchPanel } from "../components/review-batch-panel";
 import { SafeRunPanel } from "../components/safe-run-panel";
+import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import type { ReviewBatch } from "../../../domain/review-batch";
+import type { WorkbenchResponse } from "../renderer-contracts";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
 
@@ -55,26 +67,7 @@ export function AppFixtureContent({
         : hash === "#active-follow-fixture"
           ? activeFollowFixtureData
           : workbenchFixtureData;
-    return (
-      <CompletedReviewWorkbench
-        model={{
-          source: { profileId: "fixture", sessionId: "fixture-session" },
-          result: fixture.result as never,
-          reviewScope: { kind: "full" },
-          fullPatch: fixture.fullPatch,
-          comparisonAvailability: "not_requested",
-          pullRequest: fixture.pullRequest as never,
-          reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
-          freshness: "fresh",
-          refreshedAt: "2026-07-17T00:00:00.000Z",
-          comments: fixture.comments as never,
-          checks: fixture.checks,
-        }}
-        actions={{
-          reportNavigationState: onNavigationStateChange,
-        }}
-      />
-    );
+    return <CanonicalFixtureWorkbench data={fixture} onNavigationStateChange={onNavigationStateChange} />;
   }
   if (hash === "#submission-fixture") return <SubmissionFixture />;
   if (hash === "#merge-fixture")
@@ -116,7 +109,8 @@ function WalkthroughFixture({
     "medium",
   );
   const [generateRequests, setGenerateRequests] = useState(0);
-  const [draftAdded, setDraftAdded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
   const [reviewedSectionIds, setReviewedSectionIds] = useState<
     ReadonlyArray<string>
   >([]);
@@ -128,7 +122,7 @@ function WalkthroughFixture({
       headSha: "abcdef1234567890abcdef1234567890abcdef12",
       patchHash: "b".repeat(64),
     },
-    title: "Read-only walkthrough fixture",
+    title: "Walkthrough fixture",
     focus: "The focused review path remains separate from Files mode.",
     chapters: [
       {
@@ -139,7 +133,7 @@ function WalkthroughFixture({
         id: "section-1",
         title: "Keep the review local",
             prose:
-              "This fixture proves a manual, read-only walkthrough without starting a review run.",
+              "This fixture proves a manual walkthrough without starting an Analysis run.",
         hunkIds: ["h1"],
             hunks: [
               {
@@ -194,77 +188,145 @@ function WalkthroughFixture({
       ],
     },
   };
-  const projection =
-    lifecycle === "ready"
-      ? {
-          lifecycle: "ready" as const,
-          noticeKey: "walkthrough-ready" as const,
-          walkthrough,
-        }
-    : lifecycle === "generating"
-        ? {
-            lifecycle: "generating" as const,
-            noticeKey: "walkthrough-generating" as const,
-          }
-        : {
-            lifecycle: "idle" as const,
-            noticeKey: "walkthrough-idle" as const,
-          };
-  const walkthroughActions = {
-    dialogOpen,
-    projection,
-    models: [{ id: "pi-design", label: "Design model" }],
-    model,
-    reasoning,
-    catalogUnavailable: false,
-    onOpenDialog: () => setDialogOpen(true),
-    onCloseDialog: () => setDialogOpen(false),
-    onModelChange: setModel,
-    onReasoningChange: setReasoning,
-    onConfirm: () => {
-      setDialogOpen(false);
-      setGenerateRequests((current) => current + 1);
-      setLifecycle("generating");
-      window.setTimeout(() => setLifecycle("ready"), 50);
-    },
-    onRetry: () => setLifecycle("generating"),
-    onRegenerate: () => setLifecycle("generating"),
-    busy: lifecycle === "generating",
-    onMarkSectionReviewed: (sectionId: string) =>
-      setReviewedSectionIds((current) =>
-        current.includes(sectionId) ? current : [...current, sectionId],
-      ),
-    onMarkSupportReviewed: () => setSupportReviewed(true),
-    onSelectSection: () => undefined,
-    reviewedSectionIds,
-    supportReviewed,
+  const confirmGeneration = (): void => {
+    setDialogOpen(false);
+    setGenerateRequests((current) => current + 1);
+    setLifecycle("generating");
+    window.setTimeout(() => setLifecycle("ready"), 50);
+  };
+  const markSectionReviewed = (sectionId: string): void => {
+    setReviewedSectionIds((current) => current.includes(sectionId) ? current : [...current, sectionId]);
   };
   return (
     <div data-walkthrough-generate-requests={generateRequests}>
-      <CompletedReviewWorkbench
-        model={{
-          source: { profileId: "fixture", sessionId: "fixture-session" },
-          result: workbenchFixtureData.result as never,
-          reviewScope: { kind: "full" },
-          fullPatch: walkthroughFixturePatch,
-          comparisonAvailability: "not_requested",
-          pullRequest: workbenchFixtureData.pullRequest as never,
-          reviewedHeadSha: "abcdef1234567890abcdef1234567890abcdef12",
-          freshness: "fresh",
-          refreshedAt: "2026-07-17T00:00:00.000Z",
-          batch: submissionFixtureData.batch as never,
-          comments: workbenchFixtureData.comments as never,
-          checks: workbenchFixtureData.checks,
-        }}
+      <WalkthroughFixtureControls
+        lifecycle={lifecycle}
+        dialogOpen={dialogOpen}
+        model={model}
+        reasoning={reasoning}
+        walkthrough={walkthrough}
         actions={{
-          reportNavigationState: onNavigationStateChange,
-          walkthrough: walkthroughActions as never,
-          batchActions: {
-            addInlineComment: async () => setDraftAdded(true),
-          } as never,
+          onOpenDialog: () => setDialogOpen(true),
+          onCloseDialog: () => setDialogOpen(false),
+          onModelChange: (value) => { if (value !== null) setModel(value); },
+          onReasoningChange: (value) => { if (value === "low" || value === "medium" || value === "high") setReasoning(value); },
+          onConfirm: confirmGeneration,
+          onOpen: () => { setOpen(true); },
+          onBackToFiles: () => { setOpen(false); window.setTimeout(() => openButtonRef.current?.focus(), 0); },
+          onMarkSectionReviewed: markSectionReviewed,
+          onMarkSupportReviewed: () => setSupportReviewed(true),
+          onSelectSection: () => undefined,
         }}
+        reviewedSectionIds={reviewedSectionIds}
+        supportReviewed={supportReviewed}
+        open={open}
+        openButtonRef={openButtonRef}
       />
-      {draftAdded ? <p role="status">Draft added to review batch</p> : null}
+      <CanonicalFixtureWorkbench data={{ ...workbenchFixtureData, fullPatch: walkthroughFixturePatch }} onNavigationStateChange={onNavigationStateChange} />
+    </div>
+  );
+}
+
+function CanonicalFixtureWorkbench({
+  data,
+  onNavigationStateChange,
+}: {
+  readonly data: typeof workbenchFixtureData;
+  readonly onNavigationStateChange: (state: NavigationState) => void;
+}): React.JSX.Element {
+  const model = canonicalWorkbenchModel(data);
+  return (
+    <ReviewWorkbench
+      model={model}
+      actions={{
+        detectUpdates: async () => undefined,
+        refresh: async () => undefined,
+        loadCommitDiff: async () => { throw new Error("No commit fixture is configured"); },
+        localCommentAuthoring: { enabled: true, onSave: async () => undefined },
+        reportNavigationState: onNavigationStateChange,
+      }}
+      slots={{
+        insights: <section aria-label="Review insights" className="p-6"><h2 className="text-lg font-semibold">Insights</h2><p className="text-sm text-muted-foreground">Insight fixture content.</p></section>,
+        draftDock: null,
+        publishedFeedback: null,
+        mergeAction: null,
+      }}
+    />
+  );
+}
+
+function canonicalWorkbenchModel(data: typeof workbenchFixtureData): WorkbenchResponse {
+  const headSha = data.pullRequest.headSha;
+  return {
+    state: "review",
+    review: { id: "fixture-review", status: "open" },
+    session: { id: "fixture-session", key: { profileId: "fixture", host: data.pullRequest.ref.host, owner: data.pullRequest.ref.owner, repo: data.pullRequest.ref.repo, prNumber: data.pullRequest.ref.number, headSha } },
+    revision: { reviewedHeadSha: headSha, currentHeadSha: headSha, freshness: "fresh", refreshedAt: "2026-07-17T00:00:00.000Z" },
+    fullPatch: data.fullPatch,
+    pullRequest: data.pullRequest,
+    commits: [],
+    insights: { analysis: { status: "current", retained: { runId: "insight-fixture", sessionId: "fixture-session", headSha, generatedAt: "2026-07-17T00:00:00.000Z", value: data.result } }, walkthrough: { status: "not_generated" } },
+    draft: submissionFixtureData.batch as never,
+    publishedFeedback: { reviews: [], comments: [] },
+    comments: data.comments,
+    checks: data.checks,
+    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+  } as unknown as WorkbenchResponse;
+}
+
+function WalkthroughFixtureControls({
+  lifecycle,
+  dialogOpen,
+  model,
+  reasoning,
+  walkthrough,
+  actions,
+  reviewedSectionIds,
+  supportReviewed,
+  open,
+  openButtonRef,
+}: {
+  readonly lifecycle: "idle" | "generating" | "ready";
+  readonly dialogOpen: boolean;
+  readonly model: string | undefined;
+  readonly reasoning: "low" | "medium" | "high";
+  readonly walkthrough: Parameters<typeof NarrativeWalkthrough>[0]["walkthrough"];
+  readonly actions: {
+    readonly onOpenDialog: () => void;
+    readonly onCloseDialog: () => void;
+    readonly onModelChange: (value: string | null) => void;
+    readonly onReasoningChange: (value: string | null) => void;
+    readonly onConfirm: () => void;
+    readonly onOpen: () => void;
+    readonly onBackToFiles: () => void;
+    readonly onMarkSectionReviewed: (sectionId: string) => void;
+    readonly onMarkSupportReviewed: () => void;
+    readonly onSelectSection: (sectionId: string) => void;
+  };
+  readonly reviewedSectionIds: ReadonlyArray<string>;
+  readonly supportReviewed: boolean;
+  readonly open: boolean;
+  readonly openButtonRef: React.RefObject<HTMLButtonElement | null>;
+}): React.JSX.Element {
+  return (
+    <div className="border-b p-4">
+      {lifecycle === "ready" && !open ? <Button ref={openButtonRef} onClick={actions.onOpen}>Open walkthrough</Button> : null}
+      {lifecycle !== "ready" ? <Button onClick={actions.onOpenDialog} disabled={lifecycle === "generating"}>{lifecycle === "generating" ? "Generating walkthrough…" : "Generate walkthrough"}</Button> : null}
+      <Dialog open={dialogOpen} onOpenChange={(next) => next ? actions.onOpenDialog() : actions.onCloseDialog()}>
+        <DialogContent data-testid="walkthrough-generate-dialog">
+          <DialogHeader><DialogTitle>Generate walkthrough</DialogTitle><DialogDescription>Choose how Patchdesk should explain this Review.</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-model">Model
+              <Select value={model ?? null} onValueChange={actions.onModelChange}><SelectTrigger id="fixture-walkthrough-model" aria-label="Model"><SelectValue placeholder="Choose a model" /></SelectTrigger><SelectContent><SelectItem value="pi-design">Design model</SelectItem></SelectContent></Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-reasoning">Reasoning
+              <Select value={reasoning} onValueChange={actions.onReasoningChange}><SelectTrigger id="fixture-walkthrough-reasoning" aria-label="Reasoning"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>
+            </label>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={actions.onCloseDialog}>Cancel</Button><Button data-testid="walkthrough-confirm" disabled={model === undefined} onClick={actions.onConfirm}>Generate walkthrough</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {open ? <NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={reviewedSectionIds} supportReviewed={supportReviewed} rawPatch={walkthroughFixturePatch} sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }} actions={{ onBackToFiles: actions.onBackToFiles, onMarkSectionReviewed: actions.onMarkSectionReviewed, onMarkSupportReviewed: actions.onMarkSupportReviewed, onSelectSection: actions.onSelectSection }} /> : null}
     </div>
   );
 }

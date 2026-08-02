@@ -237,7 +237,7 @@ function InsightsSlot({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Insights</h2>
-          <p className="text-sm text-muted-foreground">Run independent, read-only explanations for this Review snapshot.</p>
+          <p className="text-sm text-muted-foreground">Run independent explanations for this Review snapshot.</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={model} onValueChange={(value) => setModel(value ?? null)}>

@@ -152,7 +152,7 @@ type ReviewDiffViewProps = {
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
-  /** Local-only composer. Callers omit it for read-only walkthroughs and stale snapshots. */
+  /** Local-only composer. Callers omit it for walkthroughs and stale snapshots. */
   readonly localCommentAuthoring?: LocalCommentAuthoring;
 };
 

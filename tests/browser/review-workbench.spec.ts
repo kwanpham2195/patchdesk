@@ -400,7 +400,8 @@ test("inline finding text remains inside the diff viewport", async ({
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
-    await page.getByRole("treeitem", { name: "b.ts" }).click();
+    await page.getByRole("tab", { name: "Findings", exact: true }).click();
+    await page.getByRole("button", { name: /Keep writes behind/ }).click();
 
     const finding = page.locator("[data-review-inline-finding='mapped']");
     await expect(finding).toBeVisible();
@@ -521,13 +522,16 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
       });
     await page.goto(`${rendererOrigin}/#workbench-fixture`);
     await expect(
-      page.getByRole("region", { name: "Completed review workbench" }),
+      page.getByRole("region", { name: "Review workbench" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "PR overview" }).click();
     const overview = page.getByRole("dialog", { name: "PR overview" });
     await expect(overview).toBeVisible();
     await expect(
-      overview.getByRole("button", { name: "Your local review" }),
+      overview.getByRole("button", { name: "Published feedback" }),
+    ).toBeVisible();
+    await expect(
+      overview.getByRole("button", { name: "Merge readiness" }),
     ).toBeVisible();
     await expect(
       page.getByRole("region", { name: "Review diff" }),
@@ -573,7 +577,7 @@ test("constrained completed review keeps navigation and actions reachable", asyn
 
     await expect(
       page.getByRole("complementary", { name: "Review navigation" }),
-    ).toBeHidden();
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "PR overview" }),
     ).toBeVisible();
@@ -649,16 +653,12 @@ test("long workbench content keeps full values accessible without viewport overf
           { exact: false },
         ),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Files", exact: true }).click();
-      const navigation = page.getByRole("dialog", {
-        name: "Files",
-      });
+      await page.getByRole("tab", { name: "Files", exact: true }).first().click();
       await expect(
-        navigation.getByRole("treeitem", {
+        page.getByRole("treeitem", {
           name: "authoritative-review-write-coordination-and-recovery-surface.ts",
         }),
       ).toBeVisible();
-      await page.keyboard.press("Escape");
 
       const overflow = await page.evaluate(
         () =>

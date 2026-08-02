@@ -5,13 +5,10 @@ import {
   type FindingLocationInput,
 } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
-import { ReviewDiffView, type LocalCommentAuthoring } from "./review-diff-view";
+import { ReviewDiffView, type LocalCommentAuthoring, type ReviewInlineAnnotation } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
-import {
-  DEFAULT_REVIEW_VIEW_PREFERENCES,
-  type ReviewViewPreferences,
-} from "@/review-view-preferences";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES, type ReviewViewPreferences } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -32,10 +29,14 @@ export function DiffWorkbench({
   localCommentAuthoring,
   controlledSelectedPath,
   onSelectedPathChange,
+  onActiveFileChange,
   hideFileNavigation = false,
   diffTitle,
   diffSubtitle,
   copyValue,
+  preferences: controlledPreferences,
+  onPreferencesChange,
+  annotations,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -45,10 +46,14 @@ export function DiffWorkbench({
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly controlledSelectedPath?: string;
   readonly onSelectedPathChange?: (path: string) => void;
+  readonly onActiveFileChange?: (path: string) => void;
   readonly hideFileNavigation?: boolean;
   readonly diffTitle?: string;
   readonly diffSubtitle?: string;
   readonly copyValue?: string;
+  readonly preferences?: ReviewViewPreferences;
+  readonly onPreferencesChange?: (update: Partial<ReviewViewPreferences>) => void;
+  readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
@@ -60,10 +65,11 @@ export function DiffWorkbench({
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
-  const [preferences, setPreferences] = useState<ReviewViewPreferences>({
+  const [internalPreferences, setInternalPreferences] = useState<ReviewViewPreferences>({
     ...DEFAULT_REVIEW_VIEW_PREFERENCES,
     fileMode: "all",
   });
+  const preferences = controlledPreferences ?? internalPreferences;
   const [pendingLargeFileMode, setPendingLargeFileMode] = useState<string>();
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -71,9 +77,10 @@ export function DiffWorkbench({
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
       if (update.fileMode !== undefined) setPendingLargeFileMode(undefined);
-      setPreferences((current) => ({ ...current, ...update }));
+      setInternalPreferences((current) => ({ ...current, ...update }));
+      onPreferencesChange?.(update);
     },
-    [],
+    [onPreferencesChange],
   );
   useEffect(() => {
     if (pendingLargeFileMode === undefined) return;
@@ -81,11 +88,7 @@ export function DiffWorkbench({
     // virtual surface. A brief quiet period still opens the requested file,
     // while quick navigator movement remains responsive.
     const timer = window.setTimeout(() => {
-      setPreferences((current) =>
-        current.fileMode === "selected"
-          ? current
-          : { ...current, fileMode: "selected" },
-      );
+      updatePreferences({ fileMode: "selected" });
       setPendingLargeFileMode(undefined);
     }, 150);
     return () => window.clearTimeout(timer);
@@ -200,13 +203,14 @@ export function DiffWorkbench({
           parsedFiles={parsedDiff.files}
           fileStatsByPath={parsedDiff.statsByPath}
           {...(selectedPath === undefined ? {} : { selectedPath })}
-          onActiveFileChange={setActivePath}
+          onActiveFileChange={(path) => { setActivePath(path); onActiveFileChange?.(path); }}
           preferences={preferences}
           collapsedPaths={collapsedPaths}
           onPreferencesChange={updatePreferences}
           onCollapsedPathsChange={setCollapsedPaths}
           {...(sourceSession === undefined ? {} : { sourceSession })}
           {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
+          {...(annotations === undefined ? {} : { annotations })}
         />
       </div>
     </section>

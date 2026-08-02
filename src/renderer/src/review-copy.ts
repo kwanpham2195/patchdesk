@@ -43,7 +43,7 @@ const RECOVERY_COPY: Readonly<Record<RecoveryNoticeKey, RecoveryCopy>> = {
   ready_to_review: {
     notice: "Ready to review",
     tone: "positive",
-    actionLabel: "Run review",
+    actionLabel: "Run Analysis",
     actionKey: "run_review",
     reassurance:
       "The saved snapshot is ready. Starting analysis is read-only and never writes to GitHub.",
@@ -109,24 +109,24 @@ export type WalkthroughLifecycleKey =
 
 const WALKTHROUGH_COPY: Readonly<Record<WalkthroughLifecycleKey, { readonly headline: string; readonly reassurance: string }>> = {
   idle: {
-    headline: "Generate a read-only walkthrough",
+    headline: "Generate Walkthrough",
     reassurance:
       "Patchdesk reads the stored patch, never writes to GitHub, and never restarts the run.",
   },
   generating: {
     headline: "Generating walkthrough…",
     reassurance:
-      "Patchdesk is reading the stored patch read-only. This view will keep its place.",
+      "Patchdesk is reading the stored patch. This view will keep its place.",
   },
   ready: {
-    headline: "Read-only walkthrough ready",
+    headline: "Walkthrough ready",
     reassurance:
       "Each section maps to one part of the patch. Use Back to files when you're done.",
   },
   failed: {
     headline: "Walkthrough didn't finish",
     reassurance:
-      "The patch is still readable in Files mode. Try again or stay with the prepared review.",
+      "The patch is still readable in Files mode. Try again or stay with the Review.",
   },
   stale: {
     headline: "Walkthrough is no longer current",

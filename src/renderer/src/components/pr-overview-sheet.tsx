@@ -81,7 +81,7 @@ export function CanonicalReviewOverviewSheet({
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
           <OverviewRow title="Description" defaultOpen>
-            <p className="whitespace-pre-wrap text-sm">{overview.description?.trim() || "No description was provided on GitHub."}</p>
+            {overview.description?.trim() ? <PullRequestDescriptionPreview markdown={overview.description} /> : <p className="whitespace-pre-wrap text-sm">No description was provided on GitHub.</p>}
           </OverviewRow>
           <Separator />
           <OverviewRow title="Summary / change context" defaultOpen>

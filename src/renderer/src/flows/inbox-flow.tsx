@@ -486,10 +486,10 @@ export function Pending({
                   ))}
                 </div>
                 <Button className="w-full" onClick={() => setLaunchOpen(true)}>
-                  Run review
+                  Run Analysis
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Read-only analysis starts locally. GitHub writes remain
+                  Analysis runs locally as evidence. GitHub writes remain
                   separately confirmed.
                 </p>
               </div>
@@ -500,9 +500,9 @@ export function Pending({
       <Dialog open={launchOpen} onOpenChange={setLaunchOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Run local review</DialogTitle>
+            <DialogTitle>Run Analysis</DialogTitle>
             <DialogDescription>
-              Confirm the exact pull request. This starts read-only analysis and
+              Confirm the exact pull request. Analysis produces evidence and
               does not write to GitHub.
             </DialogDescription>
           </DialogHeader>
@@ -528,7 +528,7 @@ export function Pending({
                 setLaunchOpen(false);
               }}
             >
-              Start review
+              Start Analysis
             </Button>
           </DialogFooter>
         </DialogContent>

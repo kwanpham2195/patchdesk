@@ -255,7 +255,7 @@ export function NarrativeWalkthrough({
           <Separator orientation="vertical" className="h-5" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">
-              Read-only walkthrough · {walkthrough.title}
+              Walkthrough · {walkthrough.title}
             </p>
             <p className="text-xs text-muted-foreground">
               Focus: {walkthrough.focus}
@@ -264,7 +264,7 @@ export function NarrativeWalkthrough({
         </div>
         <Badge variant="outline">
           <BookOpenCheck />
-          Read-only
+          Reading
         </Badge>
       </header>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 min-[1280px]:grid-cols-[16rem_minmax(0,1fr)]">
@@ -508,7 +508,7 @@ export function NarrativeWalkthrough({
             </Card>
             <p
               className="text-xs text-muted-foreground"
-              aria-label="Read-only walkthrough copy"
+              aria-label="Walkthrough copy"
             >
               {walkthroughCopy("ready").reassurance}
             </p>

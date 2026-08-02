@@ -54,7 +54,7 @@ const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
   v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.string() }),
   v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.string() }),
-  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open saved review"), sessionId: v.string() }),
+  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open Review"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
   v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.string() }),
   v.strictObject({ kind: v.literal("open_discussion"), label: v.literal("Review author response"), sessionId: v.string() }),

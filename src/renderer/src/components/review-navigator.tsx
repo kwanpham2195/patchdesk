@@ -4,6 +4,7 @@ import { parseUnifiedPatch } from "../../../domain/patch";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 
@@ -16,11 +17,13 @@ type ReviewNavigatorProps = {
   readonly findings: ReadonlyArray<Finding>;
   readonly section: ReviewNavigatorSection;
   readonly selectedPath?: string;
+  readonly activePath?: string;
   readonly selectedCommitSha?: string;
   readonly onSectionChange: (section: ReviewNavigatorSection) => void;
   readonly onFileSelect: (path: string) => void;
   readonly onFindingSelect: (finding: Finding) => void;
   readonly onCommitSelect: (sha: string) => void;
+  readonly onCollapse?: () => void;
 };
 
 /** The one review navigator owns Files, Findings, and Commits selection. */
@@ -30,11 +33,13 @@ export function ReviewNavigator({
   findings,
   section,
   selectedPath,
+  activePath,
   selectedCommitSha,
   onSectionChange,
   onFileSelect,
   onFindingSelect,
   onCommitSelect,
+  onCollapse,
 }: ReviewNavigatorProps): React.JSX.Element {
   const parsed = useMemo(() => {
     const files = parseUnifiedPatch(patch);
@@ -47,20 +52,23 @@ export function ReviewNavigator({
     return { files: items, firstPath: items[0]?.path };
   }, [patch]);
 
-  const activePath = selectedPath ?? parsed.firstPath;
+  const fileTreeActivePath = activePath ?? selectedPath ?? parsed.firstPath;
   return (
-    <aside aria-label="Review navigation" className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
+    <aside aria-label="Review navigation" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
       <Tabs value={section} onValueChange={(value) => onSectionChange(value as ReviewNavigatorSection)} className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label="Review navigator" className="mx-3 mt-3 shrink-0">
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="findings">Findings</TabsTrigger>
-          <TabsTrigger value="commits">Commits</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between gap-2 px-3 pt-3">
+          <TabsList aria-label="Review navigator" className="min-w-0 shrink-0">
+            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="findings">Findings</TabsTrigger>
+            <TabsTrigger value="commits">Commits</TabsTrigger>
+          </TabsList>
+          {onCollapse === undefined ? null : <Button size="xs" variant="ghost" onClick={onCollapse}>Hide review navigator</Button>}
+        </div>
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden p-3" keepMounted>
           {parsed.files.length === 0 ? (
             <p className="p-2 text-sm text-muted-foreground">No changed files.</p>
           ) : (
-            <PierreFileTree files={parsed.files} {...(selectedPath === undefined ? {} : { selectedPath })} {...(activePath === undefined ? {} : { activePath })} onSelect={onFileSelect} />
+            <PierreFileTree files={parsed.files} {...(selectedPath === undefined ? {} : { selectedPath })} {...(fileTreeActivePath === undefined ? {} : { activePath: fileTreeActivePath })} onSelect={onFileSelect} />
           )}
         </TabsContent>
         <TabsContent value="findings" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>

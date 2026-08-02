@@ -53,7 +53,7 @@ const rows: ReadonlyArray<InboxRow> = [
       matchesCurrentHead: true,
     },
     categories: ["saved_review", "checks_failing"],
-    recommendedAction: { kind: "open_saved_review", label: "Open saved review", sessionId: "review-42" },
+    recommendedAction: { kind: "open_saved_review", label: "Open Review", sessionId: "review-42" },
     dataFreshness: "fresh",
   },
 ];
@@ -138,7 +138,7 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Open saved review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Review" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Untrusted persisted text" })).toBeNull();
   });
   it("filters queues, moves selection by keyboard, and starts only the selected recommended action", async () => {

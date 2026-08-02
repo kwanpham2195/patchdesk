@@ -505,7 +505,7 @@ function inboxForScenario(scenarioId: string | undefined): InboxResponse {
             ["saved_review", "checks_failing"],
             {
               kind: "open_saved_review",
-              label: "Open saved review",
+              label: "Open Review",
               sessionId: "design-session",
             },
             "failing",

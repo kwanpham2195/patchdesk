@@ -26,7 +26,7 @@ describe("review copy contract", () => {
 
   it("keeps action labels stable regardless of persisted display labels", () => {
     expect(RECOVERY_ACTION_KEYS.map(recoveryActionLabel)).toEqual([
-      "Run review",
+      "Run Analysis",
       "Reconnect",
       "Start again",
       "Try again",
