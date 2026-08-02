@@ -84,6 +84,7 @@ describe("InsightRunCoordinator", () => {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium", completion: { _tag: "PublishWhenComplete", event: "COMMENT", authorizationId } });
       if (started._tag === "err") throw new Error("expected run");
       await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
+      for (let attempt = 0; attempt < 100 && completion === undefined; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
       expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, analysisRunId: started.value.runId, authorizationId, event: "COMMENT" });
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
