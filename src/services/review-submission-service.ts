@@ -74,7 +74,7 @@ export async function submitReviewBatch(input: {
     pr: sessionPr(input.session),
     reviewId: input.batch.state.reviewId,
     event: input.event,
-    summaryBody: renderBatchBody(input.batch),
+    summaryBody: renderReviewBatchBody(input.batch),
   });
   if (submitted._tag === "err")
     return err({ _tag: "GitHubSubmitFailed", session: input.session, batch: input.batch });
@@ -82,7 +82,7 @@ export async function submitReviewBatch(input: {
   const batch: ReviewBatch = {
     ...input.batch,
     state: { _tag: "Submitted", reviewId: submitted.value.reviewId, event: input.event },
-    summaryBody: renderBatchBody(input.batch),
+    summaryBody: renderReviewBatchBody(input.batch),
     suggestedEvent: input.event,
     updatedAt: input.now,
   };
@@ -163,7 +163,7 @@ export async function applyReviewBatch(input: {
     let receipt: ReviewBatch["receipts"][number] | undefined;
     if (operation._tag === "CreatePendingReview") {
       const comments = batch.items.filter((value): value is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => value._tag === "InlineComment" && operation.itemIds.includes(value.id)).map((value) => ({ body: value.body, path: value.anchor.path, line: value.anchor.startLine, ...(value.anchor.startLine === value.anchor.line ? {} : { lineEnd: value.anchor.line }), diffSide: value.anchor.side }));
-      const created = await input.gateway.createPendingReview({ profile: input.profile, pr: sessionPr(session), headSha: session.key.headSha, summaryBody: renderBatchBody(batch), comments });
+      const created = await input.gateway.createPendingReview({ profile: input.profile, pr: sessionPr(session), headSha: session.key.headSha, summaryBody: renderReviewBatchBody(batch), comments });
       if (created._tag === "err") return err(await persistBatchFailure({
         operation,
         category: created.error.category,
@@ -220,7 +220,7 @@ export async function applyReviewBatch(input: {
   return (await input.persist(session)) ? ok({ session, batch }) : err({ _tag: "BatchOutcomeUnknown", session, batch });
 }
 
-function renderBatchBody(batch: ReviewBatch): string {
+export function renderReviewBatchBody(batch: ReviewBatch): string {
   const summary = batch.summaryBody.trim();
   const general = batch.items
     .filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "GeneralComment" }> => item._tag === "GeneralComment" && item.include)

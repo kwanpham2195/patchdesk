@@ -46,6 +46,7 @@ import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
 import { AnalysisDraftService } from "../services/analysis-draft-service";
+import { PublicationPreviewService } from "../services/publication-preview-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -110,6 +111,7 @@ const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
 const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
+const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -274,6 +276,7 @@ export async function startLocalApiServer(
   );
   const remoteReviews = new ReviewRemoteStore(paths, reviews);
   const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights, reviews, remote: remoteReviews });
+  const publicationPreviews = new PublicationPreviewService(profiles, sessions, github);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
     sessions,
@@ -606,6 +609,7 @@ export async function startLocalApiServer(
       ? response(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/publication/preview", async (context) => publicationPreviewResponse(context, publicationPreviews, await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/run", async (context) => insightRunResponse(context, configuration.insights, "analysis", await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/run", async (context) => insightRunResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/cancel", async (context) => insightCancelResponse(context, configuration.insights, "analysis", await jsonBody(context)));
@@ -841,6 +845,19 @@ function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
+}
+
+async function publicationPreviewResponse(context: Context, service: PublicationPreviewService, body: unknown): Promise<Response> {
+  const parsed = safeParse(publicationPreviewSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const sessionId = parseReviewSessionId(parsed.output.sessionId);
+  const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
+  if (profileId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.preview({ profileId: profileId.value, sessionId: sessionId.value, expectedRevision: expectedRevision.value, event: parsed.output.event });
+  if (result._tag === "ok") return context.json(result.value);
+  const status = result.error === "profile_not_found" || result.error === "session_not_found" ? 404 : result.error === "revision_conflict" || result.error === "stale_head" || result.error === "needs_attention" ? 409 : result.error === "github_read_failed" ? 503 : 400;
+  return context.json({ error: result.error }, status);
 }
 
 async function insightRunResponse(context: Context, coordinator: LocalApiConfiguration["insights"], type: InsightType, body: unknown): Promise<Response> {
