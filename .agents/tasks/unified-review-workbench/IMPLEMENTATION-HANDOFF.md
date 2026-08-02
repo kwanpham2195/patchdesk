@@ -137,7 +137,7 @@ This section is the progress index. The executable plan checkboxes are historica
 - `4e7614b`, `37e04cf`, `70dc51c`, `022acaf`, and `c68fde1` contain early Feedback/Insights groundwork.
 - `50081ae`, `2717e6f`, and `ccfa8fb` close the Phase 2 UI and read-only/fallback-comment regressions.
 - `05c0bbe`, `4b899d0`, `2134496`, and `0aa147a` harden Insight lifecycle, Finding drafts, authority validation, terminal persistence recovery, and regression coverage.
-- Fresh automated evidence after the UI cleanup, Insight disposition slice, and reader slice: `pnpm lint`, `pnpm typecheck`, focused reader tests (17 passed), and `git diff --check` passed. The prior full gate remains `pnpm test -- --run` (95 files/630 tests), `pnpm build`, and `pnpm exec playwright test` (60 passed).
+- Fresh automated evidence after the UI cleanup, Insight disposition slice, and reader slice: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (95 files/631 tests), `pnpm build`, focused reader tests (17 passed), and `git diff --check` passed. The prior browser gate remains `pnpm exec playwright test` (60 passed).
 - Live evidence remains partial: the walkthrough fixture smoke test passed, but the complete required Electron journey has not yet been recorded.
 - Unrelated dirty worktree files and local planning artifacts remain preserved. Future changes must stage only explicit task files.
 
