@@ -48,7 +48,16 @@ export class InsightStore {
     parseRetained: (input: unknown) => Result<T, unknown>,
   ): Promise<Result<InsightRecord<T>, StorageFailure>> {
     const loaded = await this.load(profileId, reviewId, type);
-    if (loaded._tag === "err" || loaded.value.retained === undefined) return loaded as Result<InsightRecord<T>, StorageFailure>;
+    if (loaded._tag === "err") return loaded;
+    if (loaded.value.retained === undefined) {
+      return ok({
+        schemaVersion: loaded.value.schemaVersion,
+        reviewId: loaded.value.reviewId,
+        type: loaded.value.type,
+        nextToken: loaded.value.nextToken,
+        updatedAt: loaded.value.updatedAt,
+      });
+    }
     const retained = parseRetained(loaded.value.retained);
     return retained._tag === "err"
       ? invalidRead()
