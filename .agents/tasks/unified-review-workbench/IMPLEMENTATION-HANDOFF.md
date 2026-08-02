@@ -139,7 +139,8 @@ This section is the progress index. The executable plan checkboxes are historica
 - `05c0bbe`, `4b899d0`, `2134496`, and `0aa147a` harden Insight lifecycle, Finding drafts, authority validation, terminal persistence recovery, and regression coverage.
 - `967a306` removes the legacy `ReviewDraft` domain while keeping old on-disk session migration inside the storage boundary.
 - `811279d` adds compare-and-set body/event/inclusion edits and exact fingerprint-checked anchor repair.
-- Fresh automated evidence after the UI cleanup, Insight disposition slice, reader slice, and draft-edit slice: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (95 files/633 tests), `pnpm build`, `pnpm exec playwright test` (60 passed), focused reader tests (17 passed), and `git diff --check` passed.
+- `506ca7f` completes retained Analysis actions and sections, persists Walkthrough progress, and distinguishes patch I/O failures from invalid requests.
+- Fresh automated evidence after the UI cleanup, Insight disposition slice, reader slice, draft-edit slice, and retained-reader action hardening: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (95 files/634 tests), `pnpm build`, focused Insight/controller tests, and `git diff --check` passed. The prior browser gate remains `pnpm exec playwright test` (60 passed).
 - Live evidence remains partial: the walkthrough fixture smoke test passed, but the complete required Electron journey has not yet been recorded. Two required Electron tester attempts were blocked before execution by exhausted provider credits/monthly usage limits; no live pass is claimed.
 - Unrelated dirty worktree files and local planning artifacts remain preserved. Future changes must stage only explicit task files.
 
