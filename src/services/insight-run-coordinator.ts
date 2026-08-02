@@ -68,6 +68,18 @@ export class InsightRunCoordinator {
     return ok({ runId: input.runId, type: input.type, status: "cancelling" });
   }
 
+  async recover(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType }): Promise<Result<InsightRunResponse | undefined, InsightCoordinatorFailure>> {
+    const record = await this.insights.load(input.profileId, input.reviewId, input.type);
+    if (record._tag === "err") return record.error.reason === "not_found" ? ok(undefined) : err("storage_unavailable");
+    const active = record.value.activeRun;
+    if (active === undefined || this.active.has(active.id)) return active === undefined ? ok(undefined) : ok({ runId: active.id, type: input.type, status: active.status });
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "err") return err("storage_unavailable");
+    const failed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (current) => failInsightRun(current, active.id, { runId: active.id, reason: "failed", retryable: true, failedAt: timestamp.value }, timestamp.value) });
+    if (failed._tag === "err") return err("storage_unavailable");
+    return ok({ runId: active.id, type: input.type, status: "failed" });
+  }
+
   async observe(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly runId: InsightRunId }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const record = await this.insights.load(input.profileId, input.reviewId, input.type);
     if (record._tag === "err") return err(record.error.reason === "not_found" ? "not_found" : "storage_unavailable");
