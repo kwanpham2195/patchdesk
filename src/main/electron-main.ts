@@ -39,8 +39,7 @@ import { parseAbsolutePath } from "../domain/ids";
 import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
 import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
-import { NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
-import { resolveWalkthroughRuntimeRoot, resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
+import { resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
@@ -79,7 +78,6 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
-        walkthroughs: createWalkthroughService(),
         insights: createInsightCoordinator(),
         lifecycleGate,
         diagnostics,
@@ -122,23 +120,6 @@ const desktopLifecycle = createDesktopLifecycle({
   },
 });
 
-function createWalkthroughService(): NarrativeWalkthroughService {
-  const paths = PatchdeskPaths.default();
-  const workflowRoot = resolveWalkthroughRuntimeRoot(app.getAppPath(), process.cwd());
-  return new NarrativeWalkthroughService(
-    new ProfileStore(paths),
-    new ReviewSessionStore(paths),
-    paths,
-    new FlueCliWalkthroughInvoker(
-      new CommandRunner(),
-      workflowRoot,
-      process.execPath,
-      resolveWorkflowCliPath(workflowRoot),
-    ),
-    diagnostics,
-  );
-}
-
 function createInsightCoordinator(): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
   const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
@@ -146,13 +127,13 @@ function createInsightCoordinator(): InsightRunCoordinator {
   const walkthroughInvoker = new FlueCliWalkthroughInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
   const analysis = {
     async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
-      if (input.attemptId === undefined || input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" });
+      if (input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" });
       const contextPath = parseAbsolutePath(input.contextPath);
       const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
       const patchPath = parseAbsolutePath(input.patchPath);
       const worktreePath = parseAbsolutePath(input.worktreePath);
       if (contextPath._tag === "err" || reviewInputPath._tag === "err" || patchPath._tag === "err" || worktreePath._tag === "err") return err({ reason: "execution_failed" });
-      return reviewInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, attemptId: input.attemptId, contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, patchPath: patchPath.value, worktreePath: worktreePath.value, scope: input.scope, model: input.model, reasoning: input.reasoning }, options);
+      return reviewInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }), contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, patchPath: patchPath.value, worktreePath: worktreePath.value, scope: input.scope, model: input.model, reasoning: input.reasoning }, options);
     },
   };
   const walkthrough = {
@@ -203,7 +184,7 @@ function createWorkflowInvoker(
             await diagnostics.record({
               profileId: input.profileId,
               sessionId: input.sessionId,
-              attemptId: input.attemptId,
+              ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
               category: "run",
               phase,
               retryable,

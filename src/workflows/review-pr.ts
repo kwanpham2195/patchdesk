@@ -20,7 +20,7 @@ const reviewAgent = defineAgent(() => ({
 const reviewPrFixtureInput = v.strictObject({
   profileId: v.pipe(v.string(), v.minLength(1)),
   sessionId: v.pipe(v.string(), v.minLength(1)),
-  attemptId: v.pipe(v.string(), v.minLength(1)),
+  attemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
   contextPath: v.pipe(v.string(), v.minLength(1)),
   reviewInputPath: v.pipe(v.string(), v.minLength(1)),
   patchPath: v.pipe(v.string(), v.minLength(1)),

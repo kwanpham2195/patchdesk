@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import type { InsightStore } from "../adapters/storage/insight-store";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -15,6 +17,11 @@ import type {
 } from "../domain/github-context";
 import {
   createReviewId,
+  parseContentHash,
+  parseGitSha,
+  parseInsightRunId,
+  parseIsoTimestamp,
+  parseReviewSessionId,
   type GitHubHost,
   type GitHubOwner,
   type GitSha,
@@ -26,11 +33,12 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { InsightProjection } from "../domain/insight";
+import { normalizeNarrativeWalkthrough, type NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { MergeReadiness } from "../domain/merge-readiness";
-import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
+import type { InsightRecord, RetainedInsight } from "../domain/insight-record";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewAttempt } from "../domain/review-attempt";
-import type { ReviewResult } from "../domain/review-result";
+import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
 import {
   decideReviewRecovery,
@@ -41,6 +49,7 @@ import { ReviewPreparationJournal } from "./review-preparation-journal";
 import type { ReviewRunRegistry } from "./review-run-registry";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { err, ok, type Result } from "../domain/result";
+import { readObjectField } from "./read-object-field";
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
 export type WorkbenchSessionProjection = {
@@ -130,6 +139,7 @@ export class ReviewWorkbenchProjectionService {
       readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
     },
     private readonly reviews?: Pick<ReviewStore, "load">,
+    private readonly insights?: Pick<InsightStore, "loadTyped">,
   ) {}
 
   async loadLocal(
@@ -237,6 +247,13 @@ export class ReviewWorkbenchProjectionService {
       this.sessions.listAttempts(session.key.profileId, session.id),
     ]);
     if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    const storedInsights = this.insights === undefined
+      ? undefined
+      : await this.loadStoredInsights(session, fullPatch);
+    if (storedInsights?._tag === "err") return storedInsights;
+    const patchHash = fullPatch === undefined
+      ? undefined
+      : createHash("sha256").update(fullPatch).digest("hex");
 
     const current = remote?.current;
     const currentHeadSha = current?._tag === "ok" ? current.value.headSha : undefined;
@@ -286,7 +303,12 @@ export class ReviewWorkbenchProjectionService {
       ? evaluateReadiness(current.value, remote.checks.value, session)
       : { _tag: "Blocked" as const, blockers: ["stale_head" as const], warnings: [] };
     const recoveryView = await this.recoveryView(session, attempts.value);
-    const analysis = projectAnalysis(session, attempts.value, currentHeadSha, source !== "local");
+    const analysis = storedInsights === undefined
+      ? projectAnalysis(session, attempts.value, currentHeadSha, source !== "local")
+      : projectStoredInsight(storedInsights.value.analysis, session, patchHash);
+    const walkthrough = storedInsights === undefined
+      ? { status: "not_generated" as const }
+      : projectStoredInsight(storedInsights.value.walkthrough, session, patchHash);
     const stableReview = this.reviews === undefined
       ? undefined
       : await this.reviews.load(session.key.profileId, createReviewId(session.key));
@@ -317,7 +339,7 @@ export class ReviewWorkbenchProjectionService {
       commits: remote?.commits ?? [],
       insights: {
         analysis,
-        walkthrough: { status: "not_generated" },
+        walkthrough,
       },
       ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
       publishedFeedback: { reviews: [], comments: [] },
@@ -325,6 +347,31 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       ...(recoveryView === undefined ? {} : { recoveryView }),
+    });
+  }
+
+  private async loadStoredInsights(
+    session: ReviewSession,
+    fullPatch: string | undefined,
+  ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
+    if (this.insights === undefined) return ok({});
+    const analysis = await this.insights.loadTyped(
+      session.key.profileId,
+      createReviewId(session.key),
+      "analysis",
+      parseRetainedAnalysis,
+    );
+    const walkthrough = await this.insights.loadTyped(
+      session.key.profileId,
+      createReviewId(session.key),
+      "walkthrough",
+      (value) => fullPatch === undefined ? err(undefined) : parseRetainedWalkthrough(value, fullPatch, session.key.profileId),
+    );
+    if (analysis._tag === "err" && analysis.error.reason !== "not_found") return err({ _tag: "SessionStorageUnavailable" });
+    if (walkthrough._tag === "err" && walkthrough.error.reason !== "not_found") return err({ _tag: "SessionStorageUnavailable" });
+    return ok({
+      ...(analysis._tag === "ok" ? { analysis: analysis.value } : {}),
+      ...(walkthrough._tag === "ok" ? { walkthrough: walkthrough.value } : {}),
     });
   }
 
@@ -404,6 +451,83 @@ function evaluateReadiness(
     blockers,
     warnings,
   };
+}
+
+type StoredInsightRecords = {
+  readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
+  readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
+};
+
+function projectStoredInsight<T>(
+  record: InsightRecord<RetainedInsight<T>> | undefined,
+  session: ReviewSession,
+  patchHash: string | undefined,
+): InsightProjection<T> {
+  const retained = record?.retained === undefined
+    ? undefined
+    : {
+        sessionId: record.retained.revision.sessionId,
+        headSha: record.retained.revision.headSha,
+        generatedAt: record.retained.generatedAt,
+        value: record.retained.value,
+      };
+  if (record?.activeRun !== undefined) {
+    return {
+      status: "running",
+      ...(retained === undefined ? {} : { retained }),
+      activeRun: {
+        sessionId: record.activeRun.revision.sessionId,
+        startedAt: record.activeRun.startedAt,
+      },
+    };
+  }
+  if (record?.replacementFailure !== undefined) {
+    return {
+      status: "failed",
+      ...(retained === undefined ? {} : { retained }),
+      replacementFailure: {
+        ...(record.replacementFailure.incidentId === undefined ? {} : { incidentId: record.replacementFailure.incidentId }),
+        retryable: record.replacementFailure.retryable,
+      },
+    };
+  }
+  if (retained === undefined) return { status: "not_generated" };
+  const retainedRecord = record?.retained;
+  const isCurrent = retainedRecord?.revision.sessionId === session.id
+    && retainedRecord.revision.headSha === session.key.headSha
+    && retainedRecord.revision.patchHash === patchHash;
+  return { status: isCurrent ? "current" : "outdated", retained };
+}
+
+function parseRetainedBase(input: unknown): Result<RetainedInsight<unknown>, undefined> {
+  const revision = readObjectField(input, "revision");
+  const runId = parseInsightRunId(readObjectField(input, "runId"));
+  const sessionId = parseReviewSessionId(readObjectField(revision, "sessionId"));
+  const headSha = parseGitSha(readObjectField(revision, "headSha"));
+  const patchHash = parseContentHash(readObjectField(revision, "patchHash"));
+  const generatedAt = parseIsoTimestamp(readObjectField(input, "generatedAt"));
+  if ([runId, sessionId, headSha, patchHash, generatedAt].some((value) => value._tag === "err")) return err(undefined);
+  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || generatedAt._tag === "err") return err(undefined);
+  return ok({ runId: runId.value, revision: { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value }, generatedAt: generatedAt.value, value: undefined });
+}
+
+function parseRetainedAnalysis(input: unknown): Result<RetainedInsight<ReviewResult>, undefined> {
+  const base = parseRetainedBase(input);
+  if (base._tag === "err") return base;
+  const value = parseReviewResult(readObjectField(input, "value"));
+  return value._tag === "err" ? err(undefined) : ok({ ...base.value, value: value.value });
+}
+
+function parseRetainedWalkthrough(input: unknown, patch: string, profileId: WorkspaceProfileId): Result<RetainedInsight<NarrativeWalkthrough>, undefined> {
+  const base = parseRetainedBase(input);
+  if (base._tag === "err") return base;
+  const normalized = normalizeNarrativeWalkthrough(readObjectField(input, "value"), patch, {
+    profileId,
+    sessionId: base.value.revision.sessionId,
+    headSha: base.value.revision.headSha,
+    patchHash: base.value.revision.patchHash,
+  });
+  return normalized._tag === "err" ? err(undefined) : ok({ ...base.value, value: normalized.value });
 }
 
 function projectAnalysis(

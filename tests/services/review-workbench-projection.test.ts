@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -8,11 +9,15 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { InsightStore } from "../../src/adapters/storage/insight-store";
 import type { CheckSummary, GitHubComments, PullRequestSummary } from "../../src/domain/github-context";
 import {
+  createReviewId,
   createReviewSessionId,
   parseAbsolutePath,
+  parseContentHash,
   parseGitSha,
+  parseInsightRunId,
   parseIsoTimestamp,
   type GitSha,
 } from "../../src/domain/ids";
@@ -169,7 +174,7 @@ function attemptFor(paths: PatchdeskPaths, session: ReviewSession, state: Review
   };
 }
 
-async function setup(github: ReturnType<typeof fakeGitHub>): Promise<{
+async function setup(github: ReturnType<typeof fakeGitHub>, withInsights = false): Promise<{
   readonly root: string;
   readonly paths: PatchdeskPaths;
   readonly projection: ReviewWorkbenchProjectionService;
@@ -194,6 +199,9 @@ async function setup(github: ReturnType<typeof fakeGitHub>): Promise<{
     sessions,
     github,
     () => now,
+    undefined,
+    undefined,
+    withInsights ? new InsightStore(paths) : undefined,
   );
   return { root, paths, projection, sessions };
 }
@@ -341,6 +349,45 @@ describe("ReviewWorkbenchProjectionService", () => {
       expect(loaded.value.revision.currentHeadSha).toBe(staleHeadSha);
       expect(loaded.value.revision.reviewedHeadSha).toBe(headSha);
       expect(loaded.value.insights.analysis.retained?.value).toMatchObject({ summary: "Persisted review result" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("projects a retained typed InsightStore result instead of session legacy evidence", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github, true);
+    try {
+      const session = completedSession(paths);
+      const patch = "diff --git a/src/a.ts b/src/a.ts\\n+change\\n";
+      await mkdir(dirname(session.patchPath), { recursive: true });
+      await writeFile(session.patchPath, patch, "utf8");
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const patchHash = must(parseContentHash(createHash("sha256").update(patch).digest("hex")));
+      const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
+      expect((await new InsightStore(paths).save(profileId, {
+        schemaVersion: 1,
+        reviewId: createReviewId(session.key),
+        type: "analysis",
+        nextToken: 2,
+        retained: {
+          runId,
+          revision: { sessionId: session.id, headSha, patchHash },
+          generatedAt: now,
+          value: {
+            changeSummary: "Durable analysis",
+            verdict: "comment",
+            summary: "Durable analysis",
+            findings: [],
+            validationPlan: [],
+            assumptions: [],
+          },
+        },
+        updatedAt: now,
+      }))._tag).toBe("ok");
+
+      const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "current", retained: { value: { summary: "Durable analysis" } } } } } });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

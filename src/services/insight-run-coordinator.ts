@@ -13,7 +13,7 @@ export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; r
 export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>> };
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high" };
-export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "terminal_review" | "already_running" | "model_unavailable" | "storage_unavailable" | "not_active";
+export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active";
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
@@ -35,7 +35,8 @@ export class InsightRunCoordinator {
     if (review._tag === "err") return err(review.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     if (review.value.status._tag === "Terminal") return err("terminal_review");
     const models = await this.catalog.get();
-    if (models._tag === "err" || !models.value.models.some((model) => model.id === input.model)) return err("model_unavailable");
+    if (models._tag === "err") return err("catalog_unavailable");
+    if (!models.value.models.some((model) => model.id === input.model)) return err("model_unavailable");
     const session = await this.sessions.load(input.profileId, review.value.currentSessionId);
     if (session._tag === "err") return err(session.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     const hash = parseContentHash(await contentHash(session.value.patchPath));
@@ -51,7 +52,20 @@ export class InsightRunCoordinator {
     if (started._tag === "err") return started.error === "already_running" ? err("already_running") : err("storage_unavailable");
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
-    void this.execute(input, runId.value, session.value.patchPath, session.value.worktree.path, session.value.id, hash.value, controller);
+    const invocation = {
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      sessionId: session.value.id,
+      runId: runId.value,
+      contextPath: this.paths.preparedContextFile(input.profileId, session.value.id),
+      reviewInputPath: this.paths.preparedReviewInputFile(input.profileId, session.value.id),
+      patchPath: session.value.patchPath,
+      worktreePath: session.value.worktree.path,
+      scope: session.value.scope,
+      model: input.model,
+      reasoning: input.reasoning,
+    };
+    void this.execute(invocation, input.type, runId.value, hash.value, controller);
     return ok({ runId: runId.value, type: input.type, status: "queued" });
   }
 
@@ -89,21 +103,18 @@ export class InsightRunCoordinator {
     return err("not_active");
   }
 
-  private async execute(input: InsightCoordinatorInput, runId: InsightRunId, patchPath: string, worktreePath: string, sessionId: ReviewSessionId, startedHash: ContentHash, controller: AbortController): Promise<void> {
+  private async execute(input: InsightInvocationInput, type: InsightType, runId: InsightRunId, startedHash: ContentHash, controller: AbortController): Promise<void> {
     try {
-      const review = await this.reviews.load(input.profileId, input.reviewId);
-      const session = review._tag === "ok" ? await this.sessions.load(input.profileId, review.value.currentSessionId) : err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const });
-      const attempt = session._tag === "ok" && session.value.currentAttemptId !== undefined ? await this.sessions.loadAttempt(input.profileId, session.value.id, session.value.currentAttemptId) : undefined;
-      const invocation = session._tag === "ok" ? await this.invokers[input.type].invoke({ profileId: input.profileId, reviewId: input.reviewId, sessionId, ...(attempt?._tag === "ok" ? { attemptId: attempt.value.id, reviewInputPath: attempt.value.reviewInputPath } : {}), runId, contextPath: attempt?._tag === "ok" ? attempt.value.contextPath : this.paths.preparedContextFile(input.profileId, session.value.id), patchPath, worktreePath, scope: session.value.scope, model: input.model, reasoning: input.reasoning }, { signal: controller.signal }) : err({ reason: "storage_unavailable" });
+      const invocation = await this.invokers[type].invoke(input, { signal: controller.signal });
       const latestReview = await this.reviews.load(input.profileId, input.reviewId);
       const latestSession = latestReview._tag === "ok" ? await this.sessions.load(input.profileId, latestReview.value.currentSessionId) : err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const });
       const latestHash = latestSession._tag === "ok" ? parseContentHash(await contentHash(latestSession.value.patchPath)) : err({ _tag: "InvalidDomainValue" as const, field: "patchHash" });
       const timestamp = parseIsoTimestamp(this.now());
       if (timestamp._tag === "err") return;
-      await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (record) => {
+      await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type, now: timestamp.value, operation: (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
-        const current = latestReview._tag === "ok" && latestSession._tag === "ok" && latestHash._tag === "ok" && latestReview.value.currentSessionId === sessionId && active.revision.sessionId === latestSession.value.id && active.revision.headSha === latestSession.value.key.headSha && active.revision.patchHash === latestHash.value && latestHash.value === startedHash;
+        const current = latestReview._tag === "ok" && latestSession._tag === "ok" && latestHash._tag === "ok" && latestReview.value.currentSessionId === input.sessionId && active.revision.sessionId === latestSession.value.id && active.revision.headSha === latestSession.value.key.headSha && active.revision.patchHash === latestHash.value && latestHash.value === startedHash;
         if (!current) return failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value);
         if (invocation._tag === "err" || controller.signal.aborted) return failInsightRun(record, runId, { runId, reason: controller.signal.aborted || invocation._tag === "err" && invocation.error.reason === "cancelled" ? "cancelled" : "failed", retryable: true, failedAt: timestamp.value }, timestamp.value);
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: invocation.value }, timestamp.value);

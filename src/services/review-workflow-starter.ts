@@ -17,7 +17,7 @@ import { readObjectField } from "./read-object-field";
 export type ReviewWorkflowInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
-  readonly attemptId: ReviewAttemptId;
+  readonly attemptId?: ReviewAttemptId;
   readonly contextPath: AbsolutePath;
   readonly reviewInputPath: AbsolutePath;
   readonly patchPath: AbsolutePath;

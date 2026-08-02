@@ -34,7 +34,7 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   return { root, coordinator, review, paths, reviews, sessions };
 }
 
-const successful = (): InsightInvoker => ({ async invoke() { return ok({ summary: "result" }); } });
+const successful = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ summary: "result" }); } });
 
 async function eventually(action: () => Promise<Result<InsightRunResponse, unknown>>, expected: InsightRunResponse["status"]): Promise<Result<InsightRunResponse, unknown>> {
   let latest = await action();
@@ -47,8 +47,28 @@ async function eventually(action: () => Promise<Result<InsightRunResponse, unkno
 }
 
 describe("InsightRunCoordinator", () => {
+  it("starts Analysis from session-owned prepared artifacts without a Review attempt", async () => {
+    const capture: { value?: Parameters<InsightInvoker["invoke"]>[0] } = {};
+    const fixtureValue = await fixture({ analysis: successful(capture), walkthrough: successful() });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      expect(started._tag).toBe("ok");
+      await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started._tag === "ok" ? started.value.runId : "missing" as never }), "completed");
+      expect(capture.value).toMatchObject({
+        sessionId: fixtureValue.review.currentSessionId,
+        contextPath: fixtureValue.paths.preparedContextFile(profileId, fixtureValue.review.currentSessionId),
+        reviewInputPath: fixtureValue.paths.preparedReviewInputFile(profileId, fixtureValue.review.currentSessionId),
+      });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
   it("rejects same-type concurrency but allows Analysis and Walkthrough together", async () => {
-    const fixtureValue = await fixture({ analysis: successful(), walkthrough: successful() });
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const fixtureValue = await fixture({
+      analysis: { async invoke() { await pending; return ok({ summary: "result" }); } },
+      walkthrough: successful(),
+    });
     try {
       const first = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
       expect(first._tag).toBe("ok");
@@ -56,7 +76,10 @@ describe("InsightRunCoordinator", () => {
       expect(duplicate).toEqual({ _tag: "err", error: "already_running" });
       const walkthrough = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "walkthrough", model: "model", reasoning: "medium" });
       expect(walkthrough._tag).toBe("ok");
-    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+      release();
+      if (first._tag === "ok") await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: first.value.runId }), "completed");
+      if (walkthrough._tag === "ok") await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "walkthrough", runId: walkthrough.value.runId }), "completed");
+    } finally { release(); await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
   it("retains a successful result and exposes completion after the process settles", async () => {

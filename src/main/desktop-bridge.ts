@@ -58,8 +58,10 @@ const allowedRoutes = new Set([
   "GET /v1/reviews",
   "POST /v1/reviews/load",
   "POST /v1/reviews/detect-updates",
-  "POST /v1/reviews/walkthrough/generate",
-  "POST /v1/reviews/walkthrough/load",
+  "POST /v1/reviews/insights/analysis/run",
+  "POST /v1/reviews/insights/walkthrough/run",
+  "POST /v1/reviews/insights/analysis/cancel",
+  "POST /v1/reviews/insights/walkthrough/cancel",
   "POST /v1/reviews/diff-file",
   "POST /v1/reviews/batch",
   "POST /v1/reviews/refresh",
@@ -78,7 +80,7 @@ export function isAllowedDesktopRequest(input: LocalApiDesktopRequest): boolean 
   const method = input.method ?? "GET";
   const url = new URL(input.path, "http://patchdesk.invalid");
   if (url.origin !== "http://patchdesk.invalid") return false;
-  if (url.pathname.startsWith("/v1/runs/") && method === "GET") return true;
+  if ((url.pathname.startsWith("/v1/runs/") || url.pathname.startsWith("/v1/reviews/insights/runs/")) && method === "GET") return true;
   return allowedRoutes.has(`${method} ${url.pathname}`);
 }
 

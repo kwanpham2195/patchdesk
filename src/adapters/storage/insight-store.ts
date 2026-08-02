@@ -41,6 +41,20 @@ export class InsightStore {
     return parsed;
   }
 
+  async loadTyped<T>(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+    parseRetained: (input: unknown) => Result<T, unknown>,
+  ): Promise<Result<InsightRecord<T>, StorageFailure>> {
+    const loaded = await this.load(profileId, reviewId, type);
+    if (loaded._tag === "err" || loaded.value.retained === undefined) return loaded as Result<InsightRecord<T>, StorageFailure>;
+    const retained = parseRetained(loaded.value.retained);
+    return retained._tag === "err"
+      ? invalidRead()
+      : ok({ ...loaded.value, retained: retained.value });
+  }
+
   async save(profileId: WorkspaceProfileId, record: InsightRecord<unknown>): Promise<Result<void, StorageFailure>> {
     if (record.reviewId === undefined) return invalidWrite();
     return writeAtomicJson(this.paths.insightFile(profileId, record.reviewId, record.type), record);

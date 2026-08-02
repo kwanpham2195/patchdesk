@@ -24,6 +24,7 @@ import { ReviewStore } from "../adapters/storage/review-store";
 import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
+import { InsightStore } from "../adapters/storage/insight-store";
 import {
   StorageManagementService,
   type TrashMover,
@@ -60,7 +61,6 @@ import { ReviewComparisonService } from "../services/review-comparison-service";
 import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/review-execution-service";
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
-import type { NarrativeWalkthroughFailure, NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
@@ -88,16 +88,6 @@ const localApiConfigurationSchema = object({
 });
 
 const localhostHostname = "127.0.0.1";
-const walkthroughRequestSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  sessionId: pipe(string(), minLength(1)),
-  model: pipe(string(), minLength(1)),
-  reasoning: picklist(["low", "medium", "high"]),
-});
-const walkthroughLoadSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  sessionId: pipe(string(), minLength(1)),
-});
 const reviewOpenSchema = strictObject({
   profileId: pipe(string(), minLength(1)), host: pipe(string(), minLength(1)), owner: pipe(string(), minLength(1)), repo: pipe(string(), minLength(1)), number: pipe(number(), integer(), minValue(1)),
   mode: optional(picklist(["full", "incremental"])), baseSessionId: optional(pipe(string(), minLength(1))), previousSessionId: optional(pipe(string(), minLength(1))),
@@ -150,8 +140,6 @@ export type LocalApiConfiguration = {
   readonly lifecycleGate?: ReviewLifecycleGate;
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
-  /** Main-process-owned manual walkthrough generation seam. */
-  readonly walkthroughs?: Pick<NarrativeWalkthroughService, "generate" | "load">;
   /** Main-process-owned durable Review Insight lifecycle seam. */
   readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe">;
 };
@@ -296,6 +284,7 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
     reviews,
+    new InsightStore(paths),
   );
   const reviewRefresh = new ReviewRefreshService({
     profiles,
@@ -613,18 +602,6 @@ export async function startLocalApiServer(
     if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err" || type === undefined) return context.json({ error: "invalid_input" }, 400);
     return insightResultResponse(context, await configuration.insights.observe({ profileId: profileId.value, reviewId: reviewId.value, type, runId: runId.value }));
   });
-  app.post("/v1/reviews/walkthrough/generate", async (context) => {
-    const parsed = safeParse(walkthroughRequestSchema, await jsonBody(context));
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
-    return walkthroughResponse(context, await configuration.walkthroughs.generate(parsed.output));
-  });
-  app.post("/v1/reviews/walkthrough/load", async (context) => {
-    const parsed = safeParse(walkthroughLoadSchema, await jsonBody(context));
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    if (configuration.walkthroughs === undefined) return context.json({ error: "workflow_unavailable" }, 503);
-    return walkthroughResponse(context, await configuration.walkthroughs.load(parsed.output));
-  });
   app.post("/v1/reviews/detect-updates", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
     return parsed.success
@@ -877,20 +854,6 @@ function insightResultResponse(
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
   return value === "analysis" || value === "walkthrough" ? value : undefined;
-}
-
-function walkthroughResponse(
-  context: Context,
-  result:
-    | { readonly _tag: "ok"; readonly value: unknown }
-    | { readonly _tag: "err"; readonly error: NarrativeWalkthroughFailure },
-): Response {
-  if (result._tag === "ok") return context.json(result.value);
-  const status = result.error.reason === "invalid_input" ? 400
-    : result.error.reason === "profile_not_found" || result.error.reason === "session_not_found" ? 404
-      : result.error.reason === "stale_snapshot" || result.error.reason === "not_completed" ? 409
-        : 503;
-  return context.json({ error: result.error.reason }, status);
 }
 
 function response(

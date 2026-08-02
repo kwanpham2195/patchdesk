@@ -43,12 +43,13 @@ describe("desktop request bridge", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/storage/quarantine/delete", method: "POST" })).toBe(false);
   });
 
-  it("allows only the manual walkthrough routes", () => {
-    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/generate", method: "POST" })).toBe(true);
-    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/load", method: "POST" })).toBe(true);
-    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough", method: "POST" })).toBe(false);
-    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/generate", method: "GET" })).toBe(false);
-    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/load", method: "DELETE" })).toBe(false);
+  it("allows only Review-owned Insight lifecycle routes", () => {
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/insights/analysis/run", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/insights/walkthrough/run", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/insights/walkthrough/cancel", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/insights/runs/run-1", method: "GET" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/walkthrough/generate", method: "POST" })).toBe(false);
+    expect(isAllowedDesktopRequest({ path: "/v1/reviews/insights/walkthrough/run", method: "GET" })).toBe(false);
   });
 
   it("returns a native directory selection only to the owning renderer", async () => {
