@@ -61,6 +61,7 @@ import { ReviewExecutionService, REVIEW_REASONING_LEVELS } from "../services/rev
 import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { NarrativeWalkthroughFailure, NarrativeWalkthroughService } from "../services/narrative-walkthrough-service";
+import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
@@ -69,7 +70,8 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
+import { parseInsightRunId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
+import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -103,6 +105,8 @@ const reviewOpenSchema = strictObject({
 const reviewLoadSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
+const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
+const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 
 /** Configuration required to bind the authenticated loopback API. */
 export type LocalApiConfiguration = {
@@ -148,6 +152,8 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned manual walkthrough generation seam. */
   readonly walkthroughs?: Pick<NarrativeWalkthroughService, "generate" | "load">;
+  /** Main-process-owned durable Review Insight lifecycle seam. */
+  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe">;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -594,6 +600,19 @@ export async function startLocalApiServer(
       ? response(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/insights/analysis/run", async (context) => insightRunResponse(context, configuration.insights, "analysis", await jsonBody(context)));
+  app.post("/v1/reviews/insights/walkthrough/run", async (context) => insightRunResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
+  app.post("/v1/reviews/insights/analysis/cancel", async (context) => insightCancelResponse(context, configuration.insights, "analysis", await jsonBody(context)));
+  app.post("/v1/reviews/insights/walkthrough/cancel", async (context) => insightCancelResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
+  app.get("/v1/reviews/insights/runs/:runId", async (context) => {
+    if (configuration.insights === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const reviewId = parseReviewId(context.req.query("reviewId"));
+    const runId = parseInsightRunId(context.req.param("runId"));
+    const type = parseInsightType(context.req.query("type"));
+    if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err" || type === undefined) return context.json({ error: "invalid_input" }, 400);
+    return insightResultResponse(context, await configuration.insights.observe({ profileId: profileId.value, reviewId: reviewId.value, type, runId: runId.value }));
+  });
   app.post("/v1/reviews/walkthrough/generate", async (context) => {
     const parsed = safeParse(walkthroughRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -818,6 +837,46 @@ function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
+}
+
+async function insightRunResponse(context: Context, coordinator: LocalApiConfiguration["insights"], type: InsightType, body: unknown): Promise<Response> {
+  if (coordinator === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+  const parsed = safeParse(insightRunSchema, body);
+  if (!parsed.success || parsed.output.type !== type) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning });
+  return insightResultResponse(context, result, 202);
+}
+
+async function insightCancelResponse(context: Context, coordinator: LocalApiConfiguration["insights"], type: InsightType, body: unknown): Promise<Response> {
+  if (coordinator === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+  const parsed = safeParse(insightCancelSchema, body);
+  if (!parsed.success || parsed.output.type !== type) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await coordinator.cancel({ profileId: profileId.value, reviewId: reviewId.value, type, runId: runId.value });
+  return insightResultResponse(context, result);
+}
+
+function insightResultResponse(
+  context: Context,
+  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>>,
+  successStatus: 200 | 202 = 200,
+): Response {
+  if (result._tag === "ok") return context.json(result.value, successStatus);
+  const status = result.error === "invalid_request" || result.error === "model_unavailable" ? 400
+    : result.error === "not_found" ? 404
+      : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" ? 409
+        : 503;
+  return context.json({ error: result.error }, status);
+}
+
+function parseInsightType(value: string | undefined): InsightType | undefined {
+  return value === "analysis" || value === "walkthrough" ? value : undefined;
 }
 
 function walkthroughResponse(

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   startLocalApiServer,
   type LocalApiServer,
+  type LocalApiConfiguration,
 } from "../src/main/local-api";
 import { FakeGitHubAdapter, type GitHubReader, type GitHubReviewWriter } from "../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
@@ -48,6 +49,31 @@ describe("local API capability boundary", () => {
       const wrongOrigin = await fetch(new URL(path, localApi.url), { method: "POST", headers: { Origin: "http://evil.invalid", "X-Patchdesk-Capability": capability, "Content-Type": "application/json" }, body: "{}" });
       expect(wrongOrigin.status).toBe(403);
     }
+  });
+
+  it("exposes Review-owned Insight lifecycle routes behind the same boundary", async () => {
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
+    const reviewId = "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
+    const runId = `insight-analysis-1-aaaaaaaaaaaa-${reviewId}`;
+    const insights: NonNullable<LocalApiConfiguration["insights"]> = {
+      async start(input) { return ok({ runId: runId as never, type: input.type, status: "queued" as const }); },
+      async cancel(input) { return ok({ runId: input.runId, type: input.type, status: "cancelling" as const }); },
+      async observe(input) { return ok({ runId: input.runId, type: input.type, status: "running" as const }); },
+    };
+    const startup = await startLocalApiServer({ capability, allowedOrigin, insights });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const invalid = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, model: "model", reasoning: "low", localPath: "/tmp/private" }) });
+    expect(invalid.status).toBe(400);
+    const started = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, type: "analysis", model: "model", reasoning: "low" }) });
+    expect(started.status).toBe(202);
+    expect(await started.json()).toEqual({ runId, type: "analysis", status: "queued" });
+    const observed = await fetch(new URL(`v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis`, localApi.url), { headers });
+    expect(observed.status).toBe(200);
+    expect(await observed.json()).toEqual({ runId, type: "analysis", status: "running" });
+    const cancelled = await fetch(new URL("v1/reviews/insights/analysis/cancel", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, type: "analysis", runId }) });
+    expect(cancelled.status).toBe(200);
+    expect(await cancelled.json()).toEqual({ runId, type: "analysis", status: "cancelling" });
   });
 
   it("maps authenticated review-run parsing, catalog, and missing-session failures", async () => {
