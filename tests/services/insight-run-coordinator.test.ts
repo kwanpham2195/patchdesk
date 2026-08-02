@@ -31,7 +31,7 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   await sessions.save(session);
   await reviews.save(review);
   const coordinator = new InsightRunCoordinator(reviews, sessions, new InsightStore(paths), paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now);
-  return { root, coordinator, review };
+  return { root, coordinator, review, paths, reviews, sessions };
 }
 
 const successful = (): InsightInvoker => ({ async invoke() { return ok({ summary: "result" }); } });
@@ -67,6 +67,22 @@ describe("InsightRunCoordinator", () => {
       const observed = await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
       expect(observed).toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "completed" } });
       await expect(fixtureValue.coordinator.cancel({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId })).resolves.toEqual(observed);
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("turns an orphaned durable run into a retryable failure during recovery", async () => {
+    let release!: () => void;
+    let resolveInvoked: () => void = () => undefined;
+    const invoked = new Promise<void>((resolve) => { resolveInvoked = resolve; });
+    const pendingInvoker: InsightInvoker = { async invoke() { resolveInvoked(); await new Promise<void>((resolve) => { release = resolve; }); return ok({ summary: "late" }); } };
+    const fixtureValue = await fixture({ analysis: pendingInvoker, walkthrough: successful() });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      if (started._tag === "err") throw new Error("expected run");
+      await invoked;
+      const restarted = new InsightRunCoordinator(fixtureValue.reviews, fixtureValue.sessions, new InsightStore(fixtureValue.paths), fixtureValue.paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, { analysis: successful(), walkthrough: successful() }, () => now);
+      await expect(restarted.recover({ profileId, reviewId: fixtureValue.review.id, type: "analysis" })).resolves.toEqual({ _tag: "ok", value: { runId: started.value.runId, type: "analysis", status: "failed" } });
+      release();
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
