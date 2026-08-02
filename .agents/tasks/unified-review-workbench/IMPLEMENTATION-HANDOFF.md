@@ -104,19 +104,42 @@ Pi Intercom is the coordination channel; the primary session remains the sole wr
 5. Do not use pane output as a substitute for tests. Capture the exact command and result in the progress ledger. Stop and report if a pane is unavailable, a wait times out, or output indicates a baseline/environment blocker.
 6. For required live acceptance, spawn or assign a dedicated tester using `$patchdesk-electron-tester`; the tester owns interactive QA evidence while the primary session remains the only source-code writer.
 
-### Current progress (2026-08-01)
+### Reconciled progress (2026-08-02)
 
-- Foundation implementation is complete and committed in `ad1ee51` (`feat: add unified review workbench`) with follow-up regression tests in `6b6d235` (`test: cover review merge operations`).
-- Foundation verification passed: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (93 files/631 tests), `pnpm build`, `git diff --check`, and the prohibited legacy projection grep.
-- Foundation behavior includes stable Review identity/storage, draft carry-forward and attention blocking, strict canonical projection, explicit detection/refresh, snapshot-backed loading, write gating, terminal handling, commit listing, revision-safe commit diffs, and protected route/bridge/parser wiring.
-- Unified UI Task 3 is now committed in `148f713` (`feat: complete review commit navigator`). The canonical flow renders a Files/Findings/Commits navigator, uses the existing Pierre tree/diff seams, loads commit-specific diffs through the protected route, validates response SHA identity, suppresses late responses, gates Findings to current retained Analysis, exposes commit SHA copying, maps commit authoring back to the current full patch, and resets selection across revisions.
-- Unified UI Task 4 has started in `ea05e82` (`feat: add review PR overview`) with interaction coverage follow-up in `32ea0d8` (`test: cover review overview interactions`). The canonical read-only PR Overview uses the existing Base UI Sheet, preserves the workbench, shows Description, Summary/change context, Checks, Existing threads, Published feedback, Merge readiness, and terminal state, and covers open, Escape/focus restoration, backdrop close, and body scroll locking.
-- Unified UI remains incomplete: draft dock and final UI acceptance gates remain. The current focused UI gate passed with 16 tests; lint, typecheck, build, and diff-check passed for this slice.
-- Insights Task 1 is now committed in `6e79abe` (`feat: persist review insights`). Strict Insight records, tokenized lifecycle transitions, per-Review/type storage, atomic writes, and malformed/profile-isolation tests are in place; the focused gate passed with 6 tests.
-- Insights Task 2 is complete across `48bdecf` (`fix: enforce bounded analysis inspection`) and `e2d8ba4` (`fix: harden analysis authority boundaries`). All four inspector methods share the eight-call budget with main-process-only denial reasons; the model boundary re-parses strict structured output; trusted-policy ordering, repository-authored injection text, invalid revisions, snapshot caps/escapes, and full-versus-incremental prior-finding rules are covered. The focused Insights authority gate passed with 27 tests.
-- Insights Task 3 has started in `eae7cd4` (`feat: coordinate cancellable insight runs`) with polling stabilization in `1c15fb6`, walkthrough signal propagation in `a9f1f24`, desktop wiring in `ef91f73`, idempotent cancellation in `f7b58c7`, and orphan recovery in `16d9363`/`715356c`. The durable coordinator owns per-run AbortControllers, persists queued/cancelling/completed/failed/cancelled transitions through `InsightStore`, validates current Review revision before replacement, and is exposed through authenticated Insight routes. Walkthrough generation accepts caller-owned cancellation, cancelling an already-completed run returns its completed projection, and orphaned durable runs become retryable failures. The full gate now passes 97 files/652 tests; deeper production lifecycle integration remains.
-- Insights and Feedback/merge phases remain incomplete. Full accessibility, performance, Playwright, and live Electron acceptance gates have not yet run.
-- Unrelated dirty worktree files and local planning artifacts remain outside the scoped commits. Preserve them and stage only explicit files for future scoped commits.
+This section is the progress index. The executable plan checkboxes are historical working notes and may be stale; status below is reconciled against the source tree and commit history.
+
+#### Linked records
+
+- [Task index](README.md)
+- [Program plan](plans/2026-08-01-unified-review-workbench.md)
+- [Foundation plan](plans/2026-08-01-unified-review-foundation.md)
+- [Unified UI plan](plans/2026-08-01-unified-review-ui.md)
+- [Insights plan](plans/2026-08-01-unified-review-insights.md)
+- [Feedback and merge plan](plans/2026-08-01-unified-review-feedback.md)
+- [Product specification](spec.md)
+- [Core no-regression contract](research/02-research-core-no-regression-contract.md)
+- [Execution progress](../../../.superpowers/sdd/implementation-plan/progress.md)
+- [Foundation execution progress](../../../.superpowers/sdd/2026-08-01-unified-review-foundation/progress.md)
+- [Task 3 report](../../../task-3-report.md)
+- [Task 4 report](../../../task-4-report.md)
+- [Advisor plan index](../../../advisor-plans/README.md)
+- [Durable ADRs](../../../docs/adr/)
+
+#### Phase status
+
+- **Foundation — finished.** Stable Review identity/storage, canonical `state: "review"` projection, explicit refresh and update detection, draft carry-forward, write gating, terminal handling, commit listing, revision-safe commit diffs, and protected route/bridge/parser wiring are implemented. Main checkpoints: `ad1ee51`, `6b6d235`.
+- **Unified UI — mostly finished.** Stable route, persistent shell, Files/Findings/Commits navigator, and PR Overview are implemented. Remaining: delete the old prepared/completed renderer branches and complete final UI/live acceptance. Main checkpoints: `148f713`, `ea05e82`, `32ea0d8`.
+- **Insights — partially finished.** Durable storage, bounded Analysis authority, cancellable independent runs, protected lifecycle routes, polling, cancellation, and orphan recovery are implemented. Remaining: remove completion-time draft mutation, finish Finding disposition APIs, build the canonical Analysis and Walkthrough readers, remove legacy reader ownership, and complete Insights/live acceptance. Main checkpoints: `6e79abe`, `48bdecf`, `e2d8ba4`, `eae7cd4`, `00869ea`, `16d9363`, `715356c`, `05c0bbe`, `4b899d0`, `2134496`, `0aa147a`.
+- **Feedback and merge — groundwork only.** General feedback, deterministic Analysis-body rendering, basic Finding-to-draft actions, and server-side Finding provenance validation exist. The durable draft completion, seed/merge/replace previews, publication authorization, receipt-backed publication, Published feedback, merge policy, migration, final UI, and end-to-end acceptance remain.
+
+#### Current implementation checkpoints
+
+- `4e7614b`, `37e04cf`, `70dc51c`, `022acaf`, and `c68fde1` contain early Feedback/Insights groundwork.
+- `50081ae`, `2717e6f`, and `ccfa8fb` close the Phase 2 UI and read-only/fallback-comment regressions.
+- `05c0bbe`, `4b899d0`, `2134496`, and `0aa147a` harden Insight lifecycle, Finding drafts, authority validation, terminal persistence recovery, and regression coverage.
+- Fresh automated evidence: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (98 files/656 tests), `pnpm build`, `pnpm exec playwright test` (60 passed), and `git diff --check` passed.
+- Live evidence remains partial: the walkthrough fixture smoke test passed, but the complete required Electron journey has not yet been recorded.
+- Unrelated dirty worktree files and local planning artifacts remain preserved. Future changes must stage only explicit task files.
 
 ### Non-negotiable product invariants
 
