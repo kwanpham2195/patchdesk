@@ -2,6 +2,8 @@ import { serve, type ServerType } from "@hono/node-server";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import {
   optional,
+  array,
+  boolean,
   safeParse,
   minLength,
   number,
@@ -143,7 +145,7 @@ export type LocalApiConfiguration = {
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
   /** Main-process-owned durable Review Insight lifecycle seam. */
-  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding">;
+  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress">>;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -599,6 +601,7 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/insights/walkthrough/cancel", async (context) => insightCancelResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/findings/:findingId/dismiss", async (context) => insightFindingResponse(context, configuration.insights, "dismiss", context.req.param("findingId"), await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/findings/:findingId/add", async (context) => insightFindingResponse(context, configuration.insights, "add", context.req.param("findingId"), await jsonBody(context)));
+  app.post("/v1/reviews/insights/walkthrough/progress", async (context) => insightWalkthroughProgressResponse(context, configuration.insights, await jsonBody(context)));
   app.get("/v1/reviews/insights/runs/:runId", async (context) => {
     if (configuration.insights === undefined) return context.json({ error: "workflow_unavailable" }, 503);
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
@@ -847,7 +850,8 @@ async function insightCancelResponse(context: Context, coordinator: LocalApiConf
 
 function insightResultResponse(
   context: Context,
-  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["addFinding"]>>,
+  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["addFinding"]>>
+  | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
   if (result._tag === "ok") return context.json(result.value, successStatus);
@@ -857,6 +861,18 @@ function insightResultResponse(
       : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" || result.error === "stale_request" || result.error === "not_available" || result.error === "draft_unavailable" ? 409
         : 503;
   return context.json({ error: result.error }, status);
+}
+
+async function insightWalkthroughProgressResponse(context: Context, coordinator: LocalApiConfiguration["insights"], body: unknown): Promise<Response> {
+  if (coordinator === undefined || coordinator.updateWalkthroughProgress === undefined) return context.json({ error: "workflow_unavailable" }, 503);
+  const parsed = safeParse(strictObject({ profileId: string(), reviewId: string(), runId: string(), reviewedSectionIds: array(string()), supportReviewed: boolean(), currentSectionId: optional(string()) }), body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await coordinator.updateWalkthroughProgress({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, progress: { reviewedSectionIds: parsed.output.reviewedSectionIds, supportReviewed: parsed.output.supportReviewed, ...(parsed.output.currentSectionId === undefined ? {} : { currentSectionId: parsed.output.currentSectionId }) } });
+  return insightResultResponse(context, result);
 }
 
 async function insightFindingResponse(context: Context, coordinator: LocalApiConfiguration["insights"], action: "add" | "dismiss", findingIdInput: string, body: unknown): Promise<Response> {

@@ -390,8 +390,15 @@ export class ReviewBatchController {
     if (analysis._tag === "err" || analysis.value.retained === undefined) return err({ reason: "invalid_input" });
     const retained = analysis.value.retained;
     if (retained.runId !== command.runId || retained.sessionId !== sessionId || retained.headSha !== session.key.headSha) return err({ reason: "invalid_input" });
-    const patch = await readFile(session.patchPath, "utf8").catch(() => undefined);
-    if (patch === undefined || await contentHash(session.patchPath) !== retained.patchHash) return err({ reason: "invalid_input" });
+    let patch: string;
+    let patchHash: string;
+    try {
+      patch = await readFile(session.patchPath, "utf8");
+      patchHash = await contentHash(session.patchPath);
+    } catch {
+      return err({ reason: "storage_failed" });
+    }
+    if (patchHash !== retained.patchHash) return err({ reason: "invalid_input" });
     const finding = retained.value.findings.find((candidate) => candidate.id === command.findingId);
     if (finding === undefined) return err({ reason: "invalid_input" });
     if (command._tag === "AddFindingGeneralComment") return ok(undefined);
@@ -448,8 +455,12 @@ async function validateRepairAnchor(
 ): Promise<Result<void, ReviewBatchControllerFailure>> {
   const current = session.batchContent?.items.find((item) => item.id === command.itemId);
   if (current === undefined || current._tag !== "InlineComment") return err({ reason: "item_not_found" });
-  const patch = await readFile(session.patchPath, "utf8").catch(() => undefined);
-  if (patch === undefined) return err({ reason: "invalid_input" });
+  let patch: string;
+  try {
+    patch = await readFile(session.patchPath, "utf8");
+  } catch {
+    return err({ reason: "storage_failed" });
+  }
   const expected = fingerprintPatchAnchor(patch, command.anchor);
   return expected !== undefined && sameFingerprint(expected, command.fingerprint) ? ok(undefined) : err({ reason: "invalid_input" });
 }

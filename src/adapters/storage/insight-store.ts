@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 import { parseContentHash, parseFindingId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseReviewId, parseReviewSessionId, type ReviewId, type WorkspaceProfileId } from "../../domain/ids";
-import type { InsightFindingDismissal, InsightType } from "../../domain/insight-record";
+import type { InsightFindingDismissal, InsightType, WalkthroughProgress } from "../../domain/insight-record";
 import { err, ok, type Result } from "../../domain/result";
 import type { InsightRecord } from "../../domain/insight-record";
 import { readJsonFile, writeAtomicJson, type StorageFailure } from "./json-file";
@@ -11,7 +11,8 @@ const revisionSchema = v.strictObject({ sessionId: v.pipe(v.string(), v.minLengt
 const activeRunSchema = v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), type: v.picklist(["analysis", "walkthrough"]), revision: revisionSchema, token: v.pipe(v.number(), v.integer(), v.minValue(1)), model: v.pipe(v.string(), v.minLength(1)), reasoning: v.picklist(["low", "medium", "high"]), status: v.picklist(["queued", "running", "cancelling"]), startedAt: v.pipe(v.string(), v.isoTimestamp()) });
 const failureSchema = v.strictObject({ runId: v.pipe(v.string(), v.minLength(1)), reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]), incidentId: v.optional(v.pipe(v.string(), v.minLength(1))), retryable: v.boolean(), failedAt: v.pipe(v.string(), v.isoTimestamp()) });
 const dismissalSchema = v.strictObject({ findingId: v.pipe(v.string(), v.minLength(1)), reason: v.pipe(v.string(), v.minLength(1), v.maxLength(500)), dismissedAt: v.pipe(v.string(), v.isoTimestamp()) });
-const recordSchema = v.strictObject({ schemaVersion: v.literal(1), reviewId: v.pipe(v.string(), v.minLength(1)), type: v.picklist(["analysis", "walkthrough"]), nextToken: v.pipe(v.number(), v.integer(), v.minValue(1)), retained: v.optional(v.unknown()), dismissals: v.optional(v.array(dismissalSchema)), activeRun: v.optional(activeRunSchema), replacementFailure: v.optional(failureSchema), updatedAt: v.pipe(v.string(), v.isoTimestamp()) });
+const walkthroughProgressSchema = v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) });
+const recordSchema = v.strictObject({ schemaVersion: v.literal(1), reviewId: v.pipe(v.string(), v.minLength(1)), type: v.picklist(["analysis", "walkthrough"]), nextToken: v.pipe(v.number(), v.integer(), v.minValue(1)), retained: v.optional(v.unknown()), dismissals: v.optional(v.array(dismissalSchema)), walkthroughProgress: v.optional(walkthroughProgressSchema), activeRun: v.optional(activeRunSchema), replacementFailure: v.optional(failureSchema), updatedAt: v.pipe(v.string(), v.isoTimestamp()) });
 
 type InsightMutationFailure = "already_running" | "not_active" | "superseded" | "invalid_reason" | "not_available";
 export type InsightStoreFailure = StorageFailure | InsightMutationFailure;
@@ -29,7 +30,8 @@ export function parseInsightRecord(input: unknown): Result<InsightRecord<unknown
   if (replacementFailure !== undefined && replacementFailure._tag === "err") return invalidRead();
   const dismissals = parsed.output.dismissals === undefined ? undefined : parseDismissals(parsed.output.dismissals);
   if (dismissals !== undefined && dismissals._tag === "err") return invalidRead();
-  return ok({ schemaVersion: 1, reviewId: reviewId.value, type: parsed.output.type, nextToken: parsed.output.nextToken, ...(parsed.output.retained === undefined ? {} : { retained: parsed.output.retained }), ...(dismissals === undefined ? {} : { dismissals: dismissals.value }), ...(activeRun === undefined ? {} : { activeRun: activeRun.value }), ...(replacementFailure === undefined ? {} : { replacementFailure: replacementFailure.value }), updatedAt: updatedAt.value });
+  const walkthroughProgress = parsed.output.walkthroughProgress;
+  return ok({ schemaVersion: 1, reviewId: reviewId.value, type: parsed.output.type, nextToken: parsed.output.nextToken, ...(parsed.output.retained === undefined ? {} : { retained: parsed.output.retained }), ...(dismissals === undefined ? {} : { dismissals: dismissals.value }), ...(walkthroughProgress === undefined ? {} : { walkthroughProgress: parseProgress(walkthroughProgress) }), ...(activeRun === undefined ? {} : { activeRun: activeRun.value }), ...(replacementFailure === undefined ? {} : { replacementFailure: replacementFailure.value }), updatedAt: updatedAt.value });
 }
 
 export class InsightStore {
@@ -59,6 +61,7 @@ export class InsightStore {
         type: loaded.value.type,
         nextToken: loaded.value.nextToken,
         ...(loaded.value.dismissals === undefined ? {} : { dismissals: loaded.value.dismissals }),
+        ...(loaded.value.walkthroughProgress === undefined ? {} : { walkthroughProgress: loaded.value.walkthroughProgress }),
         updatedAt: loaded.value.updatedAt,
       });
     }
@@ -115,6 +118,9 @@ function parseDismissals(input: ReadonlyArray<v.InferOutput<typeof dismissalSche
     values.push({ findingId: findingId.value, reason: dismissal.reason, dismissedAt: dismissedAt.value });
   }
   return ok(values);
+}
+function parseProgress(input: v.InferOutput<typeof walkthroughProgressSchema>): WalkthroughProgress {
+  return { reviewedSectionIds: [...new Set(input.reviewedSectionIds)], supportReviewed: input.supportReviewed, ...(input.currentSectionId === undefined ? {} : { currentSectionId: input.currentSectionId }) };
 }
 function invalidRead(): Result<never, StorageFailure> { return err({ _tag: "StorageFailure", operation: "read", reason: "invalid_stored_value" }); }
 function invalidWrite(): Result<never, StorageFailure> { return err({ _tag: "StorageFailure", operation: "write", reason: "invalid_stored_value" }); }

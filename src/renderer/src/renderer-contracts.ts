@@ -362,6 +362,7 @@ const insightFields = {
     incidentId: v.optional(v.pipe(v.string(), v.minLength(1))),
     retryable: v.boolean(),
   })),
+  progress: v.optional(v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) })),
 } as const;
 const analysisInsightSchema = v.strictObject({
   ...insightFields,

@@ -476,6 +476,7 @@ function projectStoredInsight<T>(
   if (record?.activeRun !== undefined) {
     return {
       status: "running",
+      ...(record.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }),
       ...(retained === undefined ? {} : { retained }),
       activeRun: {
         sessionId: record.activeRun.revision.sessionId,
@@ -486,6 +487,7 @@ function projectStoredInsight<T>(
   if (record?.replacementFailure !== undefined) {
     return {
       status: "failed",
+      ...(record.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }),
       ...(retained === undefined ? {} : { retained }),
       replacementFailure: {
         ...(record.replacementFailure.incidentId === undefined ? {} : { incidentId: record.replacementFailure.incidentId }),
@@ -493,12 +495,12 @@ function projectStoredInsight<T>(
       },
     };
   }
-  if (retained === undefined) return { status: "not_generated" };
+  if (retained === undefined) return { status: "not_generated", ...(record?.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }) };
   const retainedRecord = record?.retained;
   const isCurrent = retainedRecord?.revision.sessionId === session.id
     && retainedRecord.revision.headSha === session.key.headSha
     && retainedRecord.revision.patchHash === patchHash;
-  return { status: isCurrent ? "current" : "outdated", retained };
+  return { status: isCurrent ? "current" : "outdated", ...(record?.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }), retained };
 }
 
 function projectAnalysisFindings(

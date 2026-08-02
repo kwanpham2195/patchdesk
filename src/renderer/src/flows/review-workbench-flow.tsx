@@ -165,9 +165,10 @@ function InsightsSlot({
   const [catalogError, setCatalogError] = useState(false);
   const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
   const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
-  const [reviewedWalkthroughSections, setReviewedWalkthroughSections] = useState<ReadonlyArray<string>>([]);
-  const [supportReviewed, setSupportReviewed] = useState(false);
-  const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<string | undefined>(undefined);
+  const [reviewedWalkthroughSections, setReviewedWalkthroughSections] = useState<ReadonlyArray<string>>(workbench.insights.walkthrough.progress?.reviewedSectionIds ?? []);
+  const [supportReviewed, setSupportReviewed] = useState(workbench.insights.walkthrough.progress?.supportReviewed ?? false);
+  const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<string | undefined>(workbench.insights.walkthrough.progress?.currentSectionId);
+  const [progressError, setProgressError] = useState(false);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
   const onInsightPatch = useCallback((type: "analysis" | "walkthrough", projection: WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"]): void => {
@@ -200,7 +201,24 @@ function InsightsSlot({
   }, [profileId]);
 
   const runEnabled = !catalogError && model !== null && workbench.review.status === "open";
+  const saveWalkthroughProgress = (progress: { readonly reviewedSectionIds: ReadonlyArray<string>; readonly supportReviewed: boolean; readonly currentSectionId?: string }): void => {
+    const runId = workbench.insights.walkthrough.retained?.runId;
+    if (runId === undefined) return;
+    void requestJson("/v1/reviews/insights/walkthrough/progress", { method: "POST", body: { profileId, reviewId, runId, ...progress } }).catch(() => setProgressError(true));
+  };
   const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
+  const reloadWorkbench = async (): Promise<void> => {
+    const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, reviewId } });
+    const next = parseWorkbenchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review projection response");
+    onWorkbenchReplace(next);
+  };
+  const dismissFinding = async (finding: AnalysisFinding, reason: string): Promise<void> => {
+    const runId = workbench.insights.analysis.retained?.runId;
+    if (runId === undefined) throw new Error("Analysis run is unavailable");
+    await requestJson(`/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`, { method: "POST", body: { profileId, reviewId, runId, reason } });
+    await reloadWorkbench();
+  };
   const addFinding = async (finding: AnalysisFinding): Promise<void> => {
     const batch = workbench.draft;
     const runId = workbench.insights.analysis.retained?.runId;
@@ -262,6 +280,7 @@ function InsightsSlot({
         </div>
       </div>
       {catalogError ? <p role="alert" className="text-sm text-destructive">Insight models are unavailable.</p> : null}
+      {progressError ? <p role="alert" className="text-sm text-destructive">Walkthrough progress could not be saved.</p> : null}
       <div className="grid gap-4 md:grid-cols-2">
         <InsightCard
           title="Analysis"
@@ -273,7 +292,7 @@ function InsightsSlot({
           onCancel={analysisRun.cancel}
           disabled={!runEnabled}
           {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}
-          onAddFinding={addFinding}
+          {...(workbench.draft === undefined ? {} : { onAddFinding: addFinding })}
           {...(workbench.insights.analysis.retained === undefined ? {} : { onOpen: () => setAnalysisReaderOpen(true) })}
         >
           {workbench.insights.analysis.retained?.value.summary}
@@ -292,8 +311,8 @@ function InsightsSlot({
           {workbench.insights.walkthrough.retained?.value.focus}
         </InsightCard>
       </div>
-      {analysisReaderOpen && workbench.insights.analysis.retained !== undefined ? <AnalysisReader result={workbench.insights.analysis.retained.value} onBack={() => setAnalysisReaderOpen(false)} onAddFinding={addFinding} /> : null}
-      {walkthroughReaderOpen && workbench.insights.walkthrough.retained !== undefined ? <NarrativeWalkthrough walkthrough={workbench.insights.walkthrough.retained.value} {...(workbench.fullPatch === undefined ? {} : { rawPatch: workbench.fullPatch })} reviewedSectionIds={reviewedWalkthroughSections} supportReviewed={supportReviewed} {...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection })} actions={{ onBackToFiles: () => setWalkthroughReaderOpen(false), onMarkSectionReviewed: (sectionId) => setReviewedWalkthroughSections((current) => current.includes(sectionId) ? current : [...current, sectionId]), onMarkSupportReviewed: () => setSupportReviewed(true), onSelectSection: setCurrentWalkthroughSection }} /> : null}
+      {analysisReaderOpen && workbench.insights.analysis.retained !== undefined ? <AnalysisReader result={workbench.insights.analysis.retained.value} onBack={() => setAnalysisReaderOpen(false)} {...(workbench.draft === undefined ? {} : { onAddFinding: addFinding })} onDismissFinding={dismissFinding} scope={{ baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7), headShort: workbench.session.key.headSha.slice(0, 7), commitCount: workbench.commits.length, fileCount: workbench.pullRequest?.changedFileCount ?? (workbench.fullPatch === undefined ? 0 : parseUnifiedPatch(workbench.fullPatch).length), additions: workbench.pullRequest?.additions ?? 0, deletions: workbench.pullRequest?.deletions ?? 0, changedFiles: workbench.fullPatch === undefined ? [] : parseUnifiedPatch(workbench.fullPatch).map((file) => ({ path: file.newPath, additions: 0, deletions: 0 })) }} /> : null}
+      {walkthroughReaderOpen && workbench.insights.walkthrough.retained !== undefined ? <NarrativeWalkthrough walkthrough={workbench.insights.walkthrough.retained.value} {...(workbench.fullPatch === undefined ? {} : { rawPatch: workbench.fullPatch })} reviewedSectionIds={reviewedWalkthroughSections} supportReviewed={supportReviewed} {...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection })} actions={{ onBackToFiles: () => setWalkthroughReaderOpen(false), onMarkSectionReviewed: (sectionId) => { const next = reviewedWalkthroughSections.includes(sectionId) ? reviewedWalkthroughSections : [...reviewedWalkthroughSections, sectionId]; setReviewedWalkthroughSections(next); saveWalkthroughProgress({ reviewedSectionIds: next, supportReviewed, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); }, onMarkSupportReviewed: () => { setSupportReviewed(true); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed: true, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); }, onSelectSection: (sectionId) => { setCurrentWalkthroughSection(sectionId); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed, currentSectionId: sectionId }); } }} /> : null}
       <p className="sr-only" aria-live="polite">{insightLiveStatus(analysisRun.status, walkthroughRun.status)}</p>
     </section>
   );
@@ -331,7 +350,13 @@ function InsightCard({
   readonly onOpen?: () => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
+  const [actionError, setActionError] = useState(false);
   const status = busy && runStatus !== "idle" ? runStatus : projection.status;
+  const addFinding = async (finding: AnalysisFinding): Promise<void> => {
+    if (onAddFinding === undefined) return;
+    setActionError(false);
+    try { await onAddFinding(finding); } catch { setActionError(true); }
+  };
   return (
     <Card>
       <CardHeader>
@@ -342,9 +367,10 @@ function InsightCard({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="flex min-h-20 flex-col gap-2">
+        {actionError ? <p role="alert" className="text-xs text-destructive">The Finding action could not be saved. Try again.</p> : null}
         {busy ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Generating a bounded result…</div> : null}
         {children !== undefined ? <p className="line-clamp-4 text-sm text-muted-foreground">{children}</p> : <p className="text-sm text-muted-foreground">No retained result for this revision.</p>}
-        {findings === undefined || findings.length === 0 || onAddFinding === undefined ? null : <ul className="flex flex-col gap-2 border-t pt-2">{findings.slice(0, 5).map((finding) => <li key={finding.id} className="flex items-start justify-between gap-2 text-xs"><span className="min-w-0 truncate">{finding.title}</span><Button size="xs" variant="outline" onClick={() => void onAddFinding(finding)}>Add</Button></li>)}</ul>}
+        {findings === undefined || findings.length === 0 || onAddFinding === undefined ? null : <ul className="flex flex-col gap-2 border-t pt-2">{findings.slice(0, 5).map((finding) => <li key={finding.id} className="flex items-start justify-between gap-2 text-xs"><span className="min-w-0 truncate">{finding.title}</span><Button size="xs" variant="outline" onClick={() => addFinding(finding)}>Add</Button></li>)}</ul>}
       </CardContent>
       <CardFooter className="flex gap-2">
         {onOpen !== undefined ? <Button variant="outline" onClick={onOpen} aria-label={`Open ${title}`}>Open</Button> : null}

@@ -4,7 +4,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import { parseContentHash, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseReviewSessionId, parseWorkspaceProfileId, type ContentHash, type FindingId, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewScope } from "../domain/review-comparison";
-import { beginInsightRun, completeInsightRun, dismissInsightFinding, failInsightRun, requestInsightCancellation, type InsightRecord, type InsightRevision, type InsightType } from "../domain/insight-record";
+import { beginInsightRun, completeInsightRun, dismissInsightFinding, failInsightRun, requestInsightCancellation, updateWalkthroughProgress, type InsightRecord, type InsightRevision, type InsightType, type WalkthroughProgress } from "../domain/insight-record";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { parseModelReviewResult, parseReviewResult } from "../domain/review-result";
 import { normalizeNarrativeWalkthrough } from "../domain/narrative-walkthrough";
@@ -135,6 +135,20 @@ export class InsightRunCoordinator {
       return err("storage_unavailable");
     }
     return ok({ findingId: input.findingId, status: "dismissed" });
+  }
+
+  async updateWalkthroughProgress(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly runId: InsightRunId; readonly progress: WalkthroughProgress }): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "err") return err("storage_unavailable");
+    const changed = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: "walkthrough", now: timestamp.value, operation: (record) => {
+      const retainedRunId = parseInsightRunId(readObjectField(record.retained, "runId"));
+      if (retainedRunId._tag === "err" || retainedRunId.value !== input.runId) return err("not_available" as const);
+      return updateWalkthroughProgress(record, input.progress, timestamp.value);
+    } });
+    if (changed._tag === "err") return err(changed.error === "not_available" ? "not_available" : "storage_unavailable");
+    return ok({ status: "saved" });
   }
 
   async addFinding(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly runId: InsightRunId; readonly findingId: FindingId }): Promise<Result<never, InsightCoordinatorFailure>> {

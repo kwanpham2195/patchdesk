@@ -1,4 +1,5 @@
 import type { GitSha, InsightRunId, IsoTimestamp, ReviewSessionId } from "./ids";
+import type { WalkthroughProgress } from "./insight-record";
 export type InsightStatus =
   | "not_generated"
   | "running"
@@ -15,6 +16,7 @@ export type InsightProjection<T> = {
     readonly generatedAt: IsoTimestamp;
     readonly value: T;
   };
+  readonly progress?: WalkthroughProgress;
   readonly activeRun?: {
     readonly sessionId: ReviewSessionId;
     readonly startedAt: IsoTimestamp;

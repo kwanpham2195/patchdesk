@@ -254,6 +254,7 @@ describe("ReviewBatchController", () => {
 
 it("rejects anchor repair when the supplied fingerprint is not exact", async () => {
   const value = await fixture();
+  await writeFile(value.session.patchPath, "diff --git a/src/a.ts b/src/a.ts\n@@ -8,1 +8,1 @@\n+Keep the exact line.\n", "utf8");
   const repaired = await controller(value.store).update(updateInput(value, {
     _tag: "RepairInlineAnchor",
     itemId: "finding-a",
