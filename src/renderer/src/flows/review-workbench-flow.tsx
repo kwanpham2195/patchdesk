@@ -453,25 +453,26 @@ function DraftSlot({
       if (next !== undefined) onWorkbenchPatch({ draft: next });
     },
   };
+  const publication = batch.value.state._tag === "Local" ? {
+    preview: async () => {
+      const value = await requestJson("/v1/reviews/publication/preview", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, event: batch.value.suggestedEvent } });
+      const parsed = parsePublicationPreview(value);
+      if (parsed === undefined) throw new Error("Invalid publication preview response");
+      return parsed;
+    },
+    confirm: async () => {
+      const value = await requestJson("/v1/reviews/publication/confirm", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, acknowledgement: true, event: batch.value.suggestedEvent } });
+      const next = parseBatchResponse(value);
+      if (next === undefined) throw new Error("Invalid publication response");
+      onWorkbenchPatch({ draft: next });
+    },
+  } : undefined;
   return <ReviewDraftDock
     batch={batch.value}
     {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })}
     writeBlocked={workbench.revision.freshness !== "fresh"}
     actions={actions}
-    publication={{
-      preview: async () => {
-        const value = await requestJson("/v1/reviews/publication/preview", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, event: batch.value.suggestedEvent } });
-        const parsed = parsePublicationPreview(value);
-        if (parsed === undefined) throw new Error("Invalid publication preview response");
-        return parsed;
-      },
-      confirm: async () => {
-        const value = await requestJson("/v1/reviews/publication/confirm", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, acknowledgement: true, event: batch.value.suggestedEvent } });
-        const next = parseBatchResponse(value);
-        if (next === undefined) throw new Error("Invalid publication response");
-        onWorkbenchPatch({ draft: next });
-      },
-    }}
+    {...(publication === undefined ? {} : { publication })}
   />;
 }
 

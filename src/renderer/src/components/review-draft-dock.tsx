@@ -32,7 +32,7 @@ export function ReviewDraftDock({
             <Badge variant="secondary">{batch.items.filter((item) => item.include).length} included</Badge>
             <Badge variant={attentionCount === 0 ? "outline" : "destructive"}>{attentionCount} needs attention</Badge>
           </button>
-          <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog onPreview={publication.preview} onConfirm={publication.confirm} />}</div>
+          <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog disabled={writeBlocked} onPreview={publication.preview} onConfirm={publication.confirm} />}</div>
         </div>
         <CollapsibleContent motion="disclosure" className="pt-3">
           <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} writeBlocked={writeBlocked} actions={actions} showWriteActions={publication === undefined} />

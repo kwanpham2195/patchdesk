@@ -8,10 +8,12 @@ export function PublicationPreviewDialog({
   preview,
   onPreview,
   onConfirm,
+  disabled,
 }: {
   readonly preview?: PublicationPreviewResponse;
   readonly onPreview: () => Promise<PublicationPreviewResponse>;
   readonly onConfirm: () => Promise<void>;
+  readonly disabled?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [loadedPreview, setLoadedPreview] = useState<PublicationPreviewResponse>();
@@ -28,7 +30,7 @@ export function PublicationPreviewDialog({
     try { await onConfirm(); setOpen(false); } catch { setError(true); } finally { setLoading(false); }
   };
   return <>
-    <Button disabled={loading} onClick={() => void openPreview()}>{loading ? "Preparing…" : "Preview publication"}</Button>
+    <Button disabled={disabled === true || loading} onClick={() => void openPreview()}>{loading ? "Preparing…" : "Preview publication"}</Button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-2xl overflow-y-auto">
         <DialogHeader><DialogTitle>Review publication preview</DialogTitle></DialogHeader>
