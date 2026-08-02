@@ -151,6 +151,8 @@ This section is the progress index. The executable plan checkboxes are historica
 - `9dbabd1` binds publication previews to the canonical Review identity as well as the immutable session/head/draft revision.
 - `b21972d` adds profile Analysis merge-policy defaults and advisory/acknowledgement/block readiness evaluation for current high-severity Findings.
 - `3763247` durably revokes armed publication authorization when update detection or explicit refresh changes the remote freshness boundary.
+- `35fdd01` permits body-only Review publication while retaining the no-content rejection.
+- `a981111` adds an idempotent lazy migration that adopts legacy sessions into stable Review records when the Review list is loaded.
 - Fresh automated evidence after the UI cleanup, Insight disposition slice, reader slice, draft-edit slice, and retained-reader action hardening: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (100 files/646 tests), including the authoritative draft route slice, patch-stat regressions, completion authorization, publication preview/confirmation, refresh revocation, and merge-policy slices. `pnpm build` also passes., `pnpm build`, focused Insight/controller tests, and `git diff --check` passed. The prior browser gate remains `pnpm exec playwright test` (60 passed).
 - Live evidence remains partial: the walkthrough fixture smoke test passed, but the complete required Electron journey has not yet been recorded. Two required Electron tester attempts were blocked before execution by exhausted provider credits/monthly usage limits; no live pass is claimed.
 - Unrelated dirty worktree files and local planning artifacts remain preserved. Future changes must stage only explicit task files.
