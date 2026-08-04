@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { PanelLeftOpen } from "lucide-react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
@@ -13,6 +14,7 @@ import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPr
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type ReviewFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
 
@@ -281,7 +283,18 @@ export function ReviewWorkbench({
                 onFindingSelect={selectFinding}
                 onCommitSelect={selectCommit}
                 onCollapse={() => setNavigatorVisible(false)}
-              /> : <div className="flex items-start p-2"><Button size="xs" variant="outline" onClick={() => setNavigatorVisible(true)}>Show review navigator</Button></div>}
+              /> : (
+                <div className="flex items-start p-2">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<Button size="icon-sm" variant="outline" onClick={() => setNavigatorVisible(true)} aria-label="Show review navigator" />}
+                    >
+                      <PanelLeftOpen />
+                    </TooltipTrigger>
+                    <TooltipContent>Show review navigator</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
               <div className="min-h-0 min-w-0">
                 {selectedCommitSha !== undefined && commitDiffState._tag === "Loading" ? (
                   <p className="p-6 text-sm text-muted-foreground" role="status">Loading commit diff…</p>

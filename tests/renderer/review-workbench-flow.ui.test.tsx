@@ -73,7 +73,8 @@ describe("ReviewWorkbenchFlow", () => {
 
     expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Canonical workbench" })).toBeTruthy();
-    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(2);
+    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });

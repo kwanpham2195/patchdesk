@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { PanelLeftClose } from "lucide-react";
 
 import { parseUnifiedPatch } from "../../../domain/patch";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -6,6 +7,7 @@ import { parseReviewDiff } from "../review-diff-data";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 
 export type ReviewNavigatorSection = "files" | "findings" | "commits";
@@ -27,7 +29,7 @@ type ReviewNavigatorProps = {
   readonly onCollapse?: () => void;
 };
 
-/** The one review navigator owns Files, Findings, and Commits selection. */
+/** The review navigator owns browsing, Finding, and commit selection. */
 export function ReviewNavigator({
   patch,
   commits,
@@ -60,11 +62,20 @@ export function ReviewNavigator({
       <Tabs value={section} onValueChange={(value) => onSectionChange(value as ReviewNavigatorSection)} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
           <TabsList aria-label="Review navigator" className="min-w-0 shrink-0">
-            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="files">Browse</TabsTrigger>
             <TabsTrigger value="findings">Findings</TabsTrigger>
             <TabsTrigger value="commits">Commits</TabsTrigger>
           </TabsList>
-          {onCollapse === undefined ? null : <Button size="xs" variant="ghost" onClick={onCollapse}>Hide review navigator</Button>}
+          {onCollapse === undefined ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={<Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Hide review navigator" />}
+              >
+                <PanelLeftClose />
+              </TooltipTrigger>
+              <TooltipContent>Hide review navigator</TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden p-3" keepMounted>
           {parsed.files.length === 0 ? (
