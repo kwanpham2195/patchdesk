@@ -8,8 +8,10 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId, type GitSha, type WorkspaceProfileId } from "../../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../../src/domain/review-session";
+import { createReview, markReviewTerminal } from "../../src/domain/review";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok } from "../../src/domain/result";
 import { ReviewHeadVerifier } from "../../src/services/review-head-verifier";
@@ -64,6 +66,29 @@ describe("ReviewExecutionService", () => {
       _tag: "ok",
       value: { state: { _tag: "Stale", reason: "head_changed", currentHeadSha } },
     });
+    await expect(fixture.store.listAttempts(fixture.profileId, fixture.session.id)).resolves.toEqual({ _tag: "ok", value: [] });
+  });
+
+  it("rejects a forged run request when the owning Review is terminal", async () => {
+    const fixture = await preparedFixture();
+    const reviews = new ReviewStore(fixture.paths);
+    const review = createReview({
+      identity: {
+        profileId: fixture.profileId,
+        host: fixture.session.key.host,
+        owner: fixture.session.key.owner,
+        repo: fixture.session.key.repo,
+        prNumber: fixture.session.key.prNumber,
+      },
+      currentSessionId: fixture.session.id,
+      headSha: fixture.session.key.headSha,
+      createdAt: now,
+    });
+    expect(await reviews.save(review)).toMatchObject({ _tag: "ok" });
+    expect(await reviews.save(markReviewTerminal(review, "merged", now), review.updatedAt)).toMatchObject({ _tag: "ok" });
+    const service = new ReviewExecutionService(fixture.store, fixture.paths, availableCatalog(), () => now, undefined, undefined, { reviews });
+
+    await expect(service.start({ profileId: fixture.profileId, sessionId: fixture.session.id, model: "fixture-model", reasoning: "medium" })).resolves.toEqual({ _tag: "err", error: { reason: "not_runnable" } });
     await expect(fixture.store.listAttempts(fixture.profileId, fixture.session.id)).resolves.toEqual({ _tag: "ok", value: [] });
   });
 

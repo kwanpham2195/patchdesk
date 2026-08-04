@@ -28,7 +28,7 @@ test("Design index lists stable scenario links", async ({ page }) => {
       page.getByRole("link", { name: /Inbox default/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /Review completed/ }),
+      page.getByRole("link", { name: /Files: default/ }),
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Settings \(recovery\)/ }),
@@ -78,15 +78,15 @@ test("settings scenario keeps configuration local", async ({ page }) => {
   }
 });
 
-test("design scenarios cover loading, error, cached, prepared, and running states", async ({
+test("design scenarios cover loading, error, cached, and unified Review states", async ({
   page,
 }) => {
   const cases = [
     "inbox-loading",
     "inbox-error",
     "inbox-cached",
-    "review-prepared",
-    "review-running",
+    "review-files-default",
+    "review-updates-draft",
   ] as const;
   for (const scenario of cases) {
     const server = await serveDesign();
@@ -104,14 +104,12 @@ test("design scenarios cover loading, error, cached, prepared, and running state
         await expect(
           page.getByText("GitHub: Cached after refresh failure"),
         ).toBeVisible();
-      if (scenario === "review-prepared")
-        await expect(
-          page.getByRole("button", { name: "Run analysis" }),
-        ).toBeVisible();
-      if (scenario === "review-running")
-        await expect(
-          page.getByText("Review in progress").first(),
-        ).toBeVisible();
+      if (scenario === "review-files-default")
+        await expect(page.getByRole("region", { name: "Review workbench" })).toBeVisible();
+      if (scenario === "review-updates-draft") {
+        await expect(page.getByText("Updates available").first()).toBeVisible();
+        await expect(page.getByRole("region", { name: "Review draft dock" })).toBeVisible();
+      }
     } finally {
       await close(server);
     }
@@ -139,70 +137,112 @@ test("design surfaces remain readable at the approved desktop and light-theme si
   }
 });
 
-test("prepared workbench target opens Files with a single analysis action", async ({
-  page,
-}) => {
+test("unified Review target uses the production workbench shell", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   const server = await serveDesign();
   try {
-    await page.goto(`${origin(server)}/?scenario=review-prepared`);
-    await expect(page.getByTestId("design-review-prepared")).toBeVisible();
-    await expect(page.getByText("Snapshot · no GitHub writes")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Checks · Failing" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Generate walkthrough" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Run analysis" }),
-    ).toBeVisible();
-    await expect(page.getByText("Files").first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Refresh GitHub state" }),
-    ).toHaveCount(0);
+    await page.goto(`${origin(server)}/?scenario=review-files-default`);
+    await expect(page.getByRole("region", { name: "Review workbench" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Protect review writes" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Review draft dock" })).toBeVisible();
+    await page.getByRole("tab", { name: "Insights" }).click();
+    await expect(page.getByRole("region", { name: "Review insights" })).toBeVisible();
   } finally {
     await close(server);
   }
 });
 
-test("completed workbench target groups the journey into Understand, Decide, and Publish", async ({
-  page,
-}) => {
+test("unified Updates available keeps the local dock present", async ({ page }) => {
   const server = await serveDesign();
   try {
-    await page.goto(`${origin(server)}/?scenario=review-completed`);
-    await expect(page.getByTestId("design-review-completed")).toBeVisible();
-    await expect(page.getByTestId("design-understand")).toBeVisible();
-    await expect(page.getByTestId("design-decide")).toBeVisible();
-    await expect(page.getByTestId("design-publish")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Publish review" }),
-    ).toHaveCount(0);
+    await page.goto(`${origin(server)}/?scenario=review-updates-draft`);
+    await expect(page.getByText("Updates available").first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "Review draft dock" })).toBeVisible();
   } finally {
     await close(server);
   }
 });
 
-test("prepared review scenario opens local PR overview from the checks control", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1611, height: 976 });
+test("terminal Reviews keep Published feedback readable without mutation or refresh controls", async ({ page }) => {
   const server = await serveDesign();
   try {
-    await page.goto(`${origin(server)}/?scenario=review-prepared`);
-    await expect(page.getByTestId("design-review-prepared")).toBeVisible();
-    await page.getByRole("button", { name: "Checks · Failing" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "PR overview" }),
-    ).toBeVisible();
-    await expect(page.getByText("Required").first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Refresh GitHub state" }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Refresh GitHub state" }).click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "GitHub state refreshed locally." }),
-    ).toBeVisible();
+    for (const scenario of ["review-merged", "review-closed"]) {
+      await page.goto(`${origin(server)}/?scenario=${scenario}`);
+      await expect(page.getByText("Published review body")).toBeVisible();
+      await expect(page.getByText("Published inline feedback")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Refresh GitHub state" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Refresh updates" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    }
+  } finally {
+    await close(server);
+  }
+});
+
+test("confirmed publication shows remote feedback beside a new empty successor draft", async ({ page }) => {
+  const server = await serveDesign();
+  try {
+    await page.goto(`${origin(server)}/?scenario=publication-confirmed`);
+    await expect(page.getByText("Published review body")).toBeVisible();
+    await expect(page.getByText("Published inline feedback")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Review draft/ })).toContainText("0 included");
+    await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("every unified Review matrix scenario stays bounded at approved desktop widths", async ({ page }) => {
+  const matrix = designScenarios.filter((scenario) => scenario.group === "Review workbench");
+  const server = await serveDesign();
+  try {
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const scenario of matrix) {
+        await page.goto(`${origin(server)}/?scenario=${scenario.id}`);
+        await expect(page.getByRole("region", { name: "Review workbench" })).toBeVisible();
+        if (scenario.id === "published-feedback-expanded") await page.getByRole("button", { name: /Review draft/ }).click();
+        const insightsScenario = scenario.id.startsWith("insights-") || scenario.id.startsWith("analysis-") || scenario.id.startsWith("walkthrough-");
+        if (insightsScenario) await page.getByRole("tab", { name: "Insights" }).click();
+        const geometry = await page.evaluate((insightsExpected) => {
+          const read = (selector: string): { x: number; y: number; width: number; height: number; scrollWidth: number; clientWidth: number; scrollHeight: number; clientHeight: number; overflowY: string } | undefined => {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (element === null) return undefined;
+            const box = element.getBoundingClientRect();
+            return { x: box.x, y: box.y, width: box.width, height: box.height, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight, overflowY: getComputedStyle(element).overflowY };
+          };
+          const primaryOwner = insightsExpected
+            ? read('[data-review-workbench-primary] > [data-slot="tabs-content"]:not([hidden])')
+            : read('.review-diff-viewport');
+          return {
+            primary: read("[data-review-workbench-primary]"),
+            feedback: read("[data-review-workbench-feedback]"),
+            draft: read("[data-review-workbench-draft-dock]"),
+            workbench: read('[aria-label="Review workbench"]'),
+            primaryOwner,
+            documentWidth: document.documentElement.scrollWidth,
+          };
+        }, scenario.id.startsWith("insights-") || scenario.id.startsWith("analysis-") || scenario.id.startsWith("walkthrough-"));
+        expect(geometry.primary, `${scenario.id} primary`).toBeDefined();
+        expect(geometry.feedback, `${scenario.id} feedback`).toBeDefined();
+        expect(geometry.draft, `${scenario.id} draft`).toBeDefined();
+        expect(geometry.workbench, `${scenario.id} workbench`).toBeDefined();
+        expect(geometry.primaryOwner, `${scenario.id} scroll owner`).toBeDefined();
+        if (geometry.primary === undefined || geometry.feedback === undefined || geometry.draft === undefined || geometry.workbench === undefined || geometry.primaryOwner === undefined) continue;
+        expect(geometry.primary.y + geometry.primary.height).toBeLessThanOrEqual(geometry.feedback.y + 1);
+        expect(geometry.feedback.y + geometry.feedback.height).toBeLessThanOrEqual(geometry.draft.y + 1);
+        for (const [name, box] of [["primary", geometry.primary], ["feedback", geometry.feedback], ["draft", geometry.draft]] as const) {
+          expect(box.x, `${scenario.id} ${name} left bound`).toBeGreaterThanOrEqual(-1);
+          expect(box.x + box.width, `${scenario.id} ${name} right bound`).toBeLessThanOrEqual(width + 1);
+        }
+        expect(geometry.documentWidth, `${scenario.id} document width`).toBeLessThanOrEqual(width + 1);
+        expect(geometry.workbench.scrollWidth, `${scenario.id} workbench width`).toBeLessThanOrEqual(geometry.workbench.clientWidth + 1);
+        expect(geometry.primaryOwner.overflowY, `${scenario.id} primary owner`).toMatch(/auto|scroll/);
+        expect(geometry.primaryOwner.scrollWidth, `${scenario.id} primary owner width`).toBeLessThanOrEqual(geometry.primaryOwner.clientWidth + 1);
+      }
+    }
   } finally {
     await close(server);
   }
@@ -256,34 +296,19 @@ test("publish confirmation target names saved actions and merge warnings", async
   }
 });
 
-test("permanent design registry contains exactly 22 stable scenarios", () => {
-  expect(designScenarios).toHaveLength(22);
+test("permanent design registry contains the unified Review matrix", () => {
   const ids = new Set(designScenarios.map((scenario) => scenario.id));
+  expect(designScenarios.length).toBeGreaterThanOrEqual(39);
   for (const id of [
-    "inbox-default",
-    "inbox-empty",
-    "inbox-loading",
-    "inbox-error",
-    "inbox-cached",
-    "inbox-recovery-states",
-    "review-prepared",
-    "review-running",
-    "review-completed",
-    "workbench-reconnect",
-    "workbench-start-again",
-    "workbench-try-again",
-    "workbench-prepare-again",
-    "settings-recovery",
-    "dialog-clear-local-data",
-    "dialog-submit",
-    "dialog-merge",
-    "walkthrough-generate-dialog",
-    "walkthrough-generating",
-    "walkthrough-ready",
-    "walkthrough-failed",
-    "walkthrough-stale",
-  ])
-    expect(ids.has(id)).toBe(true);
+    "review-files-default", "review-files-finding-selected", "review-files-commit-selected",
+    "review-updates-draft", "review-draft-expanded", "review-needs-attention", "review-pr-overview",
+    "review-merged", "review-closed", "insights-overview", "analysis-running", "analysis-current",
+    "analysis-outdated", "analysis-failed", "analysis-replacement-running", "analysis-replacement-failed",
+    "walkthrough-current", "walkthrough-outdated", "publication-ready", "publication-publishing",
+    "publication-confirmed", "publication-needs-confirmation", "published-feedback-collapsed",
+    "published-feedback-expanded",
+  ]) expect(ids.has(id)).toBe(true);
+  expect([...ids].some((id) => id === "review-prepared" || id === "review-running" || id === "review-completed")).toBe(false);
 });
 
 test("every permanent scenario opens and uses friendly recovery copy", async ({
@@ -318,64 +343,6 @@ test("every permanent scenario opens and uses friendly recovery copy", async ({
       );
     } finally {
       page.off("console", onConsole);
-      await close(server);
-    }
-  }
-});
-
-test("workbench recovery scenarios show one action and never internal terms", async ({
-  page,
-}) => {
-  const cases: ReadonlyArray<{
-    readonly id: string;
-    readonly button: string;
-    readonly notice: string;
-    readonly snapshotReadable: boolean;
-  }> = [
-    {
-      id: "workbench-reconnect",
-      button: "Reconnect",
-      notice: "Review in progress",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-start-again",
-      button: "Restart interrupted analysis",
-      notice: "Review was interrupted",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-try-again",
-      button: "Retry failed analysis",
-      notice: "Review couldn't finish",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-prepare-again",
-      button: "Prepare again",
-      notice: "Review needs preparation",
-      snapshotReadable: false,
-    },
-  ];
-  for (const { id, button, notice, snapshotReadable } of cases) {
-    const server = await serveDesign();
-    try {
-      await page.goto(`${origin(server)}/?scenario=${id}`);
-      await expect(page.getByTestId(id)).toBeVisible();
-      await expect(page.getByRole("button", { name: button })).toBeVisible();
-      await expect(page.getByTestId("back-to-inbox")).toBeVisible();
-      await expect(page.getByTestId("view-snapshot")).toHaveCount(
-        snapshotReadable ? 1 : 0,
-      );
-      await expect(page.getByText(notice)).toBeVisible();
-      const text = await page.locator("body").innerText();
-      for (const term of FORBIDDEN_TERMS) {
-        expect(
-          text.toLowerCase().includes(term),
-          `${id} should not show forbidden term "${term}"`,
-        ).toBe(false);
-      }
-    } finally {
       await close(server);
     }
   }
@@ -548,7 +515,7 @@ test("walkthrough interaction: dialog → generating → ready, navigate, mark r
     await expect(
       page.getByTestId("walkthrough-generating-steps"),
     ).toBeVisible();
-    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({
+    await expect(page.getByText("Walkthrough ready")).toBeVisible({
       timeout: 5_000,
     });
     await expect(
@@ -590,7 +557,7 @@ test("walkthrough-failed retry returns to generating and reaches ready", async (
     await expect(
       page.getByTestId("walkthrough-generating-alert"),
     ).toBeVisible();
-    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({
+    await expect(page.getByText("Walkthrough ready")).toBeVisible({
       timeout: 5_000,
     });
   } finally {
@@ -611,7 +578,7 @@ test("walkthrough-stale regenerate returns to generating and reaches ready", asy
     await expect(
       page.getByTestId("walkthrough-generating-alert"),
     ).toBeVisible();
-    await expect(page.getByText("Read-only walkthrough ready")).toBeVisible({
+    await expect(page.getByText("Walkthrough ready")).toBeVisible({
       timeout: 5_000,
     });
   } finally {
@@ -685,64 +652,6 @@ test("settings-recovery opens Settings on General and reaches the cleanup card",
     await expect(page.getByRole("region", { name: "Watchlist" })).toBeVisible();
   } finally {
     await close(server);
-  }
-});
-
-test("design recovery routes consume the bridge fixture and omit forbidden terms", async ({
-  page,
-}) => {
-  const cases: ReadonlyArray<{
-    readonly id: string;
-    readonly button: string;
-    readonly notice: string;
-    readonly snapshotReadable: boolean;
-  }> = [
-    {
-      id: "workbench-reconnect",
-      button: "Reconnect",
-      notice: "Review in progress",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-start-again",
-      button: "Restart interrupted analysis",
-      notice: "Review was interrupted",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-try-again",
-      button: "Retry failed analysis",
-      notice: "Review couldn't finish",
-      snapshotReadable: true,
-    },
-    {
-      id: "workbench-prepare-again",
-      button: "Prepare again",
-      notice: "Review needs preparation",
-      snapshotReadable: false,
-    },
-  ];
-  for (const { id, button, notice, snapshotReadable } of cases) {
-    const server = await serveDesign();
-    try {
-      await page.goto(`${origin(server)}/?scenario=${id}`);
-      await expect(page.getByTestId(id)).toBeVisible();
-      await expect(page.getByRole("button", { name: button })).toBeVisible();
-      await expect(page.getByTestId("back-to-inbox")).toBeVisible();
-      await expect(page.getByTestId("view-snapshot")).toHaveCount(
-        snapshotReadable ? 1 : 0,
-      );
-      await expect(page.getByText(notice)).toBeVisible();
-      const text = await page.locator("body").innerText();
-      for (const term of FORBIDDEN_TERMS) {
-        expect(
-          text.toLowerCase().includes(term),
-          `${id} should not show forbidden term "${term}"`,
-        ).toBe(false);
-      }
-    } finally {
-      await close(server);
-    }
   }
 });
 

@@ -105,6 +105,8 @@ export type LocalCommentLocation = {
 export type LocalCommentAuthoring = {
   readonly enabled: boolean;
   readonly canAuthor?: (input: LocalCommentLocation) => boolean;
+  /** Reports the exact current diff range before a composer is opened. */
+  readonly onSelectionChange?: (input: LocalCommentLocation) => void;
   readonly onSave: (input: {
     readonly path: string;
     readonly startLine: number;
@@ -259,6 +261,7 @@ function ReviewDiffSurface({
       side: side === "additions" ? "new" : "old",
     };
     if (localCommentAuthoring.canAuthor?.(location) === false) return;
+    localCommentAuthoring.onSelectionChange?.(location);
     setAuthoringSelection({ id: path, range: { start: line, end: line, side } });
   }, [localCommentAuthoring]);
   const saveAuthoring = useCallback(async (body: string): Promise<void> => {
@@ -625,6 +628,7 @@ function ReviewDiffSurface({
     if ((range.side !== "additions" && range.side !== "deletions") || (range.endSide !== undefined && range.endSide !== range.side)) return;
     const location: LocalCommentLocation = { path: selection.id, startLine: range.start, line: range.end, side: range.side === "additions" ? "new" : "old" };
     if (localCommentAuthoring.canAuthor?.(location) === false) return;
+    localCommentAuthoring.onSelectionChange?.(location);
     setAuthoringSelection(selection);
   }, [localCommentAuthoring]);
   const renderGutterUtility = useCallback((getHoveredLine: () => { readonly lineNumber: number; readonly side: "additions" | "deletions" } | undefined, item: { readonly id: string; readonly type: "diff" | "file" }) => {

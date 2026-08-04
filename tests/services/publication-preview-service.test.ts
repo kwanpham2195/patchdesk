@@ -18,7 +18,8 @@ it("builds the exact local draft publication preview from main-process state", a
     { async load() { return { _tag: "ok" as const, value: { githubHost: "github.com", ghAccount: "account" } as never }; } },
     { async load() { return { _tag: "ok" as const, value: session as never }; } },
     { async getPullRequest() { return { _tag: "ok" as const, value: { headSha: session.key.headSha } as never }; } },
+    { async requireFresh(_profileId: unknown, _reviewId: unknown, expected: { readonly sessionId: unknown }) { return { _tag: "ok" as const, value: { profile: { githubHost: "github.com", ghAccount: "account" } as never, review: {} as never, session: { ...session, id: expected.sessionId } as never, snapshot: {} as never } }; } } as never,
   );
-  const result = await service.preview({ profileId: "cfw" as never, reviewId: "github.com__centraldigital__patchdesk__pr-1__review-aaaaaaaaaaaa" as never, sessionId: session.id as never, expectedRevision: session.batchContent.updatedAt as never, event: "COMMENT" });
+  const result = await service.preview({ profileId: "cfw" as never, reviewId: "github.com__centraldigital__patchdesk__pr-1__review-aaaaaaaaaaaa" as never, sessionId: session.id as never, expectedHeadSha: session.key.headSha, expectedPatchHash: "a".repeat(64), expectedRevision: session.batchContent.updatedAt as never, event: "COMMENT" });
   expect(result).toMatchObject({ _tag: "ok", value: { body: "Summary", headSha: session.key.headSha, inlineComments: [{ itemId: "comment", path: "src/a.ts", startLine: 2, line: 3, side: "new", body: "Check this." }] } });
 });

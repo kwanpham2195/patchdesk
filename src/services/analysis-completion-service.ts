@@ -28,11 +28,31 @@ export class AnalysisCompletionService {
     return saved._tag === "ok" ? ok(undefined) : err("storage_failed");
   }
 
-  async consumeForPublication(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly headSha: GitSha; readonly event: GitHubReviewEvent; readonly authorizationId: PublicationAuthorizationId; readonly consumedAt: IsoTimestamp }): Promise<Result<void, AnalysisCompletionFailure>> {
+  async rebindDraftRevision(input: CompletionIdentity & { readonly authorizationId: PublicationAuthorizationId; readonly nextDraftRevision: IsoTimestamp }): Promise<Result<void, AnalysisCompletionFailure>> {
     const loaded = await this.store.load(input.profileId, input.reviewId);
     if (loaded._tag === "err") return loaded.error.reason === "not_found" ? err("not_found") : err("storage_failed");
     const authorization = loaded.value;
-    if (authorization.id !== input.authorizationId || authorization.sessionId !== input.sessionId || authorization.headSha !== input.headSha || authorization.event !== input.event) return err("authorization_mismatch");
+    if (authorization.state._tag !== "Armed") return err("not_armed");
+    if (authorization.id !== input.authorizationId || !authorizationMatches(authorization, input)) return err("authorization_mismatch");
+    const saved = await this.store.save({ ...authorization, expectedDraftRevision: input.nextDraftRevision });
+    return saved._tag === "ok" ? ok(undefined) : err("storage_failed");
+  }
+
+  async consumeForPublication(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly headSha: GitSha; readonly patchHash?: ContentHash; readonly analysisRunId?: InsightRunId; readonly expectedDraftRevision?: IsoTimestamp; readonly event: GitHubReviewEvent; readonly authorizationId: PublicationAuthorizationId; readonly consumedAt: IsoTimestamp }): Promise<Result<void, AnalysisCompletionFailure>> {
+    const loaded = await this.store.load(input.profileId, input.reviewId);
+    if (loaded._tag === "err") return loaded.error.reason === "not_found" ? err("not_found") : err("storage_failed");
+    const authorization = loaded.value;
+    if (authorization.state._tag !== "Armed") return err("not_armed");
+    if (authorization.id !== input.authorizationId || !authorizationMatches(authorization, {
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      sessionId: input.sessionId,
+      headSha: input.headSha,
+      patchHash: input.patchHash ?? authorization.patchHash,
+      analysisRunId: input.analysisRunId ?? authorization.analysisRunId,
+      expectedDraftRevision: input.expectedDraftRevision ?? authorization.expectedDraftRevision,
+      event: input.event,
+    })) return err("authorization_mismatch");
     const consumed = consumePublicationAuthorization(authorization, input.consumedAt);
     if (consumed._tag === "err") return err("not_armed");
     const saved = await this.store.save(consumed.value);

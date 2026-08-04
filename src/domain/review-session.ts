@@ -16,6 +16,7 @@ import type { PullRequestSnapshot } from "./github-context";
 import {
   hasActiveReviewBatch,
   type GitHubReviewEvent,
+  type RemoteWriteReceipt,
   type ReviewBatch,
 } from "./review-batch";
 import type {
@@ -68,6 +69,12 @@ export type MergeDecisionRef = {
 export type ReviewSession = {
   /** The in-memory representation is always normalized to the current schema. */
   readonly schemaVersion: 4;
+  /** Legacy Insight fields retained during the one-time Review migration. */
+  readonly analysisRunId?: string;
+  readonly walkthrough?: unknown;
+  readonly visibleWalkthrough?: unknown;
+  readonly walkthroughRunId?: string;
+  readonly walkthroughProgress?: unknown;
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
@@ -87,6 +94,8 @@ export type ReviewSession = {
   /** Full validated batch retained so interrupted GitHub writes are never guessed or replayed. */
   readonly batchContent?: ReviewBatch;
   readonly submittedReview?: SubmittedReviewRef;
+  /** Receipts from a reconciled publication retained after its successor draft is installed. */
+  readonly archivedReceipts?: ReadonlyArray<RemoteWriteReceipt>;
   readonly mergeDecision?: MergeDecisionRef;
   readonly visibleResult?: ReviewResult;
   readonly createdAt: IsoTimestamp;
@@ -260,7 +269,9 @@ function sameBatchOperation(
         left.itemIds.every((itemId, index) => itemId === right.itemIds[index])
       );
     case "Reply":
-      return right._tag === "Reply" && left.itemId === right.itemId;
+      return right._tag === "Reply" && left.itemId === right.itemId && left.startedAt === right.startedAt;
+    case "SubmitPendingReview":
+      return right._tag === "SubmitPendingReview" && left.reviewId === right.reviewId && left.event === right.event;
     case "ThreadState":
       return right._tag === "ThreadState" && left.itemId === right.itemId;
   }

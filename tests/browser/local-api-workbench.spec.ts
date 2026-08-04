@@ -21,12 +21,12 @@ test("canonical Review entry opens the review workbench", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-normal-")); let api: LocalApiServer | undefined;
   try {
     const paths = PatchdeskPaths.forTest(root);
-    const reviewId = await seedCompleted(paths);
+    const seeded = await seedCompleted(paths);
     await new ProfileStore(paths).saveConfig({ lastSelectedProfileId: "cfw", recentPrs: [] });
     const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github: new FakeGitHubAdapter({ authenticatedAccount: { host: "github.com", account: "fixture" }, listOpenPullRequests: [], pullRequest: summary() as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] } }) });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
     await installTestDesktopBridge(page, api.url.toString(), "cap");
-    await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), reviewId);
+    await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), seeded.reviewId);
     await page.goto(origin(renderer));
     await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
     await expect(page.getByLabel("Review surfaces").getByRole("tab", { name: "Files" })).toBeVisible();
@@ -37,19 +37,98 @@ test("canonical Review entry opens the review workbench", async ({ page }) => {
   } finally { await page.close(); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
+type BridgeOperation = {
+  readonly method: "GET" | "POST";
+  readonly path: string;
+  readonly body?: unknown;
+};
+
+function canonicalReviewOperations(reviewId: string, sessionId: string): ReadonlyArray<BridgeOperation> {
+  const runId = "insight-analysis-1-000000000000-fixture";
+  const base = { profileId: "cfw", reviewId };
+  const draft = { ...base, sessionId, analysisRunId: runId, expectedRevision: "2026-07-16T00:00:00.000Z" };
+  return [
+    { method: "GET", path: "/v1/reviews/models" },
+    { method: "POST", path: "/v1/reviews/open", body: { profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 } },
+    { method: "POST", path: "/v1/reviews/load", body: base },
+    { method: "POST", path: "/v1/reviews/detect-updates", body: base },
+    { method: "POST", path: "/v1/reviews/refresh", body: base },
+    { method: "POST", path: "/v1/reviews/commit-diff", body: { ...base, commitSha: "abcdef1234567890abcdef1234567890abcdef12" } },
+    { method: "POST", path: "/v1/reviews/diff-file", body: { profileId: "cfw", sessionId, path: "src/a.ts" } },
+    { method: "POST", path: "/v1/reviews/batch", body: { ...draft, command: { _tag: "UpdateBody", body: "Fixture draft" } } },
+    { method: "POST", path: "/v1/reviews/insights/analysis/run", body: { ...base, type: "analysis", model: "fixture-model", reasoning: "medium" } },
+    { method: "POST", path: "/v1/reviews/insights/walkthrough/run", body: { ...base, type: "walkthrough", model: "fixture-model", reasoning: "medium" } },
+    { method: "POST", path: "/v1/reviews/insights/analysis/cancel", body: { ...base, type: "analysis", runId } },
+    { method: "POST", path: "/v1/reviews/insights/walkthrough/cancel", body: { ...base, type: "walkthrough", runId } },
+    { method: "POST", path: "/v1/reviews/insights/walkthrough/progress", body: { ...base, runId, reviewedSectionIds: [], supportReviewed: false } },
+    { method: "GET", path: `/v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis` },
+    { method: "POST", path: "/v1/reviews/insights/analysis/findings/finding/dismiss", body: { ...base, runId, reason: "Fixture" } },
+    { method: "POST", path: "/v1/reviews/insights/analysis/findings/finding/add", body: { ...base, runId } },
+    { method: "POST", path: "/v1/reviews/draft/seed-analysis", body: draft },
+    { method: "POST", path: "/v1/reviews/draft/merge-preview", body: draft },
+    { method: "POST", path: "/v1/reviews/draft/replace-preview", body: draft },
+    { method: "POST", path: "/v1/reviews/draft/merge", body: { ...draft, acknowledgement: true } },
+    { method: "POST", path: "/v1/reviews/draft/replace", body: { ...draft, acknowledgement: true } },
+    { method: "POST", path: "/v1/reviews/draft/findings/finding/add", body: draft },
+    { method: "POST", path: "/v1/reviews/apply-batch", body: { ...draft, acknowledgement: true } },
+    { method: "POST", path: "/v1/reviews/submit-batch", body: { ...draft, acknowledgement: true, event: "COMMENT" } },
+    { method: "POST", path: "/v1/reviews/publication/preview", body: { ...draft, event: "COMMENT" } },
+    { method: "POST", path: "/v1/reviews/publication/confirm", body: { ...draft, acknowledgement: true, event: "COMMENT" } },
+    { method: "POST", path: "/v1/reviews/publication/recover", body: base },
+    { method: "POST", path: "/v1/reviews/published-comments/edit", body: { ...base, commentId: "comment", body: "Fixture edit" } },
+    { method: "POST", path: "/v1/reviews/published-comments/delete", body: { ...base, commentId: "comment", confirmation: true } },
+    { method: "POST", path: "/v1/reviews/published-reviews/dismiss", body: { ...base, publishedReviewId: "published-review", message: "Fixture dismissal", confirmation: true } },
+    { method: "POST", path: "/v1/reviews/merge", body: { ...draft, acknowledgement: true } },
+  ];
+}
+
+test("browser capability reaches every canonical Review route through the desktop bridge", async ({ page, browser }) => {
+  const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-browser-auth-")); let api: LocalApiServer | undefined; let noCapabilityPage: typeof page | undefined;
+  try {
+    const paths = PatchdeskPaths.forTest(root);
+    const seeded = await seedCompleted(paths);
+    const github = new FakeGitHubAdapter({ authenticatedAccount: { host: "github.com", account: "fixture" }, listOpenPullRequests: [], pullRequest: summary() as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github, supportedReviewModels: ["fixture-model"] });
+    if (started._tag !== "started") throw new Error("api"); api = started.server;
+    const operations = canonicalReviewOperations(seeded.reviewId, seeded.sessionId);
+    await installTestDesktopBridge(page, api.url.toString(), "cap");
+    await page.goto(origin(renderer));
+    const withCapability = await page.evaluate(async (routes) => {
+      const results = [];
+      for (const route of routes) results.push({ route, response: await window.patchdesk.request(route) });
+      return results;
+    }, operations);
+    expect(withCapability).toHaveLength(31);
+    expect(withCapability.every(({ response }) => response.status !== 401 && response.status !== 403)).toBe(true);
+    expect(withCapability.find(({ route }) => route.path === "/v1/reviews/models")?.response.body).toMatchObject({ models: [{ id: "fixture-model" }] });
+    expect(withCapability.find(({ route }) => route.path === "/v1/reviews/load")?.response.body).toMatchObject({ review: { id: seeded.reviewId } });
+
+    noCapabilityPage = await browser.newPage();
+    await installTestDesktopBridge(noCapabilityPage, api.url.toString(), "");
+    await noCapabilityPage.goto(origin(renderer));
+    const withoutCapability = await noCapabilityPage.evaluate(async (routes) => {
+      const results = [];
+      for (const route of routes) results.push(await window.patchdesk.request(route));
+      return results;
+    }, operations);
+    expect(withoutCapability).toHaveLength(31);
+    expect(withoutCapability.every(({ status }) => status === 401 || status === 403)).toBe(true);
+  } finally { await page.close(); if (noCapabilityPage !== undefined) await noCapabilityPage.close(); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
+});
+
 test("normal dashboard opens a seeded completed workbench with publication preview", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-complete-")); let api: LocalApiServer | undefined;
   try {
     const paths = PatchdeskPaths.forTest(root);
-    const reviewId = await seedCompleted(paths);
+    const seeded = await seedCompleted(paths);
     await new ProfileStore(paths).saveConfig({ lastSelectedProfileId: "cfw", recentPrs: [] });
     const github = new FakeGitHubAdapter({ authenticatedAccount: { host: "github.com", account: "fixture" }, listOpenPullRequests: [], pullRequest: summary() as never, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const started = await startLocalApiServer({ allowedOrigin: origin(renderer), capability: "cap", paths, github });
     if (started._tag !== "started") throw new Error("api"); api = started.server;
     await installTestDesktopBridge(page, api.url.toString(), "cap");
-    await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), reviewId);
+    await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), seeded.reviewId);
     await page.goto(origin(renderer));
-    await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${reviewId}`);
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${seeded.reviewId}`);
     await expect(page.getByRole("main")).toContainText("Persisted review result");
     await page.getByRole("button", { name: /Review draft/ }).click();
     await expect(page.getByRole("heading", { name: "Review batch" })).toBeVisible();
@@ -58,7 +137,7 @@ test("normal dashboard opens a seeded completed workbench with publication previ
 });
 
 function summary() { return { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 1 }, title: "Persisted review result", author: "fixture", headBranch: "feat/fixture", baseBranch: "sit", baseSha: "0123456789abcdef0123456789abcdef01234567", headSha: "abcdef1234567890abcdef1234567890abcdef12", isOpen: true, isDraft: false, reviewState: "approved", mergeability: "mergeable", labels: [], updatedAt: "2026-07-16T00:00:00.000Z" }; }
-async function seedCompleted(paths: PatchdeskPaths): Promise<string> {
+async function seedCompleted(paths: PatchdeskPaths): Promise<{ readonly reviewId: string; readonly sessionId: string }> {
   const profileId = must(parseWorkspaceProfileId("cfw"));
   const host = must(parseGitHubHost("github.com"));
   const owner = must(parseGitHubOwner("centraldigital"));
@@ -116,13 +195,13 @@ async function seedCompleted(paths: PatchdeskPaths): Promise<string> {
   const review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha: sha, createdAt: "2026-07-16T00:00:00.000Z" as never });
   const reviewStore = new ReviewStore(paths);
   const existingReview = await reviewStore.load(profileId, review.id);
-  if (existingReview._tag === "ok") return existingReview.value.id;
+  if (existingReview._tag === "ok") return { reviewId: existingReview.value.id, sessionId: session.id };
   const savedReview = await reviewStore.save({
     ...review,
     representedRemote: { headSha: sha, pullRequestUpdatedAt: "2026-07-16T00:00:00.000Z", snapshotHash: candidate.value.snapshotHash, refreshedAt: "2026-07-16T00:00:00.000Z" },
   });
   if (savedReview._tag === "err") throw new Error("review seed failed");
-  return review.id;
+  return { reviewId: review.id, sessionId: session.id };
 }
 function must<T>(value: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T { if (value._tag === "err") throw new Error("fixture"); return value.value; }
 

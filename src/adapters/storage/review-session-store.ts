@@ -31,6 +31,7 @@ import type {
 } from "../../domain/review-attempt";
 import {
   parseReviewBatch,
+  type RemoteWriteReceipt,
   type ReviewBatch,
 } from "../../domain/review-batch";
 import { parseReviewResult } from "../../domain/review-result";
@@ -185,6 +186,11 @@ const reviewSessionSchema = v.strictObject({
       submittedAt: v.string(),
     }),
   ),
+  archivedReceipts: v.optional(v.array(v.variant("_tag", [
+    v.strictObject({ _tag: v.literal("PendingReviewCreated"), reviewId: v.pipe(v.string(), v.minLength(1)), itemIds: v.array(v.pipe(v.string(), v.minLength(1))) }),
+    v.strictObject({ _tag: v.literal("ReplyCreated"), itemId: v.pipe(v.string(), v.minLength(1)), commentId: v.pipe(v.string(), v.minLength(1)) }),
+    v.strictObject({ _tag: v.literal("ThreadStateChanged"), itemId: v.pipe(v.string(), v.minLength(1)), state: v.picklist(["resolved", "open"]) }),
+  ]))),
   mergeDecision: v.optional(
     v.strictObject({
       mergedAt: v.string(),
@@ -192,6 +198,14 @@ const reviewSessionSchema = v.strictObject({
     }),
   ),
   visibleResult: v.optional(v.unknown()),
+  // These fields were written by pre-Review Insight sessions. Keep them at
+  // the storage boundary so migration can adopt them instead of dropping
+  // retained Walkthrough output and reading progress.
+  analysisRunId: v.optional(v.string()),
+  walkthrough: v.optional(v.unknown()),
+  visibleWalkthrough: v.optional(v.unknown()),
+  walkthroughRunId: v.optional(v.string()),
+  walkthroughProgress: v.optional(v.unknown()),
   createdAt: v.string(),
   updatedAt: v.string(),
 });
@@ -679,6 +693,9 @@ export function parseStoredReviewSession(
     raw.output.submittedReview === undefined
       ? undefined
       : parseSubmittedReview(raw.output.submittedReview);
+  const archivedReceipts = raw.output.archivedReceipts === undefined
+    ? undefined
+    : parseArchivedReceipts(raw.output.archivedReceipts);
   const mergeDecision =
     raw.output.mergeDecision === undefined
       ? undefined
@@ -698,6 +715,7 @@ export function parseStoredReviewSession(
         : parseReviewResult(raw.output.visibleResult);
   if (
     submittedReview?._tag === "err" ||
+    archivedReceipts?._tag === "err" ||
     mergeDecision?._tag === "err" ||
     visibleResult?._tag === "err"
   )
@@ -757,12 +775,20 @@ export function parseStoredReviewSession(
     ...(submittedReview === undefined
       ? {}
       : { submittedReview: submittedReview.value }),
+    ...(archivedReceipts === undefined
+      ? {}
+      : { archivedReceipts: archivedReceipts.value }),
     ...(mergeDecision === undefined
       ? {}
       : { mergeDecision: mergeDecision.value }),
     ...(visibleResult === undefined
       ? {}
       : { visibleResult: visibleResult.value }),
+    ...(raw.output.analysisRunId === undefined ? {} : { analysisRunId: raw.output.analysisRunId }),
+    ...(raw.output.walkthrough === undefined ? {} : { walkthrough: raw.output.walkthrough }),
+    ...(raw.output.visibleWalkthrough === undefined ? {} : { visibleWalkthrough: raw.output.visibleWalkthrough }),
+    ...(raw.output.walkthroughRunId === undefined ? {} : { walkthroughRunId: raw.output.walkthroughRunId }),
+    ...(raw.output.walkthroughProgress === undefined ? {} : { walkthroughProgress: raw.output.walkthroughProgress }),
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
   });
@@ -1064,6 +1090,35 @@ function parseLegacyDraft(input: unknown): Result<LegacyReviewDraft, StorageFail
     comments.push({ findingId: findingId.value, include: comment.include, originalSuggestedBody: comment.originalSuggestedBody, body: comment.body, path: path.value, line: comment.line, ...(comment.lineEnd === undefined ? {} : { lineEnd: comment.lineEnd }), diffSide: comment.diffSide, postability: comment.postability });
   }
   return ok({ sessionId: sessionId.value, attemptId: attemptId.value, state: { _tag: "LocalDraft" }, summaryBody: parsed.output.summaryBody, suggestedEvent: parsed.output.suggestedEvent, comments, createdAt: createdAt.value, updatedAt: updatedAt.value });
+}
+
+function parseArchivedReceipts(input: ReadonlyArray<{
+  readonly _tag: "PendingReviewCreated" | "ReplyCreated" | "ThreadStateChanged";
+  readonly reviewId?: string;
+  readonly itemIds?: ReadonlyArray<string>;
+  readonly itemId?: string;
+  readonly commentId?: string;
+  readonly state?: "resolved" | "open";
+}>): Result<ReadonlyArray<RemoteWriteReceipt>, StorageFailure> {
+  const receipts: RemoteWriteReceipt[] = [];
+  for (const receipt of input) {
+    if (receipt._tag === "PendingReviewCreated" && receipt.reviewId !== undefined && receipt.itemIds !== undefined) {
+      const itemIds = receipt.itemIds.map(parseLocalReviewItemId);
+      if (itemIds.some((itemId) => itemId._tag === "err")) return invalidRead();
+      const parsedItemIds = itemIds.flatMap((itemId) => itemId._tag === "ok" ? [itemId.value] : []);
+      if (parsedItemIds.length !== itemIds.length) return invalidRead();
+      receipts.push({ _tag: receipt._tag, reviewId: receipt.reviewId, itemIds: parsedItemIds });
+    } else if (receipt._tag === "ReplyCreated" && receipt.itemId !== undefined && receipt.commentId !== undefined) {
+      const itemId = parseLocalReviewItemId(receipt.itemId);
+      if (itemId._tag === "err") return invalidRead();
+      receipts.push({ _tag: receipt._tag, itemId: itemId.value, commentId: receipt.commentId });
+    } else if (receipt._tag === "ThreadStateChanged" && receipt.itemId !== undefined && receipt.state !== undefined) {
+      const itemId = parseLocalReviewItemId(receipt.itemId);
+      if (itemId._tag === "err") return invalidRead();
+      receipts.push({ _tag: receipt._tag, itemId: itemId.value, state: receipt.state });
+    } else return invalidRead();
+  }
+  return ok(receipts);
 }
 
 function parseSubmittedReview(input: {

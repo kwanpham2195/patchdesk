@@ -28,10 +28,15 @@ it("renders remote feedback and keeps destructive actions behind confirmation", 
   expect(actions.deleteComment).toHaveBeenCalledWith("comment-1");
 });
 
-it("disables mutations when the represented Review has updates", () => {
+it("hides mutations when the represented Review has updates or is not writable", () => {
   const actions = { editComment: vi.fn(async () => undefined), deleteComment: vi.fn(async () => undefined), dismissReview: vi.fn(async () => undefined) };
   render(<PublishedFeedbackPanel feedback={feedback} freshness="updates_available" actions={actions} />);
-  expect((screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole("button", { name: "Dismiss" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  cleanup();
+  render(<PublishedFeedbackPanel feedback={feedback} freshness="fresh" canWriteGitHub={false} actions={actions} />);
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
 });

@@ -80,6 +80,111 @@ describe("review submission service", () => {
     expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "PartialFailure", failure: { message: "Line is no longer in the diff." } } } });
   });
 
+  it("persists each remote receipt before starting the next operation", async () => {
+    const writes: string[] = [];
+    const persisted: ReviewSession[] = [];
+    const persistedWriteCounts: number[] = [];
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "Local" as const },
+      summaryBody: "Review summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [
+        { _tag: "InlineComment" as const, id: "inline" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Inline", include: true, postability: "postable" as const },
+        { _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Reply", include: true },
+      ],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async (next) => { persisted.push(next); persistedWriteCounts.push(writes.length); return true; },
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview() { writes.push("create"); return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; },
+        async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+        async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } }; },
+      } as never,
+    });
+    expect(result).toMatchObject({ _tag: "ok", value: { batch: { state: { _tag: "PendingReview" }, receipts: [{ _tag: "PendingReviewCreated" }, { _tag: "ReplyCreated" }] } } });
+    expect(writes).toEqual(["create", "reply"]);
+    expect(persisted.some((value) => value.batchContent?.receipts.length === 1)).toBe(true);
+    const firstReceipt = persisted.findIndex((value) => value.batchContent?.receipts.length === 1);
+    expect(firstReceipt).toBeGreaterThanOrEqual(0);
+    expect(persistedWriteCounts[firstReceipt]).toBe(1);
+  });
+
+  it("resumes after a crash immediately after pending-review receipt persistence", async () => {
+    const writes: string[] = [];
+    let durable: ReviewSession | undefined;
+    const batch = {
+      sessionId: session.id,
+      state: { _tag: "Local" as const },
+      summaryBody: "Review summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [
+        { _tag: "InlineComment" as const, id: "inline" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Inline", include: true, postability: "postable" as const },
+        { _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Reply", include: true },
+      ],
+      receipts: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const gateway = {
+      async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+      async createPendingReview() { writes.push("create"); return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; },
+      async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+      async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } }; },
+    } as never;
+    await expect(applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async (next) => {
+        if (next.batchContent?.receipts.length === 1) {
+          durable = next;
+          throw new Error("simulated crash");
+        }
+        return true;
+      },
+      gateway,
+    })).rejects.toThrow("simulated crash");
+    expect(durable?.batchContent).toMatchObject({ state: { _tag: "PendingReview" }, receipts: [{ _tag: "PendingReviewCreated", reviewId: "9001" }] });
+    const resumed = await applyReviewBatch({ profile, session: durable ?? session, batch: durable?.batchContent ?? batch as never, now, persist: async () => true, gateway });
+    expect(resumed).toMatchObject({ _tag: "ok", value: { batch: { receipts: [{ _tag: "PendingReviewCreated" }, { _tag: "ReplyCreated" }] } } });
+    expect(writes).toEqual(["create", "reply"]);
+  });
+
+  it("freezes outcome_unknown when a successful receipt cannot be persisted", async () => {
+    let persistCalls = 0;
+    let writes = 0;
+    const batch = { sessionId: session.id, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [{ _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Reply", include: true }], receipts: [], createdAt: now, updatedAt: now };
+    const result = await applyReviewBatch({
+      profile,
+      session,
+      batch: batch as never,
+      now,
+      persist: async (next) => {
+        persistCalls += 1;
+        return persistCalls !== 2 || next.batchContent?.state._tag === "PartialFailure";
+      },
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused", state: "PENDING" as const } }; },
+        async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "unused" } }; },
+        async createThreadReply() { writes += 1; return { _tag: "ok" as const, value: { commentId: "comment-1" } }; },
+      } as never,
+    });
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "BatchOutcomeUnknown", batch: { state: { _tag: "PartialFailure", failure: { category: "outcome_unknown" } } } } });
+    expect(writes).toBe(1);
+    expect(persistCalls).toBe(3);
+  });
+
   it("sends a manual inline range with its first and last lines in GitHub order", async () => {
     let sent: { readonly line: number; readonly lineEnd?: number } | undefined;
     const batch = {
@@ -119,7 +224,7 @@ describe("review submission service", () => {
     expect(writes).toEqual(["reply"]);
   });
 
-  it("applies stable thread actions from a stale batch and leaves inline drafts pending", async () => {
+  it("blocks thread actions when the batch head is stale before the write boundary", async () => {
     const writes: string[] = [];
     const persisted: ReviewSession[] = [];
     const batch = {
@@ -152,18 +257,8 @@ describe("review submission service", () => {
       } as never,
     });
 
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: {
-        session: { state: { _tag: "Stale", currentHeadSha: movedHeadSha } },
-        batch: {
-          state: { _tag: "Local" },
-          items: [{ postability: "stale_sha" }, { _tag: "ThreadReply" }],
-          receipts: [{ _tag: "ReplyCreated", itemId: "reply" }],
-        },
-      },
-    });
-    expect(writes).toEqual(["reply"]);
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale", currentHeadSha: movedHeadSha } } } });
+    expect(writes).toEqual([]);
     expect(persisted.at(-1)).toMatchObject({ batchContent: { state: { _tag: "Local" } } });
   });
 
@@ -182,7 +277,8 @@ describe("review submission service", () => {
           source: "manual" as const,
           anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const },
           body: "Unsafe draft",
-          include: true,
+          // Exclusion must not bypass the all-items repair gate.
+          include: false,
           postability: "needs_attention" as const,
           attention: {
             reason: "missing" as const,
@@ -244,16 +340,72 @@ describe("review submission service", () => {
       createdAt: now,
       updatedAt: now,
     };
-    const result = await submitReviewBatch({ profile, session, batch: batch as never, event: "REQUEST_CHANGES", gateway: fake.gateway as never, now });
+    const result = await submitReviewBatch({ profile, session, batch: batch as never, event: "REQUEST_CHANGES", gateway: fake.gateway as never, now, persist: async () => true });
     expect(result).toMatchObject({ _tag: "ok", value: { batch: { state: { _tag: "Submitted", reviewId: "9001", event: "REQUEST_CHANGES" } }, session: { submittedReview: { reviewId: "9001", event: "REQUEST_CHANGES" } } } });
     expect(fake.writes).toEqual(["submit:REQUEST_CHANGES"]);
+  });
+
+  it("durably locks a pending review before submit timeout and never repeats the submit", async () => {
+    const fake = gateway("abcdef1234567890abcdef1234567890abcdef12" as never, {
+      async submitPendingReview() { return { _tag: "err" as const, error: { _tag: "GitHubWriteFailure" as const, category: "unavailable" as const, message: "timeout" } }; },
+    });
+    const persisted: ReviewSession[] = [];
+    const batch = { sessionId: session.id, state: { _tag: "PendingReview" as const, reviewId: "9001" }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "9001", itemIds: [] }], createdAt: now, updatedAt: now };
+    const persist = async (next: ReviewSession) => { persisted.push(next); return true; };
+    const first = await submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now, persist });
+    expect(first).toMatchObject({ _tag: "err", error: { _tag: "BatchOutcomeUnknown", batch: { state: { _tag: "Applying", operation: { _tag: "SubmitPendingReview", reviewId: "9001" } } } } });
+    const locked = persisted.at(-1);
+    expect(locked?.batchContent?.state).toMatchObject({ _tag: "Applying", operation: { _tag: "SubmitPendingReview", reviewId: "9001" } });
+    const second = await submitReviewBatch({ profile, session: locked ?? session, batch: locked?.batchContent ?? batch as never, event: "COMMENT", gateway: fake.gateway as never, now, persist });
+    expect(second).toMatchObject({ _tag: "err", error: { _tag: "BatchOutcomeUnknown" } });
+    expect(fake.writes).toEqual(["submit:COMMENT"]);
   });
 
   it("blocks a stale batch submission before invoking GitHub", async () => {
     const fake = gateway(movedHeadSha);
     const batch = { sessionId: session.id, state: { _tag: "PendingReview" as const, reviewId: "9001" }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [], createdAt: now, updatedAt: now };
-    await expect(submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now })).resolves.toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale" } } } });
+    await expect(submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now, persist: async () => true })).resolves.toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite", session: { state: { _tag: "Stale" } } } });
     expect(fake.writes).toEqual([]);
+  });
+
+  it("blocks submit when the head changes after intent persistence", async () => {
+    const heads = [headSha, movedHeadSha];
+    const fake = gateway();
+    fake.gateway.getPullRequest = async () => ({ _tag: "ok" as const, value: { headSha: heads.shift() ?? movedHeadSha } });
+    const batch = { sessionId: session.id, state: { _tag: "PendingReview" as const, reviewId: "9001" }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [], receipts: [], createdAt: now, updatedAt: now };
+    await expect(submitReviewBatch({ profile, session, batch: batch as never, event: "COMMENT", gateway: fake.gateway as never, now, persist: async () => true })).resolves.toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite" } });
+    expect(fake.writes).toEqual([]);
+  });
+
+  it("blocks pending-review creation when the head changes after intent persistence", async () => {
+    const heads = [headSha, movedHeadSha];
+    const writes: string[] = [];
+    const batch = { sessionId: session.id, state: { _tag: "Local" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: "inline" as never, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Comment", include: true, postability: "postable" as const }], receipts: [], createdAt: now, updatedAt: now };
+    const result = await applyReviewBatch({ profile, session, batch: batch as never, now, persist: async () => true, gateway: {
+      async getPullRequest() { return { _tag: "ok" as const, value: { headSha: heads.shift() ?? movedHeadSha } }; },
+      async createPendingReview() { writes.push("create"); return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; },
+      async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; },
+    } as never });
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite" } });
+    expect(writes).toEqual([]);
+  });
+
+  it("blocks replies and thread-state mutations on a head race after intent persistence", async () => {
+    const heads = [headSha, headSha, movedHeadSha];
+    const writes: string[] = [];
+    const batch = { sessionId: session.id, state: { _tag: "Local" as const }, summaryBody: "", suggestedEvent: "COMMENT" as const, items: [
+      { _tag: "ThreadReply" as const, id: "reply" as never, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Reply", include: true },
+      { _tag: "ThreadState" as const, id: "state" as never, provenance: { _tag: "human" as const }, threadId: "thread-2" as never, action: "resolve" as const, include: true },
+    ], receipts: [], createdAt: now, updatedAt: now };
+    const result = await applyReviewBatch({ profile, session, batch: batch as never, now, persist: async () => true, gateway: {
+      async getPullRequest() { return { _tag: "ok" as const, value: { headSha: heads.shift() ?? movedHeadSha } }; },
+      async createPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001", state: "PENDING" as const } }; },
+      async submitPendingReview() { return { _tag: "ok" as const, value: { reviewId: "9001" } }; },
+      async createThreadReply() { writes.push("reply"); return { _tag: "ok" as const, value: { commentId: "comment-1" } }; },
+      async setReviewThreadState() { writes.push("state"); return { _tag: "ok" as const }; },
+    } as never });
+    expect(result).toMatchObject({ _tag: "err", error: { _tag: "StaleHeadBlocksWrite" } });
+    expect(writes).toEqual(["reply"]);
   });
 
   it("blocks submitting a pending review that includes needs-attention drafts", async () => {
@@ -289,6 +441,7 @@ describe("review submission service", () => {
       event: "COMMENT",
       gateway: fake.gateway as never,
       now,
+      persist: async () => true,
     })).resolves.toMatchObject({ _tag: "err", error: { _tag: "NeedsAttentionBlocksWrite" } });
     expect(fake.writes).toEqual([]);
   });

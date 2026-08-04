@@ -50,7 +50,7 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   return { root, coordinator, review, paths, reviews, sessions, insights, publications };
 }
 
-const successfulAnalysis = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } });
+const successfulAnalysis = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ changeSummary: "A change", verdict: "approve", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } });
 const successfulWalkthrough: InsightInvoker = { async invoke() { return ok({ title: "Walkthrough", focus: "The change", chapters: [] }); } };
 
 async function eventually(action: () => Promise<Result<InsightRunResponse, unknown>>, expected: InsightRunResponse["status"]): Promise<Result<InsightRunResponse, unknown>> {
@@ -85,7 +85,25 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed");
       for (let attempt = 0; attempt < 100 && completion === undefined; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, analysisRunId: started.value.runId, completion: { _tag: "PublishWhenComplete", authorizationId, event: "COMMENT" } });
+      expect(completion).toMatchObject({ profileId, reviewId: fixtureValue.review.id, sessionId: fixtureValue.review.currentSessionId, expectedHeadSha: headSha, expectedPatchHash: expect.any(String), analysisRunId: started.value.runId, completion: { _tag: "PublishWhenComplete", authorizationId, event: "COMMENT" } });
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+  });
+
+  it("retains Analysis before invoking its completion action", async () => {
+    const fixtureValue = await fixture({ analysis: successfulAnalysis(), walkthrough: successfulWalkthrough });
+    try {
+      let completionSawRetainedResult = false;
+      fixtureValue.coordinator.configureCompletion(async (input) => {
+        const stored = await fixtureValue.insights.load(input.profileId, input.reviewId, "analysis");
+        if (stored._tag !== "ok" || stored.value.retained === undefined) {
+          throw new Error("Analysis must be retained before completion");
+        }
+        completionSawRetainedResult = true;
+      });
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium", completion: { _tag: "SaveAsReviewDraft" } });
+      if (started._tag === "err") throw new Error("expected run");
+      await expect(eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "completed")).resolves.toMatchObject({ _tag: "ok", value: { status: "completed" } });
+      expect(completionSawRetainedResult).toBe(true);
     } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
@@ -122,7 +140,7 @@ describe("InsightRunCoordinator", () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const fixtureValue = await fixture({
-      analysis: { async invoke() { await pending; return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } },
+      analysis: { async invoke() { await pending; return ok({ changeSummary: "A change", verdict: "approve", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } },
       walkthrough: successfulWalkthrough,
     });
     try {
@@ -152,7 +170,7 @@ describe("InsightRunCoordinator", () => {
   it("dismisses a Finding only for the retained current Analysis run", async () => {
     const findingId = must(parseFindingId("finding-1"));
     const fixtureValue = await fixture({
-      analysis: { async invoke() { return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [{ id: findingId, severity: "P1", title: "Guard", explanation: "The guard is missing.", confidence: "high", mappingStatus: "mapped", file: "src/a.ts", lineStart: 1, diffSide: "new" }], validationPlan: [], assumptions: [] }); } },
+      analysis: { async invoke() { return ok({ changeSummary: "A change", verdict: "request_changes", summary: "A review", findings: [{ id: findingId, severity: "P1", title: "Guard", explanation: "The guard is missing.", confidence: "high", file: "src/a.ts", lineStart: 1, diffSide: "new" }], validationPlan: [], assumptions: [] }); } },
       walkthrough: successfulWalkthrough,
     });
     try {
@@ -177,7 +195,7 @@ describe("InsightRunCoordinator", () => {
     let release!: () => void;
     let resolveInvoked: () => void = () => undefined;
     const invoked = new Promise<void>((resolve) => { resolveInvoked = resolve; });
-    const pendingInvoker: InsightInvoker = { async invoke() { resolveInvoked(); await new Promise<void>((resolve) => { release = resolve; }); return ok({ changeSummary: "A change", verdict: "comment", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } };
+    const pendingInvoker: InsightInvoker = { async invoke() { resolveInvoked(); await new Promise<void>((resolve) => { release = resolve; }); return ok({ changeSummary: "A change", verdict: "approve", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } };
     const fixtureValue = await fixture({ analysis: pendingInvoker, walkthrough: successfulWalkthrough });
     try {
       const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
@@ -204,6 +222,42 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       await expect(eventually(() => invalid.coordinator.observe({ profileId, reviewId: invalid.review.id, type: "analysis", runId: started.value.runId }), "failed")).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
     } finally { await rm(invalid.root, { recursive: true, force: true }); }
+  });
+
+  it("rejects provider output that claims Patchdesk-owned Finding mapping", async () => {
+    const fixtureValue = await fixture({
+      analysis: {
+        async invoke() {
+          return ok({
+            changeSummary: "A change",
+            verdict: "comment",
+            summary: "A review",
+            findings: [{
+              id: must(parseFindingId("finding-1")),
+              severity: "P1",
+              title: "Forged mapping",
+              explanation: "Provider output must not choose postability.",
+              confidence: "high",
+              mappingStatus: "mapped",
+              file: "missing.ts",
+              lineStart: 99,
+              diffSide: "new",
+            }],
+            validationPlan: [],
+            assumptions: [],
+          });
+        },
+      },
+      walkthrough: successfulWalkthrough,
+    });
+    try {
+      const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "medium" });
+      if (started._tag === "err") throw new Error("expected run");
+      await expect(eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "failed")).resolves.toMatchObject({ _tag: "ok", value: { failureReason: "invalid_result", status: "failed" } });
+      const stored = await fixtureValue.insights.load(profileId, fixtureValue.review.id, "analysis");
+      expect(stored).toMatchObject({ _tag: "ok", value: { replacementFailure: { reason: "invalid_result" } } });
+      if (stored._tag === "ok") expect(stored.value.retained).toBeUndefined();
+    } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
   });
 
   it("recovers after a terminal persistence failure instead of leaving the run permanently active", async () => {

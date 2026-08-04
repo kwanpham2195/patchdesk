@@ -44,6 +44,8 @@ import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import { readObjectField } from "./read-object-field";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
+import type { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
+import { revokePublicationAuthorization } from "../domain/publication-authorization";
 import { withReviewSessionMutationLock } from "./review-session-mutation-lock";
 
 const anchorSchema = v.strictObject({
@@ -253,8 +255,9 @@ export class ReviewBatchController {
     private readonly sessions: ReviewSessionStore,
     private readonly now: () => IsoTimestamp,
     private readonly authority?: {
-      readonly reviews: Pick<ReviewStore, "load">;
+      readonly reviews: Pick<ReviewStore, "load"> & Partial<Pick<ReviewStore, "list">>;
       readonly insights: Pick<InsightStore, "loadTyped">;
+      readonly publicationAuthorizations?: Pick<PublicationAuthorizationStore, "load" | "save">;
     },
   ) {}
 
@@ -287,6 +290,19 @@ export class ReviewBatchController {
       });
     }
 
+    if (this.authority?.reviews.list !== undefined) {
+      const reviews = await this.authority.reviews.list(input.profileId);
+      if (reviews._tag === "err") return err({ reason: "storage_failed" });
+      const owner = reviews.value.find((review) =>
+        review.identity.host === loaded.value.key.host &&
+        review.identity.owner === loaded.value.key.owner &&
+        review.identity.repo === loaded.value.key.repo &&
+        review.identity.prNumber === loaded.value.key.prNumber,
+      );
+      // The durable Review is the lifecycle authority even when this request
+      // names an older session than the one currently represented.
+      if (owner?.status._tag === "Terminal") return err({ reason: "batch_not_editable" });
+    }
     const durable = loaded.value.batchContent;
     if (durable === undefined) {
       return err({ reason: "batch_not_found" });
@@ -322,6 +338,7 @@ export class ReviewBatchController {
       ) {
         return err({ reason: "storage_failed" });
       }
+      await this.revokePublicationAuthorization(input.profileId, input.sessionId, "revision_changed");
       return ok({
         session: reloaded.value,
         batch: undefined,
@@ -367,11 +384,23 @@ export class ReviewBatchController {
     if (reloaded._tag === "err" || reloaded.value.batchContent === undefined) {
       return err({ reason: "storage_failed" });
     }
+    await this.revokePublicationAuthorization(input.profileId, input.sessionId, "draft_changed");
     return ok({
       session: reloaded.value,
       batch: reloaded.value.batchContent,
       revision: reloaded.value.batchContent.updatedAt,
     });
+  }
+
+  private async revokePublicationAuthorization(profileId: WorkspaceProfileId, sessionId: ReviewSessionId, reason: "draft_changed" | "revision_changed"): Promise<void> {
+    const authority = this.authority;
+    if (authority?.publicationAuthorizations === undefined || authority.reviews.list === undefined) return;
+    const reviews = await authority.reviews.list(profileId);
+    if (reviews._tag === "err") return;
+    const review = reviews.value.find((candidate) => candidate.currentSessionId === sessionId);
+    if (review === undefined) return;
+    const authorization = await authority.publicationAuthorizations.load(profileId, review.id);
+    if (authorization._tag === "ok") await authority.publicationAuthorizations.save(revokePublicationAuthorization(authorization.value, reason));
   }
 
   private async validateFindingCommand(

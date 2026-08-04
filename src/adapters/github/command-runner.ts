@@ -43,6 +43,7 @@ export type CommandFailure =
   | { readonly _tag: "CommandTimedOut" }
   | { readonly _tag: "CommandUnavailable" }
   | { readonly _tag: "CommandAuthenticationRequired" }
+  | { readonly _tag: "CommandNotFound" }
   | { readonly _tag: "CommandRateLimited" }
   | { readonly _tag: "CommandRuntimeUnavailable" }
   | { readonly _tag: "CommandFailed" }
@@ -168,6 +169,7 @@ function classifyExecution(
   if (isAuthenticationFailure(execution.stderr)) {
     return { _tag: "CommandAuthenticationRequired" };
   }
+  if (isNotFoundFailure(execution.stderr)) return { _tag: "CommandNotFound" };
   if (isRateLimitFailure(execution.stderr)) return { _tag: "CommandRateLimited" };
   if (isRuntimeFailure(execution.stderr)) return { _tag: "CommandRuntimeUnavailable" };
   return { _tag: "CommandFailed" };
@@ -186,6 +188,10 @@ function isAuthenticationFailure(stderr: string): boolean {
   return /(?:gh auth login|not logged in|not logged into|authentication required|authentication failed)/i.test(
     stderr,
   );
+}
+
+function isNotFoundFailure(stderr: string): boolean {
+  return /(?:\b404\b|not found|not protected)/i.test(stderr);
 }
 
 function isRateLimitFailure(stderr: string): boolean {

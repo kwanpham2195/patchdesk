@@ -10,9 +10,10 @@ import { DesignRecoveryChip } from "./design-recovery";
 import { designRecoveryTargetFor } from "./design-recovery-targets";
 import { designInboxRecoveryFixtureFor, designRecoveryFixtureFor } from "./mock-bridge";
 import { DesignPublishConfirmationScenario } from "./design-publish-confirmation-scenario";
-import { DesignReviewJourneyScenario } from "./design-review-journey-scenario";
 import { DesignSettingsOverlay } from "./design-settings-overlay";
 import { DesignWalkthroughScenario } from "./design-walkthrough-scenario";
+import { createUnifiedReviewFixture, unifiedReviewInitialState } from "../renderer/src/flows/app-fixtures";
+import { ReviewWorkbenchFlow } from "../renderer/src/flows/review-workbench-flow";
 
 export function DesignApp(): React.JSX.Element {
   const scenario = scenarioFromLocation();
@@ -20,8 +21,7 @@ export function DesignApp(): React.JSX.Element {
   if (scenario === undefined) return <DesignIndex />;
   if (scenario.id === "dialog-submit") return <DesignPublishConfirmationScenario variant="submit" />;
   if (scenario.id === "dialog-merge") return <DesignPublishConfirmationScenario variant="merge" />;
-  if (scenario.id === "review-prepared") return <DesignReviewJourneyScenario variant="prepared" />;
-  if (scenario.id === "review-completed") return <DesignReviewJourneyScenario variant="completed" />;
+  if (scenario.group === "Review workbench") return <UnifiedReviewScenario />;
   if (scenario.id === "settings-recovery") return <DesignSettingsScenario />;
   if (scenario.id === "dialog-clear-local-data") return <DesignCleanupDialogScenario />;
   if (scenario.id === "inbox-recovery-states") return <DesignInboxRecoveryScenario />;
@@ -32,6 +32,13 @@ export function DesignApp(): React.JSX.Element {
   if (scenario.id === "walkthrough-failed") return <DesignWalkthroughScenario variant="walkthrough-failed" />;
   if (scenario.id === "walkthrough-stale") return <DesignWalkthroughScenario variant="walkthrough-stale" />;
   return <App />;
+}
+
+function UnifiedReviewScenario(): React.JSX.Element {
+  const scenario = scenarioFromLocation();
+  const state = scenario?.id.replace(/^review-/, "") as Parameters<typeof createUnifiedReviewFixture>[0] | undefined;
+  const workbench = createUnifiedReviewFixture(state);
+  return <div className="flex min-h-screen min-w-0 flex-col bg-background"><ReviewWorkbenchFlow workbench={workbench} initialUiState={unifiedReviewInitialState(state ?? "files-default")} onWorkbenchReplace={() => undefined} onWorkbenchPatch={() => undefined} onNavigationStateChange={() => undefined} onNavigate={() => undefined} /></div>;
 }
 
 function DesignSettingsScenario(): React.JSX.Element {

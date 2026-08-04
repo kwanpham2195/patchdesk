@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { installDesignBridge } from "../../src/design/mock-bridge";
+import { createUnifiedReviewFixture, unifiedReviewInitialState } from "../../src/renderer/src/flows/app-fixtures";
 import {
   designScenarios,
   scenarioFromLocation,
@@ -19,8 +20,8 @@ describe("Patchdesk Design scenarios", () => {
     const ids = designScenarios.map((scenario) => scenario.id);
     expect(new Set(ids).size).toBe(ids.length);
 
-    window.history.replaceState({}, "", `/${scenarioUrl("review-completed")}`);
-    expect(scenarioFromLocation()?.id).toBe("review-completed");
+    window.history.replaceState({}, "", `/${scenarioUrl("review-files-default")}`);
+    expect(scenarioFromLocation()?.id).toBe("review-files-default");
   });
 
   it("returns a production-shaped populated inbox from the mock boundary", async () => {
@@ -39,14 +40,60 @@ describe("Patchdesk Design scenarios", () => {
     expect(response.body.inbox.rows).toHaveLength(6);
   });
 
-  it("exposes completed and prepared workbench scenarios through one boundary", async () => {
-    installDesignBridge("review-prepared");
-    const prepared = await window.patchdesk.request({ path: "/v1/reviews/load", method: "POST", body: {} });
-    expect(prepared.body).toMatchObject({ state: "review_started", session: { id: "design-session" } });
+  it("exposes unified Review fixtures through one production boundary", async () => {
+    installDesignBridge("review-files-default");
+    const files = await window.patchdesk.request({ path: "/v1/reviews/load", method: "POST", body: {} });
+    expect(files.body).toMatchObject({ state: "review", review: { status: "open" }, session: { id: "fixture-session" } });
 
-    installDesignBridge("review-completed");
-    const completed = await window.patchdesk.request({ path: "/v1/reviews/load", method: "POST", body: {} });
-    expect(completed.body).toMatchObject({ state: "completed", session: { id: "design-session" } });
+    installDesignBridge("review-updates-draft");
+    const updates = await window.patchdesk.request({ path: "/v1/reviews/load", method: "POST", body: {} });
+    expect(updates.body).toMatchObject({ state: "review", revision: { freshness: "updates_available" } });
+  });
+
+  it("keeps terminal and confirmed-publication fixtures readable and mutation-safe", () => {
+    for (const state of ["merged", "closed"] as const) {
+      const fixture = createUnifiedReviewFixture(state);
+      expect(fixture.review.status).toBe(state);
+      expect(fixture.publishedFeedback.reviews[0]?.body).toBe("Published review body");
+      expect(fixture.publishedFeedback.comments[0]?.body).toBe("Published inline feedback");
+      expect(fixture.publishedFeedback.reviews[0]?.canDismiss).toBe(true);
+      expect(fixture.publishedFeedback.comments[0]).toMatchObject({ canEdit: true, canDelete: true });
+    }
+    const confirmed = createUnifiedReviewFixture("publication-confirmed");
+    expect(confirmed.draft).toMatchObject({ state: { _tag: "Local" }, summaryBody: "", items: [] });
+    expect(confirmed.publishedFeedback.reviews).toHaveLength(1);
+    expect(confirmed.publishedFeedback.comments).toHaveLength(1);
+  });
+
+  it("maps typed Review fixture states to production initial UI state", () => {
+    expect(unifiedReviewInitialState("files-default")).toMatchObject({ section: "files", selectedPath: "src/a.ts" });
+    expect(unifiedReviewInitialState("files-finding-selected")).toMatchObject({ section: "findings", selectedFindingId: "mapped" });
+    expect(unifiedReviewInitialState("files-commit-selected")).toMatchObject({ section: "commits", selectedCommitSha: "b".repeat(40) });
+    expect(unifiedReviewInitialState("insights-overview")).toEqual({ section: "insights" });
+    expect(unifiedReviewInitialState("analysis-running")).toEqual({ section: "insights" });
+    expect(unifiedReviewInitialState("analysis-current")).toMatchObject({ section: "insights", insightDetail: "analysis" });
+    expect(unifiedReviewInitialState("draft-expanded")).toMatchObject({ draftExpanded: true });
+    expect(unifiedReviewInitialState("pr-overview")).toMatchObject({ overviewOpen: true });
+  });
+
+  it("keeps first-run and outdated Insight fixtures revision-safe", () => {
+    const running = createUnifiedReviewFixture("analysis-running");
+    expect(running.insights.analysis.retained).toBeUndefined();
+    expect(running.insights.analysis.activeRun?.runId).toBe("analysis-first-run");
+
+    for (const state of ["analysis-outdated", "walkthrough-outdated"] as const) {
+      const outdated = createUnifiedReviewFixture(state);
+      const retained = state === "analysis-outdated" ? outdated.insights.analysis.retained : outdated.insights.walkthrough.retained;
+      expect(retained).toBeDefined();
+      expect(retained?.headSha).not.toBe(outdated.revision.currentHeadSha);
+    }
+  });
+
+  it("includes commit and finding inputs consumed by the Review navigator", () => {
+    const fixture = createUnifiedReviewFixture("files-commit-selected");
+    expect(fixture.commits).toHaveLength(2);
+    expect(fixture.commits[0]?.sha).toBe("b".repeat(40));
+    expect(fixture.insights.analysis.retained?.value.findings.map((finding) => finding.id)).toContain("mapped");
   });
 
   it("keeps settings changes in memory only", async () => {

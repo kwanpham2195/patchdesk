@@ -9,6 +9,9 @@ const response = (sha: string) => ({
   position: 1,
   total: 2,
   patch: "diff --git a/a.ts b/a.ts\n",
+  fileCount: 1,
+  additions: 0,
+  deletions: 0,
 });
 
 type Deferred<T> = { readonly promise: Promise<T>; readonly resolve: (value: T) => void };

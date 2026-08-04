@@ -60,6 +60,9 @@ describe("commit diff response", () => {
       position: 1,
       total: 1,
       patch: "diff --git a/file.ts b/file.ts",
+      fileCount: 1,
+      additions: 1,
+      deletions: 0,
     });
     expect(valid?.position).toBe(1);
     expect(parseCommitDiffResponse({
@@ -67,6 +70,9 @@ describe("commit diff response", () => {
       position: 1,
       total: 1,
       patch: "",
+      fileCount: 0,
+      additions: 0,
+      deletions: 0,
     })).toBeUndefined();
   });
 });

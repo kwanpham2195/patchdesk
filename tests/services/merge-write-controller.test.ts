@@ -93,8 +93,13 @@ async function mergeFixture(options: { readonly acknowledgedWarnings?: boolean; 
     async getMergePolicy() { return ok({ pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable" as const, reviewDecision: "approved" as const, checks: { overall: "passing" as const, checks: [] }, complete: true }); },
     async mergePullRequest(input: { readonly method: string; readonly headSha: string }) { mergeRequests.push({ method: input.method, headSha: input.headSha }); if (options.breakSave === true) { await rm(paths.sessionFile(profileId, session.id)); await mkdir(paths.sessionFile(profileId, session.id), { recursive: true }); } return await (options.mergeResult ?? ok({})); },
   };
-  const controller = new MergeWriteController(profiles, sessions, gateway, ["squash"], () => now, new MergeOperationStore(paths));
-  return { controller, sessions, profileId, session, mergeRequests, request: { profileId, sessionId: session.id, method: "squash", acknowledgedWarnings: options.acknowledgedWarnings ?? true } };
+  const gate = {
+    async requireFresh(_profileId: unknown, _reviewId: unknown, expected: { readonly sessionId: unknown; readonly headSha: unknown }) {
+      return ok({ profile, review: {} as never, session: { ...session, id: expected.sessionId, key: { ...session.key, headSha: expected.headSha } } as never, snapshot: {} as never });
+    },
+  } as never;
+  const controller = new MergeWriteController(profiles, sessions, gateway, ["squash"], () => now, new MergeOperationStore(paths), gate);
+  return { controller, sessions, profileId, session, mergeRequests, request: { profileId, reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa", sessionId: session.id, expectedHeadSha: session.key.headSha, expectedPatchHash: "a".repeat(64), expectedRevision: now, method: "squash", acknowledgedWarnings: options.acknowledgedWarnings ?? true } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T { if (result._tag === "err") throw new Error("Invalid fixture"); return result.value; }

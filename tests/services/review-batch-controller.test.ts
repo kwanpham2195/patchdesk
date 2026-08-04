@@ -14,12 +14,15 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseReviewAttemptId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { parseReviewBatch, type ReviewBatch } from "../../src/domain/review-batch";
+import { createReview, markReviewTerminal } from "../../src/domain/review";
 import { createReviewSession, type ReviewSession } from "../../src/domain/review-session";
 import { contentHash } from "../../src/services/review-artifact-hash";
 import { ReviewBatchController } from "../../src/services/review-batch-controller";
+import { err } from "../../src/domain/result";
 
 function must<T>(
   value:
@@ -597,6 +600,30 @@ it("adds general feedback and converts an inline item without losing identity", 
         error: { reason: "batch_not_editable" },
       });
     }
+  });
+
+  it("rejects a mutation against an older session once its Review is terminal", async () => {
+    const value = await fixture();
+    const review = createReview({
+      identity: {
+        profileId: value.profileId,
+        host: value.session.key.host,
+        owner: value.session.key.owner,
+        repo: value.session.key.repo,
+        prNumber: value.session.key.prNumber,
+      },
+      currentSessionId: must(parseReviewSessionId("github.com__centraldigital__patchdesk__pr-42__sha-12345678__123456789abc")),
+      headSha: value.session.key.headSha,
+      createdAt: value.session.createdAt,
+    });
+    const terminal = markReviewTerminal(review, "closed", value.session.updatedAt);
+    const service = controller(value.store, { reviews: { async load() { return err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const }); }, async list() { return { _tag: "ok", value: [terminal] }; } }, insights: { async loadTyped() { return err({ _tag: "StorageFailure" as const, operation: "read" as const, reason: "io" as const }); } } as never });
+
+    await expect(service.update(updateInput(value, { _tag: "UpdateBody", body: "Forged update" }))).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "batch_not_editable" },
+    });
+    await expect(value.store.load(value.profileId, value.session.id)).resolves.toMatchObject({ _tag: "ok", value: { batchContent: { summaryBody: "Original summary" } } });
   });
 
   it("requires acknowledgement before discarding a local batch for rerun", async () => {

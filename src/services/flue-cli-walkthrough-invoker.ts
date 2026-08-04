@@ -106,6 +106,7 @@ function walkthroughFailureReason(failure: CommandFailure): FlueCliWalkthroughFa
   switch (failure._tag) {
     case "CommandAuthenticationRequired": return "authentication_required";
     case "CommandRateLimited": return "rate_limited";
+    case "CommandNotFound":
     case "CommandRuntimeUnavailable":
     case "CommandUnavailable": return "runtime_unavailable";
     case "CommandTimedOut": return "timed_out";

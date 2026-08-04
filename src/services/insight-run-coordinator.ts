@@ -1,4 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
+import type { GitSha } from "../domain/ids";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
@@ -24,12 +25,13 @@ export type InsightInvoker = { invoke(input: InsightInvocationInput, options: { 
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string; readonly failureReason?: "cancelled" | "failed" | "invalid_result" | "superseded" };
 export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
 export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
-export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly completion: AnalysisCompletionAction }) => Promise<void>;
+export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly expectedHeadSha: GitSha; readonly expectedPatchHash: ContentHash; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly completion: AnalysisCompletionAction }) => Promise<void>;
 
 type Active = { readonly runId: InsightRunId; readonly controller: AbortController };
 
 export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
+  private readonly pendingCompletions = new Map<string, Promise<void>>();
   private completionHandler: InsightCompletionHandler | undefined;
 
   configureCompletion(handler: InsightCompletionHandler): void {
@@ -106,7 +108,7 @@ export class InsightRunCoordinator {
   }
 
   async cancel(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly runId: InsightRunId }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
-    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    const ownership = await this.ensureMutableOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
@@ -125,6 +127,7 @@ export class InsightRunCoordinator {
     if (ownership._tag === "err") return ownership;
     const review = await this.reviews.load(input.profileId, input.reviewId);
     if (review._tag === "err") return err("storage_unavailable");
+    if (review.value.status._tag === "Terminal") return err("terminal_review");
     const session = await this.sessions.load(input.profileId, review.value.currentSessionId);
     if (session._tag === "err") return err(session.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     const currentHash = parseContentHash(await contentHash(session.value.patchPath));
@@ -159,7 +162,7 @@ export class InsightRunCoordinator {
   }
 
   async updateWalkthroughProgress(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly runId: InsightRunId; readonly progress: WalkthroughProgress }): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
-    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    const ownership = await this.ensureMutableOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
@@ -221,9 +224,20 @@ export class InsightRunCoordinator {
     const record = await this.insights.load(input.profileId, input.reviewId, input.type);
     if (record._tag === "err") return err(record.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     if (record.value.activeRun?.id === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.activeRun.status });
-    if (isRetainedRun(record.value.retained, input.runId)) return ok({ runId: input.runId, type: input.type, status: "completed" });
+    if (isRetainedRun(record.value.retained, input.runId)) {
+      const completion = this.pendingCompletions.get(input.runId);
+      if (completion !== undefined) await completion;
+      return ok({ runId: input.runId, type: input.type, status: "completed" });
+    }
     if (record.value.replacementFailure?.runId === input.runId) return ok({ runId: input.runId, type: input.type, status: record.value.replacementFailure.reason === "cancelled" ? "cancelled" : "failed", failureReason: record.value.replacementFailure.reason });
     return err("not_active");
+  }
+
+  private async ensureMutableOwned(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<void, InsightCoordinatorFailure>> {
+    const owned = await this.ensureOwned(profileId, reviewId);
+    if (owned._tag === "err") return owned;
+    const review = await this.reviews.load(profileId, reviewId);
+    return review._tag === "ok" && review.value.status._tag === "Terminal" ? err("terminal_review") : review._tag === "ok" ? ok(undefined) : err("storage_unavailable");
   }
 
   private async ensureOwned(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<void, InsightCoordinatorFailure>> {
@@ -268,11 +282,12 @@ export class InsightRunCoordinator {
         await this.recordDiagnostic(input, type, "invalid_result");
         return;
       }
-      if (type === "analysis" && input.completion !== undefined && this.completionHandler !== undefined) {
-        const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
-        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, completion: input.completion });
-      }
-      await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
+      let releaseCompletion: () => void = () => undefined;
+      const completionReady = type === "analysis" && input.completion !== undefined && this.completionHandler !== undefined
+        ? new Promise<void>((resolve) => { releaseCompletion = resolve; })
+        : undefined;
+      if (completionReady !== undefined) this.pendingCompletions.set(runId, completionReady);
+      const retained = await this.persistTerminal(input, type, runId, timestamp.value, (record) => {
         const active = record.activeRun;
         if (active?.id !== runId) return err("superseded" as const);
         if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
@@ -280,6 +295,20 @@ export class InsightRunCoordinator {
         }
         return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
       }, "completion");
+      if (!retained || type !== "analysis" || input.completion === undefined || this.completionHandler === undefined) {
+        releaseCompletion();
+        this.pendingCompletions.delete(runId);
+        return;
+      }
+      const expectedDraftRevision = parseIsoTimestamp((latestSession.value.batchContent as { readonly updatedAt?: unknown } | undefined)?.updatedAt ?? timestamp.value);
+      try {
+        await this.completionHandler({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedHeadSha: latestSession.value.key.headSha, expectedPatchHash: latestHash.value, analysisRunId: runId, expectedDraftRevision: expectedDraftRevision._tag === "ok" ? expectedDraftRevision.value : timestamp.value, completion: input.completion });
+      } catch {
+        await this.recordDiagnostic(input, type, "completion_failed");
+      } finally {
+        releaseCompletion();
+        this.pendingCompletions.delete(runId);
+      }
     } catch (cause: unknown) {
       await this.recordExecutionFailure(input, type, runId, safeFailureDetail(cause));
     } finally {
@@ -291,8 +320,6 @@ export class InsightRunCoordinator {
     const patch = await readFile(input.patchPath, "utf8").catch(() => undefined);
     if (patch === undefined) return err("invalid_result");
     if (type === "analysis") {
-      const stored = parseReviewResult(value);
-      if (stored._tag === "ok") return stored;
       const model = parseModelReviewResult(value);
       if (model._tag === "err") return err("invalid_result");
       const files = parseUnifiedPatch(patch);

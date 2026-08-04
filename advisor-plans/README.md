@@ -14,13 +14,13 @@ plan fully, honor its STOP conditions, and update the row when done.
 | 004 | Skip terminal sessions during orphan recovery | P1 | S | — | DONE |
 | 005 | Redact inspector debug telemetry | P1 | M | 001 | DONE |
 | 006 | Load configured repository review rules safely | P1 | M | 005 | DONE |
-| 007 | Characterize authenticated review run and merge APIs | P1 | M | — | TODO |
-| 008 | Serialize merge writes and reconcile uncertain outcomes | P1 | L | 007 | TODO |
-| 009 | Fetch authoritative merge-policy state | P1 | L | 007, 008 | TODO |
-| 010 | Index prepared patches for per-file hydration | P2 | M | — | TODO |
-| 011 | Paginate review threads and replies | P2 | L | — | TODO |
-| 012 | Restore the Playwright baseline | P1 | M | 003 | TODO |
-| 013 | Replace mocked Pierre test seams | P2 | M | 012 | TODO |
+| 007 | Characterize authenticated review run and merge APIs | P1 | M | — | DONE |
+| 008 | Serialize merge writes and reconcile uncertain outcomes | P1 | L | 007 | DONE |
+| 009 | Fetch authoritative merge-policy state | P1 | L | 007, 008 | DONE |
+| 010 | Index prepared patches for per-file hydration | P2 | M | — | DONE |
+| 011 | Paginate review threads and replies | P2 | L | — | DONE |
+| 012 | Restore the Playwright baseline | P1 | M | 003 | DONE |
+| 013 | Replace mocked Pierre test seams | P2 | M | 012 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).

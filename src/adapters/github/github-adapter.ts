@@ -75,6 +75,17 @@ const publishedCommentSchema = v.array(v.looseObject({
   pull_request_review_id: v.optional(v.nullable(v.union([v.string(), v.number()]))),
 }));
 
+const repositoryPermissionSchema = v.looseObject({ permission: v.picklist(["admin", "maintain", "push", "triage", "pull", "none"]) });
+const branchProtectionSchema = v.looseObject({
+  required_pull_request_reviews: v.optional(v.nullable(v.looseObject({
+    dismissal_restrictions: v.optional(v.nullable(v.looseObject({
+      users: v.optional(v.array(v.looseObject({ login: v.string() }))),
+      teams: v.optional(v.array(v.looseObject({ slug: v.string() }))),
+      apps: v.optional(v.array(v.looseObject({ slug: v.string() }))),
+    }))),
+  }))),
+});
+
 const pullRequestCommitSchema = v.looseObject({
   sha: v.string(),
   html_url: v.optional(v.string()),
@@ -299,6 +310,18 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
+  /** Bounded authenticated repository permission evidence used for record capabilities. */
+  getRepositoryPermission?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: string;
+  }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>>;
+  /** Bounded branch protection evidence; a missing endpoint response means unprotected. */
+  getBranchProtection?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>>;
   getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -454,6 +477,17 @@ export type AuthenticatedGitHubAccount = {
   readonly account: string;
 };
 
+export type RepositoryPermissionEvidence = {
+  readonly account: string;
+  readonly permission: "admin" | "maintain" | "push" | "triage" | "pull" | "none";
+  readonly pullRequestsWrite: boolean;
+};
+
+export type BranchProtectionEvidence = {
+  readonly protected: boolean;
+  readonly allowedDismissers: ReadonlyArray<string>;
+};
+
 /** Safe expected failures emitted by the GitHub read boundary. */
 export type GitHubReadFailure =
   | {
@@ -476,6 +510,8 @@ type GitHubReadOperation =
   | "get_merge_policy"
   | "get_comments"
   | "get_reviews"
+  | "get_repository_permission"
+  | "get_branch_protection"
   | "get_pr_commits"
   | "get_checks"
   | "get_diff"
@@ -769,12 +805,23 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
   }
 
   async getPullRequestPublishedFeedback(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
-    const [reviews, comments] = await Promise.all([
+    const [reviews, comments, account] = await Promise.all([
       this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`], timeoutMs: commandTimeoutMs }),
       this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`], timeoutMs: commandTimeoutMs }),
+      this.resolveAuthenticatedAccount(input.profile),
     ]);
     if (reviews._tag === "err") return commandFailure("get_reviews", reviews.error);
     if (comments._tag === "err") return commandFailure("get_comments", comments.error);
+    const permission = account._tag === "ok" && account.value.account === input.profile.ghAccount
+      ? await this.getRepositoryPermission({ profile: input.profile, pr: input.pr, account: account.value.account })
+      : undefined;
+    const pullRequest = await this.getPullRequest({ profile: input.profile, pr: input.pr });
+    const protection = permission?._tag === "ok" && pullRequest._tag === "ok"
+      ? await this.getBranchProtection({ profile: input.profile, pr: input.pr, branch: pullRequest.value.baseBranch })
+      : undefined;
+    const canWrite = permission?._tag === "ok" && permission.value.account === input.profile.ghAccount && permission.value.pullRequestsWrite;
+    const isAdmin = permission?._tag === "ok" && permission.value.permission === "admin";
+    const canDismiss = canWrite === true && (isAdmin === true || (protection?._tag === "ok" && (protection.value.protected === false || protection.value.allowedDismissers.includes(input.profile.ghAccount))));
     const parsedReviews = v.safeParse(publishedReviewSchema, reviews.value);
     const parsedComments = v.safeParse(publishedCommentSchema, comments.value);
     if (!parsedReviews.success || !parsedComments.success) return invalid("get_reviews");
@@ -784,7 +831,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       if (submittedAt._tag === "err") return invalid("get_reviews");
       const event = review.state.toUpperCase();
       if (event !== "APPROVED" && event !== "COMMENTED" && event !== "CHANGES_REQUESTED" && event !== "DISMISSED") continue;
-      publishedReviews.push({ id: String(review.id), author: review.user?.login ?? "ghost", body: review.body ?? "", event, submittedAt: submittedAt.value, canDismiss: false });
+      publishedReviews.push({ id: String(review.id), author: review.user?.login ?? "ghost", body: review.body ?? "", event, submittedAt: submittedAt.value, canDismiss: canDismiss && event !== "DISMISSED" });
     }
     const publishedComments: PublishedReviewComment[] = [];
     for (const comment of parsedComments.output) {
@@ -792,10 +839,37 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       const updatedAt = comment.updated_at === undefined || comment.updated_at === null ? undefined : parseGitHubTimestamp(comment.updated_at);
       if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err")) return invalid("get_comments");
       const location = parseLocation(comment.path, comment.line, undefined, comment.start_line, comment.side, undefined);
-      publishedComments.push({ id: String(comment.id), author: comment.user?.login ?? "ghost", body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: false, canDelete: false });
+      const author = comment.user?.login ?? "ghost";
+      const owned = account._tag === "ok" && account.value.account === input.profile.ghAccount && author === account.value.account;
+      publishedComments.push({ id: String(comment.id), author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: owned && canWrite === true, canDelete: owned && canWrite === true });
     }
     const complete = parsedReviews.output.length < 100 && parsedComments.output.length < 100;
     return ok({ reviews: publishedReviews, comments: publishedComments, complete, ...(complete ? {} : { incompleteReason: "pagination" as const }) });
+  }
+
+  async getRepositoryPermission(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly account: string }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/collaborators/${encodeURIComponent(input.account)}/permission`], timeoutMs: commandTimeoutMs });
+    if (response._tag === "err") return commandFailure("get_repository_permission", response.error);
+    const parsed = v.safeParse(repositoryPermissionSchema, response.value);
+    if (!parsed.success) return invalid("get_repository_permission");
+    const permission = parsed.output.permission;
+    return ok({ account: input.account, permission, pullRequestsWrite: permission === "admin" || permission === "maintain" || permission === "push" });
+  }
+
+  async getBranchProtection(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly branch: string }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`], timeoutMs: commandTimeoutMs });
+    // GitHub returns 404 for an unprotected branch (rather than an empty policy).
+    // Treat that absence as affirmative unprotected evidence; other failures remain
+    // fail-closed so malformed or unavailable permission evidence cannot grant writes.
+    if (response._tag === "err" && response.error._tag === "CommandNotFound") {
+      return ok({ protected: false, allowedDismissers: [] });
+    }
+    if (response._tag === "err") return commandFailure("get_branch_protection", response.error);
+    const parsed = v.safeParse(branchProtectionSchema, response.value);
+    if (!parsed.success) return invalid("get_branch_protection");
+    const rules = parsed.output.required_pull_request_reviews;
+    const restrictions = rules?.dismissal_restrictions;
+    return ok({ protected: rules !== undefined && rules !== null, allowedDismissers: restrictions?.users?.map((user) => user.login) ?? [] });
   }
 
   private async loadThreadReplies(profile: WorkspaceProfileConfig, threadId: string, initial: ReadonlyArray<GitHubComment>, initialCursor: string | null, remainingComments: number): Promise<{ readonly comments: ReadonlyArray<GitHubComment>; readonly complete: boolean }> {
@@ -1243,6 +1317,27 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return ok(this.values.commits ?? []);
   }
 
+  async getPullRequestPublishedFeedback(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
+    void input;
+    return this.values.publishedFeedback === undefined
+      ? ok({ reviews: [], comments: [], complete: true })
+      : ok(this.values.publishedFeedback);
+  }
+
+  async getRepositoryPermission(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly account: string }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
+    void input;
+    return this.values.repositoryPermission === undefined
+      ? missing("get_repository_permission")
+      : ok(this.values.repositoryPermission);
+  }
+
+  async getBranchProtection(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly branch: string }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
+    void input;
+    return this.values.branchProtection === undefined
+      ? missing("get_branch_protection")
+      : ok(this.values.branchProtection);
+  }
+
   async getPullRequestComments(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -1357,6 +1452,9 @@ export type FakeGitHubAdapterValues = {
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergeOutcome: MergeOutcome;
   readonly comments: GitHubComments;
+  readonly publishedFeedback: GitHubPublishedFeedback;
+  readonly repositoryPermission: RepositoryPermissionEvidence;
+  readonly branchProtection: BranchProtectionEvidence;
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly checks: CheckSummary;
   readonly diff: string;

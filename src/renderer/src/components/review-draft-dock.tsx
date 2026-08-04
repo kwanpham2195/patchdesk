@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ReviewBatch } from "../../../domain/review-batch";
+import type { ReviewAnchor, ReviewBatch } from "../../../domain/review-batch";
 import type { PublicationPreviewResponse } from "../renderer-contracts";
 import { PublicationPreviewDialog } from "./publication-preview-dialog";
 import type { ReviewBatchPanelActions } from "./review-batch-panel";
@@ -12,21 +12,27 @@ export function ReviewDraftDock({
   batch,
   patch,
   writeBlocked,
+  draftEditingBlocked,
+  selectedRepairAnchor,
   actions,
   publication,
   autoOpenPublication = false,
   onAutoOpenPublicationConsumed,
+  initialOpen = false,
 }: {
   readonly batch: ReviewBatch;
   readonly patch?: string;
   readonly writeBlocked: boolean;
+  readonly draftEditingBlocked?: boolean;
+  readonly selectedRepairAnchor?: ReviewAnchor;
   readonly actions: ReviewBatchPanelActions;
-  readonly publication?: { readonly preview: () => Promise<PublicationPreviewResponse>; readonly confirm: () => Promise<void> };
+  readonly publication?: { readonly preview: () => Promise<PublicationPreviewResponse>; readonly confirm: () => Promise<void>; readonly state?: "ready" | "publishing" | "confirmed" | "needs_confirmation"; readonly recover?: () => Promise<void>; readonly openGitHub?: () => Promise<void>; readonly viewFeedback?: () => void; readonly recoveryEvidence?: { readonly confirmed: ReadonlyArray<string>; readonly notConfirmed: ReadonlyArray<string>; readonly unableToVerify: string } };
   readonly autoOpenPublication?: boolean;
   readonly onAutoOpenPublicationConsumed?: () => void;
+  readonly initialOpen?: boolean;
 }): React.JSX.Element {
-  const attentionCount = batch.items.filter((item) => item._tag === "InlineComment" && item.include && item.postability === "needs_attention").length;
-  const [open, setOpen] = useState(false);
+  const attentionCount = batch.items.filter((item) => item._tag === "InlineComment" && item.postability === "needs_attention").length;
+  const [open, setOpen] = useState(initialOpen);
   return (
     <section className="border-t bg-background px-4 py-3" aria-label="Review draft dock">
       <Collapsible open={open} onOpenChange={setOpen}>
@@ -36,10 +42,10 @@ export function ReviewDraftDock({
             <Badge variant="secondary">{batch.items.filter((item) => item.include).length} included</Badge>
             <Badge variant={attentionCount === 0 ? "outline" : "destructive"}>{attentionCount} needs attention</Badge>
           </button>
-          <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog disabled={writeBlocked} onPreview={publication.preview} onConfirm={publication.confirm} autoOpen={autoOpenPublication} {...(onAutoOpenPublicationConsumed === undefined ? {} : { onAutoOpenConsumed: onAutoOpenPublicationConsumed })} />}</div>
+          <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog disabled={writeBlocked} {...(publication.state === undefined ? {} : { publicationState: publication.state })} {...(publication.recover === undefined ? {} : { onRecover: publication.recover })} {...(publication.openGitHub === undefined ? {} : { onOpenGitHub: publication.openGitHub })} {...(publication.viewFeedback === undefined ? {} : { onViewFeedback: publication.viewFeedback })} {...(publication.recoveryEvidence === undefined ? {} : { recoveryEvidence: publication.recoveryEvidence })} onPreview={publication.preview} onConfirm={publication.confirm} autoOpen={autoOpenPublication} {...(onAutoOpenPublicationConsumed === undefined ? {} : { onAutoOpenConsumed: onAutoOpenPublicationConsumed })} />}</div>
         </div>
         <CollapsibleContent motion="disclosure" className="pt-3">
-          <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} writeBlocked={writeBlocked} actions={actions} showDraftControls showWriteActions={publication === undefined} />
+          <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })} writeBlocked={writeBlocked} {...(draftEditingBlocked === undefined ? {} : { draftEditingBlocked })} actions={actions} showDraftControls showWriteActions={publication === undefined} />
         </CollapsibleContent>
       </Collapsible>
     </section>

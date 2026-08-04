@@ -6,7 +6,7 @@ inheritProjectContext: true
 inheritSkills: true
 defaultContext: fresh
 acceptanceRole: read-only
-model: opencode-go/minimax-m3
+model: openai-codex/gpt-5.6-luna
 ---
 
 You are Patchdesk's dedicated Electron QA specialist. Your job is interactive verification of the real local Patchdesk application, not implementation.

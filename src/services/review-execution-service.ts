@@ -1,5 +1,6 @@
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   parseAbsolutePath,
   parseContentHash,
@@ -49,6 +50,9 @@ export class ReviewExecutionService {
     private readonly now: () => IsoTimestamp,
     private readonly headVerifier?: ReviewHeadVerifier,
     private readonly lifecycleGate: ReviewLifecycleGate = new ReviewLifecycleGate(),
+    private readonly authority?: {
+      readonly reviews: Pick<ReviewStore, "list">;
+    },
   ) {}
 
   async start(input: unknown): Promise<Result<{
@@ -94,6 +98,17 @@ export class ReviewExecutionService {
       return err({ reason: session.error.reason === "not_found" ? "not_found" : "storage" });
     }
     if (session.value.state._tag === "Merged") return err({ reason: "not_runnable" });
+    if (this.authority !== undefined) {
+      const reviews = await this.authority.reviews.list(profileId.value);
+      if (reviews._tag === "err") return err({ reason: "storage" });
+      const review = reviews.value.find((candidate) =>
+        candidate.identity.host === session.value.key.host &&
+        candidate.identity.owner === session.value.key.owner &&
+        candidate.identity.repo === session.value.key.repo &&
+        candidate.identity.prNumber === session.value.key.prNumber,
+      );
+      if (review?.status._tag === "Terminal") return err({ reason: "not_runnable" });
+    }
     if (session.value.state._tag === "Running") {
       const currentAttemptId = session.value.currentAttemptId;
       if (currentAttemptId === undefined) return err({ reason: "not_runnable" });

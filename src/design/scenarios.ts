@@ -12,9 +12,8 @@ export type DesignScenario = {
 };
 
 /**
- * Permanent Design registry. The four-paragraph plan explicitly lists 22
- * scenarios: 10 retained existing inbox/workbench/settings entries, seven
- * recovery/Settings entries, and five walkthrough entries.
+ * Permanent Design registry. Review workbench states are a typed unified
+ * matrix; no prepared, running, or completed workbench mode is represented.
  */
 export const designScenarios: ReadonlyArray<DesignScenario> = [
   // Inbox (4 retained)
@@ -25,14 +24,31 @@ export const designScenarios: ReadonlyArray<DesignScenario> = [
   { id: "inbox-cached", title: "Inbox cached", description: "The inbox is usable, but GitHub data is stale.", group: "Inbox" },
   { id: "inbox-recovery-states", title: "Inbox recovery states", description: "Every row exposes a one-action recovery chip and reassurance copy.", group: "Inbox" },
 
-  // Review workbench (3 retained)
-  { id: "review-prepared", title: "Review prepared", description: "Files opens first; inspect the snapshot, generate a walkthrough, or run analysis.", group: "Review workbench" },
-  { id: "review-running", title: "Review running", description: "A local review run is active and reporting progress.", group: "Review workbench" },
-  { id: "review-completed", title: "Review completed", description: "Move from Understand to Decide to Publish with local confirmation.", group: "Review workbench" },
-  { id: "workbench-reconnect", title: "Workbench: reconnect", description: "Owned live run — show Reconnect as the only next action.", group: "Review workbench" },
-  { id: "workbench-start-again", title: "Workbench: interrupted analysis", description: "An interrupted analysis can restart or return to the inbox.", group: "Review workbench" },
-  { id: "workbench-try-again", title: "Workbench: failed analysis", description: "A failed analysis can retry or return to the inbox.", group: "Review workbench" },
-  { id: "workbench-prepare-again", title: "Workbench: prepare again", description: "Invalid preparation — show Prepare again in an amber warning treatment.", group: "Review workbench" },
+  // Unified Review workbench matrix. Every state uses the production Review projection.
+  { id: "review-files-default", title: "Files: default", description: "Fresh Review with the full diff and an empty local draft.", group: "Review workbench" },
+  { id: "review-files-finding-selected", title: "Files: Finding selected", description: "A current mapped Finding focuses its exact diff evidence.", group: "Review workbench" },
+  { id: "review-files-commit-selected", title: "Files: commit selected", description: "A selected commit renders its immutable patch and statistics.", group: "Review workbench" },
+  { id: "review-updates-draft", title: "Files: Updates available", description: "Remote activity blocks GitHub writes while local draft editing remains available.", group: "Review workbench" },
+  { id: "review-draft-expanded", title: "Files: expanded draft", description: "The persistent Review draft dock owns local editing below the diff.", group: "Review workbench" },
+  { id: "review-needs-attention", title: "Files: Needs attention", description: "Unsafe anchors are visible in the focused local repair queue.", group: "Review workbench" },
+  { id: "review-pr-overview", title: "Files: PR Overview", description: "Pull request context and merge readiness are shown in the overlay.", group: "Review workbench" },
+  { id: "review-merged", title: "Files: merged", description: "A merged Review remains readable with mutation actions absent.", group: "Review workbench" },
+  { id: "review-closed", title: "Files: closed", description: "A closed Review remains readable with mutation actions absent.", group: "Review workbench" },
+  { id: "insights-overview", title: "Insights: Overview", description: "The Insights surface introduces Analysis and Walkthrough as peers.", group: "Review workbench" },
+  { id: "analysis-running", title: "Analysis: Running first run", description: "A bounded first Analysis run exposes progress without partial results.", group: "Review workbench" },
+  { id: "analysis-current", title: "Analysis: Current", description: "The retained Analysis is current for the represented revision.", group: "Review workbench" },
+  { id: "analysis-outdated", title: "Analysis: Outdated", description: "Retained evidence remains readable while latest revision actions are offered.", group: "Review workbench" },
+  { id: "analysis-failed", title: "Analysis: Failed first run", description: "A first-run failure offers bounded recovery without a partial result.", group: "Review workbench" },
+  { id: "analysis-replacement-running", title: "Analysis: Replacement running", description: "A replacement run preserves the retained result while showing progress.", group: "Review workbench" },
+  { id: "analysis-replacement-failed", title: "Analysis: Replacement failed", description: "Replacement failure preserves the latest successful Analysis.", group: "Review workbench" },
+  { id: "walkthrough-current", title: "Walkthrough: Current", description: "The retained walkthrough keeps its outline, reading progress, and evidence.", group: "Review workbench" },
+  { id: "walkthrough-outdated", title: "Walkthrough: Outdated", description: "Outdated walkthrough evidence stays readable without coordinate actions.", group: "Review workbench" },
+  { id: "publication-ready", title: "Publication: Ready", description: "The exact local draft is ready for explicit GitHub confirmation.", group: "Review workbench" },
+  { id: "publication-publishing", title: "Publication: Publishing", description: "The bounded publication operation keeps its exact payload visible.", group: "Review workbench" },
+  { id: "publication-confirmed", title: "Publication: Confirmed", description: "Confirmed publication leaves the Review projection and successor draft readable.", group: "Review workbench" },
+  { id: "publication-needs-confirmation", title: "Publication: Needs confirmation", description: "Uncertain publication remains frozen until GitHub reconciliation.", group: "Review workbench" },
+  { id: "published-feedback-collapsed", title: "Published feedback: collapsed", description: "Published GitHub feedback sits in a bounded shell region beside the collapsed draft.", group: "Review workbench" },
+  { id: "published-feedback-expanded", title: "Published feedback: expanded", description: "Published GitHub feedback and the expanded draft remain non-overlapping.", group: "Review workbench" },
 
   // Settings and dialogs (3 retained)
   { id: "settings-recovery", title: "Settings (recovery)", description: "Global Settings overlay with General, Workspace, Review, and Data & recovery sections.", group: "Settings and dialogs" },
@@ -49,11 +65,8 @@ export const designScenarios: ReadonlyArray<DesignScenario> = [
 ];
 
 /**
- * Returns every registered permanent scenario. The walkthrough layout
- * comparison was performed with two temporary entries (`walkthrough-ready-rail`
- * and `walkthrough-ready-linear`); the chapter rail was selected, the linear
- * layout was rejected, and the comparison entries were removed so the live
- * registry only contains the 22 permanent scenarios.
+ * Returns every registered permanent scenario. Temporary exploration entries
+ * are intentionally excluded from the acceptance registry.
  */
 export function allDesignScenarios(): ReadonlyArray<DesignScenario> {
   return designScenarios;

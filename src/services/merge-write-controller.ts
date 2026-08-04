@@ -1,37 +1,48 @@
 import type { GitHubMergeWriter, GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import { parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
+import { parseContentHash, parseGitSha, parseIsoTimestamp, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import { confirmMergeOperation, markMergeOutcomeUnknown, rejectMergeOperation, requestMergeOperation } from "../domain/merge-operation";
+import { markReviewTerminal } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
 import { readObjectField } from "./read-object-field";
+import type { ReviewWriteGate } from "./review-write-gate";
 
 /** Main-process merge boundary; the renderer supplies only an already-confirmed method and acknowledgement. */
 export class MergeWriteController {
   private readonly inFlight = new Set<string>();
 
   constructor(
-    private readonly profiles: ProfileStore,
+    _profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
     private readonly github: Pick<GitHubReader, "getMergePolicy"> & GitHubMergeWriter,
     private readonly methods: ReadonlyArray<MergeMethod>,
     private readonly now: () => IsoTimestamp,
     private readonly operations: MergeOperationStore,
+    private readonly writeGate?: ReviewWriteGate,
+    private readonly reviews?: Pick<ReviewStore, "load" | "save">,
   ) {}
 
   async merge(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
+    const reviewId = parseReviewId(readObjectField(input, "reviewId"));
+    const expectedHead = parseGitSha(readObjectField(input, "expectedHeadSha"));
+    const expectedPatch = parseContentHash(readObjectField(input, "expectedPatchHash"));
+    const expectedRevision = parseIsoTimestamp(readObjectField(input, "expectedRevision"));
     const method = readObjectField(input, "method");
     const acknowledgedWarnings = readObjectField(input, "acknowledgedWarnings");
-    if (profileId._tag === "err" || sessionId._tag === "err" || !isMethod(method) || typeof acknowledgedWarnings !== "boolean") return err({ reason: "invalid_input" });
-    const key = `${profileId.value}:${sessionId.value}`;
+    if (profileId._tag === "err" || sessionId._tag === "err" || reviewId._tag === "err" || expectedHead._tag === "err" || expectedPatch._tag === "err" || expectedRevision._tag === "err" || !isMethod(method) || typeof acknowledgedWarnings !== "boolean" || this.writeGate === undefined) return err({ reason: "invalid_input" });
+    const key = `${profileId.value}:${reviewId.value}`;
     if (this.inFlight.has(key)) return err({ reason: "merge_in_progress" });
     this.inFlight.add(key);
     try {
-    const [profile, session] = await Promise.all([this.profiles.load(profileId.value), this.sessions.load(profileId.value, sessionId.value)]);
+    const gated = await this.writeGate.requireFresh(profileId.value, reviewId.value, { sessionId: sessionId.value, headSha: expectedHead.value, patchHash: expectedPatch.value, draftRevision: expectedRevision.value });
+    if (gated._tag === "err") return err({ reason: gated.error.reason });
+    const [profile, session] = [ok(gated.value.profile), ok(gated.value.session)] as const;
     if (profile._tag === "err" || session._tag === "err") return err({ reason: "not_found" });
     const startedAt = this.now();
     const requested = requestMergeOperation({ operationId: `merge-${startedAt.replace(/[^0-9]/g, "")}`, profileId: profileId.value, sessionId: sessionId.value, pr: { host: session.value.key.host, owner: session.value.key.owner, repo: session.value.key.repo, number: session.value.key.prNumber }, expectedHeadSha: session.value.key.headSha, method, acknowledgedWarningCodes: acknowledgedWarnings ? ["warnings_acknowledged"] : [], startedAt });
@@ -49,8 +60,17 @@ export class MergeWriteController {
     if (confirmed._tag === "err" || (await this.operations.confirm(confirmed.value))._tag === "err") return err({ reason: "merge_outcome_unknown" });
     const saved = await this.sessions.save(merged.value.session);
     if (saved._tag === "err") return err({ reason: "merge_outcome_unknown" });
+    let terminalReview = undefined;
+    if (this.reviews !== undefined && reviewId._tag === "ok") {
+      const currentReview = await this.reviews.load(profileId.value, reviewId.value);
+      if (currentReview._tag !== "ok") return err({ reason: "merge_outcome_unknown" });
+      const marked = markReviewTerminal(currentReview.value, "merged", startedAt);
+      const savedReview = await this.reviews.save(marked, currentReview.value.updatedAt);
+      if (savedReview._tag === "err") return err({ reason: "merge_outcome_unknown" });
+      terminalReview = marked;
+    }
     const removed = await this.operations.removeAfterSessionReceipt(profileId.value, sessionId.value);
-    return removed._tag === "ok" ? ok({ session: merged.value.session, readiness: merged.value.readiness }) : err({ reason: "merge_outcome_unknown" });
+    return removed._tag === "ok" ? ok({ session: merged.value.session, readiness: merged.value.readiness, ...(terminalReview === undefined ? {} : { review: terminalReview }) }) : err({ reason: "merge_outcome_unknown" });
     } finally {
       this.inFlight.delete(key);
     }

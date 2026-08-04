@@ -46,7 +46,7 @@ const RECOVERY_COPY: Readonly<Record<RecoveryNoticeKey, RecoveryCopy>> = {
     actionLabel: "Run Analysis",
     actionKey: "run_review",
     reassurance:
-      "The saved snapshot is ready. Starting analysis is read-only and never writes to GitHub.",
+      "The saved revision is ready. Analysis stays local until you explicitly confirm a GitHub action.",
   },
   review_in_progress: {
     notice: "Review in progress",

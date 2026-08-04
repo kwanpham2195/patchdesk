@@ -75,14 +75,39 @@ export class ReviewRefreshService {
         await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
         return ok({ updatesAvailable: true, detectedAt });
       }
-      const [checks, represented] = await Promise.all([
+      const [checks, represented, comments, publishedFeedback, mergePolicy] = await Promise.all([
         this.dependencies.github.getPullRequestChecks({ profile, pr, headSha: representedHead }),
         this.dependencies.remote.load({ profileId: input.profileId, reviewId: input.reviewId, snapshotHash: review.representedRemote.snapshotHash }),
+        this.dependencies.github.getPullRequestComments({ profile, pr }),
+        this.dependencies.github.getPullRequestPublishedFeedback === undefined
+          ? Promise.resolve(ok(undefined))
+          : this.dependencies.github.getPullRequestPublishedFeedback({ profile, pr }),
+        this.dependencies.github.getMergePolicy({ profile, pr, expectedHeadSha: representedHead }),
       ]);
-      if (checks._tag === "err") return err({ reason: "github_read" });
+      if (checks._tag === "err" || comments._tag === "err" || publishedFeedback._tag === "err" || mergePolicy._tag === "err") return err({ reason: "github_read" });
       if (represented._tag === "err") return err({ reason: "storage" });
-      const checksChanged = hashSnapshot({ schemaVersion: 1, pullRequest: represented.value.pullRequest, comments: represented.value.comments, commits: represented.value.commits, checks: checks.value, ...(represented.value.mergePolicy === undefined ? {} : { mergePolicy: represented.value.mergePolicy }) }) !== review.representedRemote.snapshotHash;
-      if (!checksChanged) return ok({ updatesAvailable: false, detectedAt });
+      const publishedFeedbackAvailable = represented.value.publishedFeedback !== undefined && publishedFeedback.value !== undefined;
+      const mergePolicyAvailable = represented.value.mergePolicy !== undefined && mergePolicy.value !== undefined;
+      const candidate: ReviewRemoteSnapshot = {
+        schemaVersion: 1,
+        pullRequest: current.value,
+        comments: comments.value,
+        commits: represented.value.commits,
+        checks: checks.value,
+        ...(publishedFeedbackAvailable ? { publishedFeedback: publishedFeedback.value } : {}),
+        ...(mergePolicyAvailable ? { mergePolicy: mergePolicy.value } : {}),
+      };
+      // Optional readers are not evidence of a change when unavailable. Compare
+      // only fields observed in this detection pass, while retaining the full
+      // optional fields for explicit refresh.
+      const metadataChanged = hashSnapshot(fingerprintForDetection(candidate, {
+        publishedFeedback: publishedFeedbackAvailable,
+        mergePolicy: mergePolicyAvailable,
+      })) !== hashSnapshot(fingerprintForDetection(represented.value, {
+        publishedFeedback: publishedFeedbackAvailable,
+        mergePolicy: mergePolicyAvailable,
+      }));
+      if (!metadataChanged) return ok({ updatesAvailable: false, detectedAt });
       const marked = markDetectedUpdate(review, { detectedAt, reason: "checks" }, detectedAt);
       const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
       if (saved._tag === "err") return err({ reason: "storage" });
@@ -204,6 +229,21 @@ export class ReviewRefreshService {
     if (predecessor !== undefined) await predecessor;
     try { return await operation(); } finally { release(); if (this.locks.get(key) === current) this.locks.delete(key); }
   }
+}
+
+function fingerprintForDetection(
+  snapshot: ReviewRemoteSnapshot,
+  available: { readonly publishedFeedback: boolean; readonly mergePolicy: boolean },
+): ReviewRemoteSnapshot {
+  return {
+    schemaVersion: 1,
+    pullRequest: snapshot.pullRequest,
+    comments: snapshot.comments,
+    commits: snapshot.commits,
+    checks: snapshot.checks,
+    ...(available.publishedFeedback && snapshot.publishedFeedback !== undefined ? { publishedFeedback: snapshot.publishedFeedback } : {}),
+    ...(available.mergePolicy && snapshot.mergePolicy !== undefined ? { mergePolicy: snapshot.mergePolicy } : {}),
+  };
 }
 
 function ref(review: Review): PullRequestRef {

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { createUnifiedReviewFixture, unifiedReviewInitialState } from "../../src/renderer/src/flows/app-fixtures";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 
 const projection = (): WorkbenchResponse => ({
@@ -77,6 +78,97 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
+  it("applies typed fixture initial state to the production navigator and overview", () => {
+    const value = createUnifiedReviewFixture("files-finding-selected");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("files-finding-selected")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("tab", { name: "Findings", selected: true })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Keep writes behind the stale-head check/ })).toBeTruthy();
+
+    cleanup();
+    const overview = createUnifiedReviewFixture("pr-overview");
+    render(<ReviewWorkbenchFlow workbench={overview} initialUiState={unifiedReviewInitialState("pr-overview")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("keeps terminal Reviews readable while hiding refresh and Published feedback mutations", () => {
+    for (const state of ["merged", "closed"] as const) {
+      const value = createUnifiedReviewFixture(state);
+      cleanup();
+      render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+      expect(screen.getByText("Published review body")).toBeTruthy();
+      expect(screen.getByText("Published inline feedback")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Refresh GitHub state" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Refresh updates" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    }
+  });
+
+  it("keeps persisted Applying publication recovery reachable after reload", async () => {
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={createUnifiedReviewFixture("publication-publishing")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Review publication recovery" }));
+    expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open on GitHub" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Confirm publication" })).toBeNull();
+  });
+
+  it("refreshes GitHub-owned feedback before the production View feedback path", async () => {
+    const user = userEvent.setup();
+    const workbench = createUnifiedReviewFixture("publication-ready");
+    const calls: string[] = [];
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: vi.fn(async (request: { readonly path: string }) => {
+          calls.push(request.path);
+          if (request.path === "/v1/reviews/publication/preview") return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
+          if (request.path === "/v1/reviews/publication/confirm") return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
+          return { ok: true, status: 200, correlationId: request.path, body: workbench };
+        }),
+      },
+    });
+    render(<ReviewWorkbenchFlow workbench={workbench} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Preview publication" }));
+    await user.click(screen.getByRole("button", { name: "Confirm publication" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "View feedback" })).toBeTruthy());
+    const confirmIndex = calls.indexOf("/v1/reviews/publication/confirm");
+    const refreshIndex = calls.indexOf("/v1/reviews/refresh");
+    const loadIndex = calls.indexOf("/v1/reviews/load");
+    expect(confirmIndex).toBeGreaterThanOrEqual(0);
+    expect(refreshIndex).toBeGreaterThan(confirmIndex);
+    expect(loadIndex).toBeGreaterThan(refreshIndex);
+  });
+
+  it("represents confirmed publication as remote feedback plus an empty Local successor draft", () => {
+    const value = createUnifiedReviewFixture("publication-confirmed");
+    expect(value.draft).toMatchObject({ state: { _tag: "Local" }, summaryBody: "", items: [] });
+    expect(value.publishedFeedback.reviews).toHaveLength(1);
+    expect(value.publishedFeedback.comments).toHaveLength(1);
+    render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText("Published review body")).toBeTruthy();
+    expect(screen.getByText("Published inline feedback")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Review draft/ })).toBeTruthy();
+    expect(screen.getByText("0 included")).toBeTruthy();
+  });
+
+  it("defaults Analysis completion to opening its publication preview and exposes every permitted action", async () => {
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={projection()} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+
+    const insightsTab = screen.getAllByRole("tab", { name: "Insights" })[0];
+    if (insightsTab === undefined) throw new Error("Expected Insights tab");
+    await user.click(insightsTab);
+    expect(screen.getByLabelText("Analysis completion").textContent).toContain("Open preview when complete");
+    await user.click(screen.getByLabelText("Analysis completion"));
+    expect(screen.getByText("Save as Review draft")).toBeTruthy();
+    expect(screen.getAllByText("Open preview when complete").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Publish as Comment")).toBeTruthy();
+    expect(screen.getByText("Publish as Approve")).toBeTruthy();
+    expect(screen.getByText("Publish as Request changes")).toBeTruthy();
+  });
+
   it("opens the retained Analysis reader from the Insights card", async () => {
     const value = {
       ...projection(),
@@ -110,6 +202,96 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Protect the write boundary" })).toBeTruthy();
     expect(screen.getAllByText("Missing guard").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("hydrates a persisted first-run Analysis and exposes Cancel instead of Regenerate", async () => {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models: [{ id: "fixture-model", label: "Fixture model" }] }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/insights/runs/analysis-first-run") return { ok: true, body: { runId: "analysis-first-run", type: "analysis", status: "running" }, correlationId: "run" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    render(<ReviewWorkbenchFlow workbench={createUnifiedReviewFixture("analysis-running")} initialUiState={unifiedReviewInitialState("analysis-running")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Analysis" })).toBeNull();
+    expect(screen.queryByLabelText("Insight model")).toBeNull();
+    expect(screen.queryByLabelText("Insight reasoning")).toBeNull();
+    expect(screen.queryByLabelText("Analysis completion")).toBeNull();
+    await waitFor(() => expect(request.mock.calls.some((call) => String(call[0]?.path).startsWith("/v1/reviews/insights/runs/analysis-first-run"))).toBe(true));
+  });
+
+  it("keeps retained Analysis readable beneath an outdated treatment and suppresses old actions", () => {
+    const value = createUnifiedReviewFixture("analysis-outdated");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-outdated")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Analysis is outdated" })).toBeTruthy();
+    expect(screen.getByText(/Retained revision abcdef12 · current revision bbbbbbbb/)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
+    expect(screen.getAllByText("Review completed for Patchdesk workbench").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("button", { name: "Run for latest revision" })).toBeTruthy();
+    expect(screen.queryByLabelText("Insight model")).toBeNull();
+    expect(screen.queryByLabelText("Insight reasoning")).toBeNull();
+    expect(screen.queryByLabelText("Analysis completion")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Analysis" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.queryByText("Publish as Comment")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  it("keeps a first-run Analysis failure as failure without inventing retained content", () => {
+    const value = createUnifiedReviewFixture("analysis-failed");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText("This Insight run failed. No retained result is available.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run again" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Analysis reader" })).toBeNull();
+  });
+
+  it("keeps retained Analysis readable beneath a failed replacement", () => {
+    const value = createUnifiedReviewFixture("analysis-replacement-failed");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-replacement-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText("This Insight run failed. The previous retained result remains available below.")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
+    expect(screen.getAllByText("Review completed for Patchdesk workbench").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps retained Analysis readable beneath a replacement-running treatment", () => {
+    const value = createUnifiedReviewFixture("analysis-replacement-running");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-replacement-running")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Analysis is running" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
+    expect(screen.getAllByText("Review completed for Patchdesk workbench").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders current Walkthrough content and Back to files returns to the Files surface", async () => {
+    const value = createUnifiedReviewFixture("walkthrough-current");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("walkthrough-current")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("region", { name: "Walkthrough chapters" })).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Back to files" }));
+    expect(screen.getAllByRole("tab", { name: "Files" }).some((tab) => tab.getAttribute("aria-selected") === "true")).toBe(true);
+    expect(screen.getAllByLabelText("Review diff").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps outdated Walkthrough readable beneath its treatment", () => {
+    const value = createUnifiedReviewFixture("walkthrough-outdated");
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("walkthrough-outdated")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Walkthrough is outdated" })).toBeTruthy();
+    expect(screen.getByText(/Retained revision abcdef12 · current revision bbbbbbbb/)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Walkthrough chapters" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run for latest revision" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Back to files" })).toBeNull();
+  });
+
+  it("renders the Analysis document in ADR order and omits empty optional callouts", async () => {
+    const base = projection();
+    const value = { ...base, insights: { ...base.insights, analysis: { status: "current" as const, retained: { sessionId: base.session.id, headSha: base.revision.reviewedHeadSha, generatedAt: base.revision.refreshedAt, value: { changeSummary: "Summary", verdict: "approve" as const, summary: "Overview", findings: [], validationPlan: ["Run tests"], assumptions: [] } } } } };
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={{ section: "insights", insightDetail: "analysis" }} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    const reader = screen.getByRole("region", { name: "Analysis reader" });
+    const headings = Array.from(reader.querySelectorAll('[data-slot="card-title"]')).map((heading) => heading.textContent);
+    expect(headings).toEqual(["Review Scope", "Pull Request Overview", "Reviewed Changes", "Verification", "Findings", "Verdict"]);
+    expect(screen.queryByText("Human Reviewer Callouts")).toBeNull();
   });
 
   it("opens the PR overview without replacing the workbench", async () => {
@@ -190,7 +372,7 @@ describe("ReviewWorkbenchFlow", () => {
     };
     const request = vi.fn(async (input: { readonly path: string; readonly method?: string; readonly body?: unknown }) => {
       if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      if (input.path === "/v1/reviews/commit-diff") return { ok: true, body: { commit: value.commits[0], position: 1, total: 2, patch: "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1 @@\\n-old\\n+new\\n" }, correlationId: "commit" };
+      if (input.path === "/v1/reviews/commit-diff") return { ok: true, body: { commit: value.commits[0], position: 1, total: 2, patch: "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1 @@\\n-old\\n+new\\n", fileCount: 1, additions: 1, deletions: 1 }, correlationId: "commit" };
       throw new Error(`unexpected ${input.path}`);
     });
     Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });

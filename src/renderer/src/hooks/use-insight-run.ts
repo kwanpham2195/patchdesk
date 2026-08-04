@@ -22,11 +22,13 @@ export function useInsightRun(input: {
   readonly profileId: string;
   readonly reviewId: string;
   readonly type: InsightRunType;
+  readonly activeRun?: WorkbenchResponse["insights"][InsightRunType]["activeRun"];
   readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
   readonly onInsightPatch?: (type: InsightRunType, projection: WorkbenchResponse["insights"][InsightRunType]) => void;
   readonly onCompleted?: () => void;
 }): InsightRunController {
-  const { profileId, reviewId, type, onWorkbenchReplace, onInsightPatch, onCompleted } = input;
+  const { profileId, reviewId, type, activeRun, onWorkbenchReplace, onInsightPatch, onCompleted } = input;
+  const persistedRunId = activeRun?.runId;
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
@@ -40,6 +42,15 @@ export function useInsightRun(input: {
   onWorkbenchReplaceRef.current = onWorkbenchReplace;
   onInsightPatchRef.current = onInsightPatch;
   onCompletedRef.current = onCompleted;
+
+  useEffect(() => {
+    if (persistedRunId === undefined || startingRef.current || activeRunRef.current !== undefined) return;
+    activeRunRef.current = persistedRunId;
+    setRunId(persistedRunId);
+    setStatus("running");
+    setError(false);
+    setFailureReason(undefined);
+  }, [persistedRunId]);
 
   const run = useCallback((model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
@@ -105,7 +116,7 @@ export function useInsightRun(input: {
               onWorkbenchReplaceRef.current?.(workbench);
             }
           }
-          onCompletedRef.current?.();
+          if (parsed.status === "completed") onCompletedRef.current?.();
           activeRunRef.current = undefined;
           setRunId(undefined);
           return;
@@ -133,7 +144,7 @@ export function useInsightRun(input: {
     ...(runId === undefined ? {} : { runId }),
     error,
     ...(failureReason === undefined ? {} : { failureReason }),
-    busy: starting || runId !== undefined,
+    busy: starting || runId !== undefined || activeRun !== undefined,
     run,
     cancel,
   };

@@ -283,6 +283,49 @@ function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly 
   };
 }
 
+describe("GitHubAdapter Published feedback capabilities", () => {
+  it("requires authenticated owner and repository/branch evidence", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([{ id: 7, user: { login: "pmquan2cfw" }, body: "ok", state: "APPROVED", submitted_at: "2026-08-01T00:00:00Z" }]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([{ id: 8, user: { login: "pmquan2cfw" }, body: "comment", created_at: "2026-08-01T00:00:00Z" }]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: "pmquan2cfw\n", stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ permission: "push" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ required_pull_request_reviews: null }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.getPullRequestPublishedFeedback({ profile, pr });
+    expect(result).toMatchObject({ _tag: "ok", value: { comments: [{ id: "8", canEdit: true, canDelete: true }], reviews: [{ id: "7", canDismiss: true }] } });
+  });
+
+  it("projects dismissal capability when GitHub reports an unprotected base branch as 404", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([{ id: 7, user: { login: "pmquan2cfw" }, body: "ok", state: "APPROVED", submitted_at: "2026-08-01T00:00:00Z" }]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: "pmquan2cfw\n", stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ permission: "push" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 404: Branch not protected" },
+    ])));
+    await expect(adapter.getPullRequestPublishedFeedback({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { reviews: [{ id: "7", canDismiss: true }] },
+    });
+  });
+
+  it("fails closed when permission evidence is malformed while retaining records", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([{ id: 8, user: { login: "pmquan2cfw" }, body: "comment", created_at: "2026-08-01T00:00:00Z" }]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: "pmquan2cfw\n", stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ permission: "owner" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+    ])));
+    const result = await adapter.getPullRequestPublishedFeedback({ profile, pr });
+    expect(result).toMatchObject({ _tag: "ok", value: { comments: [{ id: "8", canEdit: false, canDelete: false }] } });
+  });
+});
+
 describe("GitHubAdapter read boundary", () => {
   it("returns parsed GraphQL inbox rows and marks a capped listing incomplete", async () => {
     const page = (hasNextPage: boolean, endCursor: string | null) => ({

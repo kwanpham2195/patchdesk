@@ -75,10 +75,10 @@ try {
   await window.waitForLoadState("domcontentloaded");
   try {
     await window
-      .getByText("Review complete", { exact: true })
+      .getByText("Review state is current.", { exact: true })
       .waitFor({ timeout: 15_000 });
     await window
-      .getByText("centraldigital/patchdesk#42", { exact: false })
+      .getByText("#42 Protect review writes", { exact: true })
       .waitFor();
   } catch (cause) {
     const state = {

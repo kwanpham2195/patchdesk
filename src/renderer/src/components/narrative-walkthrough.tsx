@@ -83,14 +83,14 @@ type NarrativeWalkthroughModel = {
 };
 
 export type NarrativeWalkthroughActions = {
-  readonly onBackToFiles: () => void;
+  readonly onBackToFiles?: () => void;
   readonly onMarkSectionReviewed: (sectionId: string) => void;
   readonly onMarkSupportReviewed: () => void;
   readonly onSelectSection: (sectionId: string) => void;
 };
 
 export type NarrativeWalkthroughRefAction = {
-  readonly focusBackToFiles: () => void;
+  readonly focusBackToFiles?: () => void;
   readonly focusCurrentSection: () => void;
 };
 
@@ -146,12 +146,14 @@ export function NarrativeWalkthrough({
   useEffect(() => {
     if (onActionRef === undefined) return;
     onActionRef({
-      focusBackToFiles: () =>
-        backToFilesButtonRef.current?.focus({ preventScroll: false }),
+      ...(actions.onBackToFiles === undefined ? {} : {
+        focusBackToFiles: () =>
+          backToFilesButtonRef.current?.focus({ preventScroll: false }),
+      }),
       focusCurrentSection: () =>
         sectionHeadingRef.current?.focus({ preventScroll: false }),
     });
-  }, [onActionRef, activeSection.id]);
+  }, [actions.onBackToFiles, onActionRef, activeSection.id]);
 
   const reviewedSet = useMemo(
     () => new Set(reviewedSectionIds),
@@ -212,10 +214,14 @@ export function NarrativeWalkthrough({
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        backToFilesButtonRef.current?.focus();
+        if (actions.onBackToFiles === undefined) {
+          focusHeading();
+        } else {
+          backToFilesButtonRef.current?.focus();
+        }
       }
     },
-    [canGoNext, canGoPrev, goToOffset],
+    [actions.onBackToFiles, canGoNext, canGoPrev, focusHeading, goToOffset],
   );
 
   useEffect(() => {
@@ -241,18 +247,20 @@ export function NarrativeWalkthrough({
     >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Button
-            ref={backToFilesButtonRef}
-            variant="ghost"
-            size="sm"
-            data-testid="back-to-files"
-            aria-label="Back to files"
-            onClick={actions.onBackToFiles}
-          >
-            <ArrowLeft />
-            Back to files
-          </Button>
-          <Separator orientation="vertical" className="h-5" />
+          {actions.onBackToFiles === undefined ? null : (
+            <Button
+              ref={backToFilesButtonRef}
+              variant="ghost"
+              size="sm"
+              data-testid="back-to-files"
+              aria-label="Back to files"
+              onClick={actions.onBackToFiles}
+            >
+              <ArrowLeft />
+              Back to files
+            </Button>
+          )}
+          {actions.onBackToFiles === undefined ? null : <Separator orientation="vertical" className="h-5" />}
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">
               Walkthrough · {walkthrough.title}

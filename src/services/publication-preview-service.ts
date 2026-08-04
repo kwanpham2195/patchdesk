@@ -2,10 +2,11 @@ import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { GitHubReviewEvent, ReviewBatch } from "../domain/review-batch";
-import type { IsoTimestamp, LocalReviewItemId, RepoRelativePath, ReviewId, ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseGitSha, type IsoTimestamp, type LocalReviewItemId, type RepoRelativePath, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import { renderReviewBatchBody } from "./review-submission-service";
+import type { ReviewWriteGate } from "./review-write-gate";
 
 export type PublicationPreview = {
   readonly reviewId: ReviewId;
@@ -23,23 +24,30 @@ export type PublicationPreviewFailure = "invalid_input" | "profile_not_found" | 
 
 export class PublicationPreviewService {
   constructor(
-    private readonly profiles: Pick<ProfileStore, "load">,
-    private readonly sessions: Pick<ReviewSessionStore, "load">,
+    _profiles: Pick<ProfileStore, "load">,
+    _sessions: Pick<ReviewSessionStore, "load">,
     private readonly github: Pick<GitHubReader, "getPullRequest">,
+    private readonly writeGate?: ReviewWriteGate,
   ) {}
 
-  async preview(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly expectedRevision: IsoTimestamp; readonly event: GitHubReviewEvent }): Promise<Result<PublicationPreview, PublicationPreviewFailure>> {
-    const [profile, session] = await Promise.all([this.profiles.load(input.profileId), this.sessions.load(input.profileId, input.sessionId)]);
-    if (profile._tag === "err") return err(profile.error.reason === "not_found" ? "profile_not_found" : "github_read_failed");
-    if (session._tag === "err") return err(session.error.reason === "not_found" ? "session_not_found" : "github_read_failed");
-    const batch = session.value.batchContent;
+  async preview(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly expectedRevision: IsoTimestamp; readonly expectedHeadSha?: string; readonly expectedPatchHash?: string; readonly event: GitHubReviewEvent }): Promise<Result<PublicationPreview, PublicationPreviewFailure>> {
+    const expectedHead = input.expectedHeadSha === undefined ? undefined : parseGitSha(input.expectedHeadSha);
+    const expectedPatch = input.expectedPatchHash === undefined ? undefined : parseContentHash(input.expectedPatchHash);
+    if (this.writeGate === undefined || expectedHead?._tag !== "ok" || expectedPatch?._tag !== "ok") return err("invalid_input");
+    const gated = await this.writeGate.requireFresh(input.profileId, input.reviewId, { sessionId: input.sessionId, headSha: expectedHead.value, patchHash: expectedPatch.value, draftRevision: input.expectedRevision });
+    if (gated._tag === "err") return err(gated.error.reason === "not_fresh" ? "stale_head" : gated.error.reason === "not_found" ? "session_not_found" : "github_read_failed");
+    const profile = gated.value.profile;
+    const session = gated.value.session;
+    const batch = session.batchContent;
     if (batch === undefined || batch.updatedAt !== input.expectedRevision) return err("revision_conflict");
     if (batch.state._tag === "Submitted") return err("invalid_input");
-    if (batch.items.some((item) => item._tag === "InlineComment" && item.include && item.postability === "needs_attention")) return err("needs_attention");
-    const current = await this.github.getPullRequest({ profile: profile.value, pr: sessionPr(session.value) });
+    // A draft cannot bypass repair by excluding an unsafe item. The anchor is
+    // still durable local state and must be resolved before any publication.
+    if (batch.items.some((item) => item._tag === "InlineComment" && item.postability === "needs_attention")) return err("needs_attention");
+    const current = await this.github.getPullRequest({ profile, pr: sessionPr(session) });
     if (current._tag === "err") return err("github_read_failed");
-    if (current.value.headSha !== session.value.key.headSha || session.value.state._tag === "Stale") return err("stale_head");
-    return ok(toPreview(input.reviewId, session.value, batch, input.event, current.value.headSha));
+    if (current.value.headSha !== session.key.headSha || session.state._tag === "Stale") return err("stale_head");
+    return ok(toPreview(input.reviewId, session, batch, input.event, current.value.headSha));
   }
 }
 

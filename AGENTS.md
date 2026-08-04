@@ -29,7 +29,7 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 ## Architecture and Safety
 
 - Keep the renderer sandboxed: do not weaken Electron’s Node isolation or web security.
-- The loopback API requires its per-launch capability, and GitHub writes require explicit UI confirmation.
+- The loopback API requires its per-launch capability. GitHub writes require explicit UI confirmation, except the exact Review publication batch may use the immutable per-Analysis-run authorization defined by the approved product contract. Merge, Published feedback deletion or dismissal, and writes outside that authorized batch always require explicit confirmation.
 - Do not persist credentials in profiles.
 - Cleanup may remove only non-running review sessions.
 
@@ -40,4 +40,4 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 - Do not use broad Git cleanup commands such as `git clean` or `git reset --hard`.
 - Backward compatibility requires a user request.
 - For every live app, browser, or packaged-Electron test, the primary agent must spawn a dedicated tester subagent and direct it to use `$patchdesk-electron-tester`; it owns interactive QA and evidence.
-- Use `$patchdesk-review-lifecycle` for review, recovery, retry, or walkthrough changes.
+- Use `$patchdesk-review-lifecycle` for Review, refresh, Insight, draft, publication, recovery, retry, Walkthrough, or merge lifecycle changes.

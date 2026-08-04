@@ -9,7 +9,9 @@ export type LocalApiStartupResult<
   TServer extends StartedLocalApi = StartedLocalApi,
 > =
   | { readonly _tag: "started"; readonly server: TServer }
-  | { readonly _tag: "invalid-configuration" };
+  | { readonly _tag: "invalid-configuration" }
+  /** Startup stops before recovery when legacy state cannot be migrated safely. */
+  | { readonly _tag: "migration-failed" };
 
 /** Narrow server lifecycle dependency owned by the desktop composition root. */
 export type LocalApiLifecycle = {

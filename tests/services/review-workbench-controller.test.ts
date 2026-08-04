@@ -20,7 +20,7 @@ const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha 
 const representedRemote = { headSha: firstSha, pullRequestUpdatedAt: now, snapshotHash: "a".repeat(64) as never, refreshedAt: now };
 
 function projection(): never { return { state: "review" } as never; }
-function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown }) {
+function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> } }) {
   const prepareCalls = options.prepareCalls ?? vi.fn();
   const save = options.save ?? vi.fn(async () => ok(undefined));
   const review = options.existing;
@@ -31,7 +31,7 @@ function controller(options: { readonly existing?: Review; readonly preparedSess
   const loadRepresented = options.loadRepresented ?? vi.fn(async () => ok(projection()));
   const load = options.load ?? vi.fn(async () => ok(projection()));
   const projectionService = { load, loadLocal, loadRepresented };
-  const value = new ReviewWorkbenchController(prep as never, projectionService as never, { reviews, remote, refresh: {}, ...(options.commits === undefined ? {} : { commits: options.commits }) } as never);
+  const value = new ReviewWorkbenchController(prep as never, projectionService as never, { reviews, remote, refresh: {}, ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
   return { value, prepareCalls, save };
 }
 
@@ -40,6 +40,26 @@ function review(): Review {
 }
 
 describe("ReviewWorkbenchController stable open", () => {
+  it("runs migration before a direct open can prepare or project legacy state", async () => {
+    const order: string[] = [];
+    const migration = { migrateProfile: vi.fn(async () => { order.push("migration"); return ok(undefined); }) };
+    const prepareCalls = vi.fn(() => { order.push("prepare"); });
+    const { value } = controller({ migration, prepareCalls });
+    await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
+    expect(migration.migrateProfile).toHaveBeenCalledWith(profileId);
+    expect(order).toEqual(["migration", "prepare"]);
+  });
+
+  it("runs migration before loading a Review by direct identity", async () => {
+    const order: string[] = [];
+    const migration = { migrateProfile: vi.fn(async () => { order.push("migration"); return ok(undefined); }) };
+    const load = vi.fn(async () => { order.push("load"); return ok(projection()); });
+    const { value } = controller({ migration, load });
+    await value.load({ profileId: "cfw", sessionId: firstSessionId });
+    expect(migration.migrateProfile).toHaveBeenCalledWith(profileId);
+    expect(order).toEqual(["migration", "load"]);
+  });
+
   it("creates one stable Review on first open", async () => {
     const { value, prepareCalls, save } = controller({});
     const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
@@ -56,12 +76,13 @@ describe("ReviewWorkbenchController stable open", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it("advances changed-head open with a compare-and-set save", async () => {
+  it("keeps the represented revision when GitHub has advanced until explicit Refresh", async () => {
     const existing = review();
-    const { value, save } = controller({ existing, preparedSessionId: secondSessionId, preparedHead: secondSha });
+    const { value, prepareCalls, save } = controller({ existing, preparedSessionId: secondSessionId, preparedHead: secondSha });
     const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
     expect(opened._tag).toBe("ok");
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ currentSessionId: secondSessionId, currentHeadSha: secondSha }), existing.updatedAt);
+    expect(prepareCalls).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("uses local session data when the represented snapshot head mismatches the Review head", async () => {
@@ -93,7 +114,7 @@ describe("ReviewWorkbenchController stable open", () => {
   });
 
   it("validates and delegates commit diff requests", async () => {
-    const diff = vi.fn(async () => ok({ commit: {}, position: 1, total: 1, patch: "diff" }));
+    const diff = vi.fn(async () => ok({ commit: {}, position: 1, total: 1, patch: "diff", fileCount: 0, additions: 0, deletions: 0 }));
     const { value } = controller({ commits: { diff } });
     await expect(value.commitDiff({ profileId: "cfw", reviewId: "not-a-review", commitSha: "1".repeat(40) })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
     const validReviewId = review().id;

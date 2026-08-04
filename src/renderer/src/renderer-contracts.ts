@@ -354,7 +354,9 @@ const narrativeWalkthroughSchema = v.strictObject({
 
 const insightFields = {
   status: v.picklist(["not_generated", "running", "current", "outdated", "failed"]),
+  artifactStatus: v.optional(v.picklist(["verified", "mismatch"])),
   activeRun: v.optional(v.strictObject({
+    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
     sessionId: v.pipe(v.string(), v.minLength(1)),
     startedAt: v.pipe(v.string(), v.isoTimestamp()),
   })),
@@ -364,6 +366,15 @@ const insightFields = {
   })),
   progress: v.optional(v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) })),
 } as const;
+const insightScopeSchema = v.strictObject({
+  baseShort: v.string(),
+  headShort: v.string(),
+  commitCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  fileCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  changedFiles: v.array(v.strictObject({ path: repoRelativePathSchema, additions: v.pipe(v.number(), v.integer(), v.minValue(0)), deletions: v.pipe(v.number(), v.integer(), v.minValue(0)) })),
+});
 const analysisInsightSchema = v.strictObject({
   ...insightFields,
   retained: v.optional(v.strictObject({
@@ -372,6 +383,7 @@ const analysisInsightSchema = v.strictObject({
     headSha: v.pipe(v.string(), v.minLength(7)),
     generatedAt: v.pipe(v.string(), v.isoTimestamp()),
     value: reviewResultSchema,
+    scope: v.optional(insightScopeSchema),
   })),
 });
 const walkthroughInsightSchema = v.strictObject({
@@ -416,6 +428,7 @@ const attentionSchema = v.strictObject({
 });
 const operationSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("CreatePendingReview"), itemIds: v.array(v.pipe(v.string(), v.minLength(1))) }),
+  v.strictObject({ _tag: v.literal("SubmitPendingReview"), reviewId: v.pipe(v.string(), v.minLength(1)), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) }),
   v.strictObject({ _tag: v.literal("Reply"), itemId: v.pipe(v.string(), v.minLength(1)) }),
   v.strictObject({ _tag: v.literal("ThreadState"), itemId: v.pipe(v.string(), v.minLength(1)) }),
 ]);
@@ -483,7 +496,7 @@ const workbenchProjectionSchema = v.strictObject({
   review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
   session: workbenchSessionSchema,
   revision: v.strictObject({
-    reviewedHeadSha: v.pipe(v.string(), v.minLength(7)), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
+    reviewedHeadSha: v.pipe(v.string(), v.minLength(7)), patchHash: v.optional(v.pipe(v.string(), v.minLength(64))), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
@@ -518,6 +531,9 @@ const commitDiffResponseSchema = v.strictObject({
   position: v.pipe(v.number(), v.integer(), v.minValue(1)),
   total: v.pipe(v.number(), v.integer(), v.minValue(1)),
   patch: v.pipe(v.string(), v.maxLength(1_500_000)),
+  fileCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
 });
 export type CommitDiffResponse = v.InferOutput<typeof commitDiffResponseSchema>;
 

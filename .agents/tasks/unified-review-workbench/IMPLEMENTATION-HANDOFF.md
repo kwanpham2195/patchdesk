@@ -1,196 +1,195 @@
-# Unified Review Workbench Implementation Handoff
+# Unified Review Workbench Spec and Design Repair Handoff
 
-Use the prompt below to hand this feature to an implementation agent. It is intentionally explicit about authority, sequencing, verification, and the existing dirty checkout.
+This handoff starts the remaining spec and design repair. The original
+Foundation, Unified UI, Insights, and Feedback and merge implementation plans
+are complete and archived. Do not reimplement them.
 
 ## Master prompt
 
-You are implementing the complete Unified Review Workbench feature in the Patchdesk repository at `/Users/kwanpham/Work/cfw/patchdesk`.
+You are fixing the Unified Review Workbench in the Patchdesk repository at
+`/Users/kwanpham/Work/cfw/patchdesk`.
 
-Your job is to implement the entire program, not to research it again, rewrite the plans, or stop after one phase. Continue through Foundation, Unified UI, Insights, and Feedback and merge until every required automated and live acceptance gate passes, unless a concrete repository conflict makes safe progress impossible.
+Implement the complete
+[combined spec and design repair ExecPlan](plans/2026-08-03-unified-review-spec-and-design-repair.md).
+Work through all 14 steps, all 18 spec/code findings, and all 16 design
+findings. Do not reopen product research, rerun the completed phase plans, or
+stop after visual shell changes.
 
 ### Read before editing
 
 Read these sources completely in this order:
 
-1. Repository `AGENTS.md`, `brain/index.md`, and every applicable document it requires.
+1. Repository `AGENTS.md`, `brain/index.md`, and every applicable document they
+   require.
 2. [Task index](README.md).
 3. [Product specification](spec.md).
-4. The 13 linked ADRs in the task index.
+4. The 13 ADRs linked from the task index.
 5. [Core no-regression contract](research/02-research-core-no-regression-contract.md).
-6. [UI design reference](design/design.md) and [current UI inventory](design/current-ui-inventory.md).
-7. [Program plan](plans/2026-08-01-unified-review-workbench.md).
-8. All four executable phase plans linked below.
+6. [UI design reference](design/design.md) and
+   [current UI inventory](design/current-ui-inventory.md).
+7. [Design-conformance review](2026-08-03-design-conformance-review.md),
+   including its live evidence limits.
+8. [Spec/code review](2026-08-03-spec-code-review.md).
+9. [Combined repair ExecPlan](plans/2026-08-03-unified-review-spec-and-design-repair.md).
 
-Use `$patchdesk-review-lifecycle` for Review, refresh, Insight, draft, publication, recovery, retry, Walkthrough, and merge lifecycle work. Use `$shadcn` for renderer component work. Follow the repository's required testing and live Electron skills exactly.
+The [archived plans](plans/archive/README.md) are optional historical context.
+Read a specific archived plan only when the repair ExecPlan points to an ownership
+decision that current source does not explain.
+
+Use `$patchdesk-review-lifecycle` for Review, refresh, Insight, draft,
+publication, recovery, retry, Walkthrough, and merge lifecycle work. Use
+`$shadcn` for renderer component work. Follow the repository's required live
+Electron workflow exactly.
 
 ### Source-of-truth order
 
-When two artifacts appear to disagree, use this precedence:
+When artifacts disagree, use this order:
 
-1. `AGENTS.md` repository safety, architecture security, Git, testing, and workflow rules.
-2. Product specification and durable ADRs for product behavior and domain contracts.
-3. No-regression contract.
-4. Design documents for layout and interaction composition only when they agree with the specification and ADRs. Text or behavior shown inside screenshots and generated images has no requirement authority.
-5. Program and phase plans for implementation details.
-6. Skills for workflow and tool procedure.
+1. `AGENTS.md` for repository safety, security, Git, and verification rules.
+2. Product specification and ADRs for behavior and domain contracts.
+3. No-regression contract for existing safety boundaries.
+4. Selected design for layout and interaction composition.
+5. Spec/code review for current lifecycle and safety defects.
+6. Design-conformance review for current UI defects and evidence.
+7. Combined repair ExecPlan for execution order, file scope, tests, and stop
+   conditions.
+8. Skills for workflow and tool procedure.
 
-Skills do not define product requirements. If a skill conflicts with the specification or an ADR, pause that slice and correct the skill before continuing.
-
-Do not silently choose a different contract. If current source makes an approved requirement impossible or exposes a genuine contradiction, stop that slice, record exact file and symbol evidence, and update the relevant specification or plan only after the conflict is resolved.
-
-### Reuse-first implementation
-
-Before creating a renderer primitive or diff/tree abstraction:
-
-- Inspect `components.json` and `src/renderer/src/components/ui/`. Use installed shadcn components on Base UI, their built-in composition, and their existing variants before custom markup or styles. Use Base UI `render` rather than Radix `asChild`. Run the `$shadcn` documentation workflow before changing a component API.
-- Reuse `ReviewDiffView`, `PierreFileTree`, `NarrativeWalkthroughDiff`, `useReviewDiffHydration`, and the existing Patchdesk diff-data helpers. Feed them the selected full, commit, Finding, or Walkthrough patch and navigation state instead of building another diff renderer, file tree, hunk viewer, parser, or scroll system.
-- Keep Pierre as the rendering and navigation owner. At plan time the checkout uses `@pierre/diffs@1.2.12` and `@pierre/trees@1.0.0-beta.5`; recheck installed types before editing. Preserve the existing wrappers around `CodeView`, `FileDiff`, `PatchDiff`, `getTopForItem`, `selectOnlyPath`, and `scrollToPath` rather than inspecting Pierre DOM or recreating those APIs.
-- Extend current domain, service, adapter, storage, loopback, and GitHub seams when they already own the behavior. Do not create a parallel implementation to avoid a focused migration.
-
-If an existing seam lacks a required capability, record the exact missing API and why composition cannot satisfy the specification. Update the applicable plan before adding a custom primitive, alternate renderer, or dependency.
+Do not silently choose another contract. If current source makes a requirement
+impossible or exposes a real contradiction, stop that slice and report the
+exact file, symbol, and conflicting requirement.
 
 ### Checkout safety
 
-The checkout may already contain unrelated and uncommitted work. Before editing:
+The checkout contains user-owned uncommitted work. Before editing:
 
 - Run `git status -sb` and inspect relevant diffs.
-- Treat every existing change as user-owned.
-- Never reset, clean, restore, stash, delete, rename, or overwrite unrelated work.
+- Preserve every existing change that is outside the current repair step.
+- Do not reset, clean, restore, stash, delete, rename, or overwrite unrelated
+  work.
 - Do not create or switch branches without user consent.
-- Never use `git add .`, `git add -A`, `git add -f`, `git commit --no-verify`, amend, or force-push.
-- Stage only explicit files belonging to the completed task. If pre-existing edits overlap a planned file and cannot be separated safely, implement and verify what is safe, then stop before committing that overlap and report it precisely.
-- Do not push or create a pull request unless the user explicitly asks.
+- Never use `git add .`, `git add -A`, `git add -f`,
+  `git commit --no-verify`, amend, or force-push.
+- Stage only explicit files from the completed repair step.
+- Do not push or create a pull request unless the user asks.
 
-### Execution protocol
+If an existing edit overlaps a required file and cannot be separated safely,
+finish the non-overlapping proof and report the exact conflict before staging.
 
-Implement these plans in order:
+### Reuse the completed architecture
 
-1. [Foundation](plans/2026-08-01-unified-review-foundation.md)
-2. [Unified UI](plans/2026-08-01-unified-review-ui.md)
-3. [Insights](plans/2026-08-01-unified-review-insights.md)
-4. [Feedback and merge](plans/2026-08-01-unified-review-feedback.md)
+The repair must compose the current owners:
 
-For every task in every phase:
+- `ReviewWorkbenchProjectionService` owns the renderer-safe Review projection.
+- `ReviewRefreshService` owns represented GitHub state and session advancement.
+- `InsightRunCoordinator` and `InsightStore` own Insight lifecycle and retained
+  results.
+- `ReviewBatchController` owns serialized local draft edits and already supports
+  anchor repair and conversion.
+- `PublicationPreviewService`, `ReviewWriteController`, and the existing receipt
+  model own publication.
+- `PublishedFeedbackService` owns published comment mutation and review
+  dismissal.
+- `MergeWriteController` and `MergeService` own exact-head merge revalidation.
+- Pierre and the existing Patchdesk wrappers own diff rendering, tree
+  selection, scrolling, and focus.
 
-1. Inspect the named current code and tests before changing them.
-2. Add the specified failing focused test first.
-3. Implement the smallest complete behavior that satisfies the contract.
-4. Run the task's focused verification exactly.
-5. Re-read the diff for security boundaries, data loss, stale-result races, accessibility, and unrelated changes.
-6. Make the task's scoped commit only after its focused gate passes and only when the checkout safety rules above permit it.
-7. Run the phase gate before starting the next phase.
+Do not add parallel draft, publication, merge, Insight, diff, tree, dialog, or
+focus owners. Use installed shadcn components on Base UI before custom
+interaction primitives. Do not add a dependency for this repair.
 
-Do not preserve private prepared/completed renderer APIs through aliases or compatibility shims. Migrate callers, prove the new path, and delete the old path. Do not weaken existing performance, freshness, sandbox, capability, write-safety, recovery, or test assertions.
+### Maintain the ExecPlan
 
-### Pi Intercom and Herdr implementation protocol
+Treat the combined repair ExecPlan as the execution ledger. At every milestone
+boundary and whenever implementation changes course:
 
-Pi Intercom is the coordination channel; the primary session remains the sole writer for the current checkout.
+- update `Progress` with a timestamp and accurate remaining work;
+- add unexpected source behavior or failed assumptions to `Surprises &
+  Discoveries` with evidence;
+- record implementation-local choices in `Decision Log`;
+- add the milestone result and remaining gaps to `Outcomes & Retrospective`;
+- record focused commands, test counts, commit or uncommitted file state, and
+  evidence paths in `Artifacts and Notes`.
 
-#### Pi Intercom
+Do not create a separate progress file. A new worker must be able to resume by
+reading the ExecPlan and current worktree only.
 
-1. Before coordinating, run `intercom({ action: "list" })` and identify the intended peer by its current session id or name. Do not guess a stale session id.
-2. Use `intercom({ action: "send", ... })` for bounded progress updates and `intercom({ action: "ask", ... })` when a decision or review result is required before continuing. Use `intercom({ action: "pending" })` and `intercom({ action: "reply", ... })` for inbound asks.
-3. Advisors and peer sessions are read-only unless the user explicitly assigns a separate isolated worktree. They must not edit this checkout, stage files, commit, reset, clean, stash, switch branches, push, or start competing writers.
-4. Send each peer a narrow task with the authoritative spec/plan paths, exact symbols or files, requested evidence, and an explicit `read-only/no-edit` boundary. Ask for findings, not a second implementation.
-5. Reconcile peer advice against AGENTS.md, the product specification, ADRs, and the phase plan. Do not apply advice blindly. Record material findings and decisions in the progress ledger or handoff before moving phases.
-6. Keep user-visible changes and final synthesis in the primary session. Do not treat an advisor's claim as verification; rerun the relevant focused command in the primary checkout.
+### Milestone review protocol
 
-#### Herdr
+There is no stop condition for this repair. Continue serially through every
+remaining ExecPlan step until completion. After each milestone's focused
+verification passes, dispatch a fresh-context, read-only `reviewer` subagent to
+inspect that milestone's diff and its acceptance conditions. Record the
+reviewer's artifact path, findings, and disposition in the ExecPlan. Apply
+in-scope fixes, rerun the affected focused verification, and only then begin
+the next milestone. A reviewer finding never ends the repair; it becomes the
+next in-scope fix.
 
-1. Before using Herdr commands, check `HERDR_ENV=1`. If it is not set, state that the session is not inside a Herdr-managed pane and do not inspect or control Herdr panes from outside Herdr.
-2. When inside Herdr, discover current ids with `herdr workspace list`, `herdr tab list --workspace <id>`, and `herdr pane list`. Pane, tab, and workspace ids are ephemeral; never reuse an old id without rediscovering it.
-3. Use `--no-focus` when creating tabs or splits unless the user explicitly asks to change focus. Parse ids from the JSON response rather than guessing them.
-4. Use sibling panes for long-running dev servers, watchers, focused test runs, and live QA. Start commands with `herdr pane run`, wait with `herdr wait output` or `herdr wait agent-status`, then inspect with `herdr pane read --source recent-unwrapped`.
-5. Do not use pane output as a substitute for tests. Capture the exact command and result in the progress ledger. Stop and report if a pane is unavailable, a wait times out, or output indicates a baseline/environment blocker.
-6. For required live acceptance, spawn or assign a dedicated tester using `$patchdesk-electron-tester`; the tester owns interactive QA evidence while the primary session remains the only source-code writer.
+### Repair scope
 
-### Reconciled progress (2026-08-02)
+Complete the repair ExecPlan in this order:
 
-This section is the progress index. The executable plan checkboxes are historical working notes and may be stale; status below is reconciled against the source tree and commit history.
+1. Lock down the exact desktop bridge and protected loopback route surface.
+2. Restore Patchdesk-owned Finding mapping and retain Analysis before running
+   completion actions.
+3. Make explicit Refresh the only owner of represented revision advancement and
+   eliminate false update detection.
+4. Put publication and merge behind the stable Review gate, full authorization
+   binding, per-Review serialization, intent/receipt durability, and exact-head
+   rechecks.
+5. Complete restartable, marker-last migration of every required durable
+   artifact and terminal state.
+6. Derive and enforce record-specific Published feedback capabilities and reject
+   every terminal mutation at the service boundary.
+7. Replace legacy design fixtures with deterministic unified-workbench states.
+8. Repair shell geometry, persistent empty draft behavior, local-edit
+   eligibility, header density, and legacy copy.
+9. Build the selected Insight rail and explicit Analysis and Walkthrough
+   lifecycle documents.
+10. Complete Finding disposition/focus actions and commit statistics.
+11. Wire the existing focused Needs-attention repair commands and all-items
+   publication gate.
+12. Reorder PR Overview and connect the Review-owned confirmed SHA-bound merge.
+13. Implement Ready, Publishing, Confirmed, and Needs confirmation publication
+   projections, including a durable successor draft after confirmation.
+14. Complete accessibility, responsive browser acceptance, cleanup, and
+   development plus packaged Electron proof.
 
-#### Linked records
+Each step starts with its specified failing tests and ends with its focused
+verification command. Do not batch verification at the end. Do not weaken
+freshness, sandbox, capability, write-safety, recovery, accessibility,
+performance, or viewport assertions.
 
-- [Task index](README.md)
-- [Program plan](plans/2026-08-01-unified-review-workbench.md)
-- [Foundation plan](plans/2026-08-01-unified-review-foundation.md)
-- [Unified UI plan](plans/2026-08-01-unified-review-ui.md)
-- [Insights plan](plans/2026-08-01-unified-review-insights.md)
-- [Feedback and merge plan](plans/2026-08-01-unified-review-feedback.md)
-- [Product specification](spec.md)
-- [Core no-regression contract](research/02-research-core-no-regression-contract.md)
-- [Execution progress](../../../.superpowers/sdd/implementation-plan/progress.md)
-- [Foundation execution progress](../../../.superpowers/sdd/2026-08-01-unified-review-foundation/progress.md)
-- [Task 3 report](../../../task-3-report.md)
-- [Task 4 report](../../../task-4-report.md)
-- [Advisor plan index](../../../advisor-plans/README.md)
-- [Durable ADRs](../../../docs/adr/)
+### Non-negotiable behavior
 
-#### Phase status
+- One Review follows a pull request across immutable revision-bound sessions.
+- Files remains usable without model work. Analysis and Walkthrough are
+  optional independent Insights.
+- Detection may show Updates available but cannot replace visible GitHub state.
+- Updates available blocks remote writes while local reading and drafting stay
+  available.
+- Every unpublished draft item survives refresh. Unsafe anchors require an
+  explicit repair choice.
+- The latest successful Insight stays readable during replacement. Failure or
+  cancellation cannot remove it.
+- Outdated evidence cannot navigate current code, mutate a draft, publish,
+  dismiss a Finding, or affect merge policy.
+- Model output remains evidence. Patchdesk owns mapping, disposition, drafting,
+  publication, and merge authority.
+- Every GitHub write is explicitly confirmed or covered by one immutable
+  per-run authorization.
+- Active and uncertain publication states block closing, conflicting writes,
+  and blind replay.
+- Published feedback is GitHub-owned and changes only after refresh or a
+  confirmed mutation followed by refresh.
+- Merged and closed Reviews remain readable while unavailable actions disappear.
+- Renderer copy never exposes credentials, local paths, prompts, hidden
+  reasoning, provider events, raw command output, receipt identifiers, or stack
+  traces.
 
-- **Foundation — finished.** Stable Review identity/storage, canonical `state: "review"` projection, explicit refresh and update detection, draft carry-forward, write gating, terminal handling, commit listing, revision-safe commit diffs, and protected route/bridge/parser wiring are implemented. Main checkpoints: `ad1ee51`, `6b6d235`.
-- **Unified UI — automated implementation finished.** Stable route, persistent shell, Files/Findings/Commits navigator, PR Overview, canonical fixture migration, preference persistence, passive active-file tracking, and legacy prepared/completed renderer deletion are implemented. Remaining: required dedicated live Electron acceptance. Main checkpoints: `148f713`, `ea05e82`, `32ea0d8`, `25cd130`.
-- **Insights — implementation finished; acceptance partial.** Durable storage, bounded Analysis authority, cancellable independent runs, protected lifecycle routes, polling, cancellation, orphan recovery, draft-independent completion, explicit Save/Open-preview completion choices, bounded failure messaging, Finding dispositions, and retained Analysis/Walkthrough readers are implemented. Remaining: complete the full live Insights journey and packaged/browser acceptance. Main checkpoints: `6e79abe`, `48bdecf`, `e2d8ba4`, `eae7cd4`, `00869ea`, `16d9363`, `715356c`, `05c0bbe`, `4b899d0`, `2134496`, `0aa147a`, `3600fb8`, `a6b0307`, `f472854`.
-- **Feedback and merge — implementation finished; acceptance partial.** General feedback, Finding-to-draft provenance, draft editing and seeding, merge/replace persistence and previews, publication authorization and receipts, Published feedback, merge policy, migration, and final UI are implemented. Remaining: complete the full live/browser/accessibility/performance/package acceptance.
+### Verification
 
-#### Current implementation checkpoints
-
-- `4e7614b`, `37e04cf`, `70dc51c`, `022acaf`, and `c68fde1` contain early Feedback/Insights groundwork.
-- `50081ae`, `2717e6f`, and `ccfa8fb` close the Phase 2 UI and read-only/fallback-comment regressions.
-- `05c0bbe`, `4b899d0`, `2134496`, and `0aa147a` harden Insight lifecycle, Finding drafts, authority validation, terminal persistence recovery, and regression coverage.
-- `967a306` removes the legacy `ReviewDraft` domain while keeping old on-disk session migration inside the storage boundary.
-- `811279d` adds compare-and-set body/event/inclusion edits and exact fingerprint-checked anchor repair.
-- `506ca7f` completes retained Analysis actions and sections, persists Walkthrough progress, and distinguishes patch I/O failures from invalid requests.
-- `008544c` preserves Walkthrough progress through failed/cancelled replacement runs and clears it only after a successful replacement.
-- `07ef910` adds deterministic Analysis draft seeding, mapped Finding item generation, no-loss merge/replacement previews, CAS checks, and the seed route.
-- `a5e0dba` adds main-process loading/persistence for current retained Analysis drafts plus merge/replace preview and mutation routes.
-- `9c6e245` binds draft transitions to the canonical current Review, derives body scope from retained remote/session data, serializes them with ordinary draft edits, and adds the strict Finding-add route.
-- `2b690b4` prevents same-Finding ID collisions across Analysis runs and tracks actual patch additions/deletions without counting context lines.
-- `b089c15` adds per-run Analysis completion actions, durable publication authorization storage, immutable identity binding, and revocation on detached Analysis failure/cancellation/validation failure or supersession.
-- `7508697` adds main-process publication previews built from the durable draft and exact current head.
-- `3a0321c` adds the publication confirmation route through the existing receipt-backed apply/submit path, including body-only reviews.
-- `9dbabd1` binds publication previews to the canonical Review identity as well as the immutable session/head/draft revision.
-- `b21972d` adds profile Analysis merge-policy defaults and advisory/acknowledgement/block readiness evaluation for current high-severity Findings.
-- `3763247` durably revokes armed publication authorization when update detection or explicit refresh changes the remote freshness boundary.
-- `35fdd01` permits body-only Review publication while retaining the no-content rejection.
-- `a981111` adds an idempotent lazy migration that adopts legacy sessions into stable Review records when the Review list is loaded.
-- `35ace19` adds freshness-gated Published feedback edit/delete/dismiss orchestration and the explicit mutation routes, with GitHub writer boundaries and refresh-required handling.
-- `acde14a` loads bounded submitted reviews and review comments from GitHub when available and projects them separately from the local Review draft.
-- Published feedback loading is now included in live and explicit-refresh projections; bounded pagination is marked incomplete rather than hidden.
-- `ec1797a` wires the armed Analysis publication authorization through completion seeding and the receipt-backed publication path, consumes it once, and adds the first Published feedback renderer surface with edit/delete/dismiss confirmation and freshness blocking.
-- `700078f` fixes PR Overview disclosure interaction, `98daeff` adds the persistent Review draft dock, `c39a76e` adds the exact publication preview/confirmation dialog, and `e17efaf` renders loaded Published feedback inside PR Overview.
-- Stale freshness now disables preview/publication actions; the draft dock now edits body, decision, inclusion, and item text through CAS commands.
-- Analysis now exposes explicit Save as Review draft and Open preview when complete choices; draft seeding completes before the run is reported complete, and the preview dialog opens automatically after the latter choice. Publish remains authorization-backed.
-- Saved-review inbox actions now load by their session identity; the local load route accepts both review and session identities.
-- Insight failures now expose bounded failure reasons so the UI can distinguish provider/access failures, invalid output, and superseded runs instead of showing only a generic error.
-- Final isolated Electron smoke verification confirms the saved-review Inbox action opens the workbench with no console/page errors or horizontal overflow; evidence is under `.pi-subagents/artifacts/outputs/b153e7b9/`.
-- Browser acceptance now passes the accessibility suite, performance suite, design/protected-loopback/review-workbench suites (48 tests), and package smoke. The combined 60-test Playwright run remains intermittently flaky when local-api/accessibility fixtures run together; isolated suites pass.
-- The full unit gate passes at 105 files/658 tests, plus lint, typecheck, build, and diff check.
-- Fresh automated evidence after the UI cleanup, Insight disposition slice, reader slice, draft-edit slice, and retained-reader action hardening: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (102 files/649 tests), including the authoritative draft route slice, patch-stat regressions, completion authorization, publication preview/confirmation, refresh revocation, merge-policy, body-only publication, migration, and Published feedback mutation slices. `pnpm build` also passes., `pnpm build`, focused Insight/controller tests, and `git diff --check` passed. The prior browser gate remains `pnpm exec playwright test` (60 passed).
-- Live evidence remains partial: the final isolated Electron smoke test passed for saved-review opening, console/page errors, and horizontal overflow (`.pi-subagents/artifacts/outputs/b153e7b9/`). A broader Electron run verified the completion menu and bounded provider-failure message, but provider credits prevented validating successful draft seeding and automatic preview publication (`.pi-subagents/artifacts/outputs/e1b73053/`). The complete required Electron journey and packaged-app behavior remain unverified.
-- Unrelated dirty worktree files and local planning artifacts remain preserved. Future changes must stage only explicit task files.
-
-### Non-negotiable product invariants
-
-- One stable Review follows a pull request across refreshed revisions; every Review session remains immutable and revision-bound.
-- Files is usable without model work. Analysis and Walkthrough are optional independent Insights, not workbench modes.
-- Visible GitHub state changes only after explicit Refresh. Detection may set `Updates available` but cannot replace visible remote data.
-- Known or unavailable freshness blocks publication, Published feedback mutation, thread mutation, and merge while local reading and drafting remain available.
-- A new head creates a new immutable session inside the same Review destination.
-- Every unpublished draft item survives refresh and migration. Unsafe anchors become Needs attention; Patchdesk never guesses or drops them.
-- Analysis and Walkthrough keep their latest successful result while a replacement runs. Failure, cancellation, restart, stale identity, or late completion cannot remove it.
-- Analysis receives only the four bounded immutable inspection tools and the enforced call budget. Walkthrough remains tool-free.
-- Model output is evidence only. Patchdesk owns Finding mapping, disposition, draft creation, publication authorization, GitHub writes, and merge eligibility.
-- A non-empty maintainer draft is never silently replaced. Merge and replace both require an exact preview and explicit confirmation.
-- Only current Mapped Findings may become inline GitHub comments. General Findings remain naturally in the structured Review body.
-- Every GitHub write is explicitly confirmed or covered by one immutable per-run authorization. Partial or unknown outcomes retain intent and receipts and block blind replay.
-- Published feedback is remote-owned. Comment edit/delete and review dismissal require proven GitHub capability and fresh state.
-- Analysis merge policy cannot weaken GitHub rules, exact-head equality, required checks, unresolved write safety, or explicit merge confirmation.
-- Merged and closed Reviews remain readable while unavailable write actions disappear.
-- Renderer output and GitHub content never expose credentials, local paths, prompts, hidden reasoning, provider events, raw command output, or stack traces.
-
-### Verification and acceptance
-
-Run each focused task and phase gate from its plan. After all four phases, run the full repository gate in this order:
+Run every focused command in the repair ExecPlan. Finish with:
 
 ```bash
 pnpm lint
@@ -200,22 +199,52 @@ pnpm build
 pnpm run test:a11y
 pnpm run test:performance
 pnpm exec playwright test
+pnpm run package:mac
+pnpm run test:package-smoke
 git diff --check
 ```
 
-Do not report the feature complete from unit tests alone. After automated gates pass, the primary agent must spawn a dedicated tester subagent and direct it to use `$patchdesk-electron-tester` for the complete live Review journey at 1280px and 1440px. The tester must verify Files, Findings, Commits, Insights, concurrent Analysis and Walkthrough, retained-result replacement and cancellation, the bottom Review draft, PR Overview overlay, update detection, manual refresh, anchor recovery, publication, Published feedback, merge policy, terminal state, keyboard navigation, focus restoration, live status, and viewport overflow.
+The primary agent must delegate every browser, live-app, or packaged-app test to
+a dedicated tester subagent using `$patchdesk-electron-tester`. Verify the
+production components at 1280px and 1440px. Cover Files, Insights, Analysis
+lifecycle, Walkthrough lifecycle, Finding focus, commit selection, expanded
+draft, Needs-attention repair, PR Overview, all publication states, Published
+feedback, merge readiness, merged, and closed.
 
-If an environment or existing baseline blocks a gate, report the exact command, failure, and narrower proof that passed. Do not weaken an assertion or describe an unverified live path as complete.
+Use deterministic fixtures for model, publication, Published feedback mutation,
+merge, and terminal states. Do not send pull-request data to a model or perform
+a real GitHub write without fresh explicit user authorization.
+
+The tester must capture screenshots and accessibility snapshots and report
+viewport geometry, focus behavior, page errors, console errors, bridge route
+behavior, and packaged-app smoke results. Unit tests alone do not prove this
+repair.
+
+### Continuous execution
+
+Do not stop for a conflict, failed assumption, failed focused gate, ownership
+question, or missing proof. Record the evidence in the ExecPlan, choose the
+smallest safe in-scope correction that preserves the specification and ADR
+contracts, and continue. If a requirement cannot be directly proven without an
+unauthorized model or GitHub write, use the required deterministic fixture and
+record that proof limit; never perform an unauthorized write.
 
 ### Completion report
 
 Finish with:
 
-- The four completed phases and their scoped commits, or any explicitly uncommitted overlapping files.
-- The exact verification commands and results.
-- Migration and data-preservation evidence.
+- The 14 completed repair steps and their scoped commits, or the exact files
+  intentionally left uncommitted.
+- All 18 spec/code findings and all 16 design findings mapped to passing proof.
+- Exact focused and full verification commands with results.
+- Packaged bridge route-parity evidence.
+- Model-mapping, Refresh-only advancement, write-gate, migration, capability,
+  and terminal-state evidence.
+- Deterministic 1280px and 1440px acceptance evidence.
 - Live Electron evidence from the required tester subagent.
+- Successor-draft and unknown-publication recovery evidence.
 - Any remaining blocker with exact source evidence.
-- Final `git status -sb` confirming unrelated work was preserved.
+- Final `git status -sb` proving unrelated work was preserved.
 
-Do not stop at a progress update while safe work remains. The feature is complete only when the program plan's completion definition is satisfied.
+Do not report completion while a safe in-scope repair remains. The task is done
+only when every ExecPlan acceptance condition passes.

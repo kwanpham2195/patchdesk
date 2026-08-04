@@ -131,8 +131,18 @@ export type BatchOperation =
       readonly itemIds: ReadonlyArray<LocalReviewItemId>;
     }
   | {
+      /** Durable marker for the submit call whose outcome may be unknown. */
+      readonly _tag: "SubmitPendingReview";
+      readonly reviewId: string;
+      readonly event: GitHubReviewEvent;
+    }
+  | {
       readonly _tag: "Reply";
       readonly itemId: LocalReviewItemId;
+      /** Timestamp persisted before the reply write; used to reject pre-existing identical replies. */
+      readonly startedAt?: IsoTimestamp;
+      /** IDs observed before this operation; required for safe recovery. */
+      readonly priorCommentIds?: ReadonlyArray<string>;
     }
   | {
       readonly _tag: "ThreadState";
@@ -242,8 +252,15 @@ const operationSchema = v.variant("_tag", [
     itemIds: v.array(localReviewItemIdSchema),
   }),
   v.strictObject({
+    _tag: v.literal("SubmitPendingReview"),
+    reviewId: v.pipe(v.string(), v.minLength(1)),
+    event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+  }),
+  v.strictObject({
     _tag: v.literal("Reply"),
     itemId: localReviewItemIdSchema,
+    startedAt: v.optional(v.string()),
+    priorCommentIds: v.optional(v.array(v.string())),
   }),
   v.strictObject({
     _tag: v.literal("ThreadState"),
@@ -462,7 +479,7 @@ export function hasActiveReviewBatch(
     batch.state._tag === "PendingReview" ||
     batch.state._tag === "Submitted" ||
     (batch.state._tag === "PartialFailure" &&
-      batch.state.failure.category === "outcome_unknown")
+      (batch.state.failure.category === "outcome_unknown" || batch.state.failure.category === "unavailable"))
   );
 }
 
@@ -705,14 +722,28 @@ function parseOperation(
       }
       itemIds.push(itemId.value);
     }
-    return itemIds.length === 0
-      ? invalidReviewBatch()
-      : ok({ _tag: "CreatePendingReview", itemIds });
+    // Body-only reviews use an empty item list; the pending-review marker is
+    // still a valid operation and must survive a crash between writes.
+    return ok({ _tag: "CreatePendingReview", itemIds });
+  }
+
+  if (operation._tag === "SubmitPendingReview") {
+    return ok({ _tag: "SubmitPendingReview", reviewId: operation.reviewId, event: operation.event });
   }
 
   const itemId = parseLocalReviewItemId(operation.itemId);
   if (itemId._tag === "err") {
     return invalidReviewBatch();
+  }
+  if (operation._tag === "Reply") {
+    const startedAt = operation.startedAt === undefined ? undefined : parseIsoTimestamp(operation.startedAt);
+    if (startedAt?._tag === "err") return invalidReviewBatch();
+    return ok({
+      _tag: "Reply",
+      itemId: itemId.value,
+      ...(startedAt === undefined ? {} : { startedAt: startedAt.value }),
+      ...(operation.priorCommentIds === undefined ? {} : { priorCommentIds: [...new Set(operation.priorCommentIds)] }),
+    });
   }
   return ok({ _tag: operation._tag, itemId: itemId.value });
 }
@@ -761,7 +792,7 @@ function hasCoherentRelationships(
   const itemById = new Map(items.map((item) => [item.id, item]));
   if (
     (state._tag === "Applying" || state._tag === "PartialFailure") &&
-    !operationReferencesIncludedItems(state.operation, itemById)
+    !operationReferencesIncludedItems(state.operation, itemById, receipts)
   ) {
     return false;
   }
@@ -782,6 +813,10 @@ function hasCoherentRelationships(
   }
   const plannedOperationKeys = plannedOperationKeysFor(items);
   if (state._tag === "Applying" || state._tag === "PartialFailure") {
+    if (state.operation._tag === "SubmitPendingReview") {
+      const pending = receipts.find((receipt) => receipt._tag === "PendingReviewCreated");
+      return pending !== undefined && pending.reviewId === state.operation.reviewId && isExactCompletedPlan(plannedOperationKeys, completedOperationKeys);
+    }
     const currentOperationIndex = plannedOperationKeys.indexOf(
       operationKey(state.operation),
     );
@@ -816,7 +851,8 @@ function hasCoherentRelationships(
 
   return (
     plannedOperationKeys.length > 0 &&
-    isExactCompletedPlan(plannedOperationKeys, completedOperationKeys)
+    completedOperationKeys.length <= plannedOperationKeys.length &&
+    completedOperationKeys.every((key, index) => plannedOperationKeys[index] === key)
   );
 }
 
@@ -835,9 +871,14 @@ function isExactCompletedPlan(
 function operationReferencesIncludedItems(
   operation: BatchOperation,
   itemById: ReadonlyMap<LocalReviewItemId, ReviewBatchItem>,
+  receipts: ReadonlyArray<RemoteWriteReceipt>,
 ): boolean {
   if (operation._tag === "CreatePendingReview") {
     return referencesExactlyIncludedInlineComments(operation.itemIds, itemById);
+  }
+
+  if (operation._tag === "SubmitPendingReview") {
+    return receipts.some((receipt) => receipt._tag === "PendingReviewCreated" && receipt.reviewId === operation.reviewId);
   }
 
   const item = itemById.get(operation.itemId);
@@ -881,8 +922,10 @@ function referencesExactlyIncludedInlineComments(
     ),
   );
   const referencedItemIds = new Set(itemIds);
+  // Body-only reviews have no inline item ids; an empty marker is still a
+  // valid durable create/submit operation for that batch.
+  if (includedInlineItemIds.size === 0) return itemIds.length === 0;
   return (
-    includedInlineItemIds.size > 0 &&
     referencedItemIds.size === itemIds.length &&
     referencedItemIds.size === includedInlineItemIds.size &&
     [...includedInlineItemIds].every((itemId) => referencedItemIds.has(itemId))
@@ -892,6 +935,9 @@ function referencesExactlyIncludedInlineComments(
 function operationKey(operation: BatchOperation): string {
   if (operation._tag === "CreatePendingReview") {
     return "pending-review";
+  }
+  if (operation._tag === "SubmitPendingReview") {
+    return `submit-pending-review:${operation.reviewId}`;
   }
   return operation._tag === "Reply"
     ? `reply:${operation.itemId}`

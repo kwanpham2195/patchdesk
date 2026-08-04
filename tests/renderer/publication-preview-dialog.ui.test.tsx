@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -18,6 +18,28 @@ it("opens automatically after an explicit completion choice", async () => {
   expect(await screen.findByText("# Review")).toBeDefined();
   expect(previewRequest).toHaveBeenCalledOnce();
   expect(consumed).toHaveBeenCalledOnce();
+});
+
+it("keeps needs-confirmation recovery reachable when writes are blocked", async () => {
+  const user = userEvent.setup();
+  const recover = vi.fn(async () => undefined);
+  render(<PublicationPreviewDialog disabled publicationState="needs_confirmation" onPreview={async () => { throw new Error("still unavailable"); }} onConfirm={async () => undefined} onRecover={recover} onOpenGitHub={async () => undefined} />);
+  await user.click(screen.getByRole("button", { name: "Review publication recovery" }));
+  expect(screen.getByText("Durable publication evidence")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Open on GitHub" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeDefined();
+  await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
+  expect(recover).toHaveBeenCalledOnce();
+});
+
+it("closes before restoring focus to View feedback's destination", async () => {
+  const destinationRef: { current: HTMLDivElement | null } = { current: null };
+  const user = userEvent.setup();
+  render(<><div ref={(node) => { destinationRef.current = node; }} tabIndex={-1}>Published feedback</div><PublicationPreviewDialog preview={preview} publicationState="confirmed" onPreview={async () => preview} onConfirm={async () => undefined} onViewFeedback={() => destinationRef.current?.focus()} /></>);
+  await user.click(screen.getByRole("button", { name: "Preview publication" }));
+  await user.click(screen.getByRole("button", { name: "View feedback" }));
+  await waitFor(() => expect(document.activeElement).toBe(destinationRef.current));
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("shows the exact body and requires explicit publication confirmation", async () => {

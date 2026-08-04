@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { parseRepoRelativePath } from "../../../domain/ids";
+import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
-import { parseReviewBatch } from "../../../domain/review-batch";
+import { parseReviewBatch, type ReviewAnchor } from "../../../domain/review-batch";
 import { requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
-import { ReviewWorkbench } from "../components/review-workbench";
+import { ReviewWorkbench, type ReviewWorkbenchInitialState, usePublishedFeedbackNavigation, useReviewWorkbenchNavigation } from "../components/review-workbench";
+import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
 import { ReviewDraftDock } from "../components/review-draft-dock";
@@ -15,11 +16,14 @@ import { PublishedFeedbackPanel } from "../components/published-feedback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../components/ui/select";
 import { Spinner } from "../components/ui/spinner";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import type { MergeReadiness } from "../../../domain/merge-readiness";
+import type { PullRequestRef } from "../../../domain/pull-request";
 import { parseCommitDiffResponse, parseModelCatalog, parsePublicationPreview, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
+import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 
 export type ReviewWorkbenchPatch = Omit<Partial<WorkbenchResponse>, "insights"> & {
   readonly insights?: Partial<WorkbenchResponse["insights"]>;
@@ -28,6 +32,7 @@ export type ReviewWorkbenchPatch = Omit<Partial<WorkbenchResponse>, "insights"> 
 export type ReviewWorkbenchFlowProps = {
   readonly workbench: WorkbenchResponse;
   readonly initialSection?: "diff" | "checks";
+  readonly initialUiState?: ReviewWorkbenchInitialState;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onNavigationStateChange: (state: "clear" | "dirty_draft" | "write_pending") => void;
@@ -38,6 +43,7 @@ export type ReviewWorkbenchFlowProps = {
 export function ReviewWorkbenchFlow({
   workbench,
   initialSection,
+  initialUiState,
   onWorkbenchReplace,
   onWorkbenchPatch,
   onNavigationStateChange,
@@ -48,6 +54,7 @@ export function ReviewWorkbenchFlow({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
   const [autoOpenPublication, setAutoOpenPublication] = useState(false);
+  const [selectedRepairAnchor, setSelectedRepairAnchor] = useState<ReviewAnchor | undefined>();
   const detectUpdates = useCallback(async (): Promise<void> => {
     if (workbench.review.status !== "open") return;
     try {
@@ -88,6 +95,17 @@ export function ReviewWorkbenchFlow({
     }
   }, [onWorkbenchReplace, refreshing, workbench]);
 
+  const refreshConfirmedPublication = useCallback(async (): Promise<void> => {
+    if (workbench.review.status !== "open") return;
+    const value = await requestJson("/v1/reviews/refresh", {
+      method: "POST",
+      body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id },
+    });
+    const parsed = parseWorkbenchResponse(value);
+    if (parsed === undefined) throw new Error("Invalid Review publication refresh response");
+    onWorkbenchReplace(parsed);
+  }, [onWorkbenchReplace, workbench]);
+
   const saveInlineComment = useCallback(async (input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0]): Promise<void> => {
     const batch = workbench.draft;
     if (batch === undefined) throw new Error("The saved Review draft is unavailable");
@@ -110,18 +128,76 @@ export function ReviewWorkbenchFlow({
     onWorkbenchPatch({ draft: next });
   }, [onWorkbenchPatch, workbench]);
 
-  const localCommentAuthoring: LocalCommentAuthoring | undefined =
-    workbench.review.status === "open" && workbench.revision.freshness === "fresh" && workbench.draft !== undefined
-      ? { enabled: true, onSave: saveInlineComment }
-      : undefined;
+  const parsedDraft = workbench.draft === undefined ? undefined : parseReviewBatch(workbench.draft);
+  const localBatch = parsedDraft?._tag === "ok" && parsedDraft.value.state._tag === "Local";
+  const canEditDraft = workbench.review.status === "open" && localBatch;
+  const hasNeedsAttention = parsedDraft?._tag === "ok" && parsedDraft.value.items.some((item) => item._tag === "InlineComment" && item.postability === "needs_attention");
+  const hasActivePublication = parsedDraft?._tag === "ok" && (parsedDraft.value.state._tag === "Applying" || parsedDraft.value.state._tag === "PendingReview" || parsedDraft.value.state._tag === "Submitted" || parsedDraft.value.state._tag === "PartialFailure");
+  const canWriteGitHub = workbench.review.status === "open" && workbench.revision.freshness === "fresh" && localBatch && !hasNeedsAttention && !hasActivePublication;
+  const localCommentAuthoring: LocalCommentAuthoring | undefined = canEditDraft ? {
+    enabled: true,
+    onSave: saveInlineComment,
+    onSelectionChange: (location) => {
+      const path = parseRepoRelativePath(location.path);
+      if (path._tag === "ok") setSelectedRepairAnchor({ ...location, path: path.value });
+    },
+  } : undefined;
+  const mergeAction: PullRequestOverviewMerge | undefined = workbench.review.status === "open" && workbench.revision.freshness === "fresh" && workbench.revision.patchHash !== undefined ? {
+    readiness: workbench.mergeReadiness as MergeReadiness,
+    context: { repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`, prNumber: workbench.session.key.prNumber, title: workbench.pullRequest?.title ?? `Pull request #${workbench.session.key.prNumber}`, base: workbench.pullRequest?.baseBranch ?? "unknown", head: workbench.pullRequest?.headBranch ?? "unknown", headSha: workbench.revision.reviewedHeadSha },
+    methods: ["squash", "merge", "rebase"] as const,
+    onMerge: async (method: "merge" | "squash" | "rebase", acknowledgedWarnings: boolean) => {
+      await requestJson("/v1/reviews/merge", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedHeadSha: workbench.revision.reviewedHeadSha, expectedPatchHash: workbench.revision.patchHash, expectedRevision: workbench.draft?.updatedAt ?? workbench.revision.refreshedAt, method, acknowledgedWarnings } });
+      const refreshed = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } });
+      const next = parseWorkbenchResponse(refreshed);
+      if (next === undefined) throw new Error("Invalid terminal Review projection");
+      onWorkbenchReplace(next);
+      return {};
+    },
+  } : undefined;
+  const addFindingToDraft = useCallback(async (finding: AnalysisFinding): Promise<void> => {
+    const batch = workbench.draft;
+    const runId = workbench.insights.analysis.retained?.runId;
+    if (batch === undefined || runId === undefined) throw new Error("Analysis draft is unavailable");
+    const body = finding.suggestedComment ?? finding.explanation;
+    const command = finding.mappingStatus === "mapped" && finding.file !== undefined && finding.lineStart !== undefined && workbench.fullPatch !== undefined
+      ? (() => {
+          const mapped = mapFindingLocation(parseUnifiedPatch(workbench.fullPatch as string), { file: finding.file, lineStart: finding.lineStart, ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }), ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }) });
+          const path = mapped.path === undefined ? undefined : parseRepoRelativePath(mapped.path);
+          if (path?._tag === "ok" && mapped.line !== undefined && mapped.side !== undefined) {
+            const anchor = { path: path.value, startLine: mapped.startLine ?? mapped.line, line: mapped.line, side: mapped.side };
+            const fingerprint = fingerprintPatchAnchor(workbench.fullPatch as string, anchor);
+            if (fingerprint !== undefined) return { _tag: "AddFindingInlineComment" as const, reviewId: workbench.review.id, findingId: finding.id, runId, anchor, fingerprint, body };
+          }
+          return { _tag: "AddFindingGeneralComment" as const, reviewId: workbench.review.id, findingId: finding.id, runId, body };
+        })()
+      : { _tag: "AddFindingGeneralComment" as const, reviewId: workbench.review.id, findingId: finding.id, runId, body };
+    const value = await requestJson("/v1/reviews/batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: batch.updatedAt, command } });
+    const next = parseBatchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review batch response");
+    onWorkbenchPatch({ draft: next });
+  }, [onWorkbenchPatch, workbench]);
+  const dismissFindingFromWorkbench = useCallback(async (finding: AnalysisFinding, reason: string): Promise<void> => {
+    const runId = workbench.insights.analysis.retained?.runId;
+    if (runId === undefined || workbench.insights.analysis.status !== "current") throw new Error("Analysis is not current");
+    await requestJson(`/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`, { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, runId, reason } });
+    const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } });
+    const next = parseWorkbenchResponse(value);
+    if (next === undefined) throw new Error("Invalid Review projection response");
+    onWorkbenchReplace(next);
+  }, [onWorkbenchReplace, workbench]);
 
   return (
     <>
       <ReviewWorkbench
         model={workbench}
+        {...(initialUiState === undefined ? {} : { initialState: initialUiState })}
         actions={{
           detectUpdates,
           refresh,
+          ...(mergeAction === undefined ? {} : { merge: mergeAction }),
+          addFinding: addFindingToDraft,
+          dismissFinding: dismissFindingFromWorkbench,
           loadCommitDiff: async (commitSha: string): Promise<CommitDiffResponse> => {
             const value = await requestJson("/v1/reviews/commit-diff", {
               method: "POST",
@@ -135,10 +211,10 @@ export function ReviewWorkbenchFlow({
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{
-          insights: <InsightsSlot workbench={workbench} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} onAnalysisCompletion={() => setAutoOpenPublication(true)} />,
-          publishedFeedback: <PublishedFeedbackSlot workbench={workbench} onRefresh={refresh} />,
+          insights: <InsightsSlot workbench={workbench} {...(initialUiState?.insightDetail === undefined ? {} : { initialDetail: initialUiState.insightDetail })} onWorkbenchReplace={onWorkbenchReplace} onWorkbenchPatch={onWorkbenchPatch} onAnalysisCompletion={() => setAutoOpenPublication(true)} />,
+          publishedFeedback: <PublishedFeedbackSlot workbench={workbench} onRefresh={refresh} canWriteGitHub={canWriteGitHub} />,
           mergeAction: null,
-          draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} autoOpenPublication={autoOpenPublication} onAutoOpenPublicationConsumed={() => setAutoOpenPublication(false)} />,
+          draftDock: <DraftSlot workbench={workbench} onWorkbenchPatch={onWorkbenchPatch} onWorkbenchReplace={onWorkbenchReplace} onRefreshAfterPublication={refreshConfirmedPublication} canEditDraft={canEditDraft} canWriteGitHub={canWriteGitHub} {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })} {...(initialUiState?.draftExpanded === undefined ? {} : { initialExpanded: initialUiState.draftExpanded })} autoOpenPublication={autoOpenPublication} onAutoOpenPublicationConsumed={() => setAutoOpenPublication(false)} />,
         }}
       />
       {refreshError ? (
@@ -152,14 +228,34 @@ export function ReviewWorkbenchFlow({
 }
 
 type AnalysisFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
+type AnalysisCompletionChoice = "SaveAsReviewDraft" | "OpenPreviewWhenComplete" | "PublishWhenComplete:COMMENT" | "PublishWhenComplete:APPROVE" | "PublishWhenComplete:REQUEST_CHANGES";
+
+function analysisCompletionAction(choice: AnalysisCompletionChoice): Parameters<ReturnType<typeof useInsightRun>["run"]>[2] {
+  if (choice === "SaveAsReviewDraft") return { _tag: "SaveAsReviewDraft" };
+  if (choice === "OpenPreviewWhenComplete") return { _tag: "OpenPreviewWhenComplete" };
+  const event = choice.slice("PublishWhenComplete:".length) as "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+  return { _tag: "PublishWhenComplete", event, authorizationId: `publication-${crypto.randomUUID()}` };
+}
+
+function analysisCompletionLabel(choice: AnalysisCompletionChoice): string {
+  switch (choice) {
+    case "SaveAsReviewDraft": return "Save as Review draft";
+    case "OpenPreviewWhenComplete": return "Open preview when complete";
+    case "PublishWhenComplete:COMMENT": return "Publish as Comment";
+    case "PublishWhenComplete:APPROVE": return "Publish as Approve";
+    case "PublishWhenComplete:REQUEST_CHANGES": return "Publish as Request changes";
+  }
+}
 
 function InsightsSlot({
   workbench,
+  initialDetail,
   onWorkbenchReplace,
   onWorkbenchPatch,
   onAnalysisCompletion,
 }: {
   readonly workbench: WorkbenchResponse;
+  readonly initialDetail?: "analysis" | "walkthrough";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onAnalysisCompletion: () => void;
@@ -167,10 +263,9 @@ function InsightsSlot({
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
-  const [analysisCompletion, setAnalysisCompletion] = useState<"none" | "SaveAsReviewDraft" | "OpenPreviewWhenComplete">("none");
+  const [analysisCompletion, setAnalysisCompletion] = useState<AnalysisCompletionChoice>("OpenPreviewWhenComplete");
   const [catalogError, setCatalogError] = useState(false);
-  const [analysisReaderOpen, setAnalysisReaderOpen] = useState(false);
-  const [walkthroughReaderOpen, setWalkthroughReaderOpen] = useState(false);
+  const [selectedInsight, setSelectedInsight] = useState<"overview" | "analysis" | "walkthrough">(initialDetail ?? "analysis");
   const [reviewedWalkthroughSections, setReviewedWalkthroughSections] = useState<ReadonlyArray<string>>(workbench.insights.walkthrough.progress?.reviewedSectionIds ?? []);
   const [supportReviewed, setSupportReviewed] = useState(workbench.insights.walkthrough.progress?.supportReviewed ?? false);
   const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<string | undefined>(workbench.insights.walkthrough.progress?.currentSectionId);
@@ -180,8 +275,8 @@ function InsightsSlot({
   const onInsightPatch = useCallback((type: "analysis" | "walkthrough", projection: WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"]): void => {
     onWorkbenchPatch({ insights: { [type]: projection } });
   }, [onWorkbenchPatch]);
-  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", onWorkbenchReplace, onInsightPatch, onCompleted: () => { if (analysisCompletion === "OpenPreviewWhenComplete") onAnalysisCompletion(); } });
-  const walkthroughRun = useInsightRun({ profileId, reviewId, type: "walkthrough", onWorkbenchReplace, onInsightPatch });
+  const analysisRun = useInsightRun({ profileId, reviewId, type: "analysis", activeRun: workbench.insights.analysis.activeRun, onWorkbenchReplace, onInsightPatch, onCompleted: () => { if (analysisCompletion === "OpenPreviewWhenComplete") onAnalysisCompletion(); } });
+  const walkthroughRun = useInsightRun({ profileId, reviewId, type: "walkthrough", activeRun: workbench.insights.walkthrough.activeRun, onWorkbenchReplace, onInsightPatch });
 
   useEffect(() => {
     let active = true;
@@ -212,7 +307,6 @@ function InsightsSlot({
     if (runId === undefined) return;
     void requestJson("/v1/reviews/insights/walkthrough/progress", { method: "POST", body: { profileId, reviewId, runId, ...progress } }).catch(() => setProgressError(true));
   };
-  const analysisFindings = workbench.insights.analysis.status === "current" ? workbench.insights.analysis.retained?.value.findings : undefined;
   const reloadWorkbench = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, reviewId } });
     const next = parseWorkbenchResponse(value);
@@ -263,75 +357,128 @@ function InsightsSlot({
     if (next === undefined) throw new Error("Invalid Review batch response");
     onWorkbenchPatch({ draft: next });
   };
+  const selectedProjection = selectedInsight === "analysis" ? workbench.insights.analysis : selectedInsight === "walkthrough" ? workbench.insights.walkthrough : undefined;
+  const selectedRunning = selectedInsight === "analysis" ? analysisRun : selectedInsight === "walkthrough" ? walkthroughRun : undefined;
+  const selectedRetained = selectedProjection?.retained;
+  const selectedIsOutdated = selectedProjection?.status === "outdated";
+  const insightScope = { baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7), headShort: workbench.session.key.headSha.slice(0, 7), commitCount: workbench.commits.length, fileCount: workbench.pullRequest?.changedFileCount ?? (workbench.fullPatch === undefined ? 0 : parseUnifiedPatch(workbench.fullPatch).length), additions: workbench.pullRequest?.additions ?? 0, deletions: workbench.pullRequest?.deletions ?? 0, changedFiles: workbench.fullPatch === undefined ? [] : parseUnifiedPatch(workbench.fullPatch).map((file) => ({ path: file.newPath, additions: file.additions, deletions: file.deletions })) };
+  const emptyInsightScope = { baseShort: "unknown", headShort: selectedRetained?.headSha.slice(0, 7) ?? "unknown", commitCount: 0, fileCount: 0, additions: 0, deletions: 0, changedFiles: [] as ReadonlyArray<{ readonly path: string; readonly additions: number; readonly deletions: number }> };
+  const analysisRetainedScope = workbench.insights.analysis.retained?.scope;
+  const readerScope = selectedInsight === "analysis"
+    ? selectedIsOutdated ? (analysisRetainedScope ?? emptyInsightScope) : (analysisRetainedScope ?? insightScope)
+    : insightScope;
+  const analysisFirstRunActive = selectedInsight === "analysis" && selectedProjection?.status === "running" && selectedProjection.retained === undefined;
+  const analysisControlsVisible = selectedInsight === "analysis" && !analysisFirstRunActive && !selectedIsOutdated;
+  const runSelected = (): void => {
+    if (model === null || selectedInsight === "overview") return;
+    if (selectedInsight === "analysis") {
+      analysisRun.run(model, reasoning, selectedIsOutdated ? undefined : analysisCompletionAction(analysisCompletion));
+    } else {
+      walkthroughRun.run(model, reasoning);
+    }
+  };
+  const retainedDescription = selectedInsight === "analysis" ? workbench.insights.analysis.retained?.value.summary : selectedInsight === "walkthrough" ? workbench.insights.walkthrough.retained?.value.focus : undefined;
+  const currentRevision = workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
+  const navigateToFiles = useReviewWorkbenchNavigation();
+  const retainedAnalysis = selectedInsight === "analysis" && workbench.insights.analysis.retained !== undefined
+    ? <AnalysisReader
+        result={workbench.insights.analysis.retained.value}
+        onBack={() => setSelectedInsight("overview")}
+        {...(workbench.insights.analysis.status === "current" ? { onAddFinding: addFinding, onDismissFinding: dismissFinding } : {})}
+        scope={readerScope}
+      />
+    : null;
+  const retainedWalkthrough = selectedInsight === "walkthrough" && workbench.insights.walkthrough.retained !== undefined
+    ? <NarrativeWalkthrough
+        walkthrough={workbench.insights.walkthrough.retained.value}
+        reviewedSectionIds={reviewedWalkthroughSections}
+        supportReviewed={supportReviewed}
+        {...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection })}
+        {...(workbench.insights.walkthrough.status === "current" && workbench.fullPatch !== undefined ? { rawPatch: workbench.fullPatch } : {})}
+        actions={{
+          ...(workbench.insights.walkthrough.status === "current" ? { onBackToFiles: () => { navigateToFiles?.(); } } : {}),
+          onMarkSectionReviewed: (sectionId) => { const next = reviewedWalkthroughSections.includes(sectionId) ? reviewedWalkthroughSections : [...reviewedWalkthroughSections, sectionId]; setReviewedWalkthroughSections(next); saveWalkthroughProgress({ reviewedSectionIds: next, supportReviewed, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); },
+          onMarkSupportReviewed: () => { setSupportReviewed(true); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed: true, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); },
+          onSelectSection: (sectionId) => { setCurrentWalkthroughSection(sectionId); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed, currentSectionId: sectionId }); },
+        }}
+      />
+    : null;
+  const retainedReader = retainedAnalysis ?? retainedWalkthrough;
   return (
-    <section aria-label="Review insights" className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">Insights</h2>
-          <p className="text-sm text-muted-foreground">Run independent explanations for this Review snapshot.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={model} onValueChange={(value) => setModel(value ?? null)}>
-            <SelectTrigger size="sm" aria-label="Insight model"><SelectValue placeholder="Model" /></SelectTrigger>
-            <SelectContent><SelectContentGroup models={models} /></SelectContent>
-          </Select>
-          <Select value={reasoning} onValueChange={(value) => setReasoning(value as "low" | "medium" | "high")}>
-            <SelectTrigger size="sm" aria-label="Insight reasoning"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={analysisCompletion} onValueChange={(value) => setAnalysisCompletion(value as typeof analysisCompletion)}>
-            <SelectTrigger size="sm" aria-label="Analysis completion"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Keep result only</SelectItem>
-              <SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem>
-              <SelectItem value="OpenPreviewWhenComplete">Open preview when complete</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <section aria-label="Review insights" className="flex min-h-0 w-full flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
+        <nav aria-label="Insight navigation" className="flex shrink-0 flex-row gap-2 overflow-x-auto border-b pb-2 md:w-56 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:pb-0 md:pr-3">
+          <InsightRailButton selected={selectedInsight === "overview"} onClick={() => setSelectedInsight("overview")} title="Overview" status="Current" />
+          <InsightRailButton selected={selectedInsight === "analysis"} onClick={() => setSelectedInsight("analysis")} title="Analysis" status={insightStatusLabel(workbench.insights.analysis.status)} {...(workbench.insights.analysis.retained === undefined ? {} : { revision: workbench.insights.analysis.retained.headSha })} />
+          <InsightRailButton selected={selectedInsight === "walkthrough"} onClick={() => setSelectedInsight("walkthrough")} title="Walkthrough" status={insightStatusLabel(workbench.insights.walkthrough.status)} {...(workbench.insights.walkthrough.retained === undefined ? {} : { revision: workbench.insights.walkthrough.retained.headSha })} />
+        </nav>
+        <article aria-label={selectedInsight === "overview" ? "Insight overview" : `${selectedInsight} document`} className="min-w-0 flex-1 overflow-auto">
+          {selectedInsight === "overview" ? <InsightOverview analysis={workbench.insights.analysis} walkthrough={workbench.insights.walkthrough} onSelect={setSelectedInsight} /> : (
+            <>
+              <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+                <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{selectedInsight}</p><h2 className="text-lg font-semibold">{selectedInsight === "analysis" ? "Analysis document" : "Walkthrough document"}</h2><p className="text-sm text-muted-foreground">{selectedRetained === undefined ? "No retained result for this revision." : selectedIsOutdated ? `Retained revision ${selectedRetained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${selectedRetained.generatedAt}` : `Retained from ${selectedRetained.headSha.slice(0, 8)} · ${selectedRetained.generatedAt}`}</p></div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {analysisControlsVisible ? <>
+                    <Select value={model} onValueChange={(value) => setModel(value ?? null)}>
+                      <SelectTrigger size="sm" aria-label="Insight model">{model ?? "Model"}</SelectTrigger>
+                      <SelectContent><SelectContentGroup models={models} /></SelectContent>
+                    </Select>
+                    <Select value={reasoning} onValueChange={(value) => setReasoning(value as "low" | "medium" | "high")}>
+                      <SelectTrigger size="sm" aria-label="Insight reasoning">{reasoning}</SelectTrigger>
+                      <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
+                    </Select>
+                    <Select value={analysisCompletion} onValueChange={(value) => setAnalysisCompletion(value as AnalysisCompletionChoice)}>
+                      <SelectTrigger size="sm" aria-label="Analysis completion">{analysisCompletionLabel(analysisCompletion)}</SelectTrigger>
+                      <SelectContent><SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem><SelectItem value="OpenPreviewWhenComplete">Open preview when complete</SelectItem><SelectItem value="PublishWhenComplete:COMMENT">Publish as Comment</SelectItem><SelectItem value="PublishWhenComplete:APPROVE">Publish as Approve</SelectItem><SelectItem value="PublishWhenComplete:REQUEST_CHANGES">Publish as Request changes</SelectItem></SelectContent>
+                    </Select>
+                  </> : null}
+                  {analysisControlsVisible ? <Button size="sm" variant="ghost" aria-label="Open Analysis" onClick={() => setSelectedInsight("analysis")}>Open Analysis</Button> : null}
+                  {selectedRunning?.busy || selectedProjection?.status === "running" ? <Button size="sm" variant="outline" onClick={selectedRunning?.cancel}>Cancel</Button> : analysisFirstRunActive || selectedIsOutdated ? null : <Button size="sm" onClick={runSelected} disabled={!runEnabled}>{selectedProjection?.retained === undefined ? "Run" : "Regenerate"}</Button>}
+                </div>
+              </header>
+              {catalogError ? <p role="alert" className="py-2 text-sm text-destructive">Insight models are unavailable.</p> : null}
+              {progressError ? <p role="alert" className="py-2 text-sm text-destructive">Walkthrough progress could not be saved.</p> : null}
+              {selectedProjection?.artifactStatus === "mismatch" ? <InsightArtifactMismatch type={selectedInsight} /> : null}
+              <div className="flex flex-col gap-4">
+                {selectedRunning?.busy || selectedProjection?.status === "running" ? <InsightRunning type={selectedInsight} projection={selectedProjection} /> : selectedProjection?.status === "failed" ? <InsightFailed projection={selectedProjection} onRetry={runSelected} {...(retainedDescription === undefined ? {} : { retainedDescription })} /> : selectedIsOutdated ? <InsightOutdated type={selectedInsight} onRetry={runSelected} {...(selectedRetained === undefined ? {} : { retainedRevision: selectedRetained.headSha })} currentRevision={currentRevision} /> : retainedReader === null ? <InsightEmpty type={selectedInsight} onRun={runSelected} disabled={!runEnabled} /> : null}
+                {retainedReader}
+              </div>
+            </>
+          )}
+        </article>
       </div>
-      {catalogError ? <p role="alert" className="text-sm text-destructive">Insight models are unavailable.</p> : null}
-      {progressError ? <p role="alert" className="text-sm text-destructive">Walkthrough progress could not be saved.</p> : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        <InsightCard
-          title="Analysis"
-          description="Findings, verdict, validation plan, and bounded evidence."
-          projection={workbench.insights.analysis}
-          runStatus={analysisRun.status}
-          {...(analysisRun.failureReason === undefined ? {} : { failureReason: analysisRun.failureReason })}
-          busy={analysisRun.busy}
-          onRun={() => { if (model !== null) analysisRun.run(model, reasoning, analysisCompletion === "none" ? undefined : { _tag: analysisCompletion }); }}
-          onCancel={analysisRun.cancel}
-          disabled={!runEnabled}
-          {...(analysisFindings === undefined ? {} : { findings: analysisFindings })}
-          {...(workbench.draft === undefined ? {} : { onAddFinding: addFinding })}
-          {...(workbench.insights.analysis.retained === undefined ? {} : { onOpen: () => setAnalysisReaderOpen(true) })}
-        >
-          {workbench.insights.analysis.retained?.value.summary}
-        </InsightCard>
-        <InsightCard
-          title="Walkthrough"
-          description="A narrative guide through the changed code and supporting hunks."
-          projection={workbench.insights.walkthrough}
-          runStatus={walkthroughRun.status}
-          {...(walkthroughRun.failureReason === undefined ? {} : { failureReason: walkthroughRun.failureReason })}
-          busy={walkthroughRun.busy}
-          onRun={() => { if (model !== null) walkthroughRun.run(model, reasoning); }}
-          onCancel={walkthroughRun.cancel}
-          disabled={!runEnabled}
-          {...(workbench.insights.walkthrough.retained === undefined ? {} : { onOpen: () => setWalkthroughReaderOpen(true) })}
-        >
-          {workbench.insights.walkthrough.retained?.value.focus}
-        </InsightCard>
-      </div>
-      {analysisReaderOpen && workbench.insights.analysis.retained !== undefined ? <AnalysisReader result={workbench.insights.analysis.retained.value} onBack={() => setAnalysisReaderOpen(false)} {...(workbench.draft === undefined ? {} : { onAddFinding: addFinding })} onDismissFinding={dismissFinding} scope={{ baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7), headShort: workbench.session.key.headSha.slice(0, 7), commitCount: workbench.commits.length, fileCount: workbench.pullRequest?.changedFileCount ?? (workbench.fullPatch === undefined ? 0 : parseUnifiedPatch(workbench.fullPatch).length), additions: workbench.pullRequest?.additions ?? 0, deletions: workbench.pullRequest?.deletions ?? 0, changedFiles: workbench.fullPatch === undefined ? [] : parseUnifiedPatch(workbench.fullPatch).map((file) => ({ path: file.newPath, additions: 0, deletions: 0 })) }} /> : null}
-      {walkthroughReaderOpen && workbench.insights.walkthrough.retained !== undefined ? <NarrativeWalkthrough walkthrough={workbench.insights.walkthrough.retained.value} {...(workbench.fullPatch === undefined ? {} : { rawPatch: workbench.fullPatch })} reviewedSectionIds={reviewedWalkthroughSections} supportReviewed={supportReviewed} {...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection })} actions={{ onBackToFiles: () => setWalkthroughReaderOpen(false), onMarkSectionReviewed: (sectionId) => { const next = reviewedWalkthroughSections.includes(sectionId) ? reviewedWalkthroughSections : [...reviewedWalkthroughSections, sectionId]; setReviewedWalkthroughSections(next); saveWalkthroughProgress({ reviewedSectionIds: next, supportReviewed, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); }, onMarkSupportReviewed: () => { setSupportReviewed(true); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed: true, ...(currentWalkthroughSection === undefined ? {} : { currentSectionId: currentWalkthroughSection }) }); }, onSelectSection: (sectionId) => { setCurrentWalkthroughSection(sectionId); saveWalkthroughProgress({ reviewedSectionIds: reviewedWalkthroughSections, supportReviewed, currentSectionId: sectionId }); } }} /> : null}
       <p className="sr-only" aria-live="polite">{insightLiveStatus(analysisRun.status, walkthroughRun.status)}</p>
     </section>
   );
+}
+
+function InsightRailButton({ selected, onClick, title, status, revision }: { readonly selected: boolean; readonly onClick: () => void; readonly title: string; readonly status: string; readonly revision?: string }): React.JSX.Element {
+  return <button type="button" aria-current={selected ? "page" : undefined} className={`flex min-w-36 flex-col items-start rounded-md border px-3 py-2 text-left text-sm ${selected ? "border-primary bg-accent" : "hover:bg-accent"}`} onClick={onClick}><span className="font-medium">{title}</span><span className="text-xs text-muted-foreground">{status}{revision === undefined ? "" : ` · ${revision.slice(0, 8)}`}</span></button>;
+}
+
+function InsightOverview({ analysis, walkthrough, onSelect }: { readonly analysis: InsightProjection; readonly walkthrough: InsightProjection; readonly onSelect: (value: "analysis" | "walkthrough") => void }): React.JSX.Element {
+  return <div className="flex flex-col gap-4"><div><h2 className="text-lg font-semibold">Insights overview</h2><p className="text-sm text-muted-foreground">Choose one retained document. Analysis and Walkthrough run independently.</p></div><div className="grid gap-3 sm:grid-cols-2"><button type="button" className="rounded-md border p-4 text-left hover:bg-accent" onClick={() => onSelect("analysis")}><p className="font-medium">Analysis</p><p className="mt-1 text-sm text-muted-foreground">{insightStatusLabel(analysis.status)} · {analysis.retained === undefined ? "No retained result" : "Retained result available"}</p></button><button type="button" className="rounded-md border p-4 text-left hover:bg-accent" onClick={() => onSelect("walkthrough")}><p className="font-medium">Walkthrough</p><p className="mt-1 text-sm text-muted-foreground">{insightStatusLabel(walkthrough.status)} · {walkthrough.retained === undefined ? "No retained result" : "Retained result available"}</p></button></div></div>;
+}
+
+function InsightRunning({ type, projection }: { readonly type: "analysis" | "walkthrough"; readonly projection: InsightProjection | undefined }): React.JSX.Element {
+  return <div className="flex flex-col gap-3 py-6"><h3 className="font-medium">{type === "analysis" ? "Analysis" : "Walkthrough"} is running</h3><p className="text-sm text-muted-foreground">{projection?.activeRun === undefined ? "Preparing a bounded run…" : `Started ${projection.activeRun.startedAt}. Partial results are not shown.`}</p><Spinner /></div>;
+}
+
+function InsightFailed({ projection, onRetry, retainedDescription }: { readonly projection: InsightProjection; readonly onRetry: () => void; readonly retainedDescription?: string }): React.JSX.Element {
+  const message = projection.retained === undefined ? "This Insight run failed. No retained result is available." : "This Insight run failed. The previous retained result remains available below.";
+  return <div className="flex flex-col gap-3 py-6"><p role="alert" className="text-sm text-destructive">{message}</p>{projection.retained === undefined ? null : <p className="text-sm text-muted-foreground">Retained evidence from {projection.retained.headSha.slice(0, 8)} is still readable: {retainedDescription ?? "retained document"}</p>}<Button size="sm" onClick={onRetry}>Run again</Button></div>;
+}
+
+function InsightOutdated({ type, onRetry, retainedRevision, currentRevision }: { readonly type: "analysis" | "walkthrough"; readonly onRetry: () => void; readonly retainedRevision?: string; readonly currentRevision: string }): React.JSX.Element {
+  return <div className="flex flex-col gap-3 py-6"><h3 className="font-medium">{type === "analysis" ? "Analysis" : "Walkthrough"} is outdated</h3><p className="text-sm text-muted-foreground">Retained revision {retainedRevision?.slice(0, 8) ?? "unknown"} differs from current revision {currentRevision.slice(0, 8)}. This evidence remains readable, but it cannot navigate current code or change the Review draft.</p><Button size="sm" onClick={onRetry}>Run for latest revision</Button></div>;
+}
+
+function InsightArtifactMismatch({ type }: { readonly type: "analysis" | "walkthrough" | "overview" }): React.JSX.Element {
+  return <p role="alert" className="border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">Stored {type === "overview" ? "Insight" : type} source bytes do not match the retained revision. Source scope and hunk navigation are unavailable; the bounded document remains readable.</p>;
+}
+
+function InsightEmpty({ type, onRun, disabled }: { readonly type: "analysis" | "walkthrough"; readonly onRun: () => void; readonly disabled: boolean }): React.JSX.Element {
+  return <div className="flex flex-col gap-3 py-6"><h3 className="font-medium">No {type} has been generated</h3><p className="text-sm text-muted-foreground">Run this optional Insight for the represented Review snapshot.</p><Button size="sm" onClick={onRun} disabled={disabled}>Run</Button></div>;
 }
 
 function SelectContentGroup({ models }: { readonly models: ReadonlyArray<{ readonly id: string; readonly label: string }> }): React.JSX.Element {
@@ -401,15 +548,18 @@ function InsightCard({
   );
 }
 
+void InsightCard;
+
 function insightLiveStatus(analysis: string, walkthrough: string): string {
   const active = [analysis, walkthrough].filter((status) => status !== "idle");
   return active.length === 0 ? "" : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
 }
 
-function PublishedFeedbackSlot({ workbench, onRefresh }: { readonly workbench: WorkbenchResponse; readonly onRefresh: () => Promise<void> }): React.JSX.Element | null {
+function PublishedFeedbackSlot({ workbench, onRefresh, canWriteGitHub }: { readonly workbench: WorkbenchResponse; readonly onRefresh: () => Promise<void>; readonly canWriteGitHub: boolean }): React.JSX.Element | null {
   return <PublishedFeedbackPanel
     feedback={workbench.publishedFeedback}
     freshness={workbench.revision.freshness}
+    canWriteGitHub={canWriteGitHub}
     actions={{
       editComment: async (commentId, body) => {
         await requestJson("/v1/reviews/published-comments/edit", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, commentId, body } });
@@ -430,16 +580,29 @@ function PublishedFeedbackSlot({ workbench, onRefresh }: { readonly workbench: W
 function DraftSlot({
   workbench,
   onWorkbenchPatch,
+  onWorkbenchReplace,
+  onRefreshAfterPublication,
+  canEditDraft,
+  canWriteGitHub,
+  selectedRepairAnchor,
+  initialExpanded,
   autoOpenPublication,
   onAutoOpenPublicationConsumed,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly onRefreshAfterPublication: () => Promise<void>;
+  readonly canEditDraft: boolean;
+  readonly canWriteGitHub: boolean;
+  readonly selectedRepairAnchor?: ReviewAnchor;
+  readonly initialExpanded?: boolean;
   readonly autoOpenPublication: boolean;
   readonly onAutoOpenPublicationConsumed: () => void;
 }): React.JSX.Element | null {
-  if (workbench.draft === undefined) return null;
-  const batch = parseReviewBatch(workbench.draft);
+  const focusPublishedFeedback = usePublishedFeedbackNavigation();
+  const draftProjection = workbench.draft ?? emptyDraftForWorkbench(workbench);
+  const batch = parseReviewBatch(draftProjection);
   if (batch._tag === "err") return null;
   const postCommand = async (command: unknown): Promise<void> => {
     const value = await requestJson("/v1/reviews/batch", {
@@ -447,13 +610,18 @@ function DraftSlot({
       body: {
         profileId: workbench.session.key.profileId,
         sessionId: workbench.session.id,
-        expectedRevision: workbench.draft?.updatedAt,
+        expectedRevision: draftProjection.updatedAt,
         command,
       },
     });
     const next = parseBatchResponse(value);
     if (next === undefined) throw new Error("Invalid Review batch response");
     onWorkbenchPatch({ draft: next });
+  };
+  const writeIdentity = {
+    reviewId: workbench.review.id,
+    expectedHeadSha: workbench.revision.reviewedHeadSha,
+    ...(workbench.revision.patchHash === undefined ? {} : { expectedPatchHash: workbench.revision.patchHash }),
   };
   const actions: ReviewBatchPanelActions = {
     addInlineComment: async (input) => postCommand({
@@ -469,40 +637,91 @@ function DraftSlot({
     setSuggestedEvent: async (event) => postCommand({ _tag: "SetSuggestedEvent", event }),
     setItemIncluded: async (itemId, include) => postCommand({ _tag: "SetItemIncluded", itemId, include }),
     editItem: async (itemId, body) => postCommand({ _tag: "EditItem", itemId, body }),
+    repairInlineAnchor: async (itemId, anchor, fingerprint) => postCommand({ _tag: "RepairInlineAnchor", itemId, anchor, fingerprint }),
+    convertInlineToGeneral: async (itemId) => postCommand({ _tag: "ConvertInlineToGeneral", itemId }),
     apply: async () => {
-      const value = await requestJson("/v1/reviews/apply-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: workbench.draft?.updatedAt, acknowledgement: true } });
+      const value = await requestJson("/v1/reviews/apply-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, ...writeIdentity, expectedRevision: draftProjection.updatedAt, acknowledgement: true } });
       const next = parseBatchResponse(value);
       if (next !== undefined) onWorkbenchPatch({ draft: next });
     },
     submit: async (event) => {
-      const value = await requestJson("/v1/reviews/submit-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, expectedRevision: workbench.draft?.updatedAt, acknowledgement: true, event } });
+      const value = await requestJson("/v1/reviews/submit-batch", { method: "POST", body: { profileId: workbench.session.key.profileId, sessionId: workbench.session.id, ...writeIdentity, expectedRevision: draftProjection.updatedAt, acknowledgement: true, event } });
       const next = parseBatchResponse(value);
       if (next !== undefined) onWorkbenchPatch({ draft: next });
     },
   };
-  const publication = batch.value.state._tag === "Local" ? {
+  const recoveryEvidence = (batch.value.state._tag === "Applying" || (batch.value.state._tag === "PartialFailure" && (batch.value.state.failure.category === "outcome_unknown" || batch.value.state.failure.category === "unavailable"))) ? {
+    confirmed: batch.value.receipts.map((receipt) => receipt._tag === "PendingReviewCreated" ? `Pending review ${receipt.reviewId}` : receipt._tag === "ReplyCreated" ? `Reply ${receipt.itemId}` : `Thread ${receipt.itemId} ${receipt.state}`),
+    notConfirmed: [`${batch.value.state.operation._tag.replaceAll(/([A-Z])/g, " $1").trim()} is held for reconciliation`],
+    unableToVerify: batch.value.state._tag === "Applying" ? "GitHub must be checked before any further action." : batch.value.state.failure.message,
+  } : undefined;
+  const publication = batch.value.state._tag === "Local" || batch.value.state._tag === "Applying" || batch.value.state._tag === "PartialFailure" ? {
+    // Applying is durable evidence that the remote boundary may have been
+    // crossed. Keep recovery reachable after reload rather than presenting a
+    // permanently busy dialog with no safe action.
+    state: batch.value.state._tag === "Applying" || (batch.value.state._tag === "PartialFailure" && (batch.value.state.failure.category === "outcome_unknown" || batch.value.state.failure.category === "unavailable")) ? "needs_confirmation" as const : "ready" as const,
+    ...(recoveryEvidence === undefined ? {} : { recoveryEvidence }),
     preview: async () => {
-      const value = await requestJson("/v1/reviews/publication/preview", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, event: batch.value.suggestedEvent } });
+      const value = await requestJson("/v1/reviews/publication/preview", { method: "POST", body: { profileId: workbench.session.key.profileId, ...writeIdentity, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, event: batch.value.suggestedEvent } });
       const parsed = parsePublicationPreview(value);
       if (parsed === undefined) throw new Error("Invalid publication preview response");
       return parsed;
     },
     confirm: async () => {
-      const value = await requestJson("/v1/reviews/publication/confirm", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, acknowledgement: true, event: batch.value.suggestedEvent } });
+      const value = await requestJson("/v1/reviews/publication/confirm", { method: "POST", body: { profileId: workbench.session.key.profileId, ...writeIdentity, sessionId: workbench.session.id, expectedRevision: batch.value.updatedAt, acknowledgement: true, event: batch.value.suggestedEvent } });
       const next = parseBatchResponse(value);
       if (next === undefined) throw new Error("Invalid publication response");
-      onWorkbenchPatch({ draft: next });
+      // Confirmed publication changes GitHub-owned feedback. Refresh through
+      // the canonical read owner before loading the projection used by View
+      // feedback, so focus lands on the actual newly published records.
+      await onRefreshAfterPublication();
+      const projectedValue = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } });
+      const projected = parseWorkbenchResponse(projectedValue);
+      if (projected === undefined) throw new Error("Invalid publication projection");
+      onWorkbenchReplace(projected);
     },
+    recover: async () => {
+      const value = await requestJson("/v1/reviews/publication/recover", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } });
+      const next = parseWorkbenchResponse(value);
+      if (next !== undefined) onWorkbenchReplace(next);
+    },
+    openGitHub: async () => {
+      const host = parseGitHubHost(workbench.session.key.host);
+      const owner = parseGitHubOwner(workbench.session.key.owner);
+      const repo = parseGitHubRepoName(workbench.session.key.repo);
+      const number = parsePullRequestNumber(workbench.session.key.prNumber);
+      if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return;
+      const pr: PullRequestRef = { host: host.value, owner: owner.value, repo: repo.value, number: number.value };
+      await openPullRequestExternalUrl(pullRequestPageUrl(pr).toString(), pr);
+    },
+    viewFeedback: () => { focusPublishedFeedback?.(); },
   } : undefined;
   return <ReviewDraftDock
     batch={batch.value}
     {...(workbench.fullPatch === undefined ? {} : { patch: workbench.fullPatch })}
-    writeBlocked={workbench.revision.freshness !== "fresh"}
+    {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })}
+    writeBlocked={!canWriteGitHub}
+    draftEditingBlocked={!canEditDraft}
+    {...(initialExpanded === undefined ? {} : { initialOpen: initialExpanded })}
     actions={actions}
     {...(publication === undefined ? {} : { publication })}
   autoOpenPublication={autoOpenPublication}
   onAutoOpenPublicationConsumed={onAutoOpenPublicationConsumed}
   />;
+}
+
+function emptyDraftForWorkbench(workbench: WorkbenchResponse): NonNullable<WorkbenchResponse["draft"]> {
+  const timestamp = workbench.revision.refreshedAt;
+  return {
+    sessionId: `${workbench.session.key.host}__${workbench.session.key.owner}__${workbench.session.key.repo}__pr-${workbench.session.key.prNumber}__sha-${workbench.session.key.headSha.slice(0, 8)}__${workbench.session.key.headSha.slice(0, 12)}`,
+    state: { _tag: "Local" },
+    summaryBody: "",
+    suggestedEvent: "COMMENT",
+    items: [],
+    receipts: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 function parseBatchResponse(value: unknown): WorkbenchResponse["draft"] | undefined {

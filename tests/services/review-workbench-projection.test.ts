@@ -23,6 +23,7 @@ import {
   type GitSha,
 } from "../../src/domain/ids";
 import { createReview, type Review } from "../../src/domain/review";
+import { normalizeNarrativeWalkthrough } from "../../src/domain/narrative-walkthrough";
 import { createReviewSession, type ReviewSession, type ReviewSessionState } from "../../src/domain/review-session";
 import { createEmptyReviewBatch } from "../../src/domain/review-batch";
 import type { ReviewAttempt, ReviewAttemptState } from "../../src/domain/review-attempt";
@@ -388,7 +389,70 @@ describe("ReviewWorkbenchProjectionService", () => {
       }))._tag).toBe("ok");
 
       const loaded = await projection.loadLocal({ profileId, sessionId: session.id });
-      expect(loaded).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "current", retained: { value: { summary: "Durable analysis" } } } } } });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "current", artifactStatus: "verified", retained: { value: { summary: "Durable analysis" }, scope: { fileCount: 1 } } } } } });
+      await writeFile(session.patchPath, `${patch}tampered`, "utf8");
+      const corrupted = await projection.loadLocal({ profileId, sessionId: session.id });
+      expect(corrupted).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "outdated", artifactStatus: "mismatch", retained: { value: { summary: "Durable analysis" } } } } } });
+      if (corrupted._tag === "ok") expect(corrupted.value.insights.analysis.retained?.scope).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads an outdated Walkthrough from its retained Session patch instead of the current patch", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github, true);
+    try {
+      const current = completedSession(paths);
+      const oldHead = must(parseGitSha("1111111111111111111111111111111111111111"));
+      const oldId = createReviewSessionId({ profileId, host, owner, repo, prNumber: number, headSha: oldHead });
+      const oldSession = createReviewSession({
+        key: { profileId, host, owner, repo, prNumber: number, headSha: oldHead },
+        pr: { headSha: oldHead, isDraft: false, isOpen: true },
+        patchPath: must(parseAbsolutePath(paths.patchFile(profileId, oldId))),
+        worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, oldId))), headSha: oldHead },
+        createdAt: now,
+      });
+      const oldPatch = "diff --git a/src/old.ts b/src/old.ts\nindex 1111111..2222222 100644\n--- a/src/old.ts\n+++ b/src/old.ts\n@@ -1,2 +1,3 @@\n old\n+old-new\n old-tail\n";
+      const currentPatch = "diff --git a/src/current.ts b/src/current.ts\nindex 3333333..4444444 100644\n--- a/src/current.ts\n+++ b/src/current.ts\n@@ -1,2 +1,3 @@\n current\n+current-new\n current-tail\n";
+      await mkdir(dirname(oldSession.patchPath), { recursive: true });
+      await writeFile(oldSession.patchPath, oldPatch, "utf8");
+      await mkdir(dirname(current.patchPath), { recursive: true });
+      await writeFile(current.patchPath, currentPatch, "utf8");
+      expect((await sessions.save(oldSession))._tag).toBe("ok");
+      expect((await sessions.save(current))._tag).toBe("ok");
+      const oldHash = must(parseContentHash(createHash("sha256").update(oldPatch).digest("hex")));
+      const runId = must(parseInsightRunId("insight-walkthrough-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
+      const raw = {
+        snapshot: { profileId, sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash },
+        title: "Retained old walkthrough",
+        focus: "Read old patch",
+        chapters: [{ title: "Old chapter", sections: [{ title: "Old section", prose: "Old evidence", hunkIds: ["h1"] }] }],
+      };
+      const normalized = normalizeNarrativeWalkthrough(raw, oldPatch, { profileId, sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash });
+      if (normalized._tag === "err") throw new Error(`normalize failed: ${normalized.error.reason}`);
+      expect((await new InsightStore(paths).save(profileId, {
+        schemaVersion: 1,
+        reviewId: createReviewId(current.key),
+        type: "walkthrough",
+        nextToken: 2,
+        retained: { runId, revision: { sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash }, generatedAt: now, value: raw },
+        updatedAt: now,
+      }))._tag).toBe("ok");
+      const loaded = await projection.loadLocal({ profileId, sessionId: current.id });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { insights: { walkthrough: { status: "outdated", artifactStatus: "verified", retained: { value: { title: "Retained old walkthrough", snapshot: { sessionId: oldSession.id }, chapters: [{ sections: [{ hunks: [{ id: "h1" }] }] }] } } } } } });
+      await writeFile(oldSession.patchPath, oldPatch.replace("+old-new", "+tampered"), "utf8");
+      const corrupted = await projection.loadLocal({ profileId, sessionId: current.id });
+      expect(corrupted).toMatchObject({ _tag: "ok", value: { insights: { walkthrough: { status: "outdated", artifactStatus: "mismatch", retained: { value: { title: "Retained old walkthrough", chapters: [{ sections: [{ hunks: [], hunkIds: [] }] }], support: { hunks: [], hunkIds: [] } } } } } } });
+      await writeFile(oldSession.patchPath, "corrupt bytes", "utf8");
+      const unreadable = await projection.loadLocal({ profileId, sessionId: current.id });
+      expect(unreadable).toMatchObject({ _tag: "ok", value: { insights: { walkthrough: { status: "outdated", artifactStatus: "mismatch", retained: { value: { title: "Retained old walkthrough", chapters: [{ sections: [{ hunks: [], hunkIds: [] }] }], support: { hunks: [], hunkIds: [] } } } } } } });
+      await rm(oldSession.patchPath, { force: true });
+      const missingPatch = await projection.loadLocal({ profileId, sessionId: current.id });
+      expect(missingPatch).toMatchObject({ _tag: "ok", value: { insights: { walkthrough: { status: "outdated", artifactStatus: "mismatch", retained: { value: { title: "Retained old walkthrough", chapters: [{ sections: [{ hunks: [], hunkIds: [] }] }], support: { hunks: [], hunkIds: [] } } } } } } });
+      await rm(paths.sessionFile(profileId, oldSession.id), { force: true });
+      const missingSession = await projection.loadLocal({ profileId, sessionId: current.id });
+      expect(missingSession).toMatchObject({ _tag: "ok", value: { insights: { walkthrough: { status: "outdated", artifactStatus: "mismatch", retained: { value: { title: "Retained old walkthrough", chapters: [{ sections: [{ hunks: [], hunkIds: [] }] }], support: { hunks: [], hunkIds: [] } } } } } } });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

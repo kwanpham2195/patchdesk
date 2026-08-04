@@ -169,6 +169,23 @@ describe("ReviewRefreshService", () => {
     expect(saved.at(-1)?.status).toEqual({ _tag: "Terminal", state: "merged", observedAt: "2026-08-01T00:10:00.000Z" });
   });
 
+  it("does not mark a Published-feedback Review when the current reader omits optional feedback", async () => {
+    const represented = { ...snapshot, publishedFeedback: { reviews: [], comments: [], complete: true } as never };
+    const publishedReview: Review = { ...review, representedRemote: { headSha, pullRequestUpdatedAt: at, refreshedAt: at, snapshotHash: hashSnapshot(represented) } };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: { async load() { return ok({} as never); } },
+      reviews: { async load() { return ok(publishedReview); }, save },
+      sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
+      remote: { async load() { return ok(represented); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(represented) }); } },
+      // No published-feedback reader is available in this profile.
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
+      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(service.detect({ profileId, reviewId: publishedReview.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("does not mark a review when only time has elapsed", async () => {
     const save = vi.fn(async () => ok(undefined));
     const service = new ReviewRefreshService({

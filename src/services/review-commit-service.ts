@@ -1,3 +1,4 @@
+import { parseUnifiedPatch } from "../domain/patch";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -13,6 +14,10 @@ export type CommitDiffProjection = {
   readonly position: number;
   readonly total: number;
   readonly patch: string;
+  /** Statistics are derived from this immutable patch, never from mutable PR metadata. */
+  readonly fileCount: number;
+  readonly additions: number;
+  readonly deletions: number;
 };
 
 export type ReviewCommitFailure =
@@ -71,7 +76,16 @@ export class ReviewCommitService {
     if (patch._tag === "err") return err({ reason: "git_unavailable" });
     if (patch.value.stdout.length === 0 || (patch.value.stdout.includes("GIT binary patch") && !patch.value.stdout.includes("\n@@"))) return err({ reason: "binary_only" });
     if (Buffer.byteLength(patch.value.stdout, "utf8") > maxCommitPatchBytes) return err({ reason: "too_large" });
-    return ok({ commit, position: position + 1, total: snapshot.value.commits.length, patch: patch.value.stdout });
+    const files = parseUnifiedPatch(patch.value.stdout);
+    return ok({
+      commit,
+      position: position + 1,
+      total: snapshot.value.commits.length,
+      patch: patch.value.stdout,
+      fileCount: files.length,
+      additions: files.reduce((total, file) => total + file.additions, 0),
+      deletions: files.reduce((total, file) => total + file.deletions, 0),
+    });
   }
 }
 

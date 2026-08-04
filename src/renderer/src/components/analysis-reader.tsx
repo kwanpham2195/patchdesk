@@ -51,12 +51,6 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Reviewed Changes</CardTitle></CardHeader>
-        <CardContent className="text-sm">
-          {scope.changedFiles.length > 0 ? <ul className="list-disc pl-5">{scope.changedFiles.map((file) => <li key={file.path}><code>{file.path}</code> (+{file.additions}/-{file.deletions})</li>)}</ul> : <p className="text-muted-foreground">No changed files were reported.</p>}
-        </CardContent>
-      </Card>
-      <Card>
         <CardHeader>
           <CardTitle>Pull Request Overview</CardTitle>
           <CardDescription>Patchdesk-owned analysis for this retained Review snapshot.</CardDescription>
@@ -64,9 +58,18 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
         <CardContent className="flex flex-col gap-3 text-sm">
           <p>{result.changeSummary}</p>
           <p>{result.summary}</p>
-          <p><span className="font-medium">Verdict:</span> {result.verdict.replace("_", " ")}</p>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader><CardTitle>Reviewed Changes</CardTitle></CardHeader>
+        <CardContent className="text-sm">
+          {scope.changedFiles.length > 0 ? <ul className="list-disc pl-5">{scope.changedFiles.map((file) => <li key={file.path}><code>{file.path}</code> (+{file.additions}/-{file.deletions})</li>)}</ul> : <p className="text-muted-foreground">No changed files were reported.</p>}
+        </CardContent>
+      </Card>
+      {result.validationPlan.length > 0 ? <Card>
+        <CardHeader><CardTitle>Verification</CardTitle></CardHeader>
+        <CardContent><ol className="list-decimal space-y-1 pl-5 text-sm">{result.validationPlan.map((step) => <li key={step}>{step}</li>)}</ol></CardContent>
+      </Card> : null}
       <Card>
         <CardHeader>
           <CardTitle>Findings</CardTitle>
@@ -81,17 +84,15 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
         </CardContent>
       </Card>
       <Card>
+        <CardHeader><CardTitle>Verdict</CardTitle></CardHeader>
+        <CardContent className="text-sm"><p>{result.verdict.replace("_", " ")}</p></CardContent>
+      </Card>
+      {result.callouts?.length || result.unresolvedItems?.length || result.assumptions.length ? <Card>
         <CardHeader><CardTitle>Human Reviewer Callouts</CardTitle></CardHeader>
         <CardContent>
-          {result.callouts?.length || result.unresolvedItems?.length || result.assumptions.length ? <ul className="list-disc space-y-1 pl-5 text-sm">{result.callouts?.map((callout) => <li key={`${callout.category}-${callout.title}`}><strong>{callout.title}:</strong> {callout.detail}</li>)}{result.unresolvedItems?.map((item) => <li key={`unresolved-${item}`}>Unresolved: {item}</li>)}{result.assumptions.map((item) => <li key={`assumption-${item}`}>Assumption: {item}</li>)}</ul> : <p className="text-sm text-muted-foreground">No callouts were provided.</p>}
+          <ul className="list-disc space-y-1 pl-5 text-sm">{result.callouts?.map((callout) => <li key={`${callout.category}-${callout.title}`}><strong>{callout.title}:</strong> {callout.detail}</li>)}{result.unresolvedItems?.map((item) => <li key={`unresolved-${item}`}>Unresolved: {item}</li>)}{result.assumptions.map((item) => <li key={`assumption-${item}`}>Assumption: {item}</li>)}</ul>
         </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle>Validation plan</CardTitle></CardHeader>
-        <CardContent>
-          {result.validationPlan.length === 0 ? <p className="text-sm text-muted-foreground">No validation steps were provided.</p> : <ol className="list-decimal space-y-1 pl-5 text-sm">{result.validationPlan.map((step) => <li key={step}>{step}</li>)}</ol>}
-        </CardContent>
-      </Card>
+      </Card> : null}
     </section>
   );
 }

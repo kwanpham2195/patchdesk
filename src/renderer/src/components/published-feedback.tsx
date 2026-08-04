@@ -20,10 +20,13 @@ export type PublishedFeedbackActions = {
 export function PublishedFeedbackPanel({
   feedback,
   freshness,
+  canWriteGitHub = freshness === "fresh",
   actions,
 }: {
   readonly feedback: PublishedFeedback;
   readonly freshness: WorkbenchResponse["revision"]["freshness"];
+  /** Remote mutation controls are shown only for a writable Review snapshot. */
+  readonly canWriteGitHub?: boolean;
   readonly actions: PublishedFeedbackActions;
 }): React.JSX.Element | null {
   const [editing, setEditing] = useState<Comment>();
@@ -42,7 +45,7 @@ export function PublishedFeedbackPanel({
     try { await operation(); close(); } catch { setError(true); } finally { setBusy(false); }
   };
   return (
-    <section className="border-t px-4 py-4" aria-label="Published feedback">
+    <section tabIndex={-1} className="border-t px-4 py-4 outline-none" aria-label="Published feedback">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div><h2 className="font-semibold">Published feedback</h2><p className="text-xs text-muted-foreground">Remote GitHub reviews and inline comments.</p></div>
         <Badge variant="secondary">{count}</Badge>
@@ -50,8 +53,8 @@ export function PublishedFeedbackPanel({
       {feedback.complete === false ? <p className="mb-3 text-xs text-muted-foreground">Showing a partial result. Refresh GitHub state to load more feedback.</p> : null}
       {error ? <p role="alert" className="mb-3 text-xs text-destructive">The Published feedback action failed. Refresh GitHub state and try again.</p> : null}
       <div className="flex flex-col gap-3">
-        {feedback.reviews.map((review) => <article key={review.id} className="rounded-md border p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-medium">{review.author} · {review.event}</p>{review.canDismiss ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => { setDismissing(review); setDismissMessage(""); }}>Dismiss</Button> : null}</div><p className="mt-2 whitespace-pre-wrap text-sm">{review.body || "No review body."}</p><p className="mt-2 text-[11px] text-muted-foreground">{review.submittedAt}</p></article>)}
-        {feedback.comments.map((comment) => <article key={comment.id} className="rounded-md border p-3"><p className="text-xs font-medium">{comment.author} · {comment.createdAt}</p><p className="mt-2 whitespace-pre-wrap text-sm">{comment.body}</p>{comment.location === undefined ? null : <p className="mt-2 text-[11px] text-muted-foreground">{comment.location.path}:{comment.location.line ?? "?"}</p>}<div className="mt-3 flex gap-2">{comment.canEdit ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => { setEditing(comment); setEditBody(comment.body); }}>Edit</Button> : null}{comment.canDelete ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => setDeleting(comment)}>Delete</Button> : null}</div></article>)}
+        {feedback.reviews.map((review) => <article key={review.id} className="rounded-md border p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-medium">{review.author} · {review.event}</p>{canWriteGitHub && review.canDismiss ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => { setDismissing(review); setDismissMessage(""); }}>Dismiss</Button> : null}</div><p className="mt-2 whitespace-pre-wrap text-sm">{review.body || "No review body."}</p><p className="mt-2 text-[11px] text-muted-foreground">{review.submittedAt}</p></article>)}
+        {feedback.comments.map((comment) => <article key={comment.id} className="rounded-md border p-3"><p className="text-xs font-medium">{comment.author} · {comment.createdAt}</p><p className="mt-2 whitespace-pre-wrap text-sm">{comment.body}</p>{comment.location === undefined ? null : <p className="mt-2 text-[11px] text-muted-foreground">{comment.location.path}:{comment.location.line ?? "?"}</p>}<div className="mt-3 flex gap-2">{canWriteGitHub && comment.canEdit ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => { setEditing(comment); setEditBody(comment.body); }}>Edit</Button> : null}{canWriteGitHub && comment.canDelete ? <Button size="xs" variant="outline" disabled={disabled || busy} onClick={() => setDeleting(comment)}>Delete</Button> : null}</div></article>)}
       </div>
       <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}>
         <DialogContent><DialogHeader><DialogTitle>Edit published comment</DialogTitle></DialogHeader><Textarea value={editBody} onChange={(event) => setEditBody(event.target.value)} aria-label="Published comment body" /><DialogFooter><Button variant="outline" onClick={() => setEditing(undefined)}>Cancel</Button><Button disabled={busy || editBody.trim().length === 0} onClick={() => { if (editing !== undefined) void run(() => actions.editComment(editing.id, editBody), () => setEditing(undefined)); }}>Save</Button></DialogFooter></DialogContent>

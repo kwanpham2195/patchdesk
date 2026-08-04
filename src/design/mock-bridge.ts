@@ -4,10 +4,12 @@ import type {
   PatchdeskDesktopApi,
 } from "../main/ipc-contract";
 import {
+  createUnifiedReviewFixture,
   submissionFixtureData,
   workbenchFixtureData,
+  type UnifiedReviewFixtureState,
 } from "../renderer/src/flows/app-fixtures";
-import type { InboxResponse } from "../renderer/src/renderer-contracts";
+import type { InboxResponse, WorkbenchResponse } from "../renderer/src/renderer-contracts";
 
 const profile = {
   id: "cfw",
@@ -204,12 +206,10 @@ async function routeResponse(
     writeSettings(next);
     return ok(next);
   }
-  if (url.pathname === "/v1/reviews/open") return ok(preparedWorkbench());
+  if (url.pathname === "/v1/reviews/open") return ok(unifiedReviewFixtureForScenario(scenarioId));
   if (url.pathname === "/v1/reviews/load") {
-    if (isRecoveryWorkbenchScenario(scenarioId))
-      return ok(recoveryWorkbench(scenarioId));
-    if (scenarioId === "review-completed") return ok(completedWorkbench());
-    return ok(preparedWorkbench(scenarioId === "review-running"));
+    if (isRecoveryWorkbenchScenario(scenarioId)) return ok(recoveryWorkbench(scenarioId));
+    return ok(unifiedReviewFixtureForScenario(scenarioId));
   }
   if (url.pathname === "/v1/reviews/models") {
     if (
@@ -280,14 +280,21 @@ async function routeResponse(
       { host: "github.com", owner: "centraldigital", repo: "new-service" },
     ]);
   if (url.pathname === "/v1/github/access") return ok({ state: "ready" });
-  if (url.pathname === "/v1/reviews/refresh") return ok(completedWorkbench());
+  if (url.pathname === "/v1/reviews/refresh") return ok(unifiedReviewFixtureForScenario(scenarioId));
+  if (url.pathname === "/v1/reviews/commit-diff") {
+    const fixture = unifiedReviewFixtureForScenario(scenarioId);
+    const commitSha = record(input.body) && typeof input.body.commitSha === "string" ? input.body.commitSha : fixture.commits[0]?.sha;
+    const commit = fixture.commits.find((candidate) => candidate.sha === commitSha) ?? fixture.commits[0];
+    if (commit === undefined) return errorResponse(404, "Commit fixture is unavailable");
+    return ok({ commit, position: 1, total: 1, patch: fixture.fullPatch ?? "" });
+  }
   if (
     url.pathname === "/v1/reviews/submit-batch" ||
     url.pathname === "/v1/reviews/apply-batch" ||
     url.pathname === "/v1/reviews/batch"
   )
     return ok({
-      session: completedWorkbench().session,
+      session: unifiedReviewFixtureForScenario(scenarioId).session,
       batch: {
         state: {
           _tag: "Submitted",
@@ -299,12 +306,42 @@ async function routeResponse(
       reviewId: "design-review-42",
     });
   if (url.pathname === "/v1/reviews/merge")
-    return ok({ session: completedWorkbench().session });
+    return ok({ session: unifiedReviewFixtureForScenario(scenarioId).session });
   if (url.pathname.startsWith("/v1/watchlist")) return ok({});
   return errorResponse(
     404,
     `Design mock does not implement ${method} ${url.pathname}`,
   );
+}
+
+function unifiedReviewFixtureForScenario(scenarioId: string | undefined): WorkbenchResponse {
+  const stateMap: Record<string, UnifiedReviewFixtureState> = {
+    "review-files-default": "files-default",
+    "review-files-finding-selected": "files-finding-selected",
+    "review-files-commit-selected": "files-commit-selected",
+    "review-updates-draft": "updates-draft",
+    "review-draft-expanded": "draft-expanded",
+    "review-needs-attention": "needs-attention",
+    "review-pr-overview": "pr-overview",
+    "review-merged": "merged",
+    "review-closed": "closed",
+    "insights-overview": "insights-overview",
+    "analysis-running": "analysis-running",
+    "analysis-current": "analysis-current",
+    "analysis-outdated": "analysis-outdated",
+    "analysis-failed": "analysis-failed",
+    "analysis-replacement-running": "analysis-replacement-running",
+    "analysis-replacement-failed": "analysis-replacement-failed",
+    "walkthrough-current": "walkthrough-current",
+    "walkthrough-outdated": "walkthrough-outdated",
+    "publication-ready": "publication-ready",
+    "publication-publishing": "publication-publishing",
+    "publication-confirmed": "publication-confirmed",
+    "publication-needs-confirmation": "publication-needs-confirmation",
+    "published-feedback-collapsed": "published-feedback-collapsed",
+    "published-feedback-expanded": "published-feedback-expanded",
+  };
+  return createUnifiedReviewFixture(stateMap[scenarioId ?? ""] ?? "files-default");
 }
 
 function isRecoveryWorkbenchScenario(scenarioId: string | undefined): boolean {
@@ -677,106 +714,6 @@ function inboxRow(
     ...base,
     recovery: options.recovery,
   } as InboxResponse["inbox"]["rows"][number];
-}
-
-function preparedWorkbench(running = false): unknown {
-  return {
-    state: "review_started",
-    session: {
-      id: "design-session",
-      key: {
-        profileId: profile.id,
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        prNumber: 42,
-        headSha: sha,
-      },
-      ...(running
-        ? { currentAttemptId: "design-attempt-1", state: "Running" }
-        : {}),
-    },
-    pullRequest: {
-      ref: {
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        number: 42,
-      },
-      title: "Protect review writes",
-      author: "fixture",
-      headBranch: "feat/review",
-      baseBranch: "main",
-      headSha: sha,
-      description:
-        "Keep normal pull-request work available before optional local analysis.",
-    },
-    reviewedHeadSha: sha,
-    currentHeadSha: sha,
-    freshness: "fresh",
-    refreshedAt: "2026-07-18T10:00:00.000Z",
-    fullPatch: workbenchFixtureData.fullPatch,
-    checks: workbenchFixtureData.checks,
-    comments: workbenchFixtureData.comments,
-    batch: submissionFixtureData.batch,
-    mergeReadiness: {
-      _tag: "NeedsAcknowledgement",
-      blockers: [],
-      warnings: ["request_changes"],
-    },
-    recoveryView: {
-      noticeKey: "ready_to_review",
-      tone: "positive",
-      actionKey: "run_review",
-    },
-    ...(running ? { runId: "design-run-1" } : {}),
-  };
-}
-
-function completedWorkbench(): {
-  readonly state: "completed";
-  readonly session: unknown;
-  readonly result: unknown;
-  readonly reviewScope: { readonly kind: "full" };
-  readonly fullPatch: string;
-  readonly comparisonAvailability: "not_requested";
-  readonly pullRequest: unknown;
-  readonly reviewedHeadSha: string;
-  readonly freshness: "fresh";
-  readonly refreshedAt: string;
-  readonly comments: unknown;
-  readonly checks: unknown;
-  readonly mergeReadiness: unknown;
-} {
-  return {
-    state: "completed",
-    session: {
-      id: "design-session",
-      key: {
-        profileId: profile.id,
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        prNumber: 42,
-        headSha: sha,
-      },
-    },
-    result: workbenchFixtureData.result,
-    reviewScope: { kind: "full" },
-    fullPatch: workbenchFixtureData.fullPatch,
-    comparisonAvailability: "not_requested",
-    pullRequest: workbenchFixtureData.pullRequest,
-    reviewedHeadSha: sha,
-    freshness: "fresh",
-    refreshedAt: "2026-07-18T10:00:00.000Z",
-    comments: workbenchFixtureData.comments,
-    checks: workbenchFixtureData.checks,
-    mergeReadiness: {
-      _tag: "NeedsAcknowledgement",
-      blockers: [],
-      warnings: ["request_changes", "high_severity_finding"],
-    },
-  };
 }
 
 function operationResponse(

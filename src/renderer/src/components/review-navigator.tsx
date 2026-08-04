@@ -17,6 +17,7 @@ type ReviewNavigatorProps = {
   readonly findings: ReadonlyArray<Finding>;
   readonly section: ReviewNavigatorSection;
   readonly selectedPath?: string;
+  readonly selectedFindingId?: string;
   readonly activePath?: string;
   readonly selectedCommitSha?: string;
   readonly onSectionChange: (section: ReviewNavigatorSection) => void;
@@ -33,6 +34,7 @@ export function ReviewNavigator({
   findings,
   section,
   selectedPath,
+  selectedFindingId,
   activePath,
   selectedCommitSha,
   onSectionChange,
@@ -74,8 +76,8 @@ export function ReviewNavigator({
         <TabsContent value="findings" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
           <div className="flex flex-col gap-1" aria-label="Review findings">
             {findings.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No current mapped findings.</p> : findings.map((finding) => (
-              <button key={finding.id} type="button" className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => onFindingSelect(finding)}>
-                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><Badge variant="secondary">Mapped</Badge><span className="truncate">{finding.title}</span></span>
+              <button key={finding.id} type="button" aria-current={finding.id === selectedFindingId ? "true" : undefined} className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => onFindingSelect(finding)}>
+                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><Badge variant={finding.disposition === "dismissed" ? "outline" : finding.disposition === "added" ? "secondary" : "default"}>{finding.disposition ?? "open"}</Badge><span className="truncate">{finding.title}</span></span>
                 <span className="w-full truncate text-xs text-muted-foreground">{finding.file ?? "No file"}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`}</span>
               </button>
             ))}

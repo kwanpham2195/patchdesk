@@ -120,7 +120,8 @@ const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
 const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
-const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
+const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedHeadSha: optional(pipe(string(), minLength(40))), expectedPatchHash: optional(pipe(string(), minLength(64))), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
+const publicationRecoverySchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const publishedCommentEditSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commentId: pipe(string(), minLength(1)), body: string() });
 const publishedCommentDeleteSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commentId: pipe(string(), minLength(1)), confirmation: boolean() });
 const publishedReviewDismissSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), publishedReviewId: pipe(string(), minLength(1)), message: string(), confirmation: boolean() });
@@ -226,6 +227,9 @@ export async function startLocalApiServer(
     });
   };
   const sessions = new ReviewSessionStore(paths);
+  const reviews = new ReviewStore(paths);
+  const remoteReviews = new ReviewRemoteStore(paths, reviews);
+  const reviewWriteGate = new ReviewWriteGate(profiles, reviews, sessions, remoteReviews);
   const storageArtifacts = new ReviewArtifactStorage(
     paths,
     () => new Date().toISOString() as never,
@@ -249,12 +253,25 @@ export async function startLocalApiServer(
     lifecycleGate,
     diagnostics,
   );
-  await new ReviewRecoveryService(
+  const insights = new InsightStore(paths);
+  const migration = new UnifiedReviewMigration(sessions, reviews, { paths, remote: remoteReviews, insights });
+  // Adopt legacy session-owned artifacts before publication recovery. The
+  // recovery gate intentionally requires stable Review ownership, so running
+  // recovery first would leave a Submitted legacy session unrecovered until a
+  // later request (and make first launch appear to lose its publication).
+  const configuredProfiles = await profiles.list();
+  if (configuredProfiles._tag === "err") return { _tag: "migration-failed" };
+  for (const profile of configuredProfiles.value) {
+    const migrated = await migration.migrateProfile(profile.id);
+    if (migrated._tag === "err") return { _tag: "migration-failed" };
+  }
+  const recovery = new ReviewRecoveryService(
     profiles,
     sessions,
     () => new Date().toISOString() as never,
-    { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate, mergeOperations: new MergeOperationStore(paths), github },
-  ).reconcile();
+    { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate, reviewGate: reviewWriteGate, mergeOperations: new MergeOperationStore(paths), github },
+  );
+  await recovery.reconcile();
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -274,6 +291,7 @@ export async function startLocalApiServer(
           sessions,
           {
             getPullRequest: github.getPullRequest.bind(github),
+            getPullRequestComments: github.getPullRequestComments.bind(github),
             createPendingReview: writer.createPendingReview.bind(writer),
             submitPendingReview: writer.submitPendingReview.bind(writer),
             ...(writer.createThreadReply === undefined ? {} : { createThreadReply: writer.createThreadReply.bind(writer) }),
@@ -281,16 +299,13 @@ export async function startLocalApiServer(
           },
           () => new Date().toISOString() as never,
           analysisCompletion,
+          reviewWriteGate,
         );
-  const reviews = new ReviewStore(paths);
-  const migration = new UnifiedReviewMigration(sessions, reviews);
-  const insights = new InsightStore(paths);
   const reviewBatches = new ReviewBatchController(
     sessions,
     () => new Date().toISOString() as never,
-    { reviews, insights },
+    { reviews, insights, publicationAuthorizations },
   );
-  const remoteReviews = new ReviewRemoteStore(paths, reviews);
   const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights, reviews, remote: remoteReviews });
   if (configuration.insights?.configureCompletion !== undefined && reviewWrites !== undefined && analysisDrafts !== undefined) {
     configuration.insights.configureCompletion(async (input) => {
@@ -300,11 +315,16 @@ export async function startLocalApiServer(
         return;
       }
       if (input.completion._tag !== "PublishWhenComplete") return;
-      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.completion.authorizationId, event: input.completion.event });
+      const rebound = await analysisCompletion.rebindDraftRevision({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, headSha: input.expectedHeadSha, patchHash: input.expectedPatchHash, analysisRunId: input.analysisRunId, expectedDraftRevision: input.expectedDraftRevision, event: input.completion.event, authorizationId: input.completion.authorizationId, nextDraftRevision: seeded.value.updatedAt });
+      if (rebound._tag === "err") {
+        await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: "needs_attention" });
+        return;
+      }
+      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedHeadSha: input.expectedHeadSha, expectedPatchHash: input.expectedPatchHash, analysisRunId: input.analysisRunId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.completion.authorizationId, event: input.completion.event });
       if (published._tag === "err") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: "needs_attention" });
     });
   }
-  const publicationPreviews = new PublicationPreviewService(profiles, sessions, github);
+  const publicationPreviews = new PublicationPreviewService(profiles, sessions, github, reviewWriteGate);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
     sessions,
@@ -334,7 +354,6 @@ export async function startLocalApiServer(
     reviews,
     insights,
   );
-  const reviewWriteGate = new ReviewWriteGate(profiles, reviews, sessions, remoteReviews);
   const reviewRefresh = new ReviewRefreshService({
     profiles,
     reviews,
@@ -359,7 +378,7 @@ export async function startLocalApiServer(
   const reviewWorkbench = new ReviewWorkbenchController(
     reviewPreparation,
     reviewProjection,
-    { reviews, remote: remoteReviews, refresh: reviewRefresh, commits: reviewCommits },
+    { reviews, remote: remoteReviews, refresh: reviewRefresh, commits: reviewCommits, migration },
   );
   const reviewCompletion = new ReviewCompletionService(
     paths,
@@ -392,6 +411,7 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     new ReviewHeadVerifier(profiles, sessions, github, () => new Date().toISOString()),
     lifecycleGate,
+    { reviews },
   );
   const runCoordinator =
     workflowStarter === undefined
@@ -413,6 +433,8 @@ export async function startLocalApiServer(
           ["squash", "merge", "rebase"],
           () => new Date().toISOString() as never,
           new MergeOperationStore(paths),
+          reviewWriteGate,
+          reviews,
         );
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();
@@ -654,6 +676,29 @@ export async function startLocalApiServer(
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/publication/preview", async (context) => publicationPreviewResponse(context, publicationPreviews, await jsonBody(context)));
+  app.post("/v1/reviews/publication/recover", async (context) => {
+    const parsed = safeParse(publicationRecoverySchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+
+    // Recovery only reconciles durable evidence and reprojects this Review. It
+    // deliberately has no publication writer and never retries a remote write.
+    const before = await reviewWorkbench.load({ profileId: profileId.value, reviewId: reviewId.value });
+    if (before._tag === "err") return response(context, before);
+    const reconciled = await recovery.reconcilePublication(profileId.value, reviewId.value);
+    const projected = await reviewWorkbench.load({ profileId: profileId.value, reviewId: reviewId.value });
+    if (projected._tag === "err") return response(context, projected);
+    return context.json({
+      ...projected.value,
+      recovery: {
+        status: reconciled.failed === 0 ? "reconciled" : "needs_confirmation",
+        recovered: reconciled.recovered,
+        failed: reconciled.failed,
+      },
+    });
+  });
   app.post("/v1/reviews/insights/analysis/run", async (context) => insightRunResponse(context, configuration.insights, "analysis", await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/run", async (context) => insightRunResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/cancel", async (context) => insightCancelResponse(context, configuration.insights, "analysis", await jsonBody(context)));
@@ -930,7 +975,7 @@ async function publicationPreviewResponse(context: Context, service: Publication
   const sessionId = parseReviewSessionId(parsed.output.sessionId);
   const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
   if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || expectedRevision._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = await service.preview({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, expectedRevision: expectedRevision.value, event: parsed.output.event });
+  const result = await service.preview({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, ...(parsed.output.expectedHeadSha === undefined ? {} : { expectedHeadSha: parsed.output.expectedHeadSha }), ...(parsed.output.expectedPatchHash === undefined ? {} : { expectedPatchHash: parsed.output.expectedPatchHash }), expectedRevision: expectedRevision.value, event: parsed.output.event });
   if (result._tag === "ok") return context.json(result.value);
   const status = result.error === "profile_not_found" || result.error === "session_not_found" ? 404 : result.error === "revision_conflict" || result.error === "stale_head" || result.error === "needs_attention" ? 409 : result.error === "github_read_failed" ? 503 : 400;
   return context.json({ error: result.error }, status);

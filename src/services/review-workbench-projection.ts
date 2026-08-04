@@ -28,11 +28,13 @@ import {
   type IsoTimestamp,
   type PullRequestNumber,
   type ReviewId,
+  type ContentHash,
   type GitHubRepoName,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import type { InsightProjection } from "../domain/insight";
+import type { InsightArtifactStatus, InsightProjection, InsightScopeProjection } from "../domain/insight";
+import { parseUnifiedPatch } from "../domain/patch";
 import { normalizeNarrativeWalkthrough, type NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { MergeReadiness } from "../domain/merge-readiness";
 import type { InsightFindingDismissal, InsightRecord, RetainedInsight } from "../domain/insight-record";
@@ -73,6 +75,7 @@ export type ReviewWorkbenchProjection = {
   readonly session: WorkbenchSessionProjection;
   readonly revision: {
     readonly reviewedHeadSha: GitSha;
+    readonly patchHash?: ContentHash;
     readonly currentHeadSha?: GitSha;
     readonly freshness:
       | "fresh"
@@ -139,7 +142,7 @@ export class ReviewWorkbenchProjectionService {
       readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
     },
     private readonly reviews?: Pick<ReviewStore, "load">,
-    private readonly insights?: Pick<InsightStore, "loadTyped">,
+    private readonly insights?: Pick<InsightStore, "loadTyped"> & Partial<Pick<InsightStore, "load">>,
   ) {}
 
   async loadLocal(
@@ -255,7 +258,7 @@ export class ReviewWorkbenchProjectionService {
     if (attempts._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
     const storedInsights = this.insights === undefined
       ? undefined
-      : await this.loadStoredInsights(session, fullPatch);
+      : await this.loadStoredInsights(session);
     if (storedInsights?._tag === "err") return storedInsights;
     const patchHash = fullPatch === undefined
       ? undefined
@@ -311,10 +314,10 @@ export class ReviewWorkbenchProjectionService {
     const recoveryView = await this.recoveryView(session, attempts.value);
     const analysis = storedInsights === undefined
       ? projectAnalysis(session, attempts.value, currentHeadSha, source !== "local")
-      : projectStoredInsight(storedInsights.value.analysis, session, patchHash, (value, record) => projectAnalysisFindings(value, record, session));
+      : projectStoredInsight(storedInsights.value.analysis, session, patchHash, (value, record) => projectAnalysisFindings(value, record, session), storedInsights.value.analysisScope, storedInsights.value.analysisArtifactStatus);
     const walkthrough = storedInsights === undefined
       ? { status: "not_generated" as const }
-      : projectStoredInsight(storedInsights.value.walkthrough, session, patchHash);
+      : projectStoredInsight(storedInsights.value.walkthrough, session, patchHash, undefined, undefined, storedInsights.value.walkthroughArtifactStatus);
     const stableReview = this.reviews === undefined
       ? undefined
       : await this.reviews.load(session.key.profileId, createReviewId(session.key));
@@ -336,6 +339,7 @@ export class ReviewWorkbenchProjectionService {
       session: projectSession(session),
       revision: {
         reviewedHeadSha: session.key.headSha,
+        ...(patchHash === undefined ? {} : { patchHash: patchHash as ContentHash }),
         ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
         freshness,
         refreshedAt,
@@ -358,7 +362,6 @@ export class ReviewWorkbenchProjectionService {
 
   private async loadStoredInsights(
     session: ReviewSession,
-    fullPatch: string | undefined,
   ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
     if (this.insights === undefined) return ok({});
     const analysis = await this.insights.loadTyped(
@@ -367,18 +370,77 @@ export class ReviewWorkbenchProjectionService {
       "analysis",
       parseRetainedAnalysis,
     );
-    const walkthrough = await this.insights.loadTyped(
-      session.key.profileId,
-      createReviewId(session.key),
-      "walkthrough",
-      (value) => fullPatch === undefined ? err(undefined) : parseRetainedWalkthrough(value, fullPatch, session.key.profileId),
-    );
+    // A retained Walkthrough belongs to the Session that produced it. Never
+    // validate it against the currently represented Session's patch: Refresh
+    // intentionally changes that artifact while old reading evidence remains.
+    const walkthrough = this.insights.load === undefined
+      ? err({ reason: "not_found" as const })
+      : await this.loadWalkthroughRecord(session);
     if (analysis._tag === "err" && analysis.error.reason !== "not_found") return err({ _tag: "SessionStorageUnavailable" });
     if (walkthrough._tag === "err" && walkthrough.error.reason !== "not_found") return err({ _tag: "SessionStorageUnavailable" });
+    const analysisArtifact = analysis._tag === "ok" && analysis.value.retained !== undefined
+      ? await this.readInsightScope(session.key.profileId, analysis.value.retained)
+      : undefined;
     return ok({
       ...(analysis._tag === "ok" ? { analysis: analysis.value } : {}),
-      ...(walkthrough._tag === "ok" ? { walkthrough: walkthrough.value } : {}),
+      ...(walkthrough._tag === "ok" ? { walkthrough: walkthrough.value.record } : {}),
+      ...(analysisArtifact?.scope === undefined ? {} : { analysisScope: analysisArtifact.scope }),
+      ...(analysisArtifact?.artifactStatus === undefined ? {} : { analysisArtifactStatus: analysisArtifact.artifactStatus }),
+      ...(walkthrough._tag === "ok" && walkthrough.value.artifactStatus !== undefined ? { walkthroughArtifactStatus: walkthrough.value.artifactStatus } : {}),
     });
+  }
+
+  private async readInsightScope(
+    profileId: WorkspaceProfileId,
+    retained: RetainedInsight<ReviewResult>,
+  ): Promise<{ readonly scope?: InsightScopeProjection; readonly artifactStatus: InsightArtifactStatus }> {
+    const retainedSession = await this.sessions.load(profileId, retained.revision.sessionId);
+    if (retainedSession._tag === "err") return { artifactStatus: "mismatch" };
+    const patch = await readFile(retainedSession.value.patchPath, "utf8").catch(() => undefined);
+    if (patch === undefined) return { artifactStatus: "mismatch" };
+    const actualHash = createHash("sha256").update(patch).digest("hex");
+    if (actualHash !== retained.revision.patchHash) return { artifactStatus: "mismatch" };
+    const files = parseUnifiedPatch(patch);
+    return {
+      artifactStatus: "verified",
+      scope: {
+        baseShort: (retainedSession.value.pr.baseSha ?? "unknown").slice(0, 7),
+        headShort: retained.revision.headSha.slice(0, 7),
+        commitCount: 0,
+        fileCount: files.length,
+        additions: files.reduce((total, file) => total + file.additions, 0),
+        deletions: files.reduce((total, file) => total + file.deletions, 0),
+        changedFiles: files.map((file) => ({ path: file.newPath, additions: file.additions, deletions: file.deletions })),
+      },
+    };
+  }
+
+  private async loadWalkthroughRecord(
+    session: ReviewSession,
+  ): Promise<Result<{ readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>; readonly artifactStatus?: InsightArtifactStatus }, { readonly reason: "not_found" | "storage" }>> {
+    if (this.insights?.load === undefined) return err({ reason: "storage" });
+    const loaded = await this.insights.load(session.key.profileId, createReviewId(session.key), "walkthrough");
+    if (loaded._tag === "err") {
+      return loaded.error.reason === "not_found" ? err({ reason: "not_found" }) : err({ reason: "storage" });
+    }
+    if (loaded.value.retained === undefined) {
+      return ok({ record: loaded.value as InsightRecord<RetainedInsight<NarrativeWalkthrough>> });
+    }
+    const base = parseRetainedBase(loaded.value.retained);
+    if (base._tag === "err") return err({ reason: "storage" });
+    const fallback = (): Result<{ readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>; readonly artifactStatus: InsightArtifactStatus }, { readonly reason: "not_found" | "storage" }> => {
+      const value = readableWalkthroughWithoutArtifact(readObjectField(loaded.value.retained, "value"), session.key.profileId, base.value);
+      return ok({ record: { ...loaded.value, retained: { ...base.value, value } }, artifactStatus: "mismatch" });
+    };
+    const retainedSession = await this.sessions.load(session.key.profileId, base.value.revision.sessionId);
+    if (retainedSession._tag === "err") return fallback();
+    const retainedPatch = await readFile(retainedSession.value.patchPath, "utf8").catch(() => undefined);
+    if (retainedPatch === undefined) return fallback();
+    const actualHash = createHash("sha256").update(retainedPatch).digest("hex");
+    if (actualHash !== base.value.revision.patchHash) return fallback();
+    const parsed = parseRetainedWalkthrough(loaded.value.retained, retainedPatch, session.key.profileId);
+    if (parsed._tag === "err") return err({ reason: "storage" });
+    return ok({ record: { ...loaded.value, retained: parsed.value }, artifactStatus: "verified" });
   }
 
   private async recoveryView(
@@ -462,6 +524,9 @@ function evaluateReadiness(
 type StoredInsightRecords = {
   readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
   readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
+  readonly analysisScope?: InsightScopeProjection;
+  readonly analysisArtifactStatus?: InsightArtifactStatus;
+  readonly walkthroughArtifactStatus?: InsightArtifactStatus;
 };
 
 function projectStoredInsight<T>(
@@ -469,6 +534,8 @@ function projectStoredInsight<T>(
   session: ReviewSession,
   patchHash: string | undefined,
   decorate: (value: T, record: InsightRecord<RetainedInsight<T>>) => T = (value) => value,
+  scope?: InsightScopeProjection,
+  artifactStatus?: InsightArtifactStatus,
 ): InsightProjection<T> {
   const retained = record?.retained === undefined
     ? undefined
@@ -478,13 +545,16 @@ function projectStoredInsight<T>(
         headSha: record.retained.revision.headSha,
         generatedAt: record.retained.generatedAt,
         value: decorate(record.retained.value, record),
+        ...(scope === undefined ? {} : { scope }),
       };
   if (record?.activeRun !== undefined) {
     return {
       status: "running",
+      ...(artifactStatus === undefined ? {} : { artifactStatus }),
       ...(record.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }),
       ...(retained === undefined ? {} : { retained }),
       activeRun: {
+        runId: record.activeRun.id,
         sessionId: record.activeRun.revision.sessionId,
         startedAt: record.activeRun.startedAt,
       },
@@ -493,6 +563,7 @@ function projectStoredInsight<T>(
   if (record?.replacementFailure !== undefined) {
     return {
       status: "failed",
+      ...(artifactStatus === undefined ? {} : { artifactStatus }),
       ...(record.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }),
       ...(retained === undefined ? {} : { retained }),
       replacementFailure: {
@@ -506,7 +577,7 @@ function projectStoredInsight<T>(
   const isCurrent = retainedRecord?.revision.sessionId === session.id
     && retainedRecord.revision.headSha === session.key.headSha
     && retainedRecord.revision.patchHash === patchHash;
-  return { status: isCurrent ? "current" : "outdated", ...(record?.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }), retained };
+  return { status: isCurrent ? "current" : "outdated", ...(artifactStatus === undefined ? {} : { artifactStatus }), ...(record?.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }), retained };
 }
 
 function projectAnalysisFindings(
@@ -560,6 +631,30 @@ function parseRetainedWalkthrough(input: unknown, patch: string, profileId: Work
     patchHash: base.value.revision.patchHash,
   });
   return normalized._tag === "err" ? err(undefined) : ok({ ...base.value, value: normalized.value });
+}
+
+/** Preserve bounded prose while removing coordinates that no longer have trusted bytes. */
+function readableWalkthroughWithoutArtifact(input: unknown, profileId: WorkspaceProfileId, retained: RetainedInsight<unknown>): NarrativeWalkthrough {
+  const raw = typeof input === "object" && input !== null ? input as { readonly title?: unknown; readonly focus?: unknown; readonly chapters?: unknown } : {};
+  const chapters = Array.isArray(raw.chapters) ? raw.chapters.slice(0, 12).map((chapter, chapterIndex) => {
+    const value = typeof chapter === "object" && chapter !== null ? chapter as { readonly title?: unknown; readonly sections?: unknown } : {};
+    const sections = Array.isArray(value.sections) ? value.sections.slice(0, 32).map((section, sectionIndex) => {
+      const item = typeof section === "object" && section !== null ? section as { readonly title?: unknown; readonly prose?: unknown } : {};
+      return { id: `section-${chapterIndex + 1}-${sectionIndex + 1}`, title: boundedArtifactText(item.title, 160, "Untitled section"), prose: boundedArtifactText(item.prose, 4_000, "Stored section text is unavailable."), hunkIds: [], hunks: [] };
+    }) : [];
+    return { id: `chapter-${chapterIndex + 1}`, title: boundedArtifactText(value.title, 80, "Untitled chapter"), sections };
+  }) : [];
+  return {
+    snapshot: { profileId, ...retained.revision },
+    title: boundedArtifactText(raw.title, 200, "Stored Walkthrough"),
+    focus: boundedArtifactText(raw.focus, 2_000, "Stored source evidence is unavailable."),
+    chapters,
+    support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
+  };
+}
+
+function boundedArtifactText(value: unknown, maxLength: number, fallback: string): string {
+  return typeof value === "string" && value.trim().length > 0 ? value.slice(0, maxLength) : fallback;
 }
 
 function projectAnalysis(

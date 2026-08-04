@@ -22,9 +22,9 @@ describe("ReviewCommitService", () => {
       { async load() { return ok(review); } },
       { async load() { return ok(snapshot as never); } },
       { async load() { return ok(session as never); } },
-      { async run(argv) { calls.push([...argv]); return calls.length === 1 ? ok({ stdout: `${headSha}\n` }) : calls.length === 2 ? ok({ stdout: "" }) : ok({ stdout: "diff --git a/file.ts b/file.ts\n+change\n" }); } },
+      { async run(argv) { calls.push([...argv]); return calls.length === 1 ? ok({ stdout: `${headSha}\n` }) : calls.length === 2 ? ok({ stdout: "" }) : ok({ stdout: "diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+change\n" }); } },
     );
-    await expect(service.diff({ profileId, reviewId: review.id, commitSha })).resolves.toEqual({ _tag: "ok", value: { commit: snapshot.commits[0], position: 1, total: 1, patch: "diff --git a/file.ts b/file.ts\n+change\n" } });
+    await expect(service.diff({ profileId, reviewId: review.id, commitSha })).resolves.toEqual({ _tag: "ok", value: { commit: snapshot.commits[0], position: 1, total: 1, patch: "diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+change\n", fileCount: 1, additions: 1, deletions: 1 } });
     expect(calls[0]).toContain(`refs/patchdesk/reviews/${profileId}/${sessionId}/head^{commit}`);
   });
 

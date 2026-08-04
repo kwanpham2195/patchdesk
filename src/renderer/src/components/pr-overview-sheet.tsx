@@ -60,6 +60,9 @@ export type CanonicalReviewOverview = {
   };
   readonly publishedFeedback: WorkbenchResponse["publishedFeedback"];
   readonly mergeReadiness: { readonly _tag: string; readonly blockers: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+  readonly revision?: { readonly reviewedHeadSha: string; readonly currentHeadSha?: string; readonly freshness: string; readonly refreshedAt: string };
+  readonly analysisStatus?: string;
+  readonly walkthroughStatus?: string;
   readonly terminalState?: "merged" | "closed";
 };
 
@@ -68,10 +71,14 @@ export function CanonicalReviewOverviewSheet({
   open,
   onOpenChange,
   overview,
+  merge,
+  onRefresh,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly overview: CanonicalReviewOverview;
+  readonly merge?: PullRequestOverviewMerge;
+  readonly onRefresh?: () => Promise<void>;
 }): React.JSX.Element {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -81,12 +88,12 @@ export function CanonicalReviewOverviewSheet({
           <p className="truncate text-xs text-muted-foreground">{overview.repository}#{overview.prNumber} · {overview.title}</p>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
-          <OverviewRow title="Description" defaultOpen>
-            {overview.description?.trim() ? <PullRequestDescriptionPreview markdown={overview.description} /> : <p className="whitespace-pre-wrap text-sm">No description was provided on GitHub.</p>}
-          </OverviewRow>
-          <Separator />
           <OverviewRow title="Summary / change context" defaultOpen>
             <p className="whitespace-pre-wrap text-sm">{overview.summary}</p>
+          </OverviewRow>
+          <Separator />
+          <OverviewRow title="Revision and freshness" defaultOpen {...(overview.revision?.freshness === undefined ? {} : { trailing: overview.revision.freshness })}>
+            {overview.revision === undefined ? <p className="text-sm text-muted-foreground">Revision details unavailable.</p> : <div className="space-y-2 text-sm"><p>Reviewed head <code className="break-all">{overview.revision.reviewedHeadSha}</code></p>{overview.revision.currentHeadSha === undefined ? null : <p>Current head <code className="break-all">{overview.revision.currentHeadSha}</code></p>}<p className="text-xs text-muted-foreground">Refreshed {overview.revision.refreshedAt}</p>{overview.revision.freshness === "updates_available" || overview.revision.freshness === "not_refreshed" ? <Button size="sm" variant="outline" onClick={() => void onRefresh?.()}>Refresh GitHub state</Button> : null}</div>}
           </OverviewRow>
           <Separator />
           <OverviewRow title="Checks" trailing={overview.checks.overall}>
@@ -101,8 +108,17 @@ export function CanonicalReviewOverviewSheet({
             {overview.publishedFeedback.reviews.length === 0 && overview.publishedFeedback.comments.length === 0 ? <p className="text-sm text-muted-foreground">No published GitHub feedback was loaded.</p> : <div className="flex flex-col gap-3">{overview.publishedFeedback.complete === false ? <p className="text-xs text-muted-foreground">This list is incomplete; refresh GitHub state to load more.</p> : null}{overview.publishedFeedback.reviews.map((review) => <article key={review.id} className="rounded-md border p-3"><p className="text-xs font-medium">{review.author} · {review.event}</p><p className="mt-1 whitespace-pre-wrap text-sm">{review.body || "No review body."}</p></article>)}{overview.publishedFeedback.comments.map((comment) => <article key={comment.id} className="rounded-md border p-3"><p className="text-xs font-medium">{comment.author}</p><p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>{comment.location === undefined ? null : <p className="mt-1 text-xs text-muted-foreground">{comment.location.path}:{comment.location.line ?? "?"}</p>}</article>)}</div>}
           </OverviewRow>
           <Separator />
+          <OverviewRow title="Analysis and Walkthrough" defaultOpen>
+            <div className="space-y-2 text-sm"><p>Analysis · {statusLabel(overview.analysisStatus)}</p><p>Walkthrough · {statusLabel(overview.walkthroughStatus)}</p></div>
+          </OverviewRow>
+          <Separator />
           <OverviewRow title="Merge readiness" trailing={overview.mergeReadiness._tag}>
             <div className="flex flex-col gap-2 text-sm">{overview.mergeReadiness.blockers.map((blocker) => <p key={`blocker-${blocker}`} className="text-destructive">{blocker}</p>)}{overview.mergeReadiness.warnings.map((warning) => <p key={`warning-${warning}`} className="text-muted-foreground">{warning}</p>)}{overview.mergeReadiness.blockers.length === 0 && overview.mergeReadiness.warnings.length === 0 ? <p className="text-muted-foreground">No merge blockers or warnings.</p> : null}</div>
+          </OverviewRow>
+          {merge === undefined || overview.terminalState !== undefined ? null : <div className="border-t py-4"><MergeConfirmationDialog readiness={merge.readiness} context={merge.context} methods={merge.methods} onMerge={merge.onMerge} /></div>}
+          <Separator />
+          <OverviewRow title="GitHub description" defaultOpen>
+            {overview.description?.trim() ? <PullRequestDescriptionPreview markdown={overview.description} /> : <p className="whitespace-pre-wrap text-sm">No description was provided on GitHub.</p>}
           </OverviewRow>
         </div>
         {overview.terminalState === undefined ? null : <SheetFooter className="border-t px-5 py-4"><p className="text-sm text-muted-foreground">This Review is {overview.terminalState} and remains readable.</p></SheetFooter>}
@@ -283,6 +299,10 @@ function ThreadBatchActions({
     setBody("");
   };
   return <div className="mt-3 border-t pt-3"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => void saveReply()}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void actions.setThreadState(threadId, state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
+}
+
+function statusLabel(status: string | undefined): string {
+  return status === undefined ? "Not generated" : status.replaceAll("_", " ");
 }
 
 function overallLabel(

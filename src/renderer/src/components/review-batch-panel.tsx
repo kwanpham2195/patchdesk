@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { GitHubReviewEvent, ReviewBatch, ReviewBatchItem } from "../../../domain/review-batch";
-import type { ReviewAnchorFingerprint } from "../../../domain/review-batch";
+import type { ReviewAnchor, ReviewAnchorFingerprint } from "../../../domain/review-batch";
 import { parseRepoRelativePath } from "../../../domain/ids";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import type { ReviewFinding } from "../../../domain/review-result";
@@ -42,6 +42,9 @@ export type ReviewBatchPanelActions = {
   readonly setSuggestedEvent?: (event: GitHubReviewEvent) => Promise<void>;
   readonly setItemIncluded?: (itemId: string, include: boolean) => Promise<void>;
   readonly editItem?: (itemId: string, body: string) => Promise<void>;
+  /** Reattach an unsafe inline item to a line selected from the immutable patch. */
+  readonly repairInlineAnchor?: (itemId: string, anchor: ReviewAnchor, fingerprint: ReviewAnchorFingerprint) => Promise<void>;
+  readonly convertInlineToGeneral?: (itemId: string) => Promise<void>;
   readonly apply: () => Promise<void>;
   readonly submit: (event: GitHubReviewEvent) => Promise<void>;
 };
@@ -50,16 +53,22 @@ export function ReviewBatchPanel({
   batch,
   patch,
   selectedFinding,
+  selectedRepairAnchor,
   writeBlocked,
   actions,
   showWriteActions = true,
   defaultApplyOpen = false,
   showDraftControls = false,
+  draftEditingBlocked: draftEditingBlockedProp,
 }: {
   readonly batch?: ReviewBatch;
   readonly patch?: string;
   readonly selectedFinding?: ReviewFinding;
+  /** The explicit range currently selected in the immutable diff. */
+  readonly selectedRepairAnchor?: ReviewAnchor;
   readonly writeBlocked: boolean;
+  /** Local draft editing remains available while GitHub writes are blocked. */
+  readonly draftEditingBlocked?: boolean;
   readonly actions: ReviewBatchPanelActions;
   /** Overview sheets keep confirmation-gated GitHub actions in their fixed footer. */
   readonly showWriteActions?: boolean;
@@ -68,7 +77,8 @@ export function ReviewBatchPanel({
   readonly showDraftControls?: boolean;
 }): React.JSX.Element {
   const [body, setBody] = useState("");
-  const canAdd = !writeBlocked && selectedFinding?.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined && selectedFinding.lineEnd !== undefined && body.trim().length > 0 && batch?.state._tag === "Local";
+  const draftEditingBlocked = draftEditingBlockedProp ?? writeBlocked;
+  const canAdd = !draftEditingBlocked && selectedFinding?.mappingStatus === "mapped" && selectedFinding.file !== undefined && selectedFinding.lineStart !== undefined && selectedFinding.lineEnd !== undefined && body.trim().length > 0 && batch?.state._tag === "Local";
   const add = async (): Promise<void> => {
     if (!canAdd || selectedFinding === undefined || selectedFinding.file === undefined || selectedFinding.lineStart === undefined || selectedFinding.lineEnd === undefined) return;
     const side = selectedFinding.diffSide ?? "new";
@@ -90,14 +100,15 @@ export function ReviewBatchPanel({
       <p className="mt-1 text-xs text-muted-foreground">Review comments stay local until you explicitly confirm the GitHub write.</p>
       {batch === undefined ? <p className="mt-3 text-sm text-muted-foreground">This saved review predates review batches. Re-run it to create a current local batch.</p> : <>
         <p className="mt-3 text-sm">{batch.items.length} planned {batch.items.length === 1 ? "action" : "actions"} · {batch.state._tag.replaceAll(/([A-Z])/g, " $1").trim()}</p>
-        {showDraftControls ? <DraftControls batch={batch} writeBlocked={writeBlocked} actions={actions} /> : null}
+        {showDraftControls ? <DraftControls batch={batch} writeBlocked={draftEditingBlocked} actions={actions} /> : null}
+        {showDraftControls && patch !== undefined ? <NeedsAttentionQueue batch={batch} patch={patch} {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })} disabled={draftEditingBlocked} actions={actions} /> : null}
         <ul className="mt-2 space-y-2">
-          {batch.items.map((item) => <BatchItem key={item.id} item={item} editable={batch.state._tag === "Local"} onRemove={actions.removeItem} />)}
+          {batch.items.map((item) => <BatchItem key={item.id} item={item} editable={!draftEditingBlocked && batch.state._tag === "Local"} onRemove={actions.removeItem} />)}
         </ul>
         <div className="mt-3 space-y-2 border-t pt-3">
           <p className="text-sm font-medium">Add inline comment</p>
           <p className="text-xs text-muted-foreground">Select a mapped finding to use its exact diff range.</p>
-          <Textarea aria-label="New inline comment" value={body} onChange={(event) => setBody(event.target.value)} placeholder={writeBlocked ? "Refresh GitHub state before adding a comment" : selectedFinding?.mappingStatus === "mapped" ? "Write a local inline comment" : "Select a mapped finding first"} disabled={writeBlocked || batch.state._tag !== "Local" || selectedFinding?.mappingStatus !== "mapped"} />
+          <Textarea aria-label="New inline comment" value={body} onChange={(event) => setBody(event.target.value)} placeholder={draftEditingBlocked ? "This Review draft is not editable" : selectedFinding?.mappingStatus === "mapped" ? "Write a local inline comment" : "Select a mapped finding first"} disabled={draftEditingBlocked || batch.state._tag !== "Local" || selectedFinding?.mappingStatus !== "mapped"} />
           <Button size="sm" variant="outline" disabled={!canAdd} onClick={() => void add()}>Add to batch</Button>
         </div>
         {showWriteActions ? <ReviewBatchWriteActions batch={batch} writeBlocked={writeBlocked} actions={actions} defaultApplyOpen={defaultApplyOpen} /> : null}
@@ -128,16 +139,15 @@ export function ReviewBatchWriteActions({
   };
   if (batch === undefined) return <p className="text-sm text-muted-foreground">A current review batch is required before creating a GitHub review.</p>;
   return <>
-    {batch.state._tag === "Local" ? (
+    {batch.state._tag === "Local" && !writeBlocked ? (
       <div className="space-y-2">
-        <Button disabled={writeBlocked} onClick={() => setConfirmOpen(true)}>Create pending review</Button>
-        {writeBlocked ? <p className="text-xs text-muted-foreground">Refresh GitHub state before writing this saved batch.</p> : null}
+        <Button onClick={() => setConfirmOpen(true)}>Create pending review</Button>
       </div>
     ) : null}
     {batch.state._tag === "PendingReview" ? (
       <div className="space-y-2">
         <p className="text-sm text-primary">Pending review {batch.state.reviewId} created.</p>
-        <Button disabled={writeBlocked} onClick={() => setSubmitOpen(true)}>Submit pending review</Button>
+        {!writeBlocked ? <Button onClick={() => setSubmitOpen(true)}>Submit pending review</Button> : null}
       </div>
     ) : null}
     <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -148,7 +158,7 @@ export function ReviewBatchWriteActions({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void apply()}>Create pending review</AlertDialogAction>
+            <AlertDialogAction disabled={writeBlocked} onClick={() => void apply()}>Create pending review</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -173,7 +183,7 @@ export function ReviewBatchWriteActions({
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={!submitAcknowledged} onClick={() => void actions.submit(event)}>Submit review</AlertDialogAction>
+            <AlertDialogAction disabled={writeBlocked || !submitAcknowledged} onClick={() => void actions.submit(event)}>Submit review</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -201,7 +211,32 @@ function EditableItemBody({ item, disabled, onSave }: { readonly item: Extract<R
 }
 
 function BatchItem({ item, editable, onRemove }: { readonly item: ReviewBatchItem; readonly editable: boolean; readonly onRemove: (id: string) => Promise<void> }): React.JSX.Element {
+  const [removeOpen, setRemoveOpen] = useState(false);
   const detail = item._tag === "InlineComment" ? `${item.anchor.path}:${item.anchor.startLine}–${item.anchor.line}` : item._tag === "GeneralComment" ? "General feedback" : item._tag === "ThreadReply" ? `Reply to ${item.threadId}` : `${item.action} ${item.threadId}`;
   const body = item._tag === "InlineComment" || item._tag === "GeneralComment" || item._tag === "ThreadReply" ? item.body : undefined;
-  return <li className="rounded-md border p-2 text-sm"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{detail}</p>{item._tag === "InlineComment" && item.postability === "stale_sha" ? <Badge variant="outline">Old location</Badge> : null}</div>{body === undefined ? null : <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{body}</p>}</div>{editable ? <Button size="xs" variant="ghost" onClick={() => void onRemove(item.id)}>Remove</Button> : null}</div></li>;
+  return <li className="rounded-md border p-2 text-sm"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{detail}</p>{item._tag === "InlineComment" && item.postability === "stale_sha" ? <Badge variant="outline">Old location</Badge> : null}</div>{body === undefined ? null : <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{body}</p>}</div>{editable ? <Button size="xs" variant="ghost" onClick={() => setRemoveOpen(true)}>Remove</Button> : null}</div><AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove this review item?</AlertDialogTitle><AlertDialogDescription>The item and its carried-forward evidence will be removed from this local draft.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { void onRemove(item.id); setRemoveOpen(false); }}>Remove item</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></li>;
+}
+
+function NeedsAttentionQueue({ batch, patch, selectedRepairAnchor, disabled, actions }: { readonly batch: ReviewBatch; readonly patch: string; readonly selectedRepairAnchor?: ReviewAnchor; readonly disabled: boolean; readonly actions: ReviewBatchPanelActions }): React.JSX.Element | null {
+  const unresolved = batch.items.filter((item): item is Extract<ReviewBatchItem, { readonly _tag: "InlineComment" }> => item._tag === "InlineComment" && item.postability === "needs_attention");
+  const [index, setIndex] = useState(0);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (unresolved.length > 0) heading.current?.focus(); }, [unresolved.length, index]);
+  if (unresolved.length === 0) return null;
+  const item = unresolved[Math.min(index, unresolved.length - 1)];
+  if (item === undefined) return null;
+  const selectedFingerprint = selectedRepairAnchor === undefined ? undefined : fingerprintPatchAnchor(patch, selectedRepairAnchor);
+  const repair = async (): Promise<void> => {
+    if (selectedRepairAnchor === undefined || selectedFingerprint === undefined || actions.repairInlineAnchor === undefined) return;
+    await actions.repairInlineAnchor(item.id, selectedRepairAnchor, selectedFingerprint);
+    setIndex((current) => Math.min(current, Math.max(0, unresolved.length - 2)));
+  };
+  const convert = async (): Promise<void> => {
+    if (actions.convertInlineToGeneral === undefined) return;
+    await actions.convertInlineToGeneral(item.id);
+    setIndex((current) => Math.min(current, Math.max(0, unresolved.length - 2)));
+  };
+  const original = item.attention?.originalAnchor ?? item.anchor;
+  return <section className="mt-3 space-y-3 rounded-md border border-amber-500/50 bg-amber-500/5 p-3" aria-label="Needs-attention repair queue"><h3 ref={heading} tabIndex={-1} className="font-medium outline-none">Needs attention · {index + 1} of {unresolved.length}</h3><p className="text-xs text-muted-foreground">Select the replacement line in the current diff. This inline item cannot be published until its anchor is repaired or converted.</p><div className="rounded border bg-background p-2 text-xs"><p className="font-medium">Original location · {original.path}:{original.startLine}–{original.line} ({original.side})</p>{selectedRepairAnchor === undefined ? <p className="mt-1 text-amber-700 dark:text-amber-300">No current line selected.</p> : <p className="mt-1 text-emerald-700 dark:text-emerald-300">Selected replacement · {selectedRepairAnchor.path}:{selectedRepairAnchor.startLine}–{selectedRepairAnchor.line} ({selectedRepairAnchor.side})</p>}{item.attention?.reason === undefined ? null : <p className="mt-1 text-muted-foreground">Reason · {item.attention.reason.replaceAll("_", " ")}</p>}{item.carriedFrom === undefined ? null : <p className="mt-1 text-muted-foreground">Carried from · {item.carriedFrom.sourceSessionId} · {item.carriedFrom.sourceHeadSha.slice(0, 12)}</p>}<p className="mt-1 whitespace-pre-wrap text-muted-foreground">{item.body}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" disabled={disabled || selectedRepairAnchor === undefined || selectedFingerprint === undefined || actions.repairInlineAnchor === undefined} onClick={() => void repair()}>Reattach selected line</Button><Button size="sm" variant="outline" disabled={disabled || actions.convertInlineToGeneral === undefined} onClick={() => void convert()}>Convert to Review body</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={() => setRemoveOpen(true)}>Remove</Button></div><AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove this unsafe item?</AlertDialogTitle><AlertDialogDescription>Removing it resolves this repair queue item, but does not publish its text.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { void actions.removeItem(item.id); setRemoveOpen(false); }}>Remove item</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></section>;
 }

@@ -7,6 +7,8 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewArtifactStorage, type QuarantineFailure } from "../../src/adapters/storage/review-artifact-storage";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import {
   createReviewSessionId,
@@ -29,6 +31,10 @@ import type { ReviewSession, ReviewSessionState } from "../../src/domain/review-
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
+import { ReviewWriteGate } from "../../src/services/review-write-gate";
+import { UnifiedReviewMigration } from "../../src/services/unified-review-migration";
+import { applyReviewBatch, planBatchOperations } from "../../src/services/review-submission-service";
+import { createReviewId } from "../../src/domain/ids";
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {
   if (result._tag === "err") throw new Error("fixture");
@@ -38,6 +44,18 @@ function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly
 const profileId = must(parseWorkspaceProfileId("cfw"));
 const headSha = must(parseGitSha("2222222222222222222222222222222222222222"));
 const timestamp = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
+
+class FailingSuccessorSessionStore extends ReviewSessionStore {
+  private failNextSave = true;
+
+  override async save(session: unknown) {
+    if (this.failNextSave) {
+      this.failNextSave = false;
+      return { _tag: "err" as const, error: { _tag: "StorageFailure" as const, operation: "write" as const, reason: "io" as const } };
+    }
+    return super.save(session);
+  }
+}
 
 class FailingQuarantineArtifacts extends ReviewArtifactStorage {
   override async quarantineInvalidEntry(
@@ -49,6 +67,72 @@ class FailingQuarantineArtifacts extends ReviewArtifactStorage {
     return { _tag: "err", error: { _tag: "StorageFailure", operation: "write", reason: "io" } };
   }
 }
+
+it("recovers a Submitted batch after successor storage failure and installs it once on restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-submitted-recovery-"));
+  try {
+    const paths = PatchdeskPaths.forTest(root);
+    const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+    const profiles = new ProfileStore(paths);
+    expect(await profiles.save(profile)).toEqual({ _tag: "ok", value: undefined });
+    const initialStore = new ReviewSessionStore(paths);
+    const key = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha };
+    const seed = createReviewSession({ key, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: timestamp });
+    const itemId = "inline-1" as never;
+    const submittedBatch = { sessionId: seed.id, state: { _tag: "Submitted" as const, reviewId: "review-1", event: "COMMENT" as const }, summaryBody: "Summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: itemId, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "src/a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Feedback", include: true, postability: "postable" as const }], receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "review-1", itemIds: [itemId] }], createdAt: timestamp, updatedAt: timestamp };
+    const submitted: ReviewSession = { ...seed, batch: { state: submittedBatch.state }, batchContent: submittedBatch, submittedReview: { reviewId: "review-1", event: "COMMENT", submittedAt: timestamp }, updatedAt: timestamp };
+    expect(await initialStore.save(submitted)).toEqual({ _tag: "ok", value: undefined });
+
+    const firstAttempt = new ReviewRecoveryService(profiles, new FailingSuccessorSessionStore(paths), () => timestamp);
+    expect(await firstAttempt.reconcilePublication(profileId, createReviewId(key))).toEqual({ recovered: 0, failed: 1 });
+    expect(await initialStore.load(profileId, submitted.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Submitted" } } } });
+
+    const restarted = new ReviewRecoveryService(profiles, new ReviewSessionStore(paths), () => timestamp);
+    expect(await restarted.reconcile()).toEqual({ recovered: 1, failed: 0 });
+    expect(await restarted.reconcile()).toEqual({ recovered: 0, failed: 0 });
+    expect(await initialStore.load(profileId, submitted.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Local" }, receipts: [] }, archivedReceipts: [{ _tag: "PendingReviewCreated", reviewId: "review-1" }], submittedReview: { reviewId: "review-1" } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("recovers an older Submitted session after migration selects a newer current session", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-legacy-submitted-recovery-"));
+  try {
+    const paths = PatchdeskPaths.forTest(root);
+    const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+    const profiles = new ProfileStore(paths);
+    expect(await profiles.save(profile)).toEqual({ _tag: "ok", value: undefined });
+    const sessions = new ReviewSessionStore(paths);
+    const reviews = new ReviewStore(paths);
+    const remote = new ReviewRemoteStore(paths, reviews);
+    const olderKey = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha };
+    const newerHeadSha = must(parseGitSha("3333333333333333333333333333333333333333"));
+    const newerKey = { ...olderKey, headSha: newerHeadSha };
+    const older = createReviewSession({ key: olderKey, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "older" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "older" as never))), headSha }, createdAt: timestamp });
+    const newer = createReviewSession({ key: newerKey, pr: { headSha: newerHeadSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "newer" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "newer" as never))), headSha: newerHeadSha }, createdAt: must(parseIsoTimestamp("2026-07-18T00:00:01.000Z")) });
+    const itemId = "legacy-inline-1" as never;
+    const submittedBatch = { sessionId: older.id, state: { _tag: "Submitted" as const, reviewId: "legacy-review-1", event: "COMMENT" as const }, summaryBody: "Legacy summary", suggestedEvent: "COMMENT" as const, items: [{ _tag: "InlineComment" as const, id: itemId, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "src/legacy.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Legacy feedback", include: true, postability: "postable" as const }], receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "legacy-review-1", itemIds: [itemId] }], createdAt: timestamp, updatedAt: timestamp };
+    const submittedOlder: ReviewSession = { ...older, batch: { state: submittedBatch.state }, batchContent: submittedBatch, submittedReview: { reviewId: "legacy-review-1", event: "COMMENT", submittedAt: timestamp } };
+    expect(await sessions.save(submittedOlder)).toEqual({ _tag: "ok", value: undefined });
+    expect(await sessions.save(newer)).toEqual({ _tag: "ok", value: undefined });
+
+    const migration = new UnifiedReviewMigration(sessions, reviews);
+    expect((await migration.migrateProfile(profileId))._tag).toBe("ok");
+    const reviewGate = new ReviewWriteGate(profiles, reviews, sessions, remote);
+    const recovery = new ReviewRecoveryService(profiles, sessions, () => timestamp, { reviewGate });
+
+    // Startup recovery must inspect every eligible session, not only the
+    // session named by the migrated Review.currentSessionId.
+    expect(await recovery.reconcile()).toEqual({ recovered: 1, failed: 0 });
+    expect(await sessions.load(profileId, submittedOlder.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Local" }, receipts: [] }, archivedReceipts: [{ _tag: "PendingReviewCreated", reviewId: "legacy-review-1" }] } });
+    const newerLoaded = await sessions.load(profileId, newer.id);
+    expect(newerLoaded).toMatchObject({ _tag: "ok", value: { id: newer.id } });
+    if (newerLoaded._tag === "ok") expect(newerLoaded.value.batchContent).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 it("records a diagnostic when quarantine fails", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-recovery-service-"));
@@ -205,6 +289,135 @@ it("reports an inconsistent attempt lifecycle for a Running session", async () =
   }
 });
 
+it("keeps an unknown publication locked when GitHub cannot prove the intent", async () => {
+  const fixture = await recoveryFixture(
+    { _tag: "ReviewCompleted", attemptId: must(parseReviewAttemptId("001")) },
+    { _tag: "Completed", resultPath: must(parseAbsolutePath("/tmp/fixture-result.json")) },
+  );
+  try {
+    const itemId = "reply-1" as never;
+    const unknownBatch = {
+      sessionId: fixture.session.id,
+      state: { _tag: "PartialFailure" as const, operation: { _tag: "Reply" as const, itemId, startedAt: timestamp, priorCommentIds: ["old-comment"] }, failure: { _tag: "SafeWriteFailure" as const, category: "outcome_unknown" as const, message: "The write outcome could not be confirmed." } },
+      summaryBody: "",
+      suggestedEvent: "COMMENT" as const,
+      items: [{ _tag: "ThreadReply" as const, id: itemId, provenance: { _tag: "human" as const }, threadId: "thread-1" as never, body: "Reply once", include: true }],
+      receipts: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const seeded = await fixture.sessions.save({ ...fixture.session, batch: { state: unknownBatch.state }, batchContent: unknownBatch as never });
+    expect(seeded._tag).toBe("ok");
+    const recovery = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, {
+      github: {
+        async getPullRequestComments() { return { _tag: "ok" as const, value: { threads: [], complete: true } }; },
+      } as never,
+    });
+    const unresolved = await recovery.reconcilePublication(profileId, createReviewId(fixture.session.key));
+    expect(unresolved).toEqual({ recovered: 0, failed: 1 });
+    expect(await fixture.sessions.load(profileId, fixture.session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "PartialFailure", failure: { category: "outcome_unknown" } } } } });
+
+    const preExisting = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, {
+      github: {
+        async getPullRequestComments() { return { _tag: "ok" as const, value: { threads: [{ id: "thread-1" as never, state: "open" as const, comments: [{ id: "old-comment", author: "fixture", body: "Reply once", createdAt: "2026-08-01T00:00:01.000Z" }] }], complete: true } }; },
+        async resolveAuthenticatedAccount() { return { _tag: "ok" as const, value: { host: "github.com", account: "fixture" } }; },
+      } as never,
+    });
+    expect(await preExisting.reconcilePublication(profileId, createReviewId(fixture.session.key))).toEqual({ recovered: 0, failed: 1 });
+
+    const confirmed = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, {
+      github: {
+        async getPullRequestComments() { return { _tag: "ok" as const, value: { threads: [{ id: "thread-1" as never, state: "open" as const, comments: [{ id: "comment-1", author: "fixture", body: "Reply once", createdAt: "2026-07-18T00:00:00.000Z" }] }], complete: true } }; },
+        async resolveAuthenticatedAccount() { return { _tag: "ok" as const, value: { host: "github.com", account: "fixture" } }; },
+      } as never,
+    });
+    expect(await confirmed.reconcilePublication(profileId, createReviewId(fixture.session.key))).toEqual({ recovered: 1, failed: 0 });
+    expect(await fixture.sessions.load(profileId, fixture.session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Completed" }, receipts: [{ _tag: "ReplyCreated", commentId: "comment-1" }] } } });
+
+    let writes = 0;
+    const applied = await applyReviewBatch({
+      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      session: { ...fixture.session, batch: { state: unknownBatch.state }, batchContent: unknownBatch as never },
+      batch: unknownBatch as never,
+      now: timestamp,
+      persist: async () => true,
+      gateway: {
+        async getPullRequest() { return { _tag: "ok" as const, value: { headSha } }; },
+        async createPendingReview() { writes += 1; return { _tag: "ok" as const, value: { reviewId: "never", state: "PENDING" as const } }; },
+        async submitPendingReview() { writes += 1; return { _tag: "ok" as const, value: { reviewId: "never" } }; },
+        async createThreadReply() { writes += 1; return { _tag: "ok" as const, value: { commentId: "never" } }; },
+      } as never,
+    });
+    expect(planBatchOperations(unknownBatch as never)).toEqual([]);
+    expect(applied).toMatchObject({ _tag: "err", error: { _tag: "BatchOutcomeUnknown" } });
+    expect(writes).toBe(0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+it("rejects foreign identical feedback and accepts only an authenticated matching receipt", async () => {
+  const fixture = await recoveryFixture(
+    { _tag: "ReviewCompleted", attemptId: must(parseReviewAttemptId("001")) },
+    { _tag: "Completed", resultPath: must(parseAbsolutePath("/tmp/fixture-result.json")) },
+  );
+  try {
+    const itemId = "inline-1" as never;
+    const batch = {
+      sessionId: fixture.session.id,
+      state: { _tag: "Applying" as const, operation: { _tag: "SubmitPendingReview" as const, reviewId: "review-1", event: "COMMENT" as const } },
+      summaryBody: "Summary",
+      suggestedEvent: "COMMENT" as const,
+      items: [{ _tag: "InlineComment" as const, id: itemId, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: "a.ts" as never, startLine: 1, line: 1, side: "new" as const }, body: "Same feedback", include: true, postability: "postable" as const }],
+      receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "review-1", itemIds: [itemId] }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    expect((await fixture.sessions.save({ ...fixture.session, batch: { state: batch.state }, batchContent: batch as never }))._tag).toBe("ok");
+    const feedback = (author: string) => ({ reviews: [{ id: "review-1", author, body: "Summary", event: "COMMENTED" as const, submittedAt: timestamp, canDismiss: false }], comments: [{ id: "comment-1", author, body: "Same feedback", createdAt: timestamp, reviewId: "review-1", location: { path: "a.ts" as never, line: 1, diffSide: "new" as const }, canEdit: false, canDelete: false }], complete: true });
+    const reader = {
+      async getPullRequestComments() { return { _tag: "ok" as const, value: { threads: [], complete: true } }; },
+      async getPullRequestPublishedFeedback() { return { _tag: "ok" as const, value: feedback("another-actor") }; },
+      async resolveAuthenticatedAccount() { return { _tag: "ok" as const, value: { host: "github.com", account: "fixture" } }; },
+    };
+    const recovery = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, { github: reader });
+    expect(await recovery.reconcilePublication(profileId, createReviewId(fixture.session.key))).toEqual({ recovered: 0, failed: 1 });
+    expect(await fixture.sessions.load(profileId, fixture.session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Applying" } } } });
+    const confirmed = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, {
+      github: { ...reader, async getPullRequestPublishedFeedback() { return { _tag: "ok" as const, value: feedback("fixture") }; } },
+    });
+    expect(await confirmed.reconcilePublication(profileId, createReviewId(fixture.session.key))).toEqual({ recovered: 1, failed: 0 });
+    expect(await fixture.sessions.load(profileId, fixture.session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Local" }, receipts: [] }, archivedReceipts: [{ _tag: "PendingReviewCreated", reviewId: "review-1" }], submittedReview: { reviewId: "review-1", event: "COMMENT" } } });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+it("refuses publication recovery when the stable Review owner rejects the session", async () => {
+  const fixture = await recoveryFixture(
+    { _tag: "ReviewCompleted", attemptId: must(parseReviewAttemptId("001")) },
+    { _tag: "Completed", resultPath: must(parseAbsolutePath("/tmp/fixture-result.json")) },
+  );
+  try {
+    const itemId = "reply-owner-1" as never;
+    const batch = {
+      sessionId: fixture.session.id,
+      state: { _tag: "Applying" as const, operation: { _tag: "Reply" as const, itemId, startedAt: timestamp, priorCommentIds: [] } },
+      summaryBody: "",
+      suggestedEvent: "COMMENT" as const,
+      items: [{ _tag: "ThreadReply" as const, id: itemId, provenance: { _tag: "human" as const }, threadId: "thread-owner" as never, body: "Reply", include: true }],
+      receipts: [], createdAt: timestamp, updatedAt: timestamp,
+    };
+    await fixture.sessions.save({ ...fixture.session, batch: { state: batch.state }, batchContent: batch as never });
+    const recovery = new ReviewRecoveryService(fixture.profiles, fixture.sessions, () => timestamp, {
+      reviewGate: { async requireCurrentSession() { return { _tag: "err" as const, error: { reason: "stale" as const } }; } },
+      github: { async getPullRequestComments() { return { _tag: "ok" as const, value: { threads: [], complete: true } }; } } as never,
+    });
+    expect(await recovery.reconcilePublication(profileId, createReviewId(fixture.session.key))).toEqual({ recovered: 0, failed: 0 });
+    expect(await fixture.sessions.load(profileId, fixture.session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Applying" } } } });
+  } finally { await fixture.cleanup(); }
+});
+
 it("reconciles a merged outcome-unknown operation without a merge write", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-merge-recovery-"));
   try {
@@ -229,6 +442,7 @@ async function recoveryFixture(
   state: ReviewSessionState,
   attemptState: ReviewAttemptState,
 ): Promise<{
+  readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
   readonly diagnostics: ReviewDiagnosticService;
   readonly service: ReviewRecoveryService;
@@ -300,6 +514,7 @@ async function recoveryFixture(
     diagnostics,
   });
   return {
+    profiles,
     sessions,
     diagnostics,
     service,

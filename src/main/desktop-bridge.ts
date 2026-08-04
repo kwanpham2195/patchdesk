@@ -51,6 +51,12 @@ const allowedRoutes = new Set([
   "POST /v1/direct-entry/preview",
   "POST /v1/runs/review-pr",
   "POST /v1/reviews/apply-batch",
+  "POST /v1/reviews/publication/preview",
+  "POST /v1/reviews/publication/confirm",
+  "POST /v1/reviews/publication/recover",
+  "POST /v1/reviews/published-comments/edit",
+  "POST /v1/reviews/published-comments/delete",
+  "POST /v1/reviews/published-reviews/dismiss",
   "POST /v1/reviews/submit-batch",
   "POST /v1/reviews/open",
   "GET /v1/reviews/models",
@@ -62,8 +68,14 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/insights/walkthrough/run",
   "POST /v1/reviews/insights/analysis/cancel",
   "POST /v1/reviews/insights/walkthrough/cancel",
+  "POST /v1/reviews/insights/walkthrough/progress",
   "POST /v1/reviews/diff-file",
   "POST /v1/reviews/batch",
+  "POST /v1/reviews/draft/seed-analysis",
+  "POST /v1/reviews/draft/merge-preview",
+  "POST /v1/reviews/draft/replace-preview",
+  "POST /v1/reviews/draft/merge",
+  "POST /v1/reviews/draft/replace",
   "POST /v1/reviews/refresh",
   "POST /v1/reviews/commit-diff",
   "POST /v1/reviews/merge",
@@ -74,14 +86,21 @@ const allowedRoutes = new Set([
   "POST /v1/diagnostics/support-bundle",
 ]);
 
+const allowedRoutePatterns = [
+  /^GET \/v1\/runs\/[^/]+$/,
+  /^GET \/v1\/reviews\/insights\/runs\/[^/]+$/,
+  /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/(?:add|dismiss)$/,
+  /^POST \/v1\/reviews\/draft\/findings\/[^/]+\/add$/,
+];
+
 const maxResponseBytes = 2 * 1024 * 1024;
 
 export function isAllowedDesktopRequest(input: LocalApiDesktopRequest): boolean {
   const method = input.method ?? "GET";
   const url = new URL(input.path, "http://patchdesk.invalid");
   if (url.origin !== "http://patchdesk.invalid") return false;
-  if ((url.pathname.startsWith("/v1/runs/") || url.pathname.startsWith("/v1/reviews/insights/runs/")) && method === "GET") return true;
-  return allowedRoutes.has(`${method} ${url.pathname}`);
+  const route = `${method} ${url.pathname}`;
+  return allowedRoutes.has(route) || allowedRoutePatterns.some((pattern) => pattern.test(route));
 }
 
 export function installDesktopRequestBridge(

@@ -103,6 +103,11 @@ export class PatchdeskPaths {
     return join(this.insightDirectory(profileId, reviewId), "publication.json");
   }
 
+  /** Marker written last after legacy Review artifacts have been adopted. */
+  reviewMigrationMarkerFile(profileId: WorkspaceProfileId): string {
+    return join(this.dataDirectory(), "profiles", profileId, "review-migration-v1.json");
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

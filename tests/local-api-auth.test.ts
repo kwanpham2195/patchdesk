@@ -13,16 +13,19 @@ import { FakeGitHubAdapter, type GitHubReader, type GitHubReviewWriter } from ".
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
-import { parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
+import { createReviewId, parseAbsolutePath, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parseLocalReviewItemId, parsePullRequestNumber, parseRepoRelativePath, parseReviewAttemptId, parseWorkspaceProfileId } from "../src/domain/ids";
 import { createReviewSession, type ReviewSession } from "../src/domain/review-session";
+import { createEmptyReviewBatch } from "../src/domain/review-batch";
 import { createReview } from "../src/domain/review";
 import { ReviewStore } from "../src/adapters/storage/review-store";
+import { ReviewRemoteStore } from "../src/adapters/storage/review-remote-store";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { ProfileSettingsService } from "../src/services/profile-service";
 import { err, ok } from "../src/domain/result";
 
 const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";
+const canonicalInsightRunId = "insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
 let localApi: LocalApiServer | undefined;
 
 afterEach(async () => {
@@ -49,6 +52,120 @@ describe("local API capability boundary", () => {
       const wrongOrigin = await fetch(new URL(path, localApi.url), { method: "POST", headers: { Origin: "http://evil.invalid", "X-Patchdesk-Capability": capability, "Content-Type": "application/json" }, body: "{}" });
       expect(wrongOrigin.status).toBe(403);
     }
+  });
+
+  it("migrates legacy Submitted sessions before startup publication recovery through the Review gate", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-startup-migration-recovery-")));
+    const profileId = must(parseWorkspaceProfileId("cfw"));
+    const host = must(parseGitHubHost("github.com"));
+    const owner = must(parseGitHubOwner("centraldigital"));
+    const repo = must(parseGitHubRepoName("patchdesk"));
+    const number = must(parsePullRequestNumber(42));
+    const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+    const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+    await new ProfileStore(paths).save(profile);
+    const session = createReviewSession({
+      key: { profileId, host, owner, repo, prNumber: number, headSha },
+      pr: { headSha, isDraft: false, isOpen: true },
+      patchPath: must(parseAbsolutePath("/tmp/patch.diff")),
+      worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha },
+      createdAt: "2026-07-16T00:00:00.000Z" as never,
+    });
+    const draft = createEmptyReviewBatch({ sessionId: session.id, createdAt: session.createdAt });
+    const submitted = {
+      ...session,
+      batch: { state: { _tag: "Submitted" as const, reviewId: "legacy-review", event: "COMMENT" as const } },
+      batchContent: { ...draft, state: { _tag: "Submitted" as const, reviewId: "legacy-review", event: "COMMENT" as const }, items: [{ _tag: "InlineComment" as const, id: must(parseLocalReviewItemId("legacy-item")), provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: must(parseRepoRelativePath("src/a.ts")), startLine: 1, line: 1, side: "new" as const }, body: "Legacy feedback", include: true, postability: "postable" as const }], receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "legacy-review", itemIds: [must(parseLocalReviewItemId("legacy-item"))] }] },
+      submittedReview: { reviewId: "legacy-review", event: "COMMENT" as const, submittedAt: session.createdAt },
+    } satisfies ReviewSession;
+    const seeded = await new ReviewSessionStore(paths).save(submitted);
+    if (seeded._tag === "err") throw new Error(`Fixture session save failed: ${JSON.stringify(seeded.error)}`);
+
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github: new FakeGitHubAdapter({ pullRequest: { headSha } } as never) });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+
+    const reviewId = createReviewId(session.key);
+    expect(await new ReviewStore(paths).load(profileId, reviewId)).toMatchObject({ _tag: "ok", value: { currentSessionId: session.id } });
+    expect(await new ReviewSessionStore(paths).load(profileId, session.id)).toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Local" }, receipts: [] }, archivedReceipts: [{ _tag: "PendingReviewCreated", reviewId: "legacy-review" }] } });
+  });
+
+  it("aborts startup before publication recovery when profile migration fails", async () => {
+    const fixture = await persistedReviewFixture();
+    const draft = createEmptyReviewBatch({ sessionId: fixture.session.id, createdAt: fixture.session.createdAt });
+    const itemId = must(parseLocalReviewItemId("legacy-item"));
+    const submittedBatch = {
+      ...draft,
+      state: { _tag: "Submitted" as const, reviewId: "legacy-review", event: "COMMENT" as const },
+      items: [{ _tag: "InlineComment" as const, id: itemId, provenance: { _tag: "human" as const }, source: "manual" as const, anchor: { path: must(parseRepoRelativePath("src/a.ts")), startLine: 1, line: 1, side: "new" as const }, body: "Legacy feedback", include: true, postability: "postable" as const }],
+      receipts: [{ _tag: "PendingReviewCreated" as const, reviewId: "legacy-review", itemIds: [itemId] }],
+    };
+    const submitted = {
+      ...fixture.session,
+      batch: { state: submittedBatch.state },
+      batchContent: submittedBatch,
+      submittedReview: { reviewId: "legacy-review", event: "COMMENT" as const, submittedAt: fixture.session.createdAt },
+    } satisfies ReviewSession;
+    const sessions = new ReviewSessionStore(fixture.paths);
+    expect(await sessions.save(submitted)).toMatchObject({ _tag: "ok" });
+    await writeFile(fixture.paths.reviewMigrationMarkerFile(fixture.profileId), "{malformed", "utf8");
+
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github });
+
+    expect(startup).toEqual({ _tag: "migration-failed" });
+    await expect(sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { batchContent: { state: { _tag: "Submitted" } } } });
+    await expect(new ReviewStore(fixture.paths).load(fixture.profileId, createReviewId(fixture.session.key))).resolves.toMatchObject({ _tag: "err", error: { reason: "not_found" } });
+  });
+
+  it("rejects invalid and forged publication recovery identities without invoking publication writes", async () => {
+    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const headers = writeHeaders();
+    const malformed = await fetch(new URL("v1/reviews/publication/recover", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId: "not-a-review-id" }) });
+    expect(malformed.status).toBe(400);
+    const forged = await fetch(new URL("v1/reviews/publication/recover", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456" }) });
+    expect(forged.status).toBe(404);
+  });
+
+  it.each(canonicalReviewRouteFixtures())("keeps canonical Review route $method $path behind capability and origin checks", async (fixture) => {
+    const startup = await startLocalApiServer({
+      capability,
+      allowedOrigin,
+      supportedReviewModels: ["fixture-model"],
+      insights: {
+        async start(input) { return ok({ runId: canonicalInsightRunId as never, type: input.type, status: "queued" as const }); },
+        async cancel(input) { return ok({ runId: input.runId, type: input.type, status: "cancelling" as const }); },
+        async observe(input) { return ok({ runId: input.runId, type: input.type, status: "running" as const }); },
+        async dismissFinding(input) { return ok({ findingId: input.findingId, status: "dismissed" as const }); },
+        async addFinding() { return err("draft_unavailable" as const); },
+        async updateWalkthroughProgress() { return ok({ status: "saved" as const }); },
+      },
+    });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+
+    const missingCapability = await fetch(new URL(fixture.path, localApi.url), {
+      method: fixture.method,
+      headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+      ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+    });
+    expect(missingCapability.status).toBe(401);
+
+    const wrongOrigin = await fetch(new URL(fixture.path, localApi.url), {
+      method: fixture.method,
+      headers: { Origin: "http://evil.invalid", "X-Patchdesk-Capability": capability, "Content-Type": "application/json" },
+      ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+    });
+    expect(wrongOrigin.status).toBe(403);
+
+    const authenticated = await fetch(new URL(fixture.path, localApi.url), {
+      method: fixture.method,
+      headers: { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" },
+      ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+    });
+    expect(authenticated.status).toBe(fixture.authenticatedStatus);
+    expect([400, 500]).not.toContain(authenticated.status);
   });
 
   it("exposes Review-owned Insight lifecycle routes behind the same boundary", async () => {
@@ -156,9 +273,11 @@ describe("local API capability boundary", () => {
     const fixture = await mergeApiFixture();
     localApi = fixture.api;
 
-    const response = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ profileId: fixture.profileId, sessionId: fixture.session.id, method: "squash", acknowledgedWarnings: true }) });
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ session: { state: { _tag: "Merged" } } });
+    const mergeRequest = { profileId: fixture.profileId, reviewId: fixture.reviewId, sessionId: fixture.session.id, expectedHeadSha: fixture.session.key.headSha, expectedPatchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", expectedRevision: fixture.session.batchContent?.updatedAt ?? fixture.session.updatedAt, method: "squash", acknowledgedWarnings: true };
+    const response = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(mergeRequest) });
+    const responseBody = await response.json();
+    expect(response.status, JSON.stringify(responseBody)).toBe(200);
+    expect(responseBody).toMatchObject({ session: { state: { _tag: "Merged" } } });
     expect(fixture.methods).toEqual(["squash"]);
   });
 
@@ -594,10 +713,18 @@ async function reviewRunFixture() {
 
 async function mergeApiFixture() {
   const fixture = await persistedReviewFixture();
+  await writeFile(fixture.session.patchPath, "", "utf8");
+  const reviews = new ReviewStore(fixture.paths);
+  const remote = new ReviewRemoteStore(fixture.paths, reviews);
+  const reviewId = createReviewId(fixture.session.key);
+  const remoteSaved = await remote.saveCandidate({ profileId: fixture.profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha: fixture.session.key.headSha, ref: { host: fixture.session.key.host, owner: fixture.session.key.owner, repo: fixture.session.key.repo, number: fixture.session.key.prNumber }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: fixture.session.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
+  if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
+  const review = createReview({ identity: { profileId: fixture.profileId, host: fixture.session.key.host, owner: fixture.session.key.owner, repo: fixture.session.key.repo, prNumber: fixture.session.key.prNumber }, currentSessionId: fixture.session.id, headSha: fixture.session.key.headSha, createdAt: fixture.session.createdAt });
+  await reviews.save({ ...review, representedRemote: { headSha: fixture.session.key.headSha, pullRequestUpdatedAt: fixture.session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: fixture.session.createdAt } });
   const methods: string[] = [];
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github, mergeWriter: { async mergePullRequest(input) { methods.push(input.method); return ok({}); } } });
   if (startup._tag !== "started") throw new Error("Expected local API startup");
-  return { ...fixture, api: startup.server, methods };
+  return { ...fixture, api: startup.server, methods, reviewId };
 }
 
 async function persistedReviewFixture() {
@@ -622,6 +749,63 @@ async function startTestLocalApi(): Promise<LocalApiServer> {
   return startup.server;
 }
 
+type CanonicalReviewRouteFixture = {
+  readonly method: "GET" | "POST";
+  readonly path: string;
+  readonly body?: unknown;
+  readonly authenticatedStatus: number;
+};
+
+/** Each body satisfies its route parser; 404/503 are intentional domain outcomes for absent records or unavailable seams. */
+function canonicalReviewRouteFixtures(): ReadonlyArray<CanonicalReviewRouteFixture> {
+  const reviewId = "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
+  const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456";
+  const insightRunId = canonicalInsightRunId;
+  const identity = { profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 };
+  const revision = "2026-08-01T00:00:00.000Z";
+  const expectedHeadSha = "abcdef1234567890abcdef1234567890abcdef12";
+  const expectedPatchHash = "a".repeat(64);
+  const draft = { profileId: "cfw", reviewId, sessionId, analysisRunId: insightRunId, expectedRevision: revision };
+  const writeDraft = { ...draft, expectedHeadSha, expectedPatchHash };
+  const update = { profileId: "cfw", reviewId };
+  const insight = { profileId: "cfw", reviewId, type: "analysis", model: "fixture-model", reasoning: "medium" };
+  const cancel = { profileId: "cfw", reviewId, type: "analysis", runId: insightRunId };
+  const finding = { profileId: "cfw", reviewId, runId: insightRunId, reason: "Not applicable." };
+  return [
+    { method: "GET", path: "v1/reviews/models", authenticatedStatus: 200 },
+    { method: "POST", path: "v1/reviews/open", body: identity, authenticatedStatus: 503 },
+    { method: "POST", path: "v1/reviews/load", body: { profileId: "cfw", reviewId }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/detect-updates", body: update, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/refresh", body: update, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/commit-diff", body: { ...update, commitSha: "abcdef1234567890abcdef1234567890abcdef12" }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/diff-file", body: { profileId: "cfw", sessionId, path: "src/a.ts" }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/batch", body: { profileId: "cfw", sessionId, expectedRevision: revision, command: { _tag: "UpdateBody", body: "Updated summary" } }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/insights/analysis/run", body: insight, authenticatedStatus: 202 },
+    { method: "POST", path: "v1/reviews/insights/walkthrough/run", body: { ...insight, type: "walkthrough" }, authenticatedStatus: 202 },
+    { method: "POST", path: "v1/reviews/insights/analysis/cancel", body: cancel, authenticatedStatus: 200 },
+    { method: "POST", path: "v1/reviews/insights/walkthrough/cancel", body: { ...cancel, type: "walkthrough" }, authenticatedStatus: 200 },
+    { method: "GET", path: `v1/reviews/insights/runs/${insightRunId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis`, authenticatedStatus: 200 },
+    { method: "POST", path: "v1/reviews/insights/analysis/findings/finding-1/add", body: finding, authenticatedStatus: 409 },
+    { method: "POST", path: "v1/reviews/insights/analysis/findings/finding-1/dismiss", body: finding, authenticatedStatus: 200 },
+    { method: "POST", path: "v1/reviews/insights/walkthrough/progress", body: { profileId: "cfw", reviewId, runId: insightRunId, reviewedSectionIds: [], supportReviewed: false }, authenticatedStatus: 200 },
+    { method: "POST", path: "v1/reviews/draft/seed-analysis", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/draft/merge-preview", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/draft/replace-preview", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/draft/merge", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/draft/replace", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/draft/findings/finding-1/add", body: draft, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/publication/preview", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, event: "COMMENT" }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/publication/confirm", body: { ...writeDraft, event: "COMMENT", acknowledgement: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/publication/recover", body: { profileId: "cfw", reviewId }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/published-comments/edit", body: { profileId: "cfw", reviewId, commentId: "comment-1", body: "Updated comment" }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/published-comments/delete", body: { profileId: "cfw", reviewId, commentId: "comment-1", confirmation: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/published-reviews/dismiss", body: { profileId: "cfw", reviewId, publishedReviewId: "review-1", message: "No longer relevant", confirmation: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/apply-batch", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, acknowledgement: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/submit-batch", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, event: "COMMENT", acknowledgement: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/merge", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, method: "squash", acknowledgedWarnings: true }, authenticatedStatus: 404 },
+  ];
+}
+
 function writeHeaders(): Record<string, string> {
   return { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
 }
@@ -637,11 +821,19 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const completed = { ...session, state: { _tag: "ReviewCompleted" as const, attemptId }, currentAttemptId: attemptId, batch: { state: batch.state }, batchContent: batch } as ReviewSession;
   const sessions = new ReviewSessionStore(paths);
   await sessions.save(completed);
+  await writeFile(session.patchPath, "", "utf8");
+  const reviews = new ReviewStore(paths);
+  const remote = new ReviewRemoteStore(paths, reviews);
+  const reviewId = createReviewId(session.key);
+  const remoteSaved = await remote.saveCandidate({ profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha, ref: { host, owner, repo, number }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: completed.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
+  if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
+  const review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha, createdAt: completed.createdAt });
+  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: completed.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: completed.createdAt } });
   const github = new FakeGitHubAdapter({ pullRequest: { headSha } } as never);
   const writer: GitHubReviewWriter = { async createPendingReview() { return createResult; }, async submitPendingReview() { return { _tag: "ok", value: { reviewId: "9001" } }; } };
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github, reviewWriter: writer });
   if (startup._tag !== "started") throw new Error("Expected local API");
-  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, sessionId: completed.id, expectedRevision: batch.updatedAt, acknowledgement: true } };
+  return { api: startup.server, sessions, session: completed, profileId, request: { profileId, reviewId, sessionId: completed.id, expectedHeadSha: headSha, expectedPatchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", expectedRevision: batch.updatedAt, acknowledgement: true } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {

@@ -165,7 +165,7 @@ export function DiffWorkbench({
               {diffTitle ?? selectedPath ?? "No file selected"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {diffSubtitle ?? "Stored unified patch · read only"}
+              {diffSubtitle ?? "Review snapshot · GitHub writes require confirmation"}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
