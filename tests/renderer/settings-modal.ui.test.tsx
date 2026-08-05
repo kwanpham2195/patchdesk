@@ -177,7 +177,7 @@ describe("SettingsModal", () => {
     renderModal();
     await user.click(screen.getByRole("tab", { name: "Review" }));
     const model = await screen.findByRole("combobox", { name: "Default model" });
-    expect(model.textContent).toContain("DeepSeek Flash");
+    expect((model as HTMLInputElement).value).toBe("DeepSeek Flash");
     await user.click(model);
     await user.click(await screen.findByRole("option", { name: "OpenAI Codex" }));
 
@@ -185,6 +185,32 @@ describe("SettingsModal", () => {
       window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
     ).toBe(JSON.stringify({ model: "openai-codex", reasoning: "medium" }));
     expect(request).toHaveBeenCalledWith({ path: "/v1/reviews/models" });
+  });
+
+  it("searches a late default model by canonical ID and selects it with the keyboard", async () => {
+    installDesktopApi({
+      models: {
+        models: Array.from({ length: 493 }, (_, index) => ({
+          id: `provider/model-${index}`,
+          label: `Model ${index}`,
+        })),
+        defaultModel: "provider/model-0",
+      },
+    });
+    const user = userEvent.setup();
+
+    renderModal();
+    await user.click(screen.getByRole("tab", { name: "Review" }));
+    const model = await screen.findByRole("combobox", { name: "Default model" });
+    await user.click(model);
+    await user.clear(model);
+    await user.type(model, "MODEL-492");
+    expect(await screen.findByRole("option", { name: "Model 492" })).toBeTruthy();
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    expect(window.localStorage.getItem("patchdesk.review-execution.v1.cfw")).toBe(
+      JSON.stringify({ model: "provider/model-492", reasoning: "medium" }),
+    );
   });
 
   it("gives long select options room without overflowing the viewport", async () => {
@@ -200,10 +226,10 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("tab", { name: "Review" }));
     await user.click(await screen.findByRole("combobox", { name: "Default model" }));
 
-    const content = document.querySelector('[data-slot="select-content"]');
+    const content = document.querySelector('[data-slot="model-combobox-content"]');
     expect(content).not.toBeNull();
-    expect(content?.classList.contains("w-max")).toBe(true);
-    expect(content?.classList.contains("max-w-[calc(100vw-2rem)]")).toBe(true);
+    expect(content?.classList.contains("max-w-[var(--available-width)]")).toBe(true);
+    expect(content?.querySelector('[data-slot="combobox-list"]') ?? content?.textContent).toBeTruthy();
   });
 });
 

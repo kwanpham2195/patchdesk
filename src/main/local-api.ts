@@ -536,7 +536,7 @@ export async function startLocalApiServer(
             ? "authentication_required"
             : "unavailable",
       runtime: "bundled",
-      modelConfiguration: modelConfigurationState(),
+      modelConfiguration: await modelConfigurationState(modelCatalog),
     });
   });
   app.post("/v1/direct-entry/preview", async (context) => {
@@ -589,6 +589,7 @@ export async function startLocalApiServer(
     if (catalog._tag === "err") return context.json({ error: "catalog_unavailable" }, 503);
     return context.json({
       models: catalog.value.models,
+      providers: catalog.value.providers,
       reasoning: REVIEW_REASONING_LEVELS,
       defaultModel: catalog.value.defaultModel,
       defaultReasoning: "medium",
@@ -908,18 +909,9 @@ async function jsonBody(context: Context): Promise<unknown> {
 }
 
 
-function modelConfigurationState(): "configured" | "missing" {
-  return [
-    "OPENAI_API_KEY",
-    "OPENCODE_API_KEY",
-    "OPENROUTER_API_KEY",
-    "ANTHROPIC_API_KEY",
-  ].some(
-    (name) =>
-      typeof process.env[name] === "string" && process.env[name]?.length !== 0,
-  )
-    ? "configured"
-    : "missing";
+async function modelConfigurationState(modelCatalog: PiRuntimeModelCatalog): Promise<"configured" | "missing"> {
+  const catalog = await modelCatalog.get();
+  return catalog._tag === "ok" && catalog.value.configured ? "configured" : "missing";
 }
 
 function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {

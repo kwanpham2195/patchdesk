@@ -7,6 +7,7 @@ import { parseReviewBatch, type ReviewAnchor } from "../../../domain/review-batc
 import { requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
+import { InsightRunDialog, type InsightRunDialogType, type InsightReasoning } from "../components/insight-run-dialog";
 import { ReviewWorkbench, type ReviewWorkbenchInitialState, usePublishedFeedbackNavigation, useReviewWorkbenchNavigation } from "../components/review-workbench";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
@@ -16,14 +17,23 @@ import { PublishedFeedbackPanel } from "../components/published-feedback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../components/ui/select";
 import { Spinner } from "../components/ui/spinner";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
+import type { InsightFailureCategory } from "../../../domain/insight-record";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { parseCommitDiffResponse, parseModelCatalog, parsePublicationPreview, parseReviewBatchProjection, parseWorkbenchResponse, type CommitDiffResponse } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
+
+function pullRequestExternalRef(model: WorkbenchResponse): PullRequestRef | undefined {
+  const host = parseGitHubHost(model.session.key.host);
+  const owner = parseGitHubOwner(model.session.key.owner);
+  const repo = parseGitHubRepoName(model.session.key.repo);
+  const number = parsePullRequestNumber(model.session.key.prNumber);
+  if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return undefined;
+  return { host: host.value, owner: owner.value, repo: repo.value, number: number.value };
+}
 
 export type ReviewWorkbenchPatch = Omit<Partial<WorkbenchResponse>, "insights"> & {
   readonly insights?: Partial<WorkbenchResponse["insights"]>;
@@ -142,8 +152,11 @@ export function ReviewWorkbenchFlow({
       if (path._tag === "ok") setSelectedRepairAnchor({ ...location, path: path.value });
     },
   } : undefined;
+  const externalPullRequest = pullRequestExternalRef(workbench);
   const mergeAction: PullRequestOverviewMerge | undefined = workbench.review.status === "open" && workbench.revision.freshness === "fresh" && workbench.revision.patchHash !== undefined ? {
     readiness: workbench.mergeReadiness as MergeReadiness,
+    ...(workbench.mergeReasons === undefined ? {} : { mergeReasons: workbench.mergeReasons }),
+    ...(externalPullRequest === undefined ? {} : { pullRequest: externalPullRequest }),
     context: { repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`, prNumber: workbench.session.key.prNumber, title: workbench.pullRequest?.title ?? `Pull request #${workbench.session.key.prNumber}`, base: workbench.pullRequest?.baseBranch ?? "unknown", head: workbench.pullRequest?.headBranch ?? "unknown", headSha: workbench.revision.reviewedHeadSha },
     methods: ["squash", "merge", "rebase"] as const,
     onMerge: async (method: "merge" | "squash" | "rebase", acknowledgedWarnings: boolean) => {
@@ -237,16 +250,6 @@ function analysisCompletionAction(choice: AnalysisCompletionChoice): Parameters<
   return { _tag: "PublishWhenComplete", event, authorizationId: `publication-${crypto.randomUUID()}` };
 }
 
-function analysisCompletionLabel(choice: AnalysisCompletionChoice): string {
-  switch (choice) {
-    case "SaveAsReviewDraft": return "Save as Review draft";
-    case "OpenPreviewWhenComplete": return "Open preview when complete";
-    case "PublishWhenComplete:COMMENT": return "Publish as Comment";
-    case "PublishWhenComplete:APPROVE": return "Publish as Approve";
-    case "PublishWhenComplete:REQUEST_CHANGES": return "Publish as Request changes";
-  }
-}
-
 function InsightsSlot({
   workbench,
   initialDetail,
@@ -262,8 +265,10 @@ function InsightsSlot({
 }): React.JSX.Element {
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [model, setModel] = useState<string | null>(null);
-  const [reasoning, setReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [reasoning, setReasoning] = useState<InsightReasoning>("medium");
   const [analysisCompletion, setAnalysisCompletion] = useState<AnalysisCompletionChoice>("OpenPreviewWhenComplete");
+  const [runDialogType, setRunDialogType] = useState<InsightRunDialogType | null>(null);
+  const [runDialogAction, setRunDialogAction] = useState<"run" | "retry" | "regenerate">("run");
   const [catalogError, setCatalogError] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<"overview" | "analysis" | "walkthrough">(initialDetail ?? "analysis");
   const [reviewedWalkthroughSections, setReviewedWalkthroughSections] = useState<ReadonlyArray<string>>(workbench.insights.walkthrough.progress?.reviewedSectionIds ?? []);
@@ -302,10 +307,15 @@ function InsightsSlot({
   }, [profileId]);
 
   const runEnabled = !catalogError && model !== null && workbench.review.status === "open";
+  const walkthroughRunId = workbench.insights.walkthrough.retained?.runId;
+  useEffect(() => {
+    setProgressError(false);
+  }, [walkthroughRunId]);
   const saveWalkthroughProgress = (progress: { readonly reviewedSectionIds: ReadonlyArray<string>; readonly supportReviewed: boolean; readonly currentSectionId?: string }): void => {
-    const runId = workbench.insights.walkthrough.retained?.runId;
-    if (runId === undefined) return;
-    void requestJson("/v1/reviews/insights/walkthrough/progress", { method: "POST", body: { profileId, reviewId, runId, ...progress } }).catch(() => setProgressError(true));
+    if (walkthroughRunId === undefined) return;
+    void requestJson("/v1/reviews/insights/walkthrough/progress", { method: "POST", body: { profileId, reviewId, runId: walkthroughRunId, ...progress } })
+      .then(() => setProgressError(false))
+      .catch(() => setProgressError(true));
   };
   const reloadWorkbench = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, reviewId } });
@@ -377,6 +387,16 @@ function InsightsSlot({
       walkthroughRun.run(model, reasoning);
     }
   };
+  const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
+    if (selectedInsight === "overview" || !runEnabled) return;
+    setRunDialogType(selectedInsight);
+    setRunDialogAction(action);
+  };
+  const closeRunDialog = (): void => setRunDialogType(null);
+  const confirmRun = (): void => {
+    closeRunDialog();
+    runSelected();
+  };
   const retainedDescription = selectedInsight === "analysis" ? workbench.insights.analysis.retained?.value.summary : selectedInsight === "walkthrough" ? workbench.insights.walkthrough.retained?.value.focus : undefined;
   const currentRevision = workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const navigateToFiles = useReviewWorkbenchNavigation();
@@ -418,29 +438,15 @@ function InsightsSlot({
               <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
                 <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{selectedInsight}</p><h2 className="text-lg font-semibold">{selectedInsight === "analysis" ? "Analysis document" : "Walkthrough document"}</h2><p className="text-sm text-muted-foreground">{selectedRetained === undefined ? "No retained result for this revision." : selectedIsOutdated ? `Retained revision ${selectedRetained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${selectedRetained.generatedAt}` : `Retained from ${selectedRetained.headSha.slice(0, 8)} · ${selectedRetained.generatedAt}`}</p></div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {analysisControlsVisible ? <>
-                    <Select value={model} onValueChange={(value) => setModel(value ?? null)}>
-                      <SelectTrigger size="sm" aria-label="Insight model">{model ?? "Model"}</SelectTrigger>
-                      <SelectContent><SelectContentGroup models={models} /></SelectContent>
-                    </Select>
-                    <Select value={reasoning} onValueChange={(value) => setReasoning(value as "low" | "medium" | "high")}>
-                      <SelectTrigger size="sm" aria-label="Insight reasoning">{reasoning}</SelectTrigger>
-                      <SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
-                    </Select>
-                    <Select value={analysisCompletion} onValueChange={(value) => setAnalysisCompletion(value as AnalysisCompletionChoice)}>
-                      <SelectTrigger size="sm" aria-label="Analysis completion">{analysisCompletionLabel(analysisCompletion)}</SelectTrigger>
-                      <SelectContent><SelectItem value="SaveAsReviewDraft">Save as Review draft</SelectItem><SelectItem value="OpenPreviewWhenComplete">Open preview when complete</SelectItem><SelectItem value="PublishWhenComplete:COMMENT">Publish as Comment</SelectItem><SelectItem value="PublishWhenComplete:APPROVE">Publish as Approve</SelectItem><SelectItem value="PublishWhenComplete:REQUEST_CHANGES">Publish as Request changes</SelectItem></SelectContent>
-                    </Select>
-                  </> : null}
                   {analysisControlsVisible ? <Button size="sm" variant="ghost" aria-label="Open Analysis" onClick={() => setSelectedInsight("analysis")}>Open Analysis</Button> : null}
-                  {selectedRunning?.busy || selectedProjection?.status === "running" ? <Button size="sm" variant="outline" onClick={selectedRunning?.cancel}>Cancel</Button> : analysisFirstRunActive || selectedIsOutdated ? null : <Button size="sm" onClick={runSelected} disabled={!runEnabled}>{selectedProjection?.retained === undefined ? "Run" : "Regenerate"}</Button>}
+                  {selectedRunning?.busy || selectedProjection?.status === "running" ? <Button size="sm" variant="outline" onClick={selectedRunning?.cancel}>Cancel</Button> : analysisFirstRunActive || selectedIsOutdated || selectedProjection?.retained === undefined ? null : <Button size="sm" onClick={() => openRunDialog("regenerate")} disabled={!runEnabled}>Regenerate</Button>}
                 </div>
               </header>
-              {catalogError ? <p role="alert" className="py-2 text-sm text-destructive">Insight models are unavailable.</p> : null}
+              {catalogError || models.length === 0 ? <p role="alert" className="py-2 text-sm text-destructive">No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload.</p> : null}
               {progressError ? <p role="alert" className="py-2 text-sm text-destructive">Walkthrough progress could not be saved.</p> : null}
               {selectedProjection?.artifactStatus === "mismatch" ? <InsightArtifactMismatch type={selectedInsight} /> : null}
               <div className="flex flex-col gap-4">
-                {selectedRunning?.busy || selectedProjection?.status === "running" ? <InsightRunning type={selectedInsight} projection={selectedProjection} /> : selectedProjection?.status === "failed" ? <InsightFailed projection={selectedProjection} onRetry={runSelected} {...(retainedDescription === undefined ? {} : { retainedDescription })} /> : selectedIsOutdated ? <InsightOutdated type={selectedInsight} onRetry={runSelected} {...(selectedRetained === undefined ? {} : { retainedRevision: selectedRetained.headSha })} currentRevision={currentRevision} /> : retainedReader === null ? <InsightEmpty type={selectedInsight} onRun={runSelected} disabled={!runEnabled} /> : null}
+                {selectedRunning?.busy || selectedProjection?.status === "running" ? <InsightRunning type={selectedInsight} projection={selectedProjection} /> : selectedProjection?.status === "failed" ? <InsightFailed projection={selectedProjection} onRetry={() => openRunDialog("retry")} {...(retainedDescription === undefined ? {} : { retainedDescription })} /> : selectedIsOutdated ? <InsightOutdated type={selectedInsight} onRetry={() => openRunDialog("retry")} {...(selectedRetained === undefined ? {} : { retainedRevision: selectedRetained.headSha })} currentRevision={currentRevision} /> : retainedReader === null ? <InsightEmpty type={selectedInsight} onRun={() => openRunDialog("run")} disabled={!runEnabled} /> : null}
                 {retainedReader}
               </div>
             </>
@@ -448,6 +454,31 @@ function InsightsSlot({
         </article>
       </div>
       <p className="sr-only" aria-live="polite">{insightLiveStatus(analysisRun.status, walkthroughRun.status)}</p>
+      {runDialogType === null ? null : (
+        <InsightRunDialog
+          open
+          type={runDialogType}
+          action={runDialogAction}
+          models={models}
+          model={model}
+          reasoning={reasoning}
+          {...(runDialogType === "analysis" ? {
+            completion: analysisCompletion,
+            completionOptions: [
+              { value: "SaveAsReviewDraft", label: "Save as Review draft" },
+              { value: "OpenPreviewWhenComplete", label: "Open preview when complete" },
+              { value: "PublishWhenComplete:COMMENT", label: "Publish as Comment" },
+              { value: "PublishWhenComplete:APPROVE", label: "Publish as Approve" },
+              { value: "PublishWhenComplete:REQUEST_CHANGES", label: "Publish as Request changes" },
+            ],
+            onCompletionChange: (value: string) => setAnalysisCompletion(value as AnalysisCompletionChoice),
+          } : {})}
+          onOpenChange={(open) => { if (!open) closeRunDialog(); }}
+          onModelChange={setModel}
+          onReasoningChange={setReasoning}
+          onConfirm={confirmRun}
+        />
+      )}
     </section>
   );
 }
@@ -465,8 +496,32 @@ function InsightRunning({ type, projection }: { readonly type: "analysis" | "wal
 }
 
 function InsightFailed({ projection, onRetry, retainedDescription }: { readonly projection: InsightProjection; readonly onRetry: () => void; readonly retainedDescription?: string }): React.JSX.Element {
-  const message = projection.retained === undefined ? "This Insight run failed. No retained result is available." : "This Insight run failed. The previous retained result remains available below.";
-  return <div className="flex flex-col gap-3 py-6"><p role="alert" className="text-sm text-destructive">{message}</p>{projection.retained === undefined ? null : <p className="text-sm text-muted-foreground">Retained evidence from {projection.retained.headSha.slice(0, 8)} is still readable: {retainedDescription ?? "retained document"}</p>}<Button size="sm" onClick={onRetry}>Run again</Button></div>;
+  const failure = projection.replacementFailure;
+  const message = failure?.category === undefined
+    ? projection.retained === undefined ? "This Insight run failed. No retained result is available." : "This Insight run failed. The previous retained result remains available below."
+    : failureMessage(failure.category);
+  const generic = failure?.category === undefined;
+  return <div className="flex flex-col gap-3 py-6">
+    <p role="alert" className="text-sm text-destructive">{message}</p>
+    {generic ? <p className="text-sm text-muted-foreground">No additional failure details are available.</p> : null}
+    {failure?.model === undefined ? null : <p className="text-sm text-muted-foreground">Selected model: {failure.model}{failure.reasoning === undefined ? "" : ` · Reasoning: ${failure.reasoning}`}</p>}
+    {failure?.runId === undefined ? null : <p className="text-xs text-muted-foreground">Correlation ID: {failure.runId}</p>}
+    {projection.retained === undefined ? <p className="text-sm text-muted-foreground">No retained result is available.</p> : <p className="text-sm text-muted-foreground">Retained evidence from {projection.retained.headSha.slice(0, 8)} is still readable: {retainedDescription ?? "retained document"}</p>}
+    <Button size="sm" onClick={onRetry}>Run again</Button>
+  </div>;
+}
+
+function failureMessage(category: InsightFailureCategory | undefined): string {
+  switch (category) {
+    case "authentication_required": return "Authentication is required. Sign in to the provider, then run this Insight again.";
+    case "rate_limited": return "The provider rate limit was reached. Wait a moment, then run this Insight again.";
+    case "runtime_unavailable": return "The Insight runtime is unavailable. Check the local runtime, then try again.";
+    case "timed_out": return "The Insight run timed out. Try again or choose a smaller scope.";
+    case "execution_failed": return "The Insight could not complete. Check the run options and try again.";
+    case "invalid_result": return "The Insight returned an invalid result. Try again.";
+    case "unexpected_failure": return "The Insight failed unexpectedly. Try again.";
+    default: return "This Insight run failed.";
+  }
 }
 
 function InsightOutdated({ type, onRetry, retainedRevision, currentRevision }: { readonly type: "analysis" | "walkthrough"; readonly onRetry: () => void; readonly retainedRevision?: string; readonly currentRevision: string }): React.JSX.Element {
@@ -479,10 +534,6 @@ function InsightArtifactMismatch({ type }: { readonly type: "analysis" | "walkth
 
 function InsightEmpty({ type, onRun, disabled }: { readonly type: "analysis" | "walkthrough"; readonly onRun: () => void; readonly disabled: boolean }): React.JSX.Element {
   return <div className="flex flex-col gap-3 py-6"><h3 className="font-medium">No {type} has been generated</h3><p className="text-sm text-muted-foreground">Run this optional Insight for the represented Review snapshot.</p><Button size="sm" onClick={onRun} disabled={disabled}>Run</Button></div>;
-}
-
-function SelectContentGroup({ models }: { readonly models: ReadonlyArray<{ readonly id: string; readonly label: string }> }): React.JSX.Element {
-  return <SelectGroup>{models.map((candidate) => <SelectItem key={candidate.id} value={candidate.id}>{candidate.label}</SelectItem>)}</SelectGroup>;
 }
 
 type InsightProjection = WorkbenchResponse["insights"]["analysis"] | WorkbenchResponse["insights"]["walkthrough"];

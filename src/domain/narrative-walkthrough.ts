@@ -61,8 +61,13 @@ export type NarrativeSupport = {
 };
 
 /** A normalized, snapshot-bound walkthrough ready for renderer projection. */
+export type NarrativeCitationStatus = "verified" | "partially_verified" | "unverified";
+
 export type NarrativeWalkthrough = {
   readonly snapshot: NarrativeSnapshot;
+  /** Present only for outputs generated with the verified alias-manifest contract. */
+  readonly citationVersion?: 2;
+  readonly citationStatus: NarrativeCitationStatus;
   readonly title: string;
   readonly focus: string;
   readonly chapters: ReadonlyArray<NarrativeChapter>;
@@ -122,6 +127,7 @@ const rawChapterSchema = v.object({
 });
 
 const rawWalkthroughSchema = v.object({
+  citationVersion: v.optional(v.literal(2)),
   title: boundedText(MAX_TITLE_LENGTH),
   focus: boundedText(MAX_FOCUS_LENGTH),
   chapters: v.pipe(v.array(rawChapterSchema), v.maxLength(MAX_CHAPTERS)),
@@ -319,6 +325,13 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
       currentPath = path.value;
       continue;
     }
+    // Git emits bare submodule-change lines without a diff header (for example
+    // "Submodule yim-proto-hub 00000000...4619420d (new submodule)"). They are
+    // metadata, not hunk body; close any open hunk and skip the line.
+    if (/^Submodule [^\s]+ [0-9a-f]+\.{2,3}[0-9a-f]+(?: \([^)]*\))?$/.test(line)) {
+      if (!finishHunk(index)) return invalid("invalid_patch");
+      continue;
+    }
     if (current === undefined) continue;
     const hunkRange = parseHunkHeader(line);
     if (line.startsWith("@@ ") && hunkRange === undefined) return invalid("invalid_patch");
@@ -442,9 +455,11 @@ export function normalizeNarrativeWalkthrough(
   if (parsedPatch._tag === "err") return parsedPatch;
 
   const byAlias = hunkMap(parsedPatch.value.hunks);
+  const citationVersion = input.citationVersion === 2;
   const covered = new Set<string>();
   const chapters: Array<NarrativeChapter> = [];
   let sectionNumber = 1;
+  let rejectedCitationCount = 0;
 
   for (const [chapterIndex, chapter] of input.chapters.entries()) {
     const sections: Array<NarrativeSection> = [];
@@ -455,11 +470,18 @@ export function normalizeNarrativeWalkthrough(
         if (!HUNK_ALIAS_SYNTAX.test(alias) || covered.has(alias)) continue;
         const hunk = byAlias.get(alias);
         if (hunk === undefined) continue;
+        if (!citationVersion || !section.prose.toLocaleLowerCase().includes(hunk.path.toLocaleLowerCase())) {
+          rejectedCitationCount += 1;
+          continue;
+        }
         covered.add(alias);
         ids.push(alias);
         hunks.push(normalizedHunk(hunk));
       }
-      if (ids.length === 0) continue;
+      if (ids.length === 0 && citationVersion) {
+        if (section.hunkIds.length > 0) rejectedCitationCount += 1;
+        continue;
+      }
       sections.push({
         id: `section-${sectionNumber}`,
         title: normalizeText(section.title),
@@ -478,6 +500,8 @@ export function normalizeNarrativeWalkthrough(
   const supportHunks = parsedPatch.value.hunks.filter((hunk) => !covered.has(hunk.id));
   return ok({
     snapshot: parsedSnapshot.value,
+    ...(citationVersion ? { citationVersion: 2 as const } : {}),
+    citationStatus: !citationVersion ? "unverified" : rejectedCitationCount > 0 ? "partially_verified" : "verified",
     title: normalizeText(input.title),
     focus: normalizeText(input.focus),
     chapters,
@@ -488,6 +512,15 @@ export function normalizeNarrativeWalkthrough(
       hunks: supportHunks.map(normalizedHunk),
     },
   });
+}
+
+/** Returns the immutable alias-to-source manifest supplied to the walkthrough model. */
+export function narrativeHunkManifest(
+  patch: string,
+): Result<ReadonlyArray<{ readonly id: string; readonly path: RepoRelativePath; readonly header: string }>, NarrativeWalkthroughError> {
+  const parsed = parseNarrativePatch(patch);
+  if (parsed._tag === "err") return parsed;
+  return ok(parsed.value.hunks.map((hunk) => ({ id: hunk.id, path: hunk.path, header: hunk.header })));
 }
 
 /** Filter an immutable unified patch to known hunk aliases while preserving file headers and hunk order. */

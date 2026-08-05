@@ -43,10 +43,12 @@ export type CommandFailure =
   | { readonly _tag: "CommandTimedOut" }
   | { readonly _tag: "CommandUnavailable" }
   | { readonly _tag: "CommandAuthenticationRequired" }
+  | { readonly _tag: "CommandForbidden" }
   | { readonly _tag: "CommandNotFound" }
+  | { readonly _tag: "CommandUnsupported" }
   | { readonly _tag: "CommandRateLimited" }
   | { readonly _tag: "CommandRuntimeUnavailable" }
-  | { readonly _tag: "CommandFailed" }
+  | { readonly _tag: "CommandFailed"; readonly stderr?: string }
   | { readonly _tag: "CommandInvalidJson" };
 
 /**
@@ -89,7 +91,9 @@ class NodeCommandExecutor implements CommandExecutor {
     const executable = input.argv[0];
     if (executable === undefined) return { _tag: "Unavailable" };
     const resolvedExecutable = await discoverExecutable(executable);
-    if (resolvedExecutable === undefined) return { _tag: "Unavailable" };
+    if (resolvedExecutable === undefined || input.signal?.aborted) {
+      return { _tag: "Unavailable" };
+    }
 
     return new Promise((resolve) => {
       const child = spawn(resolvedExecutable, input.argv.slice(1), {
@@ -166,13 +170,15 @@ function classifyExecution(
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
   if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
   if (execution.exitCode === 0) return undefined;
+  if (isForbiddenFailure(execution.stderr)) return { _tag: "CommandForbidden" };
   if (isAuthenticationFailure(execution.stderr)) {
     return { _tag: "CommandAuthenticationRequired" };
   }
   if (isNotFoundFailure(execution.stderr)) return { _tag: "CommandNotFound" };
+  if (isUnsupportedFailure(execution.stderr)) return { _tag: "CommandUnsupported" };
   if (isRateLimitFailure(execution.stderr)) return { _tag: "CommandRateLimited" };
   if (isRuntimeFailure(execution.stderr)) return { _tag: "CommandRuntimeUnavailable" };
-  return { _tag: "CommandFailed" };
+  return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
 }
 
 function terminateOwnedProcess(pid: number | undefined): void {
@@ -190,8 +196,16 @@ function isAuthenticationFailure(stderr: string): boolean {
   );
 }
 
+function isForbiddenFailure(stderr: string): boolean {
+  return /(?:\b403\b|forbidden|resource not accessible)/i.test(stderr);
+}
+
 function isNotFoundFailure(stderr: string): boolean {
   return /(?:\b404\b|not found|not protected)/i.test(stderr);
+}
+
+function isUnsupportedFailure(stderr: string): boolean {
+  return /(?:\b405\b|\b415\b|\b422\b|\b501\b|unsupported|not implemented)/i.test(stderr);
 }
 
 function isRateLimitFailure(stderr: string): boolean {

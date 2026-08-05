@@ -14,6 +14,7 @@ import {
 import * as v from "valibot";
 
 const validOutput = {
+  citationVersion: 2,
   title: "Recovery walkthrough",
   focus: "Follow the recovery decision.",
   chapters: [{
@@ -149,7 +150,7 @@ describe("walkthrough workflow harness contract", () => {
     };
     let session: RecordingSession | undefined;
     await writeFile(contextPath, "context artifact", "utf8");
-    await writeFile(patchPath, "@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
+    await writeFile(patchPath, "diff --git a/src/recovery.ts b/src/recovery.ts\n--- a/src/recovery.ts\n+++ b/src/recovery.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
 
     try {
       const result = await runWalkthroughWorkflow({
@@ -191,10 +192,13 @@ describe("walkthrough workflow harness contract", () => {
       expect(prompt.text).toContain("ordered chapter rail");
       expect(prompt.text).toContain("continuous reading surface");
       expect(prompt.text).toContain("behavior before consequences and validation");
-      expect(prompt.text).toContain("hunk aliases h1, h2, h3");
+      expect(prompt.text).toContain("HUNK ALIAS MANIFEST");
+      expect(prompt.text).toContain("h1 | ");
+      expect(prompt.text).toContain("citationVersion to 2");
       expect(prompt.text).toContain("Support");
       expect(prompt.text).toContain("context artifact");
       expect(prompt.text).toContain("@@ -1,1 +1,1 @@");
+      expect(prompt.text).toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
       expect(prompt.text).not.toMatch(/review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i);
     } finally {
       await rm(directory, { recursive: true, force: true });

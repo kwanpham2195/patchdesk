@@ -16,7 +16,7 @@ import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewRefreshService } from "./review-refresh-service";
 import type { ReviewCommitService } from "./review-commit-service";
-import { err, type Result } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
 import type { PrepareReviewSessionFailure, ReviewOpenMode, ReviewSessionPreparation } from "./review-session-preparation";
 import type {
   ReviewWorkbenchProjection,
@@ -31,8 +31,8 @@ export type { ReviewWorkbenchProjection };
 /**
  * Temporary local-API application facade. It retains the current unknown-input
  * parser and maps precise preparation/projection failures onto the existing
- * route vocabulary. It performs no GitHub reads, comparison work, file I/O, or
- * Session persistence of its own.
+ * route vocabulary. Opening a new Review performs its one initial GitHub
+ * snapshot fetch; later remote changes still require explicit refresh.
  */
 export class ReviewWorkbenchController {
   private readonly openLocks = new Map<string, Promise<void>>();
@@ -97,7 +97,33 @@ export class ReviewWorkbenchController {
       : await this.lifecycle.reviews.load(profileId.value, reviewId);
     if (existing?._tag === "err" && existing.error.reason !== "not_found") return err({ reason: "storage" });
     if (existing?._tag === "ok") {
-      return this.projectStable(existing.value);
+      if (existing.value.representedRemote === undefined) {
+        const initialized = await this.initializeSnapshot(profileId.value, reviewId);
+        return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
+      }
+      const stable = await this.projectStable(existing.value);
+      if (stable._tag === "ok" || stable.error.reason !== "not_found") return stable;
+
+      // Session artifacts are disposable local cache. If cleanup or a previous
+      // interrupted run removed them, rebuild the current PR instead of leaving
+      // its durable Review record impossible to open.
+      const repaired = await this.preparation.prepare({
+        profileId: profileId.value,
+        pullRequest: { host: host.value, owner: owner.value, repo: repo.value, number: number.value },
+        mode: { kind: "full" },
+      });
+      if (repaired._tag === "err") return err(mapPreparationFailure(repaired.error));
+      const saved = await this.lifecycle?.reviews.save({
+        ...existing.value,
+        currentSessionId: repaired.value.session.id,
+        currentHeadSha: repaired.value.session.key.headSha,
+        representedRemote: undefined,
+        detectedUpdate: undefined,
+        updatedAt: repaired.value.session.createdAt,
+      }, existing.value.updatedAt);
+      if (saved?._tag === "err") return err({ reason: "storage" });
+      const initialized = await this.initializeSnapshot(profileId.value, reviewId);
+      return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
     }
     const prepared = await this.preparation.prepare({
       profileId: profileId.value,
@@ -106,13 +132,27 @@ export class ReviewWorkbenchController {
       ...(previousSessionId === undefined ? {} : { previousSessionId }),
     });
     if (prepared._tag === "err") return err(mapPreparationFailure(prepared.error));
-    if (this.lifecycle !== undefined) {
-      const created = createReview({ identity, currentSessionId: prepared.value.session.id, headSha: prepared.value.session.key.headSha, createdAt: prepared.value.session.createdAt });
-      const saved = await this.lifecycle.reviews.save(created);
-      if (saved._tag === "err") return err({ reason: "storage" });
+    // The lifecycle facade is optional for the legacy/session-only route. Keep
+    // its original first-open behavior: prepare, then project the session
+    // directly instead of trying to initialize a durable Review snapshot.
+    if (this.lifecycle === undefined) {
+      const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
+      return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
-    const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
-    return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+    const created = createReview({ identity, currentSessionId: prepared.value.session.id, headSha: prepared.value.session.key.headSha, createdAt: prepared.value.session.createdAt });
+    const saved = await this.lifecycle.reviews.save(created);
+    if (saved._tag === "err") return err({ reason: "storage" });
+    const initialized = await this.initializeSnapshot(profileId.value, reviewId);
+    return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
+  }
+
+  private async initializeSnapshot(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<Review, ReviewWorkbenchFailure>> {
+    const initialRefresh = await this.lifecycle?.refresh.refresh?.({ profileId, reviewId });
+    if (initialRefresh?._tag === "err") return err({ reason: initialRefresh.error.reason });
+    const refreshedReview = await this.lifecycle?.reviews.load(profileId, reviewId);
+    if (refreshedReview?._tag === "err") return err({ reason: refreshedReview.error.reason === "not_found" ? "not_found" : "storage" });
+    if (refreshedReview?._tag === "ok") return ok(refreshedReview.value);
+    return err({ reason: "storage" });
   }
 
   private async projectStable(review: Review): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {

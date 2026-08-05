@@ -34,9 +34,9 @@ export function ReviewDraftDock({
   const attentionCount = batch.items.filter((item) => item._tag === "InlineComment" && item.postability === "needs_attention").length;
   const [open, setOpen] = useState(initialOpen);
   return (
-    <section className="border-t bg-background px-4 py-3" aria-label="Review draft dock">
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <div className="flex items-center justify-between gap-3">
+    <section className="flex min-h-0 max-h-[min(45vh,32rem)] flex-col border-t bg-background px-4 py-3" aria-label="Review draft dock" data-review-draft-state={open ? "expanded" : "collapsed"}>
+      <Collapsible open={open} onOpenChange={setOpen} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center justify-between gap-3">
           <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)} className="-ml-2 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
             Review draft
             <Badge variant="secondary">{batch.items.filter((item) => item.include).length} included</Badge>
@@ -44,7 +44,7 @@ export function ReviewDraftDock({
           </button>
           <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Decision · {batch.suggestedEvent}</span>{publication === undefined ? null : <PublicationPreviewDialog disabled={writeBlocked} {...(publication.state === undefined ? {} : { publicationState: publication.state })} {...(publication.recover === undefined ? {} : { onRecover: publication.recover })} {...(publication.openGitHub === undefined ? {} : { onOpenGitHub: publication.openGitHub })} {...(publication.viewFeedback === undefined ? {} : { onViewFeedback: publication.viewFeedback })} {...(publication.recoveryEvidence === undefined ? {} : { recoveryEvidence: publication.recoveryEvidence })} onPreview={publication.preview} onConfirm={publication.confirm} autoOpen={autoOpenPublication} {...(onAutoOpenPublicationConsumed === undefined ? {} : { onAutoOpenConsumed: onAutoOpenPublicationConsumed })} />}</div>
         </div>
-        <CollapsibleContent motion="disclosure" className="pt-3">
+        <CollapsibleContent motion="disclosure" className="min-h-0 flex-1 overflow-y-auto pt-3" data-review-draft-scroll>
           <ReviewBatchPanel batch={batch} {...(patch === undefined ? {} : { patch })} {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })} writeBlocked={writeBlocked} {...(draftEditingBlocked === undefined ? {} : { draftEditingBlocked })} actions={actions} showDraftControls showWriteActions={publication === undefined} />
         </CollapsibleContent>
       </Collapsible>

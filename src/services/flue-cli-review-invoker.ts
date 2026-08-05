@@ -56,6 +56,8 @@ function reviewFailureReason(failure: CommandFailure): FlueCliReviewFailure["rea
     case "CommandUnavailable": return "runtime_unavailable";
     case "CommandTimedOut": return "timed_out";
     case "CommandFailed":
+    case "CommandForbidden":
+    case "CommandUnsupported":
     case "CommandInvalidJson": return "execution_failed";
   }
 }

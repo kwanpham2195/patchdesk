@@ -14,6 +14,7 @@ import { parsePublicationAuthorizationId } from "../../src/domain/ids";
 import { createReviewSession } from "../../src/domain/review-session";
 import { err, ok, type Result } from "../../src/domain/result";
 import { InsightRunCoordinator, type InsightInvoker, type InsightRunResponse } from "../../src/services/insight-run-coordinator";
+import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 
 const must = <T>(result: Result<T, unknown>): T => { if (result._tag === "ok") return result.value; throw new Error("fixture"); };
 const profileId = must(parseWorkspaceProfileId("cfw"));
@@ -32,13 +33,14 @@ class FailingInsightStore extends InsightStore {
   }
 }
 
-async function fixture(invokers: { readonly analysis: InsightInvoker; readonly walkthrough: InsightInvoker }) {
+async function fixture(invokers: { readonly analysis: InsightInvoker; readonly walkthrough: InsightInvoker }, options: { readonly diagnostics?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-coordinator-"));
   const paths = PatchdeskPaths.forTest(root);
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const insights = new FailingInsightStore(paths);
   const publications = new PublicationAuthorizationStore(paths);
+  const diagnostics = options.diagnostics === true ? new ReviewDiagnosticService(paths, () => now, () => "incident-secret-test") : undefined;
   const sessionSeed = createReviewSession({ key: { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha }, createdAt: now });
   const session = { ...sessionSeed, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionSeed.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, sessionSeed.id))), headSha } };
   const review = createReview({ identity: { profileId, host: session.key.host, owner: session.key.owner, repo: session.key.repo, prNumber: session.key.prNumber }, currentSessionId: session.id, headSha, createdAt: now });
@@ -46,8 +48,8 @@ async function fixture(invokers: { readonly analysis: InsightInvoker; readonly w
   await writeFile(session.patchPath, "diff --git a/src/a.ts b/src/a.ts\n+change\n", "utf8");
   await sessions.save(session);
   await reviews.save(review);
-  const coordinator = new InsightRunCoordinator(reviews, sessions, insights, paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now, undefined, publications);
-  return { root, coordinator, review, paths, reviews, sessions, insights, publications };
+  const coordinator = new InsightRunCoordinator(reviews, sessions, insights, paths, { async get() { return ok({ models: [{ id: "model", label: "Model" }] }); } }, invokers, () => now, diagnostics, publications);
+  return { root, coordinator, review, paths, reviews, sessions, insights, publications, diagnostics };
 }
 
 const successfulAnalysis = (capture?: { value?: Parameters<InsightInvoker["invoke"]>[0] }): InsightInvoker => ({ async invoke(input) { if (capture !== undefined) capture.value = input; return ok({ changeSummary: "A change", verdict: "approve", summary: "A review", findings: [], validationPlan: [], assumptions: [] }); } });
@@ -209,11 +211,19 @@ describe("InsightRunCoordinator", () => {
   });
 
   it("fails detached execution when the invoker throws or returns invalid output", async () => {
-    const throwing = await fixture({ analysis: { async invoke() { throw new Error("provider exploded"); } }, walkthrough: successfulWalkthrough });
+    const throwing = await fixture({ analysis: { async invoke() { const secretBearing = new Error("provider exploded"); secretBearing.name = "Bearer SECRET_TOKEN__must_not_persist"; throw secretBearing; } }, walkthrough: successfulWalkthrough }, { diagnostics: true });
     try {
       const started = await throwing.coordinator.start({ profileId, reviewId: throwing.review.id, type: "analysis", model: "model", reasoning: "medium" });
       if (started._tag === "err") throw new Error("expected run");
       await expect(eventually(() => throwing.coordinator.observe({ profileId, reviewId: throwing.review.id, type: "analysis", runId: started.value.runId }), "failed")).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
+      const stored = await throwing.insights.load(profileId, throwing.review.id, "analysis");
+      expect(stored).toMatchObject({ _tag: "ok", value: { replacementFailure: { category: "unexpected_failure", model: "model", reasoning: "medium" } } });
+      expect(JSON.stringify(stored)).not.toContain("provider exploded");
+      if (throwing.diagnostics === undefined) throw new Error("expected diagnostics store");
+      const diagnostics = await throwing.diagnostics.recent(profileId);
+      expect(diagnostics).toMatchObject({ _tag: "ok", value: [{ detail: "insight_analysis_unexpected_failure" }] });
+      expect(JSON.stringify(diagnostics)).not.toContain("SECRET_TOKEN");
+      expect(JSON.stringify(diagnostics)).not.toContain("bearer_secret_token");
     } finally { await rm(throwing.root, { recursive: true, force: true }); }
 
     const invalid = await fixture({ analysis: { async invoke() { return ok({ summary: "not a review result" }); } }, walkthrough: successfulWalkthrough });
@@ -222,6 +232,20 @@ describe("InsightRunCoordinator", () => {
       if (started._tag === "err") throw new Error("expected run");
       await expect(eventually(() => invalid.coordinator.observe({ profileId, reviewId: invalid.review.id, type: "analysis", runId: started.value.runId }), "failed")).resolves.toMatchObject({ _tag: "ok", value: { status: "failed" } });
     } finally { await rm(invalid.root, { recursive: true, force: true }); }
+  });
+
+  it("persists each allowlisted invoker category with run configuration only", async () => {
+    const categories = ["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result"] as const;
+    for (const category of categories) {
+      const fixtureValue = await fixture({ analysis: { async invoke() { return err({ reason: category }); } }, walkthrough: successfulWalkthrough });
+      try {
+        const started = await fixtureValue.coordinator.start({ profileId, reviewId: fixtureValue.review.id, type: "analysis", model: "model", reasoning: "high" });
+        if (started._tag === "err") throw new Error("expected run");
+        await eventually(() => fixtureValue.coordinator.observe({ profileId, reviewId: fixtureValue.review.id, type: "analysis", runId: started.value.runId }), "failed");
+        const stored = await fixtureValue.insights.load(profileId, fixtureValue.review.id, "analysis");
+        expect(stored).toMatchObject({ _tag: "ok", value: { replacementFailure: { category, model: "model", reasoning: "high" } } });
+      } finally { await rm(fixtureValue.root, { recursive: true, force: true }); }
+    }
   });
 
   it("rejects provider output that claims Patchdesk-owned Finding mapping", async () => {

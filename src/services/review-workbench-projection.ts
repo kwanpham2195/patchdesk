@@ -11,7 +11,9 @@ import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-sto
 import type {
   CheckSummary,
   GitHubComments,
+  GitHubMergeEvidence,
   GitHubPublishedFeedback,
+  MergeDisplayReason,
   PullRequestCommit,
   PullRequestSummary,
 } from "../domain/github-context";
@@ -96,6 +98,7 @@ export type ReviewWorkbenchProjection = {
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
+  readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
   readonly recoveryView?: ReviewRecoveryView;
 };
 
@@ -108,6 +111,7 @@ export type RemoteReviewContext = {
   readonly comments: GitHubComments;
   readonly checks: CheckSummary;
   readonly mergeReadiness?: MergeReadiness;
+  readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
 };
 
 export type LoadWorkbenchInput = {
@@ -169,6 +173,7 @@ export class ReviewWorkbenchProjectionService {
       commits: input.snapshot.commits,
       checks: { _tag: "ok", value: input.snapshot.checks },
       publishedFeedback: input.snapshot.publishedFeedback === undefined ? ok({ reviews: [], comments: [] } as GitHubPublishedFeedback) : ok(input.snapshot.publishedFeedback),
+      ...(input.snapshot.mergeEvidence === undefined ? {} : { mergeEvidence: input.snapshot.mergeEvidence }),
     }, "represented", input.refreshedAt, input.updatesAvailable === true);
   }
 
@@ -223,6 +228,7 @@ export class ReviewWorkbenchProjectionService {
       comments: value.comments,
       checks: value.checks,
       mergeReadiness: value.mergeReadiness,
+      mergeReasons: value.mergeReasons,
     });
   }
 
@@ -246,6 +252,7 @@ export class ReviewWorkbenchProjectionService {
       readonly commits?: ReadonlyArray<PullRequestCommit>;
       readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
       readonly publishedFeedback?: Awaited<ReturnType<NonNullable<GitHubReader["getPullRequestPublishedFeedback"]>>>;
+      readonly mergeEvidence?: GitHubMergeEvidence;
     } | undefined,
     source: "local" | "represented" | "live",
     representedAt?: IsoTimestamp,
@@ -311,6 +318,7 @@ export class ReviewWorkbenchProjectionService {
     const mergeReadiness = current?._tag === "ok" && remote?.checks?._tag === "ok"
       ? evaluateReadiness(current.value, remote.checks.value, session)
       : { _tag: "Blocked" as const, blockers: ["stale_head" as const], warnings: [] };
+    const mergeReasons = deriveMergeReasons(current?._tag === "ok" ? current.value : undefined, remote?.mergeEvidence, checks);
     const recoveryView = await this.recoveryView(session, attempts.value);
     const analysis = storedInsights === undefined
       ? projectAnalysis(session, attempts.value, currentHeadSha, source !== "local")
@@ -356,6 +364,7 @@ export class ReviewWorkbenchProjectionService {
       comments,
       checks,
       mergeReadiness,
+      mergeReasons,
       ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
@@ -495,6 +504,42 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
   };
 }
 
+function deriveMergeReasons(
+  current: PullRequestSummary | undefined,
+  evidence: GitHubMergeEvidence | undefined,
+  checks: CheckSummary,
+): ReadonlyArray<MergeDisplayReason> {
+  const aggregate = evidence ?? (current === undefined ? undefined : {
+    mergeable: current.mergeability,
+    mergeStateStatus: "unavailable" as const,
+    reviewDecision: current.reviewState === "approved" ? "approved" as const : current.reviewState === "changes_requested" ? "changes_requested" as const : current.reviewState === "review_pending" ? "review_required" as const : "unknown" as const,
+  });
+  if (aggregate === undefined) return [];
+  const protection = aggregate.policy?.branchProtection;
+  // Only a positive classic branch-protection count matches an approval
+  // requirement. Zero and rules that do not expose approval configuration are
+  // unavailable evidence, not an exact policy claim.
+  const requiredCount = protection?.state === "available" && protection.value.requiredApprovingReviewCount !== undefined && protection.value.requiredApprovingReviewCount > 0
+    ? protection.value.requiredApprovingReviewCount
+    : undefined;
+  const policySource = requiredCount === undefined ? "github_pr_state" as const : "branch_protection" as const;
+  if (aggregate.reviewDecision === "review_required") {
+    return [{
+      code: "review_required",
+      message: requiredCount === undefined ? "Approval required by GitHub." : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by branch protection.`,
+      source: policySource,
+      availability: requiredCount === undefined ? "partial" : "available",
+      openOnGitHub: requiredCount === undefined,
+    }];
+  }
+  if (aggregate.reviewDecision === "changes_requested") return [{ code: "changes_requested", message: "Changes requested.", source: "github_pr_state", availability: "available", openOnGitHub: false }];
+  if (aggregate.mergeStateStatus === "behind") return [{ code: "behind", message: "Update this branch with the base branch.", source: "github_pr_state", availability: "available", openOnGitHub: false }];
+  if (aggregate.mergeStateStatus === "dirty" || aggregate.mergeable === "conflicting") return [{ code: "conflicts", message: "Resolve merge conflicts.", source: "github_pr_state", availability: "available", openOnGitHub: false }];
+  if (checks.overall === "failing") return [{ code: "checks", message: "Required checks have not passed.", source: "checks", availability: "available", openOnGitHub: false }];
+  if (aggregate.mergeStateStatus === "blocked" || aggregate.mergeable === "blocked") return [{ code: "blocked", message: "GitHub merge requirements are not satisfied.", source: "github_pr_state", availability: requiredCount === undefined ? "partial" : "available", openOnGitHub: true }];
+  return [];
+}
+
 function evaluateReadiness(
   current: PullRequestSummary,
   checks: CheckSummary,
@@ -567,6 +612,10 @@ function projectStoredInsight<T>(
       ...(record.walkthroughProgress === undefined ? {} : { progress: record.walkthroughProgress }),
       ...(retained === undefined ? {} : { retained }),
       replacementFailure: {
+        runId: record.replacementFailure.runId,
+        ...(record.replacementFailure.category === undefined ? {} : { category: record.replacementFailure.category }),
+        ...(record.replacementFailure.model === undefined ? {} : { model: record.replacementFailure.model }),
+        ...(record.replacementFailure.reasoning === undefined ? {} : { reasoning: record.replacementFailure.reasoning }),
         ...(record.replacementFailure.incidentId === undefined ? {} : { incidentId: record.replacementFailure.incidentId }),
         retryable: record.replacementFailure.retryable,
       },
@@ -646,6 +695,7 @@ function readableWalkthroughWithoutArtifact(input: unknown, profileId: Workspace
   }) : [];
   return {
     snapshot: { profileId, ...retained.revision },
+    citationStatus: "unverified",
     title: boundedArtifactText(raw.title, 200, "Stored Walkthrough"),
     focus: boundedArtifactText(raw.focus, 2_000, "Stored source evidence is unavailable."),
     chapters,

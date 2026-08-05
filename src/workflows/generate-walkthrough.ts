@@ -2,6 +2,7 @@ import { defineAgent, defineWorkflow } from "@flue/runtime";
 import * as v from "valibot";
 
 import type { FlueHarness } from "../flue-runtime-types";
+import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
 import { err, ok, type Result } from "../domain/result";
 import { readBoundedArtifact } from "../services/walkthrough-artifact-reader";
 
@@ -49,6 +50,7 @@ const walkthroughChapterSchema = v.strictObject({
 /** Raw structured output accepted from Flue before snapshot normalization. */
 export const walkthroughOutputSchema = v.pipe(
   v.strictObject({
+    citationVersion: v.literal(2),
     title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_TITLE_LENGTH)),
     focus: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_FOCUS_LENGTH)),
     chapters: v.pipe(v.array(walkthroughChapterSchema), v.maxLength(MAX_CHAPTERS)),
@@ -95,8 +97,10 @@ export async function runWalkthroughWorkflow({
     readWorkflowArtifact(input.contextPath, MAX_CONTEXT_BYTES),
     readWorkflowArtifact(input.patchPath, MAX_ARTIFACT_BYTES),
   ]);
+  const manifest = narrativeHunkManifest(patch);
+  if (manifest._tag === "err") throw new Error("Walkthrough patch could not be indexed");
   const response = await harness.session().then((session) =>
-    session.prompt<WalkthroughOutput>(composeWalkthroughPrompt({ input, context, patch }), {
+    session.prompt<WalkthroughOutput>(composeWalkthroughPrompt({ input, context, patch, manifest: manifest.value }), {
       result: walkthroughOutputSchema,
       tools: [],
       model: input.model,
@@ -132,16 +136,19 @@ function composeWalkthroughPrompt(input: {
   readonly input: WalkthroughInput;
   readonly context: string;
   readonly patch: string;
+  readonly manifest: ReadonlyArray<{ readonly id: string; readonly path: string; readonly header: string }>;
 }): string {
   const hunkCount = countHunks(input.patch);
   const targetSections = Math.min(12, Math.max(1, Math.ceil(hunkCount / 3)));
   return [
     "Generate a read-only walkthrough for the supplied immutable patch.",
     "The persistent reader uses an ordered chapter rail and continuous reading surface; do not return a linear picker or wizard state.",
-    "Explain behavior before consequences and validation; use aliases exactly, and route mechanical or low-signal changes to Support.",
-    `Create at most ${targetSections} primary sections, then leave every mechanical or low-signal hunk unreferenced so Patchdesk can place it in Support.`,
-    "Use request-local hunk aliases h1, h2, h3, ... in parsed patch order. Never invent aliases or paths.",
+    "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
+    `Create at most ${targetSections} primary sections. Each chapter should cite the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
+    "Set citationVersion to 2. For every cited alias, name that hunk's exact repo-relative path in the section prose. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
     `Profile ${input.input.profileId} and session ${input.input.sessionId} are provenance only; do not repeat them in prose.`,
+    "HUNK ALIAS MANIFEST:",
+    input.manifest.map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`).join("\n"),
     "CONTEXT ARTIFACT:",
     input.context,
     "PATCH ARTIFACT:",

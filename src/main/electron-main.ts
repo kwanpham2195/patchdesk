@@ -50,6 +50,7 @@ import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import { InsightRunCoordinator, type InsightInvocationInput } from "../services/insight-run-coordinator";
 
 const rendererOrigin = getRendererOrigin();
+const runtimeModelCatalog = new LocalPiRuntimeModelCatalog();
 let runningLocalApi: LocalApiServer | undefined;
 let mainWindow: BrowserWindow | undefined;
 let openingWindow: Promise<BrowserWindow> | undefined;
@@ -79,10 +80,10 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
-        insights: await recoverInsights(),
+        insights: await recoverInsights(runtimeModelCatalog),
         lifecycleGate,
         diagnostics,
-        modelCatalog: new LocalPiRuntimeModelCatalog(),
+        modelCatalog: runtimeModelCatalog,
         trash: {
           async move(path) {
             try {
@@ -121,19 +122,19 @@ const desktopLifecycle = createDesktopLifecycle({
   },
 });
 
-function createInsightCoordinator(): InsightRunCoordinator {
+function createInsightCoordinator(modelCatalog: LocalPiRuntimeModelCatalog): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
   const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
   const reviewInvoker = new FlueCliReviewInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
   const walkthroughInvoker = new FlueCliWalkthroughInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
   const analysis = {
     async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
-      if (input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" });
+      if (input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" as const });
       const contextPath = parseAbsolutePath(input.contextPath);
       const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
       const patchPath = parseAbsolutePath(input.patchPath);
       const worktreePath = parseAbsolutePath(input.worktreePath);
-      if (contextPath._tag === "err" || reviewInputPath._tag === "err" || patchPath._tag === "err" || worktreePath._tag === "err") return err({ reason: "execution_failed" });
+      if (contextPath._tag === "err" || reviewInputPath._tag === "err" || patchPath._tag === "err" || worktreePath._tag === "err") return err({ reason: "execution_failed" as const });
       return reviewInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }), contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, patchPath: patchPath.value, worktreePath: worktreePath.value, scope: input.scope, model: input.model, reasoning: input.reasoning }, options);
     },
   };
@@ -142,11 +143,11 @@ function createInsightCoordinator(): InsightRunCoordinator {
       return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
     },
   };
-  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, new LocalPiRuntimeModelCatalog(), { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths));
+  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, modelCatalog, { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths));
 }
 
-async function recoverInsights(): Promise<InsightRunCoordinator> {
-  const coordinator = createInsightCoordinator();
+async function recoverInsights(modelCatalog: LocalPiRuntimeModelCatalog): Promise<InsightRunCoordinator> {
+  const coordinator = createInsightCoordinator(modelCatalog);
   await coordinator.recoverAll();
   return coordinator;
 }

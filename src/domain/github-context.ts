@@ -41,6 +41,63 @@ export type CheckSummary = {
   readonly checks: ReadonlyArray<CheckRunSummary>;
 };
 
+export type GitHubMergeStateStatus =
+  | "blocked"
+  | "behind"
+  | "dirty"
+  | "draft"
+  | "has_hooks"
+  | "unstable"
+  | "clean"
+  | "unknown"
+  /** GitHub did not provide this field in the response. */
+  | "unavailable";
+
+/** Aggregate merge evidence reported by GitHub for a pull request. */
+export type GitHubMergeEvidence = {
+  readonly mergeable: "mergeable" | "conflicting" | "blocked" | "unknown";
+  readonly mergeStateStatus: GitHubMergeStateStatus;
+  readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
+  /** Optional policy configuration; absence is not a merge authorization signal. */
+  readonly policy?: GitHubMergePolicyEvidence;
+};
+
+export type MergeDisplayReason = {
+  readonly code: "review_required" | "changes_requested" | "behind" | "conflicts" | "checks" | "blocked";
+  readonly message: string;
+  readonly source: "github_pr_state" | "branch_protection" | "ruleset_configuration" | "checks";
+  readonly availability: "available" | "partial" | "unavailable";
+  readonly openOnGitHub: boolean;
+};
+
+/** Why an optional policy endpoint did not disclose configuration. */
+export type GitHubOptionalEvidenceUnavailable =
+  | { readonly state: "unavailable"; readonly reason: "forbidden" | "not_found" | "unsupported" };
+
+/** Bounded review-policy fields from classic branch protection. */
+export type GitHubClassicBranchProtectionEvidence = {
+  readonly requiredApprovingReviewCount?: number;
+  readonly dismissStaleReviews?: boolean;
+  readonly requireCodeOwnerReviews?: boolean;
+};
+
+/** Bounded rule names/types returned by the applied branch-rules endpoint. */
+export type GitHubAppliedRulesetEvidence = {
+  readonly rules: ReadonlyArray<{
+    readonly type: string;
+    readonly name?: string;
+  }>;
+};
+
+export type GitHubMergePolicyEvidence = {
+  readonly branchProtection:
+    | { readonly state: "available"; readonly value: GitHubClassicBranchProtectionEvidence }
+    | GitHubOptionalEvidenceUnavailable;
+  readonly appliedRuleset:
+    | { readonly state: "available"; readonly value: GitHubAppliedRulesetEvidence }
+    | GitHubOptionalEvidenceUnavailable;
+};
+
 /** Fresh, exact-head policy evidence required before Patchdesk may request a merge. */
 export type MergePolicySnapshot = {
   readonly pr: PullRequestRef;
@@ -48,6 +105,8 @@ export type MergePolicySnapshot = {
   readonly isOpen: boolean;
   readonly isDraft: boolean;
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
+  /** Optional for legacy/fake readers; adapter reads always include it. */
+  readonly mergeStateStatus?: GitHubMergeStateStatus;
   readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
   readonly checks: CheckSummary;
   readonly complete: boolean;

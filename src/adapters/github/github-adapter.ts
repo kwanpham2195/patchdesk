@@ -8,6 +8,10 @@ import type {
   GitHubComments,
   GitHubConversationThread,
   GitHubPublishedFeedback,
+  GitHubMergeStateStatus,
+  GitHubMergePolicyEvidence,
+  GitHubClassicBranchProtectionEvidence,
+  GitHubAppliedRulesetEvidence,
   PublishedReview,
   PublishedReviewComment,
   PullRequestCommit,
@@ -51,7 +55,7 @@ const maxReviewComments = 5_000;
 const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 const mergePolicyQuery =
-  "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefName mergeable reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
+  "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 const maxMergePolicyPages = 3;
 const maxPullRequestCommits = 250;
 const publishedReviewSchema = v.array(v.looseObject({
@@ -85,6 +89,17 @@ const branchProtectionSchema = v.looseObject({
     }))),
   }))),
 });
+const mergeEvidenceBranchProtectionSchema = v.looseObject({
+  required_pull_request_reviews: v.nullable(v.looseObject({
+    required_approving_review_count: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100)),
+    dismiss_stale_reviews: v.boolean(),
+    require_code_owner_reviews: v.boolean(),
+  })),
+});
+const appliedRulesetSchema = v.pipe(v.array(v.looseObject({
+  type: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
+  name: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
+})), v.maxLength(50));
 
 const pullRequestCommitSchema = v.looseObject({
   sha: v.string(),
@@ -298,6 +313,12 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly expectedHeadSha: GitSha;
   }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>>;
+  /** Reads bounded, optional branch policy configuration for display-only merge evidence. */
+  getMergePolicyEvidence(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>>;
   getMergeOutcome(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -367,6 +388,7 @@ type MergePolicyPage = {
   readonly isOpen: boolean;
   readonly isDraft: boolean;
   readonly mergeability: MergePolicySnapshot["mergeability"];
+  readonly mergeStateStatus: GitHubMergeStateStatus;
   readonly reviewDecision: MergePolicySnapshot["reviewDecision"];
   readonly contexts: ReadonlyArray<CheckRunSummary>;
   readonly hasNextPage: boolean;
@@ -508,6 +530,7 @@ type GitHubReadOperation =
   | "list_maintainer_prs"
   | "get_pr"
   | "get_merge_policy"
+  | "get_merge_policy_evidence"
   | "get_comments"
   | "get_reviews"
   | "get_repository_permission"
@@ -870,6 +893,18 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     const rules = parsed.output.required_pull_request_reviews;
     const restrictions = rules?.dismissal_restrictions;
     return ok({ protected: rules !== undefined && rules !== null, allowedDismissers: restrictions?.users?.map((user) => user.login) ?? [] });
+  }
+
+  async getMergePolicyEvidence(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly branch: string }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
+    const [branchProtection, appliedRuleset] = await Promise.all([
+      this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`], timeoutMs: commandTimeoutMs }),
+      this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/rules/branches/${encodeURIComponent(input.branch)}`], timeoutMs: commandTimeoutMs }),
+    ]);
+    const branch = parseOptionalPolicyResponse(branchProtection, "branchProtection");
+    if (branch._tag === "err") return branch;
+    const rules = parseOptionalPolicyResponse(appliedRuleset, "appliedRuleset");
+    if (rules._tag === "err") return rules;
+    return ok({ branchProtection: branch.value, appliedRuleset: rules.value });
   }
 
   private async loadThreadReplies(profile: WorkspaceProfileConfig, threadId: string, initial: ReadonlyArray<GitHubComment>, initialCursor: string | null, remainingComments: number): Promise<{ readonly comments: ReadonlyArray<GitHubComment>; readonly complete: boolean }> {
@@ -1301,6 +1336,13 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return ok({ pr: input.pr, headSha: current.value.headSha, isOpen: current.value.isOpen, isDraft: current.value.isDraft, mergeability: current.value.mergeability, reviewDecision: current.value.reviewState === "approved" ? "approved" : current.value.reviewState === "changes_requested" ? "changes_requested" : current.value.reviewState === "review_pending" ? "review_required" : "unknown", checks: this.values.checks ?? { overall: "unknown", checks: [] }, complete: current.value.headSha === input.expectedHeadSha && current.value.reviewState !== "none" && current.value.reviewState !== "unknown" && this.values.checks !== undefined, ...(current.value.headSha === input.expectedHeadSha ? {} : { incompleteReason: "head_mismatch" }) });
   }
 
+  async getMergePolicyEvidence(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly branch: string }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
+    void input;
+    return this.values.mergePolicyEvidence === undefined
+      ? missing("get_merge_policy_evidence")
+      : ok(this.values.mergePolicyEvidence);
+  }
+
   async getMergeOutcome(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -1450,6 +1492,7 @@ export type FakeGitHubAdapterValues = {
   readonly maintainerPullRequests: MaintainerPullRequestListing;
   readonly pullRequest: PullRequestSummary;
   readonly mergePolicy: MergePolicySnapshot;
+  readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
   readonly mergeOutcome: MergeOutcome;
   readonly comments: GitHubComments;
   readonly publishedFeedback: GitHubPublishedFeedback;
@@ -1645,6 +1688,7 @@ function parseMergePolicyPage(input: unknown): MergePolicyPage | undefined {
     isOpen: pullRequest.state === "OPEN",
     isDraft: pullRequest.isDraft,
     mergeability: mapMergeability(pullRequest.mergeable),
+    mergeStateStatus: mapMergeStateStatus(pullRequest.mergeStateStatus),
     reviewDecision: mapMergePolicyReviewDecision(pullRequest.reviewDecision),
     contexts,
     hasNextPage: rollup.contexts.pageInfo.hasNextPage,
@@ -1696,11 +1740,11 @@ function completeMergePolicy(pr: PullRequestRef, page: MergePolicyPage, contexts
   for (const name of requiredContexts) {
     if (!seen.has(name)) matched.push({ name, required: true, status: "unknown" });
   }
-  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(matched), checks: matched }, complete: true };
+  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, mergeStateStatus: page.mergeStateStatus, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(matched), checks: matched }, complete: true };
 }
 
 function incompleteMergePolicy(pr: PullRequestRef, page: MergePolicyPage, contexts: ReadonlyArray<CheckRunSummary>, incompleteReason: Exclude<MergePolicySnapshot["incompleteReason"], undefined>): MergePolicySnapshot {
-  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(contexts), checks: contexts.map((check) => ({ ...check, required: "unknown" })) }, complete: false, incompleteReason };
+  return { pr, headSha: page.headSha, isOpen: page.isOpen, isDraft: page.isDraft, mergeability: page.mergeability, mergeStateStatus: page.mergeStateStatus, reviewDecision: page.reviewDecision, checks: { overall: overallCheckStatus(contexts), checks: contexts.map((check) => ({ ...check, required: "unknown" })) }, complete: false, incompleteReason };
 }
 
 function mapMergePolicyReviewDecision(value: string | null | undefined): MergePolicySnapshot["reviewDecision"] {
@@ -1708,6 +1752,21 @@ function mapMergePolicyReviewDecision(value: string | null | undefined): MergePo
   if (value === "CHANGES_REQUESTED") return "changes_requested";
   if (value === "REVIEW_REQUIRED") return "review_required";
   return "unknown";
+}
+
+function mapMergeStateStatus(value: unknown): GitHubMergeStateStatus {
+  switch (value) {
+    case "BLOCKED": return "blocked";
+    case "BEHIND": return "behind";
+    case "DIRTY": return "dirty";
+    case "DRAFT": return "draft";
+    case "HAS_HOOKS": return "has_hooks";
+    case "UNSTABLE": return "unstable";
+    case "CLEAN": return "clean";
+    case undefined:
+    case null: return "unavailable";
+    default: return "unknown";
+  }
 }
 
 function parsePullRequest(
@@ -1947,6 +2006,58 @@ function parseGitHubTimestamp(
     ? `${input.slice(0, -1)}.000Z`
     : input;
   return parseIsoTimestamp(normalized);
+}
+
+function parseOptionalPolicyResponse(
+  response: Result<unknown, CommandFailure>,
+  kind: "branchProtection",
+): Result<GitHubMergePolicyEvidence["branchProtection"], GitHubReadFailure>;
+function parseOptionalPolicyResponse(
+  response: Result<unknown, CommandFailure>,
+  kind: "appliedRuleset",
+): Result<GitHubMergePolicyEvidence["appliedRuleset"], GitHubReadFailure>;
+function parseOptionalPolicyResponse(
+  response: Result<unknown, CommandFailure>,
+  kind: "branchProtection" | "appliedRuleset",
+): Result<GitHubMergePolicyEvidence["branchProtection"] | GitHubMergePolicyEvidence["appliedRuleset"], GitHubReadFailure> {
+  if (response._tag === "err") {
+    const reason = optionalPolicyUnavailableReason(response.error);
+    return reason === undefined
+      ? commandFailure("get_merge_policy_evidence", response.error)
+      : ok({ state: "unavailable", reason });
+  }
+  if (kind === "branchProtection") {
+    const parsed = v.safeParse(mergeEvidenceBranchProtectionSchema, response.value);
+    if (!parsed.success) return invalid("get_merge_policy_evidence");
+    const reviews = parsed.output.required_pull_request_reviews;
+    const value: GitHubClassicBranchProtectionEvidence = reviews === null
+      ? {}
+      : {
+          // GitHub reports zero when no approval policy is configured. It is
+          // not usable evidence for an approval requirement.
+          ...(reviews.required_approving_review_count > 0
+            ? { requiredApprovingReviewCount: reviews.required_approving_review_count }
+            : {}),
+          dismissStaleReviews: reviews.dismiss_stale_reviews,
+          requireCodeOwnerReviews: reviews.require_code_owner_reviews,
+        };
+    return ok({ state: "available", value });
+  }
+  const parsed = v.safeParse(appliedRulesetSchema, response.value);
+  if (!parsed.success) return invalid("get_merge_policy_evidence");
+  const value: GitHubAppliedRulesetEvidence = {
+    rules: parsed.output.map((rule) => ({ type: rule.type, ...(rule.name === undefined ? {} : { name: rule.name }) })),
+  };
+  return ok({ state: "available", value });
+}
+
+function optionalPolicyUnavailableReason(
+  failure: CommandFailure,
+): "forbidden" | "not_found" | "unsupported" | undefined {
+  if (failure._tag === "CommandForbidden") return "forbidden";
+  if (failure._tag === "CommandNotFound") return "not_found";
+  if (failure._tag === "CommandUnsupported") return "unsupported";
+  return undefined;
 }
 
 function commandFailure(

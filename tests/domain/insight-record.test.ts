@@ -38,7 +38,10 @@ describe("InsightRecord", () => {
     const runId = activeRun.id;
     const failed = failInsightRun(started.value, runId, { runId, reason: "failed", retryable: true, failedAt: later }, later);
     expect(failed._tag).toBe("ok");
-    if (failed._tag === "ok") expect(failed.value.retained).toEqual(retained);
+    if (failed._tag === "ok") {
+      expect(failed.value.retained).toEqual(retained);
+      expect(failed.value.replacementFailure).toMatchObject({ model: "fixture-model", reasoning: "medium" });
+    }
     const startedAgain = beginInsightRun(withRetained, runInput(withRetained));
     if (startedAgain._tag === "err") throw new Error("expected run");
     const activeRunAgain = startedAgain.value.activeRun;

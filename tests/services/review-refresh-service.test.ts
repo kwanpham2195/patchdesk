@@ -116,6 +116,28 @@ describe("ReviewRefreshService", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 
+  it("persists optional policy evidence during explicit refresh", async () => {
+    let savedSnapshot: ReviewRemoteSnapshot | undefined;
+    const service = new ReviewRefreshService({
+      profiles: { async load() { return ok({} as never); } },
+      reviews: { async load() { return ok(review); }, async save() { return ok(undefined); } },
+      sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
+      remote: { async load() { return ok(snapshot); }, async saveCandidate(input) { savedSnapshot = input.snapshot; return ok({ snapshotHash: hashSnapshot(input.snapshot) }); } },
+      github: {
+        async getPullRequest() { return ok(snapshot.pullRequest); },
+        async getPullRequestChecks() { return ok(snapshot.checks); },
+        async getPullRequestComments() { return ok(snapshot.comments); },
+        async getPullRequestCommits() { return ok([]); },
+        async getMergePolicy() { return ok({ pr: { host: identity.host, owner: identity.owner, repo: identity.repo, number: identity.prNumber }, headSha, isOpen: true, isDraft: false, mergeability: "blocked", mergeStateStatus: "blocked", reviewDecision: "review_required", checks: snapshot.checks, complete: true }); },
+        async getMergePolicyEvidence() { return ok({ branchProtection: { state: "available", value: { requiredApprovingReviewCount: 1 } }, appliedRuleset: { state: "unavailable", reason: "forbidden" } }); },
+      },
+      preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toMatchObject({ _tag: "ok" });
+    expect(savedSnapshot?.mergeEvidence?.policy?.branchProtection).toEqual({ state: "available", value: { requiredApprovingReviewCount: 1 } });
+  });
+
   it("flattens a projected refresh result instead of nesting the Result envelope", async () => {
     const projection = { state: "review", review: { id: review.id, status: "open" } } as never;
     const service = new ReviewRefreshService({

@@ -13,6 +13,21 @@ describe("merge confirmation dialog", () => {
     expect(screen.queryByText("conflicting changes")).toBeNull();
   });
 
+  it("offers the safe GitHub action for partially evidenced blockers", async () => {
+    const openExternalHttps = vi.fn(async () => true);
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { openExternalHttps } });
+    render(<MergeConfirmationDialog
+      readiness={{ _tag: "Blocked", blockers: ["merge_blocked"], warnings: [] }}
+      mergeReasons={[{ code: "blocked", message: "GitHub merge requirements are not satisfied.", source: "github_pr_state", availability: "partial", openOnGitHub: true }]}
+      pullRequest={{ host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 } as never}
+      context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }}
+      methods={["squash"]}
+      onMerge={async () => ({})}
+    />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open on GitHub" }));
+    expect(openExternalHttps).toHaveBeenCalledWith("https://github.com/centraldigital/patchdesk/pull/42");
+  });
+
   it("shows context and requires acknowledgement for merge warnings before one explicit merge", async () => {
     const user = userEvent.setup(); const merge = vi.fn(async () => ({ mergeCommitSha: "abcdef" }));
     render(<MergeConfirmationDialog readiness={{ _tag: "NeedsAcknowledgement", blockers: [], warnings: ["request_changes", "high_severity_finding"] }} context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }} methods={["squash", "merge"]} onMerge={merge} />);

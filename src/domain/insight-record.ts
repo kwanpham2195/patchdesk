@@ -7,7 +7,19 @@ export type InsightRun = { readonly id: InsightRunId; readonly type: InsightType
 export type RetainedInsight<T> = { readonly runId: InsightRunId; readonly revision: InsightRevision; readonly generatedAt: IsoTimestamp; readonly value: T };
 export type InsightFindingDismissal = { readonly findingId: FindingId; readonly reason: string; readonly dismissedAt: IsoTimestamp };
 export type WalkthroughProgress = { readonly reviewedSectionIds: ReadonlyArray<string>; readonly supportReviewed: boolean; readonly currentSectionId?: string };
-export type InsightFailure = { readonly runId: InsightRunId; readonly reason: "cancelled" | "failed" | "invalid_result" | "superseded"; readonly incidentId?: string; readonly retryable: boolean; readonly failedAt: IsoTimestamp };
+/** Safe, provider-independent categories suitable for durable user-facing diagnostics. */
+export type InsightFailureCategory = "authentication_required" | "rate_limited" | "runtime_unavailable" | "timed_out" | "execution_failed" | "invalid_result" | "unexpected_failure";
+export type InsightFailure = {
+  readonly runId: InsightRunId;
+  readonly reason: "cancelled" | "failed" | "invalid_result" | "superseded";
+  readonly category?: InsightFailureCategory;
+  readonly model?: string;
+  readonly reasoning?: "low" | "medium" | "high";
+  /** Legacy only; new failures use runId as the correlation ID. */
+  readonly incidentId?: string;
+  readonly retryable: boolean;
+  readonly failedAt: IsoTimestamp;
+};
 export type InsightRecord<T> = { readonly schemaVersion: 1; readonly reviewId: ReviewId; readonly type: InsightType; readonly nextToken: number; readonly retained?: T; readonly dismissals?: ReadonlyArray<InsightFindingDismissal>; readonly walkthroughProgress?: WalkthroughProgress; readonly activeRun?: InsightRun; readonly replacementFailure?: InsightFailure; readonly updatedAt: IsoTimestamp };
 
 export function createInsightRecord(input: { readonly reviewId: ReviewId; readonly type: InsightType; readonly updatedAt: IsoTimestamp }): InsightRecord<unknown> {
@@ -65,5 +77,12 @@ export function failInsightRun(record: InsightRecord<unknown>, runId: InsightRun
   if (record.activeRun?.id !== runId) return err("superseded");
   const { activeRun: _activeRun, ...withoutActiveRun } = record;
   void _activeRun;
-  return ok({ ...withoutActiveRun, replacementFailure: failure, updatedAt: at });
+  // Keep the selected run configuration with the failure, without copying any
+  // provider output or thrown error details into durable state.
+  const replacementFailure: InsightFailure = {
+    ...failure,
+    ...(failure.model === undefined ? { model: record.activeRun.model } : {}),
+    ...(failure.reasoning === undefined ? { reasoning: record.activeRun.reasoning } : {}),
+  };
+  return ok({ ...withoutActiveRun, replacementFailure, updatedAt: at });
 }

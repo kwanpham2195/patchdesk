@@ -53,9 +53,12 @@ it("reattaches an unsafe item only to the explicitly selected current diff range
 it("keeps the draft summary visible and expands the editor", async () => {
   const batch = createEmptyReviewBatch({ sessionId: sessionId.value, createdAt: now.value });
   render(<ReviewDraftDock batch={batch} writeBlocked={false} actions={{ addInlineComment: vi.fn(async () => undefined), removeItem: vi.fn(async () => undefined), addThreadReply: vi.fn(async () => undefined), setThreadState: vi.fn(async () => undefined), apply: vi.fn(async () => undefined), submit: vi.fn(async () => undefined) }} />);
-  expect(screen.getByRole("region", { name: "Review draft dock" })).toBeDefined();
+  const dock = screen.getByRole("region", { name: "Review draft dock" });
+  expect(dock.getAttribute("data-review-draft-state")).toBe("collapsed");
   expect(screen.getByText("0 included")).toBeDefined();
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /Review draft/ }));
+  expect(dock.getAttribute("data-review-draft-state")).toBe("expanded");
   expect(screen.getByRole("heading", { name: "Review batch" })).toBeDefined();
+  expect(document.querySelector('[data-review-draft-scroll]')).toBeDefined();
 });

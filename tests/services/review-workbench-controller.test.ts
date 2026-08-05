@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import { createReview, markReviewTerminal, type Review } from "../../src/domain/review";
-import { createReviewSessionId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
+import { createReviewId, createReviewSessionId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -20,18 +20,18 @@ const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha 
 const representedRemote = { headSha: firstSha, pullRequestUpdatedAt: now, snapshotHash: "a".repeat(64) as never, refreshedAt: now };
 
 function projection(): never { return { state: "review" } as never; }
-function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> } }) {
+function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly refresh?: { readonly refresh: ReturnType<typeof vi.fn> }; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> }; readonly lifecycle?: boolean }) {
   const prepareCalls = options.prepareCalls ?? vi.fn();
-  const save = options.save ?? vi.fn(async () => ok(undefined));
-  const review = options.existing;
+  let storedReview = options.existing;
+  const save = options.save ?? vi.fn(async (value: Review) => { storedReview = value; return ok(undefined); });
   const prep = { async prepare(input: unknown) { prepareCalls(input); return ok({ disposition: "resumed", session: { id: options.preparedSessionId ?? firstSessionId, key: { ...identity, headSha: options.preparedHead ?? firstSha }, updatedAt: later } } as never); } };
-  const reviews = { async load() { return review === undefined ? ({ _tag: "err", error: { _tag: "StorageFailure", operation: "read", reason: "not_found" } } as never) : ok(review); }, save };
+  const reviews = { async load() { return storedReview === undefined ? ({ _tag: "err", error: { _tag: "StorageFailure", operation: "read", reason: "not_found" } } as never) : ok(storedReview); }, save };
   const remote = { async load() { return ok({} as never); } };
   const loadLocal = options.loadLocal ?? vi.fn(async () => ok(projection()));
   const loadRepresented = options.loadRepresented ?? vi.fn(async () => ok(projection()));
   const load = options.load ?? vi.fn(async () => ok(projection()));
   const projectionService = { load, loadLocal, loadRepresented };
-  const value = new ReviewWorkbenchController(prep as never, projectionService as never, { reviews, remote, refresh: {}, ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
+  const value = new ReviewWorkbenchController(prep as never, projectionService as never, options.lifecycle === false ? undefined : { reviews, remote, refresh: options.refresh ?? {}, ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
   return { value, prepareCalls, save };
 }
 
@@ -66,6 +66,32 @@ describe("ReviewWorkbenchController stable open", () => {
     expect(opened._tag).toBe("ok");
     expect(prepareCalls).toHaveBeenCalledOnce();
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the lifecycle-free first open on the session projection path", async () => {
+    const load = vi.fn(async () => ok(projection()));
+    const { value, prepareCalls } = controller({ lifecycle: false, load });
+    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
+    expect(opened).toEqual({ _tag: "ok", value: { state: "review" } });
+    expect(prepareCalls).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith({ profileId, sessionId: firstSessionId });
+  });
+
+  it("fetches the initial GitHub snapshot when a Review is first opened", async () => {
+    const refresh = { refresh: vi.fn(async () => ok(undefined)) };
+    const { value } = controller({ refresh });
+
+    await expect(value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toMatchObject({ _tag: "ok" });
+    expect(refresh.refresh).toHaveBeenCalledWith({ profileId, reviewId: createReviewId(identity) });
+  });
+
+  it("fetches the initial snapshot for an existing Review that has never refreshed", async () => {
+    const refresh = { refresh: vi.fn(async () => ok(undefined)) };
+    const unrefreshed = createReview({ identity, currentSessionId: firstSessionId, headSha: firstSha, createdAt: now });
+    const { value } = controller({ existing: unrefreshed, refresh });
+
+    await expect(value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toMatchObject({ _tag: "ok" });
+    expect(refresh.refresh).toHaveBeenCalledWith({ profileId, reviewId: unrefreshed.id });
   });
 
   it("resumes same-head open without advancing the stable Review", async () => {

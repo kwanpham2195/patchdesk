@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeftOpen } from "lucide-react";
+import { ExternalLink, PanelLeftOpen } from "lucide-react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
-import { parseRepoRelativePath } from "../../../domain/ids";
+import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
+import type { PullRequestRef } from "../../../domain/pull-request";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
+import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
 import type { LocalCommentAuthoring, LocalCommentLocation, ReviewInlineAnnotation } from "./review-diff-view";
 import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview, type PullRequestOverviewMerge } from "./pr-overview-sheet";
@@ -17,6 +19,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type ReviewFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
+
+function pullRequestExternalRef(model: WorkbenchResponse): PullRequestRef | undefined {
+  const source = model.pullRequest?.ref ?? { host: model.session.key.host, owner: model.session.key.owner, repo: model.session.key.repo, number: model.session.key.prNumber };
+  const host = parseGitHubHost(source.host);
+  const owner = parseGitHubOwner(source.owner);
+  const repo = parseGitHubRepoName(source.repo);
+  const number = parsePullRequestNumber(source.number);
+  if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return undefined;
+  return { host: host.value, owner: owner.value, repo: repo.value, number: number.value };
+}
 
 function initialFindings(model: WorkbenchResponse): ReadonlyArray<ReviewFinding> {
   const retained = model.insights.analysis.retained;
@@ -196,6 +208,7 @@ export function ReviewWorkbench({
     ...(selectedFinding.lineEnd === undefined ? {} : { lineEnd: selectedFinding.lineEnd }),
     ...(selectedFinding.diffSide === undefined ? {} : { diffSide: selectedFinding.diffSide }),
   };
+  const externalPullRequest = pullRequestExternalRef(model);
   const overview: CanonicalReviewOverview = {
     repository,
     prNumber: model.session.key.prNumber,
@@ -206,6 +219,8 @@ export function ReviewWorkbench({
     comments: { ...(model.comments.complete === undefined ? {} : { complete: model.comments.complete }), threads: model.comments.threads.map((thread) => ({ id: thread.id, state: thread.state, comments: thread.comments.map((comment) => ({ author: comment.author, body: comment.body })) })) },
     publishedFeedback: model.publishedFeedback,
     mergeReadiness: model.mergeReadiness,
+    mergeReasons: model.mergeReasons ?? [],
+    ...(externalPullRequest === undefined ? {} : { pullRequest: externalPullRequest }),
     revision: { reviewedHeadSha: model.revision.reviewedHeadSha, ...(model.revision.currentHeadSha === undefined ? {} : { currentHeadSha: model.revision.currentHeadSha }), freshness: model.revision.freshness, refreshedAt: model.revision.refreshedAt },
     analysisStatus: model.insights.analysis.status,
     walkthroughStatus: model.insights.walkthrough.status,
@@ -224,8 +239,11 @@ export function ReviewWorkbench({
     setSelectedCommitSha(undefined);
   }, []);
   const focusPublishedFeedback = useCallback((): void => {
-    const region = feedbackRegionRef.current?.querySelector<HTMLElement>('[aria-label="Published feedback"]') ?? feedbackRegionRef.current;
+    const feedbackRegion = feedbackRegionRef.current;
+    const region = feedbackRegion?.querySelector<HTMLElement>('[aria-label="Published feedback"]') ?? feedbackRegion;
     if (region === null || region === undefined) return;
+    const trigger = region.querySelector<HTMLButtonElement>("[data-published-feedback-trigger]");
+    if (trigger?.getAttribute("aria-expanded") === "false") trigger.click();
     region.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     region.focus({ preventScroll: true });
   }, []);
@@ -245,6 +263,16 @@ export function ReviewWorkbench({
           </p>
         </div>
         <div className="flex flex-wrap gap-2" aria-label="Pull request actions">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={externalPullRequest === undefined}
+            onClick={() => {
+              if (externalPullRequest !== undefined) void openPullRequestExternalUrl(pullRequestPageUrl(externalPullRequest).toString(), externalPullRequest);
+            }}
+          >
+            <ExternalLink /> Open on GitHub
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
           {terminal ? null : (
             <Button
@@ -268,7 +296,7 @@ export function ReviewWorkbench({
           {model.fullPatch === undefined ? (
             <div className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</div>
           ) : (
-            <div className="grid h-full min-h-0 flex-1 min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]">
+            <div data-review-diff-layout={navigatorVisible ? "with-navigator" : "collapsed-navigator"} className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}>
               {navigatorVisible ? <ReviewNavigator
                 patch={model.fullPatch}
                 commits={model.commits}
@@ -284,7 +312,7 @@ export function ReviewWorkbench({
                 onCommitSelect={selectCommit}
                 onCollapse={() => setNavigatorVisible(false)}
               /> : (
-                <div className="flex items-start p-2">
+                <div className="flex items-start justify-center pt-2">
                   <Tooltip>
                     <TooltipTrigger
                       render={<Button size="icon-sm" variant="outline" onClick={() => setNavigatorVisible(true)} aria-label="Show review navigator" />}
@@ -337,11 +365,11 @@ export function ReviewWorkbench({
         </TabsContent>
       </Tabs>
 
-      <div ref={feedbackRegionRef} tabIndex={-1} className="min-h-0 max-h-64 shrink-0 overflow-y-auto outline-none" data-review-workbench-feedback>
+      <div ref={feedbackRegionRef} tabIndex={-1} className="min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none" data-review-workbench-feedback>
         {slots.publishedFeedback}
         {slots.mergeAction}
       </div>
-      <div className="shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
+      <div className="flex min-h-0 shrink-0 flex-col" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
       <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} />
 

@@ -1,5 +1,5 @@
 import type { GitSha, InsightRunId, IsoTimestamp, ReviewSessionId } from "./ids";
-import type { WalkthroughProgress } from "./insight-record";
+import type { InsightFailureCategory, WalkthroughProgress } from "./insight-record";
 export type InsightStatus =
   | "not_generated"
   | "running"
@@ -38,6 +38,11 @@ export type InsightProjection<T> = {
     readonly startedAt: IsoTimestamp;
   };
   readonly replacementFailure?: {
+    /** Run identity doubles as the safe, user-visible correlation ID. */
+    readonly runId?: InsightRunId;
+    readonly category?: InsightFailureCategory;
+    readonly model?: string;
+    readonly reasoning?: "low" | "medium" | "high";
     readonly incidentId?: string;
     readonly retryable: boolean;
   };

@@ -669,7 +669,8 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Stored review title" }),
     ).toBeTruthy();
-    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(2);
+    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(1);
+  expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>

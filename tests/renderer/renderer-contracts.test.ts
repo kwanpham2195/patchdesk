@@ -244,6 +244,8 @@ const walkthroughHunk = {
 
 const walkthroughProjectionFixture = {
   snapshot: walkthroughSnapshot,
+  citationVersion: 2,
+  citationStatus: "verified",
   title: "Read-only walkthrough",
   focus: "What this change means for reviewers",
   chapters: [
@@ -485,8 +487,32 @@ describe("parseModelCatalog", () => {
     expect(catalog?.defaultReasoning).toBe("medium");
   });
 
-  it("rejects a catalog with no models", () => {
-    expect(parseModelCatalog({ models: [] })).toBeUndefined();
+  it("accepts an intentional empty catalog for provider guidance", () => {
+    expect(parseModelCatalog({ models: [] })).toEqual({ models: [] });
+  });
+
+  it("accepts the complete universal catalog without a small count cap", () => {
+    const models = Array.from({ length: 269 }, (_, index) => ({
+      id: `openai/universal-model-${index}`,
+      label: `Universal model ${index}`,
+    }));
+    const catalog = parseModelCatalog({ models });
+    expect(catalog?.models).toHaveLength(269);
+    expect(catalog?.models.at(-1)).toEqual(models.at(-1));
+  });
+
+  it("keeps model entries strict and rejects credential fields", () => {
+    expect(
+      parseModelCatalog({
+        models: [{ id: "model-a", label: "Model A", apiKey: "secret" }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseModelCatalog({ models: [{ id: "i".repeat(201), label: "Model" }] }),
+    ).toBeUndefined();
+    expect(
+      parseModelCatalog({ models: [{ id: "model-a", label: "l".repeat(201) }] }),
+    ).toBeUndefined();
   });
 
   it("rejects a catalog that includes non-string model ids", () => {

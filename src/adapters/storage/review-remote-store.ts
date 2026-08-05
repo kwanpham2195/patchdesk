@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
-import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
+import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, GitHubMergeEvidence, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseGitHubThreadId, parseIsoTimestamp, parsePullRequestNumber, parseRepoRelativePath, type ContentHash, type ReviewId, type WorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
 import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
@@ -18,6 +18,8 @@ export type ReviewRemoteSnapshot = {
   readonly checks: CheckSummary;
   readonly publishedFeedback?: GitHubPublishedFeedback;
   readonly mergePolicy?: MergePolicySnapshot;
+  /** Separate typed aggregate evidence used for display; mergePolicy remains the write-gate input. */
+  readonly mergeEvidence?: GitHubMergeEvidence;
 };
 
 export type ReviewRemoteStoreFailure = StorageFailure;
@@ -62,8 +64,30 @@ const pullRequestSchema = v.strictObject({
 const mergePolicySchema = v.strictObject({
   pr: v.strictObject({ host: v.string(), owner: v.string(), repo: v.string(), number: v.number() }),
   headSha: v.string(), isOpen: v.boolean(), isDraft: v.boolean(), mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  mergeStateStatus: v.optional(v.picklist(["blocked", "behind", "dirty", "draft", "has_hooks", "unstable", "clean", "unknown", "unavailable"])),
   reviewDecision: v.picklist(["approved", "changes_requested", "review_required", "unknown"]), checks: checksSchema, complete: v.boolean(),
   incompleteReason: v.optional(v.picklist(["head_mismatch", "pagination", "permission", "unavailable", "mapping"])),
+});
+const optionalEvidenceUnavailableSchema = v.strictObject({ state: v.literal("unavailable"), reason: v.picklist(["forbidden", "not_found", "unsupported"]) });
+const mergePolicyEvidenceSchema = v.strictObject({
+  branchProtection: v.union([
+    v.strictObject({ state: v.literal("available"), value: v.strictObject({
+      requiredApprovingReviewCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100))),
+      dismissStaleReviews: v.optional(v.boolean()),
+      requireCodeOwnerReviews: v.optional(v.boolean()),
+    }) }),
+    optionalEvidenceUnavailableSchema,
+  ]),
+  appliedRuleset: v.union([
+    v.strictObject({ state: v.literal("available"), value: v.strictObject({ rules: v.array(v.strictObject({ type: v.string(), name: v.optional(v.string()) })) }) }),
+    optionalEvidenceUnavailableSchema,
+  ]),
+});
+const mergeEvidenceSchema = v.strictObject({
+  mergeable: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  mergeStateStatus: v.picklist(["blocked", "behind", "dirty", "draft", "has_hooks", "unstable", "clean", "unknown", "unavailable"]),
+  reviewDecision: v.picklist(["approved", "changes_requested", "review_required", "unknown"]),
+  policy: v.optional(mergePolicyEvidenceSchema),
 });
 const commitSchema = v.strictObject({ sha: v.string(), message: v.string(), author: v.string(), authoredAt: v.string(), url: v.optional(v.string()), isHead: v.boolean() });
 const publishedFeedbackSchema = v.strictObject({
@@ -72,7 +96,7 @@ const publishedFeedbackSchema = v.strictObject({
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
 });
-const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), mergePolicy: v.optional(mergePolicySchema) });
+const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), mergePolicy: v.optional(mergePolicySchema), mergeEvidence: v.optional(mergeEvidenceSchema) });
 
 /** Content-addressed storage for the complete remote snapshot represented by a Review. */
 export class ReviewRemoteStore {
@@ -122,9 +146,10 @@ export function parseReviewRemoteSnapshot(input: unknown): Result<ReviewRemoteSn
   const checks = parseChecks(parsed.output.checks);
   const commits = parseCommits(parsed.output.commits, pr._tag === "ok" ? pr.value.headSha : undefined);
   const mergePolicy = parsed.output.mergePolicy === undefined ? ok(undefined) : parseMergePolicy(parsed.output.mergePolicy);
+  const mergeEvidence = parsed.output.mergeEvidence === undefined ? ok(undefined) : parseMergeEvidence(parsed.output.mergeEvidence);
   const publishedFeedback = parsed.output.publishedFeedback === undefined ? ok(undefined) : parsePublishedFeedback(parsed.output.publishedFeedback);
-  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || mergePolicy._tag === "err") return invalidRead();
-  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }) });
+  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || mergePolicy._tag === "err" || mergeEvidence._tag === "err") return invalidRead();
+  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }), ...(mergeEvidence.value === undefined ? {} : { mergeEvidence: mergeEvidence.value }) });
 }
 
 export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
@@ -231,7 +256,22 @@ function parseMergePolicy(input: v.InferOutput<typeof mergePolicySchema>): Resul
   const host = parseGitHubHost(input.pr.host), owner = parseGitHubOwner(input.pr.owner), repo = parseGitHubRepoName(input.pr.repo), number = parsePullRequestNumber(input.pr.number), head = parseGitSha(input.headSha);
   const checks = parseChecks(input.checks);
   if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err" || head._tag === "err" || checks._tag === "err") return invalidRead();
-  return ok({ pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value }, headSha: head.value, isOpen: input.isOpen, isDraft: input.isDraft, mergeability: input.mergeability, reviewDecision: input.reviewDecision, checks: checks.value, complete: input.complete, ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
+  return ok({ pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value }, headSha: head.value, isOpen: input.isOpen, isDraft: input.isDraft, mergeability: input.mergeability, ...(input.mergeStateStatus === undefined ? {} : { mergeStateStatus: input.mergeStateStatus }), reviewDecision: input.reviewDecision, checks: checks.value, complete: input.complete, ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
+}
+
+function parseMergeEvidence(input: v.InferOutput<typeof mergeEvidenceSchema>): Result<GitHubMergeEvidence, StorageFailure> {
+  if (input.policy === undefined) return ok({ mergeable: input.mergeable, mergeStateStatus: input.mergeStateStatus, reviewDecision: input.reviewDecision });
+  const branchProtection = input.policy.branchProtection.state === "unavailable"
+    ? input.policy.branchProtection
+    : { state: "available" as const, value: {
+      ...(input.policy.branchProtection.value.requiredApprovingReviewCount === undefined ? {} : { requiredApprovingReviewCount: input.policy.branchProtection.value.requiredApprovingReviewCount }),
+      ...(input.policy.branchProtection.value.dismissStaleReviews === undefined ? {} : { dismissStaleReviews: input.policy.branchProtection.value.dismissStaleReviews }),
+      ...(input.policy.branchProtection.value.requireCodeOwnerReviews === undefined ? {} : { requireCodeOwnerReviews: input.policy.branchProtection.value.requireCodeOwnerReviews }),
+    } };
+  const appliedRuleset = input.policy.appliedRuleset.state === "unavailable"
+    ? input.policy.appliedRuleset
+    : { state: "available" as const, value: { rules: input.policy.appliedRuleset.value.rules.map((rule) => ({ type: rule.type, ...(rule.name === undefined ? {} : { name: rule.name }) })) } };
+  return ok({ mergeable: input.mergeable, mergeStateStatus: input.mergeStateStatus, reviewDecision: input.reviewDecision, policy: { branchProtection, appliedRuleset } });
 }
 
 function withoutCheckUrls(checks: CheckSummary): CheckSummary {

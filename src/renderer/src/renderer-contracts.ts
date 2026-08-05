@@ -331,6 +331,8 @@ const narrativeWalkthroughSchema = v.strictObject({
     headSha: v.pipe(v.string(), v.minLength(7)),
     patchHash: v.pipe(v.string(), v.minLength(1)),
   }),
+  citationVersion: v.optional(v.literal(2)),
+  citationStatus: v.picklist(["verified", "partially_verified", "unverified"]),
   title: v.pipe(v.string(), v.minLength(1)),
   focus: v.pipe(v.string(), v.minLength(1)),
   chapters: v.array(v.strictObject({
@@ -361,6 +363,10 @@ const insightFields = {
     startedAt: v.pipe(v.string(), v.isoTimestamp()),
   })),
   replacementFailure: v.optional(v.strictObject({
+    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+    category: v.optional(v.picklist(["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result", "unexpected_failure"])),
+    model: v.optional(v.pipe(v.string(), v.minLength(1))),
+    reasoning: v.optional(v.picklist(["low", "medium", "high"])),
     incidentId: v.optional(v.pipe(v.string(), v.minLength(1))),
     retryable: v.boolean(),
   })),
@@ -491,6 +497,13 @@ const mergeReadinessSchema = v.strictObject({
   blockers: v.array(v.string()),
   warnings: v.array(v.string()),
 });
+const mergeReasonSchema = v.strictObject({
+  code: v.picklist(["review_required", "changes_requested", "behind", "conflicts", "checks", "blocked"]),
+  message: v.string(),
+  source: v.picklist(["github_pr_state", "branch_protection", "ruleset_configuration", "checks"]),
+  availability: v.picklist(["available", "partial", "unavailable"]),
+  openOnGitHub: v.boolean(),
+});
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
   review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
@@ -500,7 +513,7 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
-  draft: v.optional(reviewBatchSchema), publishedFeedback: publishedFeedbackSchema, comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, recoveryView: v.optional(recoveryViewSchema),
+  draft: v.optional(reviewBatchSchema), publishedFeedback: publishedFeedbackSchema, comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export function parseReviewBatchProjection(input: unknown): WorkbenchResponse["draft"] | undefined {
@@ -555,7 +568,7 @@ export function parsePublicationPreview(input: unknown): PublicationPreviewRespo
   return parsed.success ? parsed.output : undefined;
 }
 const remoteReviewContextSchema = v.strictObject({
-  pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema),
+  pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema), mergeReasons: v.optional(v.array(mergeReasonSchema)),
 });
 export type RemoteReviewContextResponse = v.InferOutput<typeof remoteReviewContextSchema>;
 /** Reject malformed current GitHub context before merging it into saved work. */
@@ -646,6 +659,8 @@ const walkthroughReadySchema = v.strictObject({
   noticeKey: v.literal("walkthrough-ready"),
   walkthrough: v.strictObject({
     snapshot: walkthroughSnapshotSchema,
+    citationVersion: v.optional(v.literal(2)),
+    citationStatus: v.picklist(["verified", "partially_verified", "unverified"]),
     title: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
     focus: v.pipe(v.string(), v.minLength(1), v.maxLength(2_000)),
     chapters: v.pipe(v.array(walkthroughChapterSchema), v.maxLength(12)),
@@ -695,12 +710,20 @@ const modelCatalogEntrySchema = v.strictObject({
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
 });
 
+const providerStatusSchema = v.strictObject({
+  id: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+  label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  configured: v.boolean(),
+  source: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(64))),
+  guidance: v.pipe(v.string(), v.minLength(1), v.maxLength(240)),
+});
+
 const modelCatalogSchema = v.strictObject({
-  models: v.pipe(
-    v.array(modelCatalogEntrySchema),
-    v.minLength(1),
-    v.maxLength(64),
-  ),
+  // The backend advertises the complete universal non-OAuth catalog. It may be
+  // empty when no eligible provider is configured and can exceed any small
+  // arbitrary count; each entry remains individually bounded above.
+  models: v.array(modelCatalogEntrySchema),
+  providers: v.optional(v.pipe(v.array(providerStatusSchema), v.maxLength(64))),
   defaultModel: v.optional(
     v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   ),

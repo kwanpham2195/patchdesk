@@ -22,6 +22,7 @@ const SNAPSHOT: NarrativeSnapshot = {
 function buildWalkthrough(): NarrativeWalkthroughModel {
   return {
     snapshot: SNAPSHOT,
+    citationStatus: "verified",
     title: "Read-only walkthrough",
     focus: "What this change means for reviewers",
     chapters: [
@@ -141,6 +142,14 @@ describe("narrative walkthrough takeover", () => {
     expect(screen.getByText("The stored patch changes how the recovery path picks its next action.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Mark section reviewed" })).toBeTruthy();
     expect(screen.getByText("Support")).toBeTruthy();
+  });
+
+  it("keeps Support compact and withholds legacy unverified citations", () => {
+    const walkthrough = { ...buildWalkthrough(), citationStatus: "unverified" as const };
+    render(<NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} />);
+    expect(screen.getByText("Diff citations need regeneration.")).toBeTruthy();
+    expect(screen.getByText(/Support stays compact/)).toBeTruthy();
+    expect(screen.queryByText("@@ -1 +1 @@")).toBeNull();
   });
 
   it("shows the back to files control and never mutates Files state", () => {

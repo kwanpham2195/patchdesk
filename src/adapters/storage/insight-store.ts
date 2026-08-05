@@ -9,7 +9,17 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 
 const revisionSchema = v.strictObject({ sessionId: v.pipe(v.string(), v.minLength(1)), headSha: v.pipe(v.string(), v.minLength(40)), patchHash: v.pipe(v.string(), v.length(64)) });
 const activeRunSchema = v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), type: v.picklist(["analysis", "walkthrough"]), revision: revisionSchema, token: v.pipe(v.number(), v.integer(), v.minValue(1)), model: v.pipe(v.string(), v.minLength(1)), reasoning: v.picklist(["low", "medium", "high"]), status: v.picklist(["queued", "running", "cancelling"]), startedAt: v.pipe(v.string(), v.isoTimestamp()) });
-const failureSchema = v.strictObject({ runId: v.pipe(v.string(), v.minLength(1)), reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]), incidentId: v.optional(v.pipe(v.string(), v.minLength(1))), retryable: v.boolean(), failedAt: v.pipe(v.string(), v.isoTimestamp()) });
+const failureSchema = v.strictObject({
+  runId: v.pipe(v.string(), v.minLength(1)),
+  reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
+  category: v.optional(v.picklist(["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result", "unexpected_failure"])),
+  model: v.optional(v.pipe(v.string(), v.minLength(1))),
+  reasoning: v.optional(v.picklist(["low", "medium", "high"])),
+  // Retained only so records written by older versions remain readable.
+  incidentId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  retryable: v.boolean(),
+  failedAt: v.pipe(v.string(), v.isoTimestamp()),
+});
 const dismissalSchema = v.strictObject({ findingId: v.pipe(v.string(), v.minLength(1)), reason: v.pipe(v.string(), v.minLength(1), v.maxLength(500)), dismissedAt: v.pipe(v.string(), v.isoTimestamp()) });
 const walkthroughProgressSchema = v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) });
 const recordSchema = v.strictObject({ schemaVersion: v.literal(1), reviewId: v.pipe(v.string(), v.minLength(1)), type: v.picklist(["analysis", "walkthrough"]), nextToken: v.pipe(v.number(), v.integer(), v.minValue(1)), retained: v.optional(v.unknown()), dismissals: v.optional(v.array(dismissalSchema)), walkthroughProgress: v.optional(walkthroughProgressSchema), activeRun: v.optional(activeRunSchema), replacementFailure: v.optional(failureSchema), updatedAt: v.pipe(v.string(), v.isoTimestamp()) });
@@ -62,6 +72,8 @@ export class InsightStore {
         nextToken: loaded.value.nextToken,
         ...(loaded.value.dismissals === undefined ? {} : { dismissals: loaded.value.dismissals }),
         ...(loaded.value.walkthroughProgress === undefined ? {} : { walkthroughProgress: loaded.value.walkthroughProgress }),
+        ...(loaded.value.activeRun === undefined ? {} : { activeRun: loaded.value.activeRun }),
+        ...(loaded.value.replacementFailure === undefined ? {} : { replacementFailure: loaded.value.replacementFailure }),
         updatedAt: loaded.value.updatedAt,
       });
     }
@@ -106,7 +118,22 @@ function parseActiveRun(input: v.InferOutput<typeof activeRunSchema>): Result<No
   if (id._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || startedAt._tag === "err") return invalidRead();
   return ok({ id: id.value, type: input.type, revision: { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value }, token: input.token, model: input.model, reasoning: input.reasoning, status: input.status, startedAt: startedAt.value });
 }
-function parseFailure(input: v.InferOutput<typeof failureSchema>): Result<NonNullable<InsightRecord<unknown>["replacementFailure"]>, StorageFailure> { const runId = parseInsightRunId(input.runId); const failedAt = parseIsoTimestamp(input.failedAt); if (runId._tag === "err" || failedAt._tag === "err") return invalidRead(); return ok({ runId: runId.value, reason: input.reason, ...(input.incidentId === undefined ? {} : { incidentId: input.incidentId }), retryable: input.retryable, failedAt: failedAt.value }); }
+function parseFailure(input: v.InferOutput<typeof failureSchema>): Result<NonNullable<InsightRecord<unknown>["replacementFailure"]>, StorageFailure> {
+  const runId = parseInsightRunId(input.runId);
+  const failedAt = parseIsoTimestamp(input.failedAt);
+  if (runId._tag === "err" || failedAt._tag === "err") return invalidRead();
+  const category = input.category;
+  return ok({
+    runId: runId.value,
+    reason: input.reason,
+    ...(category === undefined ? {} : { category }),
+    ...(input.model === undefined ? {} : { model: input.model }),
+    ...(input.reasoning === undefined ? {} : { reasoning: input.reasoning }),
+    ...(input.incidentId === undefined ? {} : { incidentId: input.incidentId }),
+    retryable: input.retryable,
+    failedAt: failedAt.value,
+  });
+}
 function parseDismissals(input: ReadonlyArray<v.InferOutput<typeof dismissalSchema>>): Result<ReadonlyArray<InsightFindingDismissal>, StorageFailure> {
   const values: Array<InsightFindingDismissal> = [];
   const seen = new Set<string>();

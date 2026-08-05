@@ -93,7 +93,10 @@ const allowedRoutePatterns = [
   /^POST \/v1\/reviews\/draft\/findings\/[^/]+\/add$/,
 ];
 
-const maxResponseBytes = 2 * 1024 * 1024;
+// The renderer projection can carry a large retained Walkthrough plus its full
+// patch (a 100+-hunk PR easily exceeds 2 MB of bounded diff text). 8 MB keeps
+// real review projections readable without unbounded renderer memory.
+const maxResponseBytes = 8 * 1024 * 1024;
 
 export function isAllowedDesktopRequest(input: LocalApiDesktopRequest): boolean {
   const method = input.method ?? "GET";

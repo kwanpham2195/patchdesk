@@ -61,6 +61,7 @@ const SNAPSHOT: NarrativeSnapshot = {
 };
 
 const RAW = {
+  citationVersion: 2,
   title: "Recovery walkthrough",
   focus: "Follow the recovery decision before checking the tests.",
   snapshot: SNAPSHOT,
@@ -70,7 +71,7 @@ const RAW = {
       sections: [
         {
           title: "Truthful states",
-          prose: "The workbench now exposes one next action.",
+          prose: "src/recovery.ts now exposes one next action across its recovery hunks.",
           hunkIds: ["h1", "h1", "unknown", "h2"],
         },
       ],
@@ -80,7 +81,7 @@ const RAW = {
       sections: [
         {
           title: "Proof",
-          prose: "The focused tests cover the transition.",
+          prose: "tests/recovery.test.ts covers the focused transition proof.",
           hunkIds: ["h3"],
         },
       ],
@@ -108,6 +109,13 @@ describe("narrative walkthrough domain", () => {
     expect(new Set(covered).size).toBe(3);
   });
 
+  it("marks retained output from before alias manifests as unverified and routes its hunks to Support", () => {
+    const legacy = { ...RAW, citationVersion: undefined };
+    const result = normalizeNarrativeWalkthrough(legacy, PATCH, SNAPSHOT);
+    expect(result).toMatchObject({ _tag: "ok", value: { citationStatus: "unverified", support: { hunkIds: ["h1", "h2", "h3"] } } });
+    if (result._tag === "ok") expect(result.value.chapters[0]?.sections[0]?.hunks).toEqual([]);
+  });
+
   it("derives Support for non-mentioned hunks and drops duplicate or unknown references", () => {
     const result = normalizeNarrativeWalkthrough(
       {
@@ -115,11 +123,11 @@ describe("narrative walkthrough domain", () => {
         chapters: [
           {
             title: "Context",
-            sections: [{ title: "One idea", prose: "Read this first.", hunkIds: ["h2", "h2", "missing"] }],
+            sections: [{ title: "One idea", prose: "src/recovery.ts comes first.", hunkIds: ["h2", "h2", "missing"] }],
           },
           {
             title: "Later",
-            sections: [{ title: "Duplicate", prose: "This cannot reclaim h2.", hunkIds: ["h2", "h3"] }],
+            sections: [{ title: "Duplicate", prose: "tests/recovery.test.ts cannot reclaim h2.", hunkIds: ["h2", "h3"] }],
           },
         ],
       },
@@ -209,7 +217,7 @@ describe("narrative walkthrough domain", () => {
       "+two",
       "",
     ].join("\n");
-    const result = normalizeNarrativeWalkthrough({ ...RAW, chapters: [{ title: "Context", sections: [{ title: "New", prose: "Added.", hunkIds: ["h1"] }] }] }, patch, SNAPSHOT);
+    const result = normalizeNarrativeWalkthrough({ ...RAW, chapters: [{ title: "Context", sections: [{ title: "New", prose: "new.ts was added.", hunkIds: ["h1"] }] }] }, patch, SNAPSHOT);
     expect(result._tag).toBe("ok");
     if (result._tag === "ok") {
       expect(result.value.chapters[0]?.sections[0]?.hunks[0]).toMatchObject({ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2 });
@@ -226,5 +234,31 @@ describe("narrative walkthrough domain", () => {
 
   it("filters a malformed patch to an empty result instead of exposing coordinates", () => {
     expect(filterNarrativePatchToHunks(PATCH.replace("@@ -1,2 +1,3 @@", "@@ -0,1 +1,3 @@"), ["h1"])).toBe("");
+  });
+
+  it("tolerates bare git submodule metadata lines after the last hunk", () => {
+    const patch = [
+      "diff --git a/sql/000026_visit_route_planning.up.sql b/sql/000026_visit_route_planning.up.sql",
+      "new file mode 100644",
+      "index 00000000..8ffad242",
+      "--- /dev/null",
+      "+++ b/sql/000026_visit_route_planning.up.sql",
+      "@@ -0,0 +1,2 @@",
+      "+BEGIN;",
+      "+COMMIT;",
+      "Submodule yim-proto-hub 00000000...4619420d (new submodule)",
+      "",
+    ].join("\n");
+    const result = normalizeNarrativeWalkthrough(
+      { ...RAW, chapters: [{ title: "Context", sections: [{ title: "Migration", prose: "New SQL in sql/000026_visit_route_planning.up.sql", hunkIds: ["h1"] }] }] },
+      patch,
+      SNAPSHOT,
+    );
+    expect(result._tag).toBe("ok");
+    if (result._tag === "ok") {
+      expect(result.value.chapters[0]?.sections[0]?.hunks).toHaveLength(1);
+      expect(result.value.chapters[0]?.sections[0]?.hunks[0]?.path).toBe("sql/000026_visit_route_planning.up.sql");
+      expect(result.value.support.hunks).toHaveLength(0);
+    }
   });
 });

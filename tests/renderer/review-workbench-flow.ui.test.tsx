@@ -51,6 +51,7 @@ const projection = (): WorkbenchResponse => ({
   comments: { threads: [] },
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+  mergeReasons: [],
 });
 
 afterEach(() => {
@@ -79,6 +80,34 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
+  it("opens the represented pull request in GitHub through the safe desktop bridge", async () => {
+    const openExternalHttps = vi.fn(async () => true);
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { openExternalHttps } });
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={projection()} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Open on GitHub" }));
+    expect(openExternalHttps).toHaveBeenCalledWith("https://github.com/centraldigital/patchdesk/pull/42");
+  });
+
+  it("uses a narrow restore rail when the review navigator is collapsed", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={projection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelector('[data-review-diff-layout="with-navigator"]')).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Hide review navigator" }));
+    expect(document.querySelector('[data-review-diff-layout="collapsed-navigator"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show review navigator" })).toBeTruthy();
+  });
+
   it("applies typed fixture initial state to the production navigator and overview", () => {
     const value = createUnifiedReviewFixture("files-finding-selected");
     render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("files-finding-selected")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
@@ -91,11 +120,12 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("keeps terminal Reviews readable while hiding refresh and Published feedback mutations", () => {
+  it("keeps terminal Reviews readable while hiding refresh and Published feedback mutations", async () => {
     for (const state of ["merged", "closed"] as const) {
       const value = createUnifiedReviewFixture(state);
       cleanup();
       render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+      await userEvent.setup().click(screen.getByRole("button", { name: /Published feedback/ }));
       expect(screen.getByText("Published review body")).toBeTruthy();
       expect(screen.getByText("Published inline feedback")).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Refresh GitHub state" })).toBeNull();
@@ -142,32 +172,146 @@ describe("ReviewWorkbenchFlow", () => {
     expect(loadIndex).toBeGreaterThan(refreshIndex);
   });
 
-  it("represents confirmed publication as remote feedback plus an empty Local successor draft", () => {
+  it("represents confirmed publication as remote feedback plus an empty Local successor draft", async () => {
     const value = createUnifiedReviewFixture("publication-confirmed");
     expect(value.draft).toMatchObject({ state: { _tag: "Local" }, summaryBody: "", items: [] });
     expect(value.publishedFeedback.reviews).toHaveLength(1);
     expect(value.publishedFeedback.comments).toHaveLength(1);
     render(<ReviewWorkbenchFlow workbench={value} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: /Published feedback/ }));
     expect(screen.getByText("Published review body")).toBeTruthy();
     expect(screen.getByText("Published inline feedback")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Review draft/ })).toBeTruthy();
     expect(screen.getByText("0 included")).toBeTruthy();
   });
 
-  it("defaults Analysis completion to opening its publication preview and exposes every permitted action", async () => {
+  it("shows Analysis completion choices in the explicit run setup dialog", async () => {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models: [{ id: "fixture-model", label: "Fixture model" }], defaultModel: "fixture-model" }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
     const user = userEvent.setup();
     render(<ReviewWorkbenchFlow workbench={projection()} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
 
     const insightsTab = screen.getAllByRole("tab", { name: "Insights" })[0];
     if (insightsTab === undefined) throw new Error("Expected Insights tab");
     await user.click(insightsTab);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run" }) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("Insight model")).toBeTruthy();
+    expect(screen.getByLabelText("Insight reasoning")).toBeTruthy();
     expect(screen.getByLabelText("Analysis completion").textContent).toContain("Open preview when complete");
     await user.click(screen.getByLabelText("Analysis completion"));
     expect(screen.getByText("Save as Review draft")).toBeTruthy();
-    expect(screen.getAllByText("Open preview when complete").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Publish as Comment")).toBeTruthy();
     expect(screen.getByText("Publish as Approve")).toBeTruthy();
     expect(screen.getByText("Publish as Request changes")).toBeTruthy();
+  });
+
+  it("shows provider guidance and disables Insight runs for an intentional empty catalog", async () => {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models: [] }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={projection()} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    const insightsTab = screen.getAllByRole("tab", { name: "Insights" })[0];
+    if (insightsTab === undefined) throw new Error("Expected Insights tab");
+    await user.click(insightsTab);
+    await waitFor(() => expect(screen.getByText(/No eligible model configured/)).toBeTruthy());
+    expect((screen.getByRole("button", { name: /^Run$/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps every universal model selectable when the catalog exceeds 64 entries", async () => {
+    const models = Array.from({ length: 269 }, (_, index) => ({
+      id: `openai/universal-model-${index}`,
+      label: `Universal model ${index}`,
+    }));
+    const calls: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      calls.push(input);
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models, defaultModel: models[0]?.id }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/insights/analysis/run") return { ok: true, body: { runId: "analysis-universal", type: "analysis", status: "queued" }, correlationId: "run" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={projection()} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    const insightsTab = screen.getAllByRole("tab", { name: "Insights" })[0];
+    if (insightsTab === undefined) throw new Error("Expected Insights tab");
+    await user.click(insightsTab);
+    await waitFor(() => expect((screen.getByRole("button", { name: /^Run$/ }) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button", { name: /^Run$/ }));
+    const modelSelect = screen.getByLabelText("Insight model");
+    const last = models[268];
+    if (last === undefined) throw new Error("Expected last universal model");
+    await user.click(modelSelect);
+    await user.clear(modelSelect);
+    await user.type(modelSelect, last.id);
+    expect(await screen.findByRole("option", { name: last.label })).toBeTruthy();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect((modelSelect as HTMLInputElement).value).toBe(last.label);
+    await user.click(screen.getByTestId("insight-run-confirm"));
+    await waitFor(() => expect(calls.some((call) => call.path === "/v1/reviews/insights/analysis/run")).toBe(true));
+    expect(calls.find((call) => call.path === "/v1/reviews/insights/analysis/run")?.body).toMatchObject({ model: last.id });
+  });
+
+  it("does not POST a Walkthrough first run until confirmation and sends the selected choices", async () => {
+    const calls: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      calls.push(input);
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models: [{ id: "fast-model", label: "Fast model" }, { id: "deep-model", label: "Deep model" }], defaultModel: "fast-model" }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/insights/walkthrough/run") return { ok: true, body: { runId: "walkthrough-run", type: "walkthrough", status: "running" }, correlationId: "run" };
+      if (input.path.startsWith("/v1/reviews/insights/runs/")) return { ok: true, body: { runId: "walkthrough-run", type: "walkthrough", status: "running" }, correlationId: "status" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={projection()} initialUiState={{ section: "insights", insightDetail: "walkthrough" }} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run" }) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    expect(calls.some((call) => call.path === "/v1/reviews/insights/walkthrough/run")).toBe(false);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    const modelSelect = screen.getByLabelText("Insight model");
+    await user.click(modelSelect);
+    await user.clear(modelSelect);
+    await user.type(modelSelect, "deep-model");
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.selectOptions(screen.getByLabelText("Insight reasoning"), "high");
+    await user.click(screen.getByTestId("insight-run-confirm"));
+    await waitFor(() => expect(calls.some((call) => call.path === "/v1/reviews/insights/walkthrough/run")).toBe(true));
+    const runCall = calls.find((call) => call.path === "/v1/reviews/insights/walkthrough/run");
+    expect(runCall?.body).toMatchObject({ model: "deep-model", reasoning: "high", type: "walkthrough" });
+  });
+
+  it("uses the same setup dialog for Walkthrough regeneration and Analysis retry", async () => {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/models") return { ok: true, body: { models: [{ id: "fixture-model", label: "Fixture model" }], defaultModel: "fixture-model" }, correlationId: "models" };
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    const user = userEvent.setup();
+    render(<ReviewWorkbenchFlow workbench={createUnifiedReviewFixture("walkthrough-current")} initialUiState={unifiedReviewInitialState("walkthrough-current")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Regenerate" }) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Regenerate Walkthrough" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    cleanup();
+    render(<ReviewWorkbenchFlow workbench={createUnifiedReviewFixture("analysis-failed")} initialUiState={unifiedReviewInitialState("analysis-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run again" }) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button", { name: "Run again" }));
+    expect(screen.getByRole("heading", { name: "Run Analysis again" })).toBeTruthy();
   });
 
   it("opens the retained Analysis reader from the Insights card", async () => {
@@ -242,18 +386,52 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
   });
 
-  it("keeps a first-run Analysis failure as failure without inventing retained content", () => {
+  it("renders a first-run Analysis failure diagnostic without inventing retained content", () => {
     const value = createUnifiedReviewFixture("analysis-failed");
     render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
-    expect(screen.getByText("This Insight run failed. No retained result is available.")).toBeTruthy();
+    expect(screen.getByText("The Insight failed unexpectedly. Try again.")).toBeTruthy();
+    expect(screen.getByText("Selected model: fixture-model · Reasoning: medium")).toBeTruthy();
+    expect(screen.getByText("Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Run again" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Analysis reader" })).toBeNull();
   });
 
-  it("keeps retained Analysis readable beneath a failed replacement", () => {
+  it("renders a persisted first-run failure diagnostic without retained content", () => {
+    const value = createUnifiedReviewFixture("analysis-failed");
+    value.insights.analysis = {
+      ...value.insights.analysis,
+      replacementFailure: {
+        runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+        category: "unexpected_failure",
+        model: "fixture-model",
+        reasoning: "medium",
+        retryable: true,
+      },
+    };
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText("The Insight failed unexpectedly. Try again.")).toBeTruthy();
+    expect(screen.getByText("Selected model: fixture-model · Reasoning: medium")).toBeTruthy();
+    expect(screen.getByText("Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Analysis reader" })).toBeNull();
+  });
+
+  it("renders safe category, selected run configuration, and run correlation for both Insight types", () => {
+    const value = createUnifiedReviewFixture("analysis-failed");
+    const diagnostic = { runId: "insight-analysis-1-aaaaaaaaaaaa-review", category: "rate_limited" as const, model: "fixture-model", reasoning: "high" as const, retryable: true };
+    value.insights.analysis = { ...value.insights.analysis, replacementFailure: diagnostic };
+    value.insights.walkthrough = { ...value.insights.walkthrough, status: "failed", replacementFailure: { ...diagnostic, runId: "insight-walkthrough-1-aaaaaaaaaaaa-review" } };
+    render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText(/provider rate limit was reached/)).toBeTruthy();
+    expect(screen.getByText("Selected model: fixture-model · Reasoning: high")).toBeTruthy();
+    expect(screen.getByText("Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review")).toBeTruthy();
+  });
+
+  it("renders replacement failure diagnostics while keeping retained Analysis readable", () => {
     const value = createUnifiedReviewFixture("analysis-replacement-failed");
     render(<ReviewWorkbenchFlow workbench={value} initialUiState={unifiedReviewInitialState("analysis-replacement-failed")} onWorkbenchReplace={vi.fn()} onWorkbenchPatch={vi.fn()} onNavigationStateChange={vi.fn()} onNavigate={vi.fn()} />);
-    expect(screen.getByText("This Insight run failed. The previous retained result remains available below.")).toBeTruthy();
+    expect(screen.getByText("The Insight failed unexpectedly. Try again.")).toBeTruthy();
+    expect(screen.getByText("Selected model: fixture-model · Reasoning: medium")).toBeTruthy();
+    expect(screen.getByText("Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Analysis reader" })).toBeTruthy();
     expect(screen.getAllByText("Review completed for Patchdesk workbench").length).toBeGreaterThanOrEqual(2);
   });
@@ -315,7 +493,8 @@ describe("ReviewWorkbenchFlow", () => {
     await user.click(screen.getByRole("button", { name: "Checks" }));
     expect(screen.getByText("No checks reported.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Published feedback" }));
-    expect(screen.getAllByText("Published review body").length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector('[data-review-published-feedback-state="collapsed"]')).toBeTruthy();
+    expect(screen.getAllByText("Published review body").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("region", { name: "Review workbench" })).toBeTruthy();
     expect(document.body.style.overflow).toBe("hidden");
     await user.keyboard("{Escape}");

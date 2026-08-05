@@ -229,6 +229,31 @@ describe("GitHubAdapter merge policy", () => {
     });
   });
 
+  it("parses detailed merge-state statuses and preserves unavailable versus unknown", async () => {
+    const statuses = [
+      ["BLOCKED", "blocked"],
+      ["BEHIND", "behind"],
+      ["DIRTY", "dirty"],
+      ["DRAFT", "draft"],
+      ["HAS_HOOKS", "has_hooks"],
+      ["UNSTABLE", "unstable"],
+      ["CLEAN", "clean"],
+      ["FUTURE_STATUS", "unknown"],
+    ] as const;
+    for (const [raw, expected] of statuses) {
+      const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+        { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload({ mergeStateStatus: raw })), stderr: "" },
+        { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ contexts: [], checks: [] }), stderr: "" },
+      ])));
+      await expect(adapter.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toMatchObject({ _tag: "ok", value: { mergeStateStatus: expected } });
+    }
+    const missing = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload({ mergeStateStatus: undefined })), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ contexts: [], checks: [] }), stderr: "" },
+    ])));
+    await expect(missing.getMergePolicy({ profile, pr, expectedHeadSha: mustParse(parseGitSha(headSha)) })).resolves.toMatchObject({ _tag: "ok", value: { mergeStateStatus: "unavailable" } });
+  });
+
   it("fails closed for a head mismatch, policy pagination cap, or branch-protection denial", async () => {
     const headMismatch = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(mergePolicyPayload({ headRefOid: baseSha })), stderr: "" },
@@ -254,7 +279,7 @@ describe("GitHubAdapter merge policy", () => {
   });
 });
 
-function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly pageInfo?: { readonly hasNextPage: boolean; readonly endCursor: string | null } } = {}): Record<string, unknown> {
+function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly mergeStateStatus?: string | undefined; readonly pageInfo?: { readonly hasNextPage: boolean; readonly endCursor: string | null } } = {}): Record<string, unknown> {
   return {
     data: {
       repository: {
@@ -264,6 +289,7 @@ function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly 
           headRefOid: overrides.headRefOid ?? headSha,
           baseRefName: "sit",
           mergeable: "MERGEABLE",
+          ...(overrides.mergeStateStatus === undefined ? {} : { mergeStateStatus: overrides.mergeStateStatus }),
           reviewDecision: "APPROVED",
           commits: {
             nodes: [{
@@ -282,6 +308,87 @@ function mergePolicyPayload(overrides: { readonly headRefOid?: string; readonly 
     },
   };
 }
+
+describe("GitHubAdapter optional merge-policy evidence", () => {
+  const branchProtection = {
+    required_pull_request_reviews: {
+      required_approving_review_count: 2,
+      dismiss_stale_reviews: true,
+      require_code_owner_reviews: true,
+    },
+  };
+  const rules = [{ type: "required_pull_request_reviews", name: "Protect sit" }, { type: "required_status_checks" }];
+
+  it("reads bounded classic review fields and applied rule types", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(branchProtection), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(rules), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" })).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        branchProtection: { state: "available", value: { requiredApprovingReviewCount: 2, dismissStaleReviews: true, requireCodeOwnerReviews: true } },
+        appliedRuleset: { state: "available", value: { rules } },
+      },
+    });
+    expect(executor.requests).toEqual([
+      ["gh", "api", "--hostname", "github.com", "repos/centraldigital/patchdesk/branches/sit/protection"],
+      ["gh", "api", "--hostname", "github.com", "repos/centraldigital/patchdesk/rules/branches/sit"],
+    ]);
+  });
+
+  it("treats a zero approval count as unavailable policy evidence", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: 0, dismiss_stale_reviews: false, require_code_owner_reviews: false } }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([]), stderr: "" },
+    ])));
+    await expect(adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { branchProtection: { state: "available", value: { dismissStaleReviews: false, requireCodeOwnerReviews: false } } },
+    });
+  });
+
+  it.each([
+    ["403", "forbidden"],
+    ["404", "not_found"],
+    ["405", "unsupported"],
+  ] as const)("maps an optional endpoint HTTP %s response to unavailable evidence", async (status, reason) => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: `HTTP ${status}: endpoint unavailable` },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(rules), stderr: "" },
+    ])));
+    await expect(adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" })).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        branchProtection: { state: "unavailable", reason },
+        appliedRuleset: { state: "available", value: { rules } },
+      },
+    });
+  });
+
+  it("returns a typed adapter failure for malformed successful payloads", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: "two" } }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(rules), stderr: "" },
+    ])));
+    await expect(adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" })).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubResponseInvalid", operation: "get_merge_policy_evidence" },
+    });
+  });
+
+  it("returns a typed adapter failure when an optional endpoint times out", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "TimedOut", stdout: "", stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(rules), stderr: "" },
+    ])));
+    await expect(adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" })).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubReadFailed", operation: "get_merge_policy_evidence" },
+    });
+  });
+});
 
 describe("GitHubAdapter Published feedback capabilities", () => {
   it("requires authenticated owner and repository/branch evidence", async () => {

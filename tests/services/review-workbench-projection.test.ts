@@ -265,6 +265,64 @@ describe("ReviewWorkbenchProjectionService", () => {
     }
   });
 
+  it("projects policy-backed approval reasons and partial unavailable evidence safely", async () => {
+    const github = fakeGitHub({ current: { ...summary(headSha), reviewState: "review_pending", mergeability: "blocked" }, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const represented = {
+        schemaVersion: 1 as const,
+        pullRequest: summary(headSha),
+        comments: { threads: [], complete: true },
+        commits: [],
+        checks: { overall: "passing" as const, checks: [] },
+        mergeEvidence: {
+          mergeable: "blocked" as const,
+          mergeStateStatus: "blocked" as const,
+          reviewDecision: "review_required" as const,
+          policy: {
+            branchProtection: { state: "unavailable" as const, reason: "forbidden" as const },
+            appliedRuleset: { state: "unavailable" as const, reason: "not_found" as const },
+          },
+        },
+      };
+      const loaded = await projection.loadRepresented({ profileId, sessionId: session.id, snapshot: represented, refreshedAt: now });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { mergeReasons: [{ code: "review_required", message: "Approval required by GitHub.", source: "github_pr_state", availability: "partial", openOnGitHub: true }] } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not turn zero approvals or unrelated rules into an exact policy claim", async () => {
+    const github = fakeGitHub({ current: { ...summary(headSha), reviewState: "review_pending", mergeability: "blocked" }, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const represented = {
+        schemaVersion: 1 as const,
+        pullRequest: summary(headSha),
+        comments: { threads: [], complete: true },
+        commits: [],
+        checks: { overall: "passing" as const, checks: [] },
+        mergeEvidence: {
+          mergeable: "blocked" as const,
+          mergeStateStatus: "blocked" as const,
+          reviewDecision: "review_required" as const,
+          policy: {
+            branchProtection: { state: "available" as const, value: { requiredApprovingReviewCount: 0, dismissStaleReviews: false } },
+            appliedRuleset: { state: "available" as const, value: { rules: [{ type: "required_status_checks" }] } },
+          },
+        },
+      };
+      const loaded = await projection.loadRepresented({ profileId, sessionId: session.id, snapshot: represented, refreshedAt: now });
+      expect(loaded).toMatchObject({ _tag: "ok", value: { mergeReasons: [{ message: "Approval required by GitHub.", source: "github_pr_state", availability: "partial", openOnGitHub: true }] } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("refreshes GitHub context without replacing the saved local batch", async () => {
     const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const { root, paths, projection, sessions } = await setup(github);
@@ -399,6 +457,39 @@ describe("ReviewWorkbenchProjectionService", () => {
     }
   });
 
+  it("projects persisted first-run Insight run state from storage", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github, true);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const reviewId = createReviewId(session.key);
+      const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
+      const store = new InsightStore(paths);
+      expect((await store.save(profileId, {
+        schemaVersion: 1,
+        reviewId,
+        type: "analysis",
+        nextToken: 2,
+        activeRun: { id: runId, type: "analysis", revision: { sessionId: session.id, headSha, patchHash: must(parseContentHash("a".repeat(64))) }, token: 1, model: "fixture-model", reasoning: "medium", status: "queued", startedAt: now },
+        updatedAt: now,
+      }))._tag).toBe("ok");
+      expect(await projection.loadLocal({ profileId, sessionId: session.id })).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "running", activeRun: { runId } } } } });
+
+      expect((await store.save(profileId, {
+        schemaVersion: 1,
+        reviewId,
+        type: "analysis",
+        nextToken: 2,
+        replacementFailure: { runId, reason: "failed", category: "unexpected_failure", model: "fixture-model", reasoning: "medium", retryable: true, failedAt: now },
+        updatedAt: now,
+      }))._tag).toBe("ok");
+      expect(await projection.loadLocal({ profileId, sessionId: session.id })).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "failed", replacementFailure: { runId, category: "unexpected_failure", model: "fixture-model" } } } } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("loads an outdated Walkthrough from its retained Session patch instead of the current patch", async () => {
     const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const { root, paths, projection, sessions } = await setup(github, true);
@@ -424,10 +515,11 @@ describe("ReviewWorkbenchProjectionService", () => {
       const oldHash = must(parseContentHash(createHash("sha256").update(oldPatch).digest("hex")));
       const runId = must(parseInsightRunId("insight-walkthrough-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
       const raw = {
+        citationVersion: 2,
         snapshot: { profileId, sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash },
         title: "Retained old walkthrough",
         focus: "Read old patch",
-        chapters: [{ title: "Old chapter", sections: [{ title: "Old section", prose: "Old evidence", hunkIds: ["h1"] }] }],
+        chapters: [{ title: "Old chapter", sections: [{ title: "Old section", prose: "Old evidence in src/old.ts", hunkIds: ["h1"] }] }],
       };
       const normalized = normalizeNarrativeWalkthrough(raw, oldPatch, { profileId, sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash });
       if (normalized._tag === "err") throw new Error(`normalize failed: ${normalized.error.reason}`);

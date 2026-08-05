@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import { ModelCombobox } from "../components/model-combobox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import type { ReviewBatch } from "../../../domain/review-batch";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -122,6 +123,7 @@ function WalkthroughFixture({
       headSha: "abcdef1234567890abcdef1234567890abcdef12",
       patchHash: "b".repeat(64),
     },
+    citationStatus: "verified" as const,
     title: "Walkthrough fixture",
     focus: "The focused review path remains separate from Files mode.",
     chapters: [
@@ -313,14 +315,21 @@ export function createUnifiedReviewFixture(state: UnifiedReviewFixtureState = "f
   const draft = state === "needs-attention"
     ? { ...baseDraft, items: baseDraft.items.map((item) => item._tag === "InlineComment" ? { ...item, postability: "needs_attention" as const, attention: { reason: "missing" as const, originalAnchor: item.anchor } } : item) }
     : emptyDraft;
+  const analysisFailure = {
+    runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+    category: "unexpected_failure" as const,
+    model: "fixture-model",
+    reasoning: "medium" as const,
+    retryable: true,
+  };
   const analysis = state === "analysis-running"
     ? { status: "running" as const, activeRun: { runId: "analysis-first-run", sessionId: base.session.id, startedAt: base.revision.refreshedAt } }
     : state === "analysis-replacement-running"
       ? { ...base.insights.analysis, status: "running" as const, activeRun: { runId: "analysis-replacement-run", sessionId: base.session.id, startedAt: base.revision.refreshedAt } }
     : state === "analysis-failed"
-      ? { status: "failed" as const }
+      ? { status: "failed" as const, replacementFailure: analysisFailure }
       : state === "analysis-outdated" || state === "analysis-replacement-failed"
-        ? { ...base.insights.analysis, status: state === "analysis-outdated" ? "outdated" as const : "failed" as const, ...(state === "analysis-replacement-failed" ? { replacementFailure: { retryable: true, incidentId: "fixture-incident" } } : {}) }
+        ? { ...base.insights.analysis, status: state === "analysis-outdated" ? "outdated" as const : "failed" as const, ...(state === "analysis-replacement-failed" ? { replacementFailure: { ...analysisFailure, incidentId: "fixture-incident" } } : {}) }
         : state === "analysis-current"
           ? { ...base.insights.analysis, status: "current" as const }
           : base.insights.analysis;
@@ -347,7 +356,7 @@ export function createUnifiedReviewFixture(state: UnifiedReviewFixtureState = "f
 }
 
 function fixtureWalkthroughRetention(sessionId: string, headSha: string): NonNullable<WorkbenchResponse["insights"]["walkthrough"]["retained"]> {
-  return { runId: "walkthrough-fixture", sessionId, headSha, generatedAt: "2026-07-17T00:00:00.000Z", value: { snapshot: { profileId: "fixture", sessionId, headSha, patchHash: "b".repeat(64) }, title: "Walkthrough fixture", focus: "Follow the changed path through this Review.", chapters: [{ id: "chapter-1", title: "Context", sections: [{ id: "section-1", title: "Keep the review local", prose: "This stored walkthrough explains the immutable Review revision.", hunkIds: ["h1"], hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }] }] }], support: { id: "support", title: "Support", hunkIds: [], hunks: [] } } };
+  return { runId: "walkthrough-fixture", sessionId, headSha, generatedAt: "2026-07-17T00:00:00.000Z", value: { snapshot: { profileId: "fixture", sessionId, headSha, patchHash: "b".repeat(64) }, citationStatus: "verified", title: "Walkthrough fixture", focus: "Follow the changed path through this Review.", chapters: [{ id: "chapter-1", title: "Context", sections: [{ id: "section-1", title: "Keep the review local", prose: "This stored walkthrough explains the immutable Review revision.", hunkIds: ["h1"], hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }] }] }], support: { id: "support", title: "Support", hunkIds: [], hunks: [] } } };
 }
 
 function canonicalWorkbenchModel(data: typeof workbenchFixtureData): WorkbenchResponse {
@@ -366,6 +375,7 @@ function canonicalWorkbenchModel(data: typeof workbenchFixtureData): WorkbenchRe
     comments: data.comments,
     checks: data.checks,
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+    mergeReasons: [],
   } as unknown as WorkbenchResponse;
 }
 
@@ -412,7 +422,13 @@ function WalkthroughFixtureControls({
           <DialogHeader><DialogTitle>Generate walkthrough</DialogTitle><DialogDescription>Choose how Patchdesk should explain this Review.</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-model">Model
-              <Select value={model ?? null} onValueChange={actions.onModelChange}><SelectTrigger id="fixture-walkthrough-model" aria-label="Model"><SelectValue placeholder="Choose a model" /></SelectTrigger><SelectContent><SelectItem value="pi-design">Design model</SelectItem></SelectContent></Select>
+              <ModelCombobox
+                id="fixture-walkthrough-model"
+                ariaLabel="Model"
+                options={[{ id: "pi-design", label: "Design model" }]}
+                value={model ?? null}
+                onValueChange={actions.onModelChange}
+              />
             </label>
             <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-reasoning">Reasoning
               <Select value={reasoning} onValueChange={actions.onReasoningChange}><SelectTrigger id="fixture-walkthrough-reasoning" aria-label="Reasoning"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>

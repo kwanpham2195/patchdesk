@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { GitMerge, ShieldAlert } from "lucide-react";
 
+import type { MergeDisplayReason } from "../../../domain/github-context";
+import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
+import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +18,8 @@ export type MergeMethod = "merge" | "squash" | "rebase";
 /** Fresh-read merge confirmation surface; privileged execution remains in main. */
 export function MergeConfirmationDialog(props: {
   readonly readiness: MergeReadiness;
+  readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
+  readonly pullRequest?: PullRequestRef;
   readonly context: { readonly repo: string; readonly prNumber: number; readonly title: string; readonly base: string; readonly head: string; readonly headSha: string };
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly onMerge: (method: MergeMethod, acknowledgedWarnings: boolean) => Promise<{ readonly mergeCommitSha?: string }>;
@@ -41,7 +46,7 @@ export function MergeConfirmationDialog(props: {
   };
 
   if (merged !== undefined) return <p role="status" className="text-sm text-primary">Merged {merged}.</p>;
-  if (props.readiness._tag === "Blocked") return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{props.readiness.blockers.map((blocker) => <li key={blocker}>{mergeBlockerLabel(blocker)}</li>)}</ul></AlertDescription></Alert>;
+  if (props.readiness._tag === "Blocked") return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{(props.mergeReasons?.length ? props.mergeReasons.map((reason) => <li key={reason.code}>{reason.message}<span className="ml-2 text-xs text-muted-foreground">{reasonSourceLabel(reason.source)} · {reason.availability}</span>{reason.openOnGitHub && props.pullRequest !== undefined ? <Button variant="link" size="sm" className="ml-1 h-auto p-0 align-baseline" onClick={() => void openPullRequestExternalUrl(pullRequestPageUrl(props.pullRequest as PullRequestRef).toString(), props.pullRequest)}>Open on GitHub</Button> : null}</li>) : props.readiness.blockers.map((blocker) => <li key={blocker}>{mergeBlockerLabel(blocker)}</li>))}</ul></AlertDescription></Alert>;
   return (
     <section aria-label="Merge readiness" className="space-y-3">
       {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
@@ -56,6 +61,15 @@ export function MergeConfirmationDialog(props: {
       </AlertDialog>
     </section>
   );
+}
+
+function reasonSourceLabel(source: MergeDisplayReason["source"]): string {
+  switch (source) {
+    case "github_pr_state": return "GitHub PR state";
+    case "branch_protection": return "Branch protection";
+    case "ruleset_configuration": return "Ruleset configuration";
+    case "checks": return "Checks";
+  }
 }
 
 function mergeBlockerLabel(blocker: MergeReadiness["blockers"][number]): string {

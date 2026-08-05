@@ -42,6 +42,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { parseModelCatalog } from "../renderer-contracts";
+import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
   SelectContent,
@@ -799,12 +800,13 @@ function ReviewPreferences({
           return;
         }
         const model = selectedModel(catalog.models, catalog.defaultModel, saved.model);
-        if (model === undefined) return;
-        const next = { model, reasoning: saved.reasoning };
         setModels(catalog.models);
+        // Keep a saved choice visible in local preference storage even when its
+        // provider becomes unavailable; the server still rejects it as non-executable.
+        const next = { model: model ?? saved.model, reasoning: saved.reasoning };
         setPreference(next);
         setCatalogUnavailable(false);
-        if (profileId !== undefined && saved.model !== model)
+        if (profileId !== undefined && model !== undefined && saved.model !== model)
           saveReviewExecutionPreference(profileId, next);
       })
       .catch(() => {
@@ -836,32 +838,18 @@ function ReviewPreferences({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="default-model">Default model</FieldLabel>
-            <Select
+            <ModelCombobox
+              id="default-model"
+              ariaLabel="Default model"
+              options={models}
               value={preference.model}
-              disabled={catalogUnavailable || models.length === 0}
+              disabled={catalogUnavailable}
+              placeholder="No enabled model available"
               onValueChange={(value) => {
                 if (value !== null && models.some((model) => model.id === value))
                   update({ ...preference, model: value });
               }}
-            >
-              <SelectTrigger id="default-model" aria-label="Default model">
-                <SelectValue placeholder="No enabled model available">
-                  {(value) =>
-                    typeof value === "string"
-                      ? (models.find((model) => model.id === value)?.label ??
-                        value)
-                      : "No enabled model available"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="default-reasoning">Default reasoning</FieldLabel>
@@ -883,11 +871,11 @@ function ReviewPreferences({
           </Select>
           </Field>
         </FieldGroup>
-        {catalogUnavailable ? (
+        {catalogUnavailable || models.length === 0 ? (
           <Alert>
-            <AlertTitle>Review models are unavailable</AlertTitle>
+            <AlertTitle>No eligible model configured</AlertTitle>
             <AlertDescription>
-              Your saved preference is kept. Choose a model after the catalog is available.
+              Configure an API key or ambient provider credentials in the Electron process, then reload this screen. Your saved preference is kept.
             </AlertDescription>
           </Alert>
         ) : null}

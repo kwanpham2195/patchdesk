@@ -16,7 +16,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewHeadVerifier } from "./review-head-verifier";
 import { ReviewLifecycleGate } from "./review-lifecycle-gate";
-import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import { canonicalModelId, type PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import type { ReviewRunMetadata } from "./run-projection";
 import { prepareAttemptArtifacts } from "./review-attempt-artifacts";
 import { contentHash } from "./review-artifact-hash";
@@ -89,7 +89,8 @@ export class ReviewExecutionService {
     ) return err({ reason: "invalid_input" });
     const catalog = await this.modelCatalog.get();
     if (catalog._tag === "err") return err({ reason: "catalog_unavailable" });
-    if (!catalog.value.models.some((candidate) => candidate.id === model)) {
+    const canonical = catalog.value.providers === undefined ? model : canonicalModelId(model);
+    if (canonical === undefined || !catalog.value.models.some((candidate) => candidate.id === canonical)) {
       return err({ reason: "unsupported_model" });
     }
 
@@ -131,7 +132,7 @@ export class ReviewExecutionService {
         profileId: profileId.value,
         session: freshSession,
         attemptId,
-        model,
+        model: canonical,
         reasoning,
         startedAt,
       }),
@@ -143,11 +144,11 @@ export class ReviewExecutionService {
       profileId: profileId.value,
       sessionId: sessionId.value,
       attemptId: persisted.value.id,
-      model,
+      model: canonical,
       reasoning,
       metadata: {
         agent: "Patchdesk review agent",
-        model,
+        model: canonical,
         reasoning,
         mode: persisted.value.reviewMode ?? "Full review",
         access: "Read-only repository inspection",

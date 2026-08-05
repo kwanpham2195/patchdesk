@@ -22,6 +22,7 @@ import { ReviewRemoteStore } from "../src/adapters/storage/review-remote-store";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { ProfileSettingsService } from "../src/services/profile-service";
 import { err, ok } from "../src/domain/result";
+import type { PiRuntimeModelCatalog } from "../src/adapters/pi/pi-runtime-model-catalog";
 
 const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";
@@ -199,6 +200,31 @@ describe("local API capability boundary", () => {
     const added = await fetch(new URL("v1/reviews/insights/analysis/findings/finding-1/add", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, runId }) });
     expect(added.status).toBe(409);
     expect(await added.json()).toEqual({ error: "draft_unavailable" });
+  });
+
+  it("serves intentional empty and complete universal model catalogs without truncation", async () => {
+    const universalModels = Array.from({ length: 269 }, (_, index) => ({
+      id: `openai/universal-model-${index}`,
+      label: `Universal model ${index}`,
+    }));
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability };
+    for (const models of [[], universalModels]) {
+      const modelCatalog: PiRuntimeModelCatalog = {
+        async get() {
+          return ok({ models });
+        },
+      };
+      const startup = await startLocalApiServer({ capability, allowedOrigin, modelCatalog });
+      if (startup._tag !== "started") throw new Error("Expected local API startup");
+      localApi = startup.server;
+      const response = await fetch(new URL("v1/reviews/models", localApi.url), { headers });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.models).toEqual(models);
+      expect(body.models).toHaveLength(models.length);
+      await localApi.stop();
+      localApi = undefined;
+    }
   });
 
   it("maps authenticated review-run parsing, catalog, and missing-session failures", async () => {

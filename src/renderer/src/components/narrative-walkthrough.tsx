@@ -67,6 +67,7 @@ type NarrativeWalkthroughModel = {
     readonly headSha: string;
     readonly patchHash: string;
   };
+  readonly citationStatus: "verified" | "partially_verified" | "unverified";
   readonly title: string;
   readonly focus: string;
   readonly chapters: ReadonlyArray<{
@@ -341,10 +342,10 @@ export function NarrativeWalkthrough({
             </CollapsibleTrigger>
             <CollapsibleContent motion="disclosure" className="pt-2">
               <p className="walkthrough-support-copy px-1 text-xs">
-                Every hunk the model did not cover.
+                {walkthrough.support.hunks.length} supporting or mechanical hunk{walkthrough.support.hunks.length === 1 ? "" : "s"} outside the reading path.
               </p>
               <ul
-                className="walkthrough-support-copy mt-2 space-y-1 px-1 text-xs"
+                className="walkthrough-support-copy mt-2 max-h-48 space-y-1 overflow-y-auto px-1 text-xs"
                 aria-label="Support hunks"
               >
                 {walkthrough.support.hunks.map((hunk) => (
@@ -399,11 +400,19 @@ export function NarrativeWalkthrough({
                 </Badge>
               ) : null}
             </div>
+            {walkthrough.citationStatus === "verified" ? null : (
+              <Alert>
+                <AlertTitle>Diff citations need regeneration.</AlertTitle>
+                <AlertDescription>
+                  This retained Walkthrough predates verified hunk aliases, so Patchdesk keeps its prose but withholds ungrounded diff links. Run it again to rebuild evidence from the alias manifest.
+                </AlertDescription>
+              </Alert>
+            )}
             {activeSection.hunks.length === 0 ? (
               <Alert>
-                <AlertTitle>This section has no supporting hunks.</AlertTitle>
+                <AlertTitle>This section has no verified supporting hunks.</AlertTitle>
                 <AlertDescription>
-                  Patchdesk routes every source hunk to a section or Support.
+                  Its prose is retained, while Patchdesk routes source hunks to Support until a regenerated Walkthrough verifies the citations.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -476,42 +485,13 @@ export function NarrativeWalkthrough({
                 </CardTitle>
                 <CardDescription>
                   {walkthrough.support.hunks.length} hunk
-                  {walkthrough.support.hunks.length === 1 ? "" : "s"} not
-                  covered by the model.
+                  {walkthrough.support.hunks.length === 1 ? "" : "s"} outside the primary reading path.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {walkthrough.support.hunks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Every source hunk is in a section.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    <ul className="space-y-1 text-sm">
-                      {walkthrough.support.hunks.map((hunk) => (
-                        <li key={hunk.id} className="break-all">
-                          <code className="font-mono text-xs">{hunk.id}</code> ·{" "}
-                          {hunk.path}
-                        </li>
-                      ))}
-                    </ul>
-                    {walkthrough.support.hunks.map((hunk, index) => (
-                      <NarrativeWalkthroughDiff
-                        key={`support::${hunk.id}`}
-                        blockId={`support::${hunk.id}::${index}`}
-                        {...(rawPatch === undefined ? {} : { patch: rawPatch })}
-                        {...(sourceSession === undefined
-                          ? {}
-                          : { sourceSession })}
-                        hunkIds={[hunk.id]}
-                        hunks={[hunk]}
-                        allHunks={allHunks}
-                        {...(annotations === undefined ? {} : { annotations })}
-                        {...(preferences === undefined ? {} : { preferences })}
-                      />
-                    ))}
-                  </div>
-                )}
+                <p className="text-sm text-muted-foreground">
+                  Support stays compact so it does not interrupt the walkthrough. Browse its bounded list in the chapter rail, then return to Files for full diff navigation.
+                </p>
               </CardContent>
             </Card>
             <p

@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 
 import type {
   CheckSummary,
   GitHubComments,
+  MergeDisplayReason,
   PullRequestSummary,
 } from "../../../domain/github-context";
+import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { ReviewBatch } from "../../../domain/review-batch";
 import type { ReviewFinding } from "../../../domain/review-result";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { ReviewBatchPanel, ReviewBatchWriteActions, type ReviewBatchPanelActions } from "./review-batch-panel";
@@ -24,6 +27,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 export type PullRequestOverviewMerge = {
   readonly readiness: MergeReadiness;
+  readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
+  readonly pullRequest?: PullRequestRef;
   readonly context: {
     readonly repo: string;
     readonly prNumber: number;
@@ -60,6 +65,8 @@ export type CanonicalReviewOverview = {
   };
   readonly publishedFeedback: WorkbenchResponse["publishedFeedback"];
   readonly mergeReadiness: { readonly _tag: string; readonly blockers: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+  readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
+  readonly pullRequest?: PullRequestRef;
   readonly revision?: { readonly reviewedHeadSha: string; readonly currentHeadSha?: string; readonly freshness: string; readonly refreshedAt: string };
   readonly analysisStatus?: string;
   readonly walkthroughStatus?: string;
@@ -113,9 +120,9 @@ export function CanonicalReviewOverviewSheet({
           </OverviewRow>
           <Separator />
           <OverviewRow title="Merge readiness" trailing={overview.mergeReadiness._tag}>
-            <div className="flex flex-col gap-2 text-sm">{overview.mergeReadiness.blockers.map((blocker) => <p key={`blocker-${blocker}`} className="text-destructive">{blocker}</p>)}{overview.mergeReadiness.warnings.map((warning) => <p key={`warning-${warning}`} className="text-muted-foreground">{warning}</p>)}{overview.mergeReadiness.blockers.length === 0 && overview.mergeReadiness.warnings.length === 0 ? <p className="text-muted-foreground">No merge blockers or warnings.</p> : null}</div>
+            <div className="flex flex-col gap-2 text-sm">{overview.mergeReasons.map((reason) => <p key={reason.code} className="text-destructive"><span>{reason.message}</span><span className="ml-2 text-xs text-muted-foreground">{reasonSourceLabel(reason.source)} · {reason.availability}</span>{reason.openOnGitHub && overview.pullRequest !== undefined ? <Button variant="link" size="sm" className="ml-1 h-auto p-0 align-baseline" onClick={() => void openPullRequestExternalUrl(pullRequestPageUrl(overview.pullRequest as PullRequestRef).toString(), overview.pullRequest)}> <ExternalLink aria-hidden="true" className="size-3" /> Open on GitHub</Button> : null}</p>)}{overview.mergeReasons.length === 0 && overview.mergeReadiness.blockers.length > 0 ? overview.mergeReadiness.blockers.map((blocker) => <p key={`blocker-${blocker}`} className="text-destructive">{readinessBlockerLabel(blocker)}</p>) : null}{overview.mergeReadiness.warnings.map((warning) => <p key={`warning-${warning}`} className="text-muted-foreground">{readinessWarningLabel(warning)}</p>)}{overview.mergeReasons.length === 0 && overview.mergeReadiness.blockers.length === 0 && overview.mergeReadiness.warnings.length === 0 ? <p className="text-muted-foreground">No merge blockers or warnings.</p> : null}</div>
           </OverviewRow>
-          {merge === undefined || overview.terminalState !== undefined ? null : <div className="border-t py-4"><MergeConfirmationDialog readiness={merge.readiness} context={merge.context} methods={merge.methods} onMerge={merge.onMerge} /></div>}
+          {merge === undefined || overview.terminalState !== undefined ? null : <div className="border-t py-4"><MergeConfirmationDialog readiness={merge.readiness} {...(merge.mergeReasons === undefined ? {} : { mergeReasons: merge.mergeReasons })} {...(merge.pullRequest === undefined ? {} : { pullRequest: merge.pullRequest })} context={merge.context} methods={merge.methods} onMerge={merge.onMerge} /></div>}
           <Separator />
           <OverviewRow title="GitHub description" defaultOpen>
             {overview.description?.trim() ? <PullRequestDescriptionPreview markdown={overview.description} /> : <p className="whitespace-pre-wrap text-sm">No description was provided on GitHub.</p>}
@@ -215,6 +222,8 @@ export function PullRequestOverviewSheet({
             {actions.merge === undefined ? null : freshness !== "fresh" ? <p className="text-sm text-muted-foreground">Merge remains unavailable until GitHub confirms the current head.</p> : (
               <MergeConfirmationDialog
                 readiness={actions.merge.readiness}
+                {...(actions.merge.mergeReasons === undefined ? {} : { mergeReasons: actions.merge.mergeReasons })}
+                {...(actions.merge.pullRequest === undefined ? {} : { pullRequest: actions.merge.pullRequest })}
                 context={actions.merge.context}
                 methods={actions.merge.methods}
                 onMerge={actions.merge.onMerge}
@@ -299,6 +308,33 @@ function ThreadBatchActions({
     setBody("");
   };
   return <div className="mt-3 border-t pt-3"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => void saveReply()}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void actions.setThreadState(threadId, state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
+}
+
+function reasonSourceLabel(source: MergeDisplayReason["source"]): string {
+  switch (source) {
+    case "github_pr_state": return "GitHub PR state";
+    case "branch_protection": return "Branch protection";
+    case "ruleset_configuration": return "Ruleset configuration";
+    case "checks": return "Checks";
+  }
+}
+
+function readinessBlockerLabel(blocker: string): string {
+  switch (blocker) {
+    case "stale_head": return "Refresh this Review before merging.";
+    case "closed": return "This pull request is closed.";
+    case "draft": return "This pull request is a draft.";
+    case "conflicting": return "Resolve merge conflicts.";
+    case "merge_blocked": return "GitHub merge requirements are not satisfied.";
+    case "mergeability_unknown": return "GitHub merge status is unavailable.";
+    case "required_check": return "Required checks have not passed.";
+    case "github_review": return "Approval required by GitHub.";
+    default: return "GitHub merge requirements are not satisfied.";
+  }
+}
+
+function readinessWarningLabel(warning: string): string {
+  return warning === "request_changes" ? "Changes requested." : warning === "high_severity_finding" ? "High-severity local findings need acknowledgement." : "Merge warning requires acknowledgement.";
 }
 
 function statusLabel(status: string | undefined): string {
