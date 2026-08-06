@@ -261,62 +261,62 @@ export function ReviewWorkbench({
     <ReviewWorkbenchNavigationContext.Provider value={navigateToFiles}>
     <PublishedFeedbackNavigationContext.Provider value={focusPublishedFeedback}>
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Review workbench">
-      <header data-review-workbench-toolbar className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold" aria-label={title} title={title}>#{model.session.key.prNumber} {title}</h1>
-          <p className="mt-1 text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
-            {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ← {model.pullRequest?.headBranch ?? "unknown"} · {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} · refreshed {model.revision.refreshedAt}
-          </p>
-          <p className="sr-only" aria-live="polite">
-            {hasUpdates ? "Remote updates are available. Refresh before publishing or merging." : "Review state is current."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2" aria-label="Pull request status and actions">
-          <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", checksPillColor(model.checks.overall))}>
-            {checksIcon(model.checks.overall)}
-            Checks · {checksLabel}
-          </span>
-          <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", mergePillColor(model.mergeReadiness._tag))}>
-            {mergeIcon(model.mergeReadiness._tag)}
-            Merge · {mergeLabel(model.mergeReadiness._tag)}
-          </span>
-          {actions.merge === undefined || terminal ? null : (
-            model.mergeReadiness._tag === "Blocked" ? null : (
-              <DropdownMenu>
-                <DropdownMenuTrigger>
-                  <Button variant="outline" size="sm" disabled={freshnessLabel !== "Current"}>
-                    <GitMerge /> Merge <ChevronDown />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {actions.merge.methods.includes("merge") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("merge"); setMergeDialogOpen(true); }}>Create a merge commit</DropdownMenuItem> : null}
-                  {actions.merge.methods.includes("squash") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("squash"); setMergeDialogOpen(true); }}>Squash and merge</DropdownMenuItem> : null}
-                  {actions.merge.methods.includes("rebase") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("rebase"); setMergeDialogOpen(true); }}>Rebase and merge</DropdownMenuItem> : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={externalPullRequest === undefined}
-            onClick={() => {
-              if (externalPullRequest !== undefined) void openPullRequestExternalUrl(pullRequestPageUrl(externalPullRequest).toString(), externalPullRequest);
-            }}
-          >
-            <ExternalLink /> Open on GitHub
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
-          {terminal ? null : (
+      <header data-review-workbench-toolbar className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="min-w-0 text-lg font-semibold" aria-label={title} title={title}>#{model.session.key.prNumber} {title}</h1>
+          <div className="flex flex-wrap items-center gap-2" aria-label="Pull request status and actions">
+            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", checksPillColor(model.checks.overall))}>
+              {checksIcon(model.checks.overall)}
+              Checks · {checksLabel}
+            </span>
+            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", mergePillColor(model.mergeReadiness._tag))}>
+              {mergeIcon(model.mergeReadiness._tag)}
+              Merge · {mergeLabel(model.mergeReadiness._tag)}
+            </span>
+            {actions.merge === undefined || terminal ? null : (
+              model.mergeReadiness._tag === "Blocked" ? null : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button variant="outline" size="sm" disabled={freshnessLabel !== "Current"}>
+                      <GitMerge /> Merge <ChevronDown />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {actions.merge.methods.includes("merge") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("merge"); setMergeDialogOpen(true); }}>Create a merge commit</DropdownMenuItem> : null}
+                    {actions.merge.methods.includes("squash") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("squash"); setMergeDialogOpen(true); }}>Squash and merge</DropdownMenuItem> : null}
+                    {actions.merge.methods.includes("rebase") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("rebase"); setMergeDialogOpen(true); }}>Rebase and merge</DropdownMenuItem> : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            )}
             <Button
-              variant={hasUpdates ? "default" : "outline"}
+              variant="outline"
               size="sm"
-              onClick={() => void actions.refresh()}
+              disabled={externalPullRequest === undefined}
+              onClick={() => {
+                if (externalPullRequest !== undefined) void openPullRequestExternalUrl(pullRequestPageUrl(externalPullRequest).toString(), externalPullRequest);
+              }}
             >
-              {hasUpdates ? "Refresh updates" : "Refresh GitHub state"}
+              <ExternalLink /> Open on GitHub
             </Button>
-          )}
+            <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
+            {terminal ? null : (
+              <Button
+                variant={hasUpdates ? "default" : "outline"}
+                size="sm"
+                onClick={() => void actions.refresh()}
+              >
+                {hasUpdates ? "Refresh updates" : "Refresh GitHub state"}
+              </Button>
+            )}
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
+          {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ← {model.pullRequest?.headBranch ?? "unknown"} · {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} · refreshed {model.revision.refreshedAt}
+        </p>
+        <p className="sr-only" aria-live="polite">
+          {hasUpdates ? "Remote updates are available. Refresh before publishing or merging." : "Review state is current."}
+        </p>
       </header>
 
       <div
