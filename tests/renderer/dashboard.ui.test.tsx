@@ -51,17 +51,6 @@ afterEach(() => {
 });
 
 describe("dashboard renderer API flow", () => {
-  it("disables direct PR entry until the active profile loads", () => {
-    installApi({ dashboardPending: true });
-    render(<App />);
-
-    expect(
-      screen
-        .getByRole("button", { name: "Preview pull request" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-  });
-
   it("loads profile, watchlist, rows, and repo state from authenticated API responses", async () => {
     installApi();
     render(<App />);
@@ -291,68 +280,6 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Settings" }),
     ).toBeTruthy();
-  });
-
-  it("uses the server preview target before selecting and opening a direct PR", async () => {
-    const fetch = installApi();
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.type(
-      screen.getByLabelText("Pull request reference"),
-      "octo/service#3",
-    );
-    const previewButton = screen.getByRole("button", {
-      name: "Preview pull request",
-    });
-    await user.click(previewButton);
-    expect(
-      await screen.findByRole("dialog", { name: "Switch workspace profile" }),
-    ).toBeTruthy();
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Keep current profile" }),
-    );
-    await user.keyboard("{Escape}");
-    expect(
-      screen.queryByRole("dialog", { name: "Switch workspace profile" }),
-    ).toBeNull();
-    expect(document.activeElement).toBe(previewButton);
-
-    await user.click(previewButton);
-    await user.click(
-      screen.getByRole("button", {
-        name: "Switch profile and open pull request",
-      }),
-    );
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/profiles/select") &&
-          (init as RequestInit | undefined)?.method === "POST",
-      ),
-    ).toBe(true);
-  });
-
-  it("opens a normal direct entry immediately and lets users keep their current profile", async () => {
-    const fetch = installApi({ confirmationRequired: false });
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findAllByText(/Real dashboard row/);
-    await user.type(
-      screen.getByLabelText("Pull request reference"),
-      "octo/service#3",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Preview pull request" }),
-    );
-    expect(
-      await screen.findByText("Could not prepare octo/service#3."),
-    ).toBeTruthy();
-    expect(
-      fetch.mock.calls.some(([input]) =>
-        String(input).includes("v1/profiles/select"),
-      ),
-    ).toBe(false);
   });
 
   it("opens Settings from the current inbox shell", async () => {
@@ -710,7 +637,6 @@ const completedWorkbench = {
 
 function installApi(
   options: {
-    readonly confirmationRequired?: boolean;
     readonly dashboardPending?: boolean;
     readonly dashboardFailures?: number;
     readonly profileSwitchReloadFailures?: number;
@@ -873,15 +799,7 @@ function installApi(
                         ghAccount: "enterprise-user",
                       },
                     ]
-                  : path.includes("direct-entry")
-                    ? {
-                        pr: { owner: "octo", repo: "service", number: 3 },
-                        confirmation: {
-                          required: options.confirmationRequired ?? true,
-                          targetProfileId: "enterprise",
-                        },
-                      }
-                    : path.includes("v1/inbox")
+                  : path.includes("v1/inbox")
                       ? inboxFromDashboard(
                           isDashboardFixture(options.dashboardValue)
                             ? options.dashboardValue

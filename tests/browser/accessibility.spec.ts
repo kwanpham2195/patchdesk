@@ -59,9 +59,6 @@ for (const fixture of [
     page,
   }) => {
     await page.goto(`${origin(renderer)}/${fixture}`);
-    if (fixture === "") {
-      await expect(page.getByLabel("Pull request reference")).toBeVisible();
-    }
     await forceLightAppearance(page);
     expect(await seriousProductViolations(page)).toEqual([]);
   });

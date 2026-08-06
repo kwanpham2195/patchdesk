@@ -125,22 +125,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(clearLocalDialog).toBeHidden();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByLabel("Pull request reference").fill("acme/service#3");
-  await page.getByRole("button", { name: "Preview pull request" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Could not open review" })).toContainText("Could not prepare acme/service#3.");
-
-  await page
-    .getByLabel("Pull request reference")
-    .fill("https://github.com/centraldigital/patchdesk/pull/7");
-  await page.getByRole("button", { name: "Preview pull request" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Switch workspace profile" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Keep current profile" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Switch workspace profile" }),
-  ).toBeHidden();
-
 });
 
 async function serveRenderer(): Promise<Server> {

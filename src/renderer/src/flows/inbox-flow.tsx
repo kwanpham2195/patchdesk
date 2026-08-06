@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type ReviewInitialSection,
@@ -22,8 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Table,
@@ -40,7 +38,6 @@ import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
 import type {
   Dashboard,
   DashboardScreenState,
-  Preview,
   PrRow,
   RepoOutcome,
   WorkbenchPayload,
@@ -56,7 +53,6 @@ export function InboxFlow({
   refreshStatus,
   onRefresh,
   onSettings,
-  onWorkspaceReload,
   onOpenWorkbench,
 }: {
   readonly destination: "dashboard" | "workbench";
@@ -67,17 +63,13 @@ export function InboxFlow({
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
   readonly onSettings: () => void;
-  readonly onWorkspaceReload: () => Promise<void>;
   readonly onOpenWorkbench: (
     workbench: WorkbenchPayload,
     initialSection?: ReviewInitialSection,
   ) => void;
 }): React.JSX.Element {
-  const [reference, setReference] = useState("");
-  const [preview, setPreview] = useState<Preview>();
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
-  const previewTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (destination !== "workbench" || dashboard === undefined || reviewId === undefined) return;
     let active = true;
@@ -85,8 +77,10 @@ export function InboxFlow({
     return () => { active = false; };
   }, [dashboard?.profile.id, destination, reviewId]);
 
+  type PrRef = { readonly host?: string; readonly owner: string; readonly repo: string; readonly number: number };
+
   const openPullRequest = async (
-    pr: Preview["pr"],
+    pr: PrRef,
     mode: ReviewStartMode = "full",
     initialSection?: ReviewInitialSection,
     baseSessionId?: string,
@@ -116,37 +110,6 @@ export function InboxFlow({
     }
   };
 
-  const previewEntry = async (): Promise<void> => {
-    previewTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    try {
-      const value = await requestJson("/v1/direct-entry/preview", {
-        method: "POST",
-        body: { reference },
-      });
-      if (!isPreview(value)) return;
-      if (value.confirmation.required) setPreview(value);
-      else await openPullRequest(value.pr);
-    } catch {
-      setOpenError("Could not preview that pull request.");
-    }
-  };
-
-  const confirmEntry = async (): Promise<void> => {
-    if (preview === undefined) return;
-    const targetProfileId = preview.confirmation.targetProfileId;
-    if (targetProfileId !== undefined) {
-      try {
-        await requestJson("/v1/profiles/select", { method: "POST", body: { id: targetProfileId } });
-        await onWorkspaceReload();
-      } catch {
-        setOpenError("Could not switch workspace profile.");
-        return;
-      }
-    }
-    await openPullRequest(preview.pr, "full", undefined, undefined, targetProfileId);
-    setPreview(undefined);
-  };
-
   async function openStoredReviewById(profileId: string, reviewId: string, isActive: () => boolean = () => true): Promise<void> {
     await openStoredReview(profileId, { reviewId }, isActive);
   }
@@ -166,22 +129,16 @@ export function InboxFlow({
     }
   }
 
-  const referenceProps = {
-    reference,
-    onReference: setReference,
-    onPreview: () => void previewEntry(),
-    onRefresh,
-    onSettings,
-  };
-  const content = inbox !== undefined && dashboard !== undefined ? (
+  return inbox !== undefined && dashboard !== undefined ? (
     <InboxScreen
       state={state}
       inbox={inbox}
       dashboard={dashboard}
       refreshStatus={refreshStatus}
-      {...referenceProps}
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
+      onRefresh={onRefresh}
+      onSettings={onSettings}
       onOpenReview={(row, mode, initialSection) => void openPullRequest(row.identity, mode, initialSection, row.recommendedAction.kind === "review_updates" ? row.recommendedAction.baseSessionId : undefined)}
       onOpenSession={(sessionId) => void openStoredReviewBySessionId(dashboard.profile.id, sessionId)}
     />
@@ -190,39 +147,19 @@ export function InboxFlow({
       state={state}
       {...(dashboard === undefined ? {} : { dashboard })}
       {...(inbox === undefined ? {} : { inbox })}
-      {...referenceProps}
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onOpenRow={(pr) => void openPullRequest(pr)}
+      onRefresh={onRefresh}
+      onSettings={onSettings}
     />
   );
-
-  return <>
-    {content}
-    <Dialog open={preview?.confirmation.required === true} onOpenChange={(open) => { if (!open) setPreview(undefined); }}>
-      {preview === undefined ? null : (
-        <DialogContent initialFocus={() => document.getElementById("keep-current-profile")} finalFocus={previewTrigger}>
-          <DialogHeader>
-            <DialogTitle>Switch workspace profile</DialogTitle>
-            <DialogDescription>Use the suggested profile before opening {preview.pr.owner}/{preview.pr.repo}#{preview.pr.number}.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button id="keep-current-profile" autoFocus variant="outline" onClick={() => setPreview(undefined)}>Keep current profile</Button>
-            <Button onClick={() => void confirmEntry()}>Switch profile and open pull request</Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
-    </Dialog>
-  </>;
 }
 
 export function InboxScreen({
   state,
   inbox,
   dashboard,
-  reference,
-  onReference,
-  onPreview,
   onRefresh,
   refreshStatus,
   onSettings,
@@ -234,9 +171,6 @@ export function InboxScreen({
   readonly state: DashboardScreenState;
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
-  readonly reference: string;
-  readonly onReference: (value: string) => void;
-  readonly onPreview: () => void;
   readonly onRefresh: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onSettings: () => void;
@@ -263,30 +197,6 @@ export function InboxScreen({
           <AlertDescription>{openError}</AlertDescription>
         </Alert>
       )}
-      <div className="border-b bg-muted/10 px-4 py-2">
-        <div className="flex min-w-0 flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-1 max-sm:basis-full">
-            <Label className="sr-only" htmlFor="pr-reference">
-              Pull request reference
-            </Label>
-            <Input
-              id="pr-reference"
-              className="h-8 text-xs"
-              placeholder="owner/repository#123"
-              value={reference}
-              onChange={(event) => onReference(event.target.value)}
-            />
-          </div>
-          <Button
-            size="sm"
-            className="shrink-0 text-xs max-sm:w-full"
-            onClick={onPreview}
-            disabled={state === "loading"}
-          >
-            Preview pull request
-          </Button>
-        </div>
-      </div>
       <Outcome
         state={state}
         repos={dashboard.dashboard.repos}
@@ -317,9 +227,6 @@ export function Pending({
   state,
   dashboard,
   inbox,
-  reference,
-  onReference,
-  onPreview,
   onRefresh,
   onSettings,
   onOpenRow,
@@ -329,12 +236,9 @@ export function Pending({
   readonly state: DashboardScreenState;
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
-  readonly reference: string;
-  readonly onReference: (value: string) => void;
-  readonly onPreview: () => void;
   readonly onRefresh: () => void;
   readonly onSettings: () => void;
-  readonly onOpenRow: (pr: Preview["pr"]) => void;
+  readonly onOpenRow: (pr: { readonly host?: string; readonly owner: string; readonly repo: string; readonly number: number }) => void;
   readonly openedPr?: string;
   readonly openError?: string;
 }): React.JSX.Element {
@@ -384,23 +288,6 @@ export function Pending({
           </AlertDescription>
         </Alert>
       ) : null}
-      <Card className="mt-6">
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[15rem] flex-1">
-            <Label htmlFor="pr-reference">Pull request reference</Label>
-            <Input
-              id="pr-reference"
-              className="mt-1.5"
-              placeholder="owner/repository#123 or GitHub URL"
-              value={reference}
-              onChange={(event) => onReference(event.target.value)}
-            />
-          </div>
-          <Button onClick={onPreview} disabled={dashboard === undefined}>
-            Preview pull request
-          </Button>
-        </CardContent>
-      </Card>
       <Outcome
         state={state}
         repos={dashboard?.dashboard.repos ?? []}
@@ -684,13 +571,6 @@ function Outcome({
         ))}
     </section>
   );
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isPreview(value: unknown): value is Preview {
-  return isRecord(value) && isRecord(value.pr) && typeof value.pr.owner === "string" && typeof value.pr.repo === "string" && typeof value.pr.number === "number" && isRecord(value.confirmation) && typeof value.confirmation.required === "boolean";
 }
 
 function key(repo: {

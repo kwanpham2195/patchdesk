@@ -515,7 +515,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
           })}
           onRefresh={() => void refreshDashboard()}
           onSettings={() => openSettings()}
-          onWorkspaceReload={loadWorkspace}
           onOpenWorkbench={(next, initialSection) => {
             setWorkbench(next);
             navigate({ kind: "workbench", reviewId: next.review?.id ?? next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
