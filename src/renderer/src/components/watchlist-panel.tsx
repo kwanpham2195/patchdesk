@@ -64,10 +64,6 @@ export function WatchlistPanel({
   const [feedback, setFeedback] = useState<string>();
 
   const workspaceRoots = profile.workspaceRoots ?? [];
-  const groups = useMemo(
-    () => groupByRoot(discovered, workspaceRoots),
-    [discovered, workspaceRoots],
-  );
 
   useEffect(() => {
     const watchedKeys = new Set(
@@ -75,6 +71,30 @@ export function WatchlistPanel({
     );
     setWatched(watchedKeys);
   }, [profile.repos]);
+
+  /** Merge already-watched repos into the discovery list so they show as pre-ticked entries. */
+  const merged = useMemo((): ReadonlyArray<DiscoveryEntry> => {
+    const seen = new Map<string, DiscoveryEntry>(
+      discovered.map((entry) => [entryKey(entry), entry]),
+    );
+    for (const repo of profile.repos ?? []) {
+      const key = repositoryKey(repo);
+      if (!seen.has(key)) {
+        seen.set(key, {
+          host: repo.host,
+          owner: repo.owner,
+          repo: repo.repo,
+          localPath: repo.localPath ?? "",
+        });
+      }
+    }
+    return [...seen.values()];
+  }, [discovered, profile.repos]);
+
+  const groups = useMemo(
+    () => groupByRoot(merged, workspaceRoots),
+    [merged, workspaceRoots],
+  );
 
   const discover = async (): Promise<void> => {
     setPending("discover");
@@ -98,7 +118,7 @@ export function WatchlistPanel({
       }
       setDiscoverResult(entries);
       setFeedback(
-        entries.length === 0
+        entries.length === 0 && (profile.repos ?? []).length === 0
           ? "No repositories found in workspace roots."
           : undefined,
       );
