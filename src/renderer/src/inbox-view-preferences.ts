@@ -9,12 +9,14 @@ export type SavedInboxView = {
   readonly view: InboxView;
   readonly search: string;
   readonly sort: InboxSort;
+  readonly selectedRepo: string;
 };
 
 export type InboxViewPreferences = {
   readonly view: InboxView;
   readonly search: string;
   readonly sort: InboxSort;
+  readonly selectedRepo: string;
   readonly queueRailOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
@@ -25,6 +27,7 @@ export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   view: "my_inbox",
   search: "",
   sort: "priority",
+  selectedRepo: "",
   queueRailOpen: true,
   inspectorOpen: true,
   savedViews: [],
@@ -60,6 +63,7 @@ function parsePreferences(input: unknown): InboxViewPreferences {
     view: isInboxView(value.view) ? value.view : "my_inbox",
     search: typeof value.search === "string" ? value.search.slice(0, 200) : "",
     sort: value.sort === "updated" || value.sort === "repository" ? value.sort : "priority",
+    selectedRepo: typeof value.selectedRepo === "string" ? value.selectedRepo.slice(0, 200) : "",
     queueRailOpen: value.queueRailOpen !== false,
     inspectorOpen: value.inspectorOpen !== false,
     savedViews: parseSavedViews(value.savedViews),
@@ -85,6 +89,7 @@ function parseSavedViews(value: unknown): ReadonlyArray<SavedInboxView> {
       view: item.view,
       search: typeof item.search === "string" ? item.search.slice(0, 200) : "",
       sort: item.sort === "updated" || item.sort === "repository" ? item.sort : "priority",
+      selectedRepo: typeof item.selectedRepo === "string" ? item.selectedRepo.slice(0, 200) : "",
     });
   }
   return parsed;

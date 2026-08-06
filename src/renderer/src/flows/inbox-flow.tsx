@@ -298,6 +298,7 @@ export function InboxScreen({
           profileId={inbox.profile.id}
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
+          {...(inbox.profile.repos === undefined ? {} : { repos: inbox.profile.repos })}
           freshness={inbox.inbox.dataFreshness}
           {...(inbox.inbox.snapshot === undefined
             ? {}

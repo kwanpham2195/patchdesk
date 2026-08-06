@@ -65,6 +65,7 @@ export function MaintainerInbox({
   profileId,
   profileLabel,
   rows,
+  repos,
   freshness,
   snapshot,
   refreshStatus,
@@ -75,6 +76,7 @@ export function MaintainerInbox({
   readonly profileId: string;
   readonly profileLabel: string;
   readonly rows: ReadonlyArray<InboxRow>;
+  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
   readonly freshness: "fresh" | "cached";
   readonly snapshot?: { readonly state: "current" | "partial" | "failed_cached" | "unavailable"; readonly refreshedAt?: string | undefined };
   readonly refreshStatus: "Refreshing" | "Current" | "Aged" | "Partial" | "Cached after refresh failure" | "Unavailable" | "Paused";
@@ -89,6 +91,7 @@ export function MaintainerInbox({
   const [queueOpen, setQueueOpen] = useState(preferences.queueRailOpen);
   const [inspectorOpen, setInspectorOpen] = useState(preferences.inspectorOpen);
   const [selectedKey, setSelectedKey] = useState<string | undefined>(preferences.selectedIdentity);
+  const [selectedRepo, setSelectedRepo] = useState<string>(preferences.selectedRepo);
   const [savedViews, setSavedViews] = useState<ReadonlyArray<SavedInboxView>>(preferences.savedViews);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [savedViewName, setSavedViewName] = useState("");
@@ -111,6 +114,7 @@ export function MaintainerInbox({
     setView(next.view);
     setSearch(next.search);
     setSort(next.sort);
+    setSelectedRepo(next.selectedRepo);
     setQueueOpen(next.queueRailOpen);
     setInspectorOpen(next.inspectorOpen);
     setSelectedKey(next.selectedIdentity);
@@ -118,8 +122,8 @@ export function MaintainerInbox({
   }, [profileId]);
 
   const visibleRows = useMemo(
-    () => sortRows(filterRows(rows, view, search), sort),
-    [rows, search, sort, view],
+    () => sortRows(filterRows(rows, view, search, selectedRepo), sort),
+    [rows, search, sort, view, selectedRepo],
   );
   const selected = visibleRows.find((row) => inboxIdentityKey(row) === selectedKey) ?? visibleRows[0];
 
@@ -139,10 +143,12 @@ export function MaintainerInbox({
     setView(next.view);
     setSearch(next.search);
     setSort(next.sort);
+    setSelectedRepo(next.selectedRepo);
     saveInboxViewPreferences(profileId, {
       view: next.view,
       search: next.search,
       sort: next.sort,
+      selectedRepo: next.selectedRepo,
     });
   };
   const saveCurrentView = (): void => {
@@ -154,6 +160,7 @@ export function MaintainerInbox({
       view,
       search,
       sort,
+      selectedRepo,
     };
     const updated = [...savedViews, next].slice(-20);
     setSavedViews(updated);
@@ -180,6 +187,10 @@ export function MaintainerInbox({
   const changeSort = (next: InboxSort): void => {
     setSort(next);
     saveInboxViewPreferences(profileId, { sort: next });
+  };
+  const changeSelectedRepo = (next: string): void => {
+    setSelectedRepo(next);
+    saveInboxViewPreferences(profileId, { selectedRepo: next });
   };
   const toggleQueue = (): void => {
     const next = !queueOpen;
@@ -250,6 +261,17 @@ export function MaintainerInbox({
           <InputGroupAddon className="pl-2 [&>svg]:size-3.5"><Search /></InputGroupAddon>
           <InputGroupInput value={search} onChange={(event) => changeSearch(event.target.value)} className="h-8 text-xs" placeholder="Filter pull requests" aria-label="Filter pull requests" />
         </InputGroup>
+        {repos !== undefined && repos.length > 0 ? (
+          <Select value={selectedRepo} onValueChange={(value) => changeSelectedRepo(value ?? "")}>
+            <SelectTrigger size="sm" className="min-w-32 max-w-44 text-xs" aria-label="Filter by repository"><SelectValue placeholder="All repositories" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="" className="text-xs">All repositories</SelectItem>
+              {repos.map((repo) => (
+                <SelectItem key={`${repo.host}/${repo.owner}/${repo.repo}`} value={`${repo.owner}/${repo.repo}`} className="text-xs">{repo.owner}/{repo.repo}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
         <Select value={sort} onValueChange={(value) => changeSort(value as InboxSort)}>
           <SelectTrigger size="sm" className="min-w-28 text-xs" aria-label="Sort pull requests"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -287,7 +309,7 @@ export function MaintainerInbox({
 
   return (
     <div className={cn("min-h-[calc(100vh-3rem)] min-w-0 bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:overflow-hidden", desktopGridColumns)}>
-      <QueueRail rows={rows} view={view} savedViews={savedViews} open={queueOpen} onSelect={selectView} onSelectSaved={selectSavedView} onSaveCurrent={() => setSaveViewOpen(true)} onDeleteSaved={setDeleteView} onToggle={toggleQueue} />
+      <QueueRail rows={rows} view={view} savedViews={savedViews} selectedRepo={selectedRepo} open={queueOpen} onSelect={selectView} onSelectSaved={selectSavedView} onSaveCurrent={() => setSaveViewOpen(true)} onDeleteSaved={setDeleteView} onToggle={toggleQueue} />
       <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">{main}</ScrollArea>
       <aside className={cn("hidden min-w-0 overflow-hidden border-l min-[1280px]:block", !inspectorOpen && "min-[1280px]:hidden")} aria-label="Review details">
         <ScrollArea className="h-full overflow-x-hidden"><Inspector {...(selected === undefined ? {} : { row: selected })} freshness={freshness} onAction={() => selected === undefined ? undefined : requestAction(selected, onOpenReview, onOpenSession, setScopePreview)} /></ScrollArea>
@@ -334,12 +356,12 @@ function InboxFreshness({ snapshot, status }: { readonly snapshot?: { readonly s
   return <Badge variant={stable ? "secondary" : "outline"} className="h-5 max-w-full px-1.5 text-[10px]" title={snapshot?.refreshedAt}>GitHub: {status}</Badge>;
 }
 
-function QueueRail({ rows, view, savedViews, open, onSelect, onSelectSaved, onSaveCurrent, onDeleteSaved, onToggle }: { readonly rows: ReadonlyArray<InboxRow>; readonly view: InboxView; readonly savedViews: ReadonlyArray<SavedInboxView>; readonly open: boolean; readonly onSelect: (view: InboxView) => void; readonly onSelectSaved: (view: SavedInboxView) => void; readonly onSaveCurrent: () => void; readonly onDeleteSaved: (view: SavedInboxView) => void; readonly onToggle: () => void }): React.JSX.Element {
+function QueueRail({ rows, view, savedViews, selectedRepo, open, onSelect, onSelectSaved, onSaveCurrent, onDeleteSaved, onToggle }: { readonly rows: ReadonlyArray<InboxRow>; readonly view: InboxView; readonly savedViews: ReadonlyArray<SavedInboxView>; readonly selectedRepo: string; readonly open: boolean; readonly onSelect: (view: InboxView) => void; readonly onSelectSaved: (view: SavedInboxView) => void; readonly onSaveCurrent: () => void; readonly onDeleteSaved: (view: SavedInboxView) => void; readonly onToggle: () => void }): React.JSX.Element {
   if (!open) return <aside className="hidden border-r min-[1280px]:flex min-[1280px]:justify-center min-[1280px]:pt-2"><Button size="icon-sm" variant="ghost" onClick={onToggle} aria-label="Show inbox queues"><PanelLeftOpen /></Button></aside>;
   return <aside className="border-r bg-muted/10 max-[1279px]:border-b min-[1280px]:min-h-0" aria-label="Inbox queues">
     <div className="flex items-center justify-between px-3 py-2"><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Queues</p><Button className="hidden min-[1280px]:inline-flex" size="icon-sm" variant="ghost" onClick={onToggle} aria-label="Hide inbox queues"><PanelLeftClose /></Button></div>
     <nav className="flex gap-0.5 overflow-x-auto px-2 pb-1.5 min-[1280px]:flex-col" aria-label="Inbox views">
-      {views.map((item) => <Button key={item.id} variant={view === item.id ? "secondary" : "ghost"} size="sm" className="h-7 justify-between whitespace-nowrap text-xs min-[1280px]:w-full" onClick={() => onSelect(item.id)}><span className="flex min-w-0 items-center gap-2"><Badge variant="ghost" aria-hidden="true" className={cn("size-1.5 min-w-1.5 shrink-0 rounded-full border-0 p-0", queueIndicatorClass(item.id))} />{item.label}</span><Badge variant="outline" className="ml-2 h-4 min-w-4 px-1 text-[10px]">{viewCount(rows, item.id)}</Badge></Button>)}
+      {views.map((item) => <Button key={item.id} variant={view === item.id ? "secondary" : "ghost"} size="sm" className="h-7 justify-between whitespace-nowrap text-xs min-[1280px]:w-full" onClick={() => onSelect(item.id)}><span className="flex min-w-0 items-center gap-2"><Badge variant="ghost" aria-hidden="true" className={cn("size-1.5 min-w-1.5 shrink-0 rounded-full border-0 p-0", queueIndicatorClass(item.id))} />{item.label}</span><Badge variant="outline" className="ml-2 h-4 min-w-4 px-1 text-[10px]">{viewCount(rows, item.id, selectedRepo)}</Badge></Button>)}
     </nav>
     <Separator className="my-1.5" />
     <div className="flex items-center justify-between px-3"><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Saved views</p><Button size="icon-sm" variant="ghost" onClick={onSaveCurrent} aria-label="Save current view"><Save /></Button></div>
@@ -383,9 +405,9 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
   }
 }
 
-function viewCount(rows: ReadonlyArray<InboxRow>, view: InboxView): number { return filterRows(rows, view, "").length; }
+function viewCount(rows: ReadonlyArray<InboxRow>, view: InboxView, selectedRepo: string): number { return filterRows(rows, view, "", selectedRepo).length; }
 function queueIndicatorClass(view: InboxView): string { switch (view) { case "my_inbox": case "updated": return "bg-status-info"; case "needs_review": return "bg-status-warning"; case "waiting": return "bg-muted-foreground/60"; case "checks_failing": return "bg-destructive"; case "ready_to_merge": return "bg-status-success"; case "all_open": return "bg-muted-foreground"; } }
-function filterRows(rows: ReadonlyArray<InboxRow>, view: InboxView, search: string): ReadonlyArray<InboxRow> { const needle = search.trim().toLocaleLowerCase(); return rows.filter((row) => matchesView(row, view) && (needle.length === 0 || `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`.toLocaleLowerCase().includes(needle))); }
+function filterRows(rows: ReadonlyArray<InboxRow>, view: InboxView, search: string, selectedRepo: string = ""): ReadonlyArray<InboxRow> { const needle = search.trim().toLocaleLowerCase(); return rows.filter((row) => matchesView(row, view) && (needle.length === 0 || `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`.toLocaleLowerCase().includes(needle)) && (selectedRepo.length === 0 || `${row.identity.owner}/${row.identity.repo}` === selectedRepo)); }
 function matchesView(row: InboxRow, view: InboxView): boolean { switch (view) { case "all_open": return true; case "my_inbox": return row.categories.some((category) => category === "needs_review" || category === "updated_since_review" || category === "saved_review" || category === "running"); case "updated": return row.categories.includes("updated_since_review"); case "needs_review": return row.categories.includes("needs_review"); case "waiting": return row.categories.includes("waiting_for_author"); case "checks_failing": return row.categories.includes("checks_failing"); case "ready_to_merge": return row.categories.includes("ready_to_merge"); } }
 function sortRows(rows: ReadonlyArray<InboxRow>, sort: InboxSort): ReadonlyArray<InboxRow> { return [...rows].sort((left, right) => sort === "updated" ? right.updatedAt.localeCompare(left.updatedAt) : sort === "repository" ? inboxIdentityKey(left).localeCompare(inboxIdentityKey(right)) : priority(left) - priority(right) || right.updatedAt.localeCompare(left.updatedAt) || inboxIdentityKey(left).localeCompare(inboxIdentityKey(right))); }
 function priority(row: InboxRow): number { if (row.categories.includes("running") || row.categories.includes("saved_review")) return 0; if (row.categories.includes("updated_since_review")) return 1; if (row.categories.includes("needs_review")) return 2; if (row.categories.includes("waiting_for_author")) return 3; if (row.categories.includes("checks_failing")) return 4; if (row.categories.includes("ready_to_merge")) return 5; return 6; }
