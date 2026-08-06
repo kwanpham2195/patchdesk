@@ -121,6 +121,17 @@ export function MaintainerInbox({
     setSavedViews(next.savedViews);
   }, [profileId]);
 
+  const repoItems = useMemo(
+    () => [
+      { label: "All repositories", value: "" },
+      ...(repos ?? []).map((repo) => ({
+        label: `${repo.owner}/${repo.repo}`,
+        value: `${repo.owner}/${repo.repo}`,
+      })),
+    ],
+    [repos],
+  );
+
   const visibleRows = useMemo(
     () => sortRows(filterRows(rows, view, search, selectedRepo), sort),
     [rows, search, sort, view, selectedRepo],
@@ -262,12 +273,11 @@ export function MaintainerInbox({
           <InputGroupInput value={search} onChange={(event) => changeSearch(event.target.value)} className="h-8 text-xs" placeholder="Filter pull requests" aria-label="Filter pull requests" />
         </InputGroup>
         {repos !== undefined && repos.length > 0 ? (
-          <Select value={selectedRepo} onValueChange={(value) => changeSelectedRepo(value ?? "")}>
-            <SelectTrigger size="sm" className="min-w-32 max-w-44 text-xs" aria-label="Filter by repository"><SelectValue placeholder="All repositories" /></SelectTrigger>
+          <Select items={repoItems} value={selectedRepo} onValueChange={(value) => changeSelectedRepo(value ?? "")}>
+            <SelectTrigger size="sm" className="min-w-32 max-w-44 text-xs" aria-label="Filter by repository"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="" className="text-xs">All repositories</SelectItem>
-              {repos.map((repo) => (
-                <SelectItem key={`${repo.host}/${repo.owner}/${repo.repo}`} value={`${repo.owner}/${repo.repo}`} className="text-xs">{repo.owner}/{repo.repo}</SelectItem>
+              {repoItems.map((item) => (
+                <SelectItem key={item.value} value={item.value} className="text-xs">{item.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
