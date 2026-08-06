@@ -2,7 +2,7 @@
 created_at: "2026-08-06"
 repos:
   - patchdesk
-status: TODO
+status: DONE
 spec: .agents/tasks/pr-overview-status-sidebar/spec.md
 ---
 

@@ -20,8 +20,9 @@ Updated 2026-08-06. Execute independent plans in priority order. Use the design 
   - Priority: P1
   - Effort: M
   - Depends on: none
-  - Status: TODO
+  - Status: DONE (implementation + static gates; live Electron QA delegated separately)
   - Plan: `.agents/PLANS/003-pr-overview-status-sidebar.md`
+  - Verification: focused renderer suite 38/38, full suite 852/852, typecheck, lint, build, browser workbench spec 21/21 scope tests, `git diff --check` clean. `pnpm test:design` still fails on pre-existing dock-visibility failures (Review draft dock / Published feedback dock `hidden` since 2a8a038), reproduced identically at baseline b3a5868.
 
 ## Dependency notes
 
