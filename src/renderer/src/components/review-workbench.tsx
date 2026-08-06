@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, GitMerge, Loade
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
+import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
@@ -224,15 +225,29 @@ export function ReviewWorkbench({
     title,
     ...(model.pullRequest?.description === undefined ? {} : { description: model.pullRequest.description }),
     summary: retainedAnalysis?.value.summary ?? "No retained Analysis is available for this snapshot.",
-    checks: { overall: model.checks.overall, checks: model.checks.checks.map((check) => ({ name: check.name, status: check.status, ...(check.conclusion === undefined ? {} : { conclusion: check.conclusion }) })) },
-    comments: { ...(model.comments.complete === undefined ? {} : { complete: model.comments.complete }), threads: model.comments.threads.map((thread) => ({ id: thread.id, state: thread.state, comments: thread.comments.map((comment) => ({ author: comment.author, body: comment.body })) })) },
-    publishedFeedback: model.publishedFeedback,
+    // The validated projection is structurally identical to the domain shapes;
+    // valibot's optional fields carry an explicit undefined that the strict
+    // domain types reject, so the overview adopts them at this renderer seam.
+    // GitHubThreadId is a branded string the projection schema cannot produce,
+    // so comments need the explicit double cast; runtime validation already ran.
+    checks: model.checks as CheckSummary,
     mergeReadiness: model.mergeReadiness,
     mergeReasons: model.mergeReasons ?? [],
     ...(externalPullRequest === undefined ? {} : { pullRequest: externalPullRequest }),
-    revision: { reviewedHeadSha: model.revision.reviewedHeadSha, ...(model.revision.currentHeadSha === undefined ? {} : { currentHeadSha: model.revision.currentHeadSha }), freshness: model.revision.freshness, refreshedAt: model.revision.refreshedAt },
-    analysisStatus: model.insights.analysis.status,
-    walkthroughStatus: model.insights.walkthrough.status,
+    revision: {
+      ...(model.pullRequest === undefined ? {} : { baseBranch: model.pullRequest.baseBranch, headBranch: model.pullRequest.headBranch }),
+      reviewedHeadSha: model.revision.reviewedHeadSha,
+      ...(model.revision.currentHeadSha === undefined ? {} : { currentHeadSha: model.revision.currentHeadSha }),
+      freshness: model.revision.freshness,
+      refreshedAt: model.revision.refreshedAt,
+      commitCount: model.commits.length,
+      ...(model.pullRequest?.changedFileCount === undefined ? {} : { fileCount: model.pullRequest.changedFileCount }),
+    },
+    insights: {
+      analysis: { status: model.insights.analysis.status },
+      walkthrough: { status: model.insights.walkthrough.status },
+    },
+    mappedFindingCount: findings.length,
     ...(model.review.status === "open" ? {} : { terminalState: model.review.status }),
   };
   const commitHeader = selectedCommit === undefined || commitDiff === undefined ? undefined : {
@@ -247,6 +262,11 @@ export function ReviewWorkbench({
     setSelectedFinding(undefined);
     setSelectedCommitSha(undefined);
   }, []);
+  /** Closes PR Overview and moves to the existing current Findings surface. */
+  const viewFindings = useCallback((): void => {
+    setOverviewOpen(false);
+    selectSection("findings");
+  }, [selectSection]);
   const focusPublishedFeedback = useCallback((): void => {
     const feedbackRegion = feedbackRegionRef.current;
     const region = feedbackRegion?.querySelector<HTMLElement>('[aria-label="Published feedback"]') ?? feedbackRegion;
@@ -265,11 +285,11 @@ export function ReviewWorkbench({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="min-w-0 text-lg font-semibold" aria-label={title} title={title}>#{model.session.key.prNumber} {title}</h1>
           <div className="flex flex-wrap items-center gap-2" aria-label="Pull request status and actions">
-            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", checksPillColor(model.checks.overall))}>
+            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs", checksPillColor(model.checks.overall))}>
               {checksIcon(model.checks.overall)}
               Checks · {checksLabel}
             </span>
-            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", mergePillColor(model.mergeReadiness._tag))}>
+            <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs", mergePillColor(model.mergeReadiness._tag))}>
               {mergeIcon(model.mergeReadiness._tag)}
               Merge · {mergeLabel(model.mergeReadiness._tag)}
             </span>
@@ -300,15 +320,6 @@ export function ReviewWorkbench({
               <ExternalLink /> Open on GitHub
             </Button>
             <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
-            {terminal ? null : (
-              <Button
-                variant={hasUpdates ? "default" : "outline"}
-                size="sm"
-                onClick={() => void actions.refresh()}
-              >
-                {hasUpdates ? "Refresh updates" : "Refresh GitHub state"}
-              </Button>
-            )}
           </div>
         </div>
         <p className="text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
@@ -406,7 +417,7 @@ export function ReviewWorkbench({
       </div>
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
-      <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} />
+      <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} onViewFindings={viewFindings} />
       {actions.merge === undefined ? null : (
         <MergeConfirmationDialog
           defaultOpen={mergeDialogOpen}
@@ -474,9 +485,9 @@ function formatRelativeTime(value: string): string {
 
 const checksColors: Record<string, string> = { passing: "border-green-300 bg-green-50 text-green-800", failing: "border-red-300 bg-red-50 text-red-800", pending: "border-amber-300 bg-amber-50 text-amber-800" };
 function checksPillColor(overall: string): string { return checksColors[overall] ?? "border-muted-foreground/20 bg-muted/30 text-muted-foreground"; }
-function checksIcon(overall: string): React.JSX.Element { switch (overall) { case "passing": return <CheckCircle2 className="size-3.5" />; case "failing": return <XCircle className="size-3.5" />; case "pending": return <LoaderCircle className="size-3.5" />; default: return <AlertTriangle className="size-3.5" />; } }
+function checksIcon(overall: string): React.JSX.Element { switch (overall) { case "passing": return <CheckCircle2 className="size-3" />; case "failing": return <XCircle className="size-3" />; case "pending": return <LoaderCircle className="size-3" />; default: return <AlertTriangle className="size-3" />; } }
 
-const mergeColors: Record<string, string> = { Clean: "border-green-300 bg-green-50 text-green-800", Warning: "border-amber-300 bg-amber-50 text-amber-800", Blocked: "border-red-300 bg-red-50 text-red-800" };
+const mergeColors: Record<string, string> = { Ready: "border-green-300 bg-green-50 text-green-800", NeedsAcknowledgement: "border-amber-300 bg-amber-50 text-amber-800", Blocked: "border-red-300 bg-red-50 text-red-800" };
 function mergePillColor(tag: string): string { return mergeColors[tag] ?? "border-muted-foreground/20 bg-muted/30 text-muted-foreground"; }
-function mergeIcon(tag: string): React.JSX.Element { switch (tag) { case "Clean": return <CheckCircle2 className="size-3.5" />; case "Blocked": return <XCircle className="size-3.5" />; case "Warning": return <AlertTriangle className="size-3.5" />; default: return <AlertTriangle className="size-3.5" />; } }
-function mergeLabel(tag: string): string { switch (tag) { case "Clean": return "Ready"; case "Blocked": return "Blocked"; case "Warning": return "Warnings"; default: return tag; } }
+function mergeIcon(tag: string): React.JSX.Element { switch (tag) { case "Ready": return <CheckCircle2 className="size-3" />; case "NeedsAcknowledgement": return <AlertTriangle className="size-3" />; case "Blocked": return <XCircle className="size-3" />; default: return <AlertTriangle className="size-3" />; } }
+function mergeLabel(tag: string): string { switch (tag) { case "Ready": return "Ready"; case "NeedsAcknowledgement": return "Warnings"; case "Blocked": return "Blocked"; default: return tag; } }

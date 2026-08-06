@@ -9,6 +9,7 @@ import { DiffWorkbench } from "../components/diff-workbench";
 import { MergeConfirmationDialog } from "../components/merge-confirmation-dialog";
 import { ReviewBatchPanel } from "../components/review-batch-panel";
 import { SafeRunPanel } from "../components/safe-run-panel";
+import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -27,6 +28,8 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import type { ReviewBatch } from "../../../domain/review-batch";
+import type { MergeReadiness } from "../../../domain/merge-readiness";
+import { parsePullRequestInput } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
@@ -81,6 +84,82 @@ export function AppFixtureContent({
       <CanonicalFixtureWorkbench
         data={fixture}
         onNavigationStateChange={onNavigationStateChange}
+      />
+    );
+  }
+  if (
+    hash === "#blocked-merge-fixture" ||
+    hash === "#acknowledgement-merge-fixture" ||
+    hash === "#overview-detail-fixture"
+  ) {
+    const blocked = hash === "#blocked-merge-fixture";
+    const detail = hash === "#overview-detail-fixture";
+    const readiness: MergeReadiness = blocked
+      ? { _tag: "Blocked", blockers: [], warnings: [] }
+      : {
+          _tag: "NeedsAcknowledgement",
+          blockers: [],
+          warnings: ["request_changes", "analysis_finding"],
+        };
+    const mergeReadiness = readiness as WorkbenchResponse["mergeReadiness"];
+    const mergeReasons = blocked
+      ? [
+          {
+            code: "checks" as const,
+            message: "Required checks have not passed.",
+            source: "checks" as const,
+            availability: "available" as const,
+            openOnGitHub: true,
+          },
+        ]
+      : [];
+    const parsedPullRequest = parsePullRequestInput(
+      "https://github.com/centraldigital/patchdesk/pull/42",
+    );
+    if (parsedPullRequest._tag === "err")
+      throw new Error("Fixture pull request is invalid");
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        modelOverrides={
+          detail
+            ? {
+                publishedFeedback: {
+                  reviews: [
+                    {
+                      id: "published-1",
+                      author: "fixture-maintainer",
+                      body: "Published review body",
+                      event: "COMMENTED" as const,
+                      submittedAt: "2026-07-17T00:00:00.000Z",
+                      canDismiss: false,
+                    },
+                  ],
+                  comments: [],
+                },
+              }
+            : { mergeReadiness, mergeReasons }
+        }
+        {...(detail
+          ? {}
+          : {
+              mergeAction: {
+                readiness,
+                mergeReasons,
+                pullRequest: parsedPullRequest.value,
+                context: {
+                  repo: `${workbenchFixtureData.pullRequest.ref.owner}/${workbenchFixtureData.pullRequest.ref.repo}`,
+                  prNumber: workbenchFixtureData.pullRequest.ref.number,
+                  title: workbenchFixtureData.pullRequest.title,
+                  base: workbenchFixtureData.pullRequest.baseBranch,
+                  head: workbenchFixtureData.pullRequest.headBranch,
+                  headSha: workbenchFixtureData.pullRequest.headSha,
+                },
+                methods: ["squash", "merge", "rebase"] as const,
+                onMerge: async () => ({}),
+              },
+            })}
       />
     );
   }
@@ -257,14 +336,27 @@ function WalkthroughFixture({
 function CanonicalFixtureWorkbench({
   data,
   onNavigationStateChange,
+  modelOverrides,
+  mergeAction,
 }: {
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
+  readonly modelOverrides?: Partial<
+    Pick<
+      WorkbenchResponse,
+      "mergeReadiness" | "mergeReasons" | "publishedFeedback"
+    >
+  >;
+  readonly mergeAction?: PullRequestOverviewMerge;
 }): React.JSX.Element {
   const model = canonicalWorkbenchModel(data);
+  const merged =
+    modelOverrides === undefined
+      ? model
+      : { ...model, ...modelOverrides };
   return (
     <ReviewWorkbench
-      model={model}
+      model={merged}
       actions={{
         detectUpdates: async () => undefined,
         refresh: async () => undefined,
@@ -273,6 +365,7 @@ function CanonicalFixtureWorkbench({
         },
         localCommentAuthoring: { enabled: true, onSave: async () => undefined },
         reportNavigationState: onNavigationStateChange,
+        ...(mergeAction === undefined ? {} : { merge: mergeAction }),
       }}
       slots={{
         insights: (

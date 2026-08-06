@@ -520,12 +520,16 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
     await page.getByRole("button", { name: "PR overview" }).click();
     const overview = page.getByRole("dialog", { name: "PR overview" });
     await expect(overview).toBeVisible();
-    await expect(
-      overview.getByRole("button", { name: "Published feedback" }),
-    ).toBeVisible();
-    await expect(
-      overview.getByRole("button", { name: "Merge readiness" }),
-    ).toBeVisible();
+    for (const section of [
+      "Revision",
+      "Checks",
+      "Review status",
+      "Merge readiness",
+    ]) {
+      await expect(
+        overview.getByRole("button", { name: section }),
+      ).toBeVisible();
+    }
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toBeVisible();
@@ -534,27 +538,114 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
   }
 });
 
-test("PR overview preserves HTML content and renders Mermaid descriptions", async ({
+test("PR overview overlays without viewport overflow and scrolls independently", async ({
   page,
 }) => {
   const server = await serveRenderer();
   try {
-    const rendererOrigin = origin(server);
-    await page.goto(`${rendererOrigin}/#workbench-fixture`);
+    for (const width of [960, 1_280, 1_440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin(server)}/#long-workbench-fixture`);
+      const diff = page.getByRole("region", { name: "Review diff" });
+      const diffWidthBefore = (await diff.boundingBox())?.width;
+      await page.getByRole("button", { name: "PR overview" }).click();
+      const overview = page.getByRole("dialog", { name: "PR overview" });
+      await expect(overview).toBeVisible();
+      const diffWidthAfter = (await diff.boundingBox())?.width;
+      expect(diffWidthAfter).toBe(diffWidthBefore);
+      await overview.getByRole("button", { name: "Checks" }).click();
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(1);
+      const pageHeightOverflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollHeight -
+          document.documentElement.clientHeight,
+      );
+      expect(pageHeightOverflow).toBeLessThanOrEqual(1);
+      const scroll = await overview
+        .locator("[data-pr-overview-scroll]")
+        .evaluate((element) => ({
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+      expect(scroll.scrollHeight).toBeGreaterThanOrEqual(scroll.clientHeight);
+      await page.keyboard.press("Escape");
+      await expect(overview).toBeHidden();
+      await expect(
+        page.getByRole("button", { name: "PR overview" }),
+      ).toBeFocused();
+    }
+  } finally {
+    await close(server);
+  }
+});
+
+test("PR overview shows a blocked merge state without a duplicate alert", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#blocked-merge-fixture`);
     await page.getByRole("button", { name: "PR overview" }).click();
     const overview = page.getByRole("dialog", { name: "PR overview" });
-
-    await expect(overview.getByText("Deployment notes")).toBeVisible();
+    await expect(overview).toBeVisible();
+    await expect(overview.getByText("Blocked")).toBeVisible();
     await expect(
-      overview.getByText("Keep this preview readable."),
+      overview.getByText("Required checks have not passed."),
     ).toBeVisible();
-    const diagram = overview.getByRole("img", { name: "Mermaid diagram" });
-    await expect(diagram).toBeVisible();
-    const svg = diagram.locator("svg");
-    await expect(svg).toHaveCount(1);
-    const bounds = await svg.boundingBox();
-    expect(bounds?.width ?? 0).toBeGreaterThan(200);
-    expect(bounds?.height ?? 0).toBeGreaterThan(20);
+    await expect(
+      overview.getByText("Checks · available"),
+    ).toBeVisible();
+    await expect(
+      overview.getByRole("button", { name: "Open on GitHub" }),
+    ).toBeVisible();
+    await expect(
+      overview.getByRole("button", { name: "Prepare merge confirmation" }),
+    ).toHaveCount(0);
+    await expect(overview.getByText("Merge blocked")).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("PR overview reaches the confirmation dialog from an acknowledgement-required state", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#acknowledgement-merge-fixture`);
+    await page.getByRole("button", { name: "PR overview" }).click();
+    const overview = page.getByRole("dialog", { name: "PR overview" });
+    await expect(overview).toBeVisible();
+    await expect(overview.getByText("Warnings")).toBeVisible();
+    await expect(overview.getByText("Changes requested.")).toBeVisible();
+    await expect(
+      overview.getByText(
+        "A current Analysis finding requires acknowledgement before merge.",
+      ),
+    ).toBeVisible();
+    await expect(
+      overview.getByText("request_changes"),
+    ).toHaveCount(0);
+    await expect(
+      overview.getByText("analysis_finding"),
+    ).toHaveCount(0);
+    await overview
+      .getByRole("button", { name: "Prepare merge confirmation" })
+      .click();
+    const confirm = page.getByRole("alertdialog", { name: "Confirm merge" });
+    await expect(confirm).toBeVisible();
+    await expect(
+      confirm.getByRole("checkbox", {
+        name: "I acknowledge the merge warnings.",
+      }),
+    ).toBeVisible();
   } finally {
     await close(server);
   }

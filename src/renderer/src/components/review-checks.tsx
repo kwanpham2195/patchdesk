@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, CircleDashed, CircleX, ExternalLink, MinusCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, CircleX, ExternalLink, MinusCircle, type LucideIcon } from "lucide-react";
 
 import type { CheckRunSummary, CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
@@ -7,6 +7,82 @@ import { openPullRequestExternalUrl, resolvePullRequestExternalUrl } from "@/ext
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+
+export type CheckResultKind = "passed" | "failed" | "pending" | "other";
+
+export type CheckResultPresentation = {
+  readonly kind: CheckResultKind;
+  readonly label: string;
+  readonly Icon: LucideIcon;
+  /** Semantic token treatment; icons and labels carry meaning independently. */
+  readonly treatment: string;
+};
+
+/** One renderer rule that classifies a represented check run. */
+// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+export function classifyCheck(check: CheckRunSummary): CheckResultKind {
+  if (check.conclusion === "success") return "passed";
+  if (
+    check.conclusion === "failure" ||
+    check.conclusion === "cancelled" ||
+    check.conclusion === "timed_out"
+  )
+    return "failed";
+  if (check.status === "queued" || check.status === "in_progress")
+    return "pending";
+  return "other";
+}
+
+/** Typed icon, label, and semantic treatment for one check run. */
+// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+export function presentCheckResult(
+  check: CheckRunSummary,
+): CheckResultPresentation {
+  const kind = classifyCheck(check);
+  switch (kind) {
+    case "passed":
+      return { kind, label: "Passed", Icon: CheckCircle2, treatment: "text-status-success" };
+    case "failed":
+      return { kind, label: "Failed", Icon: CircleX, treatment: "text-destructive" };
+    case "pending":
+      return { kind, label: "In progress", Icon: CircleDashed, treatment: "text-status-warning" };
+    default:
+      return check.conclusion === "skipped" || check.conclusion === "neutral"
+        ? { kind, label: "Skipped", Icon: MinusCircle, treatment: "text-muted-foreground" }
+        : { kind, label: "Unknown", Icon: MinusCircle, treatment: "text-muted-foreground" };
+  }
+}
+
+/** Typed icon, label, and semantic treatment for the aggregate check row. */
+// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+export function presentOverallCheckResult(
+  overall: CheckSummary["overall"],
+  freshness:
+    | "fresh"
+    | "stale"
+    | "updates_available"
+    | "unavailable"
+    | "not_refreshed"
+    | undefined,
+): CheckResultPresentation {
+  if (freshness === "not_refreshed")
+    return { kind: "other", label: "Not refreshed", Icon: MinusCircle, treatment: "text-muted-foreground" };
+  if (freshness === "unavailable")
+    return { kind: "other", label: "Unavailable", Icon: MinusCircle, treatment: "text-muted-foreground" };
+  switch (overall) {
+    case "passing":
+      return { kind: "passed", label: "Passing", Icon: CheckCircle2, treatment: "text-status-success" };
+    case "failing":
+      return { kind: "failed", label: "Failing", Icon: CircleX, treatment: "text-destructive" };
+    case "pending":
+      return { kind: "pending", label: "In progress", Icon: CircleDashed, treatment: "text-status-warning" };
+    case "skipped":
+      return { kind: "other", label: "Skipped", Icon: MinusCircle, treatment: "text-muted-foreground" };
+    default:
+      return { kind: "other", label: "Unknown", Icon: MinusCircle, treatment: "text-muted-foreground" };
+  }
+}
 
 export function ReviewChecks({
   checks,
@@ -23,8 +99,8 @@ export function ReviewChecks({
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const grouped = useMemo(() => groupChecks(checks.checks), [checks.checks]);
-  const visible = grouped.filter((check) => resultFor(check).kind !== "passed");
-  const passing = grouped.filter((check) => resultFor(check).kind === "passed");
+  const visible = grouped.filter((check) => classifyCheck(check) !== "passed");
+  const passing = grouped.filter((check) => classifyCheck(check) === "passed");
   const [showPassing, setShowPassing] = useState(passing.length <= 5);
   const rows = showPassing ? grouped : visible;
   const content = (
@@ -79,18 +155,18 @@ function groupChecks(checks: ReadonlyArray<CheckRunSummary>): ReadonlyArray<Grou
 }
 
 function CheckRow({ check, pullRequest }: { readonly check: GroupedCheck; readonly pullRequest?: PullRequestRef }): React.JSX.Element {
-  const result = resultFor(check);
+  const result = presentCheckResult(check);
+  const Icon = result.Icon;
   const externalUrl =
     check.url === undefined
       ? undefined
       : resolvePullRequestExternalUrl(check.url, pullRequest);
-  const Icon = result.kind === "passed" ? CheckCircle2 : result.kind === "failed" ? CircleX : result.kind === "pending" ? CircleDashed : MinusCircle;
   return (
     <li className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <Icon className={cn("size-4 shrink-0", result.treatment)} aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate" title={check.name}>{check.name}</span>
       <span className="sr-only">{requirementLabel(check.required)}</span>
-      <span className="shrink-0 text-sm text-muted-foreground">{result.label}</span>
+      <span className={cn("shrink-0 text-sm", result.treatment)}>{result.label}</span>
       {check.count > 1 ? <Badge variant="outline">×{check.count}</Badge> : null}
       {externalUrl === undefined ? null : <Button variant="ghost" size="icon-xs" aria-label={`Open ${check.name} in GitHub`} onClick={() => void openPullRequestExternalUrl(externalUrl, pullRequest)}><ExternalLink /></Button>}
     </li>
@@ -98,10 +174,10 @@ function CheckRow({ check, pullRequest }: { readonly check: GroupedCheck; readon
 }
 
 function checkPriority(check: CheckRunSummary): number {
-  const result = resultFor(check);
-  if (result.kind === "failed" && check.required === true) return 0;
-  if (result.kind === "failed") return 1;
-  if (result.kind === "pending") return 2;
+  const kind = classifyCheck(check);
+  if (kind === "failed" && check.required === true) return 0;
+  if (kind === "failed") return 1;
+  if (kind === "pending") return 2;
   if (check.required === true) return 3;
   return 4;
 }
@@ -110,19 +186,9 @@ function requirementLabel(required: CheckRunSummary["required"]): string {
   return required === true ? "Required" : required === false ? "Optional" : "No requirement metadata";
 }
 
-function resultFor(check: CheckRunSummary): { readonly kind: "passed" | "failed" | "pending" | "other"; readonly label: string } {
-  if (check.conclusion === "success") return { kind: "passed", label: "Passed" };
-  if (check.conclusion === "failure" || check.conclusion === "cancelled" || check.conclusion === "timed_out") return { kind: "failed", label: "Failed" };
-  if (check.status === "queued" || check.status === "in_progress") return { kind: "pending", label: "In progress" };
-  if (check.conclusion === "skipped" || check.conclusion === "neutral") return { kind: "other", label: "Skipped" };
-  return { kind: "other", label: "Unknown" };
-}
-
 function overallLabel(
   overall: CheckSummary["overall"],
   freshness?: "fresh" | "stale" | "unavailable" | "not_refreshed",
 ): string {
-  if (freshness === "not_refreshed") return "Not refreshed";
-  if (freshness === "unavailable") return "Unavailable";
-  return overall === "passing" ? "Passing" : overall === "failing" ? "Failing" : overall === "pending" ? "In progress" : overall === "skipped" ? "Skipped" : "Unknown";
+  return presentOverallCheckResult(overall, freshness).label;
 }

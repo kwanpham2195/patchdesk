@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, FileSearch, GitMerge, RefreshCw, Sparkles, XCircle } from "lucide-react";
 
 import type {
   CheckSummary,
@@ -16,7 +16,7 @@ import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-link
 import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { ReviewBatchPanel, ReviewBatchWriteActions, type ReviewBatchPanelActions } from "./review-batch-panel";
-import { ReviewChecks } from "./review-checks";
+import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 export type PullRequestOverviewMerge = {
   readonly readiness: MergeReadiness;
@@ -49,27 +50,47 @@ export type PullRequestOverviewActions = {
   readonly merge?: PullRequestOverviewMerge;
 };
 
+export type ReviewInsightStatus =
+  | "not_generated"
+  | "running"
+  | "current"
+  | "outdated"
+  | "failed";
+
+export type ReviewInsightState = {
+  readonly status: ReviewInsightStatus;
+};
+
 export type CanonicalReviewOverview = {
   readonly repository: string;
   readonly prNumber: number;
   readonly title: string;
   readonly description?: string;
   readonly summary: string;
-  readonly checks: {
-    readonly overall: string;
-    readonly checks: ReadonlyArray<{ readonly name: string; readonly status: string; readonly conclusion?: string }>;
-  };
-  readonly comments: {
-    readonly complete?: boolean;
-    readonly threads: ReadonlyArray<{ readonly id: string; readonly state: string; readonly comments: ReadonlyArray<{ readonly author: string; readonly body: string }> }>;
-  };
-  readonly publishedFeedback: WorkbenchResponse["publishedFeedback"];
-  readonly mergeReadiness: { readonly _tag: string; readonly blockers: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+  readonly checks: CheckSummary;
+  readonly mergeReadiness: WorkbenchResponse["mergeReadiness"];
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
   readonly pullRequest?: PullRequestRef;
-  readonly revision?: { readonly reviewedHeadSha: string; readonly currentHeadSha?: string; readonly freshness: string; readonly refreshedAt: string };
-  readonly analysisStatus?: string;
-  readonly walkthroughStatus?: string;
+  readonly revision?: {
+    readonly baseBranch?: string;
+    readonly headBranch?: string;
+    readonly reviewedHeadSha: string;
+    readonly currentHeadSha?: string;
+    readonly freshness:
+      | "fresh"
+      | "updates_available"
+      | "unavailable"
+      | "not_refreshed";
+    readonly refreshedAt: string;
+    readonly commitCount?: number;
+    readonly fileCount?: number;
+  };
+  readonly insights: {
+    readonly analysis: ReviewInsightState;
+    readonly walkthrough: ReviewInsightState;
+  };
+  /** Current safely mapped Findings from the represented Analysis session. */
+  readonly mappedFindingCount: number;
   readonly terminalState?: "merged" | "closed";
 };
 
@@ -80,13 +101,23 @@ export function CanonicalReviewOverviewSheet({
   overview,
   merge,
   onRefresh,
+  onViewFindings,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly overview: CanonicalReviewOverview;
   readonly merge?: PullRequestOverviewMerge;
   readonly onRefresh?: () => Promise<void>;
+  readonly onViewFindings?: () => void;
 }): React.JSX.Element {
+  const terminal = overview.terminalState !== undefined;
+  const checks = presentOverallCheckResult(
+    overview.checks.overall,
+    overview.revision?.freshness,
+  );
+  const freshness = overview.revision?.freshness;
+  const checkFreshness = checksFreshness(freshness);
+  const CheckIcon = checks.Icon;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[370px] max-w-[calc(100vw-24px)] gap-0 sm:max-w-[370px]">
@@ -94,43 +125,182 @@ export function CanonicalReviewOverviewSheet({
           <SheetTitle>PR overview</SheetTitle>
           <p className="truncate text-xs text-muted-foreground">{overview.repository}#{overview.prNumber} · {overview.title}</p>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
-          <OverviewRow title="Summary / change context" defaultOpen>
-            <p className="whitespace-pre-wrap text-sm">{overview.summary}</p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2" data-pr-overview-scroll>
+          <OverviewRow
+            title="Revision"
+            defaultOpen
+            trailing={revisionFreshnessLabel(freshness)}
+            trailingTone={revisionFreshnessTone(freshness)}
+          >
+            <RevisionDetails overview={overview} terminal={terminal} {...(onRefresh === undefined ? {} : { onRefresh })} />
           </OverviewRow>
           <Separator />
-          <OverviewRow title="Revision and freshness" defaultOpen {...(overview.revision?.freshness === undefined ? {} : { trailing: overview.revision.freshness })}>
-            {overview.revision === undefined ? <p className="text-sm text-muted-foreground">Revision details unavailable.</p> : <div className="space-y-2 text-sm"><p>Reviewed head <code className="break-all">{overview.revision.reviewedHeadSha}</code></p>{overview.revision.currentHeadSha === undefined ? null : <p>Current head <code className="break-all">{overview.revision.currentHeadSha}</code></p>}<p className="text-xs text-muted-foreground">Refreshed {overview.revision.refreshedAt}</p>{overview.revision.freshness === "updates_available" || overview.revision.freshness === "not_refreshed" ? <Button size="sm" variant="outline" onClick={() => void onRefresh?.()}>Refresh GitHub state</Button> : null}</div>}
+          <OverviewRow
+            title="Checks"
+            icon={<CheckIcon className="size-3.5" />}
+            trailing={checks.label}
+            trailingTone={checks.treatment}
+          >
+            <ReviewChecks
+              checks={overview.checks}
+              {...(checkFreshness === undefined ? {} : { freshness: checkFreshness })}
+              showHeader={false}
+              {...(overview.pullRequest === undefined ? {} : { pullRequest: overview.pullRequest })}
+            />
           </OverviewRow>
           <Separator />
-          <OverviewRow title="Checks" trailing={overview.checks.overall}>
-            <ul className="flex flex-col gap-2 text-sm">{overview.checks.checks.length === 0 ? <li className="text-muted-foreground">No checks reported.</li> : overview.checks.checks.map((check) => <li key={check.name} className="flex items-center justify-between gap-3"><span className="truncate">{check.name}</span><span className="shrink-0 text-xs text-muted-foreground">{check.conclusion ?? check.status}</span></li>)}</ul>
+          <OverviewRow title="Review status" defaultOpen>
+            <StatusRow
+              icon={<Sparkles className="size-3.5" />}
+              title="Analysis"
+              text={insightStatusLabel(overview.insights.analysis.status)}
+              tone={insightTone(overview.insights.analysis.status)}
+            />
+            <StatusRow
+              icon={<BookOpen className="size-3.5" />}
+              title="Walkthrough"
+              text={insightStatusLabel(overview.insights.walkthrough.status)}
+              tone={insightTone(overview.insights.walkthrough.status)}
+            />
+            {overview.mappedFindingCount === 0 || onViewFindings === undefined ? null : (
+              <div className="flex items-center justify-between gap-3 py-1">
+                <span className="flex min-w-0 items-center gap-2">
+                  <FileSearch className="size-3.5 shrink-0 text-status-success" aria-hidden="true" />
+                  <span className="truncate">{overview.mappedFindingCount} current mapped {overview.mappedFindingCount === 1 ? "Finding" : "Findings"}</span>
+                </span>
+                <Button size="xs" variant="outline" onClick={onViewFindings}>View findings</Button>
+              </div>
+            )}
           </OverviewRow>
           <Separator />
-          <OverviewRow title="Existing threads" trailing={overview.comments.complete === false ? `${overview.comments.threads.length}+` : String(overview.comments.threads.length)}>
-            {overview.comments.threads.length === 0 ? <p className="text-sm text-muted-foreground">No existing review threads.</p> : <ul className="flex flex-col gap-3">{overview.comments.threads.map((thread) => <li key={thread.id} className="rounded-md border p-3"><p className="mb-2 text-xs text-muted-foreground">{thread.state}</p><div className="flex flex-col gap-2">{thread.comments.map((comment) => <div key={`${thread.id}-${comment.author}-${comment.body}`}><p className="font-medium">{comment.author}</p><p className="text-sm text-muted-foreground">{comment.body}</p></div>)}</div></li>)}</ul>}
-          </OverviewRow>
-          <Separator />
-          <OverviewRow title="Published feedback" trailing={overview.publishedFeedback.complete === false ? `${overview.publishedFeedback.reviews.length + overview.publishedFeedback.comments.length}+` : String(overview.publishedFeedback.reviews.length + overview.publishedFeedback.comments.length)}>
-            {overview.publishedFeedback.reviews.length === 0 && overview.publishedFeedback.comments.length === 0 ? <p className="text-sm text-muted-foreground">No published GitHub feedback was loaded.</p> : <div className="flex flex-col gap-3">{overview.publishedFeedback.complete === false ? <p className="text-xs text-muted-foreground">This list is incomplete; refresh GitHub state to load more.</p> : null}{overview.publishedFeedback.reviews.map((review) => <article key={review.id} className="rounded-md border p-3"><p className="text-xs font-medium">{review.author} · {review.event}</p><p className="mt-1 whitespace-pre-wrap text-sm">{review.body || "No review body."}</p></article>)}{overview.publishedFeedback.comments.map((comment) => <article key={comment.id} className="rounded-md border p-3"><p className="text-xs font-medium">{comment.author}</p><p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>{comment.location === undefined ? null : <p className="mt-1 text-xs text-muted-foreground">{comment.location.path}:{comment.location.line ?? "?"}</p>}</article>)}</div>}
-          </OverviewRow>
-          <Separator />
-          <OverviewRow title="Analysis and Walkthrough" defaultOpen>
-            <div className="space-y-2 text-sm"><p>Analysis · {statusLabel(overview.analysisStatus)}</p><p>Walkthrough · {statusLabel(overview.walkthroughStatus)}</p></div>
-          </OverviewRow>
-          <Separator />
-          <OverviewRow title="Merge readiness" trailing={overview.mergeReadiness._tag}>
-            <div className="flex flex-col gap-2 text-sm">{overview.mergeReasons.map((reason) => <p key={reason.code} className="text-destructive"><span>{reason.message}</span><span className="ml-2 text-xs text-muted-foreground">{reasonSourceLabel(reason.source)} · {reason.availability}</span>{reason.openOnGitHub && overview.pullRequest !== undefined ? <Button variant="link" size="sm" className="ml-1 h-auto p-0 align-baseline" onClick={() => void openPullRequestExternalUrl(pullRequestPageUrl(overview.pullRequest as PullRequestRef).toString(), overview.pullRequest)}> <ExternalLink aria-hidden="true" className="size-3" /> Open on GitHub</Button> : null}</p>)}{overview.mergeReasons.length === 0 && overview.mergeReadiness.blockers.length > 0 ? overview.mergeReadiness.blockers.map((blocker) => <p key={`blocker-${blocker}`} className="text-destructive">{readinessBlockerLabel(blocker)}</p>) : null}{overview.mergeReadiness.warnings.map((warning) => <p key={`warning-${warning}`} className="text-muted-foreground">{readinessWarningLabel(warning)}</p>)}{overview.mergeReasons.length === 0 && overview.mergeReadiness.blockers.length === 0 && overview.mergeReadiness.warnings.length === 0 ? <p className="text-muted-foreground">No merge blockers or warnings.</p> : null}</div>
-          </OverviewRow>
-          {merge === undefined || overview.terminalState !== undefined ? null : <div className="border-t py-4"><MergeConfirmationDialog readiness={merge.readiness} {...(merge.mergeReasons === undefined ? {} : { mergeReasons: merge.mergeReasons })} {...(merge.pullRequest === undefined ? {} : { pullRequest: merge.pullRequest })} context={merge.context} methods={merge.methods} onMerge={merge.onMerge} /></div>}
-          <Separator />
-          <OverviewRow title="GitHub description" defaultOpen>
-            {overview.description?.trim() ? <PullRequestDescriptionPreview markdown={overview.description} /> : <p className="whitespace-pre-wrap text-sm">No description was provided on GitHub.</p>}
+          <OverviewRow
+            title="Merge readiness"
+            defaultOpen
+            icon={<GitMerge className="size-3.5" />}
+            trailing={mergeReadinessLabel(overview.mergeReadiness._tag)}
+            trailingTone={mergeReadinessTone(overview.mergeReadiness._tag)}
+          >
+            <MergeReadinessDetail overview={overview} />
+            {merge === undefined || terminal || overview.mergeReadiness._tag === "Blocked" ? null : (
+              <div className="mt-3 border-t pt-3">
+                <MergeConfirmationDialog
+                  readiness={merge.readiness}
+                  {...(merge.mergeReasons === undefined ? {} : { mergeReasons: merge.mergeReasons })}
+                  {...(merge.pullRequest === undefined ? {} : { pullRequest: merge.pullRequest })}
+                  context={merge.context}
+                  methods={merge.methods}
+                  onMerge={merge.onMerge}
+                />
+              </div>
+            )}
           </OverviewRow>
         </div>
-        {overview.terminalState === undefined ? null : <SheetFooter className="border-t px-5 py-4"><p className="text-sm text-muted-foreground">This Review is {overview.terminalState} and remains readable.</p></SheetFooter>}
+        {terminal ? (
+          <SheetFooter className="border-t px-5 py-4">
+            <p className="text-sm text-muted-foreground">This Review is {overview.terminalState} and remains readable.</p>
+          </SheetFooter>
+        ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+type RevisionFreshness = NonNullable<CanonicalReviewOverview["revision"]>["freshness"];
+
+const successTone = "text-status-success";
+const warningTone = "text-status-warning";
+const destructiveTone = "text-destructive";
+const mutedTone = "text-muted-foreground";
+const destructiveCard = "border-destructive/30 bg-destructive/10 text-destructive";
+const warningCard = "border-status-warning/30 bg-status-warning/10 text-status-warning";
+const successCard = "border-status-success/30 bg-status-success/10 text-status-success";
+
+function RevisionDetails({
+  overview,
+  terminal,
+  onRefresh,
+}: {
+  readonly overview: CanonicalReviewOverview;
+  readonly terminal: boolean;
+  readonly onRefresh?: () => Promise<void>;
+}): React.JSX.Element {
+  const revision = overview.revision;
+  if (revision === undefined) return <p className="text-sm text-muted-foreground">Revision details unavailable.</p>;
+  const counts: string[] = [];
+  if (revision.commitCount !== undefined) counts.push(`${revision.commitCount} commit${revision.commitCount === 1 ? "" : "s"}`);
+  if (revision.fileCount !== undefined) counts.push(`${revision.fileCount} file${revision.fileCount === 1 ? "" : "s"} changed`);
+  return (
+    <div className="space-y-2 text-sm">
+      {revision.baseBranch === undefined && revision.headBranch === undefined ? null : <p className="truncate">{revision.baseBranch ?? "unknown"} ← {revision.headBranch ?? "unknown"}</p>}
+      <p>Reviewed <code className="break-all">{revision.reviewedHeadSha.slice(0, 8)}</code></p>
+      {revision.currentHeadSha === undefined || revision.currentHeadSha === revision.reviewedHeadSha ? null : <p>Current <code className="break-all">{revision.currentHeadSha.slice(0, 8)}</code></p>}
+      <p className="text-xs text-muted-foreground">Refreshed {revision.refreshedAt}</p>
+      {counts.length === 0 ? null : <p className="text-xs text-muted-foreground">{counts.join(" · ")}</p>}
+      {terminal ? null : <Button size="sm" variant="outline" className="self-start" onClick={() => void onRefresh?.()}><RefreshCw data-icon="inline-start" />Refresh GitHub state</Button>}
+    </div>
+  );
+}
+
+function StatusRow({
+  icon,
+  title,
+  text,
+  tone,
+}: {
+  readonly icon: React.ReactNode;
+  readonly title: string;
+  readonly text: string;
+  readonly tone: string;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="flex min-w-0 items-center gap-2">
+        <span aria-hidden="true" className={cn("shrink-0", tone)}>{icon}</span>
+        <span className="truncate">{title}</span>
+      </span>
+      <span className={cn("shrink-0 text-xs font-medium", tone)}>{text}</span>
+    </div>
+  );
+}
+
+function MergeReadinessDetail({ overview }: { readonly overview: CanonicalReviewOverview }): React.JSX.Element {
+  const { mergeReadiness, mergeReasons } = overview;
+  const pullRequest = overview.pullRequest;
+  const showBlockers = mergeReasons.length === 0;
+  const isEmpty = mergeReasons.length === 0 && mergeReadiness.blockers.length === 0 && mergeReadiness.warnings.length === 0;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      {mergeReasons.map((reason) => (
+        <p key={reason.code} className={cn("flex items-start gap-2 rounded-md border px-3 py-2", destructiveCard)}>
+          <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0">
+            {reason.message}
+            <span className="ml-1 text-xs opacity-80">{reasonSourceLabel(reason.source)} · {reason.availability}</span>
+            {reason.openOnGitHub && pullRequest !== undefined ? (
+              <Button variant="link" size="sm" className="ml-1 h-auto p-0 align-baseline" onClick={() => void openPullRequestExternalUrl(pullRequestPageUrl(pullRequest).toString(), pullRequest)}>Open on GitHub</Button>
+            ) : null}
+          </span>
+        </p>
+      ))}
+      {showBlockers ? mergeReadiness.blockers.map((blocker) => (
+        <p key={`blocker-${blocker}`} className={cn("flex items-start gap-2 rounded-md border px-3 py-2", destructiveCard)}>
+          <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {readinessBlockerLabel(blocker)}
+        </p>
+      )) : null}
+      {mergeReadiness.warnings.map((warning) => (
+        <p key={`warning-${warning}`} className={cn("flex items-start gap-2 rounded-md border px-3 py-2", warningCard)}>
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {readinessWarningLabel(warning)}
+        </p>
+      ))}
+      {isEmpty ? (
+        <p className={cn("flex items-start gap-2 rounded-md border px-3 py-2", successCard)}>
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          No merge blockers or warnings. This Review is ready to merge.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -239,23 +409,32 @@ export function PullRequestOverviewSheet({
 function OverviewRow({
   title,
   defaultOpen = false,
+  icon,
   trailing,
+  trailingTone,
+  compact = false,
   children,
 }: {
   readonly title: string;
   readonly defaultOpen?: boolean;
-  readonly trailing?: string;
+  readonly icon?: React.ReactNode;
+  readonly trailing?: React.ReactNode;
+  readonly trailingTone?: string;
+  readonly compact?: boolean;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="py-3">
+    <Collapsible open={open} onOpenChange={setOpen} className={compact ? "py-2" : "py-3"}>
       <div className="flex items-center justify-between gap-3">
-        <CollapsibleTrigger className="-ml-2 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[0.8rem] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
-          {title}
-          <ChevronDown data-disclosure-motion="chevron" className={open ? "size-4" : "size-4 -rotate-90"} aria-hidden="true" />
-        </CollapsibleTrigger>
-        {trailing === undefined ? null : <span className="text-xs text-muted-foreground">{trailing}</span>}
+        <div className="flex min-w-0 items-center gap-2">
+          {icon === undefined ? null : <span aria-hidden="true" className={cn("shrink-0", trailingTone ?? "text-muted-foreground")}>{icon}</span>}
+          <CollapsibleTrigger className="-ml-2 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[0.8rem] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
+            {title}
+            <ChevronDown data-disclosure-motion="chevron" className={open ? "size-4" : "size-4 -rotate-90"} aria-hidden="true" />
+          </CollapsibleTrigger>
+        </div>
+        {trailing === undefined ? null : <span className={cn("text-xs", trailingTone ?? "text-muted-foreground")}>{trailing}</span>}
       </div>
       <CollapsibleContent motion="disclosure" className="pt-3 text-sm">
         {children}
@@ -329,16 +508,81 @@ function readinessBlockerLabel(blocker: string): string {
     case "mergeability_unknown": return "GitHub merge status is unavailable.";
     case "required_check": return "Required checks have not passed.";
     case "github_review": return "Approval required by GitHub.";
+    case "analysis_finding": return "A high-severity Analysis finding blocks merge under this profile's policy.";
     default: return "GitHub merge requirements are not satisfied.";
   }
 }
 
 function readinessWarningLabel(warning: string): string {
-  return warning === "request_changes" ? "Changes requested." : warning === "high_severity_finding" ? "High-severity local findings need acknowledgement." : "Merge warning requires acknowledgement.";
+  switch (warning) {
+    case "request_changes": return "Changes requested.";
+    case "high_severity_finding": return "High-severity local findings need acknowledgement.";
+    case "analysis_finding": return "A current Analysis finding requires acknowledgement before merge.";
+    default: return "Merge warning requires acknowledgement.";
+  }
 }
 
-function statusLabel(status: string | undefined): string {
-  return status === undefined ? "Not generated" : status.replaceAll("_", " ");
+function revisionFreshnessLabel(freshness: RevisionFreshness | undefined): string {
+  switch (freshness) {
+    case "updates_available": return "Updates available";
+    case "unavailable": return "Remote state unavailable";
+    case "not_refreshed": return "Not refreshed";
+    case "fresh": return "Current";
+    default: return "Unavailable";
+  }
+}
+
+function revisionFreshnessTone(freshness: RevisionFreshness | undefined): string {
+  switch (freshness) {
+    case "updates_available": return warningTone;
+    case "unavailable": return mutedTone;
+    case "not_refreshed": return mutedTone;
+    case "fresh": return successTone;
+    default: return mutedTone;
+  }
+}
+
+function checksFreshness(
+  freshness: RevisionFreshness | undefined,
+): "fresh" | "stale" | "unavailable" | "not_refreshed" | undefined {
+  if (freshness === undefined) return undefined;
+  return freshness === "updates_available" ? "stale" : freshness;
+}
+
+function insightStatusLabel(status: ReviewInsightStatus): string {
+  switch (status) {
+    case "not_generated": return "Not generated";
+    case "running": return "Running";
+    case "current": return "Current";
+    case "outdated": return "Outdated";
+    case "failed": return "Failed";
+  }
+}
+
+function insightTone(status: ReviewInsightStatus): string {
+  switch (status) {
+    case "current": return successTone;
+    case "running": return warningTone;
+    case "outdated": return warningTone;
+    case "failed": return destructiveTone;
+    case "not_generated": return mutedTone;
+  }
+}
+
+function mergeReadinessLabel(tag: WorkbenchResponse["mergeReadiness"]["_tag"]): string {
+  switch (tag) {
+    case "Ready": return "Ready to merge";
+    case "NeedsAcknowledgement": return "Warnings";
+    case "Blocked": return "Blocked";
+  }
+}
+
+function mergeReadinessTone(tag: WorkbenchResponse["mergeReadiness"]["_tag"]): string {
+  switch (tag) {
+    case "Ready": return successTone;
+    case "NeedsAcknowledgement": return warningTone;
+    case "Blocked": return destructiveTone;
+  }
 }
 
 function overallLabel(

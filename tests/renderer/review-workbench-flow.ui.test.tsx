@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -1176,24 +1176,6 @@ describe("ReviewWorkbenchFlow", () => {
     const overviewTrigger = screen.getByRole("button", { name: "PR overview" });
     await user.click(overviewTrigger);
     expect(screen.getByRole("heading", { name: "PR overview" })).toBeTruthy();
-    expect(screen.getByText("Current PR description")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Checks" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Existing threads" }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Checks" }));
-    expect(screen.getByText("No checks reported.")).toBeTruthy();
-    await user.click(
-      screen.getByRole("button", { name: "Published feedback" }),
-    );
-    expect(
-      document.querySelector(
-        '[data-review-published-feedback-state="collapsed"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getAllByText("Published review body").length,
-    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByRole("region", { name: "Review workbench" }),
     ).toBeTruthy();
@@ -1364,6 +1346,336 @@ describe("ReviewWorkbenchFlow", () => {
     await waitFor(() => expect(screen.getByText(/1 of 2/)).toBeTruthy());
   });
 
+  describe("PR Overview status sidebar", () => {
+    it("leads with revision context, compact Checks, Review status, and merge readiness", async () => {
+      const user = userEvent.setup();
+      const base = projection();
+      if (base.pullRequest === undefined)
+        throw new Error("Expected pull request fixture");
+      const value = {
+        ...base,
+        pullRequest: {
+          ...base.pullRequest,
+          description: "Current PR description",
+          changedFileCount: 3,
+        },
+        commits: [
+          {
+            sha: "a".repeat(40),
+            message: "Initial change",
+            author: "author",
+            authoredAt: "2026-08-01T00:00:00.000Z",
+            isHead: true,
+          },
+        ],
+        checks: {
+          overall: "passing" as const,
+          checks: [
+            {
+              name: "unit",
+              required: true as const,
+              status: "completed" as const,
+              conclusion: "success" as const,
+            },
+          ],
+        },
+        insights: {
+          analysis: {
+            status: "current" as const,
+            retained: {
+              runId: "insight-analysis-1-aaaaaaaaaaaa-review-42",
+              sessionId: "session-a",
+              headSha: "a".repeat(40),
+              generatedAt: "2026-08-01T00:00:00.000Z",
+              value: {
+                changeSummary: "Protect the write boundary",
+                verdict: "approve" as const,
+                summary: "One finding needs attention.",
+                findings: [],
+                validationPlan: [],
+                assumptions: [],
+              },
+            },
+          },
+          walkthrough: { status: "not_generated" as const },
+        },
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={value}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      const dialog = screen.getByRole("dialog");
+
+      expect(within(dialog).getByText("main ← feature")).toBeTruthy();
+      expect(within(dialog).getByText("a".repeat(8))).toBeTruthy();
+      expect(within(dialog).getByText(/Refreshed 2026-08-01/)).toBeTruthy();
+      expect(within(dialog).getByText("1 commit · 3 files changed")).toBeTruthy();
+      expect(
+        within(dialog).getByRole("button", { name: "Refresh GitHub state" }),
+      ).toBeTruthy();
+
+      expect(within(dialog).getByRole("button", { name: "Checks" })).toBeTruthy();
+      expect(within(dialog).getByText("Passing")).toBeTruthy();
+      await user.click(within(dialog).getByRole("button", { name: "Checks" }));
+      expect(within(dialog).getByText("unit")).toBeTruthy();
+      expect(within(dialog).getByText("Passed")).toBeTruthy();
+
+      expect(within(dialog).getByText("Analysis")).toBeTruthy();
+      expect(
+        within(dialog).getAllByText("Current").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(within(dialog).getByText("Walkthrough")).toBeTruthy();
+      expect(within(dialog).getByText("Not generated")).toBeTruthy();
+
+      expect(within(dialog).getByText("Ready to merge")).toBeTruthy();
+      expect(
+        within(dialog).getByText(/This Review is ready to merge/),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText("Merge blocked")).toBeNull();
+    });
+
+    it("preserves check requirement metadata and the safe external check action behind the Checks disclosure", async () => {
+      const user = userEvent.setup();
+      const openExternalHttps = vi.fn(async () => true);
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { openExternalHttps },
+      });
+      const value = {
+        ...projection(),
+        checks: {
+          overall: "failing" as const,
+          checks: [
+            {
+              name: "unit",
+              required: true as const,
+              status: "completed" as const,
+              conclusion: "failure" as const,
+              url: "/centraldigital/patchdesk/actions/runs/1",
+            },
+            {
+              name: "docs",
+              required: "unknown" as const,
+              status: "in_progress" as const,
+            },
+          ],
+        },
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={value}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      const dialog = screen.getByRole("dialog");
+
+      expect(within(dialog).getByText("Failing")).toBeTruthy();
+      await user.click(within(dialog).getByRole("button", { name: "Checks" }));
+      expect(
+        within(dialog).getByRole("list", { name: "Pull request checks" }),
+      ).toBeTruthy();
+      expect(within(dialog).getByText("unit")).toBeTruthy();
+      expect(within(dialog).getByText("Failed")).toBeTruthy();
+      expect(
+        within(dialog).getByText("Required", { selector: ".sr-only" }),
+      ).toBeTruthy();
+      expect(within(dialog).getByText("docs")).toBeTruthy();
+      expect(within(dialog).getByText("In progress")).toBeTruthy();
+      expect(
+        within(dialog).getByText("No requirement metadata", {
+          selector: ".sr-only",
+        }),
+      ).toBeTruthy();
+      expect(within(dialog).queryByRole("link")).toBeNull();
+      await user.click(
+        within(dialog).getByRole("button", { name: "Open unit in GitHub" }),
+      );
+      expect(openExternalHttps).toHaveBeenCalledWith(
+        "https://github.com/centraldigital/patchdesk/actions/runs/1",
+      );
+    });
+
+    it("shows current mapped-Finding count and routes View findings to the existing Findings surface", async () => {
+      const user = userEvent.setup();
+      render(
+        <ReviewWorkbenchFlow
+          workbench={createUnifiedReviewFixture("walkthrough-current")}
+          initialUiState={unifiedReviewInitialState("walkthrough-current")}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      const dialog = screen.getByRole("dialog");
+
+      expect(within(dialog).getByText("Walkthrough")).toBeTruthy();
+      expect(
+        within(dialog).getAllByText("Current").length,
+      ).toBeGreaterThanOrEqual(2);
+      expect(within(dialog).getByText("1 current mapped Finding")).toBeTruthy();
+      await user.click(
+        within(dialog).getByRole("button", { name: "View findings" }),
+      );
+      expect(
+        screen.queryByRole("heading", { name: "PR overview" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("tab", { name: "Findings", selected: true }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", {
+          name: /Keep writes behind the stale-head check/,
+        }),
+      ).toBeTruthy();
+    });
+
+    it("renders acknowledgement-required and blocked merge states with friendly copy and no duplicate alert", async () => {
+      const user = userEvent.setup();
+      const base = {
+        ...projection(),
+        revision: {
+          ...projection().revision,
+          patchHash: "b".repeat(64),
+        },
+      };
+
+      const acknowledgement = {
+        ...base,
+        mergeReadiness: {
+          _tag: "NeedsAcknowledgement" as const,
+          blockers: [],
+          warnings: ["request_changes", "high_severity_finding", "analysis_finding"],
+        },
+        mergeReasons: [],
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={acknowledgement}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      let dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Changes requested.")).toBeTruthy();
+      expect(
+        within(dialog).getByText("High-severity local findings need acknowledgement."),
+      ).toBeTruthy();
+      expect(
+        within(dialog).getByText(
+          "A current Analysis finding requires acknowledgement before merge.",
+        ),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText("request_changes")).toBeNull();
+      expect(within(dialog).queryByText("high_severity_finding")).toBeNull();
+      expect(within(dialog).queryByText("analysis_finding")).toBeNull();
+      expect(within(dialog).queryByText("Merge blocked")).toBeNull();
+      expect(
+        within(dialog).getByRole("button", {
+          name: "Prepare merge confirmation",
+        }),
+      ).toBeTruthy();
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: "Prepare merge confirmation",
+        }),
+      );
+      expect(
+        screen.getByRole("heading", { name: "Confirm merge" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("checkbox", {
+          name: "I acknowledge the merge warnings.",
+        }),
+      ).toBeTruthy();
+      await user.keyboard("{Escape}");
+
+      cleanup();
+      const blocked = {
+        ...base,
+        mergeReadiness: {
+          _tag: "Blocked" as const,
+          blockers: ["stale_head", "analysis_finding"],
+          warnings: [],
+        },
+        mergeReasons: [],
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={blocked}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      dialog = screen.getByRole("dialog");
+      expect(
+        within(dialog).getByText("Refresh this Review before merging."),
+      ).toBeTruthy();
+      expect(
+        within(dialog).getByText(
+          "A high-severity Analysis finding blocks merge under this profile's policy.",
+        ),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText("stale_head")).toBeNull();
+      expect(within(dialog).queryByText("analysis_finding")).toBeNull();
+      expect(
+        within(dialog).queryByRole("button", {
+          name: "Prepare merge confirmation",
+        }),
+      ).toBeNull();
+      expect(within(dialog).queryByText("Merge blocked")).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: "Checks" })).toBeTruthy();
+    });
+
+    it("keeps terminal Reviews readable in PR Overview without Refresh or merge controls", async () => {
+      for (const state of ["merged", "closed"] as const) {
+        cleanup();
+        const user = userEvent.setup();
+        render(
+          <ReviewWorkbenchFlow
+            workbench={createUnifiedReviewFixture(state)}
+            onWorkbenchReplace={vi.fn()}
+            onWorkbenchPatch={vi.fn()}
+            onNavigationStateChange={vi.fn()}
+            onNavigate={vi.fn()}
+          />,
+        );
+        await user.click(screen.getByRole("button", { name: "PR overview" }));
+        const dialog = screen.getByRole("dialog");
+        expect(
+          within(dialog).getByText(
+            `This Review is ${state} and remains readable.`,
+          ),
+        ).toBeTruthy();
+        expect(
+          within(dialog).queryByRole("button", { name: "Refresh GitHub state" }),
+        ).toBeNull();
+        expect(
+          within(dialog).queryByRole("button", {
+            name: "Prepare merge confirmation",
+          }),
+        ).toBeNull();
+      }
+    });
+  });
+
   it("refreshes by stable Review ID and replaces the whole canonical projection", async () => {
     const value = projection();
     const refreshed = {
@@ -1404,8 +1716,10 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "PR overview" }));
+    const dialog = screen.getByRole("dialog");
     await user.click(
-      screen.getByRole("button", { name: "Refresh GitHub state" }),
+      within(dialog).getByRole("button", { name: "Refresh GitHub state" }),
     );
     await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
     expect(request).toHaveBeenCalledWith(

@@ -10,6 +10,9 @@ const fixtureHashes = new Set([
   "#performance-fixture",
   "#submission-fixture",
   "#merge-fixture",
+  "#blocked-merge-fixture",
+  "#acknowledgement-merge-fixture",
+  "#overview-detail-fixture",
 ]);
 
 export function isFixtureHash(hash: string): boolean {

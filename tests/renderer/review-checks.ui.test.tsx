@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
+import type { CheckSummary } from "../../src/domain/github-context";
 import { ReviewChecks } from "../../src/renderer/src/components/review-checks";
 
 afterEach(() => {
@@ -59,6 +60,37 @@ describe("review checks", () => {
     expect(screen.queryByRole("list", { name: "Pull request checks" })).toBeNull();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("list", { name: "Pull request checks" })).toBeTruthy();
+  });
+
+  it("maps every aggregate outcome through the shared label rule", () => {
+    const cases: ReadonlyArray<[CheckSummary["overall"], string]> = [
+      ["passing", "Passing"],
+      ["failing", "Failing"],
+      ["pending", "In progress"],
+      ["skipped", "Skipped"],
+      ["unknown", "Unknown"],
+    ];
+    for (const [overall, label] of cases) {
+      cleanup();
+      render(<ReviewChecks checks={{ overall, checks: [] }} />);
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    cleanup();
+    render(
+      <ReviewChecks
+        checks={{ overall: "passing", checks: [] }}
+        freshness="not_refreshed"
+      />,
+    );
+    expect(screen.getByText("Not refreshed")).toBeTruthy();
+    cleanup();
+    render(
+      <ReviewChecks
+        checks={{ overall: "passing", checks: [] }}
+        freshness="unavailable"
+      />,
+    );
+    expect(screen.getByText("Unavailable")).toBeTruthy();
   });
 
   it("opens a same-host check URL through the desktop bridge instead of a native anchor", async () => {
