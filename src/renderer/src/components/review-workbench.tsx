@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, PanelLeftOpen } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, GitMerge, LoaderCircle, PanelLeftOpen, XCircle } from "lucide-react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
@@ -10,11 +10,19 @@ import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-link
 import { DiffWorkbench } from "./diff-workbench";
 import type { LocalCommentAuthoring, LocalCommentLocation, ReviewInlineAnnotation } from "./review-diff-view";
 import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview, type PullRequestOverviewMerge } from "./pr-overview-sheet";
+import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
+import { cn } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type ReviewFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
@@ -139,6 +147,8 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title = model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
   const [overviewOpen, setOverviewOpen] = useState(initialState?.overviewOpen ?? false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [selectedMergeMethod, setSelectedMergeMethod] = useState<MergeMethod>("squash");
   const [navigatorVisible, setNavigatorVisible] = useState(true);
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() => loadReviewViewPreferences(model.session.key.profileId));
   const [section, setSection] = useState<ReviewNavigatorSection>(initialState?.section === "insights" ? "files" : initialState?.section ?? "files");
@@ -261,7 +271,31 @@ export function ReviewWorkbench({
             {hasUpdates ? "Remote updates are available. Refresh before publishing or merging." : "Review state is current."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2" aria-label="Pull request actions">
+        <div className="flex flex-wrap items-center gap-2" aria-label="Pull request status and actions">
+          <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", checksPillColor(model.checks.overall))}>
+            {checksIcon(model.checks.overall)}
+            Checks · {checksLabel}
+          </span>
+          <span className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm", mergePillColor(model.mergeReadiness._tag))}>
+            {mergeIcon(model.mergeReadiness._tag)}
+            Merge · {mergeLabel(model.mergeReadiness._tag)}
+          </span>
+          {actions.merge === undefined || terminal ? null : (
+            model.mergeReadiness._tag === "Blocked" ? null : (
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <Button variant="outline" size="sm" disabled={freshnessLabel !== "Current"}>
+                    <GitMerge /> Merge <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {actions.merge.methods.includes("merge") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("merge"); setMergeDialogOpen(true); }}>Create a merge commit</DropdownMenuItem> : null}
+                  {actions.merge.methods.includes("squash") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("squash"); setMergeDialogOpen(true); }}>Squash and merge</DropdownMenuItem> : null}
+                  {actions.merge.methods.includes("rebase") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("rebase"); setMergeDialogOpen(true); }}>Rebase and merge</DropdownMenuItem> : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -282,7 +316,6 @@ export function ReviewWorkbench({
               {hasUpdates ? "Refresh updates" : "Refresh GitHub state"}
             </Button>
           )}
-          <span className="rounded-md border px-2.5 py-1 text-sm">Checks · {checksLabel}</span>
         </div>
       </header>
 
@@ -374,6 +407,19 @@ export function ReviewWorkbench({
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
       <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} />
+      {actions.merge === undefined ? null : (
+        <MergeConfirmationDialog
+          defaultOpen={mergeDialogOpen}
+          initialMethod={selectedMergeMethod}
+          readiness={actions.merge.readiness}
+          methods={actions.merge.methods}
+          {...(actions.merge.mergeReasons === undefined ? {} : { mergeReasons: actions.merge.mergeReasons })}
+          {...(actions.merge.pullRequest === undefined ? {} : { pullRequest: actions.merge.pullRequest })}
+          context={actions.merge.context}
+          onMerge={actions.merge.onMerge}
+          onPendingChange={(pending) => { if (!pending) setMergeDialogOpen(false); }}
+        />
+      )}
 
     </section>
     </PublishedFeedbackNavigationContext.Provider>
@@ -425,3 +471,12 @@ function formatRelativeTime(value: string): string {
   for (const [unit, divisor] of units) if (Math.abs(seconds) >= divisor) return formatter.format(Math.round(seconds / divisor), unit);
   return formatter.format(seconds, "second");
 }
+
+const checksColors: Record<string, string> = { passing: "border-green-300 bg-green-50 text-green-800", failing: "border-red-300 bg-red-50 text-red-800", pending: "border-amber-300 bg-amber-50 text-amber-800" };
+function checksPillColor(overall: string): string { return checksColors[overall] ?? "border-muted-foreground/20 bg-muted/30 text-muted-foreground"; }
+function checksIcon(overall: string): React.JSX.Element { switch (overall) { case "passing": return <CheckCircle2 className="size-3.5" />; case "failing": return <XCircle className="size-3.5" />; case "pending": return <LoaderCircle className="size-3.5" />; default: return <AlertTriangle className="size-3.5" />; } }
+
+const mergeColors: Record<string, string> = { Clean: "border-green-300 bg-green-50 text-green-800", Warning: "border-amber-300 bg-amber-50 text-amber-800", Blocked: "border-red-300 bg-red-50 text-red-800" };
+function mergePillColor(tag: string): string { return mergeColors[tag] ?? "border-muted-foreground/20 bg-muted/30 text-muted-foreground"; }
+function mergeIcon(tag: string): React.JSX.Element { switch (tag) { case "Clean": return <CheckCircle2 className="size-3.5" />; case "Blocked": return <XCircle className="size-3.5" />; case "Warning": return <AlertTriangle className="size-3.5" />; default: return <AlertTriangle className="size-3.5" />; } }
+function mergeLabel(tag: string): string { switch (tag) { case "Clean": return "Ready"; case "Blocked": return "Blocked"; case "Warning": return "Warnings"; default: return tag; } }
