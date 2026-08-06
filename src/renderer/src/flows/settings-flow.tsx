@@ -50,7 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { Dashboard, Profile, Repo } from "../renderer-models";
+import type { Dashboard, Profile } from "../renderer-models";
 
 export type SettingsSection = "general" | "workspace" | "review" | "data";
 
@@ -81,7 +81,6 @@ type SettingsFlowProps = {
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
-  readonly onRepositoryRefresh?: (value: unknown, repo: Repo) => void;
   readonly section?: SettingsSection;
   readonly onDirtyChange?: (dirty: boolean) => void;
   readonly onProfileSwitchRequest?: (
@@ -103,7 +102,6 @@ export function SettingsFlow({
   onDiffThemeChange,
   profiles,
   onWorkspaceReload,
-  onRepositoryRefresh,
   section = "general",
   onDirtyChange,
   onProfileSwitchRequest,
@@ -543,9 +541,8 @@ export function SettingsFlow({
           </Card>
         </div>
         <WatchlistPanel
-          {...(dashboard === undefined ? {} : { dashboard })}
+          profile={dashboard?.profile ?? { id: "", label: "", githubHost: "github.com", ghAccount: "" }}
           onWorkspaceReload={onWorkspaceReload}
-          onRepositoryRefresh={onRepositoryRefresh ?? (() => undefined)}
         />
       </div>
     );

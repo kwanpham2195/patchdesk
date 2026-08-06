@@ -92,7 +92,6 @@ describe("SettingsModal", () => {
         onDiffThemeChange={() => undefined}
         profiles={[]}
         onWorkspaceReload={async () => undefined}
-        onRepositoryRefresh={() => undefined}
       />,
     );
 
@@ -246,7 +245,6 @@ function renderModal(onOpenChange = vi.fn(), open = true, opener?: HTMLElement):
       onDiffThemeChange={() => undefined}
       profiles={[profile]}
       onWorkspaceReload={async () => undefined}
-      onRepositoryRefresh={() => undefined}
     />,
   );
 }

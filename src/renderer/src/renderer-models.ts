@@ -4,7 +4,6 @@ export type DashboardScreenState =
   | "success"
   | "degraded"
   | "error"
-  | "archived"
   | "no_open_prs";
 
 export type Profile = {
@@ -15,6 +14,7 @@ export type Profile = {
   readonly workspaceRoots?: ReadonlyArray<string>;
   readonly ownerFilters?: ReadonlyArray<string>;
   readonly rulePaths?: ReadonlyArray<string>;
+  readonly repos?: ReadonlyArray<Repo>;
 };
 
 export type Repo = {
@@ -22,7 +22,6 @@ export type Repo = {
   readonly owner: string;
   readonly repo: string;
   readonly localPath?: string;
-  readonly archived?: boolean;
 };
 
 export type RepoOutcome = {

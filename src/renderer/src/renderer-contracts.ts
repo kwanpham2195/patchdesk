@@ -118,7 +118,6 @@ const repoOutcomeSchema = v.object({
     host: v.pipe(v.string(), v.minLength(1)),
     owner: v.pipe(v.string(), v.minLength(1)),
     repo: v.pipe(v.string(), v.minLength(1)),
-    archived: v.optional(v.boolean()),
   }),
   state: v.pipe(v.string(), v.minLength(1)),
 });
@@ -135,6 +134,11 @@ const inboxResponseSchema = v.strictObject({
     workspaceRoots: v.optional(v.array(v.string())),
     ownerFilters: v.optional(v.array(v.string())),
     rulePaths: v.optional(v.array(v.string())),
+    repos: v.optional(v.array(v.object({
+      host: v.pipe(v.string(), v.minLength(1)),
+      owner: v.pipe(v.string(), v.minLength(1)),
+      repo: v.pipe(v.string(), v.minLength(1)),
+    }))),
   }),
   inbox: v.object({
     rows: v.array(inboxRowSchema),

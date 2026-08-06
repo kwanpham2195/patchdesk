@@ -3,8 +3,7 @@ import {
   AlertTriangle,
   FolderOpen,
   Inbox,
-  MoreHorizontal,
-  Search,
+  RefreshCw,
   Settings as SettingsIcon,
   X,
 } from "lucide-react";
@@ -25,7 +24,7 @@ import {
   AlertDialogTitle,
 } from "../renderer/src/components/ui/alert-dialog";
 import { Button } from "../renderer/src/components/ui/button";
-import { Badge } from "../renderer/src/components/ui/badge";
+import { Checkbox } from "../renderer/src/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -87,10 +86,6 @@ export function DesignSettingsOverlay({
     CleanupActionKey | undefined
   >(autoOpenCleanup);
   const [activityLoaded, setActivityLoaded] = useState(false);
-  const [openWatchlistActions, setOpenWatchlistActions] = useState<
-    "api" | "customer" | undefined
-  >();
-  const [editingWatchlistRepo, setEditingWatchlistRepo] = useState<string>();
 
   useEffect(() => {
     if (autoOpenCleanup !== undefined) setPendingCleanup(autoOpenCleanup);
@@ -321,12 +316,7 @@ export function DesignSettingsOverlay({
                     </CardContent>
                   </Card>
                 </div>
-                <DesignWatchlist
-                  openActions={openWatchlistActions}
-                  editingRepo={editingWatchlistRepo}
-                  onActionsChange={setOpenWatchlistActions}
-                  onEditingChange={setEditingWatchlistRepo}
-                />
+                <DesignWatchlist />
               </TabsContent>
               <TabsContent
                 value="data"
@@ -459,77 +449,30 @@ function ScopePreview({
   );
 }
 
-function DesignWatchlist({
-  openActions,
-  editingRepo,
-  onActionsChange,
-  onEditingChange,
-}: {
-  readonly openActions: "api" | "customer" | undefined;
-  readonly editingRepo: string | undefined;
-  readonly onActionsChange: (value: "api" | "customer" | undefined) => void;
-  readonly onEditingChange: (value: string | undefined) => void;
-}): React.JSX.Element {
+function DesignWatchlist(): React.JSX.Element {
   return (
     <section role="region" aria-label="Watchlist">
       <Card className="h-full">
         <CardHeader className="gap-2 pb-4">
           <CardTitle>Watchlist</CardTitle>
           <CardDescription>
-            Repositories in the active queue. Saved review history remains local.
+            Repositories found in your workspace roots. Tick to add to the active queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label>Repository</Label>
-            <Input placeholder="owner/repository" />
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm">Add repository</Button>
-              <Button size="sm" variant="outline">
-                <Search data-icon="inline-start" />
-                Discover
-              </Button>
-            </div>
-          </div>
+          <Button size="sm" variant="outline">
+            <RefreshCw data-icon="inline-start" />
+            Refresh
+          </Button>
           <WatchlistPreviewRow
-            repoKey="api"
             label="centraldigital/cfw-sales-crm-api"
-            path="/absolute/repository/path"
-            openActions={openActions === "api"}
-            editing={editingRepo === "api"}
-            onToggleActions={() =>
-              onActionsChange(openActions === "api" ? undefined : "api")
-            }
-            onEdit={() => {
-              onEditingChange("api");
-              onActionsChange(undefined);
-            }}
-            onCancel={() => onEditingChange(undefined)}
+            path="/Users/kwanpham/Work/cfw/cfw-sales-crm-api"
+            checked={true}
           />
           <WatchlistPreviewRow
-            repoKey="customer"
             label="centraldigital/cfw-bo-customer-management-service"
-            path="/absolute/repository/path"
-            openActions={openActions === "customer"}
-            editing={editingRepo === "customer"}
-            onToggleActions={() =>
-              onActionsChange(openActions === "customer" ? undefined : "customer")
-            }
-            onEdit={() => {
-              onEditingChange("customer");
-              onActionsChange(undefined);
-            }}
-            onCancel={() => onEditingChange(undefined)}
-          />
-          <WatchlistPreviewRow
-            repoKey="workflow"
-            label="centraldigital/cfw-workflow-service"
-            path="No local path selected"
-            openActions={false}
-            editing={false}
-            onToggleActions={() => undefined}
-            onEdit={() => undefined}
-            onCancel={() => undefined}
+            path="/Users/kwanpham/Work/cfw/cfw-bo-customer-management-service"
+            checked={false}
           />
         </CardContent>
       </Card>
@@ -538,76 +481,22 @@ function DesignWatchlist({
 }
 
 function WatchlistPreviewRow({
-  repoKey,
   label,
   path,
-  openActions,
-  editing,
-  onToggleActions,
-  onEdit,
-  onCancel,
+  checked,
 }: {
-  readonly repoKey: string;
   readonly label: string;
   readonly path: string;
-  readonly openActions: boolean;
-  readonly editing: boolean;
-  readonly onToggleActions: () => void;
-  readonly onEdit: () => void;
-  readonly onCancel: () => void;
+  readonly checked: boolean;
 }): React.JSX.Element {
   return (
-    <div className="relative border-b py-3 first:pt-0 last:border-b-0 last:pb-0">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{label}</p>
-          {editing ? null : (
-            <p className="truncate text-xs text-muted-foreground">{path}</p>
-          )}
-        </div>
-        <Badge variant="secondary">Active</Badge>
-        <Button
-          size="icon-sm"
-          variant="outline"
-          aria-label={`More actions for ${label}`}
-          aria-expanded={openActions}
-          onClick={onToggleActions}
-        >
-          <MoreHorizontal />
-        </Button>
+    <label className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+      <Checkbox className="mt-0.5" defaultChecked={checked} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{label}</p>
+        <p className="truncate text-xs text-muted-foreground">{path}</p>
       </div>
-      {openActions ? (
-        <div
-          role="menu"
-          aria-label={`Actions for ${label}`}
-          className="absolute top-10 right-0 z-10 flex w-44 flex-col gap-1 rounded-lg border bg-popover p-1 shadow-md"
-        >
-          <Button size="sm" variant="ghost" className="justify-start">Refresh</Button>
-          <Button size="sm" variant="ghost" className="justify-start" onClick={onEdit}>
-            Edit local path
-          </Button>
-          <Button size="sm" variant="ghost" className="justify-start">Archive</Button>
-          <Button size="sm" variant="ghost" className="justify-start text-destructive">Remove</Button>
-        </div>
-      ) : null}
-      {editing ? (
-        <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
-          <Label htmlFor={`watchlist-preview-path-${repoKey}`}>Local path</Label>
-          <Input
-            id={`watchlist-preview-path-${repoKey}`}
-            defaultValue="/absolute/repository/path"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">
-              <FolderOpen data-icon="inline-start" />
-              Choose folder
-            </Button>
-            <Button size="sm">Save path</Button>
-            <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          </div>
-        </div>
-      ) : null}
-    </div>
+    </label>
   );
 }
 

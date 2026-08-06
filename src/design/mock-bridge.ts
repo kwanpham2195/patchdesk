@@ -38,17 +38,11 @@ const repositories = [
     repo: {
       host: "github.com",
       owner: "centraldigital",
-      repo: "archived-service",
-      archived: true,
+      repo: "cfw-workflow-service",
     },
-    state: "archived",
+    state: "no_open_prs",
   },
 ];
-const repositoriesWithArchived = repositories.map((entry) =>
-  entry.state === "archived"
-    ? { ...entry, repo: { ...entry.repo, archived: true } }
-    : entry,
-);
 
 const sha = "abcdef1234567890abcdef1234567890abcdef12";
 
@@ -624,11 +618,11 @@ function inboxForScenario(scenarioId: string | undefined): InboxResponse {
       rows: baseRows,
       repositories:
         scenarioId === "inbox-empty"
-          ? repositoriesWithArchived.map((entry) => ({
+          ? repositories.map((entry) => ({
               ...entry,
               state: "no_open_prs",
             }))
-          : repositoriesWithArchived,
+          : repositories,
       dataFreshness: scenarioId === "inbox-cached" ? "cached" : "fresh",
       snapshot: {
         state: scenarioId === "inbox-cached" ? "failed_cached" : "current",

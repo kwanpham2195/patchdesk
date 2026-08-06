@@ -3,7 +3,7 @@ import { Settings as SettingsIcon } from "lucide-react";
 
 import type { DiffThemePreferences } from "../diff-theme-preferences";
 import type { AppearancePreference } from "../appearance-preferences";
-import type { Dashboard, Profile, Repo } from "../renderer-models";
+import type { Dashboard, Profile } from "../renderer-models";
 import { SettingsFlow, type SettingsSection } from "../flows/settings-flow";
 import { Button } from "./ui/button";
 import {
@@ -40,7 +40,6 @@ export type SettingsModalProps = {
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
-  readonly onRepositoryRefresh?: (value: unknown, repo: Repo) => void;
   readonly opener?: HTMLElement | null | undefined;
   readonly onProfileSwitchStart?: () => void;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;

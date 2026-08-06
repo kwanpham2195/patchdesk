@@ -54,13 +54,10 @@ export class MaintainerInboxService {
     if (authenticated._tag === "err") return await this.cachedOrUnavailable(profile);
     const sessions = await this.sessions.listSessions(profile.id);
     const localSessions = sessions._tag === "ok" ? sessions.value : [];
-    const active = profile.repos.filter((repo) => repo.archived !== true);
-    const archived = profile.repos
-      .filter((repo) => repo.archived === true)
-      .map((repo) => ({ repo, state: "archived" as const, complete: true }));
+    const active = profile.repos;
     const results = await mapConcurrent(active, 3, async (repo) => await this.readRepository(profile, repo, localSessions));
     const rows = results.flatMap((result) => result.rows).sort(compareRows);
-    const repositories = [...archived, ...results.map((result) => result.repository)];
+    const repositories = results.map((result) => result.repository);
     const refreshedAt = this.clock.now();
     const complete = results.every((result) => result.repository.complete);
     const dataFreshness = complete ? "fresh" as const : "cached" as const;
@@ -102,7 +99,7 @@ export class MaintainerInboxService {
     }));
     return {
       rows,
-      repository: { repo, state: listed.value.pullRequests.length === 0 ? "no_open_prs" : repo.localPath === undefined ? "missing_local_path" : "ready", complete: listed.value.complete },
+      repository: { repo, state: listed.value.pullRequests.length === 0 ? "no_open_prs" : "ready", complete: listed.value.complete },
     };
   }
 

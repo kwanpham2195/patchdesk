@@ -660,11 +660,7 @@ function Outcome({
                 ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local drafts and history remain available."
                 : outcome === "github_read"
                   ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                  : outcome === "archived"
-                    ? "Archived repository. It is hidden from the active queue and can be restored in Settings."
-                    : outcome === "missing_local_path"
-                      ? "Choose a local checkout path before running a repository-aware review."
-                      : outcome}
+                  : outcome}
               {outcome === "github_read" ? (
                 <div>
                   <Button className="mt-3" variant="outline" onClick={onRetry}>
@@ -679,16 +675,6 @@ function Outcome({
                     onClick={onSettings}
                   >
                     Open Settings for GitHub access
-                  </Button>
-                </div>
-              ) : outcome === "missing_local_path" || outcome === "archived" ? (
-                <div>
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    onClick={onSettings}
-                  >
-                    Open repository Settings
                   </Button>
                 </div>
               ) : null}

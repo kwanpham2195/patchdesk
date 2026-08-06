@@ -28,7 +28,7 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 
 export type InboxCacheRepository = {
   readonly identity: Omit<PullRequestRef, "number">;
-  readonly state: "ready" | "missing_local_path" | "github_auth" | "github_read" | "archived" | "no_open_prs";
+  readonly state: "ready" | "missing_local_path" | "github_auth" | "github_read" | "no_open_prs";
   readonly complete: boolean;
 };
 
@@ -91,7 +91,7 @@ const cacheSchema = v.strictObject({
   rows: v.array(rowSchema),
   repositories: v.array(v.strictObject({
     identity: v.strictObject({ host: v.string(), owner: v.string(), repo: v.string() }),
-    state: v.picklist(["ready", "missing_local_path", "github_auth", "github_read", "archived", "no_open_prs"]),
+    state: v.picklist(["ready", "missing_local_path", "github_auth", "github_read", "no_open_prs"]),
     complete: v.boolean(),
   })),
 });

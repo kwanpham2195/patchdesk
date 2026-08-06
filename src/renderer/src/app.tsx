@@ -9,7 +9,6 @@ import type {
   Dashboard,
   DashboardScreenState,
   Profile,
-  Repo,
   WorkbenchPayload,
 } from "./renderer-models";
 import {
@@ -367,6 +366,15 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         navigationBlocked={navigationState !== "clear"}
         onNavigate={navigate}
         onOpenSettings={openSettings}
+        profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
+        activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+        onProfileSwitch={async (id) => {
+          await api("/v1/profiles/select", { method: "POST", body: { id } });
+          setWorkbench(undefined);
+          setDashboard(undefined);
+          setInbox(undefined);
+          await loadWorkspace();
+        }}
       >
         {content}
       </AppShell>
@@ -400,10 +408,6 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         }}
         preferenceError={preferenceError}
         onRetryPreferences={retryPreferences}
-        onRepositoryRefresh={(value, repo) => {
-          if (!isDashboardList(value)) return;
-          setDashboard((current) => current === undefined ? current : { ...current, dashboard: mergeDashboardRepository(current.dashboard, value, repo) });
-        }}
       />
       <AlertDialog
         open={pendingDestination !== undefined}
@@ -604,6 +608,9 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       ...(inbox.profile.rulePaths === undefined
         ? {}
         : { rulePaths: inbox.profile.rulePaths }),
+      ...(inbox.profile.repos === undefined
+        ? {}
+        : { repos: inbox.profile.repos }),
     },
     dashboard: {
       rows: inbox.inbox.rows.map((row) => ({
@@ -621,9 +628,6 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
           host: outcome.repo.host,
           owner: outcome.repo.owner,
           repo: outcome.repo.repo,
-          ...(outcome.repo.archived === undefined
-            ? {}
-            : { archived: outcome.repo.archived }),
         },
         state: outcome.state,
       })),
@@ -631,29 +635,11 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
   };
 }
 
-function isDashboardList(value: unknown): value is Dashboard["dashboard"] {
-  return record(value) && Array.isArray(value.rows) && Array.isArray(value.repos);
-}
-
-function mergeDashboardRepository(
-  current: Dashboard["dashboard"],
-  refreshed: Dashboard["dashboard"],
-  target: Repo,
-): Dashboard["dashboard"] {
-  const sameRepository = (repo: Repo): boolean => repo.host === target.host && repo.owner === target.owner && repo.repo === target.repo;
-  return {
-    rows: [...current.rows.filter((row) => row.summary.ref.owner !== target.owner || row.summary.ref.repo !== target.repo), ...refreshed.rows],
-    repos: [...current.repos.filter((outcome) => !sameRepository(outcome.repo)), ...refreshed.repos],
-  };
-}
-
 function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
   const outcomes = dashboard.dashboard.repos.map((item) => item.state);
   if (outcomes.includes("github_auth") || outcomes.includes("github_read"))
     return "error";
-  if (outcomes.includes("archived")) return "archived";
   if (outcomes.includes("no_open_prs") && dashboard.dashboard.rows.length === 0)
     return "no_open_prs";
-  if (outcomes.includes("missing_local_path")) return "degraded";
   return dashboard.dashboard.rows.length === 0 ? "empty" : "success";
 }

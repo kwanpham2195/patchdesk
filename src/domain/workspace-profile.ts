@@ -19,7 +19,6 @@ export type WatchedRepoConfig = {
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
   readonly localPath?: AbsolutePath;
-  readonly archived?: boolean;
 };
 
 export type AnalysisMergePolicy = "advisory" | "require_acknowledgement" | "block";
@@ -45,7 +44,6 @@ const rawWatchedRepoSchema = v.strictObject({
   owner: v.string(),
   repo: v.string(),
   localPath: v.optional(v.string()),
-  archived: v.optional(v.boolean()),
 });
 
 /** Valibot boundary schema for a persisted workspace-profile JSON record. */
@@ -127,7 +125,6 @@ function parseWatchedRepo(
     owner: owner.value,
     repo: repo.value,
     ...(localPath === undefined ? {} : { localPath: localPath.value }),
-    ...(input.archived === undefined ? {} : { archived: input.archived }),
   });
 }
 

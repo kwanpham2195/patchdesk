@@ -130,7 +130,7 @@ describe("review diff hydration", () => {
       await waitFor(() => expect(preload).toHaveBeenCalled());
       expect(preload.mock.calls[0]?.[0]).toEqual({
         langs: ["go"],
-        themes: ["github-dark", "github-light"],
+        themes: ["pierre-dark", "pierre-light"],
       });
     } finally {
       if (styleSheet?.value !== undefined) {

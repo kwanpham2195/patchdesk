@@ -164,34 +164,6 @@ export function updateWatchedRepoPath(
             owner: repo.owner,
             repo: repo.repo,
             ...(path === undefined ? {} : { localPath: path }),
-            ...(repo.archived === undefined ? {} : { archived: repo.archived }),
-          }
-        : repo,
-    ),
-  });
-}
-
-/** Hides or restores one explicit watchlist repo without deleting its local association. */
-export function setWatchedRepoArchived(
-  profile: WorkspaceProfileConfig,
-  target: WatchedRepoRef,
-  archived: boolean,
-): Result<WorkspaceProfileConfig, ProfileMutationFailure> {
-  if (!profile.repos.some((candidate) => sameRepo(candidate, target))) {
-    return err({ _tag: "ProfileMutationFailure", reason: "repo_not_found" });
-  }
-  return ok({
-    ...profile,
-    repos: profile.repos.map((repo) =>
-      sameRepo(repo, target)
-        ? {
-            host: repo.host,
-            owner: repo.owner,
-            repo: repo.repo,
-            ...(repo.localPath === undefined
-              ? {}
-              : { localPath: repo.localPath }),
-            ...(archived ? { archived: true } : {}),
           }
         : repo,
     ),

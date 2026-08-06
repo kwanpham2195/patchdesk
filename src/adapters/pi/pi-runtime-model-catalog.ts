@@ -101,7 +101,7 @@ function projectModels(preferred: ReadonlyArray<string>, configuredProviders: Re
     .flatMap(({ models }) => models)
     .map((model) => ({
       id: canonicalModelId(`${model.provider}/${model.id}`),
-      label: model.name,
+      label: `${model.provider}/${model.id}`,
     }))
     .filter((model): model is { id: string; label: string } => model.id !== undefined);
   const eligible = catalog.filter((model) => configuredProviders.has(model.id.slice(0, model.id.indexOf("/"))));

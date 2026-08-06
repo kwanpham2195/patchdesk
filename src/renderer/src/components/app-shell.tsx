@@ -4,6 +4,7 @@ import {
   GitPullRequest,
   Search,
   Settings,
+  User,
 } from "lucide-react";
 
 import type { AppDestination } from "@/routes";
@@ -28,6 +29,13 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -47,17 +55,28 @@ const inboxCommands = [
   ["all_open", "All open pull requests"],
 ] as const;
 
+type ProfileEntry = {
+  readonly id: string;
+  readonly label: string;
+};
+
 export function AppShell({
   destination,
   navigationBlocked = false,
   onNavigate,
   onOpenSettings,
+  profiles,
+  activeProfileId,
+  onProfileSwitch,
   children,
 }: {
   readonly destination: AppDestination;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
+  readonly profiles?: ReadonlyArray<ProfileEntry>;
+  readonly activeProfileId?: string;
+  readonly onProfileSwitch?: (id: string) => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -140,6 +159,35 @@ export function AppShell({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          {profiles !== undefined && profiles.length > 0 ? (
+            <Select
+              value={activeProfileId ?? ""}
+              items={profiles.map((profile) => ({
+                label: profile.label,
+                value: profile.id,
+              }))}
+              onValueChange={(value) => {
+                if (value !== null && onProfileSwitch !== undefined) onProfileSwitch(value);
+              }}
+            >
+              <SelectTrigger
+                aria-label="Active profile"
+                className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
+              >
+                <User className="size-3" />
+                <SelectValue placeholder="Select profile">
+                  {profiles.find((p) => p.id === activeProfileId)?.label ?? "Profile"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {profiles.map((profile) => (
+                  <SelectItem key={profile.id} value={profile.id}>
+                    {profile.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={

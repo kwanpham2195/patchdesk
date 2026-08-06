@@ -44,7 +44,7 @@ const allowedRoutes = new Set([
   "POST /v1/watchlist",
   "PATCH /v1/watchlist/path",
   "DELETE /v1/watchlist",
-  "PATCH /v1/watchlist/archive",
+
   "GET /v1/watchlist/suggestions",
   "POST /v1/github/access",
   "GET /v1/environment",

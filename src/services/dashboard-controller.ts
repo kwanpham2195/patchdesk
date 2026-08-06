@@ -28,7 +28,6 @@ import {
   createDefaultCfwProfile,
   ProfileSettingsService,
   removeWatchedRepo,
-  setWatchedRepoArchived,
   updateWatchedRepoPath,
 } from "./profile-service";
 import type { WatchedRepoRef } from "./profile-service";
@@ -246,28 +245,6 @@ export class DashboardController {
     const ref = repoRef(input);
     if (ref._tag === "err") return ref;
     const changed = removeWatchedRepo(profile.value, ref.value);
-    if (changed._tag === "err") return failure("not_found");
-    const saved = await this.settings.saveProfile(changed.value);
-    return saved._tag === "ok" ? ok(changed.value) : failure("storage");
-  }
-
-  async archiveWatchlistRepo(
-    input: unknown,
-  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    const profile = await this.activeProfile();
-    if (profile._tag === "err") return profile;
-    const ref = repoRef(input);
-    if (
-      ref._tag === "err" ||
-      !isObject(input) ||
-      typeof input.archived !== "boolean"
-    )
-      return failure("invalid_input");
-    const changed = setWatchedRepoArchived(
-      profile.value,
-      ref.value,
-      input.archived,
-    );
     if (changed._tag === "err") return failure("not_found");
     const saved = await this.settings.saveProfile(changed.value);
     return saved._tag === "ok" ? ok(changed.value) : failure("storage");

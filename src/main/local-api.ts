@@ -502,12 +502,7 @@ export async function startLocalApiServer(
       await dashboard.removeWatchlistRepo(await jsonBody(context)),
     ),
   );
-  app.patch("/v1/watchlist/archive", async (context) =>
-    response(
-      context,
-      await dashboard.archiveWatchlistRepo(await jsonBody(context)),
-    ),
-  );
+
   app.get("/v1/watchlist/suggestions", async (context) =>
     response(context, await dashboard.discoverWorkspaceRepos()),
   );

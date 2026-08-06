@@ -40,15 +40,6 @@ const dashboard = {
         },
         state: "ready",
       },
-      {
-        repo: {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "archived",
-          archived: true,
-        },
-        state: "archived",
-      },
     ],
   },
 };
@@ -71,7 +62,7 @@ describe("dashboard renderer API flow", () => {
     ).toBe(true);
   });
 
-  it("loads profile, watchlist, rows, and archived outcome from authenticated API responses", async () => {
+  it("loads profile, watchlist, rows, and repo state from authenticated API responses", async () => {
     installApi();
     render(<App />);
     expect(
@@ -80,14 +71,15 @@ describe("dashboard renderer API flow", () => {
     expect(
       screen.getAllByText("centraldigital/patchdesk").length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/Archived repository/)).toBeTruthy();
+    expect(screen.getAllByText(/patchdesk/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Archived repository/)).toBeNull();
     expect(screen.queryByText(/Submit review|Merge pull request/i)).toBeNull();
   });
 
   it("keeps Watchlist management in Workspace Settings instead of the queue surface", async () => {
     const fetch = installApi({
       suggestionsValue: [
-        { host: "github.com", owner: "centraldigital", repo: "new-service" },
+        { host: "github.com", owner: "centraldigital", repo: "new-service", localPath: "/workspace/new-service" },
       ],
       selectedDirectory: "/workspace/patchdesk",
     });
@@ -100,94 +92,29 @@ describe("dashboard renderer API flow", () => {
     await user.click(screen.getByRole("tab", { name: "Workspace" }));
 
     const watchlist = screen.getByRole("region", { name: "Watchlist" });
-    expect(within(watchlist).getByLabelText("Repository")).toBeTruthy();
     expect(
-      within(watchlist).getByRole("button", { name: "Discover" }),
+      within(watchlist).getByRole("button", { name: "Refresh discovery" }),
     ).toBeTruthy();
-    const openActions = async (): Promise<void> => {
-      await user.click(
-        within(watchlist).getByRole("button", {
-          name: "More actions for centraldigital/patchdesk",
-        }),
-      );
-      await screen.findByRole("menuitem", { name: "Refresh" });
-    };
-    await openActions();
-    expect(await screen.findByRole("menuitem", { name: "Refresh" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Remove" })).toBeTruthy();
-    await user.keyboard("{Escape}");
-
-    await user.type(
-      within(watchlist).getByLabelText("Repository"),
-      "centraldigital/new-service",
-    );
-    await user.click(
-      within(watchlist).getByRole("button", { name: "Add repository" }),
-    );
-    await user.click(
-      within(watchlist).getByRole("button", { name: "Discover" }),
-    );
+    expect(
+      within(watchlist).queryByLabelText("Repository"),
+    ).toBeNull();
     expect(
       await within(watchlist).findByText("centraldigital/new-service"),
     ).toBeTruthy();
-    await user.click(
-      within(watchlist).getByRole("button", { name: "Add suggestion" }),
-    );
 
-    await user.click(
-      within(watchlist).getByRole("button", {
-        name: "Choose folder for centraldigital/patchdesk",
-      }),
-    );
-    await user.click(
-      within(watchlist).getByRole("button", {
-        name: "Save path for centraldigital/patchdesk",
-      }),
-    );
-    await openActions();
-    await user.click(screen.getByRole("menuitem", { name: "Refresh" }));
-    await openActions();
-    await user.click(
-      screen.getByRole("menuitem", { name: "Archive" }),
-    );
-    await openActions();
-    await user.click(
-      screen.getByRole("menuitem", { name: "Remove" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Confirm removal" }));
-
-    expect(
-      fetch.mock.calls.some(([input]) =>
-        String(input).includes("v1/watchlist/suggestions"),
-      ),
-    ).toBe(true);
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist/path") &&
-          (init as RequestInit | undefined)?.method === "PATCH",
-      ),
-    ).toBe(true);
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/dashboard/refresh/repository") &&
-          (init as RequestInit | undefined)?.method === "POST",
-      ),
-    ).toBe(true);
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes("v1/watchlist/archive") &&
-          (init as RequestInit | undefined)?.method === "PATCH",
-      ),
-    ).toBe(true);
+    // Toggle the checkbox to add the repo to the watchlist
+    const checkbox = within(watchlist).getByRole("checkbox");
+    await user.click(checkbox);
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>
           String(input).includes("v1/watchlist") &&
-          (init as RequestInit | undefined)?.method === "DELETE",
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(true);
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("v1/watchlist/suggestions"),
       ),
     ).toBe(true);
   });
@@ -669,8 +596,7 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Stored review title" }),
     ).toBeTruthy();
-    expect(screen.getAllByRole("tab", { name: "Files" })).toHaveLength(1);
-  expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>
