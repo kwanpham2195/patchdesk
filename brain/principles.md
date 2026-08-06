@@ -19,6 +19,7 @@
 - [[principles/fix-root-causes]]
 
 ## Delegation
+- [[principles/agent-orchestration]]
 - [[principles/cost-aware-delegation]]
 - [[principles/guard-the-context-window]]
 - [[principles/never-block-on-the-human]]

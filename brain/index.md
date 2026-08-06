@@ -8,6 +8,7 @@
 
 ## Principles
 - [[principles]]
+- [[principles/agent-orchestration]]
 - [[principles/boundary-discipline]]
 - [[principles/cost-aware-delegation]]
 - [[principles/encode-lessons-in-structure]]
