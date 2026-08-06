@@ -14,14 +14,6 @@ export type DiffThemePreferences = {
 };
 
 export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
-  light: "github-light",
-  dark: "github-dark",
-};
-
-// The pierre pair was the default before GitHub; profiles that persisted it
-// explicitly should adopt the improved defaults too, while any other explicit
-// theme choice stays untouched.
-const RETIRED_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
   light: "pierre-light",
   dark: "pierre-dark",
 };
@@ -49,12 +41,6 @@ export function parseDiffThemePreferences(value: unknown): DiffThemePreferences 
       ? candidate.dark
       : DEFAULT_DIFF_THEME_PREFERENCES.dark,
   };
-  if (
-    parsed.light === RETIRED_DIFF_THEME_PREFERENCES.light &&
-    parsed.dark === RETIRED_DIFF_THEME_PREFERENCES.dark
-  ) {
-    return DEFAULT_DIFF_THEME_PREFERENCES;
-  }
   return parsed;
 }
 
@@ -105,7 +91,7 @@ function parseLegacyDiffThemePreference(value: string | null): DiffThemePreferen
   if (value === null) return undefined;
   try {
     const parsed: unknown = JSON.parse(value);
-    if (parsed === "github") return { light: "github-light", dark: "github-dark" };
+    if (parsed === "github") return { light: "pierre-light", dark: "pierre-dark" };
     if (parsed === "high_contrast") {
       return {
         light: "github-light-high-contrast",
@@ -114,7 +100,7 @@ function parseLegacyDiffThemePreference(value: string | null): DiffThemePreferen
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
     const family = (parsed as Record<string, unknown>).family;
-    if (family === "github") return { light: "github-light", dark: "github-dark" };
+    if (family === "github") return { light: "pierre-light", dark: "pierre-dark" };
     if (family === "high_contrast") {
       return {
         light: "github-light-high-contrast",

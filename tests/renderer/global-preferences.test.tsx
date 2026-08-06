@@ -102,12 +102,12 @@ describe("file-backed renderer preferences", () => {
       expect(corrections).toHaveLength(1);
       expect(corrections[0]?.[0].body).toEqual({
         appearance: "system",
-        diffTheme: { light: "github-light", dark: "github-dark" },
+        diffTheme: { light: "pierre-light", dark: "github-dark" },
       });
     });
   });
 
-  it("migrates file-backed settings that still hold the retired Pierre default pair", async () => {
+  it("keeps the Pierre defaults when the backend provides them explicitly", async () => {
     const request = installDesktopApi({
       diffTheme: { light: "pierre-light", dark: "pierre-dark" },
     });
@@ -121,23 +121,19 @@ describe("file-backed renderer preferences", () => {
 
     await waitFor(() =>
       expect(themeEvents).toContainEqual({
-        light: "github-light",
-        dark: "github-dark",
+        light: "pierre-light",
+        dark: "pierre-dark",
       }),
     );
-    expect(themeEvents).not.toContainEqual({
-      light: "pierre-light",
-      dark: "pierre-dark",
-    });
     await waitFor(() => {
       const corrections = request.mock.calls.filter(([input]) =>
         input.path === "/v1/settings" && input.method === "PATCH",
       );
-      expect(corrections).toHaveLength(1);
-      expect(corrections[0]?.[0].body).toEqual({
-        appearance: "system",
-        diffTheme: { light: "github-light", dark: "github-dark" },
-      });
+      // The appearance migration sends one PATCH; the Pierre defaults must
+      // not trigger a separate diff-theme correction.
+      expect(
+        corrections.filter(([input]) => (input.body as Record<string, unknown>)?.diffTheme !== undefined),
+      ).toHaveLength(0);
     });
     window.removeEventListener("patchdesk:diff-theme", onTheme);
   });
