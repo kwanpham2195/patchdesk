@@ -37,6 +37,7 @@ export function DiffWorkbench({
   preferences: controlledPreferences,
   onPreferencesChange,
   annotations,
+  surfaceAction,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -54,6 +55,7 @@ export function DiffWorkbench({
   readonly preferences?: ReviewViewPreferences;
   readonly onPreferencesChange?: (update: Partial<ReviewViewPreferences>) => void;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly surfaceAction?: React.ReactNode;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
@@ -169,6 +171,7 @@ export function DiffWorkbench({
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
+            {surfaceAction}
             {copyValue === undefined ? null : <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(copyValue)}>Copy commit SHA</Button>}
             {hideFileNavigation ? null : <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
               <SheetTrigger

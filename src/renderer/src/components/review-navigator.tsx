@@ -61,7 +61,7 @@ export function ReviewNavigator({
     <aside aria-label="Review navigation" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
       <Tabs value={section} onValueChange={(value) => onSectionChange(value as ReviewNavigatorSection)} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
-          <TabsList aria-label="Review navigator" className="min-w-0 shrink-0">
+          <TabsList variant="line" aria-label="Review navigator" className="min-w-0 shrink-0">
             <TabsTrigger value="files">Browse</TabsTrigger>
             <TabsTrigger value="findings">Findings</TabsTrigger>
             <TabsTrigger value="commits">Commits</TabsTrigger>

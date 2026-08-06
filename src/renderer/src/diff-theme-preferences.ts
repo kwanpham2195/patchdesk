@@ -14,6 +14,14 @@ export type DiffThemePreferences = {
 };
 
 export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
+  light: "github-light",
+  dark: "github-dark",
+};
+
+// The pierre pair was the default before GitHub; profiles that persisted it
+// explicitly should adopt the improved defaults too, while any other explicit
+// theme choice stays untouched.
+const RETIRED_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
   light: "pierre-light",
   dark: "pierre-dark",
 };
@@ -33,7 +41,7 @@ export function parseDiffThemePreferences(value: unknown): DiffThemePreferences 
     return DEFAULT_DIFF_THEME_PREFERENCES;
   }
   const candidate = value as Record<string, unknown>;
-  return {
+  const parsed: DiffThemePreferences = {
     light: hasTheme(DIFF_LIGHT_THEMES, candidate.light)
       ? candidate.light
       : DEFAULT_DIFF_THEME_PREFERENCES.light,
@@ -41,12 +49,23 @@ export function parseDiffThemePreferences(value: unknown): DiffThemePreferences 
       ? candidate.dark
       : DEFAULT_DIFF_THEME_PREFERENCES.dark,
   };
+  if (
+    parsed.light === RETIRED_DIFF_THEME_PREFERENCES.light &&
+    parsed.dark === RETIRED_DIFF_THEME_PREFERENCES.dark
+  ) {
+    return DEFAULT_DIFF_THEME_PREFERENCES;
+  }
+  return parsed;
 }
 
 export function loadDiffThemePreferences(): DiffThemePreferences {
   if (typeof window === "undefined") return DEFAULT_DIFF_THEME_PREFERENCES;
   try {
     const serialized = window.localStorage.getItem(storageKey);
+    // parseDiffThemePreferences migrates the retired {pierre-light,
+    // pierre-dark} default pair to the GitHub defaults here, so profiles that
+    // persisted the previous default adopt the improvement without clearing
+    // storage; explicit custom pairs are returned unchanged.
     if (serialized !== null) return parseDiffThemePreferences(JSON.parse(serialized));
 
     const legacy = parseLegacyDiffThemePreference(window.localStorage.getItem(legacyStorageKey));

@@ -95,31 +95,37 @@ export function NarrativeWalkthroughDiff({
 
   return (
     <div
+      role="group"
+      tabIndex={-1}
+      aria-label={`Walkthrough evidence ${hunks.map((hunk) => `${hunk.id} · ${hunk.path}`).join(", ")}`}
       data-walkthrough-diff-block={blockId}
-      className="overflow-hidden rounded-md border bg-card"
+      data-walkthrough-hunk-id={hunks.length === 1 ? hunks[0]?.id : undefined}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
-      <div className="flex min-w-0 items-center gap-2 border-b bg-muted/40 px-2 py-1.5 text-xs">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1.5 text-xs">
         <span className="truncate font-mono">
           {hunks.map((hunk) => hunk.path).filter((path, index, paths) => paths.indexOf(path) === index).join(", ")}
         </span>
-        <span className="shrink-0 text-muted-foreground">{hunks.length} hunk{hunks.length === 1 ? "" : "s"}</span>
+        <span className="shrink-0 text-muted-foreground">{hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk{hunks.length === 1 ? "" : "s"}</span>
       </div>
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">Stored patch unavailable for this section.</p>
       ) : (
-        <ReviewDiffView
-          patch={filteredPatch}
-          parsedFiles={parsedDiff.files}
-          fileStatsByPath={parsedDiff.statsByPath}
-          {...(selectedPath === undefined ? {} : { selectedPath })}
-          annotations={visibleAnnotations}
-          preferences={localPreferences}
-          collapsedPaths={new Set()}
-          onPreferencesChange={(update) => setLocalPreferences((current) => ({ ...current, ...update }))}
-          onCollapsedPathsChange={() => undefined}
-          {...(sourceSession === undefined ? {} : { sourceSession })}
-          virtualized={false}
-        />
+        <div data-walkthrough-diff-viewport className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+          <ReviewDiffView
+            patch={filteredPatch}
+            parsedFiles={parsedDiff.files}
+            fileStatsByPath={parsedDiff.statsByPath}
+            {...(selectedPath === undefined ? {} : { selectedPath })}
+            annotations={visibleAnnotations}
+            preferences={localPreferences}
+            collapsedPaths={new Set()}
+            onPreferencesChange={(update) => setLocalPreferences((current) => ({ ...current, ...update }))}
+            onCollapsedPathsChange={() => undefined}
+            {...(sourceSession === undefined ? {} : { sourceSession })}
+            virtualized={false}
+          />
+        </div>
       )}
     </div>
   );

@@ -9,12 +9,16 @@ import { readBoundedArtifact } from "../services/walkthrough-artifact-reader";
 const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
 const MAX_TITLE_LENGTH = 200;
-const MAX_FOCUS_LENGTH = 2_000;
+// Workflow output bounds: the model must emit genuinely short summaries. These
+// are tighter than the persisted domain/renderer schemas (4,000/2,000), which
+// stay unchanged so retained walkthroughs written before this bound remain
+// readable without silent truncation.
+const MAX_FOCUS_LENGTH = 320;
 const MAX_CHAPTERS = 12;
 const MAX_SECTIONS = 32;
 const MAX_SECTION_TITLE_LENGTH = 160;
 const MAX_CHAPTER_TITLE_LENGTH = 80;
-const MAX_PROSE_LENGTH = 4_000;
+const MAX_PROSE_LENGTH = 320;
 const MAX_HUNKS_PER_SECTION = 32;
 const MAX_HUNK_ALIAS_LENGTH = 16;
 const MAX_TOTAL_SECTIONS = 32;
@@ -77,7 +81,7 @@ export function parseWalkthroughOutput(
 
 const walkthroughAgent = defineAgent(() => ({
   instructions:
-    "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result. Explain behavior before consequences and validation, use hunk aliases exactly as supplied, and place mechanical or low-signal changes in Support by leaving them out of primary sections. Never invent a path, line number, hunk alias, or action.",
+    "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result. Write the top-level focus as one or two concise sentences, at most around 300 characters, summarizing the patch's overall behavior without enumerating hunk aliases or paths. Keep each section's prose to one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Explain behavior before consequences and validation, use hunk aliases exactly as supplied, and place mechanical or low-signal changes in Support by leaving them out of primary sections. Never invent a path, line number, hunk alias, or action.",
   model: "opencode-go/deepseek-v4-flash",
   skills: [],
 }));
@@ -143,9 +147,10 @@ function composeWalkthroughPrompt(input: {
   return [
     "Generate a read-only walkthrough for the supplied immutable patch.",
     "The persistent reader uses an ordered chapter rail and continuous reading surface; do not return a linear picker or wizard state.",
+    "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
     "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
     `Create at most ${targetSections} primary sections. Each chapter should cite the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
-    "Set citationVersion to 2. For every cited alias, name that hunk's exact repo-relative path in the section prose. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
+    "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
     `Profile ${input.input.profileId} and session ${input.input.sessionId} are provenance only; do not repeat them in prose.`,
     "HUNK ALIAS MANIFEST:",
     input.manifest.map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`).join("\n"),

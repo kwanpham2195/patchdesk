@@ -29,7 +29,7 @@ test("canonical Review entry opens the review workbench", async ({ page }) => {
     await page.addInitScript((id) => window.localStorage.setItem("patchdesk.destination", `workbench:${id}`), seeded.reviewId);
     await page.goto(origin(renderer));
     await expect(page.getByRole("heading", { name: "Persisted review result" })).toBeVisible();
-    await expect(page.getByLabel("Review surfaces").getByRole("tab", { name: "Files" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Insights" })).toBeVisible();
     await expect(page.getByText(/^Session /)).toHaveCount(0);
     const diff = page.getByLabel("Review diff");
     await expect(diff).toBeVisible();
@@ -116,7 +116,7 @@ test("browser capability reaches every canonical Review route through the deskto
   } finally { await page.close(); if (noCapabilityPage !== undefined) await noCapabilityPage.close(); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 
-test("normal dashboard opens a seeded completed workbench with publication preview", async ({ page }) => {
+test("normal dashboard opens a seeded completed workbench with the draft dock hidden", async ({ page }) => {
   const renderer = await serve(); const root = await mkdtemp(join(tmpdir(), "patchdesk-complete-")); let api: LocalApiServer | undefined;
   try {
     const paths = PatchdeskPaths.forTest(root);
@@ -130,9 +130,7 @@ test("normal dashboard opens a seeded completed workbench with publication previ
     await page.goto(origin(renderer));
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem("patchdesk.destination"))).toBe(`workbench:${seeded.reviewId}`);
     await expect(page.getByRole("main")).toContainText("Persisted review result");
-    await page.getByRole("button", { name: /Review draft/ }).click();
-    await expect(page.getByRole("heading", { name: "Review batch" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Preview publication" })).toBeVisible();
+    await expect(page.locator("[data-review-workbench-draft-dock]")).toBeHidden();
   } finally { await page.close(); await new Promise((resolve) => setTimeout(resolve, 25)); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });
 

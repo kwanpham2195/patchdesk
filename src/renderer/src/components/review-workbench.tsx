@@ -15,7 +15,6 @@ import { useCommitDiff } from "../hooks/use-commit-diff";
 import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type ReviewFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
@@ -287,89 +286,92 @@ export function ReviewWorkbench({
         </div>
       </header>
 
-      <Tabs value={primarySurface} onValueChange={(value) => { if (value === "files" || value === "insights") setPrimarySurface(value); }} className="flex min-h-0 flex-1 flex-col" data-review-workbench-primary>
-        <TabsList aria-label="Review surfaces" className="mx-4 mt-3 shrink-0">
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="insights">Insights</TabsTrigger>
-        </TabsList>
-        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden" keepMounted>
-          {model.fullPatch === undefined ? (
-            <div className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</div>
-          ) : (
-            <div data-review-diff-layout={navigatorVisible ? "with-navigator" : "collapsed-navigator"} className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}>
-              {navigatorVisible ? <ReviewNavigator
-                patch={model.fullPatch}
-                commits={model.commits}
-                findings={findings}
-                section={section}
-                {...(selectedPath === undefined ? {} : { selectedPath })}
-                {...(selectedFinding === undefined ? {} : { selectedFindingId: selectedFinding.id })}
-                {...(activePath === undefined ? {} : { activePath })}
-                {...(selectedCommitSha === undefined ? {} : { selectedCommitSha })}
-                onSectionChange={selectSection}
-                onFileSelect={(path) => { setSection("files"); setSelectedFinding(undefined); setSelectedPath(path); setActivePath(path); }}
-                onFindingSelect={selectFinding}
-                onCommitSelect={selectCommit}
-                onCollapse={() => setNavigatorVisible(false)}
-              /> : (
-                <div className="flex items-start justify-center pt-2">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={<Button size="icon-sm" variant="outline" onClick={() => setNavigatorVisible(true)} aria-label="Show review navigator" />}
-                    >
-                      <PanelLeftOpen />
-                    </TooltipTrigger>
-                    <TooltipContent>Show review navigator</TooltipContent>
-                  </Tooltip>
+      <div
+        className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+        data-review-workbench-content
+      >
+          {primarySurface === "files" ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {model.fullPatch === undefined ? (
+                <div className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</div>
+              ) : (
+                <div data-review-diff-layout={navigatorVisible ? "with-navigator" : "collapsed-navigator"} className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}>
+                  {navigatorVisible ? <ReviewNavigator
+                    patch={model.fullPatch}
+                    commits={model.commits}
+                    findings={findings}
+                    section={section}
+                    {...(selectedPath === undefined ? {} : { selectedPath })}
+                    {...(selectedFinding === undefined ? {} : { selectedFindingId: selectedFinding.id })}
+                    {...(activePath === undefined ? {} : { activePath })}
+                    {...(selectedCommitSha === undefined ? {} : { selectedCommitSha })}
+                    onSectionChange={selectSection}
+                    onFileSelect={(path) => { setSection("files"); setSelectedFinding(undefined); setSelectedPath(path); setActivePath(path); }}
+                    onFindingSelect={selectFinding}
+                    onCommitSelect={selectCommit}
+                    onCollapse={() => setNavigatorVisible(false)}
+                  /> : (
+                    <div className="flex items-start justify-center pt-2">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<Button size="icon-sm" variant="outline" onClick={() => setNavigatorVisible(true)} aria-label="Show review navigator" />}
+                        >
+                          <PanelLeftOpen />
+                        </TooltipTrigger>
+                        <TooltipContent>Show review navigator</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                  <div className="min-h-0 min-w-0">
+                    {selectedCommitSha !== undefined && commitDiffState._tag === "Loading" ? (
+                      <p className="p-6 text-sm text-muted-foreground" role="status">Loading commit diff…</p>
+                    ) : displayedPatch === undefined ? (
+                      <p className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</p>
+                    ) : (
+                      <>
+                      {selectedFinding !== undefined && selectedCommitSha === undefined && analysisIsCurrent ? (
+                        <FindingFocusHeader
+                          finding={selectedFinding}
+                          {...(actions.addFinding === undefined ? {} : { onAdd: actions.addFinding })}
+                          {...(actions.dismissFinding === undefined ? {} : { onDismiss: actions.dismissFinding })}
+                        />
+                      ) : null}
+                      <DiffWorkbench
+                        key={selectedCommitSha ?? model.revision.reviewedHeadSha}
+                        patch={displayedPatch}
+                        {...(selectedCommitSha === undefined ? { sourceSession: { profileId: model.session.key.profileId, sessionId: model.session.id } } : {})}
+                        {...(selectedFindingLocation === undefined || selectedCommitSha !== undefined ? {} : { finding: selectedFindingLocation })}
+                        {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: (path: string) => { setSelectedPath(path); setActivePath(path); } })}
+                        {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
+                        {...(selectedCommitSha === undefined ? { annotations } : {})}
+                        {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
+                        hideFileNavigation
+                        surfaceAction={<Button variant="outline" size="sm" onClick={() => setPrimarySurface("insights")}>Insights</Button>}
+                        {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}
+                        className="min-h-0 h-full"
+                        fillViewport={false}
+                        preferences={preferences}
+                        onPreferencesChange={updatePreferences}
+                      />
+                      </>
+                    )}
+                    {commitDiffError ? <p role="alert" className="border-t px-4 py-2 text-sm text-destructive">This commit diff could not be loaded.</p> : null}
+                  </div>
                 </div>
               )}
-              <div className="min-h-0 min-w-0">
-                {selectedCommitSha !== undefined && commitDiffState._tag === "Loading" ? (
-                  <p className="p-6 text-sm text-muted-foreground" role="status">Loading commit diff…</p>
-                ) : displayedPatch === undefined ? (
-                  <p className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</p>
-                ) : (
-                  <>
-                  {selectedFinding !== undefined && selectedCommitSha === undefined && analysisIsCurrent ? (
-                    <FindingFocusHeader
-                      finding={selectedFinding}
-                      {...(actions.addFinding === undefined ? {} : { onAdd: actions.addFinding })}
-                      {...(actions.dismissFinding === undefined ? {} : { onDismiss: actions.dismissFinding })}
-                    />
-                  ) : null}
-                  <DiffWorkbench
-                    key={selectedCommitSha ?? model.revision.reviewedHeadSha}
-                    patch={displayedPatch}
-                    {...(selectedCommitSha === undefined ? { sourceSession: { profileId: model.session.key.profileId, sessionId: model.session.id } } : {})}
-                    {...(selectedFindingLocation === undefined || selectedCommitSha !== undefined ? {} : { finding: selectedFindingLocation })}
-                    {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: (path: string) => { setSelectedPath(path); setActivePath(path); } })}
-                    {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
-                    {...(selectedCommitSha === undefined ? { annotations } : {})}
-                    {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
-                    hideFileNavigation
-                    {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}
-                    className="min-h-0 h-full"
-                    fillViewport={false}
-                    preferences={preferences}
-                    onPreferencesChange={updatePreferences}
-                  />
-                  </>
-                )}
-                {commitDiffError ? <p role="alert" className="border-t px-4 py-2 text-sm text-destructive">This commit diff could not be loaded.</p> : null}
-              </div>
+            </div>
+          ) : (
+            <div data-review-workbench-insights className="min-h-0 flex-1 overflow-hidden p-4">
+              {slots.insights}
             </div>
           )}
-        </TabsContent>
-        <TabsContent value="insights" className="min-h-0 flex-1 overflow-auto p-6" keepMounted>
-          {slots.insights}
-        </TabsContent>
-      </Tabs>
+      </div>
 
-      <div ref={feedbackRegionRef} tabIndex={-1} className="min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none" data-review-workbench-feedback>
+      <div ref={feedbackRegionRef} tabIndex={-1} className="hidden min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none" data-review-workbench-feedback>
         {slots.publishedFeedback}
         {slots.mergeAction}
       </div>
-      <div className="flex min-h-0 shrink-0 flex-col" data-review-workbench-draft-dock>{slots.draftDock}</div>
+      <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
       <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} />
 

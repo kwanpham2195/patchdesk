@@ -133,7 +133,7 @@ export function installDesignBridge(scenarioId: string | undefined): void {
   );
   let appearance: "system" | "light" | "dark" =
     requestedAppearance === "light" ? "light" : "dark";
-  let diffTheme = { light: "pierre-light", dark: "pierre-dark" };
+  let diffTheme = { light: "github-light", dark: "github-dark" };
   const api: PatchdeskDesktopApi = {
     request: async (input) => {
       if ("operation" in input) return operationResponse(input);

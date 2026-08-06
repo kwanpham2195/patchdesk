@@ -9,25 +9,15 @@ import {
 
 import {
   ArrowLeft,
-  BookOpenCheck,
   CheckCircle2,
   CircleAlert,
   ChevronDown,
-  FileText,
   Square,
-  Star,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -37,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
+import { cn } from "@/lib/utils";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
@@ -84,15 +75,9 @@ type NarrativeWalkthroughModel = {
 };
 
 export type NarrativeWalkthroughActions = {
-  readonly onBackToFiles?: () => void;
   readonly onMarkSectionReviewed: (sectionId: string) => void;
   readonly onMarkSupportReviewed: () => void;
   readonly onSelectSection: (sectionId: string) => void;
-};
-
-export type NarrativeWalkthroughRefAction = {
-  readonly focusBackToFiles?: () => void;
-  readonly focusCurrentSection: () => void;
 };
 
 export function NarrativeWalkthrough({
@@ -100,7 +85,6 @@ export function NarrativeWalkthrough({
   reviewedSectionIds,
   supportReviewed,
   currentSectionId,
-  onActionRef,
   actions,
   preferences,
   rawPatch,
@@ -114,7 +98,6 @@ export function NarrativeWalkthrough({
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
-  readonly onActionRef?: (ref: NarrativeWalkthroughRefAction) => void;
   readonly actions: NarrativeWalkthroughActions;
   readonly preferences?: ReviewViewPreferences;
 }): React.JSX.Element {
@@ -141,20 +124,10 @@ export function NarrativeWalkthrough({
   const activeSection: NarrativeSection =
     sections[sectionIndex] ?? fallbackSection ?? nullSection();
   const [supportOpen, setSupportOpen] = useState(false);
-  const backToFilesButtonRef = useRef<HTMLButtonElement>(null);
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
-
-  useEffect(() => {
-    if (onActionRef === undefined) return;
-    onActionRef({
-      ...(actions.onBackToFiles === undefined ? {} : {
-        focusBackToFiles: () =>
-          backToFilesButtonRef.current?.focus({ preventScroll: false }),
-      }),
-      focusCurrentSection: () =>
-        sectionHeadingRef.current?.focus({ preventScroll: false }),
-    });
-  }, [actions.onBackToFiles, onActionRef, activeSection.id]);
+  const sectionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   const reviewedSet = useMemo(
     () => new Set(reviewedSectionIds),
@@ -168,9 +141,11 @@ export function NarrativeWalkthrough({
   }, []);
 
   const focusHeadingAfterMoveRef = useRef(false);
+  const scrollSectionAfterMoveRef = useRef(false);
   const selectSection = useCallback(
     (sectionId: string) => {
       focusHeadingAfterMoveRef.current = true;
+      scrollSectionAfterMoveRef.current = true;
       setLocalCurrentSectionId(sectionId);
       actions.onSelectSection(sectionId);
     },
@@ -215,20 +190,24 @@ export function NarrativeWalkthrough({
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        if (actions.onBackToFiles === undefined) {
-          focusHeading();
-        } else {
-          backToFilesButtonRef.current?.focus();
-        }
+        focusHeading();
       }
     },
-    [actions.onBackToFiles, canGoNext, canGoPrev, focusHeading, goToOffset],
+    [canGoNext, canGoPrev, focusHeading, goToOffset],
   );
 
   useEffect(() => {
-    if (!focusHeadingAfterMoveRef.current) return;
-    focusHeadingAfterMoveRef.current = false;
-    focusHeading();
+    if (!focusHeadingAfterMoveRef.current && !scrollSectionAfterMoveRef.current)
+      return;
+    const sectionButton = sectionButtonRefs.current[activeSection.id];
+    if (scrollSectionAfterMoveRef.current) {
+      scrollSectionAfterMoveRef.current = false;
+      sectionButton?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    }
+    if (focusHeadingAfterMoveRef.current) {
+      focusHeadingAfterMoveRef.current = false;
+      focusHeading();
+    }
   }, [activeSection.id, focusHeading]);
 
   const allHunks = useMemo(
@@ -238,90 +217,105 @@ export function NarrativeWalkthrough({
     ],
     [sections, walkthrough.support.hunks],
   );
+  const reviewedCount = sections.filter((section) =>
+    reviewedSet.has(section.id),
+  ).length;
 
   return (
     <div
       data-walkthrough-takeover
-      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-walkthrough-layout="docked"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-card px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {actions.onBackToFiles === undefined ? null : (
-            <Button
-              ref={backToFilesButtonRef}
-              variant="ghost"
-              size="sm"
-              data-testid="back-to-files"
-              aria-label="Back to files"
-              onClick={actions.onBackToFiles}
-            >
-              <ArrowLeft />
-              Back to files
-            </Button>
-          )}
-          {actions.onBackToFiles === undefined ? null : <Separator orientation="vertical" className="h-5" />}
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">
-              Walkthrough · {walkthrough.title}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Focus: {walkthrough.focus}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline">
-          <BookOpenCheck />
-          Reading
-        </Badge>
-      </header>
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 min-[1280px]:grid-cols-[16rem_minmax(0,1fr)]">
+      <div
+        data-walkthrough-stage
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col min-[1280px]:grid min-[1280px]:grid-cols-[16rem_minmax(0,1fr)]"
+      >
         <aside
           role="region"
           aria-label="Walkthrough chapters"
-          className="min-w-0 overflow-auto border-r bg-card p-3"
+          data-walkthrough-chapter-dock
+          className="max-h-40 min-h-0 min-w-0 shrink-0 overflow-y-auto border-b bg-card px-3 py-2 min-[1280px]:max-h-none min-[1280px]:border-r min-[1280px]:border-b-0"
         >
-          <h2 className="px-1 text-sm font-semibold">Chapters</h2>
-          <p className="mt-1 px-1 text-xs text-muted-foreground">
-            Persistent rail; arrow keys move sections.
-          </p>
-          <Separator className="my-3" />
-          <ol className="flex flex-col gap-1" aria-label="Walkthrough sections">
-            {walkthrough.chapters.flatMap((chapter) =>
-              chapter.sections.map((section) => {
-                const active = section.id === activeSection.id;
-                const reviewed = reviewedSet.has(section.id);
-                return (
-                  <li key={section.id}>
-                    <Button
-                      type="button"
-                      variant={active ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-auto w-full justify-between whitespace-normal px-2 py-2 text-left"
-                      aria-current={active ? "true" : undefined}
-                      onClick={() => selectSection(section.id)}
-                    >
-                      <span className="min-w-0">
-                        <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                          {chapter.title}
-                        </span>
-                        <span className="block text-sm font-medium leading-5">
-                          {section.title}
-                        </span>
-                      </span>
-                      {reviewed ? (
-                        <Badge variant="outline" aria-label="Reviewed">
-                          reviewed
-                        </Badge>
-                      ) : null}
-                    </Button>
-                  </li>
-                );
-              }),
-            )}
+          <div className="flex items-baseline justify-between gap-2 px-1">
+            <h2 className="text-sm font-semibold">Chapters</h2>
+            <span
+              role="status"
+              aria-label="Walkthrough progress"
+              data-walkthrough-progress
+              className="text-[11px] tabular-nums text-muted-foreground"
+            >
+              {sectionIndex + 1}/{sections.length} · {reviewedCount} of{" "}
+              {sections.length} section
+              {sections.length === 1 ? "" : "s"} reviewed
+            </span>
+          </div>
+          <Separator className="my-1.5" />
+          <ol
+            className="flex min-w-0 flex-col gap-3"
+            aria-label="Walkthrough sections"
+          >
+            {walkthrough.chapters.map((chapter) => (
+              <li key={chapter.id} className="min-w-0">
+                <h3
+                  className="truncate px-1 text-[11px] font-semibold text-muted-foreground"
+                  title={chapter.title}
+                >
+                  {chapter.title}
+                </h3>
+                <ol
+                  className="mt-1 flex min-w-0 flex-col gap-0.5 border-l border-border/60 pl-2"
+                  aria-label={`${chapter.title} sections`}
+                >
+                  {chapter.sections.map((section, chapterSectionIndex) => {
+                    const active = section.id === activeSection.id;
+                    const reviewed = reviewedSet.has(section.id);
+                    return (
+                      <li key={section.id} className="min-w-0">
+                        <Button
+                          ref={(node) => {
+                            sectionButtonRefs.current[section.id] = node;
+                          }}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "h-auto min-h-7 min-w-0 w-full justify-start gap-2 rounded-md px-2 py-1 text-left text-xs leading-4",
+                            active &&
+                              "border-l-2 border-primary bg-muted pl-[6px] font-semibold text-foreground",
+                          )}
+                          aria-current={active ? "true" : undefined}
+                          onClick={() => selectSection(section.id)}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
+                          >
+                            {String(chapterSectionIndex + 1).padStart(2, "0")}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {section.title}
+                          </span>
+                          {reviewed ? (
+                            <Badge
+                              variant="outline"
+                              className="h-4 px-1 text-[10px]"
+                              aria-label="Reviewed"
+                            >
+                              done
+                            </Badge>
+                          ) : null}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </li>
+            ))}
           </ol>
-          <Separator className="my-3" />
+          <Separator className="my-1.5" />
           <Collapsible open={supportOpen} onOpenChange={setSupportOpen}>
             <CollapsibleTrigger
               render={
@@ -329,7 +323,7 @@ export function NarrativeWalkthrough({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-between px-1"
+                  className="h-7 w-full justify-between px-1 text-xs"
                 />
               }
             >
@@ -342,14 +336,16 @@ export function NarrativeWalkthrough({
             </CollapsibleTrigger>
             <CollapsibleContent motion="disclosure" className="pt-2">
               <p className="walkthrough-support-copy px-1 text-xs">
-                {walkthrough.support.hunks.length} supporting or mechanical hunk{walkthrough.support.hunks.length === 1 ? "" : "s"} outside the reading path.
+                {walkthrough.support.hunks.length} supporting or mechanical hunk
+                {walkthrough.support.hunks.length === 1 ? "" : "s"} outside the
+                reading path.
               </p>
               <ul
-                className="walkthrough-support-copy mt-2 max-h-48 space-y-1 overflow-y-auto px-1 text-xs"
+                className="walkthrough-support-copy mt-2 max-h-48 overflow-y-auto px-1 text-xs"
                 aria-label="Support hunks"
               >
                 {walkthrough.support.hunks.map((hunk) => (
-                  <li key={hunk.id} className="break-all">
+                  <li key={hunk.id} className="break-all py-0.5">
                     {hunk.id} · {hunk.path}
                   </li>
                 ))}
@@ -371,12 +367,13 @@ export function NarrativeWalkthrough({
         <ScrollArea
           role="region"
           aria-label="Walkthrough reading surface"
-          className="min-h-0"
+          data-walkthrough-reader
+          className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
         >
           <article
             aria-label={`Section: ${activeSection.title}`}
             data-walkthrough-section-id={activeSection.id}
-            className="flex min-h-0 min-w-0 flex-col gap-3 p-4"
+            className="flex min-h-full min-w-0 flex-col gap-3 p-4"
           >
             <h3
               ref={sectionHeadingRef}
@@ -404,15 +401,21 @@ export function NarrativeWalkthrough({
               <Alert>
                 <AlertTitle>Diff citations need regeneration.</AlertTitle>
                 <AlertDescription>
-                  This retained Walkthrough predates verified hunk aliases, so Patchdesk keeps its prose but withholds ungrounded diff links. Run it again to rebuild evidence from the alias manifest.
+                  This retained Walkthrough predates verified hunk aliases, so
+                  Patchdesk keeps its prose but withholds ungrounded diff links.
+                  Run it again to rebuild evidence from the alias manifest.
                 </AlertDescription>
               </Alert>
             )}
             {activeSection.hunks.length === 0 ? (
               <Alert>
-                <AlertTitle>This section has no verified supporting hunks.</AlertTitle>
+                <AlertTitle>
+                  This section has no verified supporting hunks.
+                </AlertTitle>
                 <AlertDescription>
-                  Its prose is retained, while Patchdesk routes source hunks to Support until a regenerated Walkthrough verifies the citations.
+                  Its prose is retained, while Patchdesk routes source hunks to
+                  Support until a regenerated Walkthrough verifies the
+                  citations.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -436,9 +439,7 @@ export function NarrativeWalkthrough({
                 variant={
                   reviewedSet.has(activeSection.id) ? "secondary" : "outline"
                 }
-                onClick={() =>
-                  actions.onMarkSectionReviewed(activeSection.id)
-                }
+                onClick={() => actions.onMarkSectionReviewed(activeSection.id)}
                 disabled={reviewedSet.has(activeSection.id)}
                 aria-pressed={reviewedSet.has(activeSection.id)}
               >
@@ -477,34 +478,20 @@ export function NarrativeWalkthrough({
               </span>
             </div>
             <Separator />
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  <FileText />
-                  Support coverage
-                </CardTitle>
-                <CardDescription>
-                  {walkthrough.support.hunks.length} hunk
-                  {walkthrough.support.hunks.length === 1 ? "" : "s"} outside the primary reading path.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Support stays compact so it does not interrupt the walkthrough. Browse its bounded list in the chapter rail, then return to Files for full diff navigation.
-                </p>
-              </CardContent>
-            </Card>
+            <p
+              className="text-xs text-muted-foreground"
+              aria-label="Support coverage"
+            >
+              Support stays compact so it does not interrupt the Walkthrough.
+              Browse its bounded list in the chapter rail, then return to Files
+              for full diff navigation.
+            </p>
             <p
               className="text-xs text-muted-foreground"
               aria-label="Walkthrough copy"
             >
               {walkthroughCopy("ready").reassurance}
             </p>
-            <Badge variant="secondary">
-              <Star />
-              {reviewedSet.size} of {sections.length} section
-              {sections.length === 1 ? "" : "s"} reviewed
-            </Badge>
           </article>
         </ScrollArea>
       </div>

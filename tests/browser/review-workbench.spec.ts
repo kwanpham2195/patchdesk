@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
-test("production walkthrough stays manual, supports review actions, and returns to Files", async ({
+test("production walkthrough stays manual, supports review actions, and keeps the reader chrome quiet", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -28,10 +28,10 @@ test("production walkthrough stays manual, supports review actions, and returns 
       page.locator("[data-walkthrough-generate-requests]"),
     ).toHaveAttribute("data-walkthrough-generate-requests", "1");
 
-    const filesDiff = page.getByRole("region", { name: "Review diff" });
-    const selectedPath = await filesDiff.getAttribute("data-selected-path");
     await page.getByRole("button", { name: "Open walkthrough" }).click();
-    await expect(page.getByTestId("back-to-files")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back to files" })).toHaveCount(0);
+    await expect(page.getByText("Citations verified")).toHaveCount(0);
+    await expect(page.getByText("Reading")).toHaveCount(0);
     await expect(
       page.getByRole("region", { name: "Walkthrough chapters" }),
     ).toBeVisible();
@@ -71,18 +71,11 @@ test("production walkthrough stays manual, supports review actions, and returns 
       page.getByRole("button", { name: "Next section" }),
     ).toBeDisabled();
 
-    await page.getByRole("button", { name: "Back to files" }).click();
-    await expect(page.getByTestId("back-to-files")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Open walkthrough" }),
-    ).toBeFocused();
-    await expect(filesDiff).toHaveAttribute(
-      "data-selected-path",
-      selectedPath ?? "",
-    );
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Generate walkthrough" })).toBeVisible();
     await expect(
       page.locator("[data-walkthrough-generate-requests]"),
-    ).toHaveAttribute("data-walkthrough-generate-requests", "1");
+    ).toHaveAttribute("data-walkthrough-generate-requests", "0");
   } finally {
     await close(server);
   }
@@ -610,7 +603,7 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: "Files", exact: true }),
-      ).toBeHidden();
+      ).toHaveCount(0);
       const overflow = await page.evaluate(
         () =>
           document.documentElement.scrollWidth -
@@ -649,11 +642,10 @@ test("long workbench content keeps full values accessible without viewport overf
       await expect(heading).toHaveAttribute("title", title);
       await expect(
         page.getByText(
-          "centraldigital-platform-engineering-maintainers/patchdesk-desktop-review-workbench-with-a-long-repository-name#42",
+          "centraldigital-platform-engineering-maintainers/patchdesk-desktop-review-workbench-with-a-long-repository-name",
           { exact: false },
         ),
       ).toBeVisible();
-      await page.getByRole("tab", { name: "Files", exact: true }).first().click();
       await expect(
         page.getByRole("treeitem", {
           name: "authoritative-review-write-coordination-and-recovery-surface.ts",

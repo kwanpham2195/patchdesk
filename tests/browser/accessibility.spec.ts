@@ -188,7 +188,7 @@ test("Settings modal has a named, trapped, independently scrollable surface", as
   await expect(opener).toBeFocused();
 });
 
-test("walkthrough takeover exposes rail, Reviewed controls, and Back to files focus", async ({
+test("walkthrough takeover exposes rail, Reviewed controls, and quiet reader chrome", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "light" });
@@ -243,9 +243,11 @@ test("walkthrough takeover exposes rail, Reviewed controls, and Back to files fo
   await page.waitForTimeout(50);
   await forceLightAppearance(page);
   await expect(await seriousProductViolations(page)).toEqual([]);
-  await page.getByRole("button", { name: "Back to files" }).click();
+  const takeover = page.locator("[data-walkthrough-takeover]");
+  await takeover.focus();
+  await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Open walkthrough" }),
+    page.getByRole("heading", { name: "Follow the changed path" }),
   ).toBeFocused();
 });
 
@@ -270,7 +272,7 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
   await expect(
-    page.getByRole("tab", { name: "Files", exact: true }).first(),
+    page.getByRole("button", { name: "Insights" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "PR overview" }),

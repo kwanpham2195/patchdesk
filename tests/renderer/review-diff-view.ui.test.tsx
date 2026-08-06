@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+
+vi.mock("@pierre/diffs", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    preloadHighlighter: vi.fn(async () => undefined),
+  };
+});
 
 afterEach(() => cleanup());
 
@@ -83,6 +91,51 @@ describe("review diff hydration", () => {
     } finally {
       if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
+    }
+  });
+
+  it("preloads walkthrough languages and active themes before the non-virtualized diff", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      const { preloadHighlighter } = await import("@pierre/diffs");
+      const preload = vi.mocked(preloadHighlighter);
+      const patch =
+        "diff --git a/src/main.go b/src/main.go\n--- a/src/main.go\n+++ b/src/main.go\n@@ -1 +1,2 @@\n package main\n+func main() {}\n";
+      const parsed = parseReviewDiff(patch);
+      render(
+        <ReviewDiffView
+          patch={patch}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath="src/main.go"
+          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          virtualized={false}
+        />,
+      );
+      await waitFor(() => expect(preload).toHaveBeenCalled());
+      expect(preload.mock.calls[0]?.[0]).toEqual({
+        langs: ["go"],
+        themes: ["github-dark", "github-light"],
+      });
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
     }
   });
 });

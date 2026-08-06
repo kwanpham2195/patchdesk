@@ -13,18 +13,20 @@ import {
 afterEach(() => window.localStorage.clear());
 
 describe("diff theme preferences", () => {
-  it("defaults to the installed Pierre light and dark themes", () => {
+  it("defaults to the GitHub light and dark themes", () => {
     expect(loadDiffThemePreferences()).toEqual({
-      light: "pierre-light",
-      dark: "pierre-dark",
+      light: "github-light",
+      dark: "github-dark",
     });
+    expect(DIFF_LIGHT_THEMES.map((theme) => theme.id)).toContain("github-light");
+    expect(DIFF_DARK_THEMES.map((theme) => theme.id)).toContain("github-dark");
   });
 
   it("accepts every bundled light and dark theme independently", () => {
-    expect(DIFF_LIGHT_THEMES.map((theme) => theme.id)).toContain("github-light");
+    expect(DIFF_LIGHT_THEMES.map((theme) => theme.id)).toContain("one-light");
     expect(DIFF_DARK_THEMES.map((theme) => theme.id)).toContain("tokyo-night");
-    expect(parseDiffThemePreferences({ light: "github-light", dark: "tokyo-night" })).toEqual({
-      light: "github-light",
+    expect(parseDiffThemePreferences({ light: "one-light", dark: "tokyo-night" })).toEqual({
+      light: "one-light",
       dark: "tokyo-night",
     });
   });
@@ -32,7 +34,36 @@ describe("diff theme preferences", () => {
   it("rejects unknown persisted theme names", () => {
     expect(
       parseDiffThemePreferences({ light: "not-a-theme", dark: "also-not-a-theme" }),
-    ).toEqual({ light: "pierre-light", dark: "pierre-dark" });
+    ).toEqual({ light: "github-light", dark: "github-dark" });
+  });
+
+  it("adopts the GitHub defaults for the retired Pierre default pair only", () => {
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "pierre-light", dark: "pierre-dark" }),
+    );
+    expect(loadDiffThemePreferences()).toEqual({
+      light: "github-light",
+      dark: "github-dark",
+    });
+
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "pierre-light", dark: "tokyo-night" }),
+    );
+    expect(loadDiffThemePreferences()).toEqual({
+      light: "pierre-light",
+      dark: "tokyo-night",
+    });
+
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "one-light", dark: "pierre-dark" }),
+    );
+    expect(loadDiffThemePreferences()).toEqual({
+      light: "one-light",
+      dark: "pierre-dark",
+    });
   });
 
   it("reads a valid v1 family without mutating legacy storage", () => {
@@ -46,8 +77,8 @@ describe("diff theme preferences", () => {
 
     window.localStorage.clear();
     expect(loadDiffThemePreferences()).toEqual({
-      light: "pierre-light",
-      dark: "pierre-dark",
+      light: "github-light",
+      dark: "github-dark",
     });
     expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
   });

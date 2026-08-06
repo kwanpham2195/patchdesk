@@ -25,14 +25,17 @@ describe("narrative walkthrough diff block", () => {
     const block = document.querySelector('[data-walkthrough-diff-block]');
     expect(block).toBeTruthy();
     expect(block?.getAttribute("data-walkthrough-diff-block")).toBe("block-1");
+    expect(block?.getAttribute("data-walkthrough-hunk-id")).toBe("h1");
+    expect(document.querySelector('[data-walkthrough-diff-viewport]')?.getAttribute("class")).toContain("overflow-x-auto");
   });
 
-  it("sizes a walkthrough hunk to its content instead of reserving a viewport", () => {
+  it("sizes a walkthrough hunk at natural height so the reader owns scrolling", () => {
     render(<NarrativeWalkthroughDiff blockId="block-size" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
     const diff = screen.getByLabelText("Plain text diff");
-    expect(diff.classList.contains("max-h-[calc(100vh-12rem)]")).toBe(true);
+    expect(diff.classList.contains("max-h-[calc(100vh-12rem)]")).toBe(false);
     expect(diff.classList.contains("h-[calc(100vh-12rem)]")).toBe(false);
     expect(diff.classList.contains("min-h-[32rem]")).toBe(false);
+    expect(diff.classList.contains("overflow-x-auto")).toBe(true);
   });
 
   it("filters the original raw patch to the requested hunk and preserves its file header", () => {

@@ -8,6 +8,9 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  getFiletypeFromFileName,
+  getThemes,
+  preloadHighlighter,
   type CodeViewDiffItem,
   type CodeViewItem,
   type CodeViewLineSelection,
@@ -69,6 +72,22 @@ const DIFF_CODE_METRICS = {
   lineHeight: "20px",
   fontFamily: '"Berkeley Mono", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
+// Pierre derives diff chrome colors from the selected Shiki theme. Some themes
+// use saturated terminal red/green values that produce poor contrast in the
+// dark line gutters, so walkthrough diffs use a small, GitHub-like semantic
+// palette while retaining the selected theme for syntax tokens.
+const WALKTHROUGH_DIFF_COLORS_CSS = `
+:host {
+  --diffs-deletion-color-override: light-dark(#cf222e, #f85149);
+  --diffs-addition-color-override: light-dark(#1a7f37, #3fb950);
+  --diffs-fg-number-deletion-override: light-dark(#cf222e, #ff7b72);
+  --diffs-fg-number-addition-override: light-dark(#1a7f37, #7ee787);
+  --diffs-bg-deletion-override: light-dark(#ffebe9, #3d1d1d);
+  --diffs-bg-addition-override: light-dark(#dafbe1, #1f3a26);
+  --diffs-bg-deletion-emphasis-override: light-dark(rgb(255 129 130 / 0.28), rgb(248 81 73 / 0.22));
+  --diffs-bg-addition-emphasis-override: light-dark(rgb(46 160 67 / 0.28), rgb(46 160 67 / 0.22));
+}
+`;
 const TREE_ORDER_SORT_LIMIT = 256;
 
 export type SelectedDiffRange = {
@@ -365,6 +384,28 @@ function ReviewDiffSurface({
   const browserSupportsPierre =
     typeof CSSStyleSheet !== "undefined" &&
     "replaceSync" in CSSStyleSheet.prototype;
+  // Non-virtualized (walkthrough) cards tokenize on the main thread after a
+  // plain first paint. Preload their file languages and the active themes so
+  // the retained reader shows syntax colors on first paint instead of flashing
+  // uncolored text while each grammar loads.
+  useEffect(() => {
+    if (virtualized || !browserSupportsPierre) return;
+    const langs = Array.from(
+      new Set(
+        parsedFiles
+          .map((file) => getFiletypeFromFileName(file.name))
+          .filter(
+            (lang): lang is string =>
+              lang !== undefined && lang !== "text",
+          ),
+      ),
+    );
+    if (langs.length === 0) return;
+    void preloadHighlighter({
+      langs,
+      themes: getThemes(themePreferences),
+    });
+  }, [browserSupportsPierre, parsedFiles, themePreferences, virtualized]);
   const viewerKey = preferences.fileMode;
   const sourceProfileId = hydrationSourceSession?.profileId;
   const sourceSessionId = hydrationSourceSession?.sessionId;
@@ -740,6 +781,7 @@ function ReviewDiffSurface({
       {!browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
+          virtualized={virtualized}
           {...(selectedRange === undefined ? {} : { selectedRange })}
           {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring, onAuthorLine: beginAccessibleAuthoring })}
         />
@@ -748,11 +790,12 @@ function ReviewDiffSurface({
           <PatchDiff
             patch={selectedPatch}
             disableWorkerPool
-            className="visual-diff max-h-[calc(100vh-12rem)] min-h-0 overflow-auto font-mono"
+            className="visual-diff min-h-0 overflow-x-auto font-mono"
             style={DIFF_CODE_METRICS}
             options={{
               theme: diffThemeFor(themePreferences),
               themeType: appearance,
+              unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
               disableBackground: false,
               diffStyle: preferences.diffStyle,
               overflow: preferences.overflow,
@@ -777,11 +820,12 @@ function ReviewDiffSurface({
           <FileDiff
             fileDiff={selectedFile}
             disableWorkerPool
-            className="visual-diff max-h-[calc(100vh-12rem)] min-h-0 overflow-auto font-mono"
+            className="visual-diff min-h-0 overflow-x-auto font-mono"
             style={DIFF_CODE_METRICS}
             options={{
               theme: diffThemeFor(themePreferences),
               themeType: appearance,
+              unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
               disableBackground: false,
               diffStyle: preferences.diffStyle,
               overflow: preferences.overflow,
@@ -812,7 +856,7 @@ function ReviewDiffSurface({
             items={items.slice(0, loadedCount)}
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
-            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-hidden overflow-y-auto font-mono"
+            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono"
             style={DIFF_CODE_METRICS}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
@@ -904,11 +948,13 @@ type AccessibleLine = {
 function AccessiblePatch({
   patch,
   selectedRange,
+  virtualized,
   localCommentAuthoring,
   onAuthorLine,
 }: {
   readonly patch: string;
   readonly selectedRange?: SelectedDiffRange;
+  readonly virtualized: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly onAuthorLine?: (path: string, line: number, side: "additions" | "deletions") => void;
 }): React.JSX.Element {
@@ -920,7 +966,9 @@ function AccessiblePatch({
   }, [patch, selectedRange]);
   return (
     <div
-      className="max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
+      className={virtualized
+        ? "max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
+        : "min-h-0 overflow-x-auto p-3 font-mono text-[13px] leading-5"}
       style={{
         fontFamily:
           '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',

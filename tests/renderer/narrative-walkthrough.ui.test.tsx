@@ -4,8 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NarrativeWalkthrough, type NarrativeWalkthroughActions } from "../../src/renderer/src/components/narrative-walkthrough";
-import type { NarrativeWalkthrough as NarrativeWalkthroughModel, NarrativeSnapshot } from "../../src/domain/narrative-walkthrough";
+import {
+  NarrativeWalkthrough,
+  type NarrativeWalkthroughActions,
+} from "../../src/renderer/src/components/narrative-walkthrough";
+import type {
+  NarrativeWalkthrough as NarrativeWalkthroughModel,
+  NarrativeSnapshot,
+} from "../../src/domain/narrative-walkthrough";
 
 afterEach(() => {
   cleanup();
@@ -14,7 +20,8 @@ afterEach(() => {
 
 const SNAPSHOT: NarrativeSnapshot = {
   profileId: "cfw" as never,
-  sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456" as never,
+  sessionId:
+    "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456" as never,
   headSha: "2222222222222222222222222222222222222222" as never,
   patchHash: "0000000000000000000000000000000000000000" as never,
 };
@@ -33,7 +40,8 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
           {
             id: "section-1",
             title: "Why this snapshot matters",
-            prose: "The stored patch changes how the recovery path picks its next action.",
+            prose:
+              "The stored patch changes how the recovery path picks its next action.",
             hunkIds: ["h1"],
             hunks: [
               {
@@ -105,9 +113,32 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
   };
 }
 
-function buildActions(overrides: Partial<NarrativeWalkthroughActions> = {}): NarrativeWalkthroughActions {
+function buildLongWalkthrough(): NarrativeWalkthroughModel {
+  const base = buildWalkthrough();
   return {
-    onBackToFiles: vi.fn(),
+    ...base,
+    chapters: [
+      ...base.chapters,
+      {
+        id: "chapter-3",
+        title: "Long review path",
+        sections: Array.from({ length: 8 }, (_, index) => ({
+          id: `long-section-${index + 1}`,
+          title: `Long section ${index + 1}`,
+          prose:
+            "This section keeps the chapter rail long enough to exercise its bounded scroll.",
+          hunkIds: [],
+          hunks: [],
+        })),
+      },
+    ],
+  };
+}
+
+function buildActions(
+  overrides: Partial<NarrativeWalkthroughActions> = {},
+): NarrativeWalkthroughActions {
+  return {
     onMarkSectionReviewed: vi.fn(),
     onMarkSupportReviewed: vi.fn(),
     onSelectSection: vi.fn(),
@@ -116,13 +147,89 @@ function buildActions(overrides: Partial<NarrativeWalkthroughActions> = {}): Nar
 }
 
 describe("narrative walkthrough takeover", () => {
+  it("uses a docked reader layout with grouped navigation and progress", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(
+        <NarrativeWalkthrough
+          walkthrough={buildLongWalkthrough()}
+          reviewedSectionIds={[]}
+          supportReviewed={false}
+          actions={buildActions()}
+        />,
+      );
+
+      expect(
+        document.querySelector('[data-walkthrough-layout="docked"]'),
+      ).toBeTruthy();
+      expect(
+        document.querySelector("[data-walkthrough-chapter-dock]"),
+      ).toBeTruthy();
+      expect(document.querySelector("[data-walkthrough-reader]")).toBeTruthy();
+      expect(
+        document
+          .querySelector("[data-walkthrough-stage]")
+          ?.getAttribute("class"),
+      ).toContain("flex-col");
+      expect(screen.getByRole("heading", { name: "Context" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Behavior" })).toBeTruthy();
+      expect(
+        screen.getByRole("heading", { name: "Long review path" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("status", { name: "Walkthrough progress" })
+          .textContent,
+      ).toContain("0 of 10 sections reviewed");
+
+      const activeSections = screen
+        .getAllByRole("button")
+        .filter((button) => button.getAttribute("aria-current") === "true");
+      expect(activeSections).toHaveLength(1);
+      expect(activeSections[0]?.textContent).toContain(
+        "Why this snapshot matters",
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "How reads stay read-only" }),
+      );
+      expect(
+        screen.getByRole("heading", { name: "How reads stay read-only" }),
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole("button", { name: "How reads stay read-only" })
+          .getAttribute("aria-current"),
+      ).toBe("true");
+      expect(scrollIntoView).toHaveBeenCalled();
+
+      const evidence = screen.queryByRole("button", {
+        name: /Focus evidence h2/,
+      });
+      expect(evidence).toBeNull();
+      expect(screen.queryByText("Patch-only evidence")).toBeNull();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("does not steal focus when the takeover first mounts", () => {
     const opener = document.createElement("button");
     opener.type = "button";
     opener.textContent = "Existing opener";
     document.body.append(opener);
     opener.focus();
-    render(<StrictMode><NarrativeWalkthrough walkthrough={buildWalkthrough()} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} /></StrictMode>);
+    render(
+      <StrictMode>
+        <NarrativeWalkthrough
+          walkthrough={buildWalkthrough()}
+          reviewedSectionIds={[]}
+          supportReviewed={false}
+          actions={buildActions()}
+        />
+      </StrictMode>,
+    );
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
@@ -137,35 +244,52 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
-    expect(screen.getByRole("region", { name: "Walkthrough chapters" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Why this snapshot matters" })).toBeTruthy();
-    expect(screen.getByText("The stored patch changes how the recovery path picks its next action.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Mark section reviewed" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Walkthrough chapters" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Why this snapshot matters" }),
+    ).toBeTruthy();
+    const prose = screen.getByText(
+      "The stored patch changes how the recovery path picks its next action.",
+    );
+    expect(prose).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Mark section reviewed" }),
+    ).toBeTruthy();
     expect(screen.getByText("Support")).toBeTruthy();
   });
 
   it("keeps Support compact and withholds legacy unverified citations", () => {
-    const walkthrough = { ...buildWalkthrough(), citationStatus: "unverified" as const };
-    render(<NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={[]} supportReviewed={false} actions={buildActions()} />);
+    const walkthrough = {
+      ...buildWalkthrough(),
+      citationStatus: "unverified" as const,
+    };
+    render(
+      <NarrativeWalkthrough
+        walkthrough={walkthrough}
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        actions={buildActions()}
+      />,
+    );
     expect(screen.getByText("Diff citations need regeneration.")).toBeTruthy();
     expect(screen.getByText(/Support stays compact/)).toBeTruthy();
     expect(screen.queryByText("@@ -1 +1 @@")).toBeNull();
   });
 
-  it("shows the back to files control and never mutates Files state", () => {
-    const onBackToFiles = vi.fn();
-    const actions = buildActions({ onBackToFiles });
+  it("keeps navigation chrome out of the Walkthrough reader", () => {
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
         supportReviewed={false}
-        actions={actions}
+        actions={buildActions()}
       />,
     );
-    const back = screen.getByRole("button", { name: "Back to files" });
-    fireEvent.click(back);
-    expect(onBackToFiles).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Back to files" })).toBeNull();
+    expect(screen.queryByText("Citations verified")).toBeNull();
+    expect(screen.queryByText("Reading")).toBeNull();
   });
 
   it("moves between sections with Next and Previous controls", () => {
@@ -182,7 +306,9 @@ describe("narrative walkthrough takeover", () => {
     const next = screen.getByRole("button", { name: "Next section" });
     fireEvent.click(next);
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "How reads stay read-only" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "How reads stay read-only" }),
+    );
   });
 
   it("disables Previous at the first section and Next at the last section", () => {
@@ -197,17 +323,40 @@ describe("narrative walkthrough takeover", () => {
         currentSectionId="section-1"
       />,
     );
-    expect((screen.getByRole("button", { name: "Previous section" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Previous section",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Next section" }));
-    expect(screen.getByRole("heading", { name: "How reads stay read-only" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Next section" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Previous section" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      screen.getByRole("heading", { name: "How reads stay read-only" }),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Next section",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Previous section",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("dispatches Mark section reviewed and Mark Support reviewed", () => {
     const onMarkSectionReviewed = vi.fn();
     const onMarkSupportReviewed = vi.fn();
-    const actions = buildActions({ onMarkSectionReviewed, onMarkSupportReviewed });
+    const actions = buildActions({
+      onMarkSectionReviewed,
+      onMarkSupportReviewed,
+    });
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
@@ -216,15 +365,28 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
-    expect(document.querySelector('[data-disclosure-motion="panel"]')).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Mark section reviewed" }));
+    expect(
+      document.querySelector('[data-disclosure-motion="panel"]'),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mark section reviewed" }),
+    );
     expect(onMarkSectionReviewed).toHaveBeenCalledWith("section-1");
     const supportToggle = screen.getByRole("button", { name: "Support" });
-    expect(supportToggle.querySelector('[data-disclosure-motion="chevron"]')?.tagName).toBe("svg");
+    expect(
+      supportToggle.querySelector('[data-disclosure-motion="chevron"]')
+        ?.tagName,
+    ).toBe("svg");
     fireEvent.click(supportToggle);
-    expect(document.querySelector('[data-disclosure-motion="panel"]')).not.toBeNull();
-    expect(document.querySelector('[data-disclosure-motion="chevron"]')).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Mark Support reviewed" }));
+    expect(
+      document.querySelector('[data-disclosure-motion="panel"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-disclosure-motion="chevron"]'),
+    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mark Support reviewed" }),
+    );
     expect(onMarkSupportReviewed).toHaveBeenCalledTimes(1);
   });
 
@@ -251,7 +413,11 @@ describe("narrative walkthrough takeover", () => {
     const base = buildWalkthrough();
     const firstChapter = base.chapters[0];
     const secondChapter = base.chapters[1];
-    if (firstChapter === undefined || secondChapter === undefined || secondChapter.sections[0] === undefined) {
+    if (
+      firstChapter === undefined ||
+      secondChapter === undefined ||
+      secondChapter.sections[0] === undefined
+    ) {
       throw new Error("Walkthrough fixture requires two chapters");
     }
     const next = secondChapter.sections[0];
@@ -294,8 +460,10 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
-    const diffs = document.querySelectorAll('[data-walkthrough-diff-block]');
-    const ids = Array.from(diffs).map((node) => node.getAttribute('data-walkthrough-diff-block') ?? '');
+    const diffs = document.querySelectorAll("[data-walkthrough-diff-block]");
+    const ids = Array.from(diffs).map(
+      (node) => node.getAttribute("data-walkthrough-diff-block") ?? "",
+    );
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -309,9 +477,11 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
-    const diffs = document.querySelectorAll('[data-walkthrough-diff-block]');
+    const diffs = document.querySelectorAll("[data-walkthrough-diff-block]");
     expect(diffs.length).toBeGreaterThan(0);
-    const section = screen.getByRole("region", { name: "Walkthrough reading surface" });
+    const section = screen.getByRole("region", {
+      name: "Walkthrough reading surface",
+    });
     const firstDiff = diffs.item(0);
     expect(firstDiff).not.toBeNull();
     if (firstDiff !== null) expect(section.contains(firstDiff)).toBe(true);
@@ -328,26 +498,30 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
-    const takeover = container.querySelector('[data-walkthrough-takeover]') as HTMLElement;
+    const takeover = container.querySelector(
+      "[data-walkthrough-takeover]",
+    ) as HTMLElement;
     takeover.focus();
     await userEvent.keyboard("{k}");
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
   });
 
-  it("returns focus to the back to files button on Escape without closing", () => {
-    const onBackToFiles = vi.fn();
-    const actions = buildActions({ onBackToFiles });
-    render(
+  it("returns focus to the section heading on Escape", () => {
+    const { container } = render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
         supportReviewed={false}
-        actions={actions}
+        actions={buildActions()}
       />,
     );
-    const body = document.body;
-    body.focus();
-    fireEvent.keyDown(body, { key: "Escape" });
-    expect(onBackToFiles).not.toHaveBeenCalled();
+    const takeover = container.querySelector(
+      "[data-walkthrough-takeover]",
+    ) as HTMLElement;
+    takeover.focus();
+    fireEvent.keyDown(takeover, { key: "Escape" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Why this snapshot matters" }),
+    );
   });
 });

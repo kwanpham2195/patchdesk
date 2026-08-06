@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 import { requestJson } from "../api-client";
-import { ReviewWorkbench, type ReviewWorkbenchInitialState } from "../components/review-workbench";
+import {
+  ReviewWorkbench,
+  type ReviewWorkbenchInitialState,
+} from "../components/review-workbench";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { MergeConfirmationDialog } from "../components/merge-confirmation-dialog";
@@ -16,7 +19,13 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { ModelCombobox } from "../components/model-combobox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import type { ReviewBatch } from "../../../domain/review-batch";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
@@ -68,7 +77,12 @@ export function AppFixtureContent({
         : hash === "#active-follow-fixture"
           ? activeFollowFixtureData
           : workbenchFixtureData;
-    return <CanonicalFixtureWorkbench data={fixture} onNavigationStateChange={onNavigationStateChange} />;
+    return (
+      <CanonicalFixtureWorkbench
+        data={fixture}
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    );
   }
   if (hash === "#submission-fixture") return <SubmissionFixture />;
   if (hash === "#merge-fixture")
@@ -128,15 +142,15 @@ function WalkthroughFixture({
     focus: "The focused review path remains separate from Files mode.",
     chapters: [
       {
-      id: "chapter-1",
-      title: "Read first",
+        id: "chapter-1",
+        title: "Read first",
         sections: [
           {
-        id: "section-1",
-        title: "Keep the review local",
+            id: "section-1",
+            title: "Keep the review local",
             prose:
               "This fixture proves a manual walkthrough without starting an Analysis run.",
-        hunkIds: ["h1"],
+            hunkIds: ["h1"],
             hunks: [
               {
                 id: "h1",
@@ -151,11 +165,11 @@ function WalkthroughFixture({
             ],
           },
           {
-        id: "section-2",
-        title: "Follow the changed path",
+            id: "section-2",
+            title: "Follow the changed path",
             prose:
               "The chapter rail keeps the next section available without leaving the saved Files surface.",
-        hunkIds: ["h2"],
+            hunkIds: ["h2"],
             hunks: [
               {
                 id: "h2",
@@ -197,7 +211,9 @@ function WalkthroughFixture({
     window.setTimeout(() => setLifecycle("ready"), 50);
   };
   const markSectionReviewed = (sectionId: string): void => {
-    setReviewedSectionIds((current) => current.includes(sectionId) ? current : [...current, sectionId]);
+    setReviewedSectionIds((current) =>
+      current.includes(sectionId) ? current : [...current, sectionId],
+    );
   };
   return (
     <div data-walkthrough-generate-requests={generateRequests}>
@@ -210,11 +226,17 @@ function WalkthroughFixture({
         actions={{
           onOpenDialog: () => setDialogOpen(true),
           onCloseDialog: () => setDialogOpen(false),
-          onModelChange: (value) => { if (value !== null) setModel(value); },
-          onReasoningChange: (value) => { if (value === "low" || value === "medium" || value === "high") setReasoning(value); },
+          onModelChange: (value) => {
+            if (value !== null) setModel(value);
+          },
+          onReasoningChange: (value) => {
+            if (value === "low" || value === "medium" || value === "high")
+              setReasoning(value);
+          },
           onConfirm: confirmGeneration,
-          onOpen: () => { setOpen(true); },
-          onBackToFiles: () => { setOpen(false); window.setTimeout(() => openButtonRef.current?.focus(), 0); },
+          onOpen: () => {
+            setOpen(true);
+          },
           onMarkSectionReviewed: markSectionReviewed,
           onMarkSupportReviewed: () => setSupportReviewed(true),
           onSelectSection: () => undefined,
@@ -224,7 +246,10 @@ function WalkthroughFixture({
         open={open}
         openButtonRef={openButtonRef}
       />
-      <CanonicalFixtureWorkbench data={{ ...workbenchFixtureData, fullPatch: walkthroughFixturePatch }} onNavigationStateChange={onNavigationStateChange} />
+      <CanonicalFixtureWorkbench
+        data={{ ...workbenchFixtureData, fullPatch: walkthroughFixturePatch }}
+        onNavigationStateChange={onNavigationStateChange}
+      />
     </div>
   );
 }
@@ -243,12 +268,21 @@ function CanonicalFixtureWorkbench({
       actions={{
         detectUpdates: async () => undefined,
         refresh: async () => undefined,
-        loadCommitDiff: async () => { throw new Error("No commit fixture is configured"); },
+        loadCommitDiff: async () => {
+          throw new Error("No commit fixture is configured");
+        },
         localCommentAuthoring: { enabled: true, onSave: async () => undefined },
         reportNavigationState: onNavigationStateChange,
       }}
       slots={{
-        insights: <section aria-label="Review insights" className="p-6"><h2 className="text-lg font-semibold">Insights</h2><p className="text-sm text-muted-foreground">Insight fixture content.</p></section>,
+        insights: (
+          <section aria-label="Review insights" className="p-6">
+            <h2 className="text-lg font-semibold">Insights</h2>
+            <p className="text-sm text-muted-foreground">
+              Insight fixture content.
+            </p>
+          </section>
+        ),
         draftDock: null,
         publishedFeedback: null,
         mergeAction: null,
@@ -285,36 +319,82 @@ export type UnifiedReviewFixtureState =
 
 /** Build every design state from one production-shaped Review projection. */
 // eslint-disable-next-line react-refresh/only-export-components -- Design bridge consumes the typed fixture factory.
-export function unifiedReviewInitialState(state: UnifiedReviewFixtureState): ReviewWorkbenchInitialState {
+export function unifiedReviewInitialState(
+  state: UnifiedReviewFixtureState,
+): ReviewWorkbenchInitialState {
   switch (state) {
-    case "files-finding-selected": return { section: "findings", selectedFindingId: "mapped", selectedPath: "src/b.ts" };
-    case "files-commit-selected": return { section: "commits", selectedCommitSha: "b".repeat(40) };
+    case "files-finding-selected":
+      return {
+        section: "findings",
+        selectedFindingId: "mapped",
+        selectedPath: "src/b.ts",
+      };
+    case "files-commit-selected":
+      return { section: "commits", selectedCommitSha: "b".repeat(40) };
     case "insights-overview":
     case "analysis-running":
-    case "analysis-failed": return { section: "insights" };
+    case "analysis-failed":
+      return { section: "insights" };
     case "analysis-current":
     case "analysis-outdated":
     case "analysis-replacement-running":
-    case "analysis-replacement-failed": return { section: "insights", insightDetail: "analysis" };
-    case "walkthrough-current": return { section: "insights", insightDetail: "walkthrough" };
-    case "walkthrough-outdated": return { section: "insights", insightDetail: "walkthrough" };
-    case "draft-expanded": return { section: "files", selectedPath: "src/a.ts", draftExpanded: true };
-    case "pr-overview": return { section: "files", selectedPath: "src/a.ts", overviewOpen: true };
-    default: return { section: "files", selectedPath: "src/a.ts" };
+    case "analysis-replacement-failed":
+      return { section: "insights", insightDetail: "analysis" };
+    case "walkthrough-current":
+      return { section: "insights", insightDetail: "walkthrough" };
+    case "walkthrough-outdated":
+      return { section: "insights", insightDetail: "walkthrough" };
+    case "draft-expanded":
+      return {
+        section: "files",
+        selectedPath: "src/a.ts",
+        draftExpanded: true,
+      };
+    case "pr-overview":
+      return { section: "files", selectedPath: "src/a.ts", overviewOpen: true };
+    default:
+      return { section: "files", selectedPath: "src/a.ts" };
   }
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Design bridge consumes the typed fixture factory.
-export function createUnifiedReviewFixture(state: UnifiedReviewFixtureState = "files-default"): WorkbenchResponse {
+export function createUnifiedReviewFixture(
+  state: UnifiedReviewFixtureState = "files-default",
+): WorkbenchResponse {
   const base = canonicalWorkbenchModel(workbenchFixtureData);
   const baseDraft = base.draft;
-  if (baseDraft === undefined) throw new Error("Fixture Review must include a draft");
+  if (baseDraft === undefined)
+    throw new Error("Fixture Review must include a draft");
   const emptyDraft = { ...baseDraft, summaryBody: "", items: [] };
-  const retainedWalkthrough = fixtureWalkthroughRetention(base.session.id, base.revision.reviewedHeadSha);
-  const withFeedback = state === "published-feedback-collapsed" || state === "published-feedback-expanded" || state === "pr-overview" || state === "merged" || state === "closed" || state === "publication-confirmed";
-  const draft = state === "needs-attention"
-    ? { ...baseDraft, items: baseDraft.items.map((item) => item._tag === "InlineComment" ? { ...item, postability: "needs_attention" as const, attention: { reason: "missing" as const, originalAnchor: item.anchor } } : item) }
-    : emptyDraft;
+  const retainedWalkthrough = fixtureWalkthroughRetention(
+    base.session.id,
+    base.revision.reviewedHeadSha,
+  );
+  const withFeedback =
+    state === "published-feedback-collapsed" ||
+    state === "published-feedback-expanded" ||
+    state === "pr-overview" ||
+    state === "merged" ||
+    state === "closed" ||
+    state === "publication-confirmed";
+  const draft =
+    state === "needs-attention"
+      ? {
+          ...baseDraft,
+          items: baseDraft.items.map((item) =>
+            item._tag === "InlineComment"
+              ? {
+                  ...item,
+                  postability: "needs_attention" as const,
+                  attention: {
+                    reason: "missing" as const,
+                    originalAnchor: item.anchor,
+                  },
+                }
+              : item,
+          ),
+        }
+      : emptyDraft;
   const analysisFailure = {
     runId: "insight-analysis-1-aaaaaaaaaaaa-review",
     category: "unexpected_failure" as const,
@@ -322,54 +402,233 @@ export function createUnifiedReviewFixture(state: UnifiedReviewFixtureState = "f
     reasoning: "medium" as const,
     retryable: true,
   };
-  const analysis = state === "analysis-running"
-    ? { status: "running" as const, activeRun: { runId: "analysis-first-run", sessionId: base.session.id, startedAt: base.revision.refreshedAt } }
-    : state === "analysis-replacement-running"
-      ? { ...base.insights.analysis, status: "running" as const, activeRun: { runId: "analysis-replacement-run", sessionId: base.session.id, startedAt: base.revision.refreshedAt } }
-    : state === "analysis-failed"
-      ? { status: "failed" as const, replacementFailure: analysisFailure }
-      : state === "analysis-outdated" || state === "analysis-replacement-failed"
-        ? { ...base.insights.analysis, status: state === "analysis-outdated" ? "outdated" as const : "failed" as const, ...(state === "analysis-replacement-failed" ? { replacementFailure: { ...analysisFailure, incidentId: "fixture-incident" } } : {}) }
-        : state === "analysis-current"
-          ? { ...base.insights.analysis, status: "current" as const }
-          : base.insights.analysis;
-  const walkthrough = state === "walkthrough-current" || state === "walkthrough-outdated"
-    ? { status: state === "walkthrough-outdated" ? "outdated" as const : "current" as const, retained: retainedWalkthrough, progress: { reviewedSectionIds: [], supportReviewed: false } }
-    : base.insights.walkthrough;
-  const publicationState = state === "publication-publishing"
-    ? { ...baseDraft, state: { _tag: "Applying" as const, operation: { _tag: "CreatePendingReview" as const, itemIds: baseDraft.items.map((item) => item.id) } } }
-    : state === "publication-confirmed"
-      ? emptyDraft
-      : state === "publication-needs-confirmation"
-        ? { ...baseDraft, state: { _tag: "PartialFailure" as const, operation: { _tag: "CreatePendingReview" as const, itemIds: baseDraft.items.map((item) => item.id) }, failure: { _tag: "SafeWriteFailure" as const, category: "outcome_unknown" as const, message: "GitHub did not confirm the complete publication." } } }
-        : draft;
+  const analysis =
+    state === "analysis-running"
+      ? {
+          status: "running" as const,
+          activeRun: {
+            runId: "analysis-first-run",
+            sessionId: base.session.id,
+            startedAt: base.revision.refreshedAt,
+          },
+        }
+      : state === "analysis-replacement-running"
+        ? {
+            ...base.insights.analysis,
+            status: "running" as const,
+            activeRun: {
+              runId: "analysis-replacement-run",
+              sessionId: base.session.id,
+              startedAt: base.revision.refreshedAt,
+            },
+          }
+        : state === "analysis-failed"
+          ? { status: "failed" as const, replacementFailure: analysisFailure }
+          : state === "analysis-outdated" ||
+              state === "analysis-replacement-failed"
+            ? {
+                ...base.insights.analysis,
+                status:
+                  state === "analysis-outdated"
+                    ? ("outdated" as const)
+                    : ("failed" as const),
+                ...(state === "analysis-replacement-failed"
+                  ? {
+                      replacementFailure: {
+                        ...analysisFailure,
+                        incidentId: "fixture-incident",
+                      },
+                    }
+                  : {}),
+              }
+            : state === "analysis-current"
+              ? { ...base.insights.analysis, status: "current" as const }
+              : base.insights.analysis;
+  const walkthrough =
+    state === "walkthrough-current" || state === "walkthrough-outdated"
+      ? {
+          status:
+            state === "walkthrough-outdated"
+              ? ("outdated" as const)
+              : ("current" as const),
+          retained: retainedWalkthrough,
+          progress: { reviewedSectionIds: [], supportReviewed: false },
+        }
+      : base.insights.walkthrough;
+  const publicationState =
+    state === "publication-publishing"
+      ? {
+          ...baseDraft,
+          state: {
+            _tag: "Applying" as const,
+            operation: {
+              _tag: "CreatePendingReview" as const,
+              itemIds: baseDraft.items.map((item) => item.id),
+            },
+          },
+        }
+      : state === "publication-confirmed"
+        ? emptyDraft
+        : state === "publication-needs-confirmation"
+          ? {
+              ...baseDraft,
+              state: {
+                _tag: "PartialFailure" as const,
+                operation: {
+                  _tag: "CreatePendingReview" as const,
+                  itemIds: baseDraft.items.map((item) => item.id),
+                },
+                failure: {
+                  _tag: "SafeWriteFailure" as const,
+                  category: "outcome_unknown" as const,
+                  message: "GitHub did not confirm the complete publication.",
+                },
+              },
+            }
+          : draft;
   return {
     ...base,
-    review: state === "merged" ? { id: base.review.id, status: "merged" } : state === "closed" ? { id: base.review.id, status: "closed" } : base.review,
-    revision: state === "updates-draft" || state === "analysis-outdated" || state === "walkthrough-outdated"
-      ? { ...base.revision, freshness: state === "updates-draft" ? "updates_available" as const : base.revision.freshness, currentHeadSha: "b".repeat(40) }
-      : base.revision,
+    review:
+      state === "merged"
+        ? { id: base.review.id, status: "merged" }
+        : state === "closed"
+          ? { id: base.review.id, status: "closed" }
+          : base.review,
+    revision:
+      state === "updates-draft" ||
+      state === "analysis-outdated" ||
+      state === "walkthrough-outdated"
+        ? {
+            ...base.revision,
+            freshness:
+              state === "updates-draft"
+                ? ("updates_available" as const)
+                : base.revision.freshness,
+            currentHeadSha: "b".repeat(40),
+          }
+        : base.revision,
     insights: { analysis, walkthrough },
     draft: publicationState,
-    publishedFeedback: withFeedback ? { ...base.publishedFeedback, reviews: [{ id: "published-1", author: "fixture-maintainer", body: "Published review body", event: "COMMENTED", submittedAt: base.revision.refreshedAt, canDismiss: true }], comments: [{ id: "comment-1", author: "fixture-maintainer", body: "Published inline feedback", createdAt: base.revision.refreshedAt, canEdit: true, canDelete: true, location: { path: "src/b.ts", line: 1, diffSide: "new" } }] } : base.publishedFeedback,
+    publishedFeedback: withFeedback
+      ? {
+          ...base.publishedFeedback,
+          reviews: [
+            {
+              id: "published-1",
+              author: "fixture-maintainer",
+              body: "Published review body",
+              event: "COMMENTED",
+              submittedAt: base.revision.refreshedAt,
+              canDismiss: true,
+            },
+          ],
+          comments: [
+            {
+              id: "comment-1",
+              author: "fixture-maintainer",
+              body: "Published inline feedback",
+              createdAt: base.revision.refreshedAt,
+              canEdit: true,
+              canDelete: true,
+              location: { path: "src/b.ts", line: 1, diffSide: "new" },
+            },
+          ],
+        }
+      : base.publishedFeedback,
   };
 }
 
-function fixtureWalkthroughRetention(sessionId: string, headSha: string): NonNullable<WorkbenchResponse["insights"]["walkthrough"]["retained"]> {
-  return { runId: "walkthrough-fixture", sessionId, headSha, generatedAt: "2026-07-17T00:00:00.000Z", value: { snapshot: { profileId: "fixture", sessionId, headSha, patchHash: "b".repeat(64) }, citationStatus: "verified", title: "Walkthrough fixture", focus: "Follow the changed path through this Review.", chapters: [{ id: "chapter-1", title: "Context", sections: [{ id: "section-1", title: "Keep the review local", prose: "This stored walkthrough explains the immutable Review revision.", hunkIds: ["h1"], hunks: [{ id: "h1", path: "src/a.ts", header: "@@ -1 +1 @@", raw: "@@ -1 +1 @@\\n-old\\n+new", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }] }] }], support: { id: "support", title: "Support", hunkIds: [], hunks: [] } } };
+function fixtureWalkthroughRetention(
+  sessionId: string,
+  headSha: string,
+): NonNullable<WorkbenchResponse["insights"]["walkthrough"]["retained"]> {
+  return {
+    runId: "walkthrough-fixture",
+    sessionId,
+    headSha,
+    generatedAt: "2026-07-17T00:00:00.000Z",
+    value: {
+      snapshot: {
+        profileId: "fixture",
+        sessionId,
+        headSha,
+        patchHash: "b".repeat(64),
+      },
+      citationStatus: "verified",
+      title: "Walkthrough fixture",
+      focus: "Follow the changed path through this Review.",
+      chapters: [
+        {
+          id: "chapter-1",
+          title: "Context",
+          sections: [
+            {
+              id: "section-1",
+              title: "Keep the review local",
+              prose:
+                "This stored walkthrough explains the immutable Review revision.",
+              hunkIds: ["h1"],
+              hunks: [
+                {
+                  id: "h1",
+                  path: "src/a.ts",
+                  header: "@@ -1 +1 @@",
+                  raw: "@@ -1 +1 @@\\n-old\\n+new",
+                  oldStart: 1,
+                  oldLines: 1,
+                  newStart: 1,
+                  newLines: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
+    },
+  };
 }
 
-function canonicalWorkbenchModel(data: typeof workbenchFixtureData): WorkbenchResponse {
+function canonicalWorkbenchModel(
+  data: typeof workbenchFixtureData,
+): WorkbenchResponse {
   const headSha = data.pullRequest.headSha;
   return {
     state: "review",
     review: { id: "fixture-review", status: "open" },
-    session: { id: "fixture-session", key: { profileId: "fixture", host: data.pullRequest.ref.host, owner: data.pullRequest.ref.owner, repo: data.pullRequest.ref.repo, prNumber: data.pullRequest.ref.number, headSha } },
-    revision: { reviewedHeadSha: headSha, currentHeadSha: headSha, freshness: "fresh", refreshedAt: "2026-07-17T00:00:00.000Z" },
+    session: {
+      id: "fixture-session",
+      key: {
+        profileId: "fixture",
+        host: data.pullRequest.ref.host,
+        owner: data.pullRequest.ref.owner,
+        repo: data.pullRequest.ref.repo,
+        prNumber: data.pullRequest.ref.number,
+        headSha,
+      },
+    },
+    revision: {
+      reviewedHeadSha: headSha,
+      currentHeadSha: headSha,
+      freshness: "fresh",
+      refreshedAt: "2026-07-17T00:00:00.000Z",
+    },
     fullPatch: data.fullPatch,
     pullRequest: data.pullRequest,
     commits: data.commits,
-    insights: { analysis: { status: "current", retained: { runId: "insight-fixture", sessionId: "fixture-session", headSha, generatedAt: "2026-07-17T00:00:00.000Z", value: data.result } }, walkthrough: { status: "not_generated" } },
+    insights: {
+      analysis: {
+        status: "current",
+        retained: {
+          runId: "insight-fixture",
+          sessionId: "fixture-session",
+          headSha,
+          generatedAt: "2026-07-17T00:00:00.000Z",
+          value: data.result,
+        },
+      },
+      walkthrough: { status: "not_generated" },
+    },
     draft: submissionFixtureData.batch as never,
     publishedFeedback: { reviews: [], comments: [] },
     comments: data.comments,
@@ -395,7 +654,9 @@ function WalkthroughFixtureControls({
   readonly dialogOpen: boolean;
   readonly model: string | undefined;
   readonly reasoning: "low" | "medium" | "high";
-  readonly walkthrough: Parameters<typeof NarrativeWalkthrough>[0]["walkthrough"];
+  readonly walkthrough: Parameters<
+    typeof NarrativeWalkthrough
+  >[0]["walkthrough"];
   readonly actions: {
     readonly onOpenDialog: () => void;
     readonly onCloseDialog: () => void;
@@ -403,7 +664,6 @@ function WalkthroughFixtureControls({
     readonly onReasoningChange: (value: string | null) => void;
     readonly onConfirm: () => void;
     readonly onOpen: () => void;
-    readonly onBackToFiles: () => void;
     readonly onMarkSectionReviewed: (sectionId: string) => void;
     readonly onMarkSupportReviewed: () => void;
     readonly onSelectSection: (sectionId: string) => void;
@@ -415,13 +675,40 @@ function WalkthroughFixtureControls({
 }): React.JSX.Element {
   return (
     <div className="border-b p-4">
-      {lifecycle === "ready" && !open ? <Button ref={openButtonRef} onClick={actions.onOpen}>Open walkthrough</Button> : null}
-      {lifecycle !== "ready" ? <Button onClick={actions.onOpenDialog} disabled={lifecycle === "generating"}>{lifecycle === "generating" ? "Generating walkthrough…" : "Generate walkthrough"}</Button> : null}
-      <Dialog open={dialogOpen} onOpenChange={(next) => next ? actions.onOpenDialog() : actions.onCloseDialog()}>
+      {lifecycle === "ready" && !open ? (
+        <Button ref={openButtonRef} onClick={actions.onOpen}>
+          Open walkthrough
+        </Button>
+      ) : null}
+      {lifecycle !== "ready" ? (
+        <Button
+          onClick={actions.onOpenDialog}
+          disabled={lifecycle === "generating"}
+        >
+          {lifecycle === "generating"
+            ? "Generating walkthrough…"
+            : "Generate walkthrough"}
+        </Button>
+      ) : null}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(next) =>
+          next ? actions.onOpenDialog() : actions.onCloseDialog()
+        }
+      >
         <DialogContent data-testid="walkthrough-generate-dialog">
-          <DialogHeader><DialogTitle>Generate walkthrough</DialogTitle><DialogDescription>Choose how Patchdesk should explain this Review.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Generate walkthrough</DialogTitle>
+            <DialogDescription>
+              Choose how Patchdesk should explain this Review.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-3">
-            <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-model">Model
+            <label
+              className="grid gap-1.5 text-sm font-medium"
+              htmlFor="fixture-walkthrough-model"
+            >
+              Model
               <ModelCombobox
                 id="fixture-walkthrough-model"
                 ariaLabel="Model"
@@ -430,14 +717,57 @@ function WalkthroughFixtureControls({
                 onValueChange={actions.onModelChange}
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium" htmlFor="fixture-walkthrough-reasoning">Reasoning
-              <Select value={reasoning} onValueChange={actions.onReasoningChange}><SelectTrigger id="fixture-walkthrough-reasoning" aria-label="Reasoning"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>
+            <label
+              className="grid gap-1.5 text-sm font-medium"
+              htmlFor="fixture-walkthrough-reasoning"
+            >
+              Reasoning
+              <Select
+                value={reasoning}
+                onValueChange={actions.onReasoningChange}
+              >
+                <SelectTrigger
+                  id="fixture-walkthrough-reasoning"
+                  aria-label="Reasoning"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
           </div>
-          <DialogFooter><Button variant="outline" onClick={actions.onCloseDialog}>Cancel</Button><Button data-testid="walkthrough-confirm" disabled={model === undefined} onClick={actions.onConfirm}>Generate walkthrough</Button></DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={actions.onCloseDialog}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="walkthrough-confirm"
+              disabled={model === undefined}
+              onClick={actions.onConfirm}
+            >
+              Generate walkthrough
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-      {open ? <NarrativeWalkthrough walkthrough={walkthrough} reviewedSectionIds={reviewedSectionIds} supportReviewed={supportReviewed} rawPatch={walkthroughFixturePatch} sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }} actions={{ onBackToFiles: actions.onBackToFiles, onMarkSectionReviewed: actions.onMarkSectionReviewed, onMarkSupportReviewed: actions.onMarkSupportReviewed, onSelectSection: actions.onSelectSection }} /> : null}
+      {open ? (
+        <NarrativeWalkthrough
+          walkthrough={walkthrough}
+          reviewedSectionIds={reviewedSectionIds}
+          supportReviewed={supportReviewed}
+          rawPatch={walkthroughFixturePatch}
+          sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }}
+          actions={{
+            onMarkSectionReviewed: actions.onMarkSectionReviewed,
+            onMarkSupportReviewed: actions.onMarkSupportReviewed,
+            onSelectSection: actions.onSelectSection,
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -639,8 +969,20 @@ export const workbenchFixtureData = {
     updatedAt: "2026-07-17T00:00:00.000Z",
   },
   commits: [
-    { sha: "b".repeat(40), message: "Preserve review write coordination", author: "fixture", authoredAt: "2026-07-17T00:00:00.000Z", isHead: true },
-    { sha: "a".repeat(40), message: "Add review workbench", author: "fixture", authoredAt: "2026-07-16T00:00:00.000Z", isHead: false },
+    {
+      sha: "b".repeat(40),
+      message: "Preserve review write coordination",
+      author: "fixture",
+      authoredAt: "2026-07-17T00:00:00.000Z",
+      isHead: true,
+    },
+    {
+      sha: "a".repeat(40),
+      message: "Add review workbench",
+      author: "fixture",
+      authoredAt: "2026-07-16T00:00:00.000Z",
+      isHead: false,
+    },
   ],
   comments: {
     threads: [
@@ -744,7 +1086,8 @@ const longWorkbenchFixtureData = {
 // eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic submission payload.
 export const submissionFixtureData = {
   batch: {
-    sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdefabcdef",
+    sessionId:
+      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdefabcdef",
     state: { _tag: "Local" as const },
     summaryBody: "Request changes before merge.",
     suggestedEvent: "COMMENT" as const,
@@ -758,7 +1101,7 @@ export const submissionFixtureData = {
         anchor: {
           path: "src/services/review-submission-service.ts" as never,
           startLine: 34,
-        line: 34,
+          line: 34,
           side: "new" as const,
         },
         body: "Keep the stale-head check at the write boundary.",

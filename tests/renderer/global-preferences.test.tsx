@@ -102,9 +102,44 @@ describe("file-backed renderer preferences", () => {
       expect(corrections).toHaveLength(1);
       expect(corrections[0]?.[0].body).toEqual({
         appearance: "system",
-        diffTheme: { light: "pierre-light", dark: "github-dark" },
+        diffTheme: { light: "github-light", dark: "github-dark" },
       });
     });
+  });
+
+  it("migrates file-backed settings that still hold the retired Pierre default pair", async () => {
+    const request = installDesktopApi({
+      diffTheme: { light: "pierre-light", dark: "pierre-dark" },
+    });
+    const themeEvents: Array<{ readonly light: string; readonly dark: string }> = [];
+    const onTheme = (event: Event): void => {
+      themeEvents.push((event as CustomEvent<{ readonly light: string; readonly dark: string }>).detail);
+    };
+    window.addEventListener("patchdesk:diff-theme", onTheme);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(themeEvents).toContainEqual({
+        light: "github-light",
+        dark: "github-dark",
+      }),
+    );
+    expect(themeEvents).not.toContainEqual({
+      light: "pierre-light",
+      dark: "pierre-dark",
+    });
+    await waitFor(() => {
+      const corrections = request.mock.calls.filter(([input]) =>
+        input.path === "/v1/settings" && input.method === "PATCH",
+      );
+      expect(corrections).toHaveLength(1);
+      expect(corrections[0]?.[0].body).toEqual({
+        appearance: "system",
+        diffTheme: { light: "github-light", dark: "github-dark" },
+      });
+    });
+    window.removeEventListener("patchdesk:diff-theme", onTheme);
   });
 });
 

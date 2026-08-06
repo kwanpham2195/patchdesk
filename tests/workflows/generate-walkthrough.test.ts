@@ -110,6 +110,31 @@ describe("walkthrough raw output boundary", () => {
       error: { _tag: "InvalidWalkthroughOutput" },
     });
   });
+
+  it("bounds new prose and focus to the concise workflow limit", () => {
+    const atLimit = {
+      ...validOutput,
+      focus: "x".repeat(320),
+      chapters: [{
+        ...baseChapter,
+        sections: [{ ...baseSection, prose: "x".repeat(320) }],
+      }],
+    };
+    expect(v.safeParse(walkthroughOutputSchema, atLimit).success).toBe(true);
+
+    expect(v.safeParse(walkthroughOutputSchema, {
+      ...validOutput,
+      chapters: [{
+        ...baseChapter,
+        sections: [{ ...baseSection, prose: "x".repeat(321) }],
+      }],
+    }).success).toBe(false);
+
+    expect(v.safeParse(walkthroughOutputSchema, {
+      ...validOutput,
+      focus: "x".repeat(321),
+    }).success).toBe(false);
+  });
 });
 
 describe("walkthrough workflow harness contract", () => {
