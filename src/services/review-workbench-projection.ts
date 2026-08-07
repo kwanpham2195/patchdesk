@@ -520,6 +520,15 @@ function conversationFromSnapshot(
   return {
     prDescription: snapshot.pullRequest.description ?? "",
     entries,
+    inline: {
+      threads: snapshot.comments.threads.filter((thread) => thread.location !== undefined),
+      ...(snapshot.comments.complete === undefined
+        ? {}
+        : { complete: snapshot.comments.complete }),
+      ...(snapshot.comments.incompleteReason === undefined
+        ? {}
+        : { incompleteReason: snapshot.comments.incompleteReason }),
+    },
     complete:
       feedback.complete !== false && snapshot.comments.complete !== false,
   };

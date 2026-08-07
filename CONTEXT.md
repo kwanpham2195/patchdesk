@@ -60,6 +60,22 @@ _Avoid_: Published feedback, discussion tab, timeline
 A group of GitHub review comments, with open, resolved, or outdated state. Inline threads (tied to a specific diff location) live in the diff view. General threads (no code anchor) appear in the Conversation screen.
 _Avoid_: Review thread, discussion thread
 
+**Mapped conversation thread**:
+An inline Conversation thread in open or resolved state whose GitHub anchor can be placed unambiguously on either the old or new side of the current diff. Only mapped Conversation threads appear in the diff view. Outdated threads are excluded.
+_Avoid_: Current thread, unresolved thread
+
+**Thread state change**:
+An explicit maintainer action that changes a mapped Conversation thread between open and resolved. A direct Resolve or Unresolve command confirms the GitHub update.
+_Avoid_: Draft action, batched action
+
+**Direct conversation comment**:
+An inline GitHub comment or reply that a maintainer explicitly submits from the diff. It publishes immediately and never becomes part of the local Review draft.
+_Avoid_: Inline draft, queued reply
+
+**Partial conversation thread**:
+A Conversation thread for which Patchdesk has only a bounded subset of GitHub replies. It remains visible but is explicitly identified as incomplete.
+_Avoid_: Complete thread
+
 **Conversation entry**:
 One item in the Conversation screen's chronological timeline. Types: PR description, issue comment, review summary, or general conversation thread (a review-comment thread with no diff anchor; includes its nested replies). Inline conversation threads live in the diff view instead.
 _Avoid_: Timeline entry, discussion entry

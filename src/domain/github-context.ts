@@ -16,6 +16,8 @@ export type GitHubComment = {
   readonly updatedAt?: IsoTimestamp;
   readonly url?: string;
   readonly location?: DiffLocation;
+  /** GitHub identifies this comment as authored by the authenticated viewer. */
+  readonly viewerDidAuthor?: boolean;
 };
 
 export type GitHubConversationThread = {
@@ -142,6 +144,8 @@ export type ConversationEntry =
 export type Conversation = {
   readonly prDescription: string;
   readonly entries: ReadonlyArray<ConversationEntry>;
+  /** Inline threads remain out of the timeline and are rendered in the Diff. */
+  readonly inline?: GitHubComments;
   readonly complete?: boolean;
   readonly incompleteReason?:
     | "thread_cap"

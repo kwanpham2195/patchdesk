@@ -51,6 +51,7 @@ import { ReviewBatchController } from "../services/review-batch-controller";
 import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
 import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../services/published-feedback-service";
+import { InlineConversationService, type DirectConversationCommand } from "../services/inline-conversation-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
@@ -82,7 +83,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok, type Result } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseFindingId, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseFindingId, parseGitHubThreadId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type ReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
@@ -374,6 +375,7 @@ export async function startLocalApiServer(
     const refreshed = await reviewRefresh.refresh({ profileId, reviewId });
     return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
   });
+  const inlineConversations = new InlineConversationService(reviewWriteGate, github);
   const reviewCommits = new ReviewCommitService(reviews, remoteReviews, sessions, readOnlyGit);
   const reviewWorkbench = new ReviewWorkbenchController(
     reviewPreparation,
@@ -624,6 +626,7 @@ export async function startLocalApiServer(
       ? context.json({ error: "review_write_unavailable" }, 503)
       : response(context, await reviewWrites.confirmPublication(await jsonBody(context))),
   );
+  app.post("/v1/reviews/inline-conversations/command", async (context) => inlineConversationResponse(context, inlineConversations, await jsonBody(context)));
   app.post("/v1/reviews/published-comments/edit", async (context) => publishedFeedbackResponse(context, publishedFeedback, "edit", await jsonBody(context)));
   app.post("/v1/reviews/published-comments/delete", async (context) => publishedFeedbackResponse(context, publishedFeedback, "delete", await jsonBody(context)));
   app.post("/v1/reviews/published-reviews/dismiss", async (context) => publishedFeedbackResponse(context, publishedFeedback, "dismiss", await jsonBody(context)));
@@ -921,6 +924,51 @@ function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
+}
+
+async function inlineConversationResponse(context: Context, service: InlineConversationService, body: unknown): Promise<Response> {
+  const parsed = parseInlineConversationCommand(body);
+  if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
+  const result = await service.execute(parsed);
+  if (result._tag === "ok") return context.json(result.value);
+  const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "permission_denied" || result.error === "confirmation_required" ? 409 : result.error === "github_read_failed" || result.error === "github_write_failed" ? 503 : 400;
+  return context.json({ error: result.error }, status);
+}
+
+function parseInlineConversationCommand(body: unknown): { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly command: DirectConversationCommand } | undefined {
+  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
+  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  const raw = readObjectField(body, "command");
+  const tag = readObjectField(raw, "_tag");
+  const expectedRaw = readObjectField(raw, "expected");
+  const sessionId = parseReviewSessionId(readObjectField(expectedRaw, "sessionId"));
+  const headSha = parseGitSha(readObjectField(expectedRaw, "headSha"));
+  const patchHash = parseContentHash(readObjectField(expectedRaw, "patchHash"));
+  if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || typeof tag !== "string") return undefined;
+  const expected = { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value };
+  const value = (name: string): string | undefined => {
+    const candidate = readObjectField(raw, name);
+    return typeof candidate === "string" ? candidate : undefined;
+  };
+  let command: DirectConversationCommand | undefined;
+  if (tag === "CreateComment") {
+    const anchor = readObjectField(raw, "anchor");
+    const path = readObjectField(anchor, "path"); const startLine = readObjectField(anchor, "startLine"); const line = readObjectField(anchor, "line"); const side = readObjectField(anchor, "side"); const bodyValue = value("body");
+    if (typeof path === "string" && typeof startLine === "number" && Number.isInteger(startLine) && typeof line === "number" && Number.isInteger(line) && (side === "new" || side === "old") && bodyValue !== undefined) command = { _tag: "CreateComment", expected, anchor: { path, startLine, line, side }, body: bodyValue };
+  } else if (tag === "Reply") {
+    const threadId = value("threadId"); const bodyValue = value("body");
+    if (threadId !== undefined && parseGitHubThreadId(threadId)._tag === "ok" && bodyValue !== undefined) command = { _tag: "Reply", expected, threadId, body: bodyValue };
+  } else if (tag === "SetThreadState") {
+    const threadId = value("threadId"); const state = readObjectField(raw, "state");
+    if (threadId !== undefined && parseGitHubThreadId(threadId)._tag === "ok" && (state === "open" || state === "resolved")) command = { _tag: "SetThreadState", expected, threadId, state };
+  } else if (tag === "EditComment") {
+    const commentId = value("commentId"); const bodyValue = value("body");
+    if (commentId !== undefined && bodyValue !== undefined) command = { _tag: "EditComment", expected, commentId, body: bodyValue };
+  } else if (tag === "DeleteComment") {
+    const commentId = value("commentId"); const confirmation = readObjectField(raw, "confirmation");
+    if (commentId !== undefined && typeof confirmation === "boolean") command = { _tag: "DeleteComment", expected, commentId, confirmation };
+  }
+  return command === undefined ? undefined : { profileId: profileId.value, reviewId: reviewId.value, command };
 }
 
 async function publishedFeedbackResponse(context: Context, service: PublishedFeedbackService, action: "edit" | "delete" | "dismiss", body: unknown): Promise<Response> {

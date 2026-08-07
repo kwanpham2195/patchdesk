@@ -40,17 +40,18 @@ import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-batch";
 import type { RevisionComparison } from "../../domain/review-comparison";
+import type { GitHubReviewCoordinates } from "../../domain/patch";
 
 const commandTimeoutMs = 15_000;
 // Two source blobs travel through the 2 MiB Electron bridge, so each stays
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
 const maxReviewThreadPages = 10;
 const maxReviewThreads = 1_000;
 const threadCommentsQuery =
-  "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url author { login } path } pageInfo { hasNextPage endCursor } } } } }";
+  "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } } }";
 const maxReviewCommentPages = 10;
 const maxReviewComments = 5_000;
 const maintainerInboxQuery =
@@ -185,6 +186,7 @@ const threadResponseSchema = v.looseObject({
                     createdAt: v.string(),
                     updatedAt: v.optional(v.nullable(v.string())),
                     url: v.optional(v.nullable(v.string())),
+                    viewerDidAuthor: v.optional(v.boolean()),
                     author: v.nullish(v.looseObject({ login: v.string() })),
                     path: v.optional(v.nullable(v.string())),
                   }),
@@ -205,7 +207,7 @@ const threadCommentsResponseSchema = v.looseObject({
     node: v.looseObject({
       comments: v.looseObject({
         nodes: v.array(v.looseObject({
-          id: v.string(), body: v.string(), createdAt: v.string(), updatedAt: v.optional(v.nullable(v.string())), url: v.optional(v.nullable(v.string())), author: v.nullish(v.looseObject({ login: v.string() })), path: v.optional(v.nullable(v.string())),
+          id: v.string(), body: v.string(), createdAt: v.string(), updatedAt: v.optional(v.nullable(v.string())), url: v.optional(v.nullable(v.string())), viewerDidAuthor: v.optional(v.boolean()), author: v.nullish(v.looseObject({ login: v.string() })), path: v.optional(v.nullable(v.string())),
         })),
         pageInfo: v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) }),
       }),
@@ -446,8 +448,11 @@ export interface GitHubReviewWriter {
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
+  createInlineComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
   createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
   setReviewThreadState?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>>;
+  updateThreadComment?(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>>;
+  deleteThreadComment?(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>>;
   updateReviewComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>>;
   deleteReviewComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>>;
   dismissReview?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly reviewId: string; readonly message: string }): Promise<Result<void, GitHubWriteFailure>>;
@@ -1193,6 +1198,19 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       : ok({ reviewId });
   }
 
+  async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`, "--input", "-"],
+      stdin: JSON.stringify({ body: input.body, commit_id: input.headSha, ...input.coordinates }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    const id = nestedString(response.value, ["node_id"]);
+    return id === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return an inline comment ID." })
+      : ok({ commentId: id });
+  }
+
   async createThreadReply(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>> {
     const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id}}}", "-F", `threadId=${input.threadId}`, "-f", `body=${input.body}`], timeoutMs: commandTimeoutMs });
     if (response._tag === "err") return err(writeFailure(response.error));
@@ -1203,6 +1221,16 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
   async setReviewThreadState(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>> {
     const mutation = input.state === "resolved" ? "resolveReviewThread" : "unresolveReviewThread";
     const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=mutation($threadId:ID!){${mutation}(input:{threadId:$threadId}){thread{id}}}`, "-F", `threadId=${input.threadId}`], timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
+  }
+
+  async updateThreadComment(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($commentId:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){pullRequestReviewComment{id}}}", "-F", `commentId=${input.commentId}`, "-f", `body=${input.body}`], timeoutMs: commandTimeoutMs });
+    return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
+  }
+
+  async deleteThreadComment(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($commentId:ID!){deletePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId}){clientMutationId}}", "-F", `commentId=${input.commentId}`], timeoutMs: commandTimeoutMs });
     return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
   }
 
@@ -1324,7 +1352,18 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       const bt = b._tag === "ReviewSummary" ? b.review.submittedAt : b._tag === "IssueComment" ? b.comment.createdAt : b._tag === "GeneralThread" ? (b.thread.comments[0]?.createdAt ?? "") : "";
       return at.localeCompare(bt);
     });
-    return { prDescription, entries, complete: feedback.complete !== false && comments.complete !== false };
+    return {
+      prDescription,
+      entries,
+      inline: {
+        threads: comments.threads.filter((thread) => thread.location !== undefined),
+        ...(comments.complete === undefined ? {} : { complete: comments.complete }),
+        ...(comments.incompleteReason === undefined
+          ? {}
+          : { incompleteReason: comments.incompleteReason }),
+      },
+      complete: feedback.complete !== false && comments.complete !== false,
+    };
   }
 }
 
@@ -1943,6 +1982,9 @@ function parseComment(
       ? {}
       : { url: input.url }),
     ...(location === undefined ? {} : { location }),
+    ...(input.viewerDidAuthor === undefined
+      ? {}
+      : { viewerDidAuthor: input.viewerDidAuthor }),
   };
   return ok(comment);
 }

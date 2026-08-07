@@ -187,37 +187,53 @@ export function ReviewWorkbenchFlow({
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
     ): Promise<void> => {
-      const batch = workbench.draft;
-      if (batch === undefined)
-        throw new Error("The saved Review draft is unavailable");
-      const value = await requestJson("/v1/reviews/batch", {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
+      await requestJson("/v1/reviews/inline-conversations/command", {
         method: "POST",
         body: {
           profileId: workbench.session.key.profileId,
-          sessionId: workbench.session.id,
-          expectedRevision: batch.updatedAt,
+          reviewId: workbench.review.id,
           command: {
-            _tag: "AddInlineComment",
+            _tag: "CreateComment",
+            expected: {
+              sessionId: workbench.session.id,
+              headSha: workbench.revision.reviewedHeadSha,
+              patchHash,
+            },
             anchor: {
               path: input.path,
               startLine: input.startLine,
               line: input.line,
               side: input.side,
             },
-            ...(input.fingerprint === undefined
-              ? {}
-              : { fingerprint: input.fingerprint }),
             body: input.body,
           },
         },
       });
-      const next = parseBatchResponse(value);
-      if (next === undefined) throw new Error("Invalid Review batch response");
-      onWorkbenchPatch({ draft: next });
+      await refresh();
     },
-    [onWorkbenchPatch, workbench],
+    [refresh, workbench],
   );
 
+  const setThreadState = useCallback(async (threadId: string, state: "open" | "resolved"): Promise<void> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot update this thread.");
+    await requestJson("/v1/reviews/inline-conversations/command", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+        command: {
+          _tag: "SetThreadState",
+          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+          threadId,
+          state,
+        },
+      },
+    });
+    await refresh();
+  }, [refresh, workbench]);
   const parsedDraft =
     workbench.draft === undefined
       ? undefined
@@ -243,7 +259,11 @@ export function ReviewWorkbenchFlow({
     localBatch &&
     !hasNeedsAttention &&
     !hasActivePublication;
-  const localCommentAuthoring: LocalCommentAuthoring | undefined = canEditDraft
+  const canWriteDirectConversation =
+    workbench.review.status === "open" &&
+    workbench.revision.freshness === "fresh" &&
+    workbench.revision.patchHash !== undefined;
+  const localCommentAuthoring: LocalCommentAuthoring | undefined = canWriteDirectConversation
     ? {
         enabled: true,
         onSave: saveInlineComment,
@@ -464,6 +484,7 @@ export function ReviewWorkbenchFlow({
           ...(localCommentAuthoring === undefined
             ? {}
             : { localCommentAuthoring }),
+          ...(canWriteDirectConversation ? { setThreadState } : {}),
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{

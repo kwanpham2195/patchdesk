@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, GitMerge, LoaderCircle, PanelLeftOpen, XCircle } from "lucide-react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { mapConversationThread } from "../inline-conversation-mapping";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseReviewBatch } from "../../../domain/review-batch";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
@@ -101,6 +102,10 @@ export type ReviewWorkbenchActions = {
   readonly addFinding?: (finding: ReviewFinding) => Promise<void>;
   readonly dismissFinding?: (finding: ReviewFinding, reason: string) => Promise<void>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  readonly setThreadState?: (
+    threadId: string,
+    state: "open" | "resolved",
+  ) => Promise<void>;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -234,9 +239,33 @@ export function ReviewWorkbench({
   const commitDiffState = useCommitDiff({ ...(selectedCommitSha === undefined ? {} : { selectedSha: selectedCommitSha }), revisionKey: model.revision.reviewedHeadSha, loadCommitDiff: actions.loadCommitDiff });
   const commitCommentAuthoring = useMemo(() => selectedCommitSha === undefined || model.fullPatch === undefined ? undefined : createCommitCommentAuthoring(actions.localCommentAuthoring, model.fullPatch), [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha]);
   const commitDiff = commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
+  const conversationAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(() => {
+    if (model.fullPatch === undefined) return [];
+    const files = parseUnifiedPatch(model.fullPatch);
+    return (model.conversation.inline?.threads ?? []).flatMap((thread) => {
+      const mapped = mapConversationThread(files, thread);
+      return mapped._tag === "Mapped" ? [{
+        id: `conversation:${thread.id}`,
+        path: mapped.path,
+        start: mapped.start,
+        end: mapped.end,
+        side: mapped.side,
+        severity: "conversation",
+        title: "Conversation",
+        explanation: "",
+        conversationThread: {
+          ...thread,
+          ...(actions.setThreadState === undefined
+            ? {}
+            : { onSetState: actions.setThreadState }),
+        },
+      }] : [];
+    });
+  }, [actions.setThreadState, model.conversation.inline, model.fullPatch]);
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
     ...findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]),
     ...draftInlineAnnotations(model.draft),
+    ...conversationAnnotations,
   ];
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
@@ -454,7 +483,7 @@ export function ReviewWorkbench({
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
       <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} onViewFindings={viewFindings} />
-      {actions.merge === undefined ? null : (
+      {actions.merge === undefined || actions.merge.readiness._tag === "Blocked" ? null : (
         <MergeConfirmationDialog
           defaultOpen={mergeDialogOpen}
           initialMethod={selectedMergeMethod}

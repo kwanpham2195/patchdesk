@@ -30,6 +30,7 @@ import {
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import { parseRepoRelativePath } from "../../../domain/ids";
+import { PullRequestDescriptionPreview } from "./pull-request-description";
 import type { ReviewAnchorFingerprint } from "../../../domain/review-batch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
@@ -105,6 +106,25 @@ export type ReviewInlineAnnotation = {
   readonly severity: string;
   readonly title: string;
   readonly explanation: string;
+  readonly localComment?: {
+    readonly body: string;
+  };
+  readonly conversationThread?: {
+    readonly id: string;
+    readonly state: "open" | "resolved" | "outdated" | "unknown";
+    readonly complete?: boolean | undefined;
+    readonly onSetState?: (
+      threadId: string,
+      state: "open" | "resolved",
+    ) => Promise<void>;
+    readonly comments: ReadonlyArray<{
+      readonly id: string;
+      readonly author: string;
+      readonly body: string;
+      readonly createdAt: string;
+      readonly viewerDidAuthor?: boolean | undefined;
+    }>;
+  };
   readonly localComposer?: {
     readonly path: string;
     readonly startLine: number;
@@ -335,6 +355,23 @@ function ReviewDiffSurface({
       })),
     [renderedAnnotations, selectedPath],
   );
+  const annotationKey = useMemo(
+    () => renderedAnnotations
+      .map((annotation) => [
+        annotation.id,
+        annotation.path,
+        annotation.start,
+        annotation.end,
+        annotation.side,
+        annotation.title,
+        annotation.explanation,
+        annotation.localComposer?.path ?? "",
+        annotation.localComposer?.startLine ?? "",
+        annotation.localComposer?.line ?? "",
+      ].join("\u0000"))
+      .join("\u0001"),
+    [renderedAnnotations],
+  );
   const items = useMemo(
     () =>
       visibleFiles.map<CodeViewDiffItem<ReviewInlineAnnotation | undefined>>((file) => ({
@@ -350,15 +387,17 @@ function ReviewDiffSurface({
           })),
         collapsed: collapsedPaths.has(file.name),
         // Pierre deliberately reuses a controlled item with the same ID and
-        // version. Hydration swaps the partial raw-patch metadata for exact
-        // base/head metadata, so bump its version to let native hunk controls
+        // version. Hydration swaps partial raw-patch metadata for exact
+        // base/head metadata, and local annotations change rendered slots, so
+        // bump its version to let native hunk controls and annotation portals
         // see the replacement.
         version: reviewDiffItemVersion({
           collapsed: collapsedPaths.has(file.name),
           hydrated: hydratedFiles.has(file.name),
+          annotationKey,
         }),
       })),
-    [collapsedPaths, hydratedFiles, renderedAnnotations, visibleFiles],
+    [annotationKey, collapsedPaths, hydratedFiles, renderedAnnotations, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -565,6 +604,7 @@ function ReviewDiffSurface({
       stickyHeaders: true,
       lineDiffType: "word-alt" as const,
       diffIndicators: "bars" as const,
+      lineHoverHighlight: "both" as const,
       enableLineSelection: localCommentAuthoring?.enabled === true,
       enableGutterUtility: localCommentAuthoring?.enabled === true,
     }),
@@ -635,6 +675,19 @@ function ReviewDiffSurface({
       if (finding.localComposer !== undefined) {
         return <InlineCommentComposer {...finding.localComposer} />;
       }
+      if (finding.conversationThread !== undefined) {
+        return <ConversationThreadCard thread={finding.conversationThread} />;
+      }
+      if (finding.localComment !== undefined) {
+        return (
+          <LocalCommentThread
+            path={finding.path}
+            startLine={finding.start}
+            line={finding.end}
+            body={finding.localComment.body}
+          />
+        );
+      }
       return (
         <article
           className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
@@ -674,10 +727,21 @@ function ReviewDiffSurface({
   }, [localCommentAuthoring]);
   const renderGutterUtility = useCallback((getHoveredLine: () => { readonly lineNumber: number; readonly side: "additions" | "deletions" } | undefined, item: { readonly id: string; readonly type: "diff" | "file" }) => {
     if (localCommentAuthoring?.enabled !== true || item.type !== "diff") return null;
-    const hovered = getHoveredLine();
-    if (hovered === undefined || localCommentAuthoring.canAuthor?.({ path: item.id, startLine: hovered.lineNumber, line: hovered.lineNumber, side: hovered.side === "additions" ? "new" : "old" }) === false) return null;
-    return <button type="button" className="rounded px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Add local comment on ${item.id}`} onClick={() => {
-      beginAuthoring({ id: item.id, range: { start: hovered.lineNumber, end: hovered.lineNumber, side: hovered.side } });
+    const baseTitle = `Add comment on ${item.id}`;
+    return <button type="button" className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={baseTitle} title={baseTitle} onPointerEnter={(event) => {
+      const hovered = getHoveredLine();
+      if (hovered === undefined) return;
+      event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
+      event.currentTarget.dataset.lineSide = hovered.side;
+      event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
+      event.currentTarget.setAttribute("aria-label", `${baseTitle} line ${hovered.lineNumber}`);
+    }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+      const lineNumber = Number(event.currentTarget.dataset.lineNumber);
+      const side = event.currentTarget.dataset.lineSide;
+      if (!Number.isInteger(lineNumber) || lineNumber < 1 || (side !== "additions" && side !== "deletions")) return;
+      const locationSide = side === "additions" ? "new" : "old";
+      if (localCommentAuthoring.canAuthor?.({ path: item.id, startLine: lineNumber, line: lineNumber, side: locationSide }) === false) return;
+      beginAuthoring({ id: item.id, range: { start: lineNumber, end: lineNumber, side } });
     }}>+</button>;
   }, [beginAuthoring, localCommentAuthoring]);
 
@@ -803,6 +867,7 @@ function ReviewDiffSurface({
               expandUnchanged: expandUnchanged || expandSelectedRange,
               lineDiffType: "word-alt",
               diffIndicators: "bars",
+              lineHoverHighlight: "both",
               enableGutterUtility: localCommentAuthoring?.enabled === true,
             }}
             lineAnnotations={selectedAnnotations}
@@ -833,6 +898,7 @@ function ReviewDiffSurface({
               expandUnchanged: expandUnchanged || expandSelectedRange,
               lineDiffType: "word-alt",
               diffIndicators: "bars",
+              lineHoverHighlight: "both",
               enableGutterUtility: localCommentAuthoring?.enabled === true,
             }}
             lineAnnotations={selectedAnnotations}
@@ -871,6 +937,145 @@ function ReviewDiffSurface({
   );
 }
 
+function ConversationThreadCard({
+  thread,
+}: {
+  readonly thread: NonNullable<ReviewInlineAnnotation["conversationThread"]>;
+}): React.JSX.Element {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string>();
+  const opening = thread.comments[0];
+  const latest = thread.comments.at(-1);
+  const hiddenReplyCount = Math.max(0, thread.comments.length - (opening === latest ? 1 : 2));
+  if (opening === undefined) return <p role="status" className="mx-2 my-2 text-sm text-muted-foreground">This conversation has no readable comments.</p>;
+  return (
+    <article
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
+      aria-label={`${thread.state} conversation thread`}
+    >
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{thread.state === "resolved" ? "Resolved" : "Open"}</span>
+        {thread.complete === false ? <span>Some replies unavailable</span> : null}
+      </div>
+      <div className="mt-2">
+        <p className="font-semibold">{opening.author}</p>
+        <PullRequestDescriptionPreview markdown={opening.body} />
+      </div>
+      {latest !== undefined && latest !== opening ? (
+        <div className="mt-4 border-l-2 border-border/70 pl-4">
+          <p className="font-semibold">{latest.author}</p>
+          <PullRequestDescriptionPreview markdown={latest.body} />
+        </div>
+      ) : null}
+      {hiddenReplyCount > 0 ? <p className="mt-3 text-xs text-muted-foreground">{hiddenReplyCount} replies are collapsed.</p> : null}
+      {thread.onSetState === undefined ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
+        setPending(true); setError(undefined);
+        const action = thread.onSetState;
+        if (action === undefined) return;
+        void action(thread.id, thread.state === "resolved" ? "open" : "resolved").catch(() => setError("Patchdesk could not update this thread.")).finally(() => setPending(false));
+      }}>{pending ? "Updating…" : thread.state === "resolved" ? "Unresolve" : "Resolve"}</Button>}
+      {error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
+    </article>
+  );
+}
+
+function LocalCommentThread({
+  path,
+  startLine,
+  line,
+  body,
+}: {
+  readonly path: string;
+  readonly startLine: number;
+  readonly line: number;
+  readonly body: string;
+}): React.JSX.Element {
+  const mockActionTitle = "Conversation actions are a UI preview only";
+  return (
+    <article
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
+      data-review-local-comment={`${path}:${startLine}:${line}`}
+      aria-label={`Saved local comment on ${path}:${startLine}`}
+    >
+      <div className="flex min-w-0 gap-3">
+        <MockCommentAvatar initials="Y" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="font-semibold">You</span>
+            <span className="text-muted-foreground">Just now</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Local draft
+            </span>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{body}</p>
+
+          <div className="mt-4 border-l-2 border-border/70 pl-4">
+            <div className="flex min-w-0 gap-3">
+              <MockCommentAvatar initials="R" tone="reply" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-semibold">Mock reviewer</span>
+                  <span className="text-muted-foreground">Preview</span>
+                </div>
+                <p className="mt-2 break-words text-foreground">
+                  Thanks — threaded replies are UI-only for now.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <button
+              type="button"
+              disabled
+              title={mockActionTitle}
+              data-review-mock-action="reply"
+              className="font-medium text-sky-400 transition-colors disabled:cursor-default disabled:opacity-100"
+            >
+              Add reply…
+            </button>
+            <button
+              type="button"
+              disabled
+              title={mockActionTitle}
+              data-review-mock-action="resolve"
+              className="font-medium text-sky-400 transition-colors disabled:cursor-default disabled:opacity-100"
+            >
+              Resolve
+            </button>
+            <button
+              type="button"
+              disabled
+              title={mockActionTitle}
+              data-review-mock-action="delete"
+              className="font-medium text-destructive transition-colors disabled:cursor-default disabled:opacity-100"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MockCommentAvatar({
+  initials,
+  tone = "author",
+}: {
+  readonly initials: string;
+  readonly tone?: "author" | "reply";
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${tone === "reply" ? "border-amber-300/30 bg-amber-400/20 text-amber-200" : "border-sky-300/30 bg-sky-400/20 text-sky-200"}`}
+    >
+      {initials}
+    </span>
+  );
+}
+
 function InlineCommentComposer({
   path,
   startLine,
@@ -891,10 +1096,10 @@ function InlineCommentComposer({
     if (body.trim().length === 0 || saving) return;
     setSaving(true); setError(undefined);
     try { await onSave(body); }
-    catch { setError("Patchdesk could not save this local comment."); }
+    catch { setError("Patchdesk could not publish this comment to GitHub."); }
     finally { setSaving(false); }
   };
-  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Local comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · local only</p><Textarea className="mt-2" autoFocus aria-label="Local comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write a local inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Saving…" : "Save local comment"}</Button><Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to save. Escape cancels.</p></section>;
+  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · publishes to GitHub</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write an inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Commenting…" : "Comment"}</Button><Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
@@ -1017,7 +1222,7 @@ function AccessiblePatch({
                 const side = line.kind === "Added" ? "additions" as const : "deletions" as const;
                 const lineNumber = side === "additions" ? line.newLine : line.oldLine;
                 if (lineNumber === undefined || localCommentAuthoring.canAuthor?.({ path, startLine: lineNumber, line: lineNumber, side: side === "additions" ? "new" : "old" }) === false) return null;
-                return <button type="button" className="rounded px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Add local comment on ${path}`} onClick={() => onAuthorLine?.(path, lineNumber, side)}>+</button>;
+                return <button type="button" className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Add comment on ${path}`} title={`Add comment on ${path} line ${lineNumber}`} onClick={() => onAuthorLine?.(path, lineNumber, side)}>+</button>;
               })() : null}
             </li>
           );

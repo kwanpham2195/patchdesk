@@ -241,6 +241,7 @@ const githubCommentSchema = v.strictObject({
   updatedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
   url: v.optional(v.pipe(v.string(), v.minLength(1))),
   location: v.optional(diffLocationSchema),
+  viewerDidAuthor: v.optional(v.boolean()),
 });
 
 const githubThreadSchema = v.strictObject({
@@ -499,6 +500,11 @@ const conversationEntrySchema = v.variant("_tag", [
 const conversationSchema = v.strictObject({
   prDescription: v.string(),
   entries: v.array(conversationEntrySchema),
+  inline: v.optional(v.strictObject({
+    threads: v.array(githubThreadSchema),
+    complete: v.optional(v.boolean()),
+    incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+  })),
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
 });
