@@ -54,6 +54,23 @@ describe("PullRequestDescription", () => {
     );
   });
 
+  it("renders list-item text and inline Markdown", () => {
+    render(
+      <PullRequestDescriptionPreview
+        markdown={
+          "- **Changed** the route-planning solver.\n- Preserved [deterministic tie-breaking](https://github.com/centraldigital/patchdesk)."
+        }
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(screen.getByText("Changed")).toBeTruthy();
+    expect(screen.getByText("the route-planning solver.")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "deterministic tie-breaking" }),
+    ).toBeTruthy();
+  });
+
   it("states when the author did not provide a description", () => {
     render(<PullRequestDescription />);
     expect(

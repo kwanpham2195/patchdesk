@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { Minus, Plus, Maximize2, X } from "lucide-react";
 import { Button } from "./ui/button";
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4.0;
 const SCALE_STEP = 0.25;
+
+type PanStart = {
+  readonly pointerId: number;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly scrollLeft: number;
+  readonly scrollTop: number;
+};
 
 export function MarkdownLightbox({
   open,
@@ -17,6 +25,8 @@ export function MarkdownLightbox({
 }): React.JSX.Element | null {
   const [scale, setScale] = useState(1);
   const [fitToScreen, setFitToScreen] = useState(true);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const panStartRef = useRef<PanStart | undefined>(undefined);
 
   // Reset state when opening
   useEffect(() => {
@@ -26,18 +36,44 @@ export function MarkdownLightbox({
     }
   }, [open]);
 
-  const zoomIn = useCallback(
-    () => setScale((s) => Math.min(s + SCALE_STEP, MAX_SCALE)),
-    [],
-  );
-  const zoomOut = useCallback(
-    () => setScale((s) => Math.max(s - SCALE_STEP, MIN_SCALE)),
-    [],
-  );
+  const zoomIn = useCallback(() => {
+    setFitToScreen(false);
+    setScale((s) => Math.min(s + SCALE_STEP, MAX_SCALE));
+  }, []);
+  const zoomOut = useCallback(() => {
+    setFitToScreen(false);
+    setScale((s) => Math.max(s - SCALE_STEP, MIN_SCALE));
+  }, []);
   const toggleFit = useCallback(() => setFitToScreen((f) => !f), []);
   const reset = useCallback(() => {
     setScale(1);
     setFitToScreen(true);
+  }, []);
+  const startPan = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    if (fitToScreen || scale <= 1) return;
+    const viewport = viewportRef.current;
+    if (viewport === null) return;
+    panStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    };
+    viewport.setPointerCapture?.(event.pointerId);
+  }, [fitToScreen, scale]);
+  const pan = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const start = panStartRef.current;
+    const viewport = viewportRef.current;
+    if (start === undefined || viewport === null || start.pointerId !== event.pointerId) return;
+    viewport.scrollLeft = start.scrollLeft - (event.clientX - start.clientX);
+    viewport.scrollTop = start.scrollTop - (event.clientY - start.clientY);
+  }, []);
+  const stopPan = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const start = panStartRef.current;
+    if (start?.pointerId !== event.pointerId) return;
+    panStartRef.current = undefined;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
   }, []);
 
   // Keyboard shortcuts
@@ -71,7 +107,7 @@ export function MarkdownLightbox({
     <div
       role="dialog"
       aria-label="Image viewer"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/98 backdrop-blur-sm"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -123,17 +159,22 @@ export function MarkdownLightbox({
 
       {/* Content */}
       <div
-        className="flex max-h-[90vh] max-w-[90vw] items-center justify-center overflow-auto"
-        style={
+        ref={viewportRef}
+        role="region"
+        aria-label="Zoomable content"
+        className={
           fitToScreen
-            ? undefined
-            : {
-                transform: `scale(${scale})`,
-                transformOrigin: "center center",
-              }
+            ? "flex max-h-[90vh] max-w-[90vw] items-center justify-center overflow-auto"
+            : "h-[90vh] w-[90vw] cursor-grab overflow-auto touch-none active:cursor-grabbing"
         }
+        onPointerDown={startPan}
+        onPointerMove={pan}
+        onPointerUp={stopPan}
+        onPointerCancel={stopPan}
       >
-        {children}
+        <div className={fitToScreen ? undefined : "w-max"} style={fitToScreen ? undefined : { zoom: scale }}>
+          {children}
+        </div>
       </div>
     </div>
   );

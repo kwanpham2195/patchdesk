@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
@@ -196,6 +196,12 @@ function renderBlocks(
           <p key={key} className="whitespace-pre-wrap break-words">
             {renderInline(tokensOf(token), pullRequest)}
           </p>
+        );
+      case "text":
+        return (
+          <Fragment key={key}>
+            {renderInline(tokensOf(token), pullRequest)}
+          </Fragment>
         );
       case "blockquote":
         return (
@@ -705,7 +711,7 @@ function ClickableMermaid({
           open(
             <div
               aria-hidden="true"
-              className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:max-w-[85vw]"
+              className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:w-[85vw]"
               dangerouslySetInnerHTML={{ __html: svg }}
             />,
           )
@@ -743,7 +749,7 @@ function loadMermaid(): Promise<Mermaid> {
       startOnLoad: false,
       securityLevel: "strict",
       suppressErrorRendering: true,
-      theme: "base",
+      theme: "dark",
     });
     return mermaid;
   });
