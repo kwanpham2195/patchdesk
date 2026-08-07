@@ -10,9 +10,8 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
-  GitHubComments,
+  Conversation,
   GitHubMergeEvidence,
-  GitHubPublishedFeedback,
   MergeDisplayReason,
   PullRequestCommit,
   PullRequestSummary,
@@ -94,8 +93,7 @@ export type ReviewWorkbenchProjection = {
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
   };
   readonly draft?: ReviewBatch;
-  readonly publishedFeedback: GitHubPublishedFeedback;
-  readonly comments: GitHubComments;
+  readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
@@ -108,7 +106,7 @@ export type RemoteReviewContext = {
   readonly currentHeadSha?: GitSha;
   readonly freshness: "fresh" | "updates_available" | "unavailable" | "not_refreshed";
   readonly refreshedAt: IsoTimestamp;
-  readonly comments: GitHubComments;
+  readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness?: MergeReadiness;
   readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
@@ -136,8 +134,8 @@ export class ReviewWorkbenchProjectionService {
     private readonly sessions: ReviewSessionStore,
     private readonly github: Pick<
       GitHubReader,
-      "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"
-    > & Partial<Pick<GitHubReader, "getPullRequestPublishedFeedback">>,
+      "getPullRequest" | "loadConversation" | "getPullRequestChecks"
+    >,
     private readonly now: () => IsoTimestamp,
     private readonly recovery?: {
       readonly paths?: PatchdeskPaths;
@@ -169,10 +167,9 @@ export class ReviewWorkbenchProjectionService {
     if (session._tag === "err") return session;
     return this.project(session.value, {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
-      comments: { _tag: "ok", value: input.snapshot.comments },
+      conversation: input.snapshot.conversation !== undefined ? ok(input.snapshot.conversation) : err({ _tag: "GitHubReadFailed", operation: "load_conversation" }),
       commits: input.snapshot.commits,
       checks: { _tag: "ok", value: input.snapshot.checks },
-      publishedFeedback: input.snapshot.publishedFeedback === undefined ? ok({ reviews: [], comments: [] } as GitHubPublishedFeedback) : ok(input.snapshot.publishedFeedback),
       ...(input.snapshot.mergeEvidence === undefined ? {} : { mergeEvidence: input.snapshot.mergeEvidence }),
     }, "represented", input.refreshedAt, input.updatesAvailable === true);
   }
@@ -192,23 +189,19 @@ export class ReviewWorkbenchProjectionService {
       repo: session.value.key.repo,
       number: session.value.key.prNumber,
     };
-    const [current, comments, checks, publishedFeedback] = await Promise.all([
+    const [current, conversationResult, checks] = await Promise.all([
       this.github.getPullRequest({ profile: profile.value, pr }),
-      this.github.getPullRequestComments({ profile: profile.value, pr }),
+      this.github.loadConversation({ profile: profile.value, pr }),
       this.github.getPullRequestChecks({
         profile: profile.value,
         pr,
         headSha: session.value.key.headSha,
       }),
-      this.github.getPullRequestPublishedFeedback === undefined
-        ? Promise.resolve(ok({ reviews: [], comments: [] } as GitHubPublishedFeedback))
-        : this.github.getPullRequestPublishedFeedback({ profile: profile.value, pr }),
     ]);
     return this.project(session.value, {
       current,
-      comments,
+      conversation: conversationResult,
       checks,
-      publishedFeedback,
     }, "live");
   }
 
@@ -225,7 +218,7 @@ export class ReviewWorkbenchProjectionService {
         : { currentHeadSha: value.revision.currentHeadSha }),
       freshness: value.revision.freshness,
       refreshedAt: value.revision.refreshedAt,
-      comments: value.comments,
+      conversation: value.conversation,
       checks: value.checks,
       mergeReadiness: value.mergeReadiness,
       mergeReasons: value.mergeReasons,
@@ -248,10 +241,9 @@ export class ReviewWorkbenchProjectionService {
     session: ReviewSession,
     remote: {
       readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
-      readonly comments: Awaited<ReturnType<GitHubReader["getPullRequestComments"]>>;
+      readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
       readonly commits?: ReadonlyArray<PullRequestCommit>;
       readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
-      readonly publishedFeedback?: Awaited<ReturnType<NonNullable<GitHubReader["getPullRequestPublishedFeedback"]>>>;
       readonly mergeEvidence?: GitHubMergeEvidence;
     } | undefined,
     source: "local" | "represented" | "live",
@@ -296,11 +288,9 @@ export class ReviewWorkbenchProjectionService {
     const checks: CheckSummary = remote?.checks?._tag === "ok"
       ? remote.checks.value
       : { overall: "unknown", checks: [] };
-    const comments: GitHubComments = remote?.comments?._tag === "ok"
-      ? remote.comments.value
-      : source !== "local"
-        ? { threads: [], complete: false, incompleteReason: "unavailable" }
-        : { threads: [], complete: true };
+    const conversation: Conversation = remote?.conversation?._tag === "ok"
+      ? remote.conversation.value
+      : { prDescription: "", entries: [] };
     const freshness = source === "local"
       ? "not_refreshed" as const
       : updatesAvailable
@@ -360,8 +350,7 @@ export class ReviewWorkbenchProjectionService {
         walkthrough,
       },
       ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
-      publishedFeedback: remote?.publishedFeedback?._tag === "ok" ? remote.publishedFeedback.value : { reviews: [], comments: [] },
-      comments,
+      conversation,
       checks,
       mergeReadiness,
       mergeReasons,

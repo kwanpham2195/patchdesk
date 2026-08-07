@@ -54,15 +54,16 @@ describe("Patchdesk Design scenarios", () => {
     for (const state of ["merged", "closed"] as const) {
       const fixture = createUnifiedReviewFixture(state);
       expect(fixture.review.status).toBe(state);
-      expect(fixture.publishedFeedback.reviews[0]?.body).toBe("Published review body");
-      expect(fixture.publishedFeedback.comments[0]?.body).toBe("Published inline feedback");
-      expect(fixture.publishedFeedback.reviews[0]?.canDismiss).toBe(true);
-      expect(fixture.publishedFeedback.comments[0]).toMatchObject({ canEdit: true, canDelete: true });
+      const reviewEntry = fixture.conversation.entries.find(e => e._tag === "ReviewSummary");
+      const commentEntry = fixture.conversation.entries.find(e => e._tag === "IssueComment");
+      expect(reviewEntry?._tag === "ReviewSummary" && reviewEntry.review.body).toBe("Published review body");
+      expect(commentEntry?._tag === "IssueComment" && commentEntry.comment.body).toBe("Published inline feedback");
+      expect(reviewEntry?._tag === "ReviewSummary" && reviewEntry.review.canDismiss).toBe(true);
     }
     const confirmed = createUnifiedReviewFixture("publication-confirmed");
     expect(confirmed.draft).toMatchObject({ state: { _tag: "Local" }, summaryBody: "", items: [] });
-    expect(confirmed.publishedFeedback.reviews).toHaveLength(1);
-    expect(confirmed.publishedFeedback.comments).toHaveLength(1);
+    expect(confirmed.conversation.entries.filter(e => e._tag === "ReviewSummary")).toHaveLength(1);
+    expect(confirmed.conversation.entries.filter(e => e._tag === "IssueComment")).toHaveLength(1);
   });
 
   it("maps typed Review fixture states to production initial UI state", () => {

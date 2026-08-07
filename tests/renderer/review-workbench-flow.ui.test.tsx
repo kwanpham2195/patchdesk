@@ -56,8 +56,7 @@ const projection = (): WorkbenchResponse => ({
     analysis: { status: "not_generated" },
     walkthrough: { status: "not_generated" },
   },
-  publishedFeedback: { reviews: [], comments: [] },
-  comments: { threads: [] },
+  conversation: { prDescription: "", entries: [] },
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
   mergeReasons: [],
@@ -310,8 +309,8 @@ describe("ReviewWorkbenchFlow", () => {
       summaryBody: "",
       items: [],
     });
-    expect(value.publishedFeedback.reviews).toHaveLength(1);
-    expect(value.publishedFeedback.comments).toHaveLength(1);
+    expect(value.conversation.entries.filter(e => e._tag === "ReviewSummary")).toHaveLength(1);
+    expect(value.conversation.entries.filter(e => e._tag === "IssueComment")).toHaveLength(1);
     render(
       <ReviewWorkbenchFlow
         workbench={value}
@@ -1149,18 +1148,21 @@ describe("ReviewWorkbenchFlow", () => {
           },
         ],
       },
-      publishedFeedback: {
-        reviews: [
+      conversation: {
+        prDescription: "",
+        entries: [
           {
-            id: "published-1",
-            author: "maintainer",
-            body: "Published review body",
-            event: "COMMENTED" as const,
-            submittedAt: "2026-08-01T00:00:00.000Z",
-            canDismiss: false,
+            _tag: "ReviewSummary" as const,
+            review: {
+              id: "published-1",
+              author: "maintainer",
+              body: "Published review body",
+              event: "COMMENTED" as const,
+              submittedAt: "2026-08-01T00:00:00.000Z",
+              canDismiss: false,
+            },
           },
         ],
-        comments: [],
       },
     };
     const user = userEvent.setup();

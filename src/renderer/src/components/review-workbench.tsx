@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, GitMerge, Loade
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
+import { parseReviewBatch } from "../../../domain/review-batch";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
@@ -42,6 +43,28 @@ function initialFindings(model: WorkbenchResponse): ReadonlyArray<ReviewFinding>
   const retained = model.insights.analysis.retained;
   if (model.insights.analysis.status !== "current" || retained === undefined || retained.sessionId !== model.session.id || retained.headSha !== model.revision.reviewedHeadSha) return [];
   return retained.value.findings.filter((finding) => finding.mappingStatus === "mapped");
+}
+
+function draftInlineAnnotations(
+  draft: WorkbenchResponse["draft"],
+): ReadonlyArray<ReviewInlineAnnotation> {
+  if (draft === undefined) return [];
+  const parsed = parseReviewBatch(draft);
+  if (parsed._tag === "err") return [];
+  return parsed.value.items.flatMap((item) => {
+    if (item._tag !== "InlineComment" || !item.include || item.postability !== "postable") return [];
+    return [{
+      id: `local-draft:${item.id}`,
+      path: item.anchor.path,
+      start: item.anchor.startLine,
+      end: item.anchor.line,
+      side: item.anchor.side,
+      severity: "info",
+      title: "Local comment",
+      explanation: item.body,
+      localComment: { body: item.body },
+    }];
+  });
 }
 
 function createCommitCommentAuthoring(base: LocalCommentAuthoring | undefined, fullPatch: string): LocalCommentAuthoring | undefined {
@@ -85,7 +108,7 @@ export type ReviewWorkbenchActions = {
 export type ReviewWorkbenchSlots = {
   readonly insights: React.ReactNode;
   readonly draftDock: React.ReactNode;
-  readonly publishedFeedback: React.ReactNode;
+  readonly conversation: React.ReactNode;
   readonly mergeAction: React.ReactNode;
 };
 
@@ -209,7 +232,10 @@ export function ReviewWorkbench({
   const commitDiffState = useCommitDiff({ ...(selectedCommitSha === undefined ? {} : { selectedSha: selectedCommitSha }), revisionKey: model.revision.reviewedHeadSha, loadCommitDiff: actions.loadCommitDiff });
   const commitCommentAuthoring = useMemo(() => selectedCommitSha === undefined || model.fullPatch === undefined ? undefined : createCommitCommentAuthoring(actions.localCommentAuthoring, model.fullPatch), [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha]);
   const commitDiff = commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
-  const annotations: ReadonlyArray<ReviewInlineAnnotation> = findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]);
+  const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
+    ...findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]),
+    ...draftInlineAnnotations(model.draft),
+  ];
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const selectedFindingLocation = selectedFinding === undefined ? undefined : {
@@ -412,7 +438,7 @@ export function ReviewWorkbench({
       </div>
 
       <div ref={feedbackRegionRef} tabIndex={-1} className="hidden min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none" data-review-workbench-feedback>
-        {slots.publishedFeedback}
+        {slots.conversation}
         {slots.mergeAction}
       </div>
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>

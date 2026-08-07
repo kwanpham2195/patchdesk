@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
-import type { CheckSummary, CheckRunSummary, GitHubComment, GitHubComments, GitHubMergeEvidence, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
+import type { CheckSummary, CheckRunSummary, Conversation, GitHubComment, GitHubComments, GitHubMergeEvidence, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestCommit, PullRequestSummary } from "../../domain/github-context";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseGitHubThreadId, parseIsoTimestamp, parsePullRequestNumber, parseRepoRelativePath, type ContentHash, type ReviewId, type WorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
 import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
@@ -17,6 +17,7 @@ export type ReviewRemoteSnapshot = {
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly checks: CheckSummary;
   readonly publishedFeedback?: GitHubPublishedFeedback;
+  readonly conversation?: Conversation;
   readonly mergePolicy?: MergePolicySnapshot;
   /** Separate typed aggregate evidence used for display; mergePolicy remains the write-gate input. */
   readonly mergeEvidence?: GitHubMergeEvidence;

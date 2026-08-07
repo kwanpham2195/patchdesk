@@ -131,6 +131,26 @@ export type PublishedReview = {
   readonly canDismiss: boolean;
 };
 
+/** One entry in the Conversation timeline, in chronological order. */
+export type ConversationEntry =
+  | { readonly _tag: "PrDescription"; readonly body: string }
+  | { readonly _tag: "IssueComment"; readonly comment: GitHubComment }
+  | { readonly _tag: "ReviewSummary"; readonly review: PublishedReview }
+  | { readonly _tag: "GeneralThread"; readonly thread: GitHubConversationThread };
+
+/** Unified Conversation payload replacing separate review-feedback and thread queries. */
+export type Conversation = {
+  readonly prDescription: string;
+  readonly entries: ReadonlyArray<ConversationEntry>;
+  readonly complete?: boolean;
+  readonly incompleteReason?:
+    | "thread_cap"
+    | "comment_cap"
+    | "pagination"
+    | "unavailable";
+};
+
+/** Legacy adapter type. Replaced by Conversation for the renderer contract; still used by optional adapter methods during migration. */
 export type PublishedReviewComment = GitHubComment & {
   readonly reviewId?: string;
   readonly canEdit: boolean;
@@ -144,6 +164,12 @@ export type GitHubPublishedFeedback = {
   readonly incompleteReason?: "pagination" | "unavailable";
 };
 
+/** Internal adapter type: review-comment threads loaded from GraphQL. */
+export type GitHubComments = {
+  readonly threads: ReadonlyArray<GitHubConversationThread>;
+  readonly complete?: boolean;
+  readonly incompleteReason?: "thread_cap" | "comment_cap" | "pagination" | "unavailable";
+};
 export type PullRequestSnapshot = {
   readonly headSha: GitSha;
   /** Exact base SHA used to hydrate omitted diff context when it is available. */
@@ -173,9 +199,4 @@ export type PullRequestSummary = PullRequestSnapshot & {
   readonly deletions?: number;
 };
 
-export type GitHubComments = {
-  readonly threads: ReadonlyArray<GitHubConversationThread>;
-  /** Omitted only for legacy persisted/test values; adapter reads always set it. */
-  readonly complete?: boolean;
-  readonly incompleteReason?: "thread_cap" | "comment_cap" | "pagination" | "unavailable";
-};
+

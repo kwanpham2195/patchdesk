@@ -31,7 +31,6 @@ import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
 import { ReviewDraftDock } from "../components/review-draft-dock";
-import { PublishedFeedbackPanel } from "../components/published-feedback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -479,7 +478,7 @@ export function ReviewWorkbenchFlow({
               onAnalysisCompletion={() => setAutoOpenPublication(true)}
             />
           ),
-          publishedFeedback: (
+          conversation: (
             <PublishedFeedbackSlot
               workbench={workbench}
               onRefresh={refresh}
@@ -1598,15 +1597,13 @@ function insightLiveStatus(analysis: string, walkthrough: string): string {
     : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
 }
 
-function PublishedFeedbackSlot({
-  workbench,
-  onRefresh,
-  canWriteGitHub,
-}: {
+function PublishedFeedbackSlot(_props: {
   readonly workbench: WorkbenchResponse;
   readonly onRefresh: () => Promise<void>;
   readonly canWriteGitHub: boolean;
-}): React.JSX.Element | null {
+}): null {
+  return null;
+  /*
   return (
     <PublishedFeedbackPanel
       feedback={workbench.publishedFeedback}
@@ -1653,6 +1650,7 @@ function PublishedFeedbackSlot({
       }}
     />
   );
+  */
 }
 
 function DraftSlot({

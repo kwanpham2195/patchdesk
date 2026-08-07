@@ -4,16 +4,17 @@ import type { CommandFailure, CommandRunner } from "./command-runner";
 import type {
   CheckRunSummary,
   CheckSummary,
+  Conversation,
   GitHubComment,
   GitHubComments,
   GitHubConversationThread,
   GitHubPublishedFeedback,
+  PublishedReviewComment,
   GitHubMergeStateStatus,
   GitHubMergePolicyEvidence,
   GitHubClassicBranchProtectionEvidence,
   GitHubAppliedRulesetEvidence,
   PublishedReview,
-  PublishedReviewComment,
   PullRequestCommit,
   PullRequestSummary,
   MergePolicySnapshot,
@@ -331,6 +332,10 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
+  loadConversation(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<Conversation, GitHubReadFailure>>;
   /** Bounded authenticated repository permission evidence used for record capabilities. */
   getRepositoryPermission?(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -533,6 +538,7 @@ type GitHubReadOperation =
   | "get_merge_policy_evidence"
   | "get_comments"
   | "get_reviews"
+  | "load_conversation"
   | "get_repository_permission"
   | "get_branch_protection"
   | "get_pr_commits"
@@ -1281,6 +1287,42 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       ? sha
       : err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
+
+  async loadConversation(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<Conversation, GitHubReadFailure>> {
+    const [commentsResult, feedbackResult] = await Promise.all([
+      this.getPullRequestComments(input),
+      this.getPullRequestPublishedFeedback?.(input) ?? Promise.resolve(ok({ reviews: [], comments: [] })),
+    ]);
+    if (commentsResult._tag === "err") return commentsResult;
+    if (feedbackResult._tag === "err") return feedbackResult;
+    return ok(this.assembleConversation(feedbackResult.value, commentsResult.value));
+  }
+
+  private assembleConversation(
+    feedback: GitHubPublishedFeedback,
+    comments: GitHubComments,
+  ): Conversation {
+    const entries: Conversation["entries"][number][] = [];
+    for (const review of feedback.reviews) {
+      entries.push({ _tag: "ReviewSummary" as const, review });
+    }
+    for (const comment of feedback.comments) {
+      entries.push({ _tag: "IssueComment" as const, comment });
+    }
+    for (const thread of comments.threads) {
+      if (thread.location !== undefined) continue;
+      entries.push({ _tag: "GeneralThread" as const, thread });
+    }
+    entries.sort((a, b) => {
+      const at = a._tag === "ReviewSummary" ? a.review.submittedAt : a._tag === "IssueComment" ? a.comment.createdAt : a._tag === "GeneralThread" ? (a.thread.comments[0]?.createdAt ?? "") : "";
+      const bt = b._tag === "ReviewSummary" ? b.review.submittedAt : b._tag === "IssueComment" ? b.comment.createdAt : b._tag === "GeneralThread" ? (b.thread.comments[0]?.createdAt ?? "") : "";
+      return at.localeCompare(bt);
+    });
+    return { prDescription: "", entries, complete: feedback.complete !== false && comments.complete !== false };
+  }
 }
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
@@ -1483,6 +1525,32 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return this.values.mergeResult === undefined
       ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing merge fixture." })
       : ok(this.values.mergeResult);
+  }
+
+  async loadConversation(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<Conversation, GitHubReadFailure>> {
+    void input;
+    const threads = this.values.comments ?? { threads: [], complete: true };
+    const feedback: GitHubPublishedFeedback = this.values.publishedFeedback ?? { reviews: [], comments: [] };
+    const entries: Conversation["entries"][number][] = [];
+    for (const review of feedback.reviews) {
+      entries.push({ _tag: "ReviewSummary" as const, review });
+    }
+    for (const comment of feedback.comments) {
+      entries.push({ _tag: "IssueComment" as const, comment });
+    }
+    for (const thread of threads.threads) {
+      if (thread.location !== undefined) continue;
+      entries.push({ _tag: "GeneralThread" as const, thread });
+    }
+    entries.sort((a, b) => {
+      const at = a._tag === "ReviewSummary" ? a.review.submittedAt : a._tag === "IssueComment" ? a.comment.createdAt : a._tag === "GeneralThread" ? (a.thread.comments[0]?.createdAt ?? "") : "";
+      const bt = b._tag === "ReviewSummary" ? b.review.submittedAt : b._tag === "IssueComment" ? b.comment.createdAt : b._tag === "GeneralThread" ? (b.thread.comments[0]?.createdAt ?? "") : "";
+      return at.localeCompare(bt);
+    });
+    return ok({ prDescription: "", entries, complete: feedback.complete !== false && threads.complete !== false });
   }
 }
 

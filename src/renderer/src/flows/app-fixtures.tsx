@@ -125,18 +125,21 @@ export function AppFixtureContent({
         modelOverrides={
           detail
             ? {
-                publishedFeedback: {
-                  reviews: [
+                conversation: {
+                  prDescription: "",
+                  entries: [
                     {
-                      id: "published-1",
-                      author: "fixture-maintainer",
-                      body: "Published review body",
-                      event: "COMMENTED" as const,
-                      submittedAt: "2026-07-17T00:00:00.000Z",
-                      canDismiss: false,
+                      _tag: "ReviewSummary" as const,
+                      review: {
+                        id: "published-1",
+                        author: "fixture-maintainer",
+                        body: "Published review body",
+                        event: "COMMENTED" as const,
+                        submittedAt: "2026-07-17T00:00:00.000Z",
+                        canDismiss: false,
+                      },
                     },
                   ],
-                  comments: [],
                 },
               }
             : { mergeReadiness, mergeReasons }
@@ -344,7 +347,7 @@ function CanonicalFixtureWorkbench({
   readonly modelOverrides?: Partial<
     Pick<
       WorkbenchResponse,
-      "mergeReadiness" | "mergeReasons" | "publishedFeedback"
+      "mergeReadiness" | "mergeReasons" | "conversation"
     >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
@@ -377,7 +380,7 @@ function CanonicalFixtureWorkbench({
           </section>
         ),
         draftDock: null,
-        publishedFeedback: null,
+        conversation: null,
         mergeAction: null,
       }}
     />
@@ -602,32 +605,35 @@ export function createUnifiedReviewFixture(
         : base.revision,
     insights: { analysis, walkthrough },
     draft: publicationState,
-    publishedFeedback: withFeedback
+    conversation: withFeedback
       ? {
-          ...base.publishedFeedback,
-          reviews: [
+          prDescription: base.conversation.prDescription ?? "",
+          entries: [
+            ...base.conversation.entries,
             {
-              id: "published-1",
-              author: "fixture-maintainer",
-              body: "Published review body",
-              event: "COMMENTED",
-              submittedAt: base.revision.refreshedAt,
-              canDismiss: true,
+              _tag: "ReviewSummary" as const,
+              review: {
+                id: "published-1",
+                author: "fixture-maintainer",
+                body: "Published review body",
+                event: "COMMENTED" as const,
+                submittedAt: base.revision.refreshedAt,
+                canDismiss: true,
+              },
             },
-          ],
-          comments: [
             {
-              id: "comment-1",
-              author: "fixture-maintainer",
-              body: "Published inline feedback",
-              createdAt: base.revision.refreshedAt,
-              canEdit: true,
-              canDelete: true,
-              location: { path: "src/b.ts", line: 1, diffSide: "new" },
+              _tag: "IssueComment" as const,
+              comment: {
+                id: "comment-1",
+                author: "fixture-maintainer",
+                body: "Published inline feedback",
+                createdAt: base.revision.refreshedAt,
+                location: { path: "src/b.ts", line: 1, diffSide: "new" as const },
+              },
             },
           ],
         }
-      : base.publishedFeedback,
+      : base.conversation,
   };
 }
 
@@ -723,7 +729,7 @@ function canonicalWorkbenchModel(
       walkthrough: { status: "not_generated" },
     },
     draft: submissionFixtureData.batch as never,
-    publishedFeedback: { reviews: [], comments: [] },
+    conversation: { prDescription: "", entries: [] },
     comments: data.comments,
     checks: data.checks,
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },

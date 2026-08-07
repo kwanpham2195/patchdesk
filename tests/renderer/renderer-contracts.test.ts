@@ -40,8 +40,7 @@ const reviewProjection = {
     analysis: { status: "not_generated" },
     walkthrough: { status: "not_generated" },
   },
-  publishedFeedback: { reviews: [], comments: [] },
-  comments: { threads: [] },
+  conversation: { prDescription: "", entries: [] },
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
 };
@@ -162,7 +161,7 @@ describe("parseWorkbenchResponse", () => {
     })).toBeUndefined();
     expect(parseWorkbenchResponse({
       ...reviewProjection,
-      comments: { threads: [{ ...legalThread, comments: [{ ...legalComment, prompt: "secret" }] }] },
+      conversation: { prDescription: "", entries: [{ _tag: "GeneralThread", thread: { ...legalThread, comments: [{ ...legalComment, prompt: "secret" }] } }] },
     })).toBeUndefined();
     expect(parseWorkbenchResponse({
       ...reviewProjection,
@@ -185,16 +184,19 @@ describe("parseWorkbenchResponse", () => {
     })).toBeUndefined();
     expect(parseWorkbenchResponse({
       ...reviewProjection,
-      publishedFeedback: {
-        reviews: [],
-        comments: [{ ...legalComment, canEdit: true, canDelete: false, location: { path: "/tmp/secret" } }],
+      conversation: {
+        prDescription: "",
+        entries: [{ _tag: "IssueComment", comment: { ...legalComment, prompt: "secret" } }],
       },
     })).toBeUndefined();
 
     expect(parseWorkbenchResponse({
       ...reviewProjection,
       checks: { overall: "passing", checks: [legalCheck] },
-      comments: { threads: [legalThread], complete: true },
+      conversation: {
+        prDescription: "A PR description",
+        entries: [{ _tag: "IssueComment", comment: { ...legalComment } }],
+      },
       commits: [{
         sha: sessionProjection.key.headSha,
         message: "A legal commit",
@@ -215,10 +217,6 @@ describe("parseWorkbenchResponse", () => {
         walkthrough: { status: "not_generated" },
       },
       draft: legalDraft,
-      publishedFeedback: {
-        reviews: [],
-        comments: [{ ...legalComment, canEdit: true, canDelete: false, location: { path: "src/review.ts", line: 3 } }],
-      },
     })).toBeDefined();
   });
 });

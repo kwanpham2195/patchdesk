@@ -10,7 +10,7 @@ import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { InsightStore } from "../../src/adapters/storage/insight-store";
-import type { CheckSummary, GitHubComments, PullRequestSummary } from "../../src/domain/github-context";
+import type { CheckSummary, Conversation, GitHubComments, PullRequestSummary } from "../../src/domain/github-context";
 import {
   createReviewId,
   createReviewSessionId,
@@ -61,7 +61,7 @@ function fakeGitHub(options: {
   readonly current?: PullRequestSummary;
   readonly comments?: GitHubComments;
   readonly checks?: CheckSummary;
-}): Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks"> & { readonly calls: Array<string> } {
+}): Pick<GitHubReader, "getPullRequest" | "loadConversation" | "getPullRequestChecks"> & { readonly calls: Array<string> } {
   const calls: Array<string> = [];
   const missing = (): { readonly _tag: "err"; readonly error: never } => ({
     _tag: "err",
@@ -72,9 +72,11 @@ function fakeGitHub(options: {
       calls.push("pull_request");
       return options.current === undefined ? missing() : { _tag: "ok", value: options.current };
     },
-    async getPullRequestComments() {
-      calls.push("comments");
-      return options.comments === undefined ? missing() : { _tag: "ok", value: options.comments };
+    async loadConversation() {
+      calls.push("conversation");
+      if (options.comments === undefined) return missing();
+      const conversation: Conversation = { prDescription: "", entries: options.comments.threads.filter(t => t.location === undefined).map(t => ({ _tag: "GeneralThread" as const, thread: t })), ...(options.comments.complete === undefined ? {} : { complete: options.comments.complete }) };
+      return { _tag: "ok", value: conversation };
     },
     async getPullRequestChecks() {
       calls.push("checks");
@@ -378,7 +380,7 @@ describe("ReviewWorkbenchProjectionService", () => {
       if (loaded._tag === "err") return;
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.revision.freshness).toBe("unavailable");
-      expect(loaded.value.comments).toEqual({
+      expect(loaded.value.conversation).toEqual({
         threads: [],
         complete: false,
         incompleteReason: "unavailable",
@@ -606,7 +608,7 @@ it("reports a missing incremental comparison truthfully", async () => {
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.insights.analysis.status).toBe("current");
       expect(loaded.value.commits).toEqual([]);
-      expect(loaded.value.publishedFeedback).toEqual({ reviews: [], comments: [] });
+      expect(loaded.value.conversation).toEqual({ reviews: [], comments: [] });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -636,7 +638,7 @@ it("reports a missing incremental comparison truthfully", async () => {
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.revision.freshness).toBe("fresh");
       expect(loaded.value.checks).toEqual({ overall: "pending", checks: [] });
-      expect(loaded.value.comments).toMatchObject({ threads: [{ id: "thread-1" }] });
+      expect(loaded.value.conversation).toMatchObject({ threads: [{ id: "thread-1" }] });
       expect(loaded.value.draft).toMatchObject({ sessionId: session.id, items: [] });
       expect(loaded.value.mergeReadiness).toEqual({
         _tag: "Blocked",

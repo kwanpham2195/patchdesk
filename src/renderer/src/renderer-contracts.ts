@@ -480,19 +480,25 @@ const reviewBatchSchema = v.strictObject({
   updatedAt: v.pipe(v.string(), v.isoTimestamp()),
 });
 
-const publishedFeedbackSchema = v.strictObject({
-  reviews: v.array(v.strictObject({
-    id: v.pipe(v.string(), v.minLength(1)), author: v.pipe(v.string(), v.minLength(1)), body: v.string(), event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]), submittedAt: v.pipe(v.string(), v.isoTimestamp()), canDismiss: v.boolean(),
-  })),
-  comments: v.array(v.strictObject({
-    ...githubCommentSchema.entries,
-    reviewId: v.optional(v.pipe(v.string(), v.minLength(1))), canEdit: v.boolean(), canDelete: v.boolean(),
-  })),
-  complete: v.optional(v.boolean()),
-  incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
+const publishedReviewSchema = v.strictObject({
+  id: v.pipe(v.string(), v.minLength(1)),
+  author: v.pipe(v.string(), v.minLength(1)),
+  body: v.string(),
+  event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]),
+  submittedAt: v.pipe(v.string(), v.isoTimestamp()),
+  canDismiss: v.boolean(),
 });
-const githubCommentsSchema = v.strictObject({
-  threads: v.array(githubThreadSchema),
+
+const conversationEntrySchema = v.variant("_tag", [
+  v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
+  v.strictObject({ _tag: v.literal("IssueComment"), comment: githubCommentSchema }),
+  v.strictObject({ _tag: v.literal("ReviewSummary"), review: publishedReviewSchema }),
+  v.strictObject({ _tag: v.literal("GeneralThread"), thread: githubThreadSchema }),
+]);
+
+const conversationSchema = v.strictObject({
+  prDescription: v.string(),
+  entries: v.array(conversationEntrySchema),
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
 });
@@ -517,7 +523,7 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
-  draft: v.optional(reviewBatchSchema), publishedFeedback: publishedFeedbackSchema, comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
+  draft: v.optional(reviewBatchSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export function parseReviewBatchProjection(input: unknown): WorkbenchResponse["draft"] | undefined {
@@ -572,7 +578,7 @@ export function parsePublicationPreview(input: unknown): PublicationPreviewRespo
   return parsed.success ? parsed.output : undefined;
 }
 const remoteReviewContextSchema = v.strictObject({
-  pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), comments: githubCommentsSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema), mergeReasons: v.optional(v.array(mergeReasonSchema)),
+  pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), conversation: conversationSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema), mergeReasons: v.optional(v.array(mergeReasonSchema)),
 });
 export type RemoteReviewContextResponse = v.InferOutput<typeof remoteReviewContextSchema>;
 /** Reject malformed current GitHub context before merging it into saved work. */
