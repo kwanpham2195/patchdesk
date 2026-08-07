@@ -28,6 +28,8 @@ The Conversation shows: the PR description, issue comments, review summaries (ap
 8. As a maintainer, I want the Conversation to load automatically when I open a review, so that I don't have to explicitly request it and wait.
 9. As a maintainer, I want the Conversation screen to be clean and readable, so that I'm not overwhelmed by a cramped sidebar-style layout like the old hidden threads view.
 10. As a maintainer, I want the published feedback panel to be gone, so that I have one canonical place to see GitHub-owned discussion content instead of two partial views.
+11. As a maintainer, I want to click on an image or Mermaid diagram in the PR description to open it in a zoomable lightbox, so that I can inspect large diagrams and screenshots that are too big for the inline view.
+12. As a maintainer, I want zoom controls (zoom in, zoom out, fit to screen) in the image lightbox, so that I can read fine details in diagrams without losing context.
 
 ## Implementation Decisions
 
@@ -56,6 +58,10 @@ The Conversation shows: the PR description, issue comments, review summaries (ap
 - **Inline threads stay in the diff view.** Inline conversation threads (tied to specific diff locations) are not part of the Conversation screen. They remain in the diff view. Improving their UX is phase 2, tracked separately.
 
 - **Workbench contract change.** The `WorkbenchResponse` schema replaces the `publishedFeedback` and `comments` fields with a single `conversation` field whose type shape reflects the discriminated entry union. This is the single seam: adapter fetches into the new shape, renderer consumes the new shape, everything in between follows.
+
+- **Image and diagram zoom.** Images and Mermaid diagrams rendered in the PR description (and other Markdown bodies) are clickable. Clicking opens a lightbox dialog with zoom controls: zoom in, zoom out, fit-to-screen toggle, and click-to-close. The lightbox starts at "fit to screen" so large diagrams are never initially cut off. Mermaid SVGs are rendered at native size inside the lightbox with CSS `transform: scale()` driven by zoom state.
+
+- **Reuse existing Markdown pipeline.** The `PullRequestDescriptionPreview` component already handles GFM Markdown and Mermaid rendering (via `marked` and `mermaid`). The Conversation screen reuses this pipeline for the PR description entry. Issue comments and review summary bodies also use the same Markdown renderer. The zoom lightbox is a new component that wraps the existing image and Mermaid rendering paths — it is not specific to the Conversation screen and benefits the PR overview sheet as well.
 
 - **Glossary updates.** Three new terms added to `CONTEXT.md`: `Conversation`, `Conversation thread`, and `Conversation entry`. `Published feedback` is now an avoided term.
 
