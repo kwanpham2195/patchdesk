@@ -267,6 +267,44 @@ describe("ReviewWorkbenchProjectionService", () => {
     }
   });
 
+  it("derives conversation from a represented snapshot when it was not separately stored", async () => {
+    const github = fakeGitHub({ current: summary(headSha), comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
+    const { root, paths, projection, sessions } = await setup(github);
+    try {
+      const session = completedSession(paths);
+      expect((await sessions.save(session))._tag).toBe("ok");
+      const represented = {
+        schemaVersion: 1 as const,
+        pullRequest: {
+          ...summary(headSha),
+          description: "# What happened\n\n- Changed the route-planning solver.",
+        },
+        comments: { threads: [], complete: true },
+        commits: [],
+        checks: { overall: "passing" as const, checks: [] },
+      };
+
+      const loaded = await projection.loadRepresented({
+        profileId,
+        sessionId: session.id,
+        snapshot: represented,
+        refreshedAt: now,
+      });
+
+      expect(loaded).toMatchObject({
+        _tag: "ok",
+        value: {
+          conversation: {
+            prDescription: "# What happened\n\n- Changed the route-planning solver.",
+            entries: [],
+          },
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("projects policy-backed approval reasons and partial unavailable evidence safely", async () => {
     const github = fakeGitHub({ current: { ...summary(headSha), reviewState: "review_pending", mergeability: "blocked" }, comments: { threads: [] }, checks: { overall: "passing", checks: [] } });
     const { root, paths, projection, sessions } = await setup(github);

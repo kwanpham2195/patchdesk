@@ -167,7 +167,9 @@ export class ReviewWorkbenchProjectionService {
     if (session._tag === "err") return session;
     return this.project(session.value, {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
-      conversation: input.snapshot.conversation !== undefined ? ok(input.snapshot.conversation) : err({ _tag: "GitHubReadFailed", operation: "load_conversation" }),
+      conversation: ok(
+        input.snapshot.conversation ?? conversationFromSnapshot(input.snapshot),
+      ),
       commits: input.snapshot.commits,
       checks: { _tag: "ok", value: input.snapshot.checks },
       ...(input.snapshot.mergeEvidence === undefined ? {} : { mergeEvidence: input.snapshot.mergeEvidence }),
@@ -491,6 +493,51 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       headSha: session.key.headSha,
     },
   };
+}
+
+function conversationFromSnapshot(
+  snapshot: ReviewRemoteSnapshot,
+): Conversation {
+  const feedback = snapshot.publishedFeedback ?? { reviews: [], comments: [] };
+  const entries: Conversation["entries"][number][] = [];
+
+  for (const review of feedback.reviews) {
+    entries.push({ _tag: "ReviewSummary", review });
+  }
+  for (const comment of feedback.comments) {
+    entries.push({ _tag: "IssueComment", comment });
+  }
+  for (const thread of snapshot.comments.threads) {
+    if (thread.location === undefined) {
+      entries.push({ _tag: "GeneralThread", thread });
+    }
+  }
+
+  entries.sort((left, right) => conversationEntryTimestamp(left).localeCompare(
+    conversationEntryTimestamp(right),
+  ));
+
+  return {
+    prDescription: snapshot.pullRequest.description ?? "",
+    entries,
+    complete:
+      feedback.complete !== false && snapshot.comments.complete !== false,
+  };
+}
+
+function conversationEntryTimestamp(
+  entry: Conversation["entries"][number],
+): string {
+  switch (entry._tag) {
+    case "PrDescription":
+      return "";
+    case "ReviewSummary":
+      return entry.review.submittedAt;
+    case "IssueComment":
+      return entry.comment.createdAt;
+    case "GeneralThread":
+      return entry.thread.comments[0]?.createdAt ?? "";
+  }
 }
 
 function deriveMergeReasons(
