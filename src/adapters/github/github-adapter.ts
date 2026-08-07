@@ -1292,16 +1292,19 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<Conversation, GitHubReadFailure>> {
-    const [commentsResult, feedbackResult] = await Promise.all([
+    const [prResult, commentsResult, feedbackResult] = await Promise.all([
+      this.getPullRequest(input),
       this.getPullRequestComments(input),
       this.getPullRequestPublishedFeedback?.(input) ?? Promise.resolve(ok({ reviews: [], comments: [] })),
     ]);
     if (commentsResult._tag === "err") return commentsResult;
     if (feedbackResult._tag === "err") return feedbackResult;
-    return ok(this.assembleConversation(feedbackResult.value, commentsResult.value));
+    const prDescription = prResult._tag === "ok" ? (prResult.value.description ?? "") : "";
+    return ok(this.assembleConversation(prDescription, feedbackResult.value, commentsResult.value));
   }
 
   private assembleConversation(
+    prDescription: string,
     feedback: GitHubPublishedFeedback,
     comments: GitHubComments,
   ): Conversation {
@@ -1321,7 +1324,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       const bt = b._tag === "ReviewSummary" ? b.review.submittedAt : b._tag === "IssueComment" ? b.comment.createdAt : b._tag === "GeneralThread" ? (b.thread.comments[0]?.createdAt ?? "") : "";
       return at.localeCompare(bt);
     });
-    return { prDescription: "", entries, complete: feedback.complete !== false && comments.complete !== false };
+    return { prDescription, entries, complete: feedback.complete !== false && comments.complete !== false };
   }
 }
 
@@ -1532,6 +1535,8 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     readonly pr: PullRequestRef;
   }): Promise<Result<Conversation, GitHubReadFailure>> {
     void input;
+    const pr = this.values.pullRequest;
+    const prDescription = pr?.description ?? "";
     const threads = this.values.comments ?? { threads: [], complete: true };
     const feedback: GitHubPublishedFeedback = this.values.publishedFeedback ?? { reviews: [], comments: [] };
     const entries: Conversation["entries"][number][] = [];
@@ -1550,7 +1555,7 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       const bt = b._tag === "ReviewSummary" ? b.review.submittedAt : b._tag === "IssueComment" ? b.comment.createdAt : b._tag === "GeneralThread" ? (b.thread.comments[0]?.createdAt ?? "") : "";
       return at.localeCompare(bt);
     });
-    return ok({ prDescription: "", entries, complete: feedback.complete !== false && threads.complete !== false });
+    return ok({ prDescription, entries, complete: feedback.complete !== false && threads.complete !== false });
   }
 }
 
