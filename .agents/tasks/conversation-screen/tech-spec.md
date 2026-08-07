@@ -119,6 +119,7 @@ export type Conversation = {
 - `GitHubComment` and `PublishedReview` are reused as-is — no new comment or review types.
 - `GitHubConversationThread` is reused for general threads (those with `location === undefined`). Inline threads (with `location`) are excluded from the timeline by the adapter before assembly.
 - `complete` and `incompleteReason` cover pagination caps from all underlying API calls.
+- **All Markdown bodies use the same pipeline.** Issue comment bodies, review summary bodies, and thread comment bodies are rendered through `lexSafely()` → `renderBlocks()`, the same pipeline used by `PullRequestDescriptionPreview`. This means images, Mermaid diagrams, tables, code blocks, and all other GFM features are consistently supported across every entry type — not just the PR description.
 
 ### Type changes (deletions)
 

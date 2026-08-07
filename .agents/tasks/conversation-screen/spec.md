@@ -30,6 +30,7 @@ The Conversation shows: the PR description, issue comments, review summaries (ap
 10. As a maintainer, I want the published feedback panel to be gone, so that I have one canonical place to see GitHub-owned discussion content instead of two partial views.
 11. As a maintainer, I want to click on an image or Mermaid diagram in the PR description to open it in a zoomable lightbox, so that I can inspect large diagrams and screenshots that are too big for the inline view.
 12. As a maintainer, I want zoom controls (zoom in, zoom out, fit to screen) in the image lightbox, so that I can read fine details in diagrams without losing context.
+13. As a maintainer, I want issue comments and review bodies to render rich Markdown (tables, code blocks, images, Mermaid) the same way the PR description does, so that all discussion content is consistently readable regardless of entry type.
 
 ## Implementation Decisions
 
