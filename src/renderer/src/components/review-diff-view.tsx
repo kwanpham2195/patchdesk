@@ -117,6 +117,17 @@ export type ReviewInlineAnnotation = {
       threadId: string,
       state: "open" | "resolved",
     ) => Promise<void>;
+    readonly onReply?: (
+      threadId: string,
+      body: string,
+    ) => Promise<void>;
+    readonly onEditComment?: (
+      commentId: string,
+      body: string,
+    ) => Promise<void>;
+    readonly onDeleteComment?: (
+      commentId: string,
+    ) => Promise<void>;
     readonly comments: ReadonlyArray<{
       readonly id: string;
       readonly author: string;
@@ -943,10 +954,19 @@ function ConversationThreadCard({
   readonly thread: NonNullable<ReviewInlineAnnotation["conversationThread"]>;
 }): React.JSX.Element {
   const [pending, setPending] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [replying, setReplying] = useState(false);
   const [error, setError] = useState<string>();
+  const [editingCommentId, setEditingCommentId] = useState<string>();
+  const [editBody, setEditBody] = useState("");
+  const [editing, setEditing] = useState(false);
   const opening = thread.comments[0];
   const latest = thread.comments.at(-1);
   const hiddenReplyCount = Math.max(0, thread.comments.length - (opening === latest ? 1 : 2));
+  const middleReplies = expanded && hiddenReplyCount > 0
+    ? thread.comments.slice(1, thread.comments.length - (opening === latest ? 0 : 1))
+    : [];
   if (opening === undefined) return <p role="status" className="mx-2 my-2 text-sm text-muted-foreground">This conversation has no readable comments.</p>;
   return (
     <article
@@ -959,15 +979,48 @@ function ConversationThreadCard({
       </div>
       <div className="mt-2">
         <p className="font-semibold">{opening.author}</p>
-        <PullRequestDescriptionPreview markdown={opening.body} />
+        {editingCommentId === opening.id ? (
+          <div className="mt-1">
+            <Textarea aria-label="Edit comment" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" onClick={async () => {
+                if (editBody.trim().length === 0 || editing) return;
+                setEditing(true); setError(undefined);
+                try { const action = thread.onEditComment; if (action === undefined) return; await action(opening.id, editBody); setEditingCommentId(undefined); }
+                catch { setError("Patchdesk could not edit this comment."); }
+                finally { setEditing(false); }
+              }} disabled={editBody.trim().length === 0 || editing}>{editing ? "Saving…" : "Save"}</Button>
+              <Button size="sm" variant="outline" onClick={() => setEditingCommentId(undefined)} disabled={editing}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <PullRequestDescriptionPreview markdown={opening.body} />
+        )}
+        {opening.viewerDidAuthor === true && editingCommentId !== opening.id ? (
+          <div className="mt-1 flex gap-3">
+            <button type="button" className="text-xs font-medium text-sky-400 hover:underline" onClick={() => { setEditingCommentId(opening.id); setEditBody(opening.body); }}>Edit</button>
+            <button type="button" className="text-xs font-medium text-destructive hover:underline" onClick={() => {
+              if (!window.confirm("Delete this published comment?")) return;
+              const action = thread.onDeleteComment;
+              if (action === undefined) return;
+              void action(opening.id).catch(() => setError("Patchdesk could not delete this comment."));
+            }}>Delete</button>
+          </div>
+        ) : null}
       </div>
+      {middleReplies.length > 0 ? middleReplies.map((comment) => (
+        <div key={comment.id} className="mt-4 border-l-2 border-border/70 pl-4">
+          <p className="font-semibold">{comment.author}</p>
+          <PullRequestDescriptionPreview markdown={comment.body} />
+        </div>
+      )) : null}
       {latest !== undefined && latest !== opening ? (
         <div className="mt-4 border-l-2 border-border/70 pl-4">
           <p className="font-semibold">{latest.author}</p>
           <PullRequestDescriptionPreview markdown={latest.body} />
         </div>
       ) : null}
-      {hiddenReplyCount > 0 ? <p className="mt-3 text-xs text-muted-foreground">{hiddenReplyCount} replies are collapsed.</p> : null}
+      {hiddenReplyCount > 0 ? <button type="button" className="mt-3 text-xs font-medium text-sky-400 hover:underline" onClick={() => setExpanded((current) => !current)}>{expanded ? `Hide ${hiddenReplyCount} replies` : `Show ${hiddenReplyCount} replies`}</button> : null}
       {thread.onSetState === undefined ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
         setPending(true); setError(undefined);
         const action = thread.onSetState;
@@ -975,6 +1028,26 @@ function ConversationThreadCard({
         void action(thread.id, thread.state === "resolved" ? "open" : "resolved").catch(() => setError("Patchdesk could not update this thread.")).finally(() => setPending(false));
       }}>{pending ? "Updating…" : thread.state === "resolved" ? "Unresolve" : "Resolve"}</Button>}
       {error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
+      {thread.onReply === undefined ? null : (
+        <div className="mt-4 border-t pt-3">
+          <Textarea aria-label="Reply" value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder="Write a reply…" />
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={async () => {
+              if (replyBody.trim().length === 0 || replying) return;
+              setReplying(true); setError(undefined);
+              try {
+                const action = thread.onReply;
+                if (action === undefined) return;
+                await action(thread.id, replyBody);
+                setReplyBody("");
+              } catch { setError("Patchdesk could not publish this reply."); }
+              finally { setReplying(false); }
+            }} disabled={replyBody.trim().length === 0 || replying}>
+              {replying ? "Replying…" : "Reply"}
+            </Button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -1099,7 +1172,11 @@ function InlineCommentComposer({
     catch { setError("Patchdesk could not publish this comment to GitHub."); }
     finally { setSaving(false); }
   };
-  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · publishes to GitHub</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write an inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Commenting…" : "Comment"}</Button><Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
+  const cancel = (): void => {
+    if (body.trim().length > 0 && !window.confirm("Discard this unsent comment?")) return;
+    onCancel();
+  };
+  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · publishes to GitHub</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write an inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Commenting…" : "Comment"}</Button><Button size="sm" variant="outline" onClick={cancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);

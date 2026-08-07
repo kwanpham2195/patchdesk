@@ -234,6 +234,63 @@ export function ReviewWorkbenchFlow({
     });
     await refresh();
   }, [refresh, workbench]);
+
+  const replyToThread = useCallback(async (threadId: string, body: string): Promise<void> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot accept replies.");
+    await requestJson("/v1/reviews/inline-conversations/command", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+        command: {
+          _tag: "Reply",
+          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+          threadId,
+          body,
+        },
+      },
+    });
+    await refresh();
+  }, [refresh, workbench]);
+
+  const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot edit comments.");
+    await requestJson("/v1/reviews/inline-conversations/command", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+        command: {
+          _tag: "EditComment",
+          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+          commentId,
+          body,
+        },
+      },
+    });
+    await refresh();
+  }, [refresh, workbench]);
+
+  const deleteComment = useCallback(async (commentId: string): Promise<void> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot delete comments.");
+    await requestJson("/v1/reviews/inline-conversations/command", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+        command: {
+          _tag: "DeleteComment",
+          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+          commentId,
+          confirmation: true,
+        },
+      },
+    });
+    await refresh();
+  }, [refresh, workbench]);
   const parsedDraft =
     workbench.draft === undefined
       ? undefined
@@ -484,7 +541,7 @@ export function ReviewWorkbenchFlow({
           ...(localCommentAuthoring === undefined
             ? {}
             : { localCommentAuthoring }),
-          ...(canWriteDirectConversation ? { setThreadState } : {}),
+          ...(canWriteDirectConversation ? { setThreadState, replyToThread, editComment, deleteComment } : {}),
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{

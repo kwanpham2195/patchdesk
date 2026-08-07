@@ -75,7 +75,11 @@ function fakeGitHub(options: {
     async loadConversation() {
       calls.push("conversation");
       if (options.comments === undefined) return missing();
-      const conversation: Conversation = { prDescription: "", entries: options.comments.threads.filter(t => t.location === undefined).map(t => ({ _tag: "GeneralThread" as const, thread: t })), ...(options.comments.complete === undefined ? {} : { complete: options.comments.complete }) };
+      const inline = {
+        threads: options.comments.threads.filter((t) => t.location !== undefined),
+        ...(options.comments.complete === undefined ? {} : { complete: options.comments.complete }),
+      };
+      const conversation: Conversation = { prDescription: "", entries: options.comments.threads.filter((t) => t.location === undefined).map((t) => ({ _tag: "GeneralThread" as const, thread: t })), inline, ...(options.comments.complete === undefined ? {} : { complete: options.comments.complete }) };
       return { _tag: "ok", value: conversation };
     },
     async getPullRequestChecks() {
@@ -376,7 +380,7 @@ describe("ReviewWorkbenchProjectionService", () => {
       const after = await sessions.load(profileId, session.id);
 
       expect(refreshed).toMatchObject({ _tag: "ok", value: { freshness: "fresh", checks: { overall: "passing" } } });
-      expect(github.calls).toEqual(expect.arrayContaining(["pull_request", "comments", "checks"]));
+      expect(github.calls).toEqual(expect.arrayContaining(["pull_request", "conversation", "checks"]));
       expect(after).toMatchObject({ _tag: "ok", value: { batchContent: before.value.batchContent } });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -418,11 +422,7 @@ describe("ReviewWorkbenchProjectionService", () => {
       if (loaded._tag === "err") return;
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.revision.freshness).toBe("unavailable");
-      expect(loaded.value.conversation).toEqual({
-        threads: [],
-        complete: false,
-        incompleteReason: "unavailable",
-      });
+      expect(loaded.value.conversation).toEqual({ prDescription: "", entries: [] });
       expect(loaded.value.checks).toEqual({ overall: "unknown", checks: [] });
       expect(loaded.value.pullRequest).toMatchObject({ title: "Stored review title", reviewState: "unknown" });
       expect(loaded.value.mergeReadiness).toEqual({ _tag: "Blocked", blockers: ["stale_head"], warnings: [] });
@@ -646,7 +646,7 @@ it("reports a missing incremental comparison truthfully", async () => {
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.insights.analysis.status).toBe("current");
       expect(loaded.value.commits).toEqual([]);
-      expect(loaded.value.conversation).toEqual({ reviews: [], comments: [] });
+      expect(loaded.value.conversation).toMatchObject({ entries: [], inline: { threads: [] } });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -676,7 +676,7 @@ it("reports a missing incremental comparison truthfully", async () => {
       expect(loaded.value.state).toBe("review");
       expect(loaded.value.revision.freshness).toBe("fresh");
       expect(loaded.value.checks).toEqual({ overall: "pending", checks: [] });
-      expect(loaded.value.conversation).toMatchObject({ threads: [{ id: "thread-1" }] });
+      expect(loaded.value.conversation).toMatchObject({ entries: [{ _tag: "GeneralThread", thread: { id: "thread-1" } }] });
       expect(loaded.value.draft).toMatchObject({ sessionId: session.id, items: [] });
       expect(loaded.value.mergeReadiness).toEqual({
         _tag: "Blocked",

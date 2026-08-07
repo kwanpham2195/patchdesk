@@ -106,6 +106,17 @@ export type ReviewWorkbenchActions = {
     threadId: string,
     state: "open" | "resolved",
   ) => Promise<void>;
+  readonly replyToThread?: (
+    threadId: string,
+    body: string,
+  ) => Promise<void>;
+  readonly editComment?: (
+    commentId: string,
+    body: string,
+  ) => Promise<void>;
+  readonly deleteComment?: (
+    commentId: string,
+  ) => Promise<void>;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -258,10 +269,19 @@ export function ReviewWorkbench({
           ...(actions.setThreadState === undefined
             ? {}
             : { onSetState: actions.setThreadState }),
+          ...(actions.replyToThread === undefined
+            ? {}
+            : { onReply: actions.replyToThread }),
+          ...(actions.editComment === undefined
+            ? {}
+            : { onEditComment: actions.editComment }),
+          ...(actions.deleteComment === undefined
+            ? {}
+            : { onDeleteComment: actions.deleteComment }),
         },
       }] : [];
     });
-  }, [actions.setThreadState, model.conversation.inline, model.fullPatch]);
+  }, [actions.deleteComment, actions.editComment, actions.replyToThread, actions.setThreadState, model.conversation.inline, model.fullPatch]);
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
     ...findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]),
     ...draftInlineAnnotations(model.draft),
