@@ -3,6 +3,8 @@ import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
 
+import { useLightbox } from "./markdown-lightbox";
+
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
@@ -364,12 +366,10 @@ function renderMarkdownImage(
   const src = resolvePullRequestExternalUrl(token.href, pullRequest);
   if (src === undefined) return <span key={key}>[Image: {token.text}]</span>;
   return (
-    <img
+    <ClickableImage
       key={key}
       src={src}
       alt={token.text}
-      loading="lazy"
-      className="max-w-full rounded-md"
     />
   );
 }
@@ -526,18 +526,14 @@ function renderHtmlNode(
     case "img": {
       const src = node.getAttribute("src");
       const alt = node.getAttribute("alt") ?? "";
-      if (
-        src === null ||
-        resolvePullRequestExternalUrl(src, pullRequest) === undefined
-      )
+      const resolved = src === null ? undefined : resolvePullRequestExternalUrl(src, pullRequest);
+      if (resolved === undefined)
         return <span key={key}>[Image: {alt}]</span>;
       return (
-        <img
+        <ClickableImage
           key={key}
-          src={resolvePullRequestExternalUrl(src, pullRequest)}
+          src={resolved}
           alt={alt}
-          loading="lazy"
-          className="max-w-full rounded-md"
         />
       );
     }
@@ -626,33 +622,117 @@ function MermaidDiagram({
   }, [id, source]);
 
   return (
-    <div
-      role="img"
-      aria-label="Mermaid diagram"
-      className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
-    >
-      {svg === undefined ? (
+    <ClickableMermaid svg={svg as never} source={source} failed={failed} />
+  );
+}
+
+function ClickableImage({
+  src,
+  alt,
+}: {
+  readonly src: string;
+  readonly alt: string;
+}): React.JSX.Element {
+  const { lightbox, open } = useLightbox();
+  return (
+    <>
+      <button
+        type="button"
+        className="cursor-zoom-in"
+        onClick={() =>
+          open(
+            <img
+              src={src}
+              alt={alt}
+              className="max-h-[85vh] max-w-[85vw] object-contain"
+            />,
+          )
+        }
+      >
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          className="max-w-full rounded-md"
+        />
+      </button>
+      {lightbox()}
+    </>
+  );
+}
+
+function ClickableMermaid({
+  svg,
+  source,
+  failed,
+}: {
+  readonly svg?: string;
+  readonly source: string;
+  readonly failed: boolean;
+}): React.JSX.Element {
+  const { lightbox, open } = useLightbox();
+
+  if (svg === undefined) {
+    return (
+      <div
+        role="img"
+        aria-label="Mermaid diagram"
+        className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
+      >
         <p className="text-xs text-muted-foreground">
           {failed
             ? "Mermaid could not render this diagram."
             : "Rendering Mermaid diagram…"}
         </p>
-      ) : (
+        <details open>
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            Mermaid source
+          </summary>
+          <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
+            <code>{source}</code>
+          </pre>
+        </details>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="w-full cursor-zoom-in text-left"
+        onClick={() =>
+          open(
+            <div
+              aria-hidden="true"
+              className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:max-w-[85vw]"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />,
+          )
+        }
+      >
         <div
-          aria-hidden="true"
-          className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
-      )}
-      <details open={svg === undefined}>
-        <summary className="cursor-pointer text-xs text-muted-foreground">
-          Mermaid source
-        </summary>
-        <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
-          <code>{source}</code>
-        </pre>
-      </details>
-    </div>
+          role="img"
+          aria-label="Mermaid diagram"
+          className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
+        >
+          <div
+            aria-hidden="true"
+            className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+          <details>
+            <summary className="cursor-pointer text-xs text-muted-foreground">
+              Mermaid source
+            </summary>
+            <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
+              <code>{source}</code>
+            </pre>
+          </details>
+        </div>
+      </button>
+      {lightbox()}
+    </>
   );
 }
 
