@@ -52,9 +52,17 @@ _Avoid_: Review batch, local batch
 The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, findings, verdict, and maintainer guidance that do not belong in separate inline comments.
 _Avoid_: Shared body, review summary
 
-**Published feedback**:
-Review comments and discussion that GitHub has accepted. It remains visible as GitHub-owned content and is not part of the active Review draft.
-_Avoid_: Submitted draft, applied batch
+**Conversation**:
+The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the local Review draft. Returned as a single unified payload by the GitHub adapter. The Conversation screen is read-only; all writes go through the Review draft or GitHub directly. It loads eagerly when a review opens and reloads with each GitHub refresh.
+_Avoid_: Published feedback, discussion tab, timeline
+
+**Conversation thread**:
+A group of GitHub review comments, with open, resolved, or outdated state. Inline threads (tied to a specific diff location) live in the diff view. General threads (no code anchor) appear in the Conversation screen.
+_Avoid_: Review thread, discussion thread
+
+**Conversation entry**:
+One item in the Conversation screen's chronological timeline. Types: PR description, issue comment, review summary, or general conversation thread (a review-comment thread with no diff anchor; includes its nested replies). Inline conversation threads live in the diff view instead.
+_Avoid_: Timeline entry, discussion entry
 
 **Walkthrough**:
 The latest successful guided explanation of a pinned pull request revision.
