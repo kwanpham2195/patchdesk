@@ -8,6 +8,7 @@ import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullReques
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
+import { Conversation } from "./conversation";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
 import type { LocalCommentAuthoring, LocalCommentLocation, ReviewInlineAnnotation } from "./review-diff-view";
@@ -176,7 +177,7 @@ export function ReviewWorkbench({
   const [navigatorVisible, setNavigatorVisible] = useState(true);
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() => loadReviewViewPreferences(model.session.key.profileId));
   const [section, setSection] = useState<ReviewNavigatorSection>(initialState?.section === "insights" ? "files" : initialState?.section ?? "files");
-  const [primarySurface, setPrimarySurface] = useState<"files" | "insights">(initialState?.section === "insights" ? "insights" : "files");
+  const [activeTab, setActiveTab] = useState<"conversation" | "diff" | "insights">(initialState?.section === "insights" ? "insights" : "conversation");
   const [selectedPath, setSelectedPath] = useState<string | undefined>(initialState?.selectedPath);
   const [activePath, setActivePath] = useState<string | undefined>(initialState?.selectedPath);
   const [selectedFinding, setSelectedFinding] = useState<ReviewFinding | undefined>(() => {
@@ -196,7 +197,7 @@ export function ReviewWorkbench({
     setSelectedCommitSha(sha);
   }, []);
   const selectSection = useCallback((next: ReviewNavigatorSection): void => {
-    setPrimarySurface("files");
+    setActiveTab("diff");
     setSection(next);
     setSelectedFinding(undefined);
     if (next !== "commits") {
@@ -221,6 +222,7 @@ export function ReviewWorkbench({
     setSelectedPath(undefined);
     setActivePath(undefined);
     setSection("files");
+    setActiveTab("conversation");
   }, [model.revision.reviewedHeadSha]);
   const updatePreferences = useCallback((update: Partial<ReviewViewPreferences>): void => {
     setPreferences((current) => {
@@ -283,7 +285,7 @@ export function ReviewWorkbench({
   };
 
   const navigateToFiles = useCallback((): void => {
-    setPrimarySurface("files");
+    setActiveTab("diff");
     setSection("files");
     setSelectedFinding(undefined);
     setSelectedCommitSha(undefined);
@@ -356,11 +358,19 @@ export function ReviewWorkbench({
         </p>
       </header>
 
+      <div className="flex shrink-0 items-center gap-1 border-b px-4 py-1" data-review-workbench-tabs>
+        <TabButton active={activeTab === "conversation"} onClick={() => setActiveTab("conversation")}>Conversation</TabButton>
+        <TabButton active={activeTab === "diff"} onClick={() => setActiveTab("diff")}>Diff</TabButton>
+        <TabButton active={activeTab === "insights"} onClick={() => setActiveTab("insights")}>Insights</TabButton>
+      </div>
+
       <div
         className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
         data-review-workbench-content
       >
-          {primarySurface === "files" ? (
+          {activeTab === "conversation" ? (
+            <Conversation conversation={model.conversation} />
+          ) : activeTab === "diff" ? (
             <div className="min-h-0 flex-1 overflow-hidden">
               {model.fullPatch === undefined ? (
                 <div className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</div>
@@ -416,7 +426,7 @@ export function ReviewWorkbench({
                         {...(selectedCommitSha === undefined ? { annotations } : {})}
                         {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
                         hideFileNavigation
-                        surfaceAction={<Button variant="outline" size="sm" onClick={() => setPrimarySurface("insights")}>Insights</Button>}
+                        surfaceAction={undefined}
                         {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}
                         className="min-h-0 h-full"
                         fillViewport={false}
@@ -517,3 +527,22 @@ const mergeColors: Record<string, string> = { Ready: "border-green-300 bg-green-
 function mergePillColor(tag: string): string { return mergeColors[tag] ?? "border-muted-foreground/20 bg-muted/30 text-muted-foreground"; }
 function mergeIcon(tag: string): React.JSX.Element { switch (tag) { case "Ready": return <CheckCircle2 className="size-3" />; case "NeedsAcknowledgement": return <AlertTriangle className="size-3" />; case "Blocked": return <XCircle className="size-3" />; default: return <AlertTriangle className="size-3" />; } }
 function mergeLabel(tag: string): string { switch (tag) { case "Ready": return "Ready"; case "NeedsAcknowledgement": return "Warnings"; case "Blocked": return "Blocked"; default: return tag; } }
+
+function TabButton({ active, onClick, children }: { readonly active: boolean; readonly onClick: () => void; readonly children: React.ReactNode }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "bg-card text-foreground"
+          : "text-muted-foreground hover:bg-card/50 hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
