@@ -1204,10 +1204,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       stdin: JSON.stringify({ body: input.body, commit_id: input.headSha, ...input.coordinates }),
       timeoutMs: commandTimeoutMs,
     });
-    if (response._tag === "err") {
-      console.error("gh api create inline comment failed", response.error);
-      return err(writeFailure(response.error));
-    }
+    if (response._tag === "err") return err(writeFailure(response.error));
     const id = nestedString(response.value, ["node_id"]);
     return id === undefined
       ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return an inline comment ID." })

@@ -189,17 +189,6 @@ export function ReviewWorkbenchFlow({
     ): Promise<void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
-      console.debug("Inline comment request", {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-        sessionId: workbench.session.id,
-        headSha: workbench.revision.reviewedHeadSha,
-        patchHash,
-        path: input.path,
-        startLine: input.startLine,
-        line: input.line,
-        side: input.side,
-      });
       await requestJson("/v1/reviews/inline-conversations/command", {
         method: "POST",
         body: {
@@ -222,7 +211,7 @@ export function ReviewWorkbenchFlow({
           },
         },
       });
-      await refresh();
+      void refresh();
     },
     [refresh, workbench],
   );
@@ -243,7 +232,7 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    await refresh();
+    void refresh();
   }, [refresh, workbench]);
 
   const replyToThread = useCallback(async (threadId: string, body: string): Promise<void> => {
@@ -262,7 +251,7 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    await refresh();
+    void refresh();
   }, [refresh, workbench]);
 
   const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {
@@ -281,7 +270,7 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    await refresh();
+    void refresh();
   }, [refresh, workbench]);
 
   const deleteComment = useCallback(async (commentId: string): Promise<void> => {
@@ -300,7 +289,7 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    await refresh();
+    void refresh();
   }, [refresh, workbench]);
   const parsedDraft =
     workbench.draft === undefined
