@@ -72,7 +72,9 @@ function errorCode(value: unknown): string | undefined {
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
   if (code?.includes("revision") === true || code === "conflict") return "revision_conflict";
-  if (code?.includes("stale") === true) return "stale_head";
+  if (code === "not_fresh" || code?.includes("stale") === true) return "stale_head";
+  if (code === "not_found" || code === "unavailable") return "unavailable";
+  if (code === "permission_denied" || code === "confirmation_required") return "github_rejected";
   if (code?.includes("storage") === true) return "storage";
   if (code?.includes("ambiguous") === true) return "ambiguous_write";
   if (status === 401 || status === 403 || code?.includes("auth") === true) return "auth";

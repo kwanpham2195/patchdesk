@@ -31,6 +31,7 @@ import {
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import { parseRepoRelativePath } from "../../../domain/ids";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
+import { PatchdeskApiError } from "../api-client";
 import type { ReviewAnchorFingerprint } from "../../../domain/review-batch";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
@@ -1169,7 +1170,16 @@ function InlineCommentComposer({
     if (body.trim().length === 0 || saving) return;
     setSaving(true); setError(undefined);
     try { await onSave(body); }
-    catch { setError("Patchdesk could not publish this comment to GitHub."); }
+    catch (cause: unknown) {
+      if (cause instanceof PatchdeskApiError) {
+        if (cause.kind === "stale_head") setError("This pull request has changed. Refresh and try again.");
+        else if (cause.kind === "github_rejected") setError("GitHub rejected this comment.");
+        else if (cause.kind === "revision_conflict") setError("This comment cannot be published against the current diff.");
+        else setError("Patchdesk could not publish this comment. Try refreshing.");
+      } else {
+        setError(cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.");
+      }
+    }
     finally { setSaving(false); }
   };
   const cancel = (): void => {
