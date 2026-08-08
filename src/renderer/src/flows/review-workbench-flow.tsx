@@ -189,6 +189,17 @@ export function ReviewWorkbenchFlow({
     ): Promise<void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
+      console.debug("Inline comment request", {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        headSha: workbench.revision.reviewedHeadSha,
+        patchHash,
+        path: input.path,
+        startLine: input.startLine,
+        line: input.line,
+        side: input.side,
+      });
       await requestJson("/v1/reviews/inline-conversations/command", {
         method: "POST",
         body: {
