@@ -136,9 +136,16 @@ export type PublishedReview = {
 /** One entry in the Conversation timeline, in chronological order. */
 export type ConversationEntry =
   | { readonly _tag: "PrDescription"; readonly body: string }
-  | { readonly _tag: "IssueComment"; readonly comment: GitHubComment }
+  | { readonly _tag: "IssueComment"; readonly comment: ConversationIssueComment }
   | { readonly _tag: "ReviewSummary"; readonly review: PublishedReview }
   | { readonly _tag: "GeneralThread"; readonly thread: GitHubConversationThread };
+
+/** Timeline issue comment; review-attached comments also expose their review and editability. */
+export type ConversationIssueComment = GitHubComment & {
+  readonly reviewId?: string;
+  readonly canEdit?: boolean;
+  readonly canDelete?: boolean;
+};
 
 /** Unified Conversation payload replacing separate review-feedback and thread queries. */
 export type Conversation = {

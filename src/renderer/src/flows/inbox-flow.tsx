@@ -123,7 +123,11 @@ export function InboxFlow({
     try {
       const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, ...reference } });
       const parsed = parseWorkbenchResponse(value);
-      if (parsed === undefined || !isActive()) return;
+      if (parsed === undefined) {
+        if (isActive()) setOpenError("Could not open the saved review. The review projection could not be validated; refresh the review and try again.");
+        return;
+      }
+      if (!isActive()) return;
       onOpenWorkbench(parsed as unknown as WorkbenchPayload);
     } catch (cause: unknown) {
       const detail = cause instanceof Error ? cause.message : String(cause);

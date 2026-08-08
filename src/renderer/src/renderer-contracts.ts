@@ -244,6 +244,14 @@ const githubCommentSchema = v.strictObject({
   viewerDidAuthor: v.optional(v.boolean()),
 });
 
+/** Timeline issue comments may be review-attached, so they carry the same optional review and editability fields the published-feedback boundary exposes. */
+const conversationIssueCommentSchema = v.strictObject({
+  ...githubCommentSchema.entries,
+  reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  canEdit: v.optional(v.boolean()),
+  canDelete: v.optional(v.boolean()),
+});
+
 const githubThreadSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   state: v.picklist(["open", "resolved", "outdated", "unknown"]),
@@ -492,7 +500,7 @@ const publishedReviewSchema = v.strictObject({
 
 const conversationEntrySchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
-  v.strictObject({ _tag: v.literal("IssueComment"), comment: githubCommentSchema }),
+  v.strictObject({ _tag: v.literal("IssueComment"), comment: conversationIssueCommentSchema }),
   v.strictObject({ _tag: v.literal("ReviewSummary"), review: publishedReviewSchema }),
   v.strictObject({ _tag: v.literal("GeneralThread"), thread: githubThreadSchema }),
 ]);

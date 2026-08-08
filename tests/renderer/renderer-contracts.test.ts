@@ -192,6 +192,14 @@ describe("parseWorkbenchResponse", () => {
 
     expect(parseWorkbenchResponse({
       ...reviewProjection,
+      conversation: {
+        prDescription: "",
+        entries: [{ _tag: "IssueComment", comment: { ...legalComment, reviewId: "review-1", canEdit: true, canDelete: false } }],
+      },
+    })).toBeDefined();
+
+    expect(parseWorkbenchResponse({
+      ...reviewProjection,
       checks: { overall: "passing", checks: [legalCheck] },
       conversation: {
         prDescription: "A PR description",
