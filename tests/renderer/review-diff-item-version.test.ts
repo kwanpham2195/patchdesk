@@ -12,4 +12,21 @@ describe("reviewDiffItemVersion", () => {
     expect(reviewDiffItemVersion({ collapsed: true, hydrated: false })).toBe(1);
     expect(reviewDiffItemVersion({ collapsed: true, hydrated: true })).toBe(3);
   });
+
+  it("changes the item revision when rendered annotation placement changes", () => {
+    const withoutAnnotation = reviewDiffItemVersion({ collapsed: false, hydrated: false });
+    const firstPlacement = reviewDiffItemVersion({
+      collapsed: false,
+      hydrated: false,
+      annotationKey: "local-comment:src/a.ts:1:1:deletions",
+    });
+    const secondPlacement = reviewDiffItemVersion({
+      collapsed: false,
+      hydrated: false,
+      annotationKey: "local-comment:src/a.ts:2:2:deletions",
+    });
+
+    expect(firstPlacement).not.toBe(withoutAnnotation);
+    expect(secondPlacement).not.toBe(firstPlacement);
+  });
 });
