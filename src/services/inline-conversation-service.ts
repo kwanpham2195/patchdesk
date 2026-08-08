@@ -90,23 +90,20 @@ export class InlineConversationService {
 
     switch (input.command._tag) {
       case "CreateComment": {
-        const writer = this.github.createInlineComment;
-        if (writer === undefined) return err("github_write_failed");
+        if (this.github.createInlineComment === undefined) return err("github_write_failed");
         const coordinates = coordinatesFor(input.command.anchor);
         if (coordinates === undefined) return err("invalid_input");
-        const created = await writer({ profile: fresh.value.profile, pr, headSha: fresh.value.session.key.headSha, coordinates, body: input.command.body.trim() });
+        const created = await this.github.createInlineComment({ profile: fresh.value.profile, pr, headSha: fresh.value.session.key.headSha, coordinates, body: input.command.body.trim() });
         return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "CommentCreated", commentId: created.value.commentId });
       }
       case "Reply": {
-        const writer = this.github.createThreadReply;
-        if (writer === undefined) return err("github_write_failed");
-        const created = await writer({ profile: fresh.value.profile, threadId: input.command.threadId as never, body: input.command.body.trim() });
+        if (this.github.createThreadReply === undefined) return err("github_write_failed");
+        const created = await this.github.createThreadReply({ profile: fresh.value.profile, threadId: input.command.threadId as never, body: input.command.body.trim() });
         return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "ReplyCreated", commentId: created.value.commentId });
       }
       case "SetThreadState": {
-        const writer = this.github.setReviewThreadState;
-        if (writer === undefined) return err("github_write_failed");
-        const changed = await writer({ profile: fresh.value.profile, threadId: input.command.threadId as never, state: input.command.state });
+        if (this.github.setReviewThreadState === undefined) return err("github_write_failed");
+        const changed = await this.github.setReviewThreadState({ profile: fresh.value.profile, threadId: input.command.threadId as never, state: input.command.state });
         return changed._tag === "err" ? err("github_write_failed") : ok({ _tag: "ThreadStateChanged", threadId: input.command.threadId, state: input.command.state });
       }
       case "EditComment":
@@ -114,14 +111,12 @@ export class InlineConversationService {
         const authorized = await this.ownedComment(fresh.value.profile, pr, input.command.commentId);
         if (authorized._tag === "err") return authorized;
         if (input.command._tag === "EditComment") {
-          const writer = this.github.updateThreadComment;
-          if (writer === undefined) return err("github_write_failed");
-          const changed = await writer({ profile: fresh.value.profile, commentId: input.command.commentId, body: input.command.body.trim() });
+          if (this.github.updateThreadComment === undefined) return err("github_write_failed");
+          const changed = await this.github.updateThreadComment({ profile: fresh.value.profile, commentId: input.command.commentId, body: input.command.body.trim() });
           return changed._tag === "err" ? err("github_write_failed") : ok({ _tag: "CommentEdited", commentId: input.command.commentId });
         }
-        const writer = this.github.deleteThreadComment;
-        if (writer === undefined) return err("github_write_failed");
-        const deleted = await writer({ profile: fresh.value.profile, commentId: input.command.commentId });
+        if (this.github.deleteThreadComment === undefined) return err("github_write_failed");
+        const deleted = await this.github.deleteThreadComment({ profile: fresh.value.profile, commentId: input.command.commentId });
         return deleted._tag === "err" ? err("github_write_failed") : ok({ _tag: "CommentDeleted", commentId: input.command.commentId });
       }
     }
