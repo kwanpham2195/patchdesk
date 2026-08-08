@@ -52,3 +52,28 @@ edit/delete affordances in the Diff, so:
 `policy` (never fetched during detection), and viewer-relative comment fields.
 Any NEW volatile field added to the snapshot must be excluded or normalized
 there or the detector will flag phantoms.
+
+## Every comment write submits its own COMMENTED review
+
+Both the REST create (`POST pulls/{n}/comments`) and the GraphQL reply
+(`addPullRequestReviewThreadReply`) submit a fresh COMMENTED review — the
+review list grows with every comment. The write journal must exclude that
+review (and the comment) from detection fingerprints or a write flags itself:
+
+- create receipt: `pull_request_review_id` (REST, numeric) — matches
+  `PublishedReview.id`; also `node_id` matches `PublishedReview.nodeId`.
+- reply receipt: `comment { pullRequestReview { id } }` (GraphQL node id) —
+  matches `PublishedReview.nodeId`.
+- `withoutJournaledFeedback` filters both id forms from both fingerprint sides.
+
+## PENDING reviews block comment writes with a 422
+
+GitHub allows one pending review per user per PR. While one exists, comment
+creation fails with "user_id can only have one pending review per pull
+request" — including via GraphQL. The pending review is usually an orphan
+(started in GitHub's UI and never submitted). The adapter classifies it as
+`CommandPendingReview` so the renderer can say "submit or discard your
+unfinished review on GitHub" instead of a generic failure. Also: PENDING
+reviews omit `submitted_at` entirely, which used to fail the feedback schema
+parse (breaking every detect/refresh while one exists); the schema now treats
+it as nullish and skips such reviews.
