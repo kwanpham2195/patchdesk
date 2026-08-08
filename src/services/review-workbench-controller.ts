@@ -217,7 +217,8 @@ export class ReviewWorkbenchController {
     const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
     if (profileId._tag === "err" || reviewId._tag === "err" || this.lifecycle === undefined) return err({ reason: "invalid_input" });
-    const detected = await this.lifecycle.refresh.detect({ profileId: profileId.value, reviewId: reviewId.value });
+    const recentWrites = readOptionalStringArrayField(input, "recentWrites");
+    const detected = await this.lifecycle.refresh.detect({ profileId: profileId.value, reviewId: reviewId.value, ...(recentWrites === undefined ? {} : { recentWrites }) });
     return detected._tag === "err" ? err({ reason: detected.error.reason }) : detected;
   }
 
@@ -272,4 +273,10 @@ function mapProjectionFailure(failure: WorkbenchProjectionFailure): ReviewWorkbe
     case "SessionStorageUnavailable":
       return { reason: "storage" };
   }
+}
+
+function readOptionalStringArrayField(value: unknown, name: string): ReadonlyArray<string> | undefined {
+  const field = readObjectField(value, name);
+  if (!Array.isArray(field)) return undefined;
+  return field.every((entry) => typeof entry === "string") ? (field as ReadonlyArray<string>) : undefined;
 }
