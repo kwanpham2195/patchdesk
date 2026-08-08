@@ -1597,6 +1597,7 @@ describe("ReviewWorkbenchFlow", () => {
           onNavigate={vi.fn()}
         />,
       );
+      expect(screen.queryByLabelText("Merge readiness")).toBeNull();
       await user.click(screen.getByRole("button", { name: "PR overview" }));
       dialog = screen.getByRole("dialog");
       expect(

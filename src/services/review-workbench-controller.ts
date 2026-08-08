@@ -1,5 +1,5 @@
 import type { Review } from "../domain/review";
-import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -92,38 +92,28 @@ export class ReviewWorkbenchController {
       : mode.kind === "incremental" ? mode.baseSessionId : undefined;
     const identity = { profileId: profileId.value, host: host.value, owner: owner.value, repo: repo.value, prNumber: number.value };
     const reviewId = createReviewId(identity);
+    // Durable review records and remote snapshots are derived GitHub caches.
+    // Any unreadable or unprojectable state is treated as absent — the opener
+    // falls through to fresh preparation instead of blocking on stale data.
     const existing = this.lifecycle === undefined
       ? undefined
       : await this.lifecycle.reviews.load(profileId.value, reviewId);
-    if (existing?._tag === "err" && existing.error.reason !== "not_found") return err({ reason: "storage" });
+    let existingUpdatedAt: IsoTimestamp | undefined;
     if (existing?._tag === "ok") {
+      existingUpdatedAt = existing.value.updatedAt;
+      if (existing.value.representedRemote !== undefined) {
+        const stable = await this.projectStable(existing.value);
+        if (stable._tag === "ok") return stable;
+      }
       if (existing.value.representedRemote === undefined) {
         const initialized = await this.initializeSnapshot(profileId.value, reviewId);
-        return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
+        if (initialized._tag === "ok") {
+          existingUpdatedAt = initialized.value.updatedAt;
+          const stable = await this.projectStable(initialized.value);
+          if (stable._tag === "ok") return stable;
+        }
       }
-      const stable = await this.projectStable(existing.value);
-      if (stable._tag === "ok" || stable.error.reason !== "not_found") return stable;
-
-      // Session artifacts are disposable local cache. If cleanup or a previous
-      // interrupted run removed them, rebuild the current PR instead of leaving
-      // its durable Review record impossible to open.
-      const repaired = await this.preparation.prepare({
-        profileId: profileId.value,
-        pullRequest: { host: host.value, owner: owner.value, repo: repo.value, number: number.value },
-        mode: { kind: "full" },
-      });
-      if (repaired._tag === "err") return err(mapPreparationFailure(repaired.error));
-      const saved = await this.lifecycle?.reviews.save({
-        ...existing.value,
-        currentSessionId: repaired.value.session.id,
-        currentHeadSha: repaired.value.session.key.headSha,
-        representedRemote: undefined,
-        detectedUpdate: undefined,
-        updatedAt: repaired.value.session.createdAt,
-      }, existing.value.updatedAt);
-      if (saved?._tag === "err") return err({ reason: "storage" });
-      const initialized = await this.initializeSnapshot(profileId.value, reviewId);
-      return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
+      // Fall through to fresh preparation.
     }
     const prepared = await this.preparation.prepare({
       profileId: profileId.value,
@@ -139,8 +129,13 @@ export class ReviewWorkbenchController {
       const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
       return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
-    const created = createReview({ identity, currentSessionId: prepared.value.session.id, headSha: prepared.value.session.key.headSha, createdAt: prepared.value.session.createdAt });
-    const saved = await this.lifecycle.reviews.save(created);
+    let created = createReview({ identity, currentSessionId: prepared.value.session.id, headSha: prepared.value.session.key.headSha, createdAt: prepared.value.session.createdAt });
+    // If we are replacing an existing review, ensure the new updatedAt is strictly
+    // later so the CAS guard in ReviewStore.save accepts the replacement.
+    if (existingUpdatedAt !== undefined && Date.parse(created.updatedAt) <= Date.parse(existingUpdatedAt)) {
+      created = { ...created, updatedAt: new Date(Date.parse(existingUpdatedAt) + 1).toISOString() as IsoTimestamp };
+    }
+    const saved = await this.lifecycle.reviews.save(created, existingUpdatedAt);
     if (saved._tag === "err") return err({ reason: "storage" });
     const initialized = await this.initializeSnapshot(profileId.value, reviewId);
     return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
