@@ -119,6 +119,11 @@ export function ReviewWorkbenchFlow({
   const [selectedRepairAnchor, setSelectedRepairAnchor] = useState<
     ReviewAnchor | undefined
   >();
+  // Freshness value the projection had before detection patched it stale, so a
+  // later cleared flag can restore writes instead of leaving them blocked.
+  const [detectedStaleFreshness, setDetectedStaleFreshness] = useState<
+    "fresh" | "not_refreshed" | "unavailable" | undefined
+  >(undefined);
   const detectUpdates = useCallback(async (): Promise<void> => {
     if (workbench.review.status !== "open") return;
     try {
@@ -129,14 +134,34 @@ export function ReviewWorkbenchFlow({
           reviewId: workbench.review.id,
         },
       });
-      if (isDetection(value) && value.updatesAvailable)
+      if (isDetection(value) && value.updatesAvailable) {
+        if (
+          workbench.revision.freshness !== "updates_available" &&
+          detectedStaleFreshness === undefined
+        )
+          setDetectedStaleFreshness(workbench.revision.freshness);
         onWorkbenchPatch({
           revision: { ...workbench.revision, freshness: "updates_available" },
         });
+      } else if (
+        isDetection(value) &&
+        !value.updatesAvailable &&
+        workbench.revision.freshness === "updates_available"
+      ) {
+        // Detection is authoritative: a cleared flag means the stale patch was
+        // a phantom (or the remote caught up), so restore writes.
+        onWorkbenchPatch({
+          revision: {
+            ...workbench.revision,
+            freshness: detectedStaleFreshness ?? "fresh",
+          },
+        });
+        setDetectedStaleFreshness(undefined);
+      }
     } catch {
       // Detection is advisory and never replaces the represented snapshot.
     }
-  }, [onWorkbenchPatch, workbench]);
+  }, [detectedStaleFreshness, onWorkbenchPatch, workbench]);
 
   useEffect(() => {
     void detectUpdates();
@@ -160,6 +185,7 @@ export function ReviewWorkbenchFlow({
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined)
         throw new Error("Invalid Review refresh response");
+      setDetectedStaleFreshness(undefined);
       onWorkbenchReplace(parsed);
     } catch {
       setRefreshError(true);
