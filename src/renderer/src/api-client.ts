@@ -1,4 +1,5 @@
 import type { LocalApiDesktopRequest } from "../../main/ipc-contract";
+import { appLog } from "./lib/logger";
 
 export type ApiFailureKind =
   | "invalid_input"
@@ -30,10 +31,26 @@ export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},
 ): Promise<unknown> {
+  const startedAt = performance.now();
+  const skipLogging = path === "/v1/logs" || path === "/health";
   if (typeof window === "undefined" || !("patchdesk" in window)) {
     throw new PatchdeskApiError("unavailable", 503, true, "renderer-unavailable", "Patchdesk desktop services are unavailable.");
   }
   const response = await window.patchdesk.request({ path, ...init });
+  const durationMs = Math.round(performance.now() - startedAt);
+  if (!skipLogging) {
+    const method = init.method ?? "GET";
+    if (response.ok) {
+      appLog.debug("api", `${method} ${path}`, { status: response.status, durationMs, correlationId: response.correlationId });
+    } else {
+      appLog.warn("api", `${method} ${path}`, {
+        status: response.status,
+        durationMs,
+        correlationId: response.correlationId,
+        error: errorCode(response.body),
+      });
+    }
+  }
   if (response.ok) return response.body;
 
   const serverCode = errorCode(response.body);
@@ -49,16 +66,19 @@ export async function requestJson(
 
 /** Opens the main-process directory picker without exposing filesystem privileges. */
 export async function selectDirectory(defaultPath?: string): Promise<string | undefined> {
+  const startedAt = performance.now();
   if (typeof window === "undefined" || !("patchdesk" in window)) {
     throw new PatchdeskApiError("unavailable", 503, true, "renderer-unavailable", "Patchdesk desktop services are unavailable.");
   }
   const response = await window.patchdesk.request({ operation: "selectDirectory", ...(defaultPath === undefined ? {} : { defaultPath }) });
+  const durationMs = Math.round(performance.now() - startedAt);
   if (!response.ok) {
     const kind = failureKind(response.status, errorCode(response.body));
+    appLog.warn("api", "selectDirectory", { status: response.status, durationMs, correlationId: response.correlationId, error: errorCode(response.body) });
     throw new PatchdeskApiError(kind, response.status, response.status >= 500, response.correlationId, safeMessage(kind));
   }
-  if (typeof response.body !== "object" || response.body === null || !("path" in response.body)) {
-    throw new PatchdeskApiError("internal", 500, false, response.correlationId, safeMessage("internal"));
+  appLog.debug("api", "selectDirectory", { status: response.status, durationMs, correlationId: response.correlationId });
+  if (typeof response.body !== "object" || response.body === null || !("path" in response.body)) {    throw new PatchdeskApiError("internal", 500, false, response.correlationId, safeMessage("internal"));
   }
   if (response.body.path === null) return undefined;
   if (typeof response.body.path === "string" && response.body.path.length > 0) return response.body.path;

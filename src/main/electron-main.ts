@@ -44,6 +44,7 @@ import { resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "./workflow-r
 import { ReviewCompletionService } from "../services/review-completion-service";
 import { ReviewFailureService } from "../services/review-failure-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
+import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
@@ -59,9 +60,32 @@ let rendererNavigationState: DesktopNavigationState = "clear";
 let allowWindowClose = false;
 let closePromptOpen = false;
 const lifecycleGate = new ReviewLifecycleGate();
+const logs = new AppLogService(PatchdeskPaths.default(), {
+  stdoutMirror: !app.isPackaged || process.argv.includes("--patchdesk-tail-logs"),
+});
 const diagnostics = new ReviewDiagnosticService(
   PatchdeskPaths.default(),
   () => new Date().toISOString(),
+  undefined,
+  {
+    mirror: (event) => {
+      logs.write({
+        process: "main",
+        level: event.retryable ? "warn" : "info",
+        topic: "diagnostics",
+        message: event.phase,
+        meta: {
+          category: event.category,
+          retryable: event.retryable,
+          ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+          incidentId: event.incidentId,
+        },
+        ...(event.profileId === undefined ? {} : { profileId: event.profileId }),
+        ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
+        ...(event.attemptId === undefined ? {} : { attemptId: event.attemptId }),
+      });
+    },
+  },
 );
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
@@ -79,10 +103,11 @@ const desktopLifecycle = createDesktopLifecycle({
           architecture: process.arch,
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
-        workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics),
+        workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics, logs),
         insights: await recoverInsights(runtimeModelCatalog),
         lifecycleGate,
         diagnostics,
+        logs,
         modelCatalog: runtimeModelCatalog,
         trash: {
           async move(path) {
@@ -155,6 +180,7 @@ async function recoverInsights(modelCatalog: LocalPiRuntimeModelCatalog): Promis
 function createWorkflowInvoker(
   sharedLifecycleGate: ReviewLifecycleGate,
   diagnostics: ReviewDiagnosticService,
+  logs: AppLogService,
 ) {
   const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
   const completion = new ReviewCompletionService(
@@ -187,6 +213,19 @@ function createWorkflowInvoker(
         detail?: string,
         durationMs?: number,
       ): void => {
+        logs.write({
+          process: "main",
+          level: phase === "workflow-completed" ? "info" : phase === "workflow-failed" || phase === "workflow-save-failed" ? "error" : "debug",
+          topic: "workflow",
+          message: phase,
+          meta: {
+            ...(detail === undefined ? {} : { detail }),
+            ...(durationMs === undefined ? {} : { durationMs }),
+          },
+          ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
+          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+          ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
+        });
         diagnosticWrites = diagnosticWrites.then(async () => {
           try {
             await diagnostics.record({
@@ -269,6 +308,30 @@ function reviewFailureMessage(reason: FlueCliReviewFailure["reason"]): string {
 }
 
 app.setName("Patchdesk");
+process.on("uncaughtException", (cause: unknown) => {
+  logs.write({
+    process: "main",
+    level: "error",
+    topic: "crash",
+    message: "Uncaught main-process exception",
+    meta: { error: cause },
+  });
+  // Record before dying; the previous behavior was an untracked crash.
+  void logs.flush().finally(() => app.exit(1));
+});
+process.on("unhandledRejection", (reason: unknown) => {
+  logs.write({
+    process: "main",
+    level: "error",
+    topic: "crash",
+    message: "Unhandled main-process rejection",
+    meta: { reason },
+  });
+  // Preserve the default crash-on-unhandled-rejection behavior after recording.
+  setImmediate(() => {
+    throw reason;
+  });
+});
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -445,13 +508,26 @@ async function createWorkbenchWindow(
     event.preventDefault();
     void guardDesktopExit("window");
   });
-  window.webContents.on("render-process-gone", () => {
+  window.webContents.on("render-process-gone", (_event, details) => {
+    logs.write({
+      process: "main",
+      level: "error",
+      topic: "renderer",
+      message: "Renderer process stopped",
+      meta: { reason: details.reason, exitCode: details.exitCode },
+    });
     void offerRendererRecovery(
       window,
       "The workbench process stopped unexpectedly.",
     );
   });
   window.on("unresponsive", () => {
+    logs.write({
+      process: "main",
+      level: "warn",
+      topic: "renderer",
+      message: "Renderer stopped responding",
+    });
     void offerRendererRecovery(window, "The workbench stopped responding.");
   });
 
@@ -583,7 +659,8 @@ function terminateAfterServerStops(): void {
   void desktopLifecycle
     .stop()
     .catch(() => undefined)
-    .finally(() => {
+    .finally(async () => {
+      await logs.flush();
       app.exit();
     });
 }

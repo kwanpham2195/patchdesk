@@ -64,6 +64,77 @@ describe("SettingsModal", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("opens on the initialSection only for the first open, then resets to General", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+    let open = true;
+    const onOpenChange = (next: boolean): void => {
+      open = next;
+    };
+
+    const view = render(
+      <SettingsModal
+        open={open}
+        onOpenChange={onOpenChange}
+        dashboard={dashboard}
+        appearance="system"
+        onAppearanceChange={() => undefined}
+        diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
+        onDiffThemeChange={() => undefined}
+        profiles={[profile]}
+        onWorkspaceReload={async () => undefined}
+        initialSection="logs"
+        onSectionChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Logs" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("settings-section-logs")).toBeTruthy();
+
+    // Close and reopen the same mounted instance: the restore applies only once.
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    const modalProps = {
+      open,
+      onOpenChange,
+      dashboard,
+      appearance: "system" as const,
+      onAppearanceChange: () => undefined,
+      diffThemePreferences: { light: "pierre-light", dark: "github-dark" } as const,
+      onDiffThemeChange: () => undefined,
+      profiles: [profile],
+      onWorkspaceReload: async () => undefined,
+      initialSection: "logs" as const,
+      onSectionChange: () => undefined,
+    };
+    view.rerender(<SettingsModal {...modalProps} open={false} />);
+    view.rerender(<SettingsModal {...modalProps} open />);
+    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("reports section switches through onSectionChange", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+    const onSectionChange = vi.fn();
+
+    render(
+      <SettingsModal
+        open
+        onOpenChange={() => undefined}
+        dashboard={dashboard}
+        appearance="system"
+        onAppearanceChange={() => undefined}
+        diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
+        onDiffThemeChange={() => undefined}
+        profiles={[profile]}
+        onWorkspaceReload={async () => undefined}
+        onSectionChange={onSectionChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Logs" }));
+    expect(onSectionChange).toHaveBeenCalledWith("logs");
+  });
+
   it("keeps a failed cleanup confirmation open with retry context", async () => {
     installDesktopApi({ clearLocalDataFails: true });
     const user = userEvent.setup();

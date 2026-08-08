@@ -24,6 +24,15 @@ import {
 import { TooltipProvider } from "./components/ui/tooltip";
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
+import {
+  clearSettingsRestore,
+  loadSettingsRestore,
+  loadWorkbenchUiState,
+  saveSettingsRestore,
+  saveWorkbenchUiState,
+} from "./lib/screen-restore";
+import type { ReviewWorkbenchInitialState } from "./components/review-workbench";
+import type { SettingsSection } from "./flows/settings-flow";
 import { PatchdeskApiError, requestJson } from "./api-client";
 import { parseInboxResponse, type InboxResponse, type WorkbenchResponse } from "./renderer-contracts";
 import {
@@ -69,6 +78,25 @@ export function App({ initialState }: AppProps): React.JSX.Element {
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsOpener, setSettingsOpener] = useState<HTMLElement | undefined>();
+  const [settingsInitialSection] = useState<SettingsSection>(() => restoredSettingsSection() ?? "general");
+  // Workbench position restored after reload; applied once to the matching review.
+  const restoredWorkbenchUi = useRef<{ readonly reviewId: string; readonly state: ReviewWorkbenchInitialState } | undefined>(undefined);
+  useEffect(() => {
+    if (fixtureMode || destination.kind !== "workbench" || restoredWorkbenchUi.current !== undefined) return;
+    const state = loadWorkbenchUiState(destination.reviewId);
+    if (state !== undefined) {
+      restoredWorkbenchUi.current = { reviewId: destination.reviewId, state };
+    }
+  }, [destination, fixtureMode]);
+  useEffect(() => {
+    if (fixtureMode || workbench === undefined) return;
+    restoredWorkbenchUi.current = undefined;
+  }, [fixtureMode, workbench]);
+  // A reload with Settings open reopens the overlay on the same section.
+  useEffect(() => {
+    if (fixtureMode || settingsOpen || loadSettingsRestore() === undefined) return;
+    setSettingsOpen(true);
+  }, [fixtureMode, settingsOpen]);
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
     loadAppearancePreference(),
   );
@@ -382,9 +410,14 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         open={settingsOpen}
         onOpenChange={(open) => {
           setSettingsOpen(open);
-          if (!open) setSettingsOpener(undefined);
+          if (!open) {
+            setSettingsOpener(undefined);
+            clearSettingsRestore();
+          }
         }}
         opener={settingsOpener}
+        initialSection={settingsInitialSection}
+        onSectionChange={(section) => saveSettingsRestore(section)}
         {...(dashboard === undefined ? {} : { dashboard })}
         appearance={appearance}
         onAppearanceChange={(next) => { void updateAppearance(next); }}
@@ -471,6 +504,11 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         (destination.initialSection === "diff" || destination.initialSection === "checks")
           ? { initialSection: destination.initialSection }
           : {})}
+        {...(restoredWorkbenchUi.current !== undefined &&
+        restoredWorkbenchUi.current.reviewId === workbench.review.id
+          ? { initialUiState: restoredWorkbenchUi.current.state }
+          : {})}
+        onUiStateChange={(state) => saveWorkbenchUiState(workbench.review.id, state)}
         onNavigate={(initialSection) =>
           navigate({
             kind: "workbench",
@@ -522,6 +560,18 @@ export function App({ initialState }: AppProps): React.JSX.Element {
         />
     </div>,
   );
+}
+
+function restoredSettingsSection(): SettingsSection | undefined {
+  const restored = loadSettingsRestore();
+  if (restored === undefined) return undefined;
+  return restored.section === "general" ||
+    restored.section === "workspace" ||
+    restored.section === "review" ||
+    restored.section === "data" ||
+    restored.section === "logs"
+    ? restored.section
+    : undefined;
 }
 
 async function api(

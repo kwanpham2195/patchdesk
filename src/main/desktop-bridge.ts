@@ -85,6 +85,8 @@ const allowedRoutes = new Set([
   "POST /v1/storage/clear-local-data",
   "GET /v1/diagnostics",
   "POST /v1/diagnostics/support-bundle",
+  "GET /v1/logs",
+  "POST /v1/logs",
 ]);
 
 const allowedRoutePatterns = [
@@ -178,6 +180,7 @@ export function installDesktopRequestBridge(
         headers: {
           "Content-Type": "application/json",
           Origin: rendererOrigin,
+          "X-Patchdesk-Correlation-Id": correlationId,
           [APP_CAPABILITY_HEADER]: server.capability,
         },
         ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),

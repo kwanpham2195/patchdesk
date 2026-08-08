@@ -14,6 +14,7 @@ import {
 } from "../review-execution-preferences";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { cleanupCopy } from "../review-copy";
+import { LogsPanel } from "../components/logs-panel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +53,7 @@ import {
 } from "../components/ui/select";
 import type { Dashboard, Profile } from "../renderer-models";
 
-export type SettingsSection = "general" | "workspace" | "review" | "data";
+export type SettingsSection = "general" | "workspace" | "review" | "data" | "logs";
 
 type ProfileDraft = {
   readonly id: string;
@@ -371,6 +372,10 @@ export function SettingsFlow({
 
   if (section === "review") {
     return <ReviewPreferences profileId={dashboard?.profile.id} />;
+  }
+
+  if (section === "logs") {
+    return <LogsPanel />;
   }
 
   if (section === "workspace") {

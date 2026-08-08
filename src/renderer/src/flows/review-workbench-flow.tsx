@@ -27,6 +27,7 @@ import {
   usePublishedFeedbackNavigation,
   useReviewWorkbenchNavigation,
 } from "../components/review-workbench";
+import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
@@ -99,6 +100,12 @@ export type ReviewWorkbenchFlowProps = {
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
   readonly onNavigate: (section: "diff" | "checks") => void;
+  /** Reports in-screen position changes so a reload can restore them. */
+  readonly onUiStateChange?: (state: {
+    readonly activeTab: "conversation" | "diff" | "insights";
+    readonly section: ReviewNavigatorSection;
+    readonly selectedPath?: string;
+  }) => void;
 };
 
 /** Owns loopback calls and replacement of the one canonical Review projection. */
@@ -110,6 +117,7 @@ export function ReviewWorkbenchFlow({
   onWorkbenchPatch,
   onNavigationStateChange,
   onNavigate,
+  onUiStateChange,
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
   void initialSection;
   void onNavigate;
@@ -583,6 +591,7 @@ export function ReviewWorkbenchFlow({
         {...(initialUiState === undefined
           ? {}
           : { initialState: initialUiState })}
+        {...(onUiStateChange === undefined ? {} : { onStateChange: onUiStateChange })}
         actions={{
           detectUpdates,
           refresh,

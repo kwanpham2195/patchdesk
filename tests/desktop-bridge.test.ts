@@ -42,6 +42,9 @@ describe("desktop request bridge", () => {
     expect(isAllowedDesktopRequest({ path: "/v1/storage/clear-local-data", method: "POST" })).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/diagnostics?profileId=cfw" })).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/diagnostics/support-bundle", method: "POST" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/logs" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/logs?after=3&limit=50" })).toBe(true);
+    expect(isAllowedDesktopRequest({ path: "/v1/logs", method: "POST" })).toBe(true);
     expect(isAllowedDesktopRequest({ path: "/v1/storage", method: "GET" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/storage/discard", method: "POST" })).toBe(false);
     expect(isAllowedDesktopRequest({ path: "/v1/storage/quarantine/delete", method: "POST" })).toBe(false);

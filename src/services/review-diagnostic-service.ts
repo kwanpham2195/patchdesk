@@ -26,6 +26,8 @@ export type ReviewDiagnosticFailure = {
 export type ReviewDiagnosticServiceOptions = {
   readonly maxEvents?: number;
   readonly maxDetailLength?: number;
+  /** Best-effort projection of each recorded event into the unified log stream. */
+  readonly mirror?: (event: ReviewDiagnosticEvent) => void;
 };
 
 const processProfileLocks = new Map<string, Promise<void>>();
@@ -43,6 +45,7 @@ export type SupportBundleInput = {
 export class ReviewDiagnosticService {
   private readonly maxEvents: number;
   private readonly maxDetailLength: number;
+  private readonly mirror: ((event: ReviewDiagnosticEvent) => void) | undefined;
   constructor(
     private readonly paths: PatchdeskPaths,
     private readonly now: () => string,
@@ -54,6 +57,7 @@ export class ReviewDiagnosticService {
       REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH,
       Math.max(1, options.maxDetailLength ?? REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH),
     );
+    this.mirror = options.mirror;
   }
 
   /** Record one redacted event and return its incident identifier. */
@@ -72,7 +76,9 @@ export class ReviewDiagnosticService {
     if (profileId._tag === "err") return err({ _tag: "ReviewDiagnosticStorageFailed" });
     const event = sanitizeReviewDiagnosticEvent(normalized, profileId.value, this.maxDetailLength);
     if (event === undefined) return err({ _tag: "ReviewDiagnosticStorageFailed" });
-    return this.withProfileLock(profileId.value, () => this.persist(event));
+    const persisted = await this.withProfileLock(profileId.value, () => this.persist(event));
+    if (persisted._tag === "ok") this.mirror?.(persisted.value);
+    return persisted;
   }
 
   /** Read the most recent valid events for one profile. */

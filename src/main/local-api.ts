@@ -13,9 +13,11 @@ import {
   object,
   picklist,
   pipe,
+  record,
   string,
   strictObject,
   union,
+  unknown,
   variant,
 } from "valibot";
 
@@ -66,6 +68,7 @@ import { ReviewRunRegistry } from "../services/review-run-registry";
 import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
+import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService, type GitReadExecutor } from "../services/review-worktree-service";
@@ -173,6 +176,8 @@ export type LocalApiConfiguration = {
   readonly lifecycleGate?: ReviewLifecycleGate;
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
+  /** Composition-root local log stream; defaults to a fresh on-disk service. */
+  readonly logs?: Pick<AppLogService, "write" | "tail">;
   /** Main-process-owned durable Review Insight lifecycle seam. */
   readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "configureCompletion">>;
   readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent" | "previewMergeCurrent" | "previewReplaceCurrent" | "mergeCurrent" | "replaceCurrent" | "addFindingCurrent">;
@@ -201,8 +206,10 @@ export async function startLocalApiServer(
   const runs = new ReviewRunRegistry();
   app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
-  app.get("/health", (context) => context.json({ status: "ok" }));
   const paths = configuration.paths ?? PatchdeskPaths.default();
+  const logs = configuration.logs ?? new AppLogService(paths);
+  app.use("*", logLocalApiRequests(logs));
+  app.get("/health", (context) => context.json({ status: "ok" }));
   const commands = new CommandRunner();
   const github = configuration.github ?? new GitHubAdapter(commands);
   const readOnlyGit = {
@@ -277,6 +284,12 @@ export async function startLocalApiServer(
     { paths, artifacts: storageArtifacts, diagnostics, lifecycleGate, reviewGate: reviewWriteGate, mergeOperations: new MergeOperationStore(paths), github },
   );
   await recovery.reconcile();
+  logs.write({
+    process: "main",
+    level: "info",
+    topic: "lifecycle",
+    message: "Local API started",
+  });
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -783,6 +796,37 @@ export async function startLocalApiServer(
       await storageManagement.clearCache(profileId.value),
     );
   });
+  app.get("/v1/logs", async (context) => {
+    const rawAfter = context.req.query("after");
+    const rawLimit = context.req.query("limit");
+    const after = rawAfter === undefined || !/^\d+$/.test(rawAfter) ? undefined : Number(rawAfter);
+    const limit = rawLimit === undefined || !/^\d+$/.test(rawLimit) ? undefined : Number(rawLimit);
+    return context.json(logs.tail(after, limit));
+  });
+  app.post("/v1/logs", async (context) => {
+    const body = await jsonBody(context);
+    const parsed = safeParse(object({ entries: array(unknown()) }), body);
+    if (!parsed.success || parsed.output.entries.length === 0) {
+      return context.json({ error: "invalid_input" }, 400);
+    }
+    let accepted = 0;
+    for (const raw of parsed.output.entries.slice(0, 100)) {
+      const candidate = safeParse(rendererLogEntrySchema, raw);
+      if (!candidate.success) continue;
+      logs.write({
+        process: "renderer",
+        level: candidate.output.level,
+        topic: candidate.output.topic,
+        message: candidate.output.message,
+        ...(candidate.output.meta === undefined ? {} : { meta: candidate.output.meta }),
+        ...(candidate.output.profileId === undefined ? {} : { profileId: candidate.output.profileId }),
+        ...(candidate.output.sessionId === undefined ? {} : { sessionId: candidate.output.sessionId }),
+        ...(candidate.output.correlationId === undefined ? {} : { correlationId: candidate.output.correlationId }),
+      });
+      accepted += 1;
+    }
+    return context.json({ accepted });
+  });
   app.get("/v1/diagnostics", async (context) => {
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
     if (profileId._tag === "err") return context.json({ error: "invalid_input" }, 400);
@@ -852,6 +896,36 @@ export async function startLocalApiServer(
         await closeServer(server);
       },
     },
+  };
+}
+
+const rendererLogEntrySchema = strictObject({
+  level: picklist(["debug", "info", "warn", "error"]),
+  topic: pipe(string(), minLength(1), maxLength(48)),
+  message: pipe(string(), minLength(1), maxLength(512)),
+  meta: optional(record(string(), unknown())),
+  profileId: optional(pipe(string(), minLength(1), maxLength(180))),
+  sessionId: optional(pipe(string(), minLength(1), maxLength(180))),
+  correlationId: optional(pipe(string(), minLength(1), maxLength(120))),
+});
+
+/** Logs every authenticated loopback request; the log endpoints and health never log themselves. */
+function logLocalApiRequests(logs: Pick<AppLogService, "write">): MiddlewareHandler {
+  return async (context, next) => {
+    const startedAt = performance.now();
+    await next();
+    const path = context.req.path;
+    if (path === "/health" || path === "/v1/logs") return;
+    const status = context.res.status;
+    const durationMs = Math.round(performance.now() - startedAt);
+    const correlationId = context.req.header("x-patchdesk-correlation-id");
+    logs.write({
+      process: "main",
+      level: status >= 500 ? "error" : status >= 400 ? "warn" : "debug",
+      topic: "http",
+      message: `${context.req.method} ${path}`,
+      meta: { status, durationMs, ...(correlationId === undefined ? {} : { correlationId }) },
+    });
   };
 }
 

@@ -45,6 +45,10 @@ export type SettingsModalProps = {
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
   readonly preferenceError?: string | undefined;
   readonly onRetryPreferences?: () => void;
+  /** Section to open on the first open only (reload restore); later opens start at General. */
+  readonly initialSection?: SettingsSection;
+  /** Reports section switches so the parent can persist a reload restore. */
+  readonly onSectionChange?: (section: SettingsSection) => void;
 };
 
 /** Global, General-first Settings overlay that preserves the underlying route. */
@@ -52,9 +56,12 @@ export function SettingsModal({
   open,
   onOpenChange,
   opener,
+  initialSection,
+  onSectionChange,
   ...flowProps
 }: SettingsModalProps): React.JSX.Element {
-  const [section, setSection] = useState<SettingsSection>("general");
+  const [section, setSection] = useState<SettingsSection>(initialSection ?? "general");
+  const firstOpenRef = useRef(true);
   const [dirty, setDirty] = useState(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const pendingSwitch = useRef<(() => void) | undefined>(undefined);
@@ -68,7 +75,8 @@ export function SettingsModal({
 
   useEffect(() => {
     if (open && !lastOpen.current) {
-      setSection("general");
+      setSection(firstOpenRef.current && initialSection !== undefined ? initialSection : "general");
+      firstOpenRef.current = false;
       openerRef.current = opener ?? null;
     }
     if (!open && lastOpen.current) {
@@ -140,7 +148,7 @@ export function SettingsModal({
           showCloseButton={false}
           className={cn(
             "flex w-[min(96vw,1200px)] max-w-[min(96vw,1200px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1200px)]",
-            section === "workspace" || section === "data"
+            section === "workspace" || section === "data" || section === "logs"
               ? "h-[min(90vh,960px)] max-h-[90vh]"
               : "max-h-[90vh]",
           )}
@@ -176,9 +184,12 @@ export function SettingsModal({
                 value === "general" ||
                 value === "workspace" ||
                 value === "review" ||
-                value === "data"
-              )
+                value === "data" ||
+                value === "logs"
+              ) {
                 setSection(value);
+                onSectionChange?.(value);
+              }
             }}
             orientation="horizontal"
             className="min-h-0 flex-1 gap-0"
@@ -188,6 +199,7 @@ export function SettingsModal({
               <TabsTrigger value="workspace">Workspace</TabsTrigger>
               <TabsTrigger value="review">Review</TabsTrigger>
               <TabsTrigger value="data">Data &amp; recovery</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
             <div
               role="region"

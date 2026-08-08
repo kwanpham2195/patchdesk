@@ -17,6 +17,7 @@ const dashboard = {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 

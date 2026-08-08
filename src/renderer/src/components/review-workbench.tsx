@@ -130,6 +130,7 @@ export type ReviewWorkbenchSlots = {
 };
 
 export type ReviewWorkbenchInitialState = {
+  readonly activeTab?: "conversation" | "diff" | "insights";
   readonly section?: ReviewNavigatorSection | "insights";
   readonly selectedPath?: string;
   readonly selectedFindingId?: string;
@@ -160,11 +161,18 @@ export function ReviewWorkbench({
   actions,
   slots,
   initialState,
+  onStateChange,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
+  /** Reports the current in-screen position so reloads can restore it. */
+  readonly onStateChange?: (state: {
+    readonly activeTab: "conversation" | "diff" | "insights";
+    readonly section: ReviewNavigatorSection;
+    readonly selectedPath?: string;
+  }) => void;
 }): React.JSX.Element {
   const terminal = model.review.status !== "open";
   const hasUpdates = model.revision.freshness === "updates_available";
@@ -193,8 +201,19 @@ export function ReviewWorkbench({
   const [navigatorVisible, setNavigatorVisible] = useState(true);
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() => loadReviewViewPreferences(model.session.key.profileId));
   const [section, setSection] = useState<ReviewNavigatorSection>(initialState?.section === "insights" ? "files" : initialState?.section ?? "files");
-  const [activeTab, setActiveTab] = useState<"conversation" | "diff" | "insights">(initialState?.section === "insights" ? "insights" : "conversation");
+  const [activeTab, setActiveTab] = useState<"conversation" | "diff" | "insights">(
+    initialState?.activeTab ?? (initialState?.section === "insights" ? "insights" : "conversation"),
+  );
   const [selectedPath, setSelectedPath] = useState<string | undefined>(initialState?.selectedPath);
+  useEffect(() => {
+    // Only file selections restore cleanly; directory selections (trailing slash)
+    // are transient tree state and must not be persisted across reloads.
+    const persistedPath =
+      selectedPath === undefined || selectedPath.endsWith("/")
+        ? undefined
+        : selectedPath;
+    onStateChange?.({ activeTab, section, ...(persistedPath === undefined ? {} : { selectedPath: persistedPath }) });
+  }, [activeTab, onStateChange, section, selectedPath]);
   const [activePath, setActivePath] = useState<string | undefined>(initialState?.selectedPath);
   const [selectedFinding, setSelectedFinding] = useState<ReviewFinding | undefined>(() => {
     if (initialState?.selectedFindingId === undefined) return undefined;

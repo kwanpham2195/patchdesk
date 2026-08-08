@@ -50,6 +50,15 @@ export class PatchdeskPaths {
     return this.roots.cacheDirectory;
   }
 
+  logsDirectory(): string {
+    return join(this.dataDirectory(), "logs");
+  }
+
+  /** Active append-only debug log stream; tail -f friendly. */
+  logFile(): string {
+    return join(this.logsDirectory(), "patchdesk.jsonl");
+  }
+
   configFile(): string {
     return join(this.configDirectory(), "config.json");
   }
