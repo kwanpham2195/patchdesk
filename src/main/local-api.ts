@@ -109,7 +109,11 @@ const reviewLoadSchema = union([
   strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) }),
   strictObject({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)) }),
 ]);
-const reviewUpdateSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
+const reviewUpdateSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  recentWrites: optional(pipe(array(string()), minLength(0))),
+});
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
 const insightCompletionSchema = variant("_tag", [
   strictObject({ _tag: picklist(["SaveAsReviewDraft"] as const) }),
@@ -931,7 +935,7 @@ async function inlineConversationResponse(context: Context, service: InlineConve
   if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
   if (result._tag === "ok") return context.json(result.value);
-  const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "permission_denied" || result.error === "confirmation_required" ? 409 : result.error === "github_read_failed" || result.error === "github_write_failed" ? 503 : 400;
+  const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "permission_denied" || result.error === "confirmation_required" ? 409 : result.error === "pending_review" ? 409 : result.error === "github_read_failed" || result.error === "github_write_failed" ? 503 : 400;
   return context.json({ error: result.error }, status);
 }
 

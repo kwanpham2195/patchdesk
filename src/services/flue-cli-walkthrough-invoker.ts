@@ -120,6 +120,7 @@ function walkthroughFailureReason(failure: CommandFailure): FlueCliWalkthroughFa
     case "CommandFailed":
     case "CommandForbidden":
     case "CommandUnsupported":
+    case "CommandPendingReview":
     case "CommandInvalidJson": return "execution_failed";
   }
 }

@@ -58,6 +58,7 @@ function reviewFailureReason(failure: CommandFailure): FlueCliReviewFailure["rea
     case "CommandFailed":
     case "CommandForbidden":
     case "CommandUnsupported":
+    case "CommandPendingReview":
     case "CommandInvalidJson": return "execution_failed";
   }
 }

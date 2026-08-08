@@ -42,8 +42,8 @@ export type DirectConversationCommand =
     };
 
 export type DirectConversationReceipt =
-  | { readonly _tag: "CommentCreated"; readonly commentId: string }
-  | { readonly _tag: "ReplyCreated"; readonly commentId: string }
+  | { readonly _tag: "CommentCreated"; readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }
+  | { readonly _tag: "ReplyCreated"; readonly commentId: string; readonly reviewId?: string }
   | { readonly _tag: "ThreadStateChanged"; readonly threadId: string; readonly state: "open" | "resolved" }
   | { readonly _tag: "CommentEdited"; readonly commentId: string }
   | { readonly _tag: "CommentDeleted"; readonly commentId: string };
@@ -53,6 +53,7 @@ export type DirectConversationFailure =
   | "not_found"
   | "not_fresh"
   | "permission_denied"
+  | "pending_review"
   | "github_read_failed"
   | "github_write_failed"
   | "confirmation_required";
@@ -94,12 +95,15 @@ export class InlineConversationService {
         const coordinates = coordinatesFor(input.command.anchor);
         if (coordinates === undefined) return err("invalid_input");
         const created = await this.github.createInlineComment({ profile: fresh.value.profile, pr, headSha: fresh.value.session.key.headSha, coordinates, body: input.command.body.trim() });
-        return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "CommentCreated", commentId: created.value.commentId });
+        if (created._tag === "err") {
+          return err(created.error.category === "pending_review" ? "pending_review" : "github_write_failed");
+        }
+        return ok({ _tag: "CommentCreated", commentId: created.value.commentId, ...(created.value.threadId === undefined ? {} : { threadId: created.value.threadId }), ...(created.value.reviewId === undefined ? {} : { reviewId: created.value.reviewId }) });
       }
       case "Reply": {
         if (this.github.createThreadReply === undefined) return err("github_write_failed");
         const created = await this.github.createThreadReply({ profile: fresh.value.profile, threadId: input.command.threadId as never, body: input.command.body.trim() });
-        return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "ReplyCreated", commentId: created.value.commentId });
+        return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "ReplyCreated", commentId: created.value.commentId, ...(created.value.reviewId === undefined ? {} : { reviewId: created.value.reviewId }) });
       }
       case "SetThreadState": {
         if (this.github.setReviewThreadState === undefined) return err("github_write_failed");

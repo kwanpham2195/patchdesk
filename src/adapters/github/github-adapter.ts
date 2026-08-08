@@ -62,13 +62,17 @@ const maxMergePolicyPages = 3;
 const maxPullRequestCommits = 250;
 const publishedReviewSchema = v.array(v.looseObject({
   id: v.union([v.string(), v.number()]),
+  node_id: v.optional(v.string()),
   user: v.nullish(v.looseObject({ login: v.string() })),
   body: v.nullish(v.string()),
   state: v.string(),
-  submitted_at: v.string(),
+  // GitHub omits submitted_at on PENDING reviews (started but not submitted);
+  // they are skipped as feedback below, never failures.
+  submitted_at: v.nullish(v.string()),
 }));
 const publishedCommentSchema = v.array(v.looseObject({
   id: v.union([v.string(), v.number()]),
+  node_id: v.optional(v.string()),
   user: v.nullish(v.looseObject({ login: v.string() })),
   body: v.string(),
   created_at: v.string(),
@@ -448,8 +452,8 @@ export interface GitHubReviewWriter {
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
-  createInlineComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
-  createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
+  createInlineComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }, GitHubWriteFailure>>;
+  createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>>;
   setReviewThreadState?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>>;
   deleteThreadComment?(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>>;
@@ -647,8 +651,9 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       ],
       timeoutMs: commandTimeoutMs,
     });
-    if (response._tag === "err")
+    if (response._tag === "err") {
       return commandFailure("get_pr", response.error);
+    }
     const parsed = parsePullRequest(
       response.value,
       input.profile.githubHost,
@@ -775,8 +780,9 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       ],
       timeoutMs: commandTimeoutMs,
     });
-    if (response._tag === "err")
+    if (response._tag === "err") {
       return commandFailure("get_comments", response.error);
+    }
     const parsed = v.safeParse(threadResponseSchema, response.value);
     if (!parsed.success) return invalid("get_comments");
 
@@ -861,11 +867,14 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     if (!parsedReviews.success || !parsedComments.success) return invalid("get_reviews");
     const publishedReviews: PublishedReview[] = [];
     for (const review of parsedReviews.output) {
+      // PENDING reviews are started but not submitted; they carry no
+      // submitted_at and are not published feedback.
+      if (review.submitted_at === undefined || review.submitted_at === null) continue;
       const submittedAt = parseGitHubTimestamp(review.submitted_at);
       if (submittedAt._tag === "err") return invalid("get_reviews");
       const event = review.state.toUpperCase();
       if (event !== "APPROVED" && event !== "COMMENTED" && event !== "CHANGES_REQUESTED" && event !== "DISMISSED") continue;
-      publishedReviews.push({ id: String(review.id), author: review.user?.login ?? "ghost", body: review.body ?? "", event, submittedAt: submittedAt.value, canDismiss: canDismiss && event !== "DISMISSED" });
+      publishedReviews.push({ id: String(review.id), ...(review.node_id === undefined ? {} : { nodeId: review.node_id }), author: review.user?.login ?? "ghost", body: review.body ?? "", event, submittedAt: submittedAt.value, canDismiss: canDismiss && event !== "DISMISSED" });
     }
     const publishedComments: PublishedReviewComment[] = [];
     for (const comment of parsedComments.output) {
@@ -875,7 +884,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       const location = parseLocation(comment.path, comment.line, undefined, comment.start_line, comment.side, undefined);
       const author = comment.user?.login ?? "ghost";
       const owned = account._tag === "ok" && account.value.account === input.profile.ghAccount && author === account.value.account;
-      publishedComments.push({ id: String(comment.id), author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: owned && canWrite === true, canDelete: owned && canWrite === true });
+      publishedComments.push({ id: String(comment.id), ...(comment.node_id === undefined ? {} : { nodeId: comment.node_id }), author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.html_url === undefined ? {} : { url: comment.html_url }), ...(location === undefined ? {} : { location }), ...(comment.pull_request_review_id === undefined || comment.pull_request_review_id === null ? {} : { reviewId: String(comment.pull_request_review_id) }), canEdit: owned && canWrite === true, canDelete: owned && canWrite === true });
     }
     const complete = parsedReviews.output.length < 100 && parsedComments.output.length < 100;
     return ok({ reviews: publishedReviews, comments: publishedComments, complete, ...(complete ? {} : { incompleteReason: "pagination" as const }) });
@@ -968,7 +977,6 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     ]);
     if (checkRunsResponse._tag === "err" && statusesResponse._tag === "err")
       return commandFailure("get_checks", checkRunsResponse.error);
-
     const checks =
       checkRunsResponse._tag === "ok"
         ? v.safeParse(checkRunsSchema, checkRunsResponse.value)
@@ -1198,7 +1206,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       : ok({ reviewId });
   }
 
-  async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>> {
+  async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }, GitHubWriteFailure>> {
     const response = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`, "--input", "-"],
       stdin: JSON.stringify({ body: input.body, commit_id: input.headSha, ...input.coordinates }),
@@ -1206,16 +1214,32 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const id = nestedString(response.value, ["node_id"]);
-    return id === undefined
-      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return an inline comment ID." })
-      : ok({ commentId: id });
+    if (id === undefined) return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return an inline comment ID." });
+    // A create submits a COMMENTED review of its own; its numeric id lets the
+    // write journal exclude that review from update detection.
+    const rawReviewId = (response.value as Record<string, unknown>)["pull_request_review_id"];
+    const reviewId = typeof rawReviewId === "number" || typeof rawReviewId === "string" ? String(rawReviewId) : undefined;
+    // The create receipt is authoritative once the write succeeds: resolve the
+    // thread node id so the card can offer Reply and Resolve immediately.
+    // A failed lookup degrades the receipt (thread id absent) instead of
+    // failing the write, which would invite duplicate comments on retry.
+    const thread = await this.commands.runJson({
+      argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=query($owner:String!,$name:String!,$number:Int!,$id:ID!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id comments(first:5){nodes{id}}}}}}}", "-F", `owner=${input.pr.owner}`, "-F", `name=${input.pr.repo}`, "-F", `number=${input.pr.number}`, "-F", `id=${id}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    const threadId = thread._tag === "ok" ? threadIdFromThreads(thread.value, id) : undefined;
+    return ok({ commentId: id, ...(typeof threadId === "string" && threadId.length > 0 ? { threadId } : {}), ...(typeof reviewId === "string" && reviewId.length > 0 ? { reviewId } : {}) });
   }
 
-  async createThreadReply(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id}}}", "-F", `threadId=${input.threadId}`, "-f", `body=${input.body}`], timeoutMs: commandTimeoutMs });
+  async createThreadReply(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id pullRequestReview{id}}}}", "-F", `threadId=${input.threadId}`, "-f", `body=${input.body}`], timeoutMs: commandTimeoutMs });
     if (response._tag === "err") return err(writeFailure(response.error));
     const commentId = nestedString(response.value, ["data", "addPullRequestReviewThreadReply", "comment", "id"]);
-    return typeof commentId === "string" && commentId.length > 0 ? ok({ commentId }) : err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a reply ID." });
+    if (typeof commentId !== "string" || commentId.length === 0) return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a reply ID." });
+    // A reply also submits its own COMMENTED review; expose it so the write
+    // journal can exclude it from update detection.
+    const reviewId = nestedString(response.value, ["data", "addPullRequestReviewThreadReply", "comment", "pullRequestReview", "id"]);
+    return ok({ commentId, ...(typeof reviewId === "string" && reviewId.length > 0 ? { reviewId } : {}) });
   }
 
   async setReviewThreadState(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>> {
@@ -1755,6 +1779,15 @@ function nestedString(input: unknown, keys: ReadonlyArray<string>): string | und
   return typeof value === "string" ? value : undefined;
 }
 
+function nestedArray(input: unknown, keys: ReadonlyArray<string>): ReadonlyArray<unknown> | undefined {
+  let value: unknown = input;
+  for (const key of keys) {
+    if (!isObject(value)) return undefined;
+    value = value[key];
+  }
+  return Array.isArray(value) ? value : undefined;
+}
+
 function isNonNegativeInteger(input: unknown): input is number {
   return typeof input === "number" && Number.isSafeInteger(input) && input >= 0;
 }
@@ -2221,6 +2254,8 @@ function parsePendingReview(input: unknown): { readonly reviewId: string; readon
 function writeFailure(failure: CommandFailure): GitHubWriteFailure {
   if (failure._tag === "CommandAuthenticationRequired")
     return { _tag: "GitHubWriteFailure", category: "auth", message: "GitHub authentication is required." };
+  if (failure._tag === "CommandPendingReview")
+    return { _tag: "GitHubWriteFailure", category: "pending_review", message: "You have an unfinished review on this pull request on GitHub; submit or discard it before commenting." };
   if (failure._tag === "CommandFailed")
     return { _tag: "GitHubWriteFailure", category: "rejected", message: "GitHub rejected the review request." };
   return { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub review request could not be confirmed." };
@@ -2244,4 +2279,24 @@ function isManagedFetchedRef(value: string): boolean {
     !value.includes("..") &&
     !value.includes("//")
   );
+}
+
+function threadIdFromThreads(
+  value: unknown,
+  commentId: string,
+): string | undefined {
+  const nodes = nestedArray(value, ["data", "repository", "pullRequest", "reviewThreads", "nodes"]);
+  if (nodes === undefined) return undefined;
+  for (const node of nodes) {
+    if (typeof node !== "object" || node === null) continue;
+    const threadId = (node as Record<string, unknown>)["id"];
+    const comments = (node as Record<string, unknown>)["comments"];
+    if (typeof threadId !== "string") continue;
+    if (typeof comments !== "object" || comments === null) continue;
+    const commentNodes = nestedArray(comments, ["nodes"]);
+    if (commentNodes?.some((comment) => typeof comment === "object" && comment !== null && (comment as Record<string, unknown>)["id"] === commentId)) {
+      return threadId;
+    }
+  }
+  return undefined;
 }

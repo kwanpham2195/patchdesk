@@ -125,6 +125,17 @@ function pullRequestPayload(
 }
 
 describe("CommandRunner", () => {
+  it("classifies the one-pending-review rejection distinctly from generic 422s", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 422: Validation Failed - user_id can only have one pending review per pull request" },
+    ]);
+    const runner = new CommandRunner(executor);
+    await expect(runner.runJson({ argv: ["gh", "api", "x"], timeoutMs: 2_500 })).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "CommandPendingReview" },
+    });
+  });
+
   it("captures JSON through explicit argv without exposing stderr", async () => {
     const executor = new FakeProcessExecutor([
       {
@@ -430,6 +441,27 @@ describe("GitHubAdapter Published feedback capabilities", () => {
     ])));
     const result = await adapter.getPullRequestPublishedFeedback({ profile, pr });
     expect(result).toMatchObject({ _tag: "ok", value: { comments: [{ id: "8", canEdit: false, canDelete: false }] } });
+  });
+
+  it("skips PENDING reviews that GitHub omits submitted_at for instead of failing the read", async () => {
+    // A started-but-unsubmitted review has no submitted_at key at all; the
+    // feedback read must tolerate it (and later detect/refresh passes) rather
+    // than reporting GitHubResponseInvalid.
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([
+        { id: 6, user: { login: "pmquan2cfw" }, body: "", state: "PENDING" },
+        { id: 7, user: { login: "pmquan2cfw" }, body: "ok", state: "APPROVED", submitted_at: "2026-08-01T00:00:00Z" },
+      ]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify([]), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: "pmquan2cfw\n", stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ permission: "push" }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(pullRequestPayload()), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ required_pull_request_reviews: null }), stderr: "" },
+    ])));
+    await expect(adapter.getPullRequestPublishedFeedback({ profile, pr })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { reviews: [{ id: "7", canDismiss: true }] },
+    });
   });
 });
 
@@ -1207,6 +1239,37 @@ describe("GitHubAdapter review write boundary", () => {
     const request = executor.requests[0]?.join(" ") ?? "";
     expect(request).toContain("deletePullRequestReviewComment(input:{id:$");
     expect(request).not.toContain("pullRequestReviewCommentId");
+  });
+
+  it("exposes the review a reply submits so the write journal can exclude it", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { addPullRequestReviewThreadReply: { comment: { id: "PRRC_reply", pullRequestReview: { id: "PRR_review" } } } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.createThreadReply({ profile, threadId: "PRRT_thread" as never, body: "A reply" })).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_reply", reviewId: "PRR_review" } });
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(request).toContain("pullRequestReview{id}");
+  });
+
+  it("resolves the created thread id so the card can reply immediately", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ node_id: "PRRC_comment", pull_request_review_id: 42 }), stderr: "" },
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [{ id: "PRRT_thread", comments: { nodes: [{ id: "PRRC_other" }, { id: "PRRC_comment" }] } }] } } } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.createInlineComment({ profile, pr, headSha: mustParse(parseGitSha(headSha)), coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" }, body: "Body" })).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment", threadId: "PRRT_thread", reviewId: "42" } });
+    const lookup = executor.requests[1]?.join(" ") ?? "";
+    expect(lookup).toContain("reviewThreads(first:100)");
+    expect(lookup).toContain("-F id=PRRC_comment");
+  });
+
+  it("degrades the create receipt instead of failing when the thread lookup fails", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ node_id: "PRRC_comment" }), stderr: "" },
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 500" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.createInlineComment({ profile, pr, headSha: mustParse(parseGitSha(headSha)), coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" }, body: "Body" })).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment" } });
   });
 
   it("merges only through the explicit SHA-pinned GitHub endpoint", async () => {

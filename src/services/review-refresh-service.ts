@@ -50,6 +50,8 @@ export class ReviewRefreshService {
   async detect(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
+    /** Comment/thread ids this app session wrote; excluded from both sides of the fingerprint so own writes never read as remote updates. */
+    readonly recentWrites?: ReadonlyArray<string>;
   }): Promise<Result<DetectionResult, ReviewRefreshFailure>> {
     return this.serialized<DetectionResult>(input.profileId, input.reviewId, async () => {
       const detectedAt = this.dependencies.now();
@@ -89,13 +91,18 @@ export class ReviewRefreshService {
         ...(publishedFeedbackAvailable ? { publishedFeedback: publishedFeedback.value } : {}),
         ...(mergePolicyAvailable && mergePolicy.value !== undefined ? { mergePolicy: mergePolicy.value, mergeEvidence: represented.value.mergeEvidence ?? toMergeEvidence(mergePolicy.value) } : {}),
       };
+      const journaled = new Set(input.recentWrites ?? []);
+      const candidateComments = withoutRecentWrites(candidate.comments, journaled);
+      const representedComments = withoutRecentWrites(represented.value.comments, journaled);
+      const candidateFeedback = publishedFeedbackAvailable && publishedFeedback.value !== undefined ? withoutJournaledFeedback(publishedFeedback.value, journaled) : undefined;
+      const representedFeedback = publishedFeedbackAvailable && represented.value.publishedFeedback !== undefined ? withoutJournaledFeedback(represented.value.publishedFeedback, journaled) : undefined;
       // Optional readers are not evidence of a change when unavailable. Compare
       // only fields observed in this detection pass, while retaining the full
       // optional fields for explicit refresh.
-      const metadataChanged = hashSnapshot(fingerprintForDetection(candidate, {
+      const metadataChanged = hashSnapshot(fingerprintForDetection({ ...candidate, comments: candidateComments, ...(candidateFeedback === undefined ? {} : { publishedFeedback: candidateFeedback }) }, {
         publishedFeedback: publishedFeedbackAvailable,
         mergePolicy: mergePolicyAvailable,
-      })) !== hashSnapshot(fingerprintForDetection(represented.value, {
+      })) !== hashSnapshot(fingerprintForDetection({ ...represented.value, comments: representedComments, ...(representedFeedback === undefined ? {} : { publishedFeedback: representedFeedback }) }, {
         publishedFeedback: publishedFeedbackAvailable,
         mergePolicy: mergePolicyAvailable,
       }));
@@ -103,7 +110,7 @@ export class ReviewRefreshService {
         // Nothing in the snapshot content changed. GitHub's pullRequest.updatedAt
         // lags comment and review creation, so a stale represented marker or a
         // phantom detection flag must be healed instead of blocking GitHub writes.
-        const latestMoment = latestRepresentedMoment(current.value, comments.value, publishedFeedback.value);
+        const latestMoment = latestRepresentedMoment(current.value, candidateComments, candidateFeedback);
         if (review.detectedUpdate !== undefined || latestMoment > review.representedRemote.pullRequestUpdatedAt) {
           const healed = healDetectedUpdate(review, latestMoment, detectedAt);
           const saved = await this.dependencies.reviews.save(healed, review.updatedAt);
@@ -313,6 +320,41 @@ function withoutViewerMetadata(comments: GitHubComments): GitHubComments {
         return comment;
       }),
     })),
+  };
+}
+
+function withoutRecentWrites(comments: GitHubComments, journaled: ReadonlySet<string>): GitHubComments {
+  // Comments and threads written by this app session are not yet part of the
+  // represented snapshot; exclude them symmetrically so they never read as a
+  // remote update, while genuine external changes still are detected.
+  if (journaled.size === 0) return comments;
+  return {
+    ...comments,
+    threads: comments.threads
+      .filter((thread) => !journaled.has(thread.id))
+      .map((thread) => ({
+        ...thread,
+        comments: thread.comments.filter((comment) => !journaled.has(comment.id)),
+      }))
+      .filter((thread) => thread.comments.length > 0),
+  };
+}
+
+function withoutJournaledFeedback(
+  feedback: GitHubPublishedFeedback,
+  journaled: ReadonlySet<string>,
+): GitHubPublishedFeedback {
+  // A comment create also submits its own COMMENTED review; exclude both the
+  // review and the comment from detection until a refresh re-baselines.
+  if (journaled.size === 0) return feedback;
+  return {
+    ...feedback,
+    reviews: feedback.reviews.filter(
+      (review) => !journaled.has(review.id) && !journaled.has(review.nodeId ?? ""),
+    ),
+    comments: feedback.comments.filter(
+      (comment) => !journaled.has(comment.id) && !journaled.has(comment.nodeId ?? ""),
+    ),
   };
 }
 

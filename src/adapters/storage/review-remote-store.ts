@@ -93,8 +93,8 @@ const mergeEvidenceSchema = v.strictObject({
 });
 const commitSchema = v.strictObject({ sha: v.string(), message: v.string(), author: v.string(), authoredAt: v.string(), url: v.optional(v.string()), isHead: v.boolean() });
 const publishedFeedbackSchema = v.strictObject({
-  reviews: v.array(v.strictObject({ id: v.string(), author: v.string(), body: v.string(), event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]), submittedAt: v.string(), canDismiss: v.boolean() })),
-  comments: v.array(v.strictObject({ ...commentSchema.entries, reviewId: v.optional(v.string()), canEdit: v.boolean(), canDelete: v.boolean() })),
+  reviews: v.array(v.strictObject({ id: v.string(), nodeId: v.optional(v.string()), author: v.string(), body: v.string(), event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]), submittedAt: v.string(), canDismiss: v.boolean() })),
+  comments: v.array(v.strictObject({ ...commentSchema.entries, reviewId: v.optional(v.string()), nodeId: v.optional(v.string()), canEdit: v.boolean(), canDelete: v.boolean() })),
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
 });
@@ -210,7 +210,7 @@ function parsePublishedFeedback(input: v.InferOutput<typeof publishedFeedbackSch
   for (const review of input.reviews) {
     const submittedAt = parseIsoTimestamp(review.submittedAt);
     if (submittedAt._tag === "err") return invalidRead();
-    reviews.push({ id: review.id, author: review.author, body: review.body, event: review.event, submittedAt: submittedAt.value, canDismiss: review.canDismiss });
+    reviews.push({ id: review.id, ...(review.nodeId === undefined ? {} : { nodeId: review.nodeId }), author: review.author, body: review.body, event: review.event, submittedAt: submittedAt.value, canDismiss: review.canDismiss });
   }
   const comments: Array<GitHubPublishedFeedback["comments"][number]> = [];
   for (const comment of input.comments) {
@@ -218,7 +218,7 @@ function parsePublishedFeedback(input: v.InferOutput<typeof publishedFeedbackSch
     const updatedAt = comment.updatedAt === undefined ? undefined : parseIsoTimestamp(comment.updatedAt);
     const location = comment.location === undefined ? undefined : parseLocation(comment.location);
     if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err") || (location !== undefined && location._tag === "err")) return invalidRead();
-    comments.push({ id: comment.id, author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(location === undefined ? {} : { location: location.value }), ...(comment.reviewId === undefined ? {} : { reviewId: comment.reviewId }), canEdit: comment.canEdit, canDelete: comment.canDelete });
+    comments.push({ id: comment.id, ...(comment.nodeId === undefined ? {} : { nodeId: comment.nodeId }), author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(location === undefined ? {} : { location: location.value }), ...(comment.reviewId === undefined ? {} : { reviewId: comment.reviewId }), canEdit: comment.canEdit, canDelete: comment.canDelete });
   }
   return ok({ reviews, comments, ...(input.complete === undefined ? {} : { complete: input.complete }), ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
 }

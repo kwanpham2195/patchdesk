@@ -126,6 +126,7 @@ export type PullRequestCommit = {
 
 export type PublishedReview = {
   readonly id: string;
+  readonly nodeId?: string;
   readonly author: string;
   readonly body: string;
   readonly event: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED";
@@ -164,6 +165,7 @@ export type Conversation = {
 /** Legacy adapter type. Replaced by Conversation for the renderer contract; still used by optional adapter methods during migration. */
 export type PublishedReviewComment = GitHubComment & {
   readonly reviewId?: string;
+  readonly nodeId?: string;
   readonly canEdit: boolean;
   readonly canDelete: boolean;
 };

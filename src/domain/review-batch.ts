@@ -28,7 +28,7 @@ export type GitHubReviewEvent = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
 /** Safe error returned by an attempted GitHub write. */
 export type GitHubWriteFailure = {
   readonly _tag: "GitHubWriteFailure";
-  readonly category: "auth" | "rejected" | "unavailable";
+  readonly category: "auth" | "rejected" | "unavailable" | "pending_review";
   readonly message: string;
 };
 
@@ -152,7 +152,7 @@ export type BatchOperation =
 /** A safe persisted summary of a known or ambiguous GitHub write failure. */
 export type SafeWriteFailure = {
   readonly _tag: "SafeWriteFailure";
-  readonly category: "auth" | "rejected" | "unavailable" | "outcome_unknown";
+  readonly category: "auth" | "rejected" | "unavailable" | "outcome_unknown" | "pending_review";
   readonly message: string;
 };
 

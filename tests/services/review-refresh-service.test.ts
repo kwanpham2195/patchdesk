@@ -299,6 +299,62 @@ describe("ReviewRefreshService", () => {
     expect(firstSave).not.toHaveBeenCalled();
   });
 
+  it("ignores comments and threads written by this app session when detecting updates", async () => {
+    // The remote gained the user's own comment (created via the app since the
+    // represented snapshot); the write journal must keep it from reading as a
+    // remote update, and a genuine external reply must still be detected.
+    const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
+    const ownThread = must(parseGitHubThreadId("t"));
+    const ownComment = { id: "c-own", author: "pmquan2", body: "own", createdAt: commentAt, updatedAt: commentAt, url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r1", location: { path: must(parseRepoRelativePath("a.go")), line: 1, lineEnd: 1, diffSide: "new" as const } };
+    const changed = { ...snapshot, comments: { threads: [{ id: ownThread, state: "open" as const, comments: [ownComment] }], complete: true } };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: { async load() { return ok({} as never); } },
+      reviews: { async load() { return ok(review); }, save },
+      sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
+      remote: { async load() { return ok(snapshot); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(snapshot) }); } },
+      github: {
+        async getPullRequest() { return ok(snapshot.pullRequest); },
+        async getPullRequestChecks() { return ok(snapshot.checks); },
+        async getPullRequestComments() { return ok(changed.comments); },
+        async getPullRequestCommits() { return ok([]); },
+        async getMergePolicy() { return ok({} as never); },
+      },
+      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [ownComment.id, ownThread] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("ignores the review and feedback comment a create submits when detecting updates", async () => {
+    // A comment create submits its own COMMENTED review; the journal must
+    // exclude that review (numeric id) and its comment (node id) from both
+    // sides of the fingerprint, or the write would flag itself as an update.
+    const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
+    const ownComment = { id: "c-own", nodeId: "PRRC_own", author: "pmquan2", body: "own", createdAt: commentAt, updatedAt: commentAt, url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r1", location: { path: must(parseRepoRelativePath("a.go")), line: 1, lineEnd: 1, diffSide: "new" as const }, reviewId: "42", canEdit: true, canDelete: true };
+    const ownReview = { id: "42", nodeId: "PRR_own", author: "pmquan2", body: "", event: "COMMENTED" as const, submittedAt: commentAt, canDismiss: true };
+    const changed = { ...snapshot, comments: { threads: [{ id: must(parseGitHubThreadId("t")), state: "open" as const, comments: [ownComment] }], complete: true }, publishedFeedback: { reviews: [ownReview], comments: [ownComment], complete: true } };
+    const represented = { ...snapshot, publishedFeedback: { reviews: [], comments: [], complete: true } };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: { async load() { return ok({} as never); } },
+      reviews: { async load() { return ok({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: at, refreshedAt: at, snapshotHash: hashSnapshot(represented) } }); }, save },
+      sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
+      remote: { async load() { return ok(represented); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(represented) }); } },
+      github: {
+        async getPullRequest() { return ok(snapshot.pullRequest); },
+        async getPullRequestChecks() { return ok(snapshot.checks); },
+        async getPullRequestComments() { return ok(changed.comments); },
+        async getPullRequestPublishedFeedback() { return ok(changed.publishedFeedback as never); },
+        async getPullRequestCommits() { return ok([]); },
+        async getMergePolicy() { return ok({} as never); },
+      },
+      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(service.detect({ profileId, reviewId: review.id, recentWrites: ["PRRC_own", "t", "42"] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("records the derived comment moment when refresh observes lagging PR updatedAt", async () => {
     const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
     const lagging = { ...snapshot, pullRequest: { ...snapshot.pullRequest, updatedAt: at } };

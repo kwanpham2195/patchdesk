@@ -46,6 +46,7 @@ export type CommandFailure =
   | { readonly _tag: "CommandForbidden" }
   | { readonly _tag: "CommandNotFound" }
   | { readonly _tag: "CommandUnsupported" }
+  | { readonly _tag: "CommandPendingReview" }
   | { readonly _tag: "CommandRateLimited" }
   | { readonly _tag: "CommandRuntimeUnavailable" }
   | { readonly _tag: "CommandFailed"; readonly stderr?: string }
@@ -175,6 +176,9 @@ function classifyExecution(
     return { _tag: "CommandAuthenticationRequired" };
   }
   if (isNotFoundFailure(execution.stderr)) return { _tag: "CommandNotFound" };
+  if (isPendingReviewFailure(execution.stderr)) {
+    return { _tag: "CommandPendingReview" };
+  }
   if (isUnsupportedFailure(execution.stderr)) return { _tag: "CommandUnsupported" };
   if (isRateLimitFailure(execution.stderr)) return { _tag: "CommandRateLimited" };
   if (isRuntimeFailure(execution.stderr)) return { _tag: "CommandRuntimeUnavailable" };
@@ -206,6 +210,12 @@ function isNotFoundFailure(stderr: string): boolean {
 
 function isUnsupportedFailure(stderr: string): boolean {
   return /(?:\b405\b|\b415\b|\b422\b|\b501\b|unsupported|not implemented)/i.test(stderr);
+}
+
+function isPendingReviewFailure(stderr: string): boolean {
+  // A user can hold only one pending review per pull request; comment creation
+  // fails with this until the pending review is submitted or discarded.
+  return /pending review per pull request/i.test(stderr);
 }
 
 function isRateLimitFailure(stderr: string): boolean {

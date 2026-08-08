@@ -9,6 +9,7 @@ export type ApiFailureKind =
   | "stale_head"
   | "revision_conflict"
   | "github_rejected"
+  | "pending_review"
   | "ambiguous_write"
   | "internal";
 
@@ -75,6 +76,7 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "not_fresh" || code?.includes("stale") === true) return "stale_head";
   if (code === "not_found" || code === "unavailable") return "unavailable";
   if (code === "permission_denied" || code === "confirmation_required") return "github_rejected";
+  if (code === "pending_review") return "pending_review";
   if (code?.includes("storage") === true) return "storage";
   if (code?.includes("ambiguous") === true) return "ambiguous_write";
   if (status === 401 || status === 403 || code?.includes("auth") === true) return "auth";
@@ -94,6 +96,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "stale_head": return "The pull request head changed. Refresh before continuing.";
     case "revision_conflict": return "This draft changed elsewhere. Reload it before continuing.";
     case "github_rejected": return "GitHub rejected this action.";
+    case "pending_review": return "You have an unfinished review on this pull request on GitHub. Submit or discard it there, then comment again.";
     case "ambiguous_write": return "Patchdesk could not confirm whether GitHub completed the write.";
     case "internal": return "Patchdesk could not complete the request.";
   }

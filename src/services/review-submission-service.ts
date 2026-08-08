@@ -458,7 +458,7 @@ function staleWriteState(
 
 async function persistBatchFailure(input: {
   readonly operation: BatchOperation;
-  readonly category: "auth" | "rejected" | "unavailable";
+  readonly category: "auth" | "rejected" | "unavailable" | "pending_review";
   readonly message: string;
   readonly session: ReviewSession;
   readonly batch: ReviewBatch;
