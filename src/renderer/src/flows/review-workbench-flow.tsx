@@ -556,13 +556,7 @@ export function ReviewWorkbenchFlow({
               onAnalysisCompletion={() => setAutoOpenPublication(true)}
             />
           ),
-          conversation: (
-            <PublishedFeedbackSlot
-              workbench={workbench}
-              onRefresh={refresh}
-              canWriteGitHub={canWriteGitHub}
-            />
-          ),
+          conversation: null,
           mergeAction: null,
           draftDock: (
             <DraftSlot
@@ -1673,62 +1667,6 @@ function insightLiveStatus(analysis: string, walkthrough: string): string {
   return active.length === 0
     ? ""
     : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
-}
-
-function PublishedFeedbackSlot(_props: {
-  readonly workbench: WorkbenchResponse;
-  readonly onRefresh: () => Promise<void>;
-  readonly canWriteGitHub: boolean;
-}): null {
-  return null;
-  /*
-  return (
-    <PublishedFeedbackPanel
-      feedback={workbench.publishedFeedback}
-      freshness={workbench.revision.freshness}
-      canWriteGitHub={canWriteGitHub}
-      actions={{
-        editComment: async (commentId, body) => {
-          await requestJson("/v1/reviews/published-comments/edit", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              commentId,
-              body,
-            },
-          });
-          await onRefresh();
-        },
-        deleteComment: async (commentId) => {
-          await requestJson("/v1/reviews/published-comments/delete", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              commentId,
-              confirmation: true,
-            },
-          });
-          await onRefresh();
-        },
-        dismissReview: async (publishedReviewId, message) => {
-          await requestJson("/v1/reviews/published-reviews/dismiss", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              publishedReviewId,
-              message,
-              confirmation: true,
-            },
-          });
-          await onRefresh();
-        },
-      }}
-    />
-  );
-  */
 }
 
 function DraftSlot({
