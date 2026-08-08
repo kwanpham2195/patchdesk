@@ -1230,7 +1230,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
   }
 
   async deleteThreadComment(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($commentId:ID!){deletePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId}){clientMutationId}}", "-F", `commentId=${input.commentId}`], timeoutMs: commandTimeoutMs });
+    const response = await this.commands.runJson({ argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=mutation($commentId:ID!){deletePullRequestReviewComment(input:{id:$commentId}){clientMutationId}}", "-F", `commentId=${input.commentId}`], timeoutMs: commandTimeoutMs });
     return response._tag === "err" ? err(writeFailure(response.error)) : ok(undefined);
   }
 
@@ -2006,13 +2006,18 @@ function parseLocation(
         ? undefined
         : originalLine
       : line;
+  // GitHub reports single-line LEFT-side threads with a phantom startLine of
+  // line + 1 (the range is degenerate, not inverted); normalizing it keeps the
+  // thread anchored to the single old-side line it was created on.
   return {
     path: parsedPath.value,
     ...(selectedLine === undefined
       ? {}
       : startLine === null || startLine === undefined
         ? { line: selectedLine }
-        : { line: startLine, lineEnd: selectedLine }),
+        : startLine > selectedLine
+          ? { line: selectedLine }
+          : { line: startLine, lineEnd: selectedLine }),
     ...(diffSide === "RIGHT"
       ? { diffSide: "new" as const }
       : diffSide === "LEFT" || startSide === "LEFT"

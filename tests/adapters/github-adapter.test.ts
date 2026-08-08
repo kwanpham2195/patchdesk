@@ -659,6 +659,60 @@ describe("GitHubAdapter read boundary", () => {
     ).resolves.toEqual(executor.requests);
   });
 
+  it("normalizes GitHub's degenerate single-line LEFT thread anchor", async () => {
+    // GitHub reports single-line LEFT-side threads with startLine = line + 1;
+    // the adapter must anchor them to the one old-side line instead of an
+    // inverted range that the Diff mapping would reject.
+    const fixture = JSON.parse(await payload("get-comments.json"));
+    fixture.data.repository.pullRequest.reviewThreads.nodes[0] = {
+      id: "thread-left",
+      isResolved: false,
+      isOutdated: false,
+      path: "src/review.ts",
+      line: 43,
+      startLine: 44,
+      diffSide: "LEFT",
+      startDiffSide: null,
+      originalLine: 43,
+      comments: {
+        nodes: [{
+          id: "comment-left",
+          body: "Old side single line.",
+          createdAt: "2026-07-16T12:00:00Z",
+          updatedAt: null,
+          url: "https://example.test/comment/left",
+          author: { login: "reviewer" },
+          path: "src/review.ts",
+        }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(fixture), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getPullRequestComments({ profile, pr })).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        complete: true,
+        threads: [
+          {
+            complete: true,
+            id: "thread-left",
+            state: "open",
+            location: { path: "src/review.ts", line: 43, diffSide: "old" },
+            comments: [
+              expect.objectContaining({
+                id: "comment-left",
+                location: { path: "src/review.ts", line: 43, diffSide: "old" },
+              }),
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("paginates review threads and retains their server ordering", async () => {
     const first = JSON.parse(await payload("get-comments.json"));
     const second = structuredClone(first);
@@ -1140,6 +1194,19 @@ describe("GitHubAdapter review write boundary", () => {
     await expect(adapter.submitPendingReview({ profile, pr, reviewId: "9001", event: "COMMENT", summaryBody: "Summary-only review." })).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
     expect(executor.requests).toEqual([submitArgv]);
     expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(summaryPayload));
+  });
+
+  it("deletes a review comment through GitHub's id argument", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { deletePullRequestReviewComment: { clientMutationId: "1" } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.deleteThreadComment({ profile, commentId: "PRRC_abc" })).resolves.toEqual({ _tag: "ok", value: undefined });
+    // GitHub rejects DeletePullRequestReviewCommentInput with a
+    // pullRequestReviewCommentId argument; the mutation must pass id.
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(request).toContain("deletePullRequestReviewComment(input:{id:$");
+    expect(request).not.toContain("pullRequestReviewCommentId");
   });
 
   it("merges only through the explicit SHA-pinned GitHub endpoint", async () => {
