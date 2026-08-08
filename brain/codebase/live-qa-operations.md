@@ -69,3 +69,26 @@ window.patchdesk.request({ path: "/v1/reviews/open", method: "POST",
   `await import('/src/renderer-contracts.ts?v=' + Date.now())`.
 - Full-suite parallel runs can make timing-sensitive tests flaky; rerun the
   failing test in isolation before assuming a regression.
+- The bridge response shape is `{ ok, status, body, correlationId }` — there
+  is no `_tag` on the renderer side.
+
+## Main-process restart and API liveness
+
+- electron-vite auto-restarts Electron when a MAIN-process file changes, which
+  races the CDP port and leaves zombie instances. Before restarting during
+  main-process work: `pkill -9 -f "Electron.app/Contents/MacOS/Electron"`,
+  then start ONE `pnpm dev` and verify one PID listens on both 9233 and a
+  random local-API port (`lsof -nP -a -p <pid> -iTCP -sTCP:LISTEN`).
+- The local API binds a random port and can die while Electron stays alive;
+  every bridge call then returns 503 `unavailable` while the renderer keeps
+  showing cached state. Diagnose with lsof before suspecting the handler.
+
+## Pierre shadow DOM
+
+Pierre's diff renders inside `DIFFS-CONTAINER` shadow roots —
+`document.querySelectorAll` misses the code rows. Query
+`document.querySelector('DIFFS-CONTAINER').shadowRoot` instead. The gutter
+"+ Add comment" button only captures its line after real hover tracking:
+`agent-browser hover` is not enough — dispatch synthetic `pointerover`/
+`pointerenter`/`mouseover` on the shadow line row first, then on the button,
+and read `dataset.lineNumber` before clicking.
