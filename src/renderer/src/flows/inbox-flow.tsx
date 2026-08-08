@@ -105,8 +105,9 @@ export function InboxFlow({
       if (parsed === undefined) throw new Error("Invalid workbench projection");
       setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
       onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
-    } catch {
-      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}.`);
+    } catch (cause: unknown) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`);
     }
   };
 
@@ -124,8 +125,9 @@ export function InboxFlow({
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined || !isActive()) return;
       onOpenWorkbench(parsed as unknown as WorkbenchPayload);
-    } catch {
-      setOpenError("Could not open the saved review.");
+    } catch (cause: unknown) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      setOpenError(`Could not open the saved review. ${detail}`);
     }
   }
 
