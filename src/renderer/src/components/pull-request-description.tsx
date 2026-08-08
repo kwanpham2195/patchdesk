@@ -3,7 +3,7 @@ import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
 
-import { useLightbox } from "./markdown-lightbox";
+import { useLightbox } from "../use-lightbox";
 
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {

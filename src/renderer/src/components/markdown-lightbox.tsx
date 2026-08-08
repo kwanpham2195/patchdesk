@@ -179,32 +179,3 @@ export function MarkdownLightbox({
     </div>
   );
 }
-
-/**
- * Convenience hook: manages open/close state and the lightbox element.
- */
-export function useLightbox(): {
-  readonly lightbox: () => React.JSX.Element;
-  readonly open: (content: React.ReactNode) => void;
-  readonly close: () => void;
-} {
-  const [isOpen, setIsOpen] = useState(false);
-  const [content, setContent] = useState<React.ReactNode>(null);
-
-  const close = useCallback(() => setIsOpen(false), []);
-  const open = useCallback((c: React.ReactNode) => {
-    setContent(c);
-    setIsOpen(true);
-  }, []);
-
-  const lightbox = useCallback(
-    () => (
-      <MarkdownLightbox open={isOpen} onClose={close}>
-        {content}
-      </MarkdownLightbox>
-    ),
-    [isOpen, close, content],
-  );
-
-  return { lightbox, open, close };
-}
