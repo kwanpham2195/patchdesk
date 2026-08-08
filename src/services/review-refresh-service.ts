@@ -3,8 +3,9 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewRemoteSnapshot, ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { markDetectedUpdate, markReviewTerminal, moveReviewToSession, type Review } from "../domain/review";
+import { healDetectedUpdate, markDetectedUpdate, markReviewTerminal, moveReviewToSession, type Review } from "../domain/review";
 import type { PullRequestRef } from "../domain/pull-request";
+import type { GitHubComments, GitHubMergeEvidence, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestSummary } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
@@ -58,22 +59,13 @@ export class ReviewRefreshService {
       if (review.status._tag === "Terminal") return ok({ updatesAvailable: false, detectedAt });
       if (review.representedRemote === undefined) return ok({ updatesAvailable: false, detectedAt });
       const pr = ref(review);
+      const representedHead = review.representedRemote.headSha;
       // A new head is sufficient evidence of an update. Do not let an old-head
       // checks outage hide it from the caller.
       const current = await this.dependencies.github.getPullRequest({ profile, pr });
       if (current._tag === "err") return err({ reason: "github_read" });
-      const representedHead = review.representedRemote.headSha;
-      const reason = current.value.headSha !== representedHead
-        ? "head" as const
-        : current.value.updatedAt > review.representedRemote.pullRequestUpdatedAt
-          ? "pull_request" as const
-          : undefined;
-      if (reason !== undefined) {
-        const marked = markDetectedUpdate(review, { detectedAt, reason }, detectedAt);
-        const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
-        if (saved._tag === "err") return err({ reason: "storage" });
-        await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
-        return ok({ updatesAvailable: true, detectedAt });
+      if (current.value.headSha !== representedHead) {
+        return await this.markOrKeepUpdate(input, review, { detectedAt, reason: "head" });
       }
       const [checks, represented, comments, publishedFeedback, mergePolicy] = await Promise.all([
         this.dependencies.github.getPullRequestChecks({ profile, pr, headSha: representedHead }),
@@ -107,13 +99,36 @@ export class ReviewRefreshService {
         publishedFeedback: publishedFeedbackAvailable,
         mergePolicy: mergePolicyAvailable,
       }));
-      if (!metadataChanged) return ok({ updatesAvailable: false, detectedAt });
-      const marked = markDetectedUpdate(review, { detectedAt, reason: "checks" }, detectedAt);
-      const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
-      if (saved._tag === "err") return err({ reason: "storage" });
-      await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
-      return ok({ updatesAvailable: true, detectedAt });
+      if (!metadataChanged) {
+        // Nothing in the snapshot content changed. GitHub's pullRequest.updatedAt
+        // lags comment and review creation, so a stale represented marker or a
+        // phantom detection flag must be healed instead of blocking GitHub writes.
+        const latestMoment = latestRepresentedMoment(current.value, comments.value, publishedFeedback.value);
+        if (review.detectedUpdate !== undefined || latestMoment > review.representedRemote.pullRequestUpdatedAt) {
+          const healed = healDetectedUpdate(review, latestMoment, detectedAt);
+          const saved = await this.dependencies.reviews.save(healed, review.updatedAt);
+          if (saved._tag === "err") return err({ reason: "storage" });
+        }
+        return ok({ updatesAvailable: false, detectedAt });
+      }
+      return await this.markOrKeepUpdate(input, review, { detectedAt, reason: "checks" });
     });
+  }
+
+  /** Marks a detected update once; re-detecting the same reason must not bump the Review's updatedAt (that would race an in-flight refresh's optimistic concurrency check). */
+  private async markOrKeepUpdate(
+    input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId },
+    review: Review,
+    update: { readonly detectedAt: IsoTimestamp; readonly reason: "head" | "checks" },
+  ): Promise<Result<DetectionResult, ReviewRefreshFailure>> {
+    if (review.detectedUpdate !== undefined && review.detectedUpdate.reason === update.reason) {
+      return ok({ updatesAvailable: true, detectedAt: review.detectedUpdate.detectedAt });
+    }
+    const marked = markDetectedUpdate(review, update, update.detectedAt);
+    const saved = await this.dependencies.reviews.save(marked, review.updatedAt);
+    if (saved._tag === "err") return err({ reason: "storage" });
+    await this.revokeAuthorization(input.profileId, input.reviewId, "updates_available");
+    return ok({ updatesAvailable: true, detectedAt: update.detectedAt });
   }
 
   async refresh(input: {
@@ -171,7 +186,7 @@ export class ReviewRefreshService {
         if (persisted._tag === "err") return err({ reason: "storage" });
         sessionId = prepared.value.session.id;
       }
-      const representedRemote = { headSha: current.value.headSha, pullRequestUpdatedAt: current.value.updatedAt, snapshotHash: savedCandidate.value.snapshotHash, refreshedAt: this.dependencies.now() };
+      const representedRemote = { headSha: current.value.headSha, pullRequestUpdatedAt: latestRepresentedMoment(current.value, comments.value, publishedFeedback.value), snapshotHash: savedCandidate.value.snapshotHash, refreshedAt: this.dependencies.now() };
       const advanced = moveReviewToSession(review, { sessionId, headSha: current.value.headSha, representedRemote, updatedAt: representedRemote.refreshedAt });
       if (advanced._tag === "err") return err({ reason: "terminal" });
       const terminalState = !current.value.isOpen
@@ -240,16 +255,99 @@ function fingerprintForDetection(
 ): ReviewRemoteSnapshot {
   return {
     schemaVersion: 1,
-    pullRequest: snapshot.pullRequest,
-    comments: snapshot.comments,
+    // GitHub's pullRequest.updatedAt lags comment and review creation, so it
+    // is normalized to a sentinel before hashing. Including it verbatim would
+    // make detection flag a phantom update and block GitHub writes.
+    pullRequest: omitVolatilePullRequestState(snapshot.pullRequest),
+    comments: withoutViewerMetadata(snapshot.comments),
     commits: snapshot.commits,
     checks: snapshot.checks,
-    ...(available.publishedFeedback && snapshot.publishedFeedback !== undefined ? { publishedFeedback: snapshot.publishedFeedback } : {}),
+    ...(available.publishedFeedback && snapshot.publishedFeedback !== undefined ? { publishedFeedback: withoutFeedbackPermissions(snapshot.publishedFeedback) } : {}),
     ...(available.mergePolicy && snapshot.mergePolicy !== undefined ? {
-      mergePolicy: snapshot.mergePolicy,
-      mergeEvidence: snapshot.mergeEvidence ?? toMergeEvidence(snapshot.mergePolicy),
+      mergePolicy: fingerprintMergePolicy(snapshot.mergePolicy),
+      mergeEvidence: fingerprintMergeEvidence(snapshot),
     } : {}),
   };
+}
+
+function fingerprintMergePolicy(policy: MergePolicySnapshot): MergePolicySnapshot {
+  // The policy query is permission-limited in some profiles and returns its
+  // check list in a different order than the checks query. Detection hashes
+  // the stable semantic state only, never the completeness markers.
+  const checks = [...policy.checks.checks]
+    .map(({ name, required, status, conclusion }) => ({ name, required, status, ...(conclusion === undefined ? {} : { conclusion }) }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return {
+    pr: policy.pr,
+    headSha: policy.headSha,
+    isOpen: policy.isOpen,
+    isDraft: policy.isDraft,
+    mergeability: policy.mergeability,
+    ...(policy.mergeStateStatus === undefined ? {} : { mergeStateStatus: policy.mergeStateStatus }),
+    reviewDecision: policy.reviewDecision,
+    checks: { overall: policy.checks.overall, checks },
+    complete: true,
+  };
+}
+
+function fingerprintMergeEvidence(snapshot: ReviewRemoteSnapshot): GitHubMergeEvidence {
+  // Detection never fetches optional policy evidence; the represented
+  // snapshot's policy field must not make the fingerprints diverge.
+  const evidence = snapshot.mergeEvidence ?? toMergeEvidence(snapshot.mergePolicy as MergePolicySnapshot);
+  return {
+    mergeable: evidence.mergeable,
+    mergeStateStatus: evidence.mergeStateStatus,
+    reviewDecision: evidence.reviewDecision,
+  };
+}
+
+function withoutViewerMetadata(comments: GitHubComments): GitHubComments {
+  // viewerDidAuthor is viewer-relative and GitHub can return it late for
+  // freshly created comments; it must not read as a remote content change.
+  return {
+    ...comments,
+    threads: comments.threads.map((thread) => ({
+      ...thread,
+      comments: thread.comments.map(({ viewerDidAuthor: _viewerDidAuthor, ...comment }) => {
+        void _viewerDidAuthor;
+        return comment;
+      }),
+    })),
+  };
+}
+
+function withoutFeedbackPermissions(feedback: GitHubPublishedFeedback): GitHubPublishedFeedback {
+  // viewerDidAuthor is viewer-relative gating metadata derived from the same
+  // review event; only the event content is remote state.
+  return {
+    ...feedback,
+    comments: feedback.comments.map(({ viewerDidAuthor: _viewerDidAuthor, ...comment }) => {
+      void _viewerDidAuthor;
+      return comment;
+    }),
+  };
+}
+
+function omitVolatilePullRequestState(pullRequest: PullRequestSummary): PullRequestSummary {
+  // Detection must hash content, not volatile metadata: GitHub's updatedAt
+  // lags comment and review creation, so a fixed sentinel keeps both sides
+  // comparable regardless of propagation delay.
+  return { ...pullRequest, updatedAt: "1970-01-01T00:00:00.000Z" as IsoTimestamp };
+}
+
+/** The latest moment the represented snapshot content can vouch for, ignoring GitHub's lagging pullRequest.updatedAt. */
+function latestRepresentedMoment(pullRequest: PullRequestSummary, comments: GitHubComments, publishedFeedback: GitHubPublishedFeedback | undefined): IsoTimestamp {
+  let latest = Date.parse(pullRequest.updatedAt);
+  for (const thread of comments.threads) {
+    for (const comment of thread.comments) latest = Math.max(latest, Date.parse(comment.createdAt));
+  }
+  for (const review of publishedFeedback?.reviews ?? []) {
+    latest = Math.max(latest, Date.parse(review.submittedAt));
+  }
+  for (const comment of publishedFeedback?.comments ?? []) {
+    latest = Math.max(latest, Date.parse(comment.createdAt));
+  }
+  return new Date(latest).toISOString() as IsoTimestamp;
 }
 
 function toMergeEvidence(

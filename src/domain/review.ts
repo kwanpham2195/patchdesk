@@ -155,6 +155,27 @@ export function moveReviewToSession(
   });
 }
 
+/** Clear a phantom detection flag and align the represented freshness marker with the snapshot content. */
+export function healDetectedUpdate(
+  review: Review,
+  pullRequestUpdatedAt: IsoTimestamp,
+  updatedAt: IsoTimestamp,
+): Review {
+  if (review.status._tag === "Terminal" || review.representedRemote === undefined) {
+    return review;
+  }
+  const { detectedUpdate: previousDetectedUpdate, ...withoutDetectedUpdate } = review;
+  void previousDetectedUpdate;
+  return {
+    ...withoutDetectedUpdate,
+    representedRemote: {
+      ...review.representedRemote,
+      pullRequestUpdatedAt,
+    },
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  };
+}
+
 /** Mark an open Review terminal; later terminal transitions are harmless. */
 export function markReviewTerminal(
   review: Review,
