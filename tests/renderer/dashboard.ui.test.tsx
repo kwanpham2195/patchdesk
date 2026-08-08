@@ -523,7 +523,7 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Stored review title" }),
     ).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Diff" })).toBeTruthy();
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>
@@ -629,8 +629,7 @@ const completedWorkbench = {
     createdAt: "2026-07-17T12:00:00.000Z",
     state: { _tag: "Local" },
   },
-  publishedFeedback: { reviews: [], comments: [] },
-  comments: { threads: [] },
+  conversation: { prDescription: "", entries: [] },
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
 } as const;
