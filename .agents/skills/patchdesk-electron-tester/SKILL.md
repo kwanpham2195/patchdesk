@@ -15,8 +15,10 @@ Use the development path by default. Package only on an explicit user request, i
 - Reuse an already-running Patchdesk development app when possible. If launching one, omit `--user-data-dir` so the app uses the user's normal development profile:
 
   ```bash
-  pnpm dev -- --remoteDebuggingPort 9233
+  pnpm dev -- --remote-debugging-port=9233
   ```
+
+  The switch must be kebab-case with `=`; `--remoteDebuggingPort` is silently ignored. The flag is read at launch, so an already-running app must be restarted to attach CDP.
 
 - If the real app requires login, unavailable credentials, or a missing backend, stop and report the blocker instead of switching to a fixture.
 - Keep live verification read-only unless the user explicitly authorizes a local draft or remote write. Never save a comment, publish feedback, merge, or dismiss/delete feedback just to prove a UI path.

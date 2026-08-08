@@ -18,7 +18,7 @@ Use this skill when Patchdesk reports that a pull request cannot open or prepare
 ## Diagnose first
 
 1. Use this repository's `agent-browser.json` to call `POST /v1/reviews/open` for the named `{ profileId, host, owner, repo, number }`.
-2. Record its HTTP status and returned error. The renderer may reduce the cause to a generic alert, and the inbox's `openError` alert may not be visible when the details panel hides a stale row.
+2. Record its HTTP status and returned error. The renderer may reduce the cause to a generic alert, and the inbox's `openError` alert may not be visible when the details panel hides a stale row. A 200 response does not prove the workbench will open: the renderer re-validates the projection with `parseWorkbenchResponse` (`src/renderer/src/renderer-contracts.ts`). If the UI stays on the inbox with no alert, check the renderer console for a `parseWorkbenchResponse FAILED` log and read `brain/codebase/renderer-contract-boundary.md` before touching cache files.
 3. Confirm the PR still exists with a read-only `gh pr view <number> --repo <owner>/<repo>`.
 4. Inspect only the matching local artifacts:
    - Session: `~/.local/share/patchdesk/profiles/<profileId>/reviews/<sessionId>/`
