@@ -19,6 +19,16 @@ const snapshot: ReviewRemoteSnapshot = { schemaVersion: 1, pullRequest: { ref: {
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe("ReviewRemoteStore", () => {
+  it("round-trips viewerDidAuthor on thread comments", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-")); roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withComment: ReviewRemoteSnapshot = { ...snapshot, comments: { threads: [{ id: "t" as never, state: "open" as const, comments: [{ id: "c", author: "pmquan2", body: "test", createdAt: "2026-08-01T00:05:00.000Z" as never, viewerDidAuthor: true, location: { path: "a.go" as never, line: 1, lineEnd: 1, diffSide: "new" as const } }] }], complete: true } };
+    const saved = await store.saveCandidate({ profileId, reviewId, snapshot: withComment });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(store.load({ profileId, reviewId, snapshotHash: saved.value.snapshotHash })).resolves.toEqual({ _tag: "ok", value: withComment });
+  });
+
   it("writes and loads a strict content-addressed snapshot", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-")); roots.push(root);
     const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));

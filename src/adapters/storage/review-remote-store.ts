@@ -28,6 +28,7 @@ export type ReviewRemoteStoreFailure = StorageFailure;
 const commentSchema = v.strictObject({
   id: v.string(), author: v.string(), body: v.string(), createdAt: v.string(),
   updatedAt: v.optional(v.string()), url: v.optional(v.string()),
+  viewerDidAuthor: v.optional(v.boolean()),
   location: v.optional(v.strictObject({
     path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
   })),
@@ -233,7 +234,7 @@ function parseComments(input: v.InferOutput<typeof commentsSchema>): Result<GitH
       const updatedAt = comment.updatedAt === undefined ? undefined : parseIsoTimestamp(comment.updatedAt);
       const location = comment.location === undefined ? undefined : parseLocation(comment.location);
       if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err") || (location !== undefined && location._tag === "err")) return invalidRead();
-      comments.push({ id: comment.id, author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(location === undefined ? {} : { location: location.value }) });
+      comments.push({ id: comment.id, author: comment.author, body: comment.body, createdAt: createdAt.value, ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }), ...(comment.url === undefined ? {} : { url: comment.url }), ...(comment.viewerDidAuthor === undefined ? {} : { viewerDidAuthor: comment.viewerDidAuthor }), ...(location === undefined ? {} : { location: location.value }) });
     }
     const location = thread.location === undefined ? undefined : parseLocation(thread.location);
     if (location?._tag === "err") return invalidRead();
