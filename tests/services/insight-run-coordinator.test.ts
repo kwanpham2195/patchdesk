@@ -220,7 +220,13 @@ describe("InsightRunCoordinator", () => {
       expect(stored).toMatchObject({ _tag: "ok", value: { replacementFailure: { category: "unexpected_failure", model: "model", reasoning: "medium" } } });
       expect(JSON.stringify(stored)).not.toContain("provider exploded");
       if (throwing.diagnostics === undefined) throw new Error("expected diagnostics store");
-      const diagnostics = await throwing.diagnostics.recent(profileId);
+      // The failure diagnostic is recorded after the run flips to failed, so
+      // poll for it instead of racing the best-effort write.
+      let diagnostics: Awaited<ReturnType<typeof throwing.diagnostics.recent>> = await throwing.diagnostics.recent(profileId);
+      for (let attempt = 0; attempt < 100 && (diagnostics._tag !== "ok" || diagnostics.value.length === 0); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        diagnostics = await throwing.diagnostics.recent(profileId);
+      }
       expect(diagnostics).toMatchObject({ _tag: "ok", value: [{ detail: "insight_analysis_unexpected_failure" }] });
       expect(JSON.stringify(diagnostics)).not.toContain("SECRET_TOKEN");
       expect(JSON.stringify(diagnostics)).not.toContain("bearer_secret_token");
