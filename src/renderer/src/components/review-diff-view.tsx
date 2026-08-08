@@ -114,6 +114,8 @@ export type ReviewInlineAnnotation = {
     readonly id: string;
     readonly state: "open" | "resolved" | "outdated" | "unknown";
     readonly complete?: boolean | undefined;
+    /** Optimistic card awaiting the authoritative refresh; actions are hidden. */
+    readonly updating?: boolean | undefined;
     readonly onSetState?: (
       threadId: string,
       state: "open" | "resolved",
@@ -121,7 +123,7 @@ export type ReviewInlineAnnotation = {
     readonly onReply?: (
       threadId: string,
       body: string,
-    ) => Promise<void>;
+    ) => Promise<string | void>;
     readonly onEditComment?: (
       commentId: string,
       body: string,
@@ -165,7 +167,7 @@ export type LocalCommentAuthoring = {
     readonly side: "new" | "old";
     readonly fingerprint?: ReviewAnchorFingerprint;
     readonly body: string;
-  }) => Promise<void>;
+  }) => Promise<string | void>;
 };
 
 
@@ -235,6 +237,32 @@ function ReviewDiffSurface({
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const [authoringSelection, setAuthoringSelection] = useState<CodeViewLineSelection | null>(null);
+  const [optimisticThreads, setOptimisticThreads] = useState<
+    ReadonlyArray<{
+      readonly commentId: string;
+      readonly path: string;
+      readonly start: number;
+      readonly end: number;
+      readonly side: "new" | "old";
+      readonly body: string;
+    }>
+  >([]);
+  // A created comment is published to GitHub before the background refresh
+  // re-represents it; drop its optimistic card once the authoritative thread
+  // arrives in the projection (matched by the receipt's comment id).
+  useEffect(() => {
+    const realCommentIds = new Set<string>();
+    for (const annotation of annotations) {
+      for (const comment of annotation.conversationThread?.comments ?? []) {
+        realCommentIds.add(comment.id);
+      }
+    }
+    setOptimisticThreads((current) =>
+      current.some((entry) => realCommentIds.has(entry.commentId))
+        ? current.filter((entry) => !realCommentIds.has(entry.commentId))
+        : current,
+    );
+  }, [annotations]);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
     setViewerElement(node);
@@ -323,7 +351,7 @@ function ReviewDiffSurface({
       ? { path: parsedPath.value, startLine: authoringSelection.range.start, line: authoringSelection.range.end, side }
       : undefined;
     const fingerprint = anchor === undefined ? undefined : fingerprintPatchAnchor(patch, anchor);
-    await localCommentAuthoring.onSave({
+    const commentId = await localCommentAuthoring.onSave({
       path: authoringSelection.id,
       startLine: authoringSelection.range.start,
       line: authoringSelection.range.end,
@@ -331,6 +359,19 @@ function ReviewDiffSurface({
       ...(fingerprint === undefined ? {} : { fingerprint }),
       body,
     });
+    if (typeof commentId === "string" && anchor !== undefined) {
+      setOptimisticThreads((current) => [
+        ...current,
+        {
+          commentId,
+          path: anchor.path,
+          start: anchor.startLine,
+          end: anchor.line,
+          side: anchor.side,
+          body,
+        },
+      ]);
+    }
     clearAuthoring();
   }, [authoringSelection, clearAuthoring, localCommentAuthoring, patch]);
   const localComposerAnnotation = useMemo<ReviewInlineAnnotation | undefined>(() => {
@@ -353,9 +394,40 @@ function ReviewDiffSurface({
       },
     };
   }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring]);
+  const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
+    () =>
+      optimisticThreads.map((entry) => ({
+        id: `conversation:optimistic:${entry.commentId}`,
+        path: entry.path,
+        start: entry.start,
+        end: entry.end,
+        side: entry.side,
+        severity: "conversation",
+        title: "Conversation",
+        explanation: "",
+        conversationThread: {
+          id: `optimistic:${entry.commentId}`,
+          state: "open" as const,
+          complete: true,
+          updating: true,
+          comments: [
+            {
+              id: entry.commentId,
+              author: "You",
+              body: entry.body,
+              createdAt: new Date().toISOString(),
+              viewerDidAuthor: true,
+            },
+          ],
+        },
+      })),
+    [optimisticThreads],
+  );
   const renderedAnnotations = useMemo(
-    () => localComposerAnnotation === undefined ? annotations : [...annotations, localComposerAnnotation],
-    [annotations, localComposerAnnotation],
+    () => localComposerAnnotation === undefined
+      ? [...annotations, ...optimisticAnnotations]
+      : [...annotations, ...optimisticAnnotations, localComposerAnnotation],
+    [annotations, localComposerAnnotation, optimisticAnnotations],
   );
   const selectedAnnotations = useMemo(
     () => renderedAnnotations
@@ -380,6 +452,17 @@ function ReviewDiffSurface({
         annotation.localComposer?.path ?? "",
         annotation.localComposer?.startLine ?? "",
         annotation.localComposer?.line ?? "",
+        // Thread cards are controlled items too: resolve state, reconciled
+        // comments, and the optimistic updating marker must bump the version.
+        annotation.conversationThread === undefined
+          ? ""
+          : JSON.stringify([
+              annotation.conversationThread.state,
+              annotation.conversationThread.updating === true,
+              ...annotation.conversationThread.comments.map(
+                (comment) => `${comment.id}\u0000${comment.author}\u0000${comment.body}`,
+              ),
+            ]),
       ].join("\u0000"))
       .join("\u0001"),
     [renderedAnnotations],
@@ -949,7 +1032,7 @@ function ReviewDiffSurface({
   );
 }
 
-function ConversationThreadCard({
+export function ConversationThreadCard({
   thread,
 }: {
   readonly thread: NonNullable<ReviewInlineAnnotation["conversationThread"]>;
@@ -962,6 +1045,19 @@ function ConversationThreadCard({
   const [editingCommentId, setEditingCommentId] = useState<string>();
   const [editBody, setEditBody] = useState("");
   const [editing, setEditing] = useState(false);
+  const [optimisticReplies, setOptimisticReplies] = useState<
+    ReadonlyArray<{ readonly id: string; readonly body: string; readonly createdAt: string }>
+  >([]);
+  // A published reply is reconciled by the background refresh; drop its
+  // optimistic row once the authoritative thread contains the comment id.
+  useEffect(() => {
+    const realCommentIds = new Set(thread.comments.map((comment) => comment.id));
+    setOptimisticReplies((current) =>
+      current.some((reply) => realCommentIds.has(reply.id))
+        ? current.filter((reply) => !realCommentIds.has(reply.id))
+        : current,
+    );
+  }, [thread.comments]);
   const opening = thread.comments[0];
   const latest = thread.comments.at(-1);
   const hiddenReplyCount = Math.max(0, thread.comments.length - (opening === latest ? 1 : 2));
@@ -976,6 +1072,7 @@ function ConversationThreadCard({
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{thread.state === "resolved" ? "Resolved" : "Open"}</span>
+        {thread.updating === true ? <span role="status">Updating…</span> : null}
         {thread.complete === false ? <span>Some replies unavailable</span> : null}
       </div>
       <div className="mt-2">
@@ -997,7 +1094,7 @@ function ConversationThreadCard({
         ) : (
           <PullRequestDescriptionPreview markdown={opening.body} />
         )}
-        {opening.viewerDidAuthor === true && editingCommentId !== opening.id ? (
+        {opening.viewerDidAuthor === true && editingCommentId !== opening.id && thread.updating !== true ? (
           <div className="mt-1 flex gap-3">
             <button type="button" className="text-xs font-medium text-sky-400 hover:underline" onClick={() => { setEditingCommentId(opening.id); setEditBody(opening.body); }}>Edit</button>
             <button type="button" className="text-xs font-medium text-destructive hover:underline" onClick={() => {
@@ -1021,15 +1118,21 @@ function ConversationThreadCard({
           <PullRequestDescriptionPreview markdown={latest.body} />
         </div>
       ) : null}
+      {optimisticReplies.map((reply) => (
+        <div key={reply.id} className="mt-4 border-l-2 border-border/70 pl-4">
+          <p className="font-semibold">You <span className="text-xs font-normal text-muted-foreground">Updating…</span></p>
+          <PullRequestDescriptionPreview markdown={reply.body} />
+        </div>
+      ))}
       {hiddenReplyCount > 0 ? <button type="button" className="mt-3 text-xs font-medium text-sky-400 hover:underline" onClick={() => setExpanded((current) => !current)}>{expanded ? `Hide ${hiddenReplyCount} replies` : `Show ${hiddenReplyCount} replies`}</button> : null}
-      {thread.onSetState === undefined ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
+      {thread.onSetState === undefined || thread.updating === true ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
         setPending(true); setError(undefined);
         const action = thread.onSetState;
         if (action === undefined) return;
         void action(thread.id, thread.state === "resolved" ? "open" : "resolved").catch(() => setError("Patchdesk could not update this thread.")).finally(() => setPending(false));
       }}>{pending ? "Updating…" : thread.state === "resolved" ? "Unresolve" : "Resolve"}</Button>}
       {error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
-      {thread.onReply === undefined ? null : (
+      {thread.onReply === undefined || thread.updating === true ? null : (
         <div className="mt-4 border-t pt-3">
           <Textarea aria-label="Reply" value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder="Write a reply…" />
           <div className="mt-2 flex gap-2">
@@ -1039,8 +1142,14 @@ function ConversationThreadCard({
               try {
                 const action = thread.onReply;
                 if (action === undefined) return;
-                await action(thread.id, replyBody);
+                const commentId = await action(thread.id, replyBody);
                 setReplyBody("");
+                if (typeof commentId === "string") {
+                  setOptimisticReplies((current) => [
+                    ...current,
+                    { id: commentId, body: replyBody, createdAt: new Date().toISOString() },
+                  ]);
+                }
               } catch { setError("Patchdesk could not publish this reply."); }
               finally { setReplying(false); }
             }} disabled={replyBody.trim().length === 0 || replying}>

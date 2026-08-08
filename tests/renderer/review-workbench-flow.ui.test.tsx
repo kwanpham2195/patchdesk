@@ -1705,4 +1705,65 @@ describe("ReviewWorkbenchFlow", () => {
       }),
     );
   });
+
+  it("publishes an inline comment and returns its id so the Diff can show it optimistically", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/inline-conversations/command")
+        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic" }, correlationId: "command" };
+      if (input.path === "/v1/reviews/refresh")
+        return { ok: true, body: projection(), correlationId: "refresh" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const withPatchHash = {
+      ...projection(),
+      revision: { ...projection().revision, patchHash: "patch-hash" as const },
+    };
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPatchHash}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+    // The fixture patch has one deleted and one added line; the added line's
+    // author button is the one that anchors a new-side comment.
+    expect(authorButtons.length).toBeGreaterThan(1);
+    const addedAuthorButton = authorButtons[1];
+    if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
+    await user.click(addedAuthorButton);
+    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Optimistic body");
+    await user.click(screen.getByRole("button", { name: "Comment" }));
+    const commandCall = request.mock.calls.find(
+      (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+    );
+    expect(commandCall).toBeDefined();
+    expect((commandCall?.[0] as { readonly body: unknown }).body).toMatchObject({
+      profileId: "profile",
+      reviewId: "review-42",
+      command: {
+        _tag: "CreateComment",
+        anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        body: "Optimistic body",
+      },
+    });
+    expect(
+      request.mock.calls.some(
+        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/refresh",
+      ),
+    ).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+    });
+  });
 });

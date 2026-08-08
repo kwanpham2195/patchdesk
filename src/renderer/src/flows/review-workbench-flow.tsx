@@ -212,10 +212,10 @@ export function ReviewWorkbenchFlow({
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<void> => {
+    ): Promise<string | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
-      await requestJson("/v1/reviews/inline-conversations/command", {
+      const value = await requestJson("/v1/reviews/inline-conversations/command", {
         method: "POST",
         body: {
           profileId: workbench.session.key.profileId,
@@ -238,6 +238,8 @@ export function ReviewWorkbenchFlow({
         },
       });
       void refresh();
+      const receipt = value as { readonly _tag?: string; readonly commentId?: string };
+      return receipt._tag === "CommentCreated" ? receipt.commentId : undefined;
     },
     [refresh, workbench],
   );
@@ -261,10 +263,10 @@ export function ReviewWorkbenchFlow({
     void refresh();
   }, [refresh, workbench]);
 
-  const replyToThread = useCallback(async (threadId: string, body: string): Promise<void> => {
+  const replyToThread = useCallback(async (threadId: string, body: string): Promise<string | void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot accept replies.");
-    await requestJson("/v1/reviews/inline-conversations/command", {
+    const value = await requestJson("/v1/reviews/inline-conversations/command", {
       method: "POST",
       body: {
         profileId: workbench.session.key.profileId,
@@ -278,6 +280,8 @@ export function ReviewWorkbenchFlow({
       },
     });
     void refresh();
+    const receipt = value as { readonly _tag?: string; readonly commentId?: string };
+    return receipt._tag === "ReplyCreated" ? receipt.commentId : undefined;
   }, [refresh, workbench]);
 
   const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {

@@ -109,7 +109,7 @@ export type ReviewWorkbenchActions = {
   readonly replyToThread?: (
     threadId: string,
     body: string,
-  ) => Promise<void>;
+  ) => Promise<string | void>;
   readonly editComment?: (
     commentId: string,
     body: string,
