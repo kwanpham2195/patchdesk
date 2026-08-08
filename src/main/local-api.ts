@@ -944,7 +944,18 @@ function parseInlineConversationCommand(body: unknown): { readonly profileId: Wo
   const sessionId = parseReviewSessionId(readObjectField(expectedRaw, "sessionId"));
   const headSha = parseGitSha(readObjectField(expectedRaw, "headSha"));
   const patchHash = parseContentHash(readObjectField(expectedRaw, "patchHash"));
-  if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || typeof tag !== "string") return undefined;
+  if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || typeof tag !== "string") {
+    console.error("Inline conversation command parse failed", {
+      profileOk: profileId._tag,
+      reviewOk: reviewId._tag,
+      sessionOk: sessionId._tag,
+      headShaOk: headSha._tag,
+      patchHashOk: patchHash._tag,
+      tagType: typeof tag,
+      rawCommand: JSON.stringify(raw),
+    });
+    return undefined;
+  }
   const expected = { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value };
   const value = (name: string): string | undefined => {
     const candidate = readObjectField(raw, name);
