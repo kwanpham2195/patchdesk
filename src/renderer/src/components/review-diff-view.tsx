@@ -1172,10 +1172,11 @@ function InlineCommentComposer({
     try { await onSave(body); }
     catch (cause: unknown) {
       if (cause instanceof PatchdeskApiError) {
+        console.error("Inline comment failed", { kind: cause.kind, status: cause.status, correlationId: cause.correlationId });
         if (cause.kind === "stale_head") setError("This pull request has changed. Refresh and try again.");
         else if (cause.kind === "github_rejected") setError("GitHub rejected this comment.");
         else if (cause.kind === "revision_conflict") setError("This comment cannot be published against the current diff.");
-        else setError("Patchdesk could not publish this comment. Try refreshing.");
+        else setError(`Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`);
       } else {
         setError(cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.");
       }
