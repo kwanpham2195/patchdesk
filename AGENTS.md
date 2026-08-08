@@ -8,7 +8,7 @@ Tests mirror those boundaries under `tests/`. Browser coverage is in `tests/brow
 
 ## Development and Verification
 
-Use pnpm 8.8.0. Run development in a tmux pane with `pnpm dev`. Design app: `pnpm dev:design`.
+Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`. Design app: `pnpm dev:design`.
 
 - `pnpm lint`: ESLint with no warnings.
 - `pnpm typecheck`: TypeScript checks.
@@ -40,5 +40,4 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 - For Pierre or Flue integration research, use `$librarian` for upstream sources.
 - Do not use broad Git cleanup commands such as `git clean` or `git reset --hard`.
 - Backward compatibility requires a user request.
-- For every live app, browser, or packaged-Electron test, the primary agent must spawn a dedicated tester subagent and direct it to use `$patchdesk-electron-tester`; it owns interactive QA and evidence.
 - Use `$patchdesk-review-lifecycle` for Review, refresh, Insight, draft, publication, recovery, retry, Walkthrough, or merge lifecycle changes.
