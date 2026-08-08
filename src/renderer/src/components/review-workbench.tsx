@@ -401,6 +401,11 @@ export function ReviewWorkbench({
         </div>
         <p className="text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ← {model.pullRequest?.headBranch ?? "unknown"} · {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} · refreshed {model.revision.refreshedAt}
+          {hasUpdates ? (
+            <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400" role="status" data-review-new-version-indicator>
+              New version · ⌘R to reload
+            </span>
+          ) : null}
         </p>
         <p className="sr-only" aria-live="polite">
           {hasUpdates ? "Remote updates are available. Refresh before publishing or merging." : "Review state is current."}
@@ -474,6 +479,7 @@ export function ReviewWorkbench({
                         {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
                         {...(selectedCommitSha === undefined ? { annotations } : {})}
                         {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
+                        {...(selectedCommitSha === undefined && (actions.setThreadState !== undefined || actions.replyToThread !== undefined || actions.editComment !== undefined || actions.deleteComment !== undefined) ? { conversationActions: { ...(actions.setThreadState === undefined ? {} : { setThreadState: actions.setThreadState }), ...(actions.replyToThread === undefined ? {} : { replyToThread: actions.replyToThread }), ...(actions.editComment === undefined ? {} : { editComment: actions.editComment }), ...(actions.deleteComment === undefined ? {} : { deleteComment: actions.deleteComment }) } } : {})}
                         hideFileNavigation
                         surfaceAction={undefined}
                         {...(commitHeader === undefined ? {} : { diffTitle: commitHeader.title, diffSubtitle: commitHeader.subtitle, copyValue: commitHeader.sha })}

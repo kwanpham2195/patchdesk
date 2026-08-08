@@ -1706,13 +1706,13 @@ describe("ReviewWorkbenchFlow", () => {
     );
   });
 
-  it("publishes an inline comment and returns its id so the Diff can show it optimistically", async () => {
+  it("publishes an inline comment, skips the background refresh, and journals the write for detection", async () => {
     const user = userEvent.setup();
     const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
       if (input.path === "/v1/reviews/detect-updates")
         return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
       if (input.path === "/v1/reviews/inline-conversations/command")
-        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic" }, correlationId: "command" };
+        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic", threadId: "thread-optimistic", reviewId: "review-42" }, correlationId: "command" };
       if (input.path === "/v1/reviews/refresh")
         return { ok: true, body: projection(), correlationId: "refresh" };
       throw new Error(`unexpected ${input.path}`);
@@ -1761,7 +1761,20 @@ describe("ReviewWorkbenchFlow", () => {
       request.mock.calls.some(
         (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/refresh",
       ),
-    ).toBe(true);
+    ).toBe(false);
+    // The write journal rides the next detection pass so own writes never read
+    // as remote updates.
+    await waitFor(() => {
+      const detectCall = request.mock.calls.find(
+        (call) =>
+          (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates" &&
+          (call[0] as { readonly body?: { readonly recentWrites?: unknown } }).body?.recentWrites !== undefined,
+      );
+      expect(detectCall).toBeDefined();
+      expect(
+        (detectCall?.[0] as { readonly body?: { readonly recentWrites?: ReadonlyArray<string> } }).body?.recentWrites,
+      ).toEqual(expect.arrayContaining(["c-optimistic", "thread-optimistic", "review-42"]));
+    });
     await waitFor(() => {
       expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
     });

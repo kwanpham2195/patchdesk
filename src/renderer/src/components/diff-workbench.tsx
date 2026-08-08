@@ -5,7 +5,7 @@ import {
   type FindingLocationInput,
 } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
-import { ReviewDiffView, type LocalCommentAuthoring, type ReviewInlineAnnotation } from "./review-diff-view";
+import { ReviewDiffView, type LocalCommentAuthoring, type ReviewConversationActions, type ReviewInlineAnnotation } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES, type ReviewViewPreferences } from "@/review-view-preferences";
@@ -27,6 +27,7 @@ export function DiffWorkbench({
   className,
   fillViewport = true,
   localCommentAuthoring,
+  conversationActions,
   controlledSelectedPath,
   onSelectedPathChange,
   onActiveFileChange,
@@ -45,6 +46,7 @@ export function DiffWorkbench({
   readonly className?: string;
   readonly fillViewport?: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  readonly conversationActions?: ReviewConversationActions;
   readonly controlledSelectedPath?: string;
   readonly onSelectedPathChange?: (path: string) => void;
   readonly onActiveFileChange?: (path: string) => void;
@@ -213,6 +215,7 @@ export function DiffWorkbench({
           onCollapsedPathsChange={setCollapsedPaths}
           {...(sourceSession === undefined ? {} : { sourceSession })}
           {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
+          {...(conversationActions === undefined ? {} : { conversationActions })}
           {...(annotations === undefined ? {} : { annotations })}
         />
       </div>

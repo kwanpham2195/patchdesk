@@ -119,6 +119,17 @@ export function ReviewWorkbenchFlow({
   const [selectedRepairAnchor, setSelectedRepairAnchor] = useState<
     ReviewAnchor | undefined
   >();
+  // Comment/thread ids written by this window since the last projection
+  // replace. The detector excludes them so own writes never read as remote
+  // updates; cleared once a refresh/reload re-baselines the snapshot.
+  const [recentWrites, setRecentWrites] = useState<ReadonlyArray<string>>([]);
+  const replaceWorkbench = useCallback(
+    (next: WorkbenchResponse): void => {
+      setRecentWrites([]);
+      onWorkbenchReplace(next);
+    },
+    [onWorkbenchReplace],
+  );
   // Freshness value the projection had before detection patched it stale, so a
   // later cleared flag can restore writes instead of leaving them blocked.
   const [detectedStaleFreshness, setDetectedStaleFreshness] = useState<
@@ -132,6 +143,7 @@ export function ReviewWorkbenchFlow({
         body: {
           profileId: workbench.session.key.profileId,
           reviewId: workbench.review.id,
+          ...(recentWrites.length === 0 ? {} : { recentWrites }),
         },
       });
       if (isDetection(value) && value.updatesAvailable) {
@@ -161,7 +173,7 @@ export function ReviewWorkbenchFlow({
     } catch {
       // Detection is advisory and never replaces the represented snapshot.
     }
-  }, [detectedStaleFreshness, onWorkbenchPatch, workbench]);
+  }, [detectedStaleFreshness, onWorkbenchPatch, recentWrites, workbench]);
 
   useEffect(() => {
     void detectUpdates();
@@ -186,13 +198,13 @@ export function ReviewWorkbenchFlow({
       if (parsed === undefined)
         throw new Error("Invalid Review refresh response");
       setDetectedStaleFreshness(undefined);
-      onWorkbenchReplace(parsed);
+      replaceWorkbench(parsed);
     } catch {
       setRefreshError(true);
     } finally {
       setRefreshing(false);
     }
-  }, [onWorkbenchReplace, refreshing, workbench]);
+  }, [replaceWorkbench, refreshing, workbench]);
 
   const refreshConfirmedPublication = useCallback(async (): Promise<void> => {
     if (workbench.review.status !== "open") return;
@@ -206,13 +218,13 @@ export function ReviewWorkbenchFlow({
     const parsed = parseWorkbenchResponse(value);
     if (parsed === undefined)
       throw new Error("Invalid Review publication refresh response");
-    onWorkbenchReplace(parsed);
-  }, [onWorkbenchReplace, workbench]);
+    replaceWorkbench(parsed);
+  }, [replaceWorkbench, workbench]);
 
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<string | void> => {
+    ): Promise<{ readonly commentId: string; readonly threadId?: string } | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
       const value = await requestJson("/v1/reviews/inline-conversations/command", {
@@ -237,11 +249,28 @@ export function ReviewWorkbenchFlow({
           },
         },
       });
-      void refresh();
-      const receipt = value as { readonly _tag?: string; readonly commentId?: string };
-      return receipt._tag === "CommentCreated" ? receipt.commentId : undefined;
+      const receipt = value as {
+        readonly _tag?: string;
+        readonly commentId?: string;
+        readonly threadId?: string;
+        readonly reviewId?: string;
+      };
+      if (receipt._tag === "CommentCreated" && typeof receipt.commentId === "string") {
+        const commentId = receipt.commentId as string;
+        setRecentWrites((current) => [
+          ...current,
+          commentId,
+          ...(typeof receipt.threadId === "string" ? [receipt.threadId as string] : []),
+          ...(typeof receipt.reviewId === "string" ? [receipt.reviewId as string] : []),
+        ]);
+        return {
+          commentId,
+          ...(typeof receipt.threadId === "string" ? { threadId: receipt.threadId as string } : {}),
+        };
+      }
+      return undefined;
     },
-    [refresh, workbench],
+    [workbench],
   );
 
   const setThreadState = useCallback(async (threadId: string, state: "open" | "resolved"): Promise<void> => {
@@ -260,8 +289,8 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    void refresh();
-  }, [refresh, workbench]);
+    setRecentWrites((current) => [...current, threadId]);
+  }, [workbench]);
 
   const replyToThread = useCallback(async (threadId: string, body: string): Promise<string | void> => {
     const patchHash = workbench.revision.patchHash;
@@ -279,10 +308,18 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    void refresh();
-    const receipt = value as { readonly _tag?: string; readonly commentId?: string };
-    return receipt._tag === "ReplyCreated" ? receipt.commentId : undefined;
-  }, [refresh, workbench]);
+    const receipt = value as { readonly _tag?: string; readonly commentId?: string; readonly reviewId?: string };
+    if (receipt._tag === "ReplyCreated" && typeof receipt.commentId === "string") {
+      const commentId = receipt.commentId as string;
+      setRecentWrites((current) => [
+        ...current,
+        commentId,
+        ...(typeof receipt.reviewId === "string" ? [receipt.reviewId as string] : []),
+      ]);
+      return commentId;
+    }
+    return undefined;
+  }, [workbench]);
 
   const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
@@ -300,8 +337,8 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    void refresh();
-  }, [refresh, workbench]);
+    setRecentWrites((current) => [...current, commentId]);
+  }, [workbench]);
 
   const deleteComment = useCallback(async (commentId: string): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
@@ -319,8 +356,8 @@ export function ReviewWorkbenchFlow({
         },
       },
     });
-    void refresh();
-  }, [refresh, workbench]);
+    setRecentWrites((current) => [...current, commentId]);
+  }, [workbench]);
   const parsedDraft =
     workbench.draft === undefined
       ? undefined
@@ -413,7 +450,7 @@ export function ReviewWorkbenchFlow({
             const next = parseWorkbenchResponse(refreshed);
             if (next === undefined)
               throw new Error("Invalid terminal Review projection");
-            onWorkbenchReplace(next);
+            replaceWorkbench(next);
             return {};
           },
         }
@@ -534,9 +571,9 @@ export function ReviewWorkbenchFlow({
       const next = parseWorkbenchResponse(value);
       if (next === undefined)
         throw new Error("Invalid Review projection response");
-      onWorkbenchReplace(next);
+      replaceWorkbench(next);
     },
-    [onWorkbenchReplace, workbench],
+    [replaceWorkbench, workbench],
   );
 
   return (
@@ -581,7 +618,7 @@ export function ReviewWorkbenchFlow({
               {...(initialUiState?.insightDetail === undefined
                 ? {}
                 : { initialDetail: initialUiState.insightDetail })}
-              onWorkbenchReplace={onWorkbenchReplace}
+              onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
               onAnalysisCompletion={() => setAutoOpenPublication(true)}
             />
@@ -592,7 +629,7 @@ export function ReviewWorkbenchFlow({
             <DraftSlot
               workbench={workbench}
               onWorkbenchPatch={onWorkbenchPatch}
-              onWorkbenchReplace={onWorkbenchReplace}
+              onWorkbenchReplace={replaceWorkbench}
               onRefreshAfterPublication={refreshConfirmedPublication}
               canEditDraft={canEditDraft}
               canWriteGitHub={canWriteGitHub}

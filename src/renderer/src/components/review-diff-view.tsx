@@ -114,8 +114,6 @@ export type ReviewInlineAnnotation = {
     readonly id: string;
     readonly state: "open" | "resolved" | "outdated" | "unknown";
     readonly complete?: boolean | undefined;
-    /** Optimistic card awaiting the authoritative refresh; actions are hidden. */
-    readonly updating?: boolean | undefined;
     readonly onSetState?: (
       threadId: string,
       state: "open" | "resolved",
@@ -167,7 +165,7 @@ export type LocalCommentAuthoring = {
     readonly side: "new" | "old";
     readonly fingerprint?: ReviewAnchorFingerprint;
     readonly body: string;
-  }) => Promise<string | void>;
+  }) => Promise<{ readonly commentId: string; readonly threadId?: string } | void>;
 };
 
 
@@ -190,6 +188,16 @@ function FileChangeCounts({
   );
 }
 
+export type ReviewConversationActions = {
+  readonly setThreadState?: (
+    threadId: string,
+    state: "open" | "resolved",
+  ) => Promise<void>;
+  readonly replyToThread?: (threadId: string, body: string) => Promise<string | void>;
+  readonly editComment?: (commentId: string, body: string) => Promise<void>;
+  readonly deleteComment?: (commentId: string) => Promise<void>;
+};
+
 type ReviewDiffViewProps = {
   readonly patch: string;
   readonly parsedFiles: ReadonlyArray<FileDiffMetadata>;
@@ -209,6 +217,8 @@ type ReviewDiffViewProps = {
   readonly virtualized?: boolean;
   /** Local-only composer. Callers omit it for walkthroughs and stale snapshots. */
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  /** Direct GitHub conversation actions; the surface wraps them to apply published mutations locally. */
+  readonly conversationActions?: ReviewConversationActions;
 };
 
 function ReviewDiffSurface({
@@ -226,6 +236,7 @@ function ReviewDiffSurface({
   sourceSession,
   virtualized = true,
   localCommentAuthoring,
+  conversationActions,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
@@ -237,9 +248,10 @@ function ReviewDiffSurface({
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
   const [authoringSelection, setAuthoringSelection] = useState<CodeViewLineSelection | null>(null);
-  const [optimisticThreads, setOptimisticThreads] = useState<
+  const [createdThreads, setCreatedThreads] = useState<
     ReadonlyArray<{
       readonly commentId: string;
+      readonly threadId?: string | undefined;
       readonly path: string;
       readonly start: number;
       readonly end: number;
@@ -247,21 +259,66 @@ function ReviewDiffSurface({
       readonly body: string;
     }>
   >([]);
-  // A created comment is published to GitHub before the background refresh
-  // re-represents it; drop its optimistic card once the authoritative thread
-  // arrives in the projection (matched by the receipt's comment id).
+  const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const [deletedCommentIds, setDeletedCommentIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [resolvedThreads, setResolvedThreads] = useState<ReadonlyMap<string, "open" | "resolved">>(() => new Map());
+  // Published writes are authoritative (the receipt is GitHub's 200) and the
+  // projection only changes on an explicit refresh or reload. Local mutation
+  // overrides keep the cards truthful until the projection catches up; each is
+  // dropped once the authoritative thread arrives with the same content.
   useEffect(() => {
-    const realCommentIds = new Set<string>();
+    const threadIds = new Set<string>();
+    const commentIds = new Set<string>();
+    const commentBodies = new Map<string, string>();
+    const threadStates = new Map<string, string>();
     for (const annotation of annotations) {
-      for (const comment of annotation.conversationThread?.comments ?? []) {
-        realCommentIds.add(comment.id);
+      const thread = annotation.conversationThread;
+      if (thread === undefined) continue;
+      threadIds.add(thread.id);
+      threadStates.set(thread.id, thread.state);
+      for (const comment of thread.comments) {
+        commentIds.add(comment.id);
+        commentBodies.set(comment.id, comment.body);
       }
     }
-    setOptimisticThreads((current) =>
-      current.some((entry) => realCommentIds.has(entry.commentId))
-        ? current.filter((entry) => !realCommentIds.has(entry.commentId))
+    setCreatedThreads((current) =>
+      current.some((entry) => threadIds.has(entry.threadId ?? "") || commentIds.has(entry.commentId))
+        ? current.filter((entry) => !threadIds.has(entry.threadId ?? "") && !commentIds.has(entry.commentId))
         : current,
     );
+    setEditedBodies((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const [commentId, body] of next) {
+        if (commentBodies.get(commentId) === body) {
+          next.delete(commentId);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+    setDeletedCommentIds((current) => {
+      let changed = false;
+      const next = new Set(current);
+      for (const commentId of next) {
+        if (!commentIds.has(commentId)) {
+          next.delete(commentId);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+    setResolvedThreads((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const [threadId, state] of next) {
+        if (threadStates.get(threadId) === state) {
+          next.delete(threadId);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
   }, [annotations]);
   const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
     viewerContainer.current = node;
@@ -351,7 +408,7 @@ function ReviewDiffSurface({
       ? { path: parsedPath.value, startLine: authoringSelection.range.start, line: authoringSelection.range.end, side }
       : undefined;
     const fingerprint = anchor === undefined ? undefined : fingerprintPatchAnchor(patch, anchor);
-    const commentId = await localCommentAuthoring.onSave({
+    const receipt = await localCommentAuthoring.onSave({
       path: authoringSelection.id,
       startLine: authoringSelection.range.start,
       line: authoringSelection.range.end,
@@ -359,11 +416,12 @@ function ReviewDiffSurface({
       ...(fingerprint === undefined ? {} : { fingerprint }),
       body,
     });
-    if (typeof commentId === "string" && anchor !== undefined) {
-      setOptimisticThreads((current) => [
+    if (receipt !== undefined && receipt.commentId !== undefined && anchor !== undefined) {
+      setCreatedThreads((current) => [
         ...current,
         {
-          commentId,
+          commentId: receipt.commentId,
+          ...(receipt.threadId === undefined ? {} : { threadId: receipt.threadId }),
           path: anchor.path,
           start: anchor.startLine,
           end: anchor.line,
@@ -396,8 +454,10 @@ function ReviewDiffSurface({
   }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring]);
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
     () =>
-      optimisticThreads.map((entry) => ({
-        id: `conversation:optimistic:${entry.commentId}`,
+      createdThreads.map((entry) => ({
+        // The receipt's real thread id keeps this card the same controlled
+        // item the authoritative thread will later occupy.
+        id: `conversation:${entry.threadId ?? `optimistic:${entry.commentId}`}`,
         path: entry.path,
         start: entry.start,
         end: entry.end,
@@ -406,10 +466,9 @@ function ReviewDiffSurface({
         title: "Conversation",
         explanation: "",
         conversationThread: {
-          id: `optimistic:${entry.commentId}`,
+          id: entry.threadId ?? `optimistic:${entry.commentId}`,
           state: "open" as const,
           complete: true,
-          updating: true,
           comments: [
             {
               id: entry.commentId,
@@ -421,7 +480,7 @@ function ReviewDiffSurface({
           ],
         },
       })),
-    [optimisticThreads],
+    [createdThreads],
   );
   const renderedAnnotations = useMemo(
     () => localComposerAnnotation === undefined
@@ -429,18 +488,58 @@ function ReviewDiffSurface({
       : [...annotations, ...optimisticAnnotations, localComposerAnnotation],
     [annotations, localComposerAnnotation, optimisticAnnotations],
   );
+  // Published mutations are applied on top of the projection until an explicit
+  // refresh or reload re-baselines it: edited bodies replace comment text,
+  // resolved threads flip their state, deleted comments (and emptied threads)
+  // disappear, and created entries already present in the projection are not
+  // duplicated.
+  const displayedAnnotations = useMemo(() => {
+    const projectionThreadIds = new Set<string>();
+    const projectionCommentIds = new Set<string>();
+    for (const annotation of annotations) {
+      const thread = annotation.conversationThread;
+      if (thread === undefined) continue;
+      projectionThreadIds.add(thread.id);
+      for (const comment of thread.comments) projectionCommentIds.add(comment.id);
+    }
+    return renderedAnnotations
+      .filter((annotation) => {
+        const thread = annotation.conversationThread;
+        if (thread === undefined) return true;
+        // A created card is superseded by the authoritative thread with the
+        // same id; the projection now owns it.
+        if (annotations.some((projection) => projection === annotation)) return true;
+        if (projectionThreadIds.has(thread.id)) return false;
+        if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) return false;
+        return true;
+      })
+      .map((annotation) => {
+        const thread = annotation.conversationThread;
+        if (thread === undefined) return annotation;
+        const state = resolvedThreads.get(thread.id) ?? thread.state;
+        const comments = thread.comments
+          .filter((comment) => !deletedCommentIds.has(comment.id))
+          .map((comment) => {
+            const body = editedBodies.get(comment.id);
+            return body === undefined ? comment : { ...comment, body };
+          });
+        if (comments.length === 0) return undefined;
+        return { ...annotation, conversationThread: { ...thread, state, comments } };
+      })
+      .filter((annotation): annotation is ReviewInlineAnnotation => annotation !== undefined);
+  }, [annotations, deletedCommentIds, editedBodies, renderedAnnotations, resolvedThreads]);
   const selectedAnnotations = useMemo(
-    () => renderedAnnotations
+    () => displayedAnnotations
       .filter((annotation) => selectedPath === undefined || annotation.path === selectedPath)
       .map((annotation): DiffLineAnnotation<ReviewInlineAnnotation | undefined> => ({
         side: annotation.side === "new" ? "additions" : "deletions",
         lineNumber: annotation.start,
         metadata: annotation,
       })),
-    [renderedAnnotations, selectedPath],
+    [displayedAnnotations, selectedPath],
   );
   const annotationKey = useMemo(
-    () => renderedAnnotations
+    () => displayedAnnotations
       .map((annotation) => [
         annotation.id,
         annotation.path,
@@ -453,19 +552,18 @@ function ReviewDiffSurface({
         annotation.localComposer?.startLine ?? "",
         annotation.localComposer?.line ?? "",
         // Thread cards are controlled items too: resolve state, reconciled
-        // comments, and the optimistic updating marker must bump the version.
+        // comments, and local mutation overrides must bump the version.
         annotation.conversationThread === undefined
           ? ""
           : JSON.stringify([
               annotation.conversationThread.state,
-              annotation.conversationThread.updating === true,
               ...annotation.conversationThread.comments.map(
                 (comment) => `${comment.id}\u0000${comment.author}\u0000${comment.body}`,
               ),
             ]),
       ].join("\u0000"))
       .join("\u0001"),
-    [renderedAnnotations],
+    [displayedAnnotations],
   );
   const items = useMemo(
     () =>
@@ -473,7 +571,7 @@ function ReviewDiffSurface({
         id: file.name,
         type: "diff",
         fileDiff: file,
-        annotations: renderedAnnotations
+        annotations: displayedAnnotations
           .filter((annotation) => annotation.path === file.name)
           .map((annotation) => ({
             side: annotation.side === "new" ? "additions" : "deletions",
@@ -492,7 +590,7 @@ function ReviewDiffSurface({
           annotationKey,
         }),
       })),
-    [annotationKey, collapsedPaths, hydratedFiles, renderedAnnotations, visibleFiles],
+    [annotationKey, collapsedPaths, hydratedFiles, displayedAnnotations, visibleFiles],
   );
   const selectedLines = useMemo(
     () =>
@@ -771,7 +869,60 @@ function ReviewDiffSurface({
         return <InlineCommentComposer {...finding.localComposer} />;
       }
       if (finding.conversationThread !== undefined) {
-        return <ConversationThreadCard thread={finding.conversationThread} />;
+        const thread = finding.conversationThread;
+        const setState = thread.onSetState ?? conversationActions?.setThreadState;
+        const reply = thread.onReply ?? conversationActions?.replyToThread;
+        const edit = thread.onEditComment ?? conversationActions?.editComment;
+        const remove = thread.onDeleteComment ?? conversationActions?.deleteComment;
+        return (
+          <ConversationThreadCard
+            thread={{
+              ...thread,
+              ...(setState === undefined
+                ? {}
+                : {
+                    onSetState: async (threadId, state) => {
+                      await setState(threadId, state);
+                      setResolvedThreads((current) => {
+                        const next = new Map(current);
+                        next.set(threadId, state);
+                        return next;
+                      });
+                    },
+                  }),
+              ...(reply === undefined ? {} : { onReply: reply }),
+              ...(edit === undefined
+                ? {}
+                : {
+                    onEditComment: async (commentId, body) => {
+                      await edit(commentId, body);
+                      setEditedBodies((current) => {
+                        const next = new Map(current);
+                        next.set(commentId, body);
+                        return next;
+                      });
+                    },
+                  }),
+              ...(remove === undefined
+                ? {}
+                : {
+                    onDeleteComment: async (commentId) => {
+                      await remove(commentId);
+                      setDeletedCommentIds((current) => {
+                        const next = new Set(current);
+                        next.add(commentId);
+                        return next;
+                      });
+                      setCreatedThreads((current) =>
+                        current.some((entry) => entry.commentId === commentId)
+                          ? current.filter((entry) => entry.commentId !== commentId)
+                          : current,
+                      );
+                    },
+                  }),
+            }}
+          />
+        );
       }
       if (finding.localComment !== undefined) {
         return (
@@ -797,7 +948,7 @@ function ReviewDiffSurface({
         </article>
       );
     },
-    [],
+    [conversationActions],
   );
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => (
@@ -1048,8 +1199,8 @@ export function ConversationThreadCard({
   const [optimisticReplies, setOptimisticReplies] = useState<
     ReadonlyArray<{ readonly id: string; readonly body: string; readonly createdAt: string }>
   >([]);
-  // A published reply is reconciled by the background refresh; drop its
-  // optimistic row once the authoritative thread contains the comment id.
+  // A published reply is authoritative (GitHub returned 200); drop its local
+  // row once an explicit refresh or reload brings the authoritative thread.
   useEffect(() => {
     const realCommentIds = new Set(thread.comments.map((comment) => comment.id));
     setOptimisticReplies((current) =>
@@ -1072,7 +1223,6 @@ export function ConversationThreadCard({
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{thread.state === "resolved" ? "Resolved" : "Open"}</span>
-        {thread.updating === true ? <span role="status">Updating…</span> : null}
         {thread.complete === false ? <span>Some replies unavailable</span> : null}
       </div>
       <div className="mt-2">
@@ -1094,7 +1244,7 @@ export function ConversationThreadCard({
         ) : (
           <PullRequestDescriptionPreview markdown={opening.body} />
         )}
-        {opening.viewerDidAuthor === true && editingCommentId !== opening.id && thread.updating !== true ? (
+        {opening.viewerDidAuthor === true && editingCommentId !== opening.id ? (
           <div className="mt-1 flex gap-3">
             <button type="button" className="text-xs font-medium text-sky-400 hover:underline" onClick={() => { setEditingCommentId(opening.id); setEditBody(opening.body); }}>Edit</button>
             <button type="button" className="text-xs font-medium text-destructive hover:underline" onClick={() => {
@@ -1120,19 +1270,19 @@ export function ConversationThreadCard({
       ) : null}
       {optimisticReplies.map((reply) => (
         <div key={reply.id} className="mt-4 border-l-2 border-border/70 pl-4">
-          <p className="font-semibold">You <span className="text-xs font-normal text-muted-foreground">Updating…</span></p>
+          <p className="font-semibold">You</p>
           <PullRequestDescriptionPreview markdown={reply.body} />
         </div>
       ))}
       {hiddenReplyCount > 0 ? <button type="button" className="mt-3 text-xs font-medium text-sky-400 hover:underline" onClick={() => setExpanded((current) => !current)}>{expanded ? `Hide ${hiddenReplyCount} replies` : `Show ${hiddenReplyCount} replies`}</button> : null}
-      {thread.onSetState === undefined || thread.updating === true ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
+      {thread.onSetState === undefined ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
         setPending(true); setError(undefined);
         const action = thread.onSetState;
         if (action === undefined) return;
         void action(thread.id, thread.state === "resolved" ? "open" : "resolved").catch(() => setError("Patchdesk could not update this thread.")).finally(() => setPending(false));
       }}>{pending ? "Updating…" : thread.state === "resolved" ? "Unresolve" : "Resolve"}</Button>}
       {error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
-      {thread.onReply === undefined || thread.updating === true ? null : (
+      {thread.onReply === undefined ? null : (
         <div className="mt-4 border-t pt-3">
           <Textarea aria-label="Reply" value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder="Write a reply…" />
           <div className="mt-2 flex gap-2">

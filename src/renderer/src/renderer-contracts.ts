@@ -235,6 +235,7 @@ const diffLocationSchema = v.strictObject({
 
 const githubCommentSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
+  nodeId: v.optional(v.string()),
   author: v.pipe(v.string(), v.minLength(1)),
   body: v.string(),
   createdAt: v.pipe(v.string(), v.isoTimestamp()),
@@ -491,6 +492,7 @@ const reviewBatchSchema = v.strictObject({
 
 const publishedReviewSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
+  nodeId: v.optional(v.string()),
   author: v.pipe(v.string(), v.minLength(1)),
   body: v.string(),
   event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]),

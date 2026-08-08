@@ -7,10 +7,10 @@ import { ConversationThreadCard } from "../../src/renderer/src/components/review
 afterEach(() => cleanup());
 
 const thread = (overrides: {
-  readonly updating?: boolean;
   readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
   readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
   readonly onDeleteComment?: (commentId: string) => Promise<void>;
+  readonly onSetState?: (threadId: string, state: "open" | "resolved") => Promise<void>;
   readonly comments?: readonly {
     readonly id: string;
     readonly author: string;
@@ -35,18 +35,27 @@ const thread = (overrides: {
 });
 
 describe("ConversationThreadCard", () => {
-  it("shows an optimistic updating card without actions until the refresh reconciles it", () => {
-    render(<ConversationThreadCard thread={thread({ updating: true, comments: [{ id: "c-new", author: "You", body: "Just published.", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true }] })} />);
-    expect(screen.getByRole("status").textContent).toBe("Updating…");
+  it("treats a freshly published card as authoritative: no pending marker, full actions", () => {
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          onEditComment: vi.fn(),
+          onDeleteComment: vi.fn(),
+          onSetState: vi.fn(),
+          onReply: vi.fn(),
+          comments: [{ id: "c-new", author: "You", body: "Just published.", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true }],
+        })}
+      />,
+    );
     expect(screen.getByText("Just published.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+    expect(screen.queryByText("Updating…")).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resolve" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Reply" })).toBeTruthy();
   });
 
-  it("shows a published reply optimistically and reconciles it with the authoritative thread", async () => {
+  it("shows a published reply immediately and reconciles it with the authoritative thread", async () => {
     const user = userEvent.setup();
     const onReply = vi.fn(async () => "c-reply-1");
     const { rerender } = render(<ConversationThreadCard thread={thread({ onReply })} />);
@@ -54,10 +63,10 @@ describe("ConversationThreadCard", () => {
     await user.click(screen.getByRole("button", { name: "Reply" }));
     expect(onReply).toHaveBeenCalledWith("thread-1", "A reply");
     expect(await screen.findByText("A reply")).toBeTruthy();
-    expect(screen.getAllByText("Updating…").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Updating…")).toBeNull();
 
-    // The background refresh replaced the projection; the card now owns the
-    // authoritative comment and must drop its optimistic copy.
+    // An explicit refresh replaced the projection; the card now owns the
+    // authoritative comment and must drop its local copy.
     rerender(
       <ConversationThreadCard
         thread={thread({
@@ -70,10 +79,9 @@ describe("ConversationThreadCard", () => {
       />,
     );
     expect(screen.getAllByText("A reply")).toHaveLength(1);
-    expect(screen.queryByText("Updating…")).toBeNull();
   });
 
-  it("keeps the reply composer editable while the optimistic reply is pending", async () => {
+  it("keeps the reply composer editable after a reply is published", async () => {
     const user = userEvent.setup();
     const onReply = vi.fn(async () => "c-reply-2");
     render(<ConversationThreadCard thread={thread({ onReply })} />);
