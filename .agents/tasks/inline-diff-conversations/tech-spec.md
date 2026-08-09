@@ -1,523 +1,537 @@
 ---
-created_at: 2026-08-08
+created_at: "2026-08-09"
 repos:
   - patchdesk
-status: ready-for-agent
+status: needs-validation
 spec: .agents/tasks/inline-diff-conversations/spec.md
+research: .agents/tasks/inline-diff-conversations/01-research-github-start-review-and-local-draft.md
+plan: .agents/tasks/inline-diff-conversations/plans/2026-08-09-github-pending-review-workbench.md
 ---
 
-# Inline Diff Conversations — Tech Spec
+# GitHub pending reviews in the Review workbench — Tech Spec
 
 ## Summary
 
-Render mapped GitHub Conversation threads inline in the Diff and support direct GitHub actions: single comments, replies, Resolve/Unresolve, edit, and confirmed delete.
+Replace Patchdesk’s local `ReviewBatch` draft and hidden Review draft dock with a GitHub-native pending-review lifecycle.
 
-New inline actions bypass the local Review draft. The existing Review write boundary remains authoritative for freshness, lifecycle, and safe failure handling.
+A maintainer starts a review from the Diff, creating a remote `PENDING` review with the first inline thread. Patchdesk reads the signed-in maintainer’s pending review, renders its pending comments in the Diff, lets the maintainer add more review comments, and finishes it from a GitHub-style modal. The final summary and Comment/Approve/Request changes decision are supplied only at submit time. Discard deletes the pending review after explicit confirmation.
+
+This design is conditional on the disposable-PR validation spike in the linked plan. It specifies only contracts that the spike must prove. Unknown API behavior remains an open question, not an implied feature.
 
 ## Context / Current State
 
-- `Conversation` deliberately excludes inline threads from timeline entries.
-- `GitHubComments` already loads GitHub review threads, including anchor, state, and replies.
-- The Diff annotation seam currently renders Findings and local-comment draft previews.
-- Reply, thread-state, edit, and delete adapter methods exist; direct single-comment creation does not.
-- `ReviewWriteGate.requireFresh()` already validates Review ownership, terminal state, represented snapshot, session/head identity, and optional patch hash.
-- `PublishedFeedbackService` is unsuitable as the primary owner: it is panel-oriented and cannot create a mapped single comment or render thread state.
+- `src/domain/review-batch.ts` makes a local `ReviewBatch` authoritative until `ReviewSubmissionService` creates a pending review at publication time.
+- `src/services/review-submission-service.ts` already performs a safe create-pending → persist receipt → submit sequence, but cannot import or incrementally update remote pending reviews.
+- `src/adapters/github/github-adapter.ts` can create and submit a pending review, but `getPullRequestPublishedFeedback` intentionally omits unsubmitted reviews and the writer has no pending-review read/add-thread/discard operations.
+- `ReviewWorkbenchFlow` creates a `DraftSlot`, but `ReviewWorkbench` permanently hides `data-review-workbench-draft-dock`.
+- The current direct composer uses `InlineConversationService` to publish immediately. It is protected by the loopback capability, `ReviewWriteGate.requireFresh()`, exact-head validation, and typed results.
+- Current ADRs require a local draft, persistent dock, and local carry-forward across revisions. ADR-0014 must supersede those decisions only for Review drafting.
 
 ## Goals
 
-- Show open and resolved threads whose full anchor maps to the current Diff.
-- Support old-side and new-side anchors.
-- Publish new comments and replies directly to GitHub.
-- Make Resolve/Unresolve immediate explicit actions.
-- Permit only the signed-in author to edit or delete their comments.
-- Keep GitHub authoritative through post-write refresh.
-- Preserve one clear local API and service seam for all direct inline actions.
+- Make one viewer-owned GitHub pending review the remote source of truth for active review comments.
+- Use a GitHub-style header and Finish review modal instead of the hidden bottom dock.
+- Import a pending review started on GitHub by the authenticated account.
+- Offer **Comment now** or **Start a review** before a review exists; use **Add review comment** afterward.
+- Keep explicit refresh, capability protection, sandboxing, freshness, exact-head validation, confirmation, and unknown-outcome recovery.
+- Let mapped Findings and explicit Analysis completion actions use the same pending-review owner.
 
 ## Non-Goals
 
-- Outdated, unanchored, partial-range, or cross-side thread mapping.
-- GitHub pending reviews.
-- Local persistence of unsent comment text.
-- Conversation-screen write actions.
-- Resolved-thread filtering.
-- Per-thread GitHub links.
-- Changes to merge or Review-batch publication behavior.
+- A local mirror, offline queue, or two-way sync for a remote pending review.
+- Automatic adoption, submission, discard, or mutation of another reviewer’s pending review.
+- Polling, webhooks, or implicit refresh.
+- A compatibility layer that maintains both `ReviewBatch` and a remote pending review.
+- Handling unmapped/general Analysis feedback until the validation spike proves an empty pending review can exist without the final summary, or a separate product decision supplies a source of truth.
+- Reply/Resolve/Unresolve pending-review behavior unless the spike confirms it.
 
 ## Invariants
 
-- A mapped Conversation thread is open or resolved and maps every line of one same-side range.
-- Direct comments never enter the local Review draft.
-- Every direct write requires a fresh, open Review and a final GitHub head check.
-- Delete requires confirmation; Comment, Reply, Save, Resolve, and Unresolve are explicit write controls.
-- Failed state changes restore the last confirmed UI state.
-- Comment bodies never enter logs, diagnostics, or toast messages.
+1. The renderer never invokes GitHub; it calls only capability-protected loopback routes.
+2. A remote pending review is importable only when its PR and author match the represented PR and `resolveAuthenticatedAccount()` result.
+3. An incomplete pending-review read is `Unavailable`, never `None`.
+4. Starting or adding a pending inline comment requires an open, fresh Review, represented patch/hash, valid full same-side anchor, and final GitHub head match.
+5. Submit and discard require an explicit user action. Discard additionally requires destructive confirmation.
+6. Before any create, add, submit, or discard remote write, persist a typed operation intent. A timeout or lost response moves the state to `OutcomeUnknown`; no automatic retry is allowed.
+7. Only explicit Refresh replaces the represented remote snapshot. After refresh, new coordinate writes require the new head; an existing remote pending review remains available to submit or discard.
+8. Comment bodies, raw GitHub output, credentials, repository paths, and stack traces do not enter logs, diagnostics, toasts, or protocol failures.
 
 ## Design Constraints
 
-- The renderer remains sandboxed and may never invoke GitHub directly.
-- Unknown local-API input is strictly parsed before entering service logic.
-- Expected failures use typed result channels; no normal write failure is thrown across application layers.
-- GitHub-accepted content remains distinct from the local Review draft under ADR-0006.
-- Existing safe Markdown rendering and image/Mermaid lightbox behavior are reused.
-- The direct path must not weaken merge or batch-publication protections.
+- Use existing Valibot strict object parsing in `src/main/local-api.ts` and existing ID parsers in `src/domain/ids.ts`.
+- Reuse the existing GitHub adapter and `CommandRunner`; GraphQL/REST response shape stays in `src/adapters/github/github-adapter.ts`.
+- Model legal lifecycle states with tagged unions. Persist only parsed values and durable recovery evidence.
+- Keep one keyed pending-review operation owner per Review/session. Do not overlap mutations against the same remote pending review.
+- Use existing Base UI/shadcn `Dialog`, `AlertDialog`, `Button`, `Badge`, `Textarea`, and `Select`; do not add a UI dependency or a second dialog inside another dialog.
 
 ## Alternatives Considered
 
-### Option 1: Extend the local Review draft
+### Option 1: Restore the local Review draft dock
 
-Add thread actions and comments to `ReviewBatch`, then publish through batch submission.
+Keep `ReviewBatch` local, reveal the dock, and retain current two-step publication.
 
-Rejected: violates the agreed immediate GitHub behavior and makes inline discussion look unpublished.
+- **State:** local batch is authoritative; GitHub pending review exists only during final publish.
+- **Seams:** current `ReviewBatchController` and `ReviewSubmissionService` continue unchanged.
+- **Tradeoff:** lowest implementation risk, but conflicts with the selected GitHub-first interaction and cannot carry a pending review started on GitHub into Patchdesk.
 
-### Option 2: Renderer calls GitHub directly
+Rejected by product decision.
 
-Let the React renderer invoke `gh` or GitHub APIs.
+### Option 2: Mirror local draft edits to GitHub pending comments
 
-Rejected: breaks Electron sandboxing, bypasses the loopback capability boundary, and prevents Review lifecycle validation.
+Keep `ReviewBatch`, create a remote pending review on the first local item, and synchronize each local edit.
 
-### Option 3: One direct-inline command service
+- **State:** local and remote copies, remote identity per local item, synchronization and divergence states.
+- **Seams:** a synchronizer must own duplicate prevention, external edits, orphan cleanup, stale-anchor migration, and retry recovery.
+- **Tradeoff:** supports local editing but adds two authorities and makes uncertain writes materially harder to recover.
 
-Add one protected local API command endpoint backed by an `InlineConversationService`. It owns freshness checks, final head validation, authorization, GitHub writes, and typed results.
+Rejected. It recreates the hidden-draft split the change removes.
 
-Recommended: one command seam, no draft coupling, and one testable owner for all direct actions.
+### Option 3: Remote pending review is the authoritative draft
+
+Read, create, append, submit, and discard the viewer’s pending review through one service. The UI projects that remote state; it does not maintain an editable local copy.
+
+- **State:** `None`, `Pending`, and persisted in-flight/unknown operation states.
+- **Seams:** pending-review domain/service, GitHub adapter, protected loopback command route, renderer projection/modal.
+- **Tradeoff:** requires the validation spike and deliberate recovery logic, but matches GitHub and gives one authority.
 
 ## Recommendation
 
-Use Option 3.
-
-Expose inline-thread data through the existing workbench projection, derive mapped card annotations in the renderer, and send all mutations through:
-
-```txt
-renderer
-  -> POST /v1/reviews/inline-conversations/command
-  -> InlineConversationService
-  -> ReviewWriteGate + current GitHub head check
-  -> GitHubReviewWriter
-  -> typed response
-  -> renderer optimistic update + awaited refresh
-```
+Use Option 3. The app has one remote pending-review owner, one authoritative reader/writer adapter, and one workbench projection. Existing immediate-comment support remains only as the explicitly selected **Comment now** branch. Existing reply and thread-state mutations remain separate until the validation spike proves that GitHub attaches them to the pending review as expected.
 
 ## Proposed Design
 
 ### Domain Model and Types
 
-Keep timeline entries separate from inline threads, but carry inline data in the same GitHub-owned Conversation payload:
+Add parsed GitHub review IDs rather than passing arbitrary strings through services:
 
 ```ts
-type InlineConversation = {
-  readonly threads: ReadonlyArray<GitHubConversationThread>;
-  readonly complete?: boolean;
-  readonly incompleteReason?:
-    | "thread_cap"
-    | "comment_cap"
-    | "pagination"
-    | "unavailable";
-};
+export type GitHubReviewRestId = Brand<string, "GitHubReviewRestId">;
+export type GitHubReviewNodeId = Brand<string, "GitHubReviewNodeId">;
 
-type Conversation = {
-  readonly prDescription: string;
-  readonly entries: ReadonlyArray<ConversationEntry>;
-  readonly inline: InlineConversation;
-  readonly complete?: boolean;
-  readonly incompleteReason?:
-    | "thread_cap"
-    | "comment_cap"
-    | "pagination"
-    | "unavailable";
-};
-```
-
-`Conversation.entries` remains general/timeline-only. `Conversation.inline` is consumed only by the Diff.
-
-Add viewer authorship from the GitHub thread query:
-
-```ts
-type GitHubComment = {
-  readonly id: string; // GitHub GraphQL node ID
-  readonly author: string;
-  readonly body: string;
-  readonly createdAt: IsoTimestamp;
-  readonly updatedAt?: IsoTimestamp;
-  readonly url?: string;
-  readonly location?: DiffLocation;
-  readonly viewerDidAuthor: boolean;
-};
-```
-
-Use a strict annotation union instead of optional combinations:
-
-```ts
-type DiffAnnotationAnchor = {
-  readonly id: string;
-  readonly path: string;
-  readonly start: number;
-  readonly end: number;
+export type PendingReviewAnchor = {
+  readonly path: RepoRelativePath;
+  readonly startLine: number;
+  readonly line: number;
   readonly side: "new" | "old";
 };
 
-type ReviewInlineAnnotation =
-  | (DiffAnnotationAnchor & {
-      readonly _tag: "Finding";
-      readonly severity: string;
-      readonly title: string;
-      readonly explanation: string;
-    })
-  | (DiffAnnotationAnchor & {
-      readonly _tag: "DraftInlineComment";
-      readonly body: string;
-    })
-  | (DiffAnnotationAnchor & {
-      readonly _tag: "ConversationThread";
-      readonly thread: GitHubConversationThread;
-    })
-  | (DiffAnnotationAnchor & {
-      readonly _tag: "DirectCommentComposer";
-      readonly composerId: string;
-    });
-```
-
-Add a pure mapper that requires every line in a range to exist in the parsed patch:
-
-```ts
-type MapConversationThreadResult =
-  | {
-      readonly _tag: "Mapped";
-      readonly annotation: Extract<
-        ReviewInlineAnnotation,
-        { readonly _tag: "ConversationThread" }
-      >;
-    }
-  | {
-      readonly _tag: "Excluded";
-      readonly reason:
-        | "outdated"
-        | "unanchored"
-        | "invalid_range"
-        | "unmapped";
-    };
-
-function mapConversationThread(
-  patch: ReadonlyArray<ParsedPatchFile>,
-  thread: GitHubConversationThread,
-): MapConversationThreadResult;
-```
-
-This must not reuse `mapFindingLocation()` unchanged: that helper currently verifies range endpoints, while mapped Conversation threads require every line in the range.
-
-### Direct Command Contract
-
-Use one strict command DTO:
-
-```ts
-type DirectConversationExpectation = {
-  readonly sessionId: string;
-  readonly headSha: string;
-  readonly patchHash: string;
+export type PendingReviewComment = {
+  readonly reviewCommentId: GitHubReviewCommentId;
+  readonly threadId: GitHubThreadId;
+  readonly body: string;
+  readonly anchor: PendingReviewAnchor;
+  readonly createdAt: IsoTimestamp;
 };
 
-type DirectConversationCommand =
+export type ViewerPendingReview = {
+  readonly restId: GitHubReviewRestId;
+  readonly nodeId: GitHubReviewNodeId;
+  readonly author: GitHubLogin;
+  readonly pr: PullRequestRef;
+  readonly headSha: GitSha;
+  readonly comments: ReadonlyArray<PendingReviewComment>;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
+};
+```
+
+The `GitHubReviewCommentId` and `GitHubLogin` parsers are added to `src/domain/ids.ts` only if the spike proves their respective wire values. A pending read cannot omit its review identity, PR identity, author, head SHA, or complete comment list.
+
+```ts
+export type PendingReviewOperation =
+  | { readonly _tag: "Start"; readonly requestId: PendingReviewRequestId }
   | {
-      readonly _tag: "CreateComment";
-      readonly expected: DirectConversationExpectation;
-      readonly anchor: {
-        readonly path: string;
-        readonly startLine: number;
-        readonly line: number;
-        readonly side: "new" | "old";
-      };
+      readonly _tag: "AddThread";
+      readonly requestId: PendingReviewRequestId;
+      readonly reviewId: GitHubReviewNodeId;
+      readonly anchor: PendingReviewAnchor;
+    }
+  | {
+      readonly _tag: "Submit";
+      readonly requestId: PendingReviewRequestId;
+      readonly reviewId: GitHubReviewRestId;
+      readonly event: GitHubReviewEvent;
+    }
+  | {
+      readonly _tag: "Discard";
+      readonly requestId: PendingReviewRequestId;
+      readonly reviewId: GitHubReviewRestId;
+    };
+
+export type PendingReviewState =
+  | { readonly _tag: "None" }
+  | { readonly _tag: "Pending"; readonly review: ViewerPendingReview }
+  | {
+      readonly _tag: "WriteInFlight";
+      readonly review: ViewerPendingReview | undefined;
+      readonly operation: PendingReviewOperation;
+      readonly startedAt: IsoTimestamp;
+    }
+  | {
+      readonly _tag: "OutcomeUnknown";
+      readonly review: ViewerPendingReview | undefined;
+      readonly operation: PendingReviewOperation;
+      readonly startedAt: IsoTimestamp;
+    };
+```
+
+`WriteInFlight` and `OutcomeUnknown` are durable state, not merely button state. A renderer-only optimistic row may identify a pending command by `PendingReviewRequestId`, but it is never treated as a thread/comment ID.
+
+### Types, Interfaces, and APIs
+
+The adapter is the only GitHub API boundary. Its exact GraphQL selections and REST URLs are defined only after the spike.
+
+```ts
+export type PendingReviewRead =
+  | { readonly _tag: "None" }
+  | { readonly _tag: "Pending"; readonly review: ViewerPendingReview }
+  | { readonly _tag: "Unavailable" };
+
+export type PendingReviewWriteFailure =
+  | { readonly _tag: "NotFresh" }
+  | { readonly _tag: "HeadChanged"; readonly currentHeadSha: GitSha }
+  | { readonly _tag: "NotFound" }
+  | { readonly _tag: "PermissionDenied" }
+  | { readonly _tag: "Rejected" }
+  | { readonly _tag: "Unavailable" }
+  | { readonly _tag: "OutcomeUnknown" };
+
+export interface GitHubPendingReviewGateway {
+  getViewerPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: GitHubLogin;
+  }): Promise<Result<PendingReviewRead, GitHubReadFailure>>;
+
+  startPendingReviewWithThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+
+  addPendingReviewThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly reviewId: GitHubReviewNodeId;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<PendingReviewComment, GitHubWriteFailure>>;
+
+  submitPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewRestId;
+    readonly event: GitHubReviewEvent;
+    readonly summaryBody: string;
+  }): Promise<Result<{ readonly reviewId: GitHubReviewRestId }, GitHubWriteFailure>>;
+
+  discardPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewRestId;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+}
+```
+
+`getViewerPendingReview()` must resolve the authenticated account before invoking the adapter and compare it with the remote author inside the adapter. It returns `Unavailable` for pagination/incomplete data rather than granting a false absence.
+
+The service owns lifecycle, persistence, and gates:
+
+```ts
+export type StartPendingReviewInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly expected: ReviewWriteExpectation;
+  readonly anchor: PendingReviewAnchor;
+  readonly body: string;
+};
+
+export type AddPendingReviewThreadInput = StartPendingReviewInput & {
+  readonly pendingReviewId: GitHubReviewNodeId;
+};
+
+export type SubmitPendingReviewInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly expected: ReviewWriteExpectation;
+  readonly event: GitHubReviewEvent;
+  readonly summaryBody: string;
+};
+
+export type DiscardPendingReviewInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly expected: ReviewWriteExpectation;
+  readonly confirmation: true;
+};
+
+export interface PendingReviewService {
+  reconcile(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  start(input: StartPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  addThread(input: AddPendingReviewThreadInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  submit(input: SubmitPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  discard(input: DiscardPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+}
+```
+
+The loopback protocol receives strict Valibot variants. `expected` is the existing session/head/patch-hash expectation, parsed into branded values before service entry.
+
+```ts
+type PendingReviewCommandDto =
+  | {
+      readonly _tag: "Start";
+      readonly expected: ReviewWriteExpectationDto;
+      readonly anchor: PendingReviewAnchorDto;
       readonly body: string;
     }
   | {
-      readonly _tag: "Reply";
-      readonly expected: DirectConversationExpectation;
-      readonly threadId: string;
+      readonly _tag: "AddThread";
+      readonly expected: ReviewWriteExpectationDto;
+      readonly pendingReviewId: string;
+      readonly anchor: PendingReviewAnchorDto;
       readonly body: string;
     }
   | {
-      readonly _tag: "SetThreadState";
-      readonly expected: DirectConversationExpectation;
-      readonly threadId: string;
-      readonly state: "open" | "resolved";
+      readonly _tag: "Submit";
+      readonly expected: ReviewWriteExpectationDto;
+      readonly event: "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+      readonly summaryBody: string;
     }
   | {
-      readonly _tag: "EditComment";
-      readonly expected: DirectConversationExpectation;
-      readonly commentId: string;
-      readonly body: string;
-    }
-  | {
-      readonly _tag: "DeleteComment";
-      readonly expected: DirectConversationExpectation;
-      readonly commentId: string;
+      readonly _tag: "Discard";
+      readonly expected: ReviewWriteExpectationDto;
       readonly confirmation: true;
     };
 ```
 
-All command objects are Valibot strict objects. Parse IDs into existing branded IDs before service entry.
-
-Return semantic results:
+The workbench response replaces `draft?: ReviewBatch` with a read projection. It may contain comment bodies because that data already crosses the existing validated Conversation/read projection; it never includes capability values, raw adapter errors, or persistence paths.
 
 ```ts
-type DirectConversationReceipt =
-  | { readonly _tag: "CommentCreated"; readonly commentId: string }
-  | { readonly _tag: "ReplyCreated"; readonly commentId: string }
+type PendingReviewProjection =
+  | { readonly state: "none" }
   | {
-      readonly _tag: "ThreadStateChanged";
-      readonly threadId: string;
-      readonly state: "open" | "resolved";
+      readonly state: "pending";
+      readonly count: number;
+      readonly review: {
+        readonly nodeId: string;
+        readonly headSha: string;
+        readonly comments: ReadonlyArray<PendingReviewCommentProjection>;
+      };
     }
-  | { readonly _tag: "CommentEdited"; readonly commentId: string }
-  | { readonly _tag: "CommentDeleted"; readonly commentId: string };
-
-type DirectConversationFailure =
-  | { readonly _tag: "InvalidInput" }
-  | { readonly _tag: "NotFound" }
-  | { readonly _tag: "NotFresh" }
-  | { readonly _tag: "TerminalReview" }
-  | { readonly _tag: "PermissionDenied" }
-  | { readonly _tag: "GitHubRejected" }
-  | { readonly _tag: "GitHubUnavailable" }
-  | { readonly _tag: "OutcomeUnknown" };
+  | {
+      readonly state: "recovery_required";
+      readonly action: "start" | "add_thread" | "submit" | "discard";
+    };
 ```
 
-### Service and Adapter Interfaces
+### Seams, Boundaries, Adapters, and Implementations
 
-```ts
-interface InlineConversationService {
-  execute(
-    input: {
-      readonly profileId: WorkspaceProfileId;
-      readonly reviewId: ReviewId;
-      readonly command: DirectConversationCommand;
-    },
-  ): Promise<Result<DirectConversationReceipt, DirectConversationFailure>>;
-}
-```
+- **`src/domain/pending-review.ts`:** parsed values, legal state transitions, operation/receipt coherence, persistence codec.
+- **`src/adapters/github/github-adapter.ts`:** GraphQL/REST request construction, raw response parsing, author/PR matching, and `GitHubWriteFailure` classification.
+- **`src/services/pending-review-service.ts`:** serializes one pending-review owner, calls `ReviewWriteGate`, persists intent/receipt, and invokes the adapter.
+- **`src/services/review-refresh-service.ts`:** retains ownership of explicit represented-snapshot replacement, asks the pending-review service to reconcile only as part of open/refresh/recovery.
+- **`src/main/local-api.ts`:** parses unknown request JSON, enforces loopback capability, and maps typed outcomes to safe HTTP responses.
+- **`src/renderer/src/renderer-contracts.ts`:** parses `PendingReviewProjection` and command responses before React state uses them.
+- **`ReviewWorkbenchFlow`:** owns each request promise, canonical projection replacement, ephemeral command UI, and refresh calls.
+- **`ReviewWorkbench` / `FinishReviewDialog`:** render the header action, modal, explicit submit/discard confirmation, focus behavior, and no write logic.
 
-The service depends on:
-
-```ts
-type InlineConversationGateway =
-  Pick<
-    GitHubReader,
-    "getPullRequest" | "getPullRequestComments" | "getRepositoryPermission"
-  > &
-  Pick<
-    GitHubReviewWriter,
-    | "createInlineComment"
-    | "createThreadReply"
-    | "setReviewThreadState"
-    | "updateThreadComment"
-    | "deleteThreadComment"
-  >;
-```
-
-Add direct-comment support to `GitHubReviewWriter`:
-
-```ts
-createInlineComment(input: {
-  readonly profile: WorkspaceProfileConfig;
-  readonly pr: PullRequestRef;
-  readonly headSha: GitSha;
-  readonly coordinates: GitHubReviewCoordinates;
-  readonly body: string;
-}): Promise<Result<{ readonly commentId: string }, GitHubWriteFailure>>;
-```
-
-Use the existing REST pull-request-comment endpoint for direct comment creation, with the already established coordinate projection.
-
-Use GraphQL node-ID mutations for thread-comment edit/delete, because inline thread data currently carries GraphQL node IDs:
-
-```ts
-updateThreadComment(input: {
-  readonly profile: WorkspaceProfileConfig;
-  readonly commentId: string;
-  readonly body: string;
-}): Promise<Result<void, GitHubWriteFailure>>;
-
-deleteThreadComment(input: {
-  readonly profile: WorkspaceProfileConfig;
-  readonly commentId: string;
-}): Promise<Result<void, GitHubWriteFailure>>;
-```
-
-GitHub documents `updatePullRequestReviewComment` and `deletePullRequestReviewComment` GraphQL mutations for this node-ID path.
-
-## Seams, Boundaries, Adapters, and Implementations
-
-- **GitHub adapter**: fetches inline threads, includes `viewerDidAuthor`, and translates REST/GraphQL failures to `GitHubWriteFailure`.
-- **Review workbench projection**: projects `Conversation.inline`; never exposes storage paths or credentials.
-- **Renderer contract**: strictly parses the enriched Conversation DTO before UI state uses it.
-- **Inline mapper**: pure renderer-side mapping from validated thread locations to Diff annotations.
-- **Direct command API**: parses unknown JSON and maps typed service outcomes to sanitized HTTP responses.
-- **InlineConversationService**: owns fresh-review validation, exact-head validation, command authorization, and mutation choice.
-- **Renderer flow**: owns ephemeral composer text, pending-card overlays, toast presentation, and awaited refresh.
-
-The renderer may never invoke GitHub directly. The service may never accept unparsed JSON or trust a renderer-provided anchor without validating it against the represented patch.
+The service never receives raw JSON. The renderer never receives the GitHub account token or a raw command failure. The GitHub adapter never decides UI labels or modal state.
 
 ## Call Stacks and Data Flow
 
 ### Current / Old Flow
 
 ```txt
-GitHub review threads
-  -> GitHubReader.getPullRequestComments()
-  -> remote snapshot comments
-  -> Conversation assembly drops inline threads from entries
-  -> WorkbenchResponse
-  -> renderer shows Findings/local drafts only
+Diff composer
+  -> InlineConversationService.createInlineComment
+  -> ReviewWriteGate + exact-head read
+  -> REST POST /pulls/{number}/comments
+  -> direct published comment receipt
+  -> recent-write journal
+  -> explicit refresh later
+
+Analysis/Finding/local draft
+  -> ReviewBatchController
+  -> persisted ReviewBatch
+  -> hidden ReviewDraftDock
+  -> ReviewSubmissionService.createPendingReview
+  -> submitPendingReview
 ```
 
-### Proposed / New Read Flow
+The first flow publishes immediately; the second flow remains local until final publication. They are separate authorities.
+
+### Proposed / New Flow: start or add an inline review comment
 
 ```txt
-GitHub review threads
-  -> GitHubReader.loadConversation()
-  -> Conversation.inline
-  -> represented remote snapshot
+selected Diff range + body + user click
+  -> renderer chooses Start or AddThread DTO
+  -> POST /v1/reviews/pending-review/command (unknown JSON)
+  -> parsePendingReviewCommand(strict Valibot)
+  -> PendingReviewService.start | addThread(typed input)
+  -> keyed Review/session serialization
+  -> ReviewWriteGate.requireFresh(expected)
+  -> getPullRequest() exact-head check
+  -> persist WriteInFlight(operation)
+  -> GitHubPendingReviewGateway.startPendingReviewWithThread | addPendingReviewThread
+  -> parse remote receipt/review
+  -> persist Pending(review) receipt
+  -> PendingReviewProjection
+  -> renderer validates projection, clears composer, shows Finish review · N
+```
+
+`Comment now` stays on the existing `InlineConversationService` route. It remains an explicit immediate GitHub write and cannot run through the pending-review service.
+
+### Proposed / New Flow: import, refresh, and finish
+
+```txt
+Review open | explicit Refresh | Check GitHub again
+  -> resolveAuthenticatedAccount()
+  -> getViewerPendingReview(profile, PR, account)
+  -> adapter parses complete remote result and proves author + PR
+  -> PendingReviewService.reconcile()
+  -> persist None | Pending | resolved recovery state
   -> ReviewWorkbenchProjection
-  -> strict WorkbenchResponse parser
-  -> mapConversationThread(parsedPatch, thread)
-  -> ReviewInlineAnnotation { _tag: "ConversationThread" }
-  -> Diff card after final mapped line
+  -> header Start a review | Finish review · N
+
+Finish review modal + Submit
+  -> strict Submit DTO
+  -> PendingReviewService.submit()
+  -> require represented pending review + persist WriteInFlight(Submit)
+  -> final exact-head check only when required by the selected refresh policy
+  -> GitHubPendingReviewGateway.submitPendingReview(summaryBody, event)
+  -> persist None + submitted-feedback receipt
+  -> explicit refresh replaces GitHub snapshot
 ```
 
-### Create Comment Flow
+The optional summary textarea is modal-local until Submit. Closing the modal does not claim it persisted remotely.
+
+### Proposed / New Flow: discard
 
 ```txt
-selected same-side range + body
-  -> renderer validates non-empty body
-  -> strict CreateComment DTO
-  -> local API parser
-  -> InlineConversationService.execute()
-  -> ReviewWriteGate.requireFresh(expected)
-  -> load represented patch + require full mapped range
-  -> GitHubReader.getPullRequest() exact-head recheck
-  -> GitHubReviewWriter.createInlineComment()
-  -> CommentCreated receipt
-  -> renderer replaces composer with ephemeral updating card
-  -> await existing refresh flow
-  -> canonical projection replaces ephemeral card
+Finish review -> Discard review -> AlertDialog confirmation
+  -> strict Discard DTO { confirmation: true }
+  -> PendingReviewService.discard()
+  -> persist WriteInFlight(Discard)
+  -> discardPendingReview()
+  -> persist None
+  -> reconcile/read remote state
+  -> header Start a review
 ```
-
-### Reply, State, Edit, and Delete Flow
-
-```txt
-explicit action
-  -> strict command DTO
-  -> ReviewWriteGate.requireFresh(expected)
-  -> current GitHub thread/comment lookup where authorization is needed
-  -> exact-head recheck
-  -> GitHub mutation
-  -> semantic receipt
-  -> optimistic UI update
-  -> await refresh
-```
-
-Delete additionally rejects `confirmation !== true` before any GitHub read or write.
 
 ### Failure Flow
 
-- `NotFresh`: leave the existing card unchanged; offer Refresh; require the maintainer to re-anchor before retrying a new comment.
-- `GitHubRejected` or `PermissionDenied`: restore prior card state; show a safe toast.
-- `GitHubUnavailable`: restore state; show Retry only for state changes and idempotent edit/delete actions.
-- `OutcomeUnknown` for new comments or replies: do not auto-retry, because GitHub has no supplied idempotency key. Refresh first; only the maintainer may explicitly resubmit.
-- A post-success refresh failure does not turn a confirmed GitHub write into a failure. Keep the ephemeral updating card and offer Refresh.
+- Invalid DTO/ID/anchor: local API returns safe `invalid_input`; the service and adapter do not run.
+- Stale session/head/patch: retain the displayed remote pending review, reject new coordinate writes, and offer explicit Refresh.
+- Non-matching account/PR: adapter returns `None` for no viewer review or `NotFound` for a targeted mutation; it never exposes another reviewer’s content.
+- Incomplete pending read: return `Unavailable`; keep current projection and do not render Start a review as proof that none exists.
+- Rejected remote write: persist a safe rejected outcome, leave confirmed remote state unchanged, and show bounded copy.
+- Timeout/lost response/persist failure: persist `OutcomeUnknown`, lock conflicting controls, show Check GitHub again/Open on GitHub, and prohibit retry until reconciliation.
 
 ### Retry, Cancellation, and Idempotency Flow
 
-- Disable only the affected card/composer while its command is in flight.
-- Serialize direct writes per Review with the existing keyed-review serialization pattern used by refresh and workbench control.
-- Thread-state transitions are idempotent by target state.
-- New comments and replies are not automatically retried.
-- The renderer owns each request promise and awaits refresh; no fire-and-forget write or refresh is introduced.
+- Start, AddThread, Submit, and Discard are serialized per Review/session. Each intent has a persisted `PendingReviewRequestId` before its remote write.
+- No create/add/submit/discard is retried automatically. GitHub does not document `clientMutationId` as an idempotency key.
+- Reconciliation is read-only and may run again. It maps a known remote result to the stored request intent or leaves `OutcomeUnknown` locked.
+- Renderer requests are awaited/owned by `ReviewWorkbenchFlow`; no detached mutation or background refresh is introduced.
+- Pass an optional caller-owned `AbortSignal` through any new service/adapter operation only if the existing local API request lifecycle exposes one. Do not add an unowned controller.
 
 ### Observability Flow
 
-Record only:
-
 ```ts
-{
-  reviewId,
-  action: "create_comment" | "reply" | "set_thread_state" | "edit" | "delete",
-  outcome: "ok" | "not_fresh" | "rejected" | "unavailable" | "unknown",
-}
+type PendingReviewLogFields = {
+  readonly reviewId: ReviewId;
+  readonly action: "reconcile" | "start" | "add_thread" | "submit" | "discard";
+  readonly outcome: "ok" | "not_fresh" | "rejected" | "unavailable" | "unknown";
+};
 ```
 
-Never record comment body, repository checkout paths, tokens, or raw GitHub errors.
+Log only this bounded metadata through the existing application log seam. Do not include remote IDs, body content, author names, URLs, command arguments, or raw API responses.
 
 ## Files to Add / Change / Delete
 
-Add:
+### Add
 
-- `src/services/inline-conversation-service.ts`: direct-command owner and typed failures.
-- `tests/services/inline-conversation-service.test.ts`: real-seam service behavior.
-- `src/renderer/src/inline-conversation-mapping.ts`: pure full-range mapping and annotation derivation.
-- `tests/renderer/inline-conversation-mapping.test.ts`: mapping invariants.
+- `src/domain/pending-review.ts` — pending-review values, state machine, parsers, transition helpers.
+- `src/services/pending-review-service.ts` — gated/persisted remote lifecycle owner.
+- `src/renderer/src/components/finish-review-dialog.tsx` — controlled GitHub-style finishing UI.
+- `tests/domain/pending-review.test.ts` — parser/transition behavior.
+- `tests/services/pending-review-service.test.ts` — real gateway seam, recovery, serialization, and failure behavior.
+- `tests/renderer/finish-review-dialog.ui.test.tsx` — dialog/focus/confirmation states.
+- `docs/adr/0014-use-github-pending-reviews-for-review-drafting.md` — superseding Review-draft decision.
 
-Change:
+### Change
 
-- `src/domain/github-context.ts`: enrich Conversation with inline threads and comment authorship.
-- `src/adapters/github/github-adapter.ts`: query authorship; create direct comments; GraphQL edit/delete by node ID.
-- `src/adapters/storage/review-remote-store.ts`: persist and parse enriched Conversation.
-- `src/services/review-workbench-projection.ts`: project inline Conversation data from live and represented snapshots.
-- `src/renderer/src/renderer-contracts.ts`: strict DTO schemas for inline threads and direct-command responses.
-- `src/renderer/src/components/review-diff-view.tsx`: discriminated annotations, card rendering, composer, range reveal.
-- `src/renderer/src/components/review-workbench.tsx`: derive mapped Conversation annotations.
-- `src/renderer/src/flows/review-workbench-flow.tsx`: direct-command callbacks, optimistic UI state, refresh, toasts.
-- `src/main/local-api.ts`: direct command route and protocol parsing.
-- `src/main/desktop-bridge.ts`: allowlist the one direct command route.
-- relevant service, adapter, projection, and renderer tests.
+- `src/domain/ids.ts` — only the parsed GitHub review/comment/login IDs proven by the spike.
+- `src/domain/review-session.ts` and storage adapters — replace batch persistence with pending-review durable state after approved existing-data handling.
+- `src/adapters/github/github-adapter.ts` — authenticated pending read, add-thread, discard, strict response parsers, fake-adapter support.
+- `src/services/review-refresh-service.ts` and workbench projection — reconcile/project pending review on open/refresh/recovery.
+- `src/main/local-api.ts` and `src/main/desktop-bridge.ts` — strict protected pending-review command route and safe projection.
+- `src/renderer/src/renderer-contracts.ts` — pending-review response codecs.
+- `src/renderer/src/flows/review-workbench-flow.tsx` — request ownership, split composer actions, pending projection, Analysis/Finding commands.
+- `src/renderer/src/components/review-workbench.tsx` and `review-diff-view.tsx` — header action, modal mount, Diff action labels and pending annotation behavior.
+- `src/renderer/src/flows/app-fixtures.tsx`, renderer/browser/local-API tests — fixture and observable contract migration.
+- `CONTEXT.md`, task `spec.md`, and ADR references — vocabulary and supersession links.
 
-Delete or replace:
+### Delete after migration and explicit existing-draft data decision
 
-- The normal-Diff manual local-comment composer path. Newly authored Diff comments use direct commands instead.
-- Preview-only thread action markup once real thread cards replace it.
+- `src/domain/review-batch.ts`
+- `src/services/review-batch-controller.ts`
+- `src/services/review-submission-service.ts`
+- `src/services/review-write-controller.ts`
+- `src/renderer/src/components/review-draft-dock.tsx`
+- `src/renderer/src/components/review-batch-panel.tsx`
+- `src/renderer/src/components/publication-preview-dialog.tsx`
+- old `/v1/reviews/batch` and publication preview/confirm/recover routes and their test-only fixtures.
 
 ## RGR TDD Test Plan
 
-1. **Mapped-card projection**
-   - Red: open/resolved current threads do not render.
-   - Green: map full old/new ranges into separate cards after the final line.
-   - Refactor: move mapping to the pure mapper.
+### Slice 1: Parse and reconcile a viewer pending review
 
-2. **Exclusion and reveal**
-   - Red: outdated, unanchored, endpoint-only, and partial-range mappings render incorrectly.
-   - Green: exclude them; reveal required collapsed context.
-   - Refactor: share range validation between selection and thread mapping.
+- **Red:** adapter/service behavior test supplies a complete same-PR/same-account pending review and expects `Pending`; supplies other-account, other-PR, and incomplete results and expects no actionable pending projection.
+- **Green:** add the parsed domain types, fake gateway read, strict adapter parser, and `reconcile()` projection.
+- **Refactor:** isolate ID/author/PR checks in the adapter; keep no GraphQL JSON outside it.
 
-3. **Thread presentation**
-   - Red: cards cannot expose opening/latest reply, expand remaining replies, or disclose partial history.
-   - Green: render accessible cards through the workbench flow.
-   - Refactor: extract shared Markdown comment body rendering.
+### Slice 2: Start a review with its first inline thread
 
-4. **Direct state transitions**
-   - Red: Resolve/Unresolve does not require fresh state or restore on failure.
-   - Green: service gate, final head check, typed receipt/failure, optimistic per-card UI.
-   - Refactor: unify action state handling.
+- **Red:** service test proves a fresh represented range persists `WriteInFlight` before exactly one start mutation and returns `Pending`; stale/foreign/invalid input performs zero mutations.
+- **Green:** add strict command parser, gate/exact-head path, intent persistence, receipt persistence, and renderer Start action.
+- **Refactor:** share exact-anchor parsing with existing direct-comment validation without merging the two command services.
 
-5. **Direct authoring**
-   - Red: Comment/Reply enters a local batch or accepts stale anchors.
-   - Green: direct command parser, exact mapping validation, immediate GitHub adapter call, updating card, refresh.
-   - Refactor: share body parsing and command dispatch.
+### Slice 3: Add a pending review comment and import GitHub-started work
 
-6. **Ownership and destructive actions**
-   - Red: non-owner edit/delete controls appear or delete writes without confirmation.
-   - Green: `viewerDidAuthor` UI guard, server-side final check, explicit delete dialog.
-   - Refactor: centralize comment capability rendering.
+- **Red:** workbench-flow test opens a viewer-owned imported review, shows Finish count, and adds one new comment; adapter test proves bounded complete thread identity.
+- **Green:** add `AddThread` command, header count projection, and composer action switch.
+- **Refactor:** keep transient optimistic rows separate from canonical thread IDs.
 
-7. **Adapter and protocol**
-   - Test accepted/rejected GraphQL and REST payloads through the adapter interface.
-   - Test malformed local command DTOs are rejected before service entry.
-   - Test safe protocol failures and no body leakage.
+### Slice 4: Finish, submit, and discard
 
-8. **Live proof**
-   - Fixture/browser proof for mapped rendering, keyboard navigation, context reveal, and Markdown.
-   - Real-data read-only QA.
-   - GitHub-write QA only with separate explicit authorization.
+- **Red:** renderer/service tests prove the summary is sent only by Submit, the selected event reaches the gateway, and Discard cannot invoke a write without confirmation.
+- **Green:** add `FinishReviewDialog`, submit/discard commands, in-flight modal lock, and safe final projection/feedback refresh.
+- **Refactor:** extract typed finish action rendering; do not nest dialogs.
+
+### Slice 5: Unknown outcomes and explicit refresh
+
+- **Red:** controlled fake gateway timeout after persisted Start/Add/Submit/Discard intent locks controls; a later reconcile proves completed/absent state without a second mutation. Head-change test proves Refresh marks outdated anchors and blocks new coordinate writes.
+- **Green:** add `OutcomeUnknown` transition, Check GitHub again route, explicit-refresh reconciliation, and bounded recovery UI.
+- **Refactor:** centralize operation-to-recovery status mapping in the domain module.
+
+### Slice 6: Remove local draft UI and prove the real surface
+
+- **Red:** browser/renderer tests assert no hidden draft dock remains, the header action works in Files and Insights, dialog focus returns to its trigger, and 960px/1280px/1440px have no viewport overflow.
+- **Green:** remove dock/batch/publication components and legacy routes after all production callers migrate.
+- **Refactor:** remove stale fixture paths and obsolete tests rather than retaining aliases.
+
+Run focused adapter/service/renderer tests after each slice, then `pnpm typecheck`, `pnpm lint`, `pnpm test -- --run`, `pnpm build`, `pnpm run test:a11y`, and `pnpm exec playwright test`. Live Electron verification remains read-only unless the user separately authorizes the disposable-PR spike.
 
 ## Risks and Open Questions
 
-- Existing persisted local inline draft items need an explicit treatment decision if they are still present when this ships; this design does not migrate or republish them.
-- GitHub may accept a mutation but the subsequent refresh may fail. The confirmed action must remain visually distinct from an unconfirmed thread projection.
-- Direct-comment and reply requests have no caller-provided GitHub idempotency key; unknown outcomes must refresh before any manual retry.
+1. **Required validation:** Can GitHub create an empty pending review without using the final summary, then append a thread? This governs unmapped/general Analysis/Finding content.
+2. **Required validation:** Which bounded API selection joins a pending review to complete actionable thread/comment IDs and its author? A partial result must not look like no pending review.
+3. **Required validation:** Does a reply or thread-state mutation join the active pending review, publish separately, or fail? Only proven operations join this feature.
+4. **Required user decision:** Existing persisted `batchContent` needs an explicit retain, export, or discard choice before its storage/code is removed. No silent migration or deletion is specified.
+5. **GitHub behavior:** Confirm discarded pending-review semantics and every unknown-outcome reconciliation path on a disposable PR before enabling the UI.
+6. **Refresh policy:** The selected behavior permits submit/discard of a remote pending review after explicit Refresh even when its anchors became outdated. Confirm the exact GitHub result in the spike and revise if it rejects the operation.

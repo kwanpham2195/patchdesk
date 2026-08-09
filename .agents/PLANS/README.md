@@ -4,12 +4,6 @@ Updated 2026-08-06. Execute independent plans in priority order. Use the design 
 
 ## Execution order and status
 
-- **004 — Make GitHub pending reviews the Review workbench draft**
-  - Priority: P0
-  - Effort: XL
-  - Depends on: explicit authorization and a disposable pull request for the validation spike
-  - Status: TODO
-  - Plan: `.agents/PLANS/004-github-pending-review-workbench.md`
 - **001 — Make the Walkthrough result reader-first with a docked chapter rail**
   - Priority: P1
   - Effort: M/L
