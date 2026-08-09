@@ -330,10 +330,51 @@ export function ReviewWorkbench({
       }];
     });
   }, [actions.deleteComment, actions.editComment, actions.replyToThread, actions.setThreadState, model.conversation.inline, model.fullPatch]);
+  const pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
+    model.pendingReview?.state !== "pending"
+      ? []
+      : (() => {
+          const pendingReview = model.pendingReview;
+          return pendingReview.review.comments.flatMap((comment) => {
+            const parsedThreadId = parseGitHubThreadId(comment.threadId);
+            if (parsedThreadId._tag === "err") return [];
+            return [{
+              id: `pending-review:${comment.threadId}`,
+              path: comment.path,
+              start: comment.startLine,
+              end: comment.line,
+              side: comment.side,
+              severity: "conversation",
+              title: "Pending review",
+              explanation: "",
+              pendingReviewThread: {
+                threadId: parsedThreadId.value,
+                body: comment.body,
+                nodeId: pendingReview.review.nodeId,
+              },
+            }];
+          });
+        })();
+  // A pending-review thread is also visible to the thread reader; the pending
+  // card is the authoritative view for the review owner, so the represented
+  // conversation must not duplicate the same thread id.
+  const pendingThreadIds = new Set(
+    pendingReviewAnnotations.flatMap((annotation) =>
+      annotation.pendingReviewThread === undefined
+        ? []
+        : [annotation.pendingReviewThread.threadId],
+    ),
+  );
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
     ...findings.flatMap((finding) => finding.file === undefined || finding.lineStart === undefined || finding.diffSide === undefined ? [] : [{ id: finding.id, path: finding.file, start: finding.lineStart, end: finding.lineEnd ?? finding.lineStart, side: finding.diffSide, severity: finding.severity, title: finding.title, explanation: finding.explanation }]),
     ...draftInlineAnnotations(model.draft),
-    ...conversationAnnotations,
+    ...conversationAnnotations.filter((annotation) =>
+      !(
+        annotation.conversationThread?.target._tag === "thread" &&
+        pendingThreadIds.has(annotation.conversationThread.target.id)
+      ),
+    ),
+    ...pendingReviewAnnotations,
   ];
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;

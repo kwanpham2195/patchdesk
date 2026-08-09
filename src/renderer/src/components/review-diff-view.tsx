@@ -127,6 +127,21 @@ export type ReviewInlineAnnotation = {
     readonly body: string;
     readonly onDismiss: (localId: string) => void;
   };
+  /** Renderer-only card for a pending-review Start/Add write in flight or confirmed failed; no GitHub identity. */
+  readonly pendingReviewWrite?: {
+    readonly localId: string;
+    readonly status: "sending" | "failed";
+    readonly action: "start" | "add";
+    readonly body: string;
+    readonly message?: string;
+    readonly onDismiss: (localId: string) => void;
+  };
+  /** Authoritative card for one confirmed pending-review thread, derived only from the pending projection. */
+  readonly pendingReviewThread?: {
+    readonly threadId: GitHubThreadId;
+    readonly body: string;
+    readonly nodeId: string;
+  };
   readonly conversationThread?: {
     readonly target: ConversationThreadTarget;
     readonly state: "open" | "resolved" | "outdated" | "unknown";
@@ -317,7 +332,34 @@ function ReviewDiffSurface({
         readonly body: string;
         readonly commentId: string;
       };
+  // Renderer-only feedback while a pending-review Start/Add command is in
+  // flight or confirmed failed. Never a GitHub identity: a sending card only
+  // shows progress, a failed card reports the bounded error, and neither
+  // offers a retry nor becomes an editable Review draft.
+  type PendingReviewWriteOverlay =
+    | {
+        readonly _tag: "sending";
+        readonly localId: string;
+        readonly action: "start" | "add";
+        readonly path: string;
+        readonly start: number;
+        readonly end: number;
+        readonly side: "new" | "old";
+        readonly body: string;
+      }
+    | {
+        readonly _tag: "failed";
+        readonly localId: string;
+        readonly action: "start" | "add";
+        readonly path: string;
+        readonly start: number;
+        readonly end: number;
+        readonly side: "new" | "old";
+        readonly body: string;
+        readonly message: string;
+      };
   const [createdThreads, setCreatedThreads] = useState<ReadonlyArray<CreatedThreadOverlay>>([]);
+  const [pendingWriteOverlays, setPendingWriteOverlays] = useState<ReadonlyArray<PendingReviewWriteOverlay>>([]);
   const localIdCounter = useRef(0);
   const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [deletedCommentIds, setDeletedCommentIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -510,8 +552,59 @@ function ReviewDiffSurface({
       );
     }
   }, [authoringSelection, clearAuthoring, localCommentAuthoring, patch]);
+  const submitPendingWrite = useCallback(async (
+    action: "start" | "add",
+    anchor: LocalCommentLocation,
+    body: string,
+    run: (anchor: LocalCommentLocation, body: string) => Promise<void>,
+  ): Promise<void> => {
+    const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
+    localIdCounter.current += 1;
+    setPendingWriteOverlays((current) => [
+      ...current,
+      { _tag: "sending", localId, action, path: anchor.path, start: anchor.startLine, end: anchor.line, side: anchor.side, body },
+    ]);
+    // The composer closes immediately on submit, before the remote command
+    // resolves; only the transient card represents the write now. onCancel is
+    // not used because it may prompt about discarding text.
+    clearAuthoring();
+    try {
+      await run(anchor, body);
+      // The flow applied the confirmed pending projection on success; the
+      // authoritative pending card replaces this transient at the same anchor.
+      setPendingWriteOverlays((current) => current.filter((entry) => entry.localId !== localId));
+    } catch (cause) {
+      // An unknown outcome must not leave a card that claims anything was
+      // written: the unavailable/recovery state and Check GitHub again own
+      // reconciliation. A confirmed rejection keeps bounded failed feedback.
+      if (cause instanceof PatchdeskApiError && cause.kind === "outcome_unknown") {
+        setPendingWriteOverlays((current) => current.filter((entry) => entry.localId !== localId));
+        return;
+      }
+      setPendingWriteOverlays((current) =>
+        current.map((entry) =>
+          entry.localId === localId
+            ? { ...entry, _tag: "failed" as const, message: composerErrorMessage(cause) }
+            : entry,
+        ),
+      );
+    }
+  }, [clearAuthoring]);
   const localComposerAnnotation = useMemo<ReviewInlineAnnotation | undefined>(() => {
     if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return undefined;
+    // The pending actions are wrapped so a Start/Add submit gets the direct
+    // comment lifecycle: a transient renderer-only card and an unconditional
+    // composer close, both before the remote command is awaited.
+    const wrappedPendingReview: PendingReviewComposerActions | undefined =
+      pendingReviewComposer === undefined
+        ? undefined
+        : {
+            ...pendingReviewComposer,
+            onStartReview: (anchor, body) =>
+              submitPendingWrite("start", anchor, body, pendingReviewComposer.onStartReview),
+            onAddReviewComment: (nodeId, anchor, body) =>
+              submitPendingWrite("add", anchor, body, (a, b) => pendingReviewComposer.onAddReviewComment(nodeId, a, b)),
+          };
     return {
       id: `local-comment:${authoringSelection.id}:${authoringSelection.range.start}:${authoringSelection.range.end}:${authoringSelection.range.side}`,
       path: authoringSelection.id,
@@ -528,15 +621,15 @@ function ReviewDiffSurface({
         side: authoringSelection.range.side === "additions" ? "new" : "old",
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
-        ...(pendingReviewComposer === undefined
+        ...(wrappedPendingReview === undefined
           ? {}
-          : { pendingReview: pendingReviewComposer }),
+          : { pendingReview: wrappedPendingReview }),
       },
     };
-  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring, pendingReviewComposer]);
+  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring, pendingReviewComposer, submitPendingWrite]);
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
-    () =>
-      createdThreads.map((entry) => {
+    () => [
+      ...createdThreads.map((entry: CreatedThreadOverlay) => {
         // A sending/failed card has no GitHub identity at all: no thread id and
         // no comment id, so no write command can ever target it. A published
         // card uses its real comment id as the controlled item key; the
@@ -555,7 +648,7 @@ function ReviewDiffSurface({
               localId: entry.localId,
               status: entry._tag,
               body: entry.body,
-              onDismiss: (localId) =>
+              onDismiss: (localId: string) =>
                 setCreatedThreads((current) =>
                   current.filter((candidate) => candidate.localId !== localId),
                 ),
@@ -597,7 +690,29 @@ function ReviewDiffSurface({
           },
         };
       }),
-    [conversationActions, createdThreads],
+      ...pendingWriteOverlays.map((entry: PendingReviewWriteOverlay) => ({
+        id: `pending-write:${entry.localId}`,
+        path: entry.path,
+        start: entry.start,
+        end: entry.end,
+        side: entry.side,
+        severity: "conversation",
+        title: "Pending review write",
+        explanation: "",
+        pendingReviewWrite: {
+          localId: entry.localId,
+          status: entry._tag,
+          action: entry.action,
+          body: entry.body,
+          ...(entry._tag === "failed" ? { message: entry.message } : {}),
+          onDismiss: (localId: string) =>
+            setPendingWriteOverlays((current) =>
+              current.filter((candidate) => candidate.localId !== localId),
+            ),
+        },
+      })),
+    ],
+    [conversationActions, createdThreads, pendingWriteOverlays],
   );
   const renderedAnnotations = useMemo(
     () => localComposerAnnotation === undefined
@@ -668,11 +783,33 @@ function ReviewDiffSurface({
         annotation.localComposer?.path ?? "",
         annotation.localComposer?.startLine ?? "",
         annotation.localComposer?.line ?? "",
+        // The composer's effective pending state and owner node must bump the
+        // controlled item version so a stale portal re-renders when none
+        // becomes pending, the owner review changes, or a command goes busy.
+        annotation.localComposer?.pendingReview === undefined
+          ? ""
+          : JSON.stringify([
+              annotation.localComposer.pendingReview.state.state,
+              annotation.localComposer.pendingReview.state.state === "pending"
+                ? annotation.localComposer.pendingReview.state.nodeId
+                : "",
+              annotation.localComposer.pendingReview.busy,
+            ]),
         // Pending create cards are controlled items: their status and body must
         // bump the version so the replacement slot re-renders.
         annotation.pendingConversation === undefined
           ? ""
           : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}`,
+        // Pending-review write cards are controlled items too: status, action,
+        // body, and the bounded failure message all bump the version.
+        annotation.pendingReviewWrite === undefined
+          ? ""
+          : `${annotation.pendingReviewWrite.status}\u0000${annotation.pendingReviewWrite.action}\u0000${annotation.pendingReviewWrite.body}\u0000${annotation.pendingReviewWrite.message ?? ""}`,
+        // Confirmed pending threads are controlled items: the owner node,
+        // thread id, and body must bump the version when the projection moves.
+        annotation.pendingReviewThread === undefined
+          ? ""
+          : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
         // Thread cards are controlled items too: resolve state, reconciled
         // comments, and local mutation overrides must bump the version.
         annotation.conversationThread === undefined
@@ -988,6 +1125,12 @@ function ReviewDiffSurface({
       }
       if (finding.pendingConversation !== undefined) {
         return <PendingConversationCard {...finding.pendingConversation} />;
+      }
+      if (finding.pendingReviewWrite !== undefined) {
+        return <PendingReviewWriteCard {...finding.pendingReviewWrite} />;
+      }
+      if (finding.pendingReviewThread !== undefined) {
+        return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
       }
       if (finding.conversationThread !== undefined) {
         const thread = finding.conversationThread;
@@ -1355,6 +1498,75 @@ function PendingConversationCard({
 }
 
 /**
+ * Renderer-only card for a pending-review Start/Add write while the remote
+ * command is in flight or confirmed failed. It has no GitHub identity, offers
+ * no retry (a timeout may have created the thread), and never becomes an
+ * editable Review draft: Refresh or Check GitHub again reconcile it.
+ */
+function PendingReviewWriteCard({
+  localId,
+  status,
+  action,
+  body,
+  message,
+  onDismiss,
+}: NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]>): React.JSX.Element {
+  const label = action === "start" ? "Starting review…" : "Adding to pending review…";
+  return (
+    <article
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
+      data-review-pending-write={localId}
+      aria-label={`${status === "sending" ? label : "Pending review write failed"}`}
+    >
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{status === "sending" ? label : "Pending review write failed"}</span>
+        {status === "sending" ? <span>Waiting for GitHub</span> : null}
+      </div>
+      <div className="mt-2">
+        <p className="font-semibold">You</p>
+        <PullRequestDescriptionPreview markdown={body} />
+      </div>
+      {status === "failed" ? (
+        <div className="mt-2">
+          <p role="alert" className="text-sm text-destructive">{message}</p>
+          <Button size="sm" variant="outline" className="mt-2" onClick={() => onDismiss(localId)}>
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/**
+ * Authoritative inline card for one comment of the viewer's pending review,
+ * derived only from the confirmed pending projection. Explicitly not
+ * published: no Reply/Resolve/Unresolve/edit/delete controls, and no
+ * assumption that other reviewers can see it.
+ */
+function PendingReviewThreadCard({
+  threadId,
+  body,
+}: NonNullable<ReviewInlineAnnotation["pendingReviewThread"]>): React.JSX.Element {
+  return (
+    <article
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
+      data-review-pending-thread={threadId}
+      aria-label="Pending review comment"
+    >
+      <div className="flex items-center gap-2 text-xs">
+        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 font-medium text-amber-200">Pending review</span>
+        <span className="text-muted-foreground">Not yet submitted</span>
+      </div>
+      <div className="mt-2">
+        <p className="font-semibold">You</p>
+        <PullRequestDescriptionPreview markdown={body} />
+      </div>
+    </article>
+  );
+}
+
+/**
  * One comment row shared by opening comments, represented replies, and
  * optimistic published replies. A viewer-authored comment with edit/delete
  * handlers exposes the same controls everywhere, so a reply is editable and
@@ -1618,6 +1830,19 @@ function MockCommentAvatar({
   );
 }
 
+/** Bounded copy for a failed inline write; shared by the composer and the transient pending-write card. */
+function composerErrorMessage(cause: unknown): string {
+  if (cause instanceof PatchdeskApiError) {
+    if (cause.kind === "stale_head") return "This pull request has changed. Refresh and try again.";
+    if (cause.kind === "github_rejected" || cause.kind === "rejected") return "GitHub rejected this comment.";
+    if (cause.kind === "revision_conflict") return "This comment cannot be published against the current diff.";
+    if (cause.kind === "outcome_unknown") return "GitHub could not confirm this write. Check GitHub again before trying again.";
+    if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Refresh to see its current state.";
+    return `Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`;
+  }
+  return cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.";
+}
+
 function InlineCommentComposer({
   path,
   startLine,
@@ -1647,15 +1872,8 @@ function InlineCommentComposer({
     catch (cause: unknown) {
       if (cause instanceof PatchdeskApiError) {
         console.error("Inline review comment failed", { kind: cause.kind, status: cause.status, correlationId: cause.correlationId });
-        if (cause.kind === "stale_head") setError("This pull request has changed. Refresh and try again.");
-        else if (cause.kind === "github_rejected" || cause.kind === "rejected") setError("GitHub rejected this comment.");
-        else if (cause.kind === "revision_conflict") setError("This comment cannot be published against the current diff.");
-        else if (cause.kind === "outcome_unknown") setError("GitHub could not confirm this write. Check GitHub again before trying again.");
-        else if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") setError("The pending review changed. Refresh to see its current state.");
-        else setError(`Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`);
-      } else {
-        setError(cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.");
       }
+      setError(composerErrorMessage(cause));
     }
     finally { setSaving(false); }
   };

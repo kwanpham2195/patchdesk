@@ -6,6 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { parseGitHubThreadId } from "../../src/domain/ids";
+import type { Result } from "../../src/domain/result";
+
+const must = <T,>(result: Result<T, unknown>): T => {
+  if (result._tag === "ok") return result.value;
+  throw new Error("fixture");
+};
 
 vi.mock("@pierre/diffs", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -400,3 +408,168 @@ describe("review diff hydration", () => {
       }
     }
   });
+describe("pending-review composer lifecycle", () => {
+  const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+  // The accessible fallback renders the composer synchronously; the Pierre
+  // code-view path renders annotations asynchronously in jsdom.
+  const withFallbackDom = async (run: () => Promise<void>): Promise<void> => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    try {
+      await run();
+    } finally {
+      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
+    }
+  };
+  const renderDiff = (overrides: Record<string, unknown> = {}) => {
+    const parsed = parseReviewDiff(patch);
+    return render(
+      <ReviewDiffView
+        patch={patch}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath="src/a.ts"
+        preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+        collapsedPaths={new Set()}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={() => undefined}
+        localCommentAuthoring={{ enabled: true, onSave: vi.fn(async () => undefined) }}
+        virtualized={false}
+        {...overrides}
+      />,
+    );
+  };
+  // The Pierre code-view path renders composer and annotation portals
+  // asynchronously in jsdom; keep constructable stylesheets available.
+  const withCodeViewDom = async (run: () => Promise<void>): Promise<void> => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (window.CSSStyleSheet !== undefined && window.CSSStyleSheet.prototype.replaceSync === undefined) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      await run();
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
+    }
+  };
+  const openCodeViewComposer = async (user: ReturnType<typeof userEvent.setup>, body: string) => {
+    const authorButtons = await screen.findAllByRole("button", { name: "Add comment on src/a.ts" });
+    const commentButton = authorButtons.at(-1);
+    if (commentButton === undefined) throw new Error("Expected an inline comment action");
+    commentButton.dataset.lineNumber = "1";
+    commentButton.dataset.lineSide = "additions";
+    await user.click(commentButton);
+    await user.type(await screen.findByRole("textbox", { name: "Inline comment" }), body);
+  };
+  const composerActions = (overrides: Record<string, unknown> = {}) => ({
+    state: { state: "none" },
+    busy: false,
+    onStartReview: vi.fn(async () => undefined),
+    onAddReviewComment: vi.fn(async () => undefined),
+    ...overrides,
+  });
+  const openComposer = async (user: ReturnType<typeof userEvent.setup>) => {
+    const row = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
+    const addButton = row?.querySelector<HTMLButtonElement>('button[aria-label="Add comment on src/a.ts"]');
+    if (!addButton) throw new Error("Expected inline comment action");
+    await user.click(addButton);
+    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "test");
+  };
+
+  it("closes the composer immediately when Start a review is submitted", async () => {
+    await withFallbackDom(async () => {
+      const user = userEvent.setup();
+      const actions = composerActions();
+      renderDiff({ pendingReviewComposer: actions });
+      await openComposer(user);
+      await user.click(screen.getByRole("button", { name: "Start a review" }));
+      await waitFor(() => expect(actions.onStartReview).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+    });
+  });
+
+  it("shows a transient starting card while the command is unresolved and removes it on success", async () => {
+    await withCodeViewDom(async () => {
+      const user = userEvent.setup();
+      let resolveStart!: () => void;
+      const startPromise = new Promise<void>((resolve) => { resolveStart = resolve; });
+      const actions = composerActions({ onStartReview: vi.fn(async () => { await startPromise; }) });
+      renderDiff({ pendingReviewComposer: actions });
+      await openCodeViewComposer(user, "test");
+      await user.click(screen.getByRole("button", { name: "Start a review" }));
+      expect(await screen.findByText("Starting review…")).toBeTruthy();
+      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+      resolveStart();
+      await waitFor(() => expect(screen.queryByText("Starting review…")).toBeNull());
+      expect(actions.onStartReview).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps a bounded failed card on a confirmed rejection and never claims a thread", async () => {
+    await withCodeViewDom(async () => {
+      const user = userEvent.setup();
+      const actions = composerActions({
+        onStartReview: vi.fn(async () => { throw new PatchdeskApiError("github_rejected", 409, false, "corr", "rejected"); }),
+      });
+      renderDiff({ pendingReviewComposer: actions });
+      await openCodeViewComposer(user, "test");
+      await user.click(screen.getByRole("button", { name: "Start a review" }));
+      expect(await screen.findByText("GitHub rejected this comment.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
+      // No retry is offered and no thread identity is advertised.
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      expect(document.querySelector('[data-review-pending-thread]')).toBeNull();
+    });
+  });
+
+  it("leaves no card when the outcome is unknown (recovery owns reconciliation)", async () => {
+    await withCodeViewDom(async () => {
+      const user = userEvent.setup();
+      const actions = composerActions({
+        onStartReview: vi.fn(async () => { throw new PatchdeskApiError("outcome_unknown", 503, false, "corr", "unknown"); }),
+      });
+      renderDiff({ pendingReviewComposer: actions });
+      await openCodeViewComposer(user, "test");
+      await user.click(screen.getByRole("button", { name: "Start a review" }));
+      await waitFor(() => expect(actions.onStartReview).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(document.querySelector('[data-review-pending-write]')).toBeNull());
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+  });
+
+  it("renders an authoritative pending-review thread card without published-thread controls", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (window.CSSStyleSheet !== undefined && window.CSSStyleSheet.prototype.replaceSync === undefined) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    const threadId = must(parseGitHubThreadId("PRRT_pending_test"));
+    renderDiff({
+      annotations: [{
+        id: "pending-review:PRRT_pending_test",
+        path: "src/a.ts",
+        start: 1,
+        end: 1,
+        side: "new",
+        severity: "conversation",
+        title: "Pending review",
+        explanation: "",
+        pendingReviewThread: { threadId, body: "Needs a follow-up", nodeId: "PRR_kwDORJzsQM7e6QwJ" },
+      }],
+    });
+    const card = await screen.findByRole("article", { name: "Pending review comment" });
+    expect(card.textContent).toContain("Pending review");
+    expect(card.textContent).toContain("Needs a follow-up");
+    // No Reply/Resolve/Unresolve/edit/delete controls on a pending card.
+    expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unresolve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    if (styleSheet?.value !== undefined) {
+      delete styleSheet.value.prototype.replaceSync;
+    }
+  });
+});
