@@ -1,6 +1,6 @@
 # Implementation Plans
 
-Updated 2026-08-06. Execute independent plans in priority order. Use the design artifacts named by each plan as structural references; production styling should continue using the existing Base UI/shadcn primitives and Tailwind utilities.
+Updated 2026-08-09. Execute independent plans in priority order. Use the design artifacts named by each plan as structural references; production styling should continue using the existing Base UI/shadcn primitives and Tailwind utilities.
 
 ## Execution order and status
 
@@ -25,6 +25,15 @@ Updated 2026-08-06. Execute independent plans in priority order. Use the design 
   - Verification: focused renderer suite 38/38, full suite 852/852, typecheck, lint, build, browser workbench spec 21/21 scope tests, `git diff --check` clean. `pnpm test:design` still fails on pre-existing dock-visibility failures (Review draft dock / Published feedback dock `hidden` since 2a8a038), reproduced identically at baseline b3a5868.
 
 ## Dependency notes
+
+- **2026-08-09 — Correct the pending-review inline lifecycle**
+  - Priority: P0
+  - Effort: L
+  - Depends on: reconciling the current uncommitted desktop-bridge allowlist fix
+  - Status: DONE (implementation + full gate; live Electron QA read-only pass pending)
+  - Plan: `.agents/PLANS/2026-08-09-pending-review-inline-lifecycle.md`
+  - Scope: schema-valid AddThread, pending-thread inline feedback, stale-composer removal, and symmetric own-write detection exclusion. It does not authorize GitHub writes.
+  - Verification: full suite 1034/1 skipped, typecheck, lint, build clean; playwright 33/33; `git diff --check` clean. The user-owned pending review on cfw-bo-staff-api#717 is untouched; no GitHub write was made.
 
 - The plan is intentionally one slice. Establishing scroll ownership and the reader layout must happen together; splitting them would create intermediate states with competing scroll containers.
 - 002 is independent of 001; they touch different surfaces (settings/inbox vs Walkthrough reader).
