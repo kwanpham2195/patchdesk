@@ -951,9 +951,10 @@ describe("local API pending-review boundary", () => {
       const noCapability = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers, body: JSON.stringify(fixture.request) });
       expect(noCapability.status).toBe(401);
       const writeHeaders = () => ({ ...headers, "X-Patchdesk-Capability": capability });
-      const invalidAnchor = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { ...fixture.request.command, anchor: { path: "src/a.ts", startLine: 5, line: 1, side: "new" } } }) });
+      const command = fixture.request.command as { readonly expected: unknown };
+      const invalidAnchor = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { ...command, anchor: { path: "src/a.ts", startLine: 5, line: 1, side: "new" } } }) });
       expect(invalidAnchor.status).toBe(400);
-      const unknownTag = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { _tag: "Discard", expected: fixture.request.command.expected } }) });
+      const unknownTag = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { _tag: "Discard", expected: command.expected } }) });
       expect(unknownTag.status).toBe(400);
     } finally { await fixture.api.stop(); }
   });
