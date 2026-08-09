@@ -20,6 +20,7 @@ import {
   PendingReviewService,
   projectPendingReview,
 } from "../../src/services/pending-review-service";
+import type { ReviewWriteGate } from "../../src/services/review-write-gate";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -65,6 +66,7 @@ const review = (): ViewerPendingReview => {
 
 function session(pendingReview?: PendingReviewState): ReviewSession {
   return {
+    schemaVersion: 4,
     id: "session-a" as never,
     key: sessionKey,
     state: { _tag: "Created" },
@@ -95,10 +97,10 @@ function makeStore(initial: ReviewSession) {
   };
 }
 
-function makeGate(sessionValue: ReviewSession) {
+function makeGate(sessionValue: ReviewSession): Pick<ReviewWriteGate, "requireFresh" | "requireCurrentSession"> {
   return {
-    requireFresh: vi.fn(async () => ok({ profile: { ghAccount: "pmquan2cfw" } as never, session: sessionValue })),
-    requireCurrentSession: vi.fn(async () => ok({ profile: { ghAccount: "pmquan2cfw" } as never, session: sessionValue })),
+    requireFresh: vi.fn(async () => ok({ profile: { ghAccount: "pmquan2cfw" } as never, session: sessionValue }) as never),
+    requireCurrentSession: vi.fn(async () => ok({ profile: { ghAccount: "pmquan2cfw" } as never, session: sessionValue }) as never),
   };
 }
 
