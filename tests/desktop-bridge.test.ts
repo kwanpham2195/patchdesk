@@ -75,6 +75,8 @@ describe("desktop request bridge", () => {
     "/v1/reviews/draft/merge",
     "/v1/reviews/draft/replace",
     "/v1/reviews/draft/findings/finding-1/add",
+    "/v1/reviews/pending-review/command",
+    "/v1/reviews/pending-review/recover",
   ])("allows the canonical protected Review route %s", (path) => {
     expect(isAllowedDesktopRequest({ path, method: "POST" })).toBe(true);
   });
@@ -86,6 +88,16 @@ describe("desktop request bridge", () => {
     { method: "POST", path: "/v1/reviews/insights/analysis/findings/finding-1/add/extra" },
     { method: "POST", path: "/v1/reviews/draft/findings/finding-1/add/extra" },
   ] as const)("rejects a non-canonical Review route %s $path", ({ method, path }) => {
+    expect(isAllowedDesktopRequest({ method, path })).toBe(false);
+  });
+
+  it.each([
+    { method: "GET", path: "/v1/reviews/pending-review/command" },
+    { method: "GET", path: "/v1/reviews/pending-review/recover" },
+    { method: "POST", path: "/v1/reviews/pending-review/command/extra" },
+    { method: "POST", path: "/v1/reviews/pending-review/force" },
+    { method: "POST", path: "/v1/reviews/pending-review/command/" },
+  ] as const)("rejects a non-canonical pending-review route %s $path", ({ method, path }) => {
     expect(isAllowedDesktopRequest({ method, path })).toBe(false);
   });
 
