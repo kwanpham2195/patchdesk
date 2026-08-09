@@ -10,6 +10,15 @@ Tests mirror those boundaries under `tests/`. Browser coverage is in `tests/brow
 
 Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`. Design app: `pnpm dev:design`.
 
+Before starting any task, make sure the dev log tails are live in herdr:
+
+- Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk/logs/patchdesk.jsonl`).
+- Dev tab: the `pnpm dev` console (renderer/api log lines and HMR output).
+- If either pane is gone or idle, start/restart it before doing the work.
+- Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code. A stale main process shows as repeated `400 invalid_input` on `/v1/reviews/detect-updates` (old route schema vs new typed journal). Restart via the herdr dev tab (Ctrl-C, then `pnpm dev -- --remote-debugging-port=9233`).
+
+Verification commands:
+
 - `pnpm lint`: ESLint with no warnings.
 - `pnpm typecheck`: TypeScript checks.
 - `pnpm test -- --run`: Vitest unit and integration suite.
@@ -17,6 +26,8 @@ Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`. Design app: `pnp
 - `pnpm exec playwright test`: browser tests.
 
 For desktop or renderer changes, run those commands in that order. Package and smoke-test only when package-specific proof is requested.
+
+For live verification of the running app, use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) — never substitute a build, unit test, or static inspection for live app checks, and keep live checks read-only.
 
 ## Code and Testing Conventions
 
