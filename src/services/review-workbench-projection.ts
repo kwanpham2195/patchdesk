@@ -41,6 +41,9 @@ import type { MergeReadiness } from "../domain/merge-readiness";
 import type { InsightFindingDismissal, InsightRecord, RetainedInsight } from "../domain/insight-record";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewAttempt } from "../domain/review-attempt";
+import type { PendingReviewProjection } from "./pending-review-service";
+import { projectPendingReview } from "./pending-review-service";
+import type { PendingReviewState } from "../domain/pending-review";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
 import {
@@ -93,6 +96,7 @@ export type ReviewWorkbenchProjection = {
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
   };
   readonly draft?: ReviewBatch;
+  readonly pendingReview?: PendingReviewProjection;
   readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
@@ -149,10 +153,11 @@ export class ReviewWorkbenchProjectionService {
 
   async loadLocal(
     input: LoadWorkbenchInput,
+    pendingReview?: { readonly state: PendingReviewState; readonly unavailable: boolean },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const session = await this.loadSession(input);
     if (session._tag === "err") return session;
-    return this.project(session.value, undefined, "local");
+    return this.project(session.value, undefined, "local", undefined, false, pendingReview);
   }
 
   /** Projects the exact remote snapshot represented by the durable Review. */
@@ -162,6 +167,7 @@ export class ReviewWorkbenchProjectionService {
     readonly snapshot: ReviewRemoteSnapshot;
     readonly refreshedAt: IsoTimestamp;
     readonly updatesAvailable?: boolean;
+    readonly pendingReview?: { readonly state: PendingReviewState; readonly unavailable: boolean };
   }): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const session = await this.loadSession({ profileId: input.profileId, sessionId: input.sessionId });
     if (session._tag === "err") return session;
@@ -173,11 +179,12 @@ export class ReviewWorkbenchProjectionService {
       commits: input.snapshot.commits,
       checks: { _tag: "ok", value: input.snapshot.checks },
       ...(input.snapshot.mergeEvidence === undefined ? {} : { mergeEvidence: input.snapshot.mergeEvidence }),
-    }, "represented", input.refreshedAt, input.updatesAvailable === true);
+    }, "represented", input.refreshedAt, input.updatesAvailable === true, input.pendingReview);
   }
 
   async load(
     input: LoadWorkbenchInput,
+    pendingReview?: { readonly state: PendingReviewState; readonly unavailable: boolean },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const [profile, session] = await Promise.all([
       this.profiles.load(input.profileId),
@@ -204,7 +211,7 @@ export class ReviewWorkbenchProjectionService {
       current,
       conversation: conversationResult,
       checks,
-    }, "live");
+    }, "live", undefined, false, pendingReview);
   }
 
   async refreshRemote(
@@ -251,6 +258,7 @@ export class ReviewWorkbenchProjectionService {
     source: "local" | "represented" | "live",
     representedAt?: IsoTimestamp,
     updatesAvailable = false,
+    pendingReview?: { readonly state: PendingReviewState; readonly unavailable: boolean },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const [fullPatch, attempts] = await Promise.all([
       readFile(session.patchPath, "utf8").catch(() => undefined),
@@ -352,6 +360,10 @@ export class ReviewWorkbenchProjectionService {
         walkthrough,
       },
       ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
+      pendingReview: projectPendingReview(
+        pendingReview?.state ?? session.pendingReview ?? { _tag: "None" },
+        pendingReview?.unavailable ?? false,
+      ),
       conversation,
       checks,
       mergeReadiness,

@@ -13,6 +13,8 @@ import type { ReviewSessionPreparation } from "./review-session-preparation";
 import type { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import { revokePublicationAuthorization } from "../domain/publication-authorization";
 import type { ReviewWorkbenchProjection, WorkbenchProjectionFailure } from "./review-workbench-projection";
+import type { PendingReviewService } from "./pending-review-service";
+import type { PendingReviewState } from "../domain/pending-review";
 import { hashSnapshot } from "../adapters/storage/review-remote-store";
 
 export type ReviewRefreshFailure = {
@@ -51,11 +53,13 @@ export type ReviewRefreshDependencies = {
   readonly preparation: Pick<ReviewSessionPreparation, "prepare">;
   readonly now: () => IsoTimestamp;
   readonly publicationAuthorizations?: Pick<PublicationAuthorizationStore, "load" | "save">;
+  readonly pendingReview?: Pick<PendingReviewService, "reconcile">;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
     readonly sessionId: ReviewSessionId;
     readonly snapshot: ReviewRemoteSnapshot;
     readonly refreshedAt: IsoTimestamp;
+    readonly pendingReview?: { readonly state: PendingReviewState; readonly unavailable: boolean };
   }) => Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>>;
 };
 
@@ -223,11 +227,20 @@ export class ReviewRefreshService {
       const savedReview = await this.dependencies.reviews.save(authoritative, review.updatedAt);
       if (savedReview._tag === "err") return err({ reason: "storage" });
       if (this.dependencies.project === undefined) return ok({ review: authoritative, sessionId, snapshot: candidate });
+      // Explicit refresh reconciles the viewer's pending review; a failed read
+      // is unavailable in the projection, never a claim that none exists.
+      const reconciled = this.dependencies.pendingReview === undefined
+        ? undefined
+        : await this.dependencies.pendingReview.reconcile({ profileId: input.profileId, reviewId: input.reviewId });
+      const pendingReview = reconciled === undefined
+        ? undefined
+        : { state: reconciled._tag === "ok" ? reconciled.value.state : ({ _tag: "None" } as PendingReviewState), unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable };
       const projected = await this.dependencies.project({
         profileId: input.profileId,
         sessionId,
         snapshot: candidate,
         refreshedAt: representedRemote.refreshedAt,
+        ...(pendingReview === undefined ? {} : { pendingReview }),
       });
       return projected._tag === "ok"
         ? projected

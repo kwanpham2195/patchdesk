@@ -17,6 +17,8 @@ import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store"
 import type { RecentReviewWrite, ReviewRefreshService } from "./review-refresh-service";
 import type { ReviewCommitService } from "./review-commit-service";
 import { err, ok, type Result } from "../domain/result";
+import type { PendingReviewState } from "../domain/pending-review";
+import type { PendingReviewService } from "./pending-review-service";
 import type { PrepareReviewSessionFailure, ReviewOpenMode, ReviewSessionPreparation } from "./review-session-preparation";
 import type {
   ReviewWorkbenchProjection,
@@ -47,6 +49,7 @@ export class ReviewWorkbenchController {
       readonly commits?: ReviewCommitService;
       readonly migration?: { migrateProfile(profileId: WorkspaceProfileId): Promise<Result<unknown, unknown>> };
     },
+    private readonly pendingReviewService?: Pick<PendingReviewService, "reconcile">,
   ) {}
 
   async open(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
@@ -151,17 +154,18 @@ export class ReviewWorkbenchController {
   }
 
   private async projectStable(review: Review): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const pendingReview = await this.reconcilePendingReview(review.identity.profileId, review.id);
     if (this.lifecycle === undefined || review.representedRemote === undefined) {
-      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId });
+      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId }, pendingReview);
       return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
     if (review.representedRemote.headSha !== review.currentHeadSha) {
-      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId });
+      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId }, pendingReview);
       return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
     const snapshot = await this.lifecycle.remote.load({ profileId: review.identity.profileId, reviewId: review.id, snapshotHash: review.representedRemote.snapshotHash });
     if (snapshot._tag === "err") return err({ reason: "storage" });
-    const projected = await this.projection.loadRepresented({ profileId: review.identity.profileId, sessionId: review.currentSessionId, snapshot: snapshot.value, refreshedAt: review.representedRemote.refreshedAt, updatesAvailable: review.detectedUpdate !== undefined });
+    const projected = await this.projection.loadRepresented({ profileId: review.identity.profileId, sessionId: review.currentSessionId, snapshot: snapshot.value, refreshedAt: review.representedRemote.refreshedAt, updatesAvailable: review.detectedUpdate !== undefined, ...(pendingReview === undefined ? {} : { pendingReview }) });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
   }
 
@@ -176,8 +180,9 @@ export class ReviewWorkbenchController {
     if (reviewId._tag === "ok" && this.lifecycle !== undefined) {
       const review = await this.lifecycle.reviews.load(profileId.value, reviewId.value);
       if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage" });
+      const pendingReview = await this.reconcilePendingReview(profileId.value, reviewId.value);
       if (review.value.representedRemote === undefined || review.value.representedRemote.headSha !== review.value.currentHeadSha) {
-        const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: review.value.currentSessionId });
+        const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: review.value.currentSessionId }, pendingReview);
         return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
       }
       const snapshot = await this.lifecycle.remote.load({
@@ -192,12 +197,25 @@ export class ReviewWorkbenchController {
         snapshot: snapshot.value,
         refreshedAt: review.value.representedRemote.refreshedAt,
         updatesAvailable: review.value.detectedUpdate !== undefined,
+        ...(pendingReview === undefined ? {} : { pendingReview }),
       });
       return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
     }
     if (sessionId._tag === "err") return err({ reason: "invalid_input" });
     const projected = await this.projection.load({ profileId: profileId.value, sessionId: sessionId.value });
     return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+  }
+
+  /** Reconcile the viewer's pending review for this Review before projecting. */
+  private async reconcilePendingReview(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<{ readonly state: PendingReviewState; readonly unavailable: boolean } | undefined> {
+    if (this.pendingReviewService === undefined) return undefined;
+    const reconciled = await this.pendingReviewService.reconcile({ profileId, reviewId });
+    return reconciled._tag === "ok"
+      ? { state: reconciled.value.state, unavailable: reconciled.value.unavailable }
+      : undefined;
   }
 
   private async migrate(profileId: WorkspaceProfileId): Promise<Result<unknown, unknown>> {

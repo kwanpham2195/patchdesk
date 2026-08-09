@@ -43,6 +43,7 @@ import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import type {
   GitHubMergeWriter,
+  GitHubPendingReviewGateway,
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
@@ -54,6 +55,9 @@ import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
 import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../services/published-feedback-service";
 import { InlineConversationService, type DirectConversationCommand } from "../services/inline-conversation-service";
+import type { ReviewWriteExpectation } from "../services/review-write-gate";
+import { PendingReviewService, projectPendingReview, type PendingReviewProjection } from "../services/pending-review-service";
+import type { PendingReviewAnchor } from "../domain/pending-review";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { LegacyBatchDiscardMigration } from "../services/legacy-batch-discard-migration";
@@ -88,7 +92,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok, type Result } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseContentHash, parseFindingId, parseGitHubThreadId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type ReviewId, type WorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseFindingId, parseGitHubReviewNodeId, parseGitHubThreadId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseRepoRelativePath, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type GitHubReviewNodeId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
@@ -386,6 +390,10 @@ export async function startLocalApiServer(
     reviews,
     insights,
   );
+  const inlineConversations = new InlineConversationService(reviewWriteGate, github);
+  const pendingReviews = isGitHubPendingReviewGateway(github)
+    ? new PendingReviewService(reviewWriteGate, sessions, github as GitHubPendingReviewGateway & GitHubReader & GitHubReviewWriter, () => new Date().toISOString() as never)
+    : undefined;
   const reviewRefresh = new ReviewRefreshService({
     profiles,
     reviews,
@@ -395,23 +403,25 @@ export async function startLocalApiServer(
     preparation: reviewPreparation,
     now: () => new Date().toISOString() as never,
     publicationAuthorizations,
-    project: ({ profileId, sessionId, snapshot, refreshedAt }) => reviewProjection.loadRepresented({
+    ...(pendingReviews === undefined ? {} : { pendingReview: pendingReviews }),
+    project: ({ profileId, sessionId, snapshot, refreshedAt, pendingReview }) => reviewProjection.loadRepresented({
       profileId,
       sessionId,
       snapshot,
       refreshedAt,
+      ...(pendingReview === undefined ? {} : { pendingReview }),
     }),
   });
   const publishedFeedback = new PublishedFeedbackService(reviewWriteGate, github, async ({ profileId, reviewId }) => {
     const refreshed = await reviewRefresh.refresh({ profileId, reviewId });
     return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
   });
-  const inlineConversations = new InlineConversationService(reviewWriteGate, github);
   const reviewCommits = new ReviewCommitService(reviews, remoteReviews, sessions, readOnlyGit);
   const reviewWorkbench = new ReviewWorkbenchController(
     reviewPreparation,
     reviewProjection,
     { reviews, remote: remoteReviews, refresh: reviewRefresh, commits: reviewCommits, migration },
+    pendingReviews,
   );
   const reviewCompletion = new ReviewCompletionService(
     paths,
@@ -658,6 +668,8 @@ export async function startLocalApiServer(
       : response(context, await reviewWrites.confirmPublication(await jsonBody(context))),
   );
   app.post("/v1/reviews/inline-conversations/command", async (context) => inlineConversationResponse(context, inlineConversations, await jsonBody(context)));
+  app.post("/v1/reviews/pending-review/command", async (context) => pendingReviewCommandResponse(context, pendingReviews, sessions, await jsonBody(context)));
+  app.post("/v1/reviews/pending-review/recover", async (context) => pendingReviewRecoverResponse(context, pendingReviews, await jsonBody(context)));
   app.post("/v1/reviews/published-comments/edit", async (context) => publishedFeedbackResponse(context, publishedFeedback, "edit", await jsonBody(context)));
   app.post("/v1/reviews/published-comments/delete", async (context) => publishedFeedbackResponse(context, publishedFeedback, "delete", await jsonBody(context)));
   app.post("/v1/reviews/published-reviews/dismiss", async (context) => publishedFeedbackResponse(context, publishedFeedback, "dismiss", await jsonBody(context)));
@@ -1034,14 +1046,137 @@ function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {
     "submitPendingReview" in value
   );
 }
+function isGitHubPendingReviewGateway(value: unknown): value is GitHubPendingReviewGateway {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "getViewerPendingReview" in value &&
+    "startPendingReviewWithThread" in value &&
+    "addPendingReviewThread" in value &&
+    "submitPendingReview" in value &&
+    "resolveAuthenticatedAccount" in value
+  );
+}
 function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
   return (
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
 }
 
-async function inlineConversationResponse(context: Context, service: InlineConversationService, body: unknown): Promise<Response> {
-  const parsed = parseInlineConversationCommand(body);
+type PendingReviewCommandDto =
+  | {
+      readonly _tag: "Start";
+      readonly expected: ReviewWriteExpectation;
+      readonly anchor: PendingReviewAnchor;
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "AddThread";
+      readonly expected: ReviewWriteExpectation;
+      readonly pendingReviewNodeId: GitHubReviewNodeId;
+      readonly anchor: PendingReviewAnchor;
+      readonly body: string;
+    }
+  | {
+      readonly _tag: "Submit";
+      readonly expected: ReviewWriteExpectation;
+      readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+      readonly summaryBody: string;
+    };
+
+async function pendingReviewCommandResponse(context: Context, service: PendingReviewService | undefined, sessions: ReviewSessionStore, body: unknown): Promise<Response> {
+  if (service === undefined) return context.json({ error: "review_write_unavailable" }, 503);
+  const parsed = parsePendingReviewCommand(body);
+  if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
+  const result = parsed.command._tag === "Start"
+    ? await service.start({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, anchor: parsed.command.anchor, body: parsed.command.body })
+    : parsed.command._tag === "AddThread"
+      ? await service.addThread({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, pendingReviewNodeId: parsed.command.pendingReviewNodeId, anchor: parsed.command.anchor, body: parsed.command.body })
+      : await service.submit({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, event: parsed.command.event, summaryBody: parsed.command.summaryBody });
+  if (result._tag === "ok") {
+    return context.json({ pendingReview: projectPendingReview(result.value.state, false) });
+  }
+  const projection = await storedPendingReviewProjection(sessions, parsed.profileId, parsed.command.expected.sessionId);
+  return context.json({
+    error: result.error,
+    ...(projection === undefined ? {} : { pendingReview: projection }),
+  }, pendingReviewFailureStatus(result.error));
+}
+
+async function pendingReviewRecoverResponse(context: Context, service: PendingReviewService | undefined, body: unknown): Promise<Response> {
+  if (service === undefined) return context.json({ error: "review_write_unavailable" }, 503);
+  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
+  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.reconcile({ profileId: profileId.value, reviewId: reviewId.value, recover: true });
+  if (result._tag === "ok") {
+    return context.json({ pendingReview: projectPendingReview(result.value.state, result.value.unavailable) });
+  }
+  return context.json({ error: result.error }, pendingReviewFailureStatus(result.error));
+}
+
+async function storedPendingReviewProjection(sessions: ReviewSessionStore, profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<PendingReviewProjection | undefined> {
+  const loaded = await sessions.load(profileId, sessionId);
+  if (loaded._tag === "err") return undefined;
+  return projectPendingReview(loaded.value.pendingReview ?? { _tag: "None" }, false);
+}
+
+function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
+  if (failure === "invalid_input") return 400;
+  if (failure === "not_found") return 404;
+  if (failure === "not_fresh" || failure === "stale_head" || failure === "permission_denied" || failure === "rejected" || failure === "review_write_in_progress" || failure === "no_pending_review" || failure === "pending_review_locked") return 409;
+  if (failure === "unavailable" || failure === "outcome_unknown") return 503;
+  return 400;
+}
+
+function parsePendingReviewCommand(body: unknown): { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly command: PendingReviewCommandDto } | undefined {
+  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
+  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  const raw = readObjectField(body, "command");
+  const tag = readObjectField(raw, "_tag");
+  const expected = parseReviewWriteExpectation(readObjectField(raw, "expected"));
+  if (profileId._tag === "err" || reviewId._tag === "err" || tag === undefined || expected === undefined) return undefined;
+  if (tag === "Start" || tag === "AddThread") {
+    const anchor = parsePendingReviewAnchor(readObjectField(raw, "anchor"));
+    const bodyValue = readObjectField(raw, "body");
+    if (anchor === undefined || typeof bodyValue !== "string" || bodyValue.trim().length === 0) return undefined;
+    if (tag === "Start") return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Start", expected, anchor, body: bodyValue } };
+    const pendingReviewNodeId = readObjectField(raw, "pendingReviewNodeId");
+    if (typeof pendingReviewNodeId !== "string") return undefined;
+    const parsedNodeId = parseGitHubReviewNodeId(pendingReviewNodeId);
+    if (parsedNodeId._tag === "err") return undefined;
+    return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "AddThread", expected, pendingReviewNodeId: parsedNodeId.value, anchor, body: bodyValue } };
+  }
+  if (tag === "Submit") {
+    const event = readObjectField(raw, "event");
+    const summaryBody = readObjectField(raw, "summaryBody");
+    if ((event !== "APPROVE" && event !== "COMMENT" && event !== "REQUEST_CHANGES") || typeof summaryBody !== "string") return undefined;
+    return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Submit", expected, event, summaryBody } };
+  }
+  return undefined;
+}
+
+function parseReviewWriteExpectation(raw: unknown): ReviewWriteExpectation | undefined {
+  const sessionId = parseReviewSessionId(readObjectField(raw, "sessionId"));
+  const headSha = parseGitSha(readObjectField(raw, "headSha"));
+  const patchHash = parseContentHash(readObjectField(raw, "patchHash"));
+  return sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err"
+    ? undefined
+    : { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value };
+}
+
+function parsePendingReviewAnchor(raw: unknown): PendingReviewAnchor | undefined {
+  const path = readObjectField(raw, "path");
+  const startLine = readObjectField(raw, "startLine");
+  const line = readObjectField(raw, "line");
+  const side = readObjectField(raw, "side");
+  if (typeof path !== "string" || typeof startLine !== "number" || !Number.isInteger(startLine) || startLine < 1 || typeof line !== "number" || !Number.isInteger(line) || line < startLine || (side !== "new" && side !== "old")) return undefined;
+  const parsedPath = parseRepoRelativePath(path);
+  if (parsedPath._tag === "err") return undefined;
+  return { path: parsedPath.value, startLine, line, side };
+}
+
+async function inlineConversationResponse(context: Context, service: InlineConversationService, body: unknown): Promise<Response> {  const parsed = parseInlineConversationCommand(body);
   if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
   if (result._tag === "ok") return context.json(result.value);
