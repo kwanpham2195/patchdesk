@@ -1,6 +1,6 @@
 import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
 import type { GitHubReviewCoordinates } from "../domain/patch";
-import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { parseGitHubThreadId, type ReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewWriteExpectation, ReviewWriteGate } from "./review-write-gate";
 import { err, ok, type Result } from "../domain/result";
 
@@ -42,7 +42,7 @@ export type DirectConversationCommand =
     };
 
 export type DirectConversationReceipt =
-  | { readonly _tag: "CommentCreated"; readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }
+  | { readonly _tag: "CommentCreated"; readonly commentId: string; readonly reviewId?: string }
   | { readonly _tag: "ReplyCreated"; readonly commentId: string; readonly reviewId?: string }
   | { readonly _tag: "ThreadStateChanged"; readonly threadId: string; readonly state: "open" | "resolved" }
   | { readonly _tag: "CommentEdited"; readonly commentId: string }
@@ -58,7 +58,7 @@ export type DirectConversationFailure =
   | "github_write_failed"
   | "confirmation_required";
 
-type Gateway = Pick<GitHubReader, "getPullRequest" | "getPullRequestComments"> & Pick<GitHubReviewWriter, "createInlineComment" | "createThreadReply" | "setReviewThreadState" | "updateThreadComment" | "deleteThreadComment">;
+type Gateway = Pick<GitHubReader, "getPullRequest" | "getReviewThreadTarget" | "getReviewCommentTarget"> & Pick<GitHubReviewWriter, "createInlineComment" | "createThreadReply" | "setReviewThreadState" | "updateThreadComment" | "deleteThreadComment">;
 
 /** Owns direct, GitHub-published Diff conversation commands for one fresh Review. */
 export class InlineConversationService {
@@ -98,16 +98,26 @@ export class InlineConversationService {
         if (created._tag === "err") {
           return err(created.error.category === "pending_review" ? "pending_review" : "github_write_failed");
         }
-        return ok({ _tag: "CommentCreated", commentId: created.value.commentId, ...(created.value.threadId === undefined ? {} : { threadId: created.value.threadId }), ...(created.value.reviewId === undefined ? {} : { reviewId: created.value.reviewId }) });
+        return ok({ _tag: "CommentCreated", commentId: created.value.commentId, ...(created.value.reviewId === undefined ? {} : { reviewId: created.value.reviewId }) });
       }
       case "Reply": {
         if (this.github.createThreadReply === undefined) return err("github_write_failed");
-        const created = await this.github.createThreadReply({ profile: fresh.value.profile, threadId: input.command.threadId as never, body: input.command.body.trim() });
+        const threadId = parseGitHubThreadId(input.command.threadId);
+        if (threadId._tag === "err") return err("not_found");
+        const target = await this.github.getReviewThreadTarget({ profile: fresh.value.profile, pr, threadId: threadId.value });
+        if (target._tag === "err") return err("github_read_failed");
+        if (!target.value.found) return err("not_found");
+        const created = await this.github.createThreadReply({ profile: fresh.value.profile, threadId: threadId.value, body: input.command.body.trim() });
         return created._tag === "err" ? err("github_write_failed") : ok({ _tag: "ReplyCreated", commentId: created.value.commentId, ...(created.value.reviewId === undefined ? {} : { reviewId: created.value.reviewId }) });
       }
       case "SetThreadState": {
         if (this.github.setReviewThreadState === undefined) return err("github_write_failed");
-        const changed = await this.github.setReviewThreadState({ profile: fresh.value.profile, threadId: input.command.threadId as never, state: input.command.state });
+        const threadId = parseGitHubThreadId(input.command.threadId);
+        if (threadId._tag === "err") return err("not_found");
+        const target = await this.github.getReviewThreadTarget({ profile: fresh.value.profile, pr, threadId: threadId.value });
+        if (target._tag === "err") return err("github_read_failed");
+        if (!target.value.found) return err("not_found");
+        const changed = await this.github.setReviewThreadState({ profile: fresh.value.profile, threadId: threadId.value, state: input.command.state });
         return changed._tag === "err" ? err("github_write_failed") : ok({ _tag: "ThreadStateChanged", threadId: input.command.threadId, state: input.command.state });
       }
       case "EditComment":
@@ -126,11 +136,11 @@ export class InlineConversationService {
     }
   }
 
-  private async ownedComment(profile: Parameters<Gateway["getPullRequestComments"]>[0]["profile"], pr: Parameters<Gateway["getPullRequestComments"]>[0]["pr"], commentId: string): Promise<Result<void, DirectConversationFailure>> {
-    const comments = await this.github.getPullRequestComments({ profile, pr });
-    if (comments._tag === "err") return err("github_read_failed");
-    const comment = comments.value.threads.flatMap((thread) => thread.comments).find((candidate) => candidate.id === commentId);
-    return comment === undefined ? err("not_found") : comment.viewerDidAuthor === true ? ok(undefined) : err("permission_denied");
+  private async ownedComment(profile: Parameters<Gateway["getReviewCommentTarget"]>[0]["profile"], pr: Parameters<Gateway["getReviewCommentTarget"]>[0]["pr"], commentId: string): Promise<Result<void, DirectConversationFailure>> {
+    const target = await this.github.getReviewCommentTarget({ profile, pr, commentId });
+    if (target._tag === "err") return err("github_read_failed");
+    if (!target.value.found) return err("not_found");
+    return target.value.viewerDidAuthor === true ? ok(undefined) : err("permission_denied");
   }
 }
 

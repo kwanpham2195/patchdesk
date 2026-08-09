@@ -62,8 +62,15 @@ export class AppLogService {
     await this.writes;
   }
 
-  /** Tail the in-memory stream; `after` resumes from the first entry with seq > after. */
-  tail(after?: number, limit?: number): { readonly entries: ReadonlyArray<LogEntry>; readonly nextSeq: number } {
+  /**
+   * Tail the in-memory stream; `after` resumes from the first entry with
+   * seq > after. The returned `nextAfter` is the sequence of the last returned
+   * entry (or the supplied cursor when nothing was returned), so a consumer
+   * can send it back unchanged as the next `after` without skipping the first
+   * entry written after a poll. It is omitted when the request had no cursor
+   * and the stream was empty.
+   */
+  tail(after?: number, limit?: number): { readonly entries: ReadonlyArray<LogEntry>; readonly nextAfter?: number } {
     const safeLimit = Math.min(this.bufferSize, Math.max(1, limit ?? 500));
     let slice: LogEntry[];
     if (after === undefined) {
@@ -72,7 +79,11 @@ export class AppLogService {
       const start = this.entries.findIndex((entry) => entry.seq > after);
       slice = start === -1 ? [] : this.entries.slice(start, start + safeLimit);
     }
-    return { entries: slice, nextSeq: this.seq };
+    const lastSeq = slice.at(-1)?.seq;
+    return {
+      entries: slice,
+      ...(lastSeq === undefined ? (after === undefined ? {} : { nextAfter: after }) : { nextAfter: lastSeq }),
+    };
   }
 
   /** Enable or disable the terminal mirror (dev runs, --patchdesk-tail-logs). */

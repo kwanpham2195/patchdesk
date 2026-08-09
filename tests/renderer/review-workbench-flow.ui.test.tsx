@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import {
@@ -1707,14 +1708,92 @@ describe("ReviewWorkbenchFlow", () => {
   });
 
   it("publishes an inline comment, skips the background refresh, and journals the write for detection", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          // The REST create receipt has no thread id.
+          return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic", reviewId: "review-42" }, correlationId: "command" };
+        if (input.path === "/v1/reviews/refresh")
+          return { ok: true, body: projection(), correlationId: "refresh" };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const withPatchHash = {
+        ...projection(),
+        revision: { ...projection().revision, patchHash: "patch-hash" as const },
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={withPatchHash}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      // The fixture patch has one deleted and one added line; the added line's
+      // author button is the one that anchors a new-side comment.
+      expect(authorButtons.length).toBeGreaterThan(1);
+      const addedAuthorButton = authorButtons[1];
+      if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
+      fireEvent.click(addedAuthorButton);
+      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Optimistic body" } });
+      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      await vi.advanceTimersByTimeAsync(0);
+      const commandCall = request.mock.calls.find(
+        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+      );
+      expect(commandCall).toBeDefined();
+      expect((commandCall?.[0] as { readonly body: unknown }).body).toMatchObject({
+        profileId: "profile",
+        reviewId: "review-42",
+        command: {
+          _tag: "CreateComment",
+          anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+          body: "Optimistic body",
+        },
+      });
+      expect(
+        request.mock.calls.some(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/refresh",
+        ),
+      ).toBe(false);
+      // A direct receipt never triggers an immediate detection pass; the typed
+      // journal rides the next scheduled (90s) check so own writes never read
+      // as remote updates.
+      await vi.advanceTimersByTimeAsync(90_000);
+      const detectCall = request.mock.calls.find(
+        (call) =>
+          (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates" &&
+          (call[0] as { readonly body?: { readonly recentWrites?: unknown } }).body?.recentWrites !== undefined,
+      );
+      expect(detectCall).toBeDefined();
+      expect(
+        (detectCall?.[0] as { readonly body?: { readonly recentWrites?: ReadonlyArray<{ readonly _tag: string; readonly commentId: string; readonly reviewId?: string }> } }).body?.recentWrites,
+      ).toEqual([{ _tag: "Comment", commentId: "c-optimistic", reviewId: "review-42" }]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not run an immediate detection pass after a direct conversation receipt", async () => {
     const user = userEvent.setup();
     const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
       if (input.path === "/v1/reviews/detect-updates")
         return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
       if (input.path === "/v1/reviews/inline-conversations/command")
-        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic", threadId: "thread-optimistic", reviewId: "review-42" }, correlationId: "command" };
-      if (input.path === "/v1/reviews/refresh")
-        return { ok: true, body: projection(), correlationId: "refresh" };
+        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-new" }, correlationId: "command" };
       throw new Error(`unexpected ${input.path}`);
     });
     Object.defineProperty(window, "patchdesk", {
@@ -1734,49 +1813,520 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
+    const detectCount = (): number =>
+      request.mock.calls.filter(
+        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+      ).length;
+    // The initial visible-Review detection is the only one so far.
+    await waitFor(() => expect(detectCount()).toBe(1));
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
-    // The fixture patch has one deleted and one added line; the added line's
-    // author button is the one that anchors a new-side comment.
-    expect(authorButtons.length).toBeGreaterThan(1);
     const addedAuthorButton = authorButtons[1];
     if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
     await user.click(addedAuthorButton);
-    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Optimistic body");
+    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Body");
     await user.click(screen.getByRole("button", { name: "Comment" }));
-    const commandCall = request.mock.calls.find(
-      (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+        ),
+      ).toBe(true),
     );
-    expect(commandCall).toBeDefined();
-    expect((commandCall?.[0] as { readonly body: unknown }).body).toMatchObject({
-      profileId: "profile",
-      reviewId: "review-42",
-      command: {
-        _tag: "CreateComment",
-        anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
-        body: "Optimistic body",
-      },
+    // A direct receipt only appends its typed journal entry; it must not
+    // trigger or reset a detection pass.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(detectCount()).toBe(1);
+  });
+
+  it("detects initially and then at most every 90 seconds while visible and idle", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (input: { readonly path: string }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      vi.stubGlobal("window", window);
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      render(
+        <ReviewWorkbenchFlow
+          workbench={projection()}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      // waitFor cannot poll under vitest fake timers (no global jest), so the
+      // initial effect is flushed by advancing timers instead.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      // The old 30-second cadence must not fire; the repaired cadence is 90s.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(detectCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("schedules one debounced detection when the app regains focus", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (input: { readonly path: string }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      vi.stubGlobal("window", window);
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      render(
+        <ReviewWorkbenchFlow
+          workbench={projection()}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a stale detector result that began before an explicit refresh", async () => {
+    const user = userEvent.setup();
+    let resolveDetect!: (value: unknown) => void;
+    const pendingDetect = new Promise((resolve) => {
+      resolveDetect = resolve;
     });
-    expect(
-      request.mock.calls.some(
-        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/refresh",
-      ),
-    ).toBe(false);
-    // The write journal rides the next detection pass so own writes never read
-    // as remote updates.
-    await waitFor(() => {
+    const value = projection();
+    const refreshed = { ...value, session: { ...value.session, id: "session-b" } };
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates") return await pendingDetect;
+      if (input.path === "/v1/reviews/refresh")
+        return { ok: true, body: refreshed, correlationId: "refresh" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const replace = vi.fn();
+    const patch = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={value}
+        onWorkbenchReplace={replace}
+        onWorkbenchPatch={patch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    // The initial detection is still in flight while the maintainer refreshes.
+    await user.click(screen.getByRole("button", { name: "PR overview" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Refresh GitHub state" }),
+    );
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
+    // The stale detection completes after refresh replaced the projection; it
+    // must not reapply updates_available to the newly refreshed Review.
+    resolveDetect({ ok: true, body: { updatesAvailable: true }, correlationId: "detect" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(patch).not.toHaveBeenCalled();
+  });
+});
+
+  it("invalidates an in-flight detector when publication refresh replaces the projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const workbench = createUnifiedReviewFixture("publication-ready");
+      // The wire codec re-derives the projection, so refresh/load responses must
+      // be wire-valid (the fixture model is a renderer shape).
+      const refreshed = {
+        ...projection(),
+        draft: workbench.draft,
+        session: { ...projection().session, id: "session-b" },
+      };
+      let resolvePendingDetect!: (value: unknown) => void;
+      const pendingDetect = new Promise((resolve) => {
+        resolvePendingDetect = resolve;
+      });
+      let detectCalls = 0;
+      const request = vi.fn(async (input: { readonly path: string; readonly method?: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates") {
+          detectCalls += 1;
+          // The first detection (on mount) completes normally; the second is
+          // the one still in flight while publication confirm refreshes.
+          if (detectCalls === 1)
+            return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: false } };
+          return await pendingDetect;
+        }
+        if (input.path === "/v1/reviews/publication/preview")
+          return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
+        if (input.path === "/v1/reviews/publication/confirm")
+          return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
+        if (input.path === "/v1/reviews/refresh")
+          return { ok: true, status: 200, correlationId: "refresh", body: refreshed };
+        if (input.path === "/v1/reviews/load")
+          return { ok: true, status: 200, correlationId: "load", body: refreshed };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const replace = vi.fn();
+      const patch = vi.fn();
+      render(
+        <ReviewWorkbenchFlow
+          workbench={workbench}
+          onWorkbenchReplace={replace}
+          onWorkbenchPatch={patch}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCalls).toBe(1);
+      // Start the second detection (in flight) via the focus debounce.
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(detectCalls).toBe(2);
+      // Drive the publication confirmation while that detector is pending.
+      fireEvent.click(screen.getByRole("button", { name: "Preview publication" }));
+      for (let i = 0; i < 20; i += 1) {
+        await vi.advanceTimersByTimeAsync(50);
+        if (screen.queryByRole("dialog") !== null) break;
+      }
+      fireEvent.click(screen.getByRole("button", { name: "Confirm publication" }));
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(0);
+      // The publication refresh (then load) replaced the projection with the
+      // refreshed session (the parsed projection is structurally re-derived).
+      expect(
+        replace.mock.calls.some(
+          (call) => (call[0] as { readonly session: { readonly id: string } }).session.id === "session-b",
+        ),
+      ).toBe(true);
+      // The stale detector completes after publication refresh replaced the
+      // projection; it must not reapply updates_available to the new projection.
+      resolvePendingDetect({ ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: true } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(patch).not.toHaveBeenCalled();
+      expect(patch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          revision: expect.objectContaining({ freshness: "updates_available" }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps detection paused while two direct commands overlap and resumes only after both complete", async () => {
+    vi.useFakeTimers();
+    try {
+      const pendingCommands: Array<(value: unknown) => void> = [];
+      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return await new Promise((resolve) => { pendingCommands.push(resolve); });
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const withPatchHash = {
+        ...projection(),
+        revision: { ...projection().revision, patchHash: "patch-hash" as const },
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={withPatchHash}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      // Start two overlapping inline creates; both commands stay in flight.
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      fireEvent.click(authorButtons[0] as HTMLElement);
+      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "First" } });
+      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      await vi.advanceTimersByTimeAsync(0);
+      const secondAuthor = screen.getAllByRole("button", { name: "Add comment on src/a.ts" }).at(-1);
+      if (secondAuthor === undefined) throw new Error("fixture: second author button missing");
+      fireEvent.click(secondAuthor);
+      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Second" } });
+      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(pendingCommands).toHaveLength(2);
+      // While both commands are in flight, a detector tick must be skipped.
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(1);
+      // The first command completes; the second is still running, so the
+      // detector must stay paused even though one command finished.
+      pendingCommands[0]?.({ ok: true, body: { _tag: "CommentCreated", commentId: "c-1" }, correlationId: "command" });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(1);
+      // The second command completes; the next detector tick may run.
+      pendingCommands[1]?.({ ok: true, body: { _tag: "CommentCreated", commentId: "c-2" }, correlationId: "command" });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("coalesces visibility and focus into exactly one debounced detection", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (input: { readonly path: string }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      render(
+        <ReviewWorkbenchFlow
+          workbench={projection()}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      // A focus regain commonly emits both events back to back.
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+      // No immediate request from visibilitychange, and no duplicate at 1s.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(detectCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a malformed create receipt as a bounded failure: no journal record and no confirmed card", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          // A success envelope missing its comment id is malformed: the local
+          // write cannot be confirmed, so nothing may be journaled.
+          return { ok: true, body: { _tag: "CommentCreated" }, correlationId: "command" };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const withPatchHash = {
+        ...projection(),
+        revision: { ...projection().revision, patchHash: "patch-hash" as const },
+      };
+      render(
+        <ReviewWorkbenchFlow
+          workbench={withPatchHash}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      const addedAuthorButton = authorButtons[1];
+      if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
+      fireEvent.click(addedAuthorButton);
+      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Body" } });
+      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      await vi.advanceTimersByTimeAsync(0);
+      // The command resolved with 200, but the malformed receipt must not be
+      // treated as a confirmed mutation: the next detection carries no journal.
+      await vi.advanceTimersByTimeAsync(90_000);
       const detectCall = request.mock.calls.find(
         (call) =>
           (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates" &&
           (call[0] as { readonly body?: { readonly recentWrites?: unknown } }).body?.recentWrites !== undefined,
       );
-      expect(detectCall).toBeDefined();
-      expect(
-        (detectCall?.[0] as { readonly body?: { readonly recentWrites?: ReadonlyArray<string> } }).body?.recentWrites,
-      ).toEqual(expect.arrayContaining(["c-optimistic", "thread-optimistic", "review-42"]));
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
-    });
+      expect(detectCall).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
-});
+
+  it("does not restart the detector when the parent recreates the patch callback", async () => {
+    vi.useFakeTimers();
+    try {
+      const value = projection();
+      const request = vi.fn(async (input: { readonly path: string }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: true } };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      // App passes onWorkbenchPatch as an inline function and re-renders when
+      // it applies a functional setState; the prop therefore gets a fresh
+      // identity after every patch. The detector cadence must not depend on it.
+      const PatchRecreatingParent = () => {
+        const [, force] = useState(0);
+        return (
+          <ReviewWorkbenchFlow
+            workbench={value}
+            onWorkbenchReplace={vi.fn()}
+            onWorkbenchPatch={() => force((count) => count + 1)}
+            onNavigationStateChange={vi.fn()}
+            onNavigate={vi.fn()}
+          />
+        );
+      };
+      render(<PatchRecreatingParent />);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      // The positive detection made the parent render again, recreating the
+      // callback; that must not spawn an immediate second request.
+      await vi.advanceTimersByTimeAsync(50);
+      expect(detectCount()).toBe(1);
+      // The normal cadence still holds: the next interval fires exactly once.
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not start a detector while a post-publication refresh is pending", async () => {
+    vi.useFakeTimers();
+    try {
+      const workbench = createUnifiedReviewFixture("publication-ready");
+      const refreshed = {
+        ...projection(),
+        draft: workbench.draft,
+        session: { ...projection().session, id: "session-b" },
+      };
+      let resolveRefresh!: (value: unknown) => void;
+      const pendingRefresh = new Promise((resolve) => {
+        resolveRefresh = resolve;
+      });
+      const request = vi.fn(async (input: { readonly path: string }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: false } };
+        if (input.path === "/v1/reviews/publication/preview")
+          return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
+        if (input.path === "/v1/reviews/publication/confirm")
+          return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
+        if (input.path === "/v1/reviews/refresh")
+          return await pendingRefresh;
+        if (input.path === "/v1/reviews/load")
+          return { ok: true, status: 200, correlationId: "load", body: refreshed };
+        throw new Error(`unexpected ${input.path}`);
+      });
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const replace = vi.fn();
+      render(
+        <ReviewWorkbenchFlow
+          workbench={workbench}
+          onWorkbenchReplace={replace}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      const detectCount = (): number =>
+        request.mock.calls.filter(
+          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        ).length;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detectCount()).toBe(1);
+      // Drive the publication confirmation; the refresh it triggers stays
+      // pending, so its generation has incremented but no response arrived.
+      fireEvent.click(screen.getByRole("button", { name: "Preview publication" }));
+      for (let i = 0; i < 20; i += 1) {
+        await vi.advanceTimersByTimeAsync(50);
+        if (screen.queryByRole("dialog") !== null) break;
+      }
+      fireEvent.click(screen.getByRole("button", { name: "Confirm publication" }));
+      await vi.advanceTimersByTimeAsync(0);
+      // A focus-return debounce and a full interval tick during the pending
+      // refresh must not start detector work.
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(detectCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(1);
+      // The refresh resolves; the load replaces the projection with the
+      // refreshed session.
+      resolveRefresh({ ok: true, status: 200, correlationId: "refresh", body: refreshed });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        replace.mock.calls.some(
+          (call) => (call[0] as { readonly session: { readonly id: string } }).session.id === "session-b",
+        ),
+      ).toBe(true);
+      // Once the refresh window closes, the next interval tick may detect.
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(detectCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });

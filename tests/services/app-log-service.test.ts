@@ -34,7 +34,7 @@ describe("AppLogService", () => {
     const tailed = service.tail();
     expect(tailed.entries.map((item) => item.message)).toEqual(["entry-2", "entry-3", "entry-4"]);
     expect(tailed.entries[0]?.seq).toBe(2);
-    expect(tailed.nextSeq).toBe(5);
+    expect(tailed.nextAfter).toBe(4);
   });
 
   it("resumes from after seq", async () => {
@@ -45,6 +45,25 @@ describe("AppLogService", () => {
     service.write(entry({ message: "entry-4" }));
     const resumed = service.tail(first.entries[first.entries.length - 1]?.seq);
     expect(resumed.entries.map((item) => item.message)).toEqual(["entry-4"]);
+  });
+
+  it("returns the last delivered sequence as the exclusive-resume cursor", async () => {
+    const paths = await makePaths();
+    const service = new AppLogService(paths, { bufferSize: 10 });
+    for (let index = 0; index < 3; index += 1) service.write(entry({ message: `entry-${index}` }));
+    const tailed = service.tail();
+    // Entries 0..2 were delivered; the next poll must resume after 2, not
+    // after the next value to allocate (3), or entry 3 would be skipped.
+    expect(tailed.nextAfter).toBe(2);
+  });
+
+  it("preserves the supplied cursor when a poll returns no entries", async () => {
+    const paths = await makePaths();
+    const service = new AppLogService(paths, { bufferSize: 10 });
+    service.write(entry({ message: "entry-0" }));
+    const tailed = service.tail(0);
+    expect(tailed.entries).toEqual([]);
+    expect(tailed.nextAfter).toBe(0);
   });
 
   it("persists every entry to the JSONL file and rotates on size", async () => {

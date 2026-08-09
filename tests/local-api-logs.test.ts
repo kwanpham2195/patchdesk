@@ -49,12 +49,43 @@ describe("local API log stream", () => {
 
     const tailed = await fetch(new URL("v1/logs", localApi.url), { headers: await authHeaders() });
     expect(tailed.status).toBe(200);
-    const body = (await tailed.json()) as { entries: Array<{ process: string; message: string }>; nextSeq: number };
+    const body = (await tailed.json()) as { entries: Array<{ process: string; message: string }>; nextAfter?: number };
     const renderer = body.entries.filter((entry) => entry.process === "renderer");
     expect(renderer).toHaveLength(2);
     expect(renderer[0]?.message).not.toContain("ghp_1234567890abcdef");
     expect(renderer[0]?.message).toContain("POST /v1/reviews/run failed");
-    expect(body.nextSeq).toBe(body.entries.length);
+    // The cursor is the last delivered sequence, so the next poll resumes
+    // exactly after the entries this response delivered.
+    expect(body.nextAfter).toBe(body.entries.length - 1);
+  });
+
+  it("returns an exclusive-resume cursor that never skips the first entry after a poll", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-logs-cursor-")));
+    const logs = new AppLogService(paths);
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths, logs });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    const server = startup.server;
+    localApi = server;
+
+    const post = async (message: string): Promise<void> => {
+      const response = await fetch(new URL("v1/logs", server.url), {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ entries: [{ level: "info", topic: "api", message }] }),
+      });
+      expect(response.status).toBe(200);
+    };
+    await post("one");
+    await post("two");
+    const first = (await (await fetch(new URL("v1/logs", server.url), { headers: await authHeaders() })).json()) as { entries: Array<{ process: string; message: string }>; nextAfter?: number };
+    expect(first.entries.filter((entry) => entry.process === "renderer").map((entry) => entry.message)).toEqual(["one", "two"]);
+    expect(first.nextAfter).toBeDefined();
+    // The next entry arrives before the next poll; resuming with the returned
+    // cursor must deliver it exactly once.
+    await post("three");
+    const resumed = (await (await fetch(new URL(`v1/logs?after=${first.nextAfter}`, server.url), { headers: await authHeaders() })).json()) as { entries: Array<{ process: string; message: string }>; nextAfter?: number };
+    expect(resumed.entries.filter((entry) => entry.process === "renderer").map((entry) => entry.message)).toEqual(["three"]);
+    expect(resumed.nextAfter).toBe((first.nextAfter ?? 0) + 1);
   });
 
   it("keeps the log routes behind the capability boundary", async () => {

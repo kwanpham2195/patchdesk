@@ -52,6 +52,14 @@ const maxReviewThreadPages = 10;
 const maxReviewThreads = 1_000;
 const threadCommentsQuery =
   "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } } }";
+// Single-node ownership proofs: one `$id` variable, no conversation content.
+// PR identity comes from the node's pull request (threads derive it from
+// their first comment), and any owner/repository/number mismatch is resolved
+// inside the adapter as `found: false`, never disclosed to the renderer.
+const reviewThreadTargetQuery =
+  "query ReviewThreadTarget($id: ID!) { node(id: $id) { ... on PullRequestReviewThread { id comments(first: 1) { nodes { id pullRequest { repository { owner { login } name } number } } } } } }";
+const reviewCommentTargetQuery =
+  "query ReviewCommentTarget($id: ID!) { node(id: $id) { ... on PullRequestReviewComment { id viewerDidAuthor pullRequest { repository { owner { login } name } number } } } }";
 const maxReviewCommentPages = 10;
 const maxReviewComments = 5_000;
 const maintainerInboxQuery =
@@ -334,6 +342,18 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>>;
+  /** Bounded proof that a thread node belongs to the active pull request; a missing, foreign, or typeless node is a completed read with `found: false`. */
+  getReviewThreadTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly threadId: GitHubThreadId;
+  }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>>;
+  /** Bounded proof that a comment node belongs to the active pull request, plus viewer authorship. */
+  getReviewCommentTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly commentId: string;
+  }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>>;
   getPullRequestPublishedFeedback?(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -392,6 +412,14 @@ export interface GitHubReader {
 export type MergeOutcome =
   | { readonly state: "open" | "closed_unmerged" }
   | { readonly state: "merged"; readonly mergedAt: IsoTimestamp; readonly mergeCommitSha?: GitSha };
+
+/** Whether a thread node is a member of the active pull request. */
+export type GitHubThreadTarget = { readonly found: true } | { readonly found: false };
+
+/** Whether a comment node is a member of the active pull request, and who authored it. */
+export type GitHubCommentTarget =
+  | { readonly found: true; readonly viewerDidAuthor: boolean }
+  | { readonly found: false };
 
 type MergePolicyPage = {
   readonly headSha: GitSha;
@@ -452,7 +480,7 @@ export interface GitHubReviewWriter {
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>>;
-  createInlineComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }, GitHubWriteFailure>>;
+  createInlineComment?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>>;
   createThreadReply?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>>;
   setReviewThreadState?(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly state: "resolved" | "open" }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: { readonly profile: WorkspaceProfileConfig; readonly commentId: string; readonly body: string }): Promise<Result<void, GitHubWriteFailure>>;
@@ -555,6 +583,8 @@ type GitHubReadOperation =
   | "get_diff"
   | "get_file"
   | "compare_revisions"
+  | "get_thread_target"
+  | "get_comment_target"
   | "auth_status";
 
 /**
@@ -842,6 +872,47 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     cursor = nextCursor;
     }
     return ok({ threads, complete: false, incompleteReason: "thread_cap" });
+  }
+
+  async getReviewThreadTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly threadId: GitHubThreadId;
+  }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=${reviewThreadTargetQuery}`, "-F", `id=${input.threadId}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return missing("get_thread_target");
+    const node = readNode(response.value);
+    // A missing node, an unexpected node type, or a thread with no first
+    // comment is a completed read whose target is simply not a member.
+    if (node === undefined) return ok({ found: false });
+    const threadId = nestedString(node, ["id"]);
+    const commentNodes = nestedArray(node, ["comments", "nodes"]);
+    const comment = commentNodes?.[0];
+    if (threadId !== input.threadId || !isObject(comment)) return ok({ found: false });
+    return matchesPullRequest(comment, input.pr) ? ok({ found: true }) : ok({ found: false });
+  }
+
+  async getReviewCommentTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly commentId: string;
+  }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=${reviewCommentTargetQuery}`, "-F", `id=${input.commentId}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return missing("get_comment_target");
+    const node = readNode(response.value);
+    if (node === undefined) return ok({ found: false });
+    const commentId = nestedString(node, ["id"]);
+    const viewerDidAuthor = nestedBoolean(node, ["viewerDidAuthor"]);
+    if (commentId !== input.commentId || viewerDidAuthor === undefined) return ok({ found: false });
+    return matchesPullRequest(node, input.pr)
+      ? ok({ found: true, viewerDidAuthor })
+      : ok({ found: false });
   }
 
   async getPullRequestPublishedFeedback(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
@@ -1206,7 +1277,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       : ok({ reviewId });
   }
 
-  async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly threadId?: string; readonly reviewId?: string }, GitHubWriteFailure>> {
+  async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
     const response = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`, "--input", "-"],
       stdin: JSON.stringify({ body: input.body, commit_id: input.headSha, ...input.coordinates }),
@@ -1219,16 +1290,11 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     // write journal exclude that review from update detection.
     const rawReviewId = (response.value as Record<string, unknown>)["pull_request_review_id"];
     const reviewId = typeof rawReviewId === "number" || typeof rawReviewId === "string" ? String(rawReviewId) : undefined;
-    // The create receipt is authoritative once the write succeeds: resolve the
-    // thread node id so the card can offer Reply and Resolve immediately.
-    // A failed lookup degrades the receipt (thread id absent) instead of
-    // failing the write, which would invite duplicate comments on retry.
-    const thread = await this.commands.runJson({
-      argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", "query=query($owner:String!,$name:String!,$number:Int!,$id:ID!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id comments(first:5){nodes{id}}}}}}}", "-F", `owner=${input.pr.owner}`, "-F", `name=${input.pr.repo}`, "-F", `number=${input.pr.number}`, "-F", `id=${id}`],
-      timeoutMs: commandTimeoutMs,
-    });
-    const threadId = thread._tag === "ok" ? threadIdFromThreads(thread.value, id) : undefined;
-    return ok({ commentId: id, ...(typeof threadId === "string" && threadId.length > 0 ? { threadId } : {}), ...(typeof reviewId === "string" && reviewId.length > 0 ? { reviewId } : {}) });
+    // The REST create receipt has no thread id, and a partial thread scan
+    // would be slow and incomplete; Reply and Resolve stay disabled until an
+    // explicit refresh represents the real thread. The comment itself remains
+    // editable and deletable by its authoritative node id.
+    return ok({ commentId: id, ...(typeof reviewId === "string" && reviewId.length > 0 ? { reviewId } : {}) });
   }
 
   async createThreadReply(input: { readonly profile: WorkspaceProfileConfig; readonly threadId: GitHubThreadId; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
@@ -1498,6 +1564,33 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       : ok(this.values.comments);
   }
 
+  async getReviewThreadTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly threadId: GitHubThreadId;
+  }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
+    if (this.values.threadTargets === undefined) return missing("get_thread_target");
+    const target = this.values.threadTargets.find(
+      (entry) => entry.threadId === input.threadId && samePullRequest(entry.pr, input.pr),
+    );
+    if (target === undefined) return ok({ found: false });
+    return ok({ found: true });
+  }
+
+  async getReviewCommentTarget(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly commentId: string;
+  }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
+    if (this.values.commentTargets === undefined) return missing("get_comment_target");
+    const target = this.values.commentTargets.find(
+      (entry) => entry.commentId === input.commentId && samePullRequest(entry.pr, input.pr),
+    );
+    return target === undefined
+      ? ok({ found: false })
+      : ok({ found: true, viewerDidAuthor: target.viewerDidAuthor });
+  }
+
   async getPullRequestChecks(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -1507,6 +1600,62 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return this.values.checks === undefined
       ? missing("get_checks")
       : ok(this.values.checks);
+  }
+
+  async createInlineComment(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly coordinates: GitHubReviewCoordinates;
+    readonly body: string;
+  }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
+    void input;
+    return this.values.createInlineComment === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "create_inline_comment" })
+      : ok(this.values.createInlineComment);
+  }
+
+  async createThreadReply(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly threadId: GitHubThreadId;
+    readonly body: string;
+  }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
+    void input;
+    return this.values.createThreadReply === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "create_thread_reply" })
+      : ok(this.values.createThreadReply);
+  }
+
+  async setReviewThreadState(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly threadId: GitHubThreadId;
+    readonly state: "resolved" | "open";
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.setReviewThreadState === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "set_thread_state" })
+      : ok(undefined);
+  }
+
+  async updateThreadComment(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly commentId: string;
+    readonly body: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.updateThreadComment === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "update_comment" })
+      : ok(undefined);
+  }
+
+  async deleteThreadComment(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly commentId: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.deleteThreadComment === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "delete_comment" })
+      : ok(undefined);
   }
 
   async getPullRequestDiff(input: {
@@ -1643,6 +1792,16 @@ export type FakeGitHubAdapterValues = {
   readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
   readonly submittedReview: { readonly reviewId: string };
   readonly mergeResult: { readonly mergeCommitSha?: GitSha };
+  /** Thread ids proven to belong to the fixture pull request (owner/repo/number). */
+  readonly threadTargets: ReadonlyArray<{ readonly threadId: GitHubThreadId; readonly pr: PullRequestRef }>;
+  /** Comment ids proven to belong to the fixture pull request, with authorship. */
+  readonly commentTargets: ReadonlyArray<{ readonly commentId: string; readonly viewerDidAuthor: boolean; readonly pr: PullRequestRef }>;
+  /** Confirmed writer receipts; an absent writer keeps the fake unimplemented. */
+  readonly createInlineComment?: { readonly commentId: string; readonly reviewId?: string };
+  readonly createThreadReply?: { readonly commentId: string; readonly reviewId?: string };
+  readonly setReviewThreadState?: Record<string, never>;
+  readonly updateThreadComment?: Record<string, never>;
+  readonly deleteThreadComment?: Record<string, never>;
 };
 
 function parseMaintainerPullRequest(
@@ -1786,6 +1945,56 @@ function nestedArray(input: unknown, keys: ReadonlyArray<string>): ReadonlyArray
     value = value[key];
   }
   return Array.isArray(value) ? value : undefined;
+}
+
+function nestedObject(input: unknown, keys: ReadonlyArray<string>): Record<string, unknown> | undefined {
+  let value: unknown = input;
+  for (const key of keys) {
+    if (!isObject(value)) return undefined;
+    value = value[key];
+  }
+  return isObject(value) ? value : undefined;
+}
+
+function nestedBoolean(input: unknown, keys: ReadonlyArray<string>): boolean | undefined {
+  let value: unknown = input;
+  for (const key of keys) {
+    if (!isObject(value)) return undefined;
+    value = value[key];
+  }
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** The `data.node` payload of a single-node query; undefined when GitHub returned a null or missing node. */
+function readNode(input: unknown): Record<string, unknown> | undefined {
+  const node = nestedObject(input, ["data", "node"]);
+  return node === undefined ? undefined : node;
+}
+
+/**
+ * Compares a node's pull-request identity with the active Review's pull
+ * request. Thread nodes expose PR identity through their first comment; the
+ * adapter resolves the comparison so a foreign target is never disclosed.
+ */
+function matchesPullRequest(node: Record<string, unknown>, pr: PullRequestRef): boolean {
+  const owner = nestedString(node, ["pullRequest", "repository", "owner", "login"]);
+  const name = nestedString(node, ["pullRequest", "repository", "name"]);
+  const number = nestedNumber(node, ["pullRequest", "number"]);
+  return owner === pr.owner && name === pr.repo && number === pr.number;
+}
+
+/** Fixture counterpart of `matchesPullRequest`: identical membership semantics. */
+function samePullRequest(a: PullRequestRef, b: PullRequestRef): boolean {
+  return a.owner === b.owner && a.repo === b.repo && a.number === b.number;
+}
+
+function nestedNumber(input: unknown, keys: ReadonlyArray<string>): number | undefined {
+  let value: unknown = input;
+  for (const key of keys) {
+    if (!isObject(value)) return undefined;
+    value = value[key];
+  }
+  return typeof value === "number" ? value : undefined;
 }
 
 function isNonNegativeInteger(input: unknown): input is number {
@@ -2279,24 +2488,4 @@ function isManagedFetchedRef(value: string): boolean {
     !value.includes("..") &&
     !value.includes("//")
   );
-}
-
-function threadIdFromThreads(
-  value: unknown,
-  commentId: string,
-): string | undefined {
-  const nodes = nestedArray(value, ["data", "repository", "pullRequest", "reviewThreads", "nodes"]);
-  if (nodes === undefined) return undefined;
-  for (const node of nodes) {
-    if (typeof node !== "object" || node === null) continue;
-    const threadId = (node as Record<string, unknown>)["id"];
-    const comments = (node as Record<string, unknown>)["comments"];
-    if (typeof threadId !== "string") continue;
-    if (typeof comments !== "object" || comments === null) continue;
-    const commentNodes = nestedArray(comments, ["nodes"]);
-    if (commentNodes?.some((comment) => typeof comment === "object" && comment !== null && (comment as Record<string, unknown>)["id"] === commentId)) {
-      return threadId;
-    }
-  }
-  return undefined;
 }

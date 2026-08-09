@@ -6,7 +6,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import { healDetectedUpdate, markDetectedUpdate, markReviewTerminal, moveReviewToSession, type Review } from "../domain/review";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { GitHubComments, GitHubMergeEvidence, GitHubPublishedFeedback, MergePolicySnapshot, PullRequestSummary } from "../domain/github-context";
-import type { IsoTimestamp, ReviewId, ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
+import type { GitHubThreadId, IsoTimestamp, ReviewId, ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSessionPreparation } from "./review-session-preparation";
@@ -18,6 +18,24 @@ import { hashSnapshot } from "../adapters/storage/review-remote-store";
 export type ReviewRefreshFailure = {
   readonly reason: "invalid_input" | "not_found" | "github_read" | "storage" | "head_changed" | "terminal";
 };
+
+/**
+ * Typed record of one GitHub write this app session made since the last
+ * represented snapshot. Detection normalizes both sides of the fingerprint
+ * with these entries so the app's own writes never read as remote updates,
+ * while external activity in the same thread still does.
+ */
+export type RecentReviewWrite =
+  | {
+      readonly _tag: "Comment";
+      readonly commentId: string;
+      readonly reviewId?: string;
+    }
+  | {
+      readonly _tag: "ThreadState";
+      readonly threadId: GitHubThreadId;
+      readonly state: "open" | "resolved";
+    };
 
 export type DetectionResult = {
   readonly updatesAvailable: boolean;
@@ -50,8 +68,8 @@ export class ReviewRefreshService {
   async detect(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-    /** Comment/thread ids this app session wrote; excluded from both sides of the fingerprint so own writes never read as remote updates. */
-    readonly recentWrites?: ReadonlyArray<string>;
+    /** Typed comment/thread-state writes this app session made; excluded from both sides of the fingerprint so own writes never read as remote updates. */
+    readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<DetectionResult, ReviewRefreshFailure>> {
     return this.serialized<DetectionResult>(input.profileId, input.reviewId, async () => {
       const detectedAt = this.dependencies.now();
@@ -91,18 +109,17 @@ export class ReviewRefreshService {
         ...(publishedFeedbackAvailable ? { publishedFeedback: publishedFeedback.value } : {}),
         ...(mergePolicyAvailable && mergePolicy.value !== undefined ? { mergePolicy: mergePolicy.value, mergeEvidence: represented.value.mergeEvidence ?? toMergeEvidence(mergePolicy.value) } : {}),
       };
-      const journaled = new Set(input.recentWrites ?? []);
-      const candidateComments = withoutRecentWrites(candidate.comments, journaled);
-      const representedComments = withoutRecentWrites(represented.value.comments, journaled);
-      const candidateFeedback = publishedFeedbackAvailable && publishedFeedback.value !== undefined ? withoutJournaledFeedback(publishedFeedback.value, journaled) : undefined;
-      const representedFeedback = publishedFeedbackAvailable && represented.value.publishedFeedback !== undefined ? withoutJournaledFeedback(represented.value.publishedFeedback, journaled) : undefined;
+      const journal = input.recentWrites ?? [];
+      const commentPair = withoutRecentWrites(candidate.comments, represented.value.comments, journal);
+      const candidateFeedback = publishedFeedbackAvailable && publishedFeedback.value !== undefined ? withoutJournaledFeedback(publishedFeedback.value, journal) : undefined;
+      const representedFeedback = publishedFeedbackAvailable && represented.value.publishedFeedback !== undefined ? withoutJournaledFeedback(represented.value.publishedFeedback, journal) : undefined;
       // Optional readers are not evidence of a change when unavailable. Compare
       // only fields observed in this detection pass, while retaining the full
       // optional fields for explicit refresh.
-      const metadataChanged = hashSnapshot(fingerprintForDetection({ ...candidate, comments: candidateComments, ...(candidateFeedback === undefined ? {} : { publishedFeedback: candidateFeedback }) }, {
+      const metadataChanged = hashSnapshot(fingerprintForDetection({ ...candidate, comments: commentPair.candidate, ...(candidateFeedback === undefined ? {} : { publishedFeedback: candidateFeedback }) }, {
         publishedFeedback: publishedFeedbackAvailable,
         mergePolicy: mergePolicyAvailable,
-      })) !== hashSnapshot(fingerprintForDetection({ ...represented.value, comments: representedComments, ...(representedFeedback === undefined ? {} : { publishedFeedback: representedFeedback }) }, {
+      })) !== hashSnapshot(fingerprintForDetection({ ...represented.value, comments: commentPair.represented, ...(representedFeedback === undefined ? {} : { publishedFeedback: representedFeedback }) }, {
         publishedFeedback: publishedFeedbackAvailable,
         mergePolicy: mergePolicyAvailable,
       }));
@@ -110,7 +127,7 @@ export class ReviewRefreshService {
         // Nothing in the snapshot content changed. GitHub's pullRequest.updatedAt
         // lags comment and review creation, so a stale represented marker or a
         // phantom detection flag must be healed instead of blocking GitHub writes.
-        const latestMoment = latestRepresentedMoment(current.value, candidateComments, candidateFeedback);
+        const latestMoment = latestRepresentedMoment(current.value, commentPair.candidate, candidateFeedback);
         if (review.detectedUpdate !== undefined || latestMoment > review.representedRemote.pullRequestUpdatedAt) {
           const healed = healDetectedUpdate(review, latestMoment, detectedAt);
           const saved = await this.dependencies.reviews.save(healed, review.updatedAt);
@@ -323,37 +340,82 @@ function withoutViewerMetadata(comments: GitHubComments): GitHubComments {
   };
 }
 
-function withoutRecentWrites(comments: GitHubComments, journaled: ReadonlySet<string>): GitHubComments {
+function withoutRecentWrites(
+  candidate: GitHubComments,
+  represented: GitHubComments,
+  journal: ReadonlyArray<RecentReviewWrite>,
+): { readonly candidate: GitHubComments; readonly represented: GitHubComments } {
   // Comments and threads written by this app session are not yet part of the
   // represented snapshot; exclude them symmetrically so they never read as a
   // remote update, while genuine external changes still are detected.
-  if (journaled.size === 0) return comments;
-  return {
+  if (journal.length === 0) return { candidate, represented };
+  const commentIds = new Set<string>();
+  const latestThreadStateById = new Map<GitHubThreadId, "open" | "resolved">();
+  for (const entry of journal) {
+    if (entry._tag === "Comment") {
+      commentIds.add(entry.commentId);
+    } else {
+      latestThreadStateById.set(entry.threadId, entry.state);
+    }
+  }
+  const withoutComments = (comments: GitHubComments): GitHubComments => ({
     ...comments,
+    // Remove only the journaled comment; a thread survives while any other
+    // (external) comment remains in it, so an external reply in a thread this
+    // session touched is still a fingerprint difference.
     threads: comments.threads
-      .filter((thread) => !journaled.has(thread.id))
       .map((thread) => ({
         ...thread,
-        comments: thread.comments.filter((comment) => !journaled.has(comment.id)),
+        comments: thread.comments.filter((comment) => !commentIds.has(comment.id)),
       }))
       .filter((thread) => thread.comments.length > 0),
+  });
+  const representedWithoutOwnComments = withoutComments(represented);
+  return {
+    candidate: withoutComments(candidate),
+    // Thread-state normalization is intentionally asymmetric: the successful
+    // local change must not read as an update, so the represented side is
+    // forced to the requested state, while the candidate side keeps whatever
+    // GitHub reports. A later external state change therefore differs and
+    // blocks writes; a false stale signal during GitHub propagation is
+    // deliberately preferred over a false fresh signal.
+    represented: {
+      ...representedWithoutOwnComments,
+      threads: representedWithoutOwnComments.threads.map((thread) => {
+        const forced = latestThreadStateById.get(thread.id);
+        return forced === undefined ? thread : { ...thread, state: forced };
+      }),
+    },
   };
 }
 
 function withoutJournaledFeedback(
   feedback: GitHubPublishedFeedback,
-  journaled: ReadonlySet<string>,
+  journal: ReadonlyArray<RecentReviewWrite>,
 ): GitHubPublishedFeedback {
   // A comment create also submits its own COMMENTED review; exclude both the
   // review and the comment from detection until a refresh re-baselines.
-  if (journaled.size === 0) return feedback;
+  if (journal.length === 0) return feedback;
+  const commentIds = new Set<string>();
+  const reviewIds = new Set<string>();
+  for (const entry of journal) {
+    if (entry._tag !== "Comment") continue;
+    commentIds.add(entry.commentId);
+    if (entry.reviewId !== undefined) reviewIds.add(entry.reviewId);
+  }
   return {
     ...feedback,
     reviews: feedback.reviews.filter(
-      (review) => !journaled.has(review.id) && !journaled.has(review.nodeId ?? ""),
+      (review) =>
+        !reviewIds.has(review.id) &&
+        !reviewIds.has(review.nodeId ?? "") &&
+        !commentIds.has(review.nodeId ?? ""),
     ),
     comments: feedback.comments.filter(
-      (comment) => !journaled.has(comment.id) && !journaled.has(comment.nodeId ?? ""),
+      (comment) =>
+        !commentIds.has(comment.id) &&
+        !commentIds.has(comment.nodeId ?? "") &&
+        !reviewIds.has(comment.id),
     ),
   };
 }

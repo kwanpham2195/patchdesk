@@ -69,7 +69,7 @@ function levelClass(level: LogLevel): string {
 /** Live tail of the unified main + renderer log stream. */
 export function LogsPanel(): React.JSX.Element {
   const [entries, setEntries] = useState<ReadonlyArray<LogEntry>>([]);
-  const [nextSeq, setNextSeq] = useState<number | undefined>(undefined);
+  const [afterSeq, setAfterSeq] = useState<number | undefined>(undefined);
   const [paused, setPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<"all" | LogLevel>("all");
   const [processFilter, setProcessFilter] = useState<"all" | LogProcess>("all");
@@ -78,8 +78,8 @@ export function LogsPanel(): React.JSX.Element {
   const atBottomRef = useRef(true);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
-  const nextSeqRef = useRef<number | undefined>(undefined);
-  nextSeqRef.current = nextSeq;
+  const afterSeqRef = useRef<number | undefined>(undefined);
+  afterSeqRef.current = afterSeq;
 
   useEffect(() => {
     let cancelled = false;
@@ -88,10 +88,14 @@ export function LogsPanel(): React.JSX.Element {
         const query = after === undefined ? "limit=300" : `after=${after}&limit=500`;
         const value = await requestJson(`/v1/logs?${query}`);
         if (cancelled || typeof value !== "object" || value === null) return;
-        const record = value as { readonly entries?: unknown; readonly nextSeq?: unknown };
+        const record = value as { readonly entries?: unknown; readonly nextAfter?: unknown };
         const incoming = Array.isArray(record.entries) ? record.entries.filter(isLogEntry) : [];
-        if (typeof record.nextSeq === "number") {
-          setNextSeq(record.nextSeq);
+        // The cursor is the last delivered sequence (or the supplied cursor
+        // when nothing arrived); it is sent back unchanged on the next poll.
+        if (typeof record.nextAfter === "number") {
+          setAfterSeq(record.nextAfter);
+        } else if (after !== undefined) {
+          setAfterSeq(after);
         }
         setEntries((current) => {
           const merged = after === undefined ? incoming : [...current, ...incoming];
@@ -104,7 +108,7 @@ export function LogsPanel(): React.JSX.Element {
     };
     void load(undefined);
     const timer = setInterval(() => {
-      if (!pausedRef.current) void load(nextSeqRef.current);
+      if (!pausedRef.current) void load(afterSeqRef.current);
     }, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;

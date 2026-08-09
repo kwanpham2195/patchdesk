@@ -54,6 +54,7 @@ import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
 import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../services/published-feedback-service";
 import { InlineConversationService, type DirectConversationCommand } from "../services/inline-conversation-service";
+import type { RecentReviewWrite } from "../services/review-refresh-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
@@ -112,10 +113,14 @@ const reviewLoadSchema = union([
   strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) }),
   strictObject({ profileId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)) }),
 ]);
+const recentReviewWriteSchema = variant("_tag", [
+  strictObject({ _tag: picklist(["Comment"] as const), commentId: pipe(string(), minLength(1)), reviewId: optional(pipe(string(), minLength(1))) }),
+  strictObject({ _tag: picklist(["ThreadState"] as const), threadId: pipe(string(), minLength(1)), state: picklist(["open", "resolved"] as const) }),
+]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  recentWrites: optional(pipe(array(string()), minLength(0))),
+  recentWrites: optional(array(recentReviewWriteSchema)),
 });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
 const insightCompletionSchema = variant("_tag", [
@@ -733,9 +738,31 @@ export async function startLocalApiServer(
   });
   app.post("/v1/reviews/detect-updates", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
-    return parsed.success
-      ? response(context, await reviewWorkbench.detectUpdates(parsed.output))
-      : context.json({ error: "invalid_input" }, 400);
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    // The route is the sole authority for detection-request parsing: typed
+    // ids are refined here, and the controller receives only typed input.
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+    const recentWrites: Array<RecentReviewWrite> = [];
+    for (const entry of parsed.output.recentWrites ?? []) {
+      if (entry._tag === "Comment") {
+        recentWrites.push({
+          _tag: "Comment",
+          commentId: entry.commentId,
+          ...(entry.reviewId === undefined ? {} : { reviewId: entry.reviewId }),
+        });
+      } else {
+        const parsedThreadId = parseGitHubThreadId(entry.threadId);
+        if (parsedThreadId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+        recentWrites.push({ _tag: "ThreadState", threadId: parsedThreadId.value, state: entry.state });
+      }
+    }
+    return response(context, await reviewWorkbench.detectUpdates({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+      ...(recentWrites.length === 0 ? {} : { recentWrites }),
+    }));
   });
   app.post("/v1/reviews/refresh", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));

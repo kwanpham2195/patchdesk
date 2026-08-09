@@ -14,7 +14,7 @@ import {
 import { createReview } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
-import type { ReviewRefreshService } from "./review-refresh-service";
+import type { RecentReviewWrite, ReviewRefreshService } from "./review-refresh-service";
 import type { ReviewCommitService } from "./review-commit-service";
 import { err, ok, type Result } from "../domain/result";
 import type { PrepareReviewSessionFailure, ReviewOpenMode, ReviewSessionPreparation } from "./review-session-preparation";
@@ -213,12 +213,14 @@ export class ReviewWorkbenchController {
     return result._tag === "err" ? err({ reason: result.error.reason === "not_found" ? "not_found" : result.error.reason === "stale_head" || result.error.reason === "foreign_commit" ? "head_changed" : "storage" }) : result;
   }
 
-  async detectUpdates(input: unknown): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
-    const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    if (profileId._tag === "err" || reviewId._tag === "err" || this.lifecycle === undefined) return err({ reason: "invalid_input" });
-    const recentWrites = readOptionalStringArrayField(input, "recentWrites");
-    const detected = await this.lifecycle.refresh.detect({ profileId: profileId.value, reviewId: reviewId.value, ...(recentWrites === undefined ? {} : { recentWrites }) });
+  async detectUpdates(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
+  }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    if (this.lifecycle === undefined) return err({ reason: "invalid_input" });
+    const recentWrites = input.recentWrites ?? [];
+    const detected = await this.lifecycle.refresh.detect({ profileId: input.profileId, reviewId: input.reviewId, ...(recentWrites.length === 0 ? {} : { recentWrites }) });
     return detected._tag === "err" ? err({ reason: detected.error.reason }) : detected;
   }
 
@@ -273,10 +275,4 @@ function mapProjectionFailure(failure: WorkbenchProjectionFailure): ReviewWorkbe
     case "SessionStorageUnavailable":
       return { reason: "storage" };
   }
-}
-
-function readOptionalStringArrayField(value: unknown, name: string): ReadonlyArray<string> | undefined {
-  const field = readObjectField(value, name);
-  if (!Array.isArray(field)) return undefined;
-  return field.every((entry) => typeof entry === "string") ? (field as ReadonlyArray<string>) : undefined;
 }

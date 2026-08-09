@@ -5,7 +5,7 @@ import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { mapConversationThread } from "../inline-conversation-mapping";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseReviewBatch } from "../../../domain/review-batch";
-import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
+import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitHubThreadId, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
@@ -98,6 +98,10 @@ export type ReviewWorkbenchActions = {
   readonly detectUpdates: () => Promise<void>;
   readonly merge?: PullRequestOverviewMerge;
   readonly refresh: () => Promise<void>;
+  /** True while an explicit refresh request is pending; disables refresh actions. */
+  readonly refreshing?: boolean;
+  /** True when the last explicit refresh failed; surfaces bounded error copy. */
+  readonly refreshError?: boolean;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
   readonly addFinding?: (finding: ReviewFinding) => Promise<void>;
   readonly dismissFinding?: (finding: ReviewFinding, reason: string) => Promise<void>;
@@ -273,8 +277,13 @@ export function ReviewWorkbench({
     if (model.fullPatch === undefined) return [];
     const files = parseUnifiedPatch(model.fullPatch);
     return (model.conversation.inline?.threads ?? []).flatMap((thread) => {
+      // The wire model carries plain string ids; the annotation target needs
+      // the verified GitHub thread id so Reply and Resolve are only reachable
+      // through an id the mutation layer accepts.
+      const parsedThreadId = parseGitHubThreadId(thread.id);
       const mapped = mapConversationThread(files, thread);
-      return mapped._tag === "Mapped" ? [{
+      if (mapped._tag !== "Mapped" || parsedThreadId._tag === "err") return [];
+      return [{
         id: `conversation:${thread.id}`,
         path: mapped.path,
         start: mapped.start,
@@ -284,7 +293,10 @@ export function ReviewWorkbench({
         title: "Conversation",
         explanation: "",
         conversationThread: {
-          ...thread,
+          target: { _tag: "thread" as const, id: parsedThreadId.value },
+          state: thread.state,
+          ...(thread.complete === undefined ? {} : { complete: thread.complete }),
+          comments: thread.comments,
           ...(actions.setThreadState === undefined
             ? {}
             : { onSetState: actions.setThreadState }),
@@ -298,7 +310,7 @@ export function ReviewWorkbench({
             ? {}
             : { onDeleteComment: actions.deleteComment }),
         },
-      }] : [];
+      }];
     });
   }, [actions.deleteComment, actions.editComment, actions.replyToThread, actions.setThreadState, model.conversation.inline, model.fullPatch]);
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
@@ -421,8 +433,18 @@ export function ReviewWorkbench({
         <p className="text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ← {model.pullRequest?.headBranch ?? "unknown"} · {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} · refreshed {model.revision.refreshedAt}
           {hasUpdates ? (
-            <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400" role="status" data-review-new-version-indicator>
-              New version · ⌘R to reload
+            <span className="ml-2 inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400" role="status" data-review-new-version-indicator>
+              Updates available
+              {/* A renderer reload loads the stored projection; only the explicit
+                  refresh action replaces represented GitHub state. */}
+              <button
+                type="button"
+                className="underline decoration-amber-500/60 underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                disabled={actions.refreshing === true || terminal}
+                onClick={() => void actions.refresh()}
+              >
+                {actions.refreshing === true ? "Refreshing…" : "Refresh GitHub state"}
+              </button>
             </span>
           ) : null}
         </p>

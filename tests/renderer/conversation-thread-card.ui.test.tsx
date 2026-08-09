@@ -3,8 +3,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConversationThreadCard } from "../../src/renderer/src/components/review-diff-view";
+import { parseGitHubThreadId } from "../../src/domain/ids";
 
 afterEach(() => cleanup());
+
+const threadId = parseGitHubThreadId("thread-1");
+if (threadId._tag === "err") throw new Error("test fixture thread id must parse");
 
 const thread = (overrides: {
   readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
@@ -19,7 +23,7 @@ const thread = (overrides: {
     readonly viewerDidAuthor?: boolean | undefined;
   }[];
 } = {}): Parameters<typeof ConversationThreadCard>[0]["thread"] => ({
-  id: "thread-1",
+  target: { _tag: "thread" as const, id: threadId.value },
   state: "open",
   complete: true,
   comments: [
@@ -89,5 +93,52 @@ describe("ConversationThreadCard", () => {
     await user.click(screen.getByRole("button", { name: "Reply" }));
     expect(await screen.findByText("Second reply")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Reply" })).toBeTruthy();
+  });
+
+  it("renders Edit and Delete controls for a viewer-authored reply", () => {
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          onEditComment: vi.fn(),
+          onDeleteComment: vi.fn(),
+          comments: [
+            { id: "c-1", author: "reviewer", body: "Check this line.", createdAt: "2026-08-01T00:00:00.000Z", viewerDidAuthor: true },
+            { id: "c-reply", author: "You", body: "My reply", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("My reply")).toBeTruthy();
+    // The viewer-authored reply must expose the same Edit/Delete controls as
+    // the opening comment instead of rendering as inert text.
+    const editButtons = screen.getAllByRole("button", { name: "Edit" });
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    expect(editButtons.length).toBeGreaterThanOrEqual(2);
+    expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("edits a viewer-authored reply through its row controls", async () => {
+    const user = userEvent.setup();
+    const onEditComment = vi.fn(async () => undefined);
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          onEditComment,
+          comments: [
+            { id: "c-1", author: "reviewer", body: "Check this line.", createdAt: "2026-08-01T00:00:00.000Z", viewerDidAuthor: true },
+            { id: "c-reply", author: "You", body: "My reply", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true },
+          ],
+        })}
+      />,
+    );
+    const replyEdit = screen.getAllByRole("button", { name: "Edit" }).at(-1);
+    if (replyEdit === undefined) throw new Error("Expected a reply Edit control");
+    await user.click(replyEdit);
+    const editor = screen.getAllByRole("textbox", { name: "Edit comment" }).at(-1);
+    if (editor === undefined) throw new Error("Expected a reply edit editor");
+    await user.clear(editor);
+    await user.type(editor, "Edited reply");
+    await user.click(screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement);
+    expect(onEditComment).toHaveBeenCalledWith("c-reply", "Edited reply");
   });
 });

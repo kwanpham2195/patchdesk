@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseGitHubThreadId,
   parsePullRequestNumber,
   parseRepoRelativePath,
+  type GitHubThreadId,
 } from "../../../domain/ids";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
+import type { RecentReviewWrite } from "../../../services/review-refresh-service";
 import {
   parseReviewBatch,
   type ReviewAnchor,
@@ -121,16 +124,22 @@ export function ReviewWorkbenchFlow({
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
   void initialSection;
   void onNavigate;
+  // Detector cadence: one initial check when an open Review becomes visible,
+  // then at most every 90 seconds while visible and idle, plus one debounced
+  // check after the app regains focus. Direct conversation receipts only
+  // append their typed journal; they never trigger or reset a detection pass.
+  const DETECT_INTERVAL_MS = 90_000;
+  const FOCUS_DETECT_DEBOUNCE_MS = 1_500;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
   const [autoOpenPublication, setAutoOpenPublication] = useState(false);
   const [selectedRepairAnchor, setSelectedRepairAnchor] = useState<
     ReviewAnchor | undefined
   >();
-  // Comment/thread ids written by this window since the last projection
-  // replace. The detector excludes them so own writes never read as remote
-  // updates; cleared once a refresh/reload re-baselines the snapshot.
-  const [recentWrites, setRecentWrites] = useState<ReadonlyArray<string>>([]);
+  // Typed comment/thread-state writes made by this window since the last
+  // projection replace. The detector excludes them so own writes never read as
+  // remote updates; cleared once a refresh/reload re-baselines the snapshot.
+  const [recentWrites, setRecentWrites] = useState<ReadonlyArray<RecentReviewWrite>>([]);
   const replaceWorkbench = useCallback(
     (next: WorkbenchResponse): void => {
       setRecentWrites([]);
@@ -143,63 +152,157 @@ export function ReviewWorkbenchFlow({
   const [detectedStaleFreshness, setDetectedStaleFreshness] = useState<
     "fresh" | "not_refreshed" | "unavailable" | undefined
   >(undefined);
-  const detectUpdates = useCallback(async (): Promise<void> => {
-    if (workbench.review.status !== "open") return;
+  // Latest values live in refs so scheduled detector work uses the current
+  // journal and projection without recreating the interval on every write.
+  const workbenchRef = useRef(workbench);
+  workbenchRef.current = workbench;
+  const recentWritesRef = useRef(recentWrites);
+  recentWritesRef.current = recentWrites;
+  const detectedStaleFreshnessRef = useRef(detectedStaleFreshness);
+  detectedStaleFreshnessRef.current = detectedStaleFreshness;
+  const refreshingRef = useRef(refreshing);
+  refreshingRef.current = refreshing;
+  const snapshotKeyRef = useRef(snapshotKey(workbench));
+  const generationRef = useRef(0);
+  const detectInFlightRef = useRef(false);
+  // Direct commands may legitimately overlap; detection pauses only while the
+  // count is non-zero, so one completion cannot resume it mid-command.
+  const commandInFlightCountRef = useRef(0);
+  const focusTimerRef = useRef<number | undefined>(undefined);
+  // App passes onWorkbenchPatch as an inline function, so its identity changes
+  // on every parent render. Detector work must read the latest callback through
+  // a ref instead of depending on the prop, or any parent render would restart
+  // the scheduling effect and immediately send another request.
+  const onWorkbenchPatchRef = useRef(onWorkbenchPatch);
+  onWorkbenchPatchRef.current = onWorkbenchPatch;
+  // Synchronous count of explicit refreshes whose network request is still
+  // pending. Detection must not start while any refresh (toolbar or
+  // post-publication) is in flight; the toolbar-only React state cannot be the
+  // protocol guard because publication refresh never sets it.
+  const refreshInFlightCountRef = useRef(0);
+  // Each replaced projection gets a new observation generation; a detector
+  // response that began under an older generation can never write stale
+  // freshness into the newly refreshed Review.
+  useEffect(() => {
+    const key = snapshotKey(workbench);
+    if (key !== snapshotKeyRef.current) {
+      snapshotKeyRef.current = key;
+      generationRef.current += 1;
+    }
+  }, [workbench]);
+  const runDetect = useCallback(async (): Promise<void> => {
+    const wb = workbenchRef.current;
+    if (wb.review.status !== "open") return;
+    if (document.visibilityState !== "visible") return;
+    if (
+      detectInFlightRef.current ||
+      commandInFlightCountRef.current > 0 ||
+      refreshInFlightCountRef.current > 0
+    )
+      return;
+    detectInFlightRef.current = true;
+    const generation = generationRef.current;
+    const key = snapshotKey(wb);
     try {
+      const journal = recentWritesRef.current;
       const value = await requestJson("/v1/reviews/detect-updates", {
         method: "POST",
         body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          ...(recentWrites.length === 0 ? {} : { recentWrites }),
+          profileId: wb.session.key.profileId,
+          reviewId: wb.review.id,
+          ...(journal.length === 0 ? {} : { recentWrites: journal }),
         },
       });
+      // A detector that began before an explicit refresh replaced the
+      // projection must not reapply its result to the new snapshot.
+      const current = workbenchRef.current;
+      if (generationRef.current !== generation || snapshotKey(current) !== key) return;
       if (isDetection(value) && value.updatesAvailable) {
-        if (
-          workbench.revision.freshness !== "updates_available" &&
-          detectedStaleFreshness === undefined
-        )
-          setDetectedStaleFreshness(workbench.revision.freshness);
-        onWorkbenchPatch({
-          revision: { ...workbench.revision, freshness: "updates_available" },
-        });
+        // A stale value is written only on the transition into updates_available:
+        // re-writing the identical freshness on an already-stale projection is
+        // what turned an App render into another detector request.
+        if (current.revision.freshness !== "updates_available") {
+          if (detectedStaleFreshnessRef.current === undefined)
+            setDetectedStaleFreshness(current.revision.freshness);
+          onWorkbenchPatchRef.current({
+            revision: { ...current.revision, freshness: "updates_available" },
+          });
+        }
       } else if (
         isDetection(value) &&
         !value.updatesAvailable &&
-        workbench.revision.freshness === "updates_available"
+        current.revision.freshness === "updates_available"
       ) {
         // Detection is authoritative: a cleared flag means the stale patch was
         // a phantom (or the remote caught up), so restore writes.
-        onWorkbenchPatch({
+        onWorkbenchPatchRef.current({
           revision: {
-            ...workbench.revision,
-            freshness: detectedStaleFreshness ?? "fresh",
+            ...current.revision,
+            freshness: detectedStaleFreshnessRef.current ?? "fresh",
           },
         });
         setDetectedStaleFreshness(undefined);
       }
     } catch {
       // Detection is advisory and never replaces the represented snapshot.
+    } finally {
+      detectInFlightRef.current = false;
     }
-  }, [detectedStaleFreshness, onWorkbenchPatch, recentWrites, workbench]);
+  }, []);
 
   useEffect(() => {
-    void detectUpdates();
+    void runDetect();
     if (workbench.review.status !== "open") return undefined;
-    const timer = window.setInterval(() => void detectUpdates(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [detectUpdates, workbench.review.status]);
+    const timer = window.setInterval(() => {
+      // If the interval fires first, the pending focus check is dropped so
+      // only one request runs; the in-flight guard covers the reverse order.
+      if (focusTimerRef.current !== undefined) {
+        window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = undefined;
+      }
+      void runDetect();
+    }, DETECT_INTERVAL_MS);
+    // One shared debounced scheduler: an app return commonly emits both
+    // visibilitychange and focus, and the product contract is a single
+    // delayed observation, not one per browser event.
+    const scheduleFocusDetect = (): void => {
+      if (document.visibilityState !== "visible") return;
+      if (focusTimerRef.current !== undefined) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = window.setTimeout(() => {
+        focusTimerRef.current = undefined;
+        void runDetect();
+      }, FOCUS_DETECT_DEBOUNCE_MS);
+    };
+    const onFocus = (): void => scheduleFocusDetect();
+    const onVisibility = (): void => scheduleFocusDetect();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (focusTimerRef.current !== undefined) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = undefined;
+    };
+  }, [runDetect, workbench.review.status]);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (workbench.review.status !== "open" || refreshing) return;
-    setRefreshing(true);
-    setRefreshError(false);
+  // Every explicit refresh invalidates in-flight detector work before the
+  // network request begins: a stale detector response must never reapply
+  // freshness into the newly replaced projection.
+  const requestRefresh = useCallback(async (): Promise<WorkbenchResponse> => {
+    const wb = workbenchRef.current;
+    generationRef.current += 1;
+    // Generation rejects detector responses that began before refresh; the
+    // in-flight count additionally stops NEW detector work for the whole
+    // network lifetime, including the post-publication path that never sets
+    // the toolbar refreshing state.
+    refreshInFlightCountRef.current += 1;
     try {
       const value = await requestJson("/v1/reviews/refresh", {
         method: "POST",
         body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
+          profileId: wb.session.key.profileId,
+          reviewId: wb.review.id,
         },
       });
       const parsed = parseWorkbenchResponse(value);
@@ -207,165 +310,197 @@ export function ReviewWorkbenchFlow({
         throw new Error("Invalid Review refresh response");
       setDetectedStaleFreshness(undefined);
       replaceWorkbench(parsed);
+      return parsed;
+    } finally {
+      refreshInFlightCountRef.current -= 1;
+    }
+  }, [replaceWorkbench]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    const wb = workbenchRef.current;
+    if (wb.review.status !== "open" || refreshingRef.current) return;
+    setRefreshing(true);
+    setRefreshError(false);
+    try {
+      await requestRefresh();
     } catch {
       setRefreshError(true);
     } finally {
       setRefreshing(false);
     }
-  }, [replaceWorkbench, refreshing, workbench]);
+  }, [requestRefresh]);
 
   const refreshConfirmedPublication = useCallback(async (): Promise<void> => {
     if (workbench.review.status !== "open") return;
-    const value = await requestJson("/v1/reviews/refresh", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-      },
-    });
-    const parsed = parseWorkbenchResponse(value);
-    if (parsed === undefined)
-      throw new Error("Invalid Review publication refresh response");
-    replaceWorkbench(parsed);
-  }, [replaceWorkbench, workbench]);
+    // The shared helper invalidates in-flight detectors before its request;
+    // the caller keeps its own bounded error presentation.
+    await requestRefresh();
+  }, [requestRefresh, workbench.review.status]);
 
+  const runDirectCommand = useCallback(
+    async <T,>(operation: () => Promise<T>): Promise<T> => {
+      commandInFlightCountRef.current += 1;
+      try {
+        return await operation();
+      } finally {
+        commandInFlightCountRef.current -= 1;
+      }
+    },
+    [],
+  );
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<{ readonly commentId: string; readonly threadId?: string } | void> => {
+    ): Promise<{ readonly commentId: string } | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
-      const value = await requestJson("/v1/reviews/inline-conversations/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: {
-            _tag: "CreateComment",
-            expected: {
-              sessionId: workbench.session.id,
-              headSha: workbench.revision.reviewedHeadSha,
-              patchHash,
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/inline-conversations/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: {
+              _tag: "CreateComment",
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              anchor: {
+                path: input.path,
+                startLine: input.startLine,
+                line: input.line,
+                side: input.side,
+              },
+              body: input.body,
             },
-            anchor: {
-              path: input.path,
-              startLine: input.startLine,
-              line: input.line,
-              side: input.side,
-            },
-            body: input.body,
           },
-        },
-      });
-      const receipt = value as {
-        readonly _tag?: string;
-        readonly commentId?: string;
-        readonly threadId?: string;
-        readonly reviewId?: string;
-      };
-      if (receipt._tag === "CommentCreated" && typeof receipt.commentId === "string") {
-        const commentId = receipt.commentId as string;
+        }),
+      );
+      const receipt = parseDirectConversationReceipt(value);
+      if (receipt?._tag === "CommentCreated") {
         setRecentWrites((current) => [
           ...current,
-          commentId,
-          ...(typeof receipt.threadId === "string" ? [receipt.threadId as string] : []),
-          ...(typeof receipt.reviewId === "string" ? [receipt.reviewId as string] : []),
+          {
+            _tag: "Comment",
+            commentId: receipt.commentId,
+            ...(receipt.reviewId === undefined ? {} : { reviewId: receipt.reviewId }),
+          },
         ]);
-        return {
-          commentId,
-          ...(typeof receipt.threadId === "string" ? { threadId: receipt.threadId as string } : {}),
-        };
+        return { commentId: receipt.commentId };
       }
+      // A malformed success envelope is a bounded command failure: it must not
+      // confirm a local mutation or journal a write that never verified.
       return undefined;
     },
-    [workbench],
+    [workbench, runDirectCommand],
   );
 
   const setThreadState = useCallback(async (threadId: string, state: "open" | "resolved"): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot update this thread.");
-    await requestJson("/v1/reviews/inline-conversations/command", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-        command: {
-          _tag: "SetThreadState",
-          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-          threadId,
-          state,
+    const parsedThreadId = parseGitHubThreadId(threadId);
+    if (parsedThreadId._tag === "err") throw new Error("The thread id is not valid for this Review.");
+    const value = await runDirectCommand(() =>
+      requestJson("/v1/reviews/inline-conversations/command", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          command: {
+            _tag: "SetThreadState",
+            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+            threadId,
+            state,
+          },
         },
-      },
-    });
-    setRecentWrites((current) => [...current, threadId]);
-  }, [workbench]);
+      }),
+    );
+    const receipt = parseDirectConversationReceipt(value);
+    if (receipt?._tag === "ThreadStateChanged") {
+      setRecentWrites((current) => [...current, { _tag: "ThreadState", threadId: parsedThreadId.value, state }]);
+    }
+  }, [workbench, runDirectCommand]);
 
   const replyToThread = useCallback(async (threadId: string, body: string): Promise<string | void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot accept replies.");
-    const value = await requestJson("/v1/reviews/inline-conversations/command", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-        command: {
-          _tag: "Reply",
-          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-          threadId,
-          body,
+    const value = await runDirectCommand(() =>
+      requestJson("/v1/reviews/inline-conversations/command", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          command: {
+            _tag: "Reply",
+            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+            threadId,
+            body,
+          },
         },
-      },
-    });
-    const receipt = value as { readonly _tag?: string; readonly commentId?: string; readonly reviewId?: string };
-    if (receipt._tag === "ReplyCreated" && typeof receipt.commentId === "string") {
-      const commentId = receipt.commentId as string;
+      }),
+    );
+    const receipt = parseDirectConversationReceipt(value);
+    if (receipt?._tag === "ReplyCreated") {
       setRecentWrites((current) => [
         ...current,
-        commentId,
-        ...(typeof receipt.reviewId === "string" ? [receipt.reviewId as string] : []),
+        {
+          _tag: "Comment",
+          commentId: receipt.commentId,
+          ...(receipt.reviewId === undefined ? {} : { reviewId: receipt.reviewId }),
+        },
       ]);
-      return commentId;
+      return receipt.commentId;
     }
     return undefined;
-  }, [workbench]);
+  }, [workbench, runDirectCommand]);
 
   const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot edit comments.");
-    await requestJson("/v1/reviews/inline-conversations/command", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-        command: {
-          _tag: "EditComment",
-          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-          commentId,
-          body,
+    const value = await runDirectCommand(() =>
+      requestJson("/v1/reviews/inline-conversations/command", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          command: {
+            _tag: "EditComment",
+            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+            commentId,
+            body,
+          },
         },
-      },
-    });
-    setRecentWrites((current) => [...current, commentId]);
-  }, [workbench]);
+      }),
+    );
+    if (parseDirectConversationReceipt(value)?._tag === "CommentEdited") {
+      setRecentWrites((current) => [...current, { _tag: "Comment", commentId }]);
+    }
+  }, [workbench, runDirectCommand]);
 
   const deleteComment = useCallback(async (commentId: string): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot delete comments.");
-    await requestJson("/v1/reviews/inline-conversations/command", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        reviewId: workbench.review.id,
-        command: {
-          _tag: "DeleteComment",
-          expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-          commentId,
-          confirmation: true,
+    const value = await runDirectCommand(() =>
+      requestJson("/v1/reviews/inline-conversations/command", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          command: {
+            _tag: "DeleteComment",
+            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
+            commentId,
+            confirmation: true,
+          },
         },
-      },
-    });
-    setRecentWrites((current) => [...current, commentId]);
-  }, [workbench]);
+      }),
+    );
+    if (parseDirectConversationReceipt(value)?._tag === "CommentDeleted") {
+      setRecentWrites((current) => [...current, { _tag: "Comment", commentId }]);
+    }
+  }, [workbench, runDirectCommand]);
   const parsedDraft =
     workbench.draft === undefined
       ? undefined
@@ -593,8 +728,10 @@ export function ReviewWorkbenchFlow({
           : { initialState: initialUiState })}
         {...(onUiStateChange === undefined ? {} : { onStateChange: onUiStateChange })}
         actions={{
-          detectUpdates,
+          detectUpdates: runDetect,
           refresh,
+          ...(refreshing === true ? { refreshing: true } : {}),
+          ...(refreshError === true ? { refreshError: true } : {}),
           ...(mergeAction === undefined ? {} : { merge: mergeAction }),
           addFinding: addFindingToDraft,
           dismissFinding: dismissFindingFromWorkbench,
@@ -2016,6 +2153,47 @@ function emptyDraftForWorkbench(
   };
 }
 
+/**
+ * Renderer-boundary codec for direct conversation receipts. The main process
+ * is trusted to shape its own success envelope, but the renderer must not
+ * treat an unknown or malformed success payload as a confirmed mutation: no
+ * command callback casts raw JSON to a receipt anymore.
+ */
+type DirectConversationReceipt =
+  | { readonly _tag: "CommentCreated"; readonly commentId: string; readonly reviewId?: string }
+  | { readonly _tag: "ReplyCreated"; readonly commentId: string; readonly reviewId?: string }
+  | { readonly _tag: "ThreadStateChanged"; readonly threadId: GitHubThreadId; readonly state: "open" | "resolved" }
+  | { readonly _tag: "CommentEdited"; readonly commentId: string }
+  | { readonly _tag: "CommentDeleted"; readonly commentId: string };
+
+function parseDirectConversationReceipt(
+  value: unknown,
+): DirectConversationReceipt | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const tag = record._tag;
+  if (tag === "CommentCreated" || tag === "ReplyCreated") {
+    if (typeof record.commentId !== "string" || record.commentId.length === 0) return undefined;
+    if (record.reviewId !== undefined && (typeof record.reviewId !== "string" || record.reviewId.length === 0)) return undefined;
+    return {
+      _tag: tag,
+      commentId: record.commentId,
+      ...(record.reviewId === undefined ? {} : { reviewId: record.reviewId }),
+    };
+  }
+  if (tag === "ThreadStateChanged") {
+    if (record.state !== "open" && record.state !== "resolved") return undefined;
+    const parsedThreadId = parseGitHubThreadId(record.threadId);
+    if (parsedThreadId._tag === "err") return undefined;
+    return { _tag: "ThreadStateChanged", threadId: parsedThreadId.value, state: record.state };
+  }
+  if (tag === "CommentEdited" || tag === "CommentDeleted") {
+    if (typeof record.commentId !== "string" || record.commentId.length === 0) return undefined;
+    return { _tag: tag, commentId: record.commentId };
+  }
+  return undefined;
+}
+
 function parseBatchResponse(
   value: unknown,
 ): WorkbenchResponse["draft"] | undefined {
@@ -2043,6 +2221,11 @@ function insightStatusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+/** Stable identity of one represented Review projection; changes when an explicit refresh replaces it. */
+function snapshotKey(workbench: WorkbenchResponse): string {
+  return `${workbench.review.id}:${workbench.session.id}:${workbench.revision.reviewedHeadSha}:${workbench.revision.refreshedAt}`;
 }
 
 function isDetection(

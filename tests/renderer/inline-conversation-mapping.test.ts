@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseUnifiedPatch } from "../../src/domain/patch";
 import { mapConversationThread } from "../../src/renderer/src/inline-conversation-mapping";
+import { toDiffLineAnnotation } from "../../src/renderer/src/review-diff-annotations";
 
 const patch = parseUnifiedPatch(`diff --git a/src/example.ts b/src/example.ts
 --- a/src/example.ts
@@ -60,5 +61,30 @@ describe("mapConversationThread", () => {
       _tag: "Excluded",
       reason: "unmapped",
     });
+  });
+
+  it("anchors a multi-line annotation at its final line in both rendering paths", () => {
+    // Both the virtualized CodeView items and the non-virtualized walkthrough
+    // line annotations are built through toDiffLineAnnotation; a thread mapped
+    // to lines 10-12 must occupy the slot after line 12, not after line 10.
+    const annotation = {
+      id: "conversation:thread-1",
+      path: "src/example.ts",
+      start: 10,
+      end: 12,
+      side: "new" as const,
+      severity: "conversation" as const,
+      title: "Conversation",
+      explanation: "",
+    };
+    const placed = toDiffLineAnnotation(annotation);
+    expect(placed.lineNumber).toBe(12);
+    expect(placed.side).toBe("additions");
+    // The metadata keeps the full range for title/context rendering.
+    expect(placed.metadata).toBe(annotation);
+    // A single-line annotation stays on its own line.
+    expect(
+      toDiffLineAnnotation({ ...annotation, start: 5, end: 5 }).lineNumber,
+    ).toBe(5);
   });
 });

@@ -169,6 +169,27 @@ describe("local API capability boundary", () => {
     expect([400, 500]).not.toContain(authenticated.status);
   });
 
+  it.each([
+    { recentWrites: ["PRRC_raw-string"] },
+    { recentWrites: [{ _tag: "Comment" }] },
+    { recentWrites: [{ _tag: "Comment", commentId: 42 }] },
+    { recentWrites: [{ _tag: "Comment", commentId: "c-1", reviewId: 7 }] },
+    { recentWrites: [{ _tag: "ThreadState", threadId: "not a thread id!", state: "resolved" }] },
+    { recentWrites: [{ _tag: "ThreadState", threadId: "pending:local-1", state: "resolved" }] },
+    { recentWrites: [{ _tag: "ThreadState", threadId: "PRRT_x", state: "half" }] },
+    { recentWrites: [{ _tag: "Unknown" }] },
+  ])("rejects a malformed write journal on detect-updates: %j", async (journal) => {
+    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const response = await fetch(new URL("v1/reviews/detect-updates", localApi.url), {
+      method: "POST",
+      headers: { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "cfw", reviewId: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456", ...journal }),
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("exposes Review-owned Insight lifecycle routes behind the same boundary", async () => {
     const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
     const reviewId = "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";

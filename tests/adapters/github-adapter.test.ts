@@ -1251,16 +1251,73 @@ describe("GitHubAdapter review write boundary", () => {
     expect(request).toContain("pullRequestReview{id}");
   });
 
-  it("resolves the created thread id so the card can reply immediately", async () => {
+  it("creates an inline comment with exactly one REST command and no post-write thread scan", async () => {
+    // The REST create receipt has no thread id; the removed GraphQL scan
+    // declared an unused $id variable (GitHub rejects it) and added a full
+    // reviewThreads(first:100) read on the write's critical path.
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ node_id: "PRRC_comment", pull_request_review_id: 42 }), stderr: "" },
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [{ id: "PRRT_thread", comments: { nodes: [{ id: "PRRC_other" }, { id: "PRRC_comment" }] } }] } } } } }), stderr: "" },
     ]);
     const adapter = new GitHubAdapter(new CommandRunner(executor));
-    await expect(adapter.createInlineComment({ profile, pr, headSha: mustParse(parseGitSha(headSha)), coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" }, body: "Body" })).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment", threadId: "PRRT_thread", reviewId: "42" } });
-    const lookup = executor.requests[1]?.join(" ") ?? "";
-    expect(lookup).toContain("reviewThreads(first:100)");
-    expect(lookup).toContain("-F id=PRRC_comment");
+    await expect(adapter.createInlineComment({ profile, pr, headSha: mustParse(parseGitSha(headSha)), coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" }, body: "Body" })).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment", reviewId: "42" } });
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]?.join(" ")).not.toContain("graphql");
+    expect(executor.requests[0]?.join(" ")).not.toContain("reviewThreads");
+  });
+
+  it("proves a review thread target with one bounded node query", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRT_thread", comments: { nodes: [{ id: "PRRC_c1", pullRequest: { repository: { owner: { login: "centraldigital" }, name: "patchdesk" }, number: 42 } }] } } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getReviewThreadTarget({ profile, pr, threadId: "PRRT_thread" as never })).resolves.toEqual({ _tag: "ok", value: { found: true } });
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(executor.requests).toHaveLength(1);
+    expect(request).toContain("query ReviewThreadTarget($id: ID!)");
+    expect(request).toContain("comments(first: 1)");
+    expect(request).toContain("-F id=PRRT_thread");
+    // The proof never carries conversation content.
+    expect(request).not.toContain("body");
+    expect(request).not.toContain("author");
+    expect(request).not.toContain("viewerDidAuthor");
+  });
+
+  it("treats a thread from another pull request as not found without disclosing it", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRT_foreign", comments: { nodes: [{ id: "PRRC_c1", pullRequest: { repository: { owner: { login: "centraldigital" }, name: "patchdesk" }, number: 99 } }] } } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getReviewThreadTarget({ profile, pr, threadId: "PRRT_foreign" as never })).resolves.toEqual({ _tag: "ok", value: { found: false } });
+  });
+
+  it("treats a missing, typeless, or comment-less thread node as not found", async () => {
+    const missing = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: null } }), stderr: "" }]);
+    const adapter = new GitHubAdapter(new CommandRunner(missing));
+    await expect(adapter.getReviewThreadTarget({ profile, pr, threadId: "PRRT_gone" as never })).resolves.toEqual({ _tag: "ok", value: { found: false } });
+    const wrongType = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRT_thread" } } }), stderr: "" }]);
+    const adapter2 = new GitHubAdapter(new CommandRunner(wrongType));
+    await expect(adapter2.getReviewThreadTarget({ profile, pr, threadId: "PRRT_thread" as never })).resolves.toEqual({ _tag: "ok", value: { found: false } });
+  });
+
+  it("proves a review comment target with viewer authorship", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRC_comment", viewerDidAuthor: true, pullRequest: { repository: { owner: { login: "centraldigital" }, name: "patchdesk" }, number: 42 } } } }), stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_comment" })).resolves.toEqual({ _tag: "ok", value: { found: true, viewerDidAuthor: true } });
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(request).toContain("query ReviewCommentTarget($id: ID!)");
+    expect(request).toContain("viewerDidAuthor");
+    expect(request).not.toContain("body");
+  });
+
+  it("treats a foreign or non-authored comment as the completed target result", async () => {
+    const foreign = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRC_foreign", viewerDidAuthor: true, pullRequest: { repository: { owner: { login: "centraldigital" }, name: "patchdesk" }, number: 99 } } } }), stderr: "" }]);
+    const adapter = new GitHubAdapter(new CommandRunner(foreign));
+    await expect(adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_foreign" })).resolves.toEqual({ _tag: "ok", value: { found: false } });
+    const notAuthor = new FakeProcessExecutor([{ _tag: "Exited", exitCode: 0, stdout: JSON.stringify({ data: { node: { id: "PRRC_other", viewerDidAuthor: false, pullRequest: { repository: { owner: { login: "centraldigital" }, name: "patchdesk" }, number: 42 } } } }), stderr: "" }]);
+    const adapter2 = new GitHubAdapter(new CommandRunner(notAuthor));
+    await expect(adapter2.getReviewCommentTarget({ profile, pr, commentId: "PRRC_other" })).resolves.toEqual({ _tag: "ok", value: { found: true, viewerDidAuthor: false } });
   });
 
   it("degrades the create receipt instead of failing when the thread lookup fails", async () => {
