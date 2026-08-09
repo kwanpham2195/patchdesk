@@ -56,6 +56,7 @@ import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../serv
 import { InlineConversationService, type DirectConversationCommand } from "../services/inline-conversation-service";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
+import { LegacyBatchDiscardMigration } from "../services/legacy-batch-discard-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -281,6 +282,14 @@ export async function startLocalApiServer(
   for (const profile of configuredProfiles.value) {
     const migrated = await migration.migrateProfile(profile.id);
     if (migrated._tag === "err") return { _tag: "migration-failed" };
+  }
+  // The approved legacy-batch discard runs after Review adoption and before
+  // publication recovery: recovery must never reconcile, retry, or transform
+  // evidence the product owner chose to discard. The migration is local-only.
+  const batchDiscard = new LegacyBatchDiscardMigration(sessions, { paths, diagnostics });
+  for (const profile of configuredProfiles.value) {
+    const discarded = await batchDiscard.migrateProfile(profile.id);
+    if (discarded._tag === "err") return { _tag: "migration-failed" };
   }
   const recovery = new ReviewRecoveryService(
     profiles,

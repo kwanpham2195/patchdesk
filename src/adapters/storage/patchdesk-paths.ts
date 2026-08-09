@@ -117,6 +117,11 @@ export class PatchdeskPaths {
     return join(this.dataDirectory(), "profiles", profileId, "review-migration-v1.json");
   }
 
+  /** Marker written last after legacy local batch evidence is discarded. */
+  batchDiscardMarkerFile(profileId: WorkspaceProfileId): string {
+    return join(this.dataDirectory(), "profiles", profileId, "batch-discard-v1.json");
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

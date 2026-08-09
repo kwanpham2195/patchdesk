@@ -869,6 +869,19 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const sessions = new ReviewSessionStore(paths);
   await sessions.save(completed);
   await writeFile(session.patchPath, "", "utf8");
+  // The approved batch-discard migration runs at startup and removes legacy
+  // Local batches. These tests exercise the legacy batch routes on a batch
+  // that exists after that one-time treatment, so the fixture records the
+  // discard marker before the API starts.
+  await writeFile(
+    paths.batchDiscardMarkerFile(profileId),
+    JSON.stringify({
+      schemaVersion: 1,
+      profileId,
+      completedAt: "2026-08-09T00:00:00.000Z",
+    }),
+    "utf8",
+  );
   const reviews = new ReviewStore(paths);
   const remote = new ReviewRemoteStore(paths, reviews);
   const reviewId = createReviewId(session.key);

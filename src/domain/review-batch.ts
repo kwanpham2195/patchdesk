@@ -210,6 +210,24 @@ export type InvalidReviewBatch = {
   readonly _tag: "InvalidReviewBatch";
 };
 
+/**
+ * Legacy batch states covered by the product-owner discard treatment
+ * (approved 2026-08-09). The migration may remove only local evidence for
+ * these states; it never issues or replays a GitHub write, and removing the
+ * record is not proof that a remote pending review is absent. Submitted and
+ * Completed records are not covered by the decision.
+ */
+export function isDiscardableLegacyBatchState(
+  state: ReviewBatch["state"],
+): boolean {
+  return (
+    state._tag === "Local" ||
+    state._tag === "PendingReview" ||
+    state._tag === "Applying" ||
+    state._tag === "PartialFailure"
+  );
+}
+
 const localReviewItemIdSchema = v.string();
 const githubThreadIdSchema = v.string();
 const provenanceSchema = v.variant("_tag", [
