@@ -21,6 +21,10 @@ import type {
 } from "../../domain/github-context";
 import {
   parseGitSha,
+  parseGitHubLogin,
+  parseGitHubReviewCommentId,
+  parseGitHubReviewNodeId,
+  parseGitHubReviewRestId,
   parseGitHubThreadId,
   parseIsoTimestamp,
   parsePullRequestNumber,
@@ -28,6 +32,8 @@ import {
   type AbsolutePath,
   type GitSha,
   type IsoTimestamp,
+  type GitHubLogin,
+  type GitHubReviewNodeId,
   type GitHubThreadId,
   type GitHubHost,
   type GitHubOwner,
@@ -38,6 +44,11 @@ import {
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import {
+  type PendingReviewAnchor,
+  type PendingReviewRead,
+  type ViewerPendingReview,
+} from "../../domain/pending-review";
 import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-batch";
 import type { RevisionComparison } from "../../domain/review-comparison";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
@@ -48,6 +59,11 @@ const commandTimeoutMs = 15_000;
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
   "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
+// Spike-proven (2026-08-09): every thread comment exposes its owning review
+// and state, which lets the bounded reader prove which threads belong to the
+// viewer's PENDING review without scanning other reviewers' data.
+const pendingReviewThreadsQuery =
+  "query PendingReviewThreads($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isOutdated path line startLine diffSide startDiffSide comments(first: 100) { nodes { id body createdAt author { login } pullRequestReview { id state } } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
 const maxReviewThreadPages = 10;
 const maxReviewThreads = 1_000;
 const threadCommentsQuery =
@@ -74,6 +90,7 @@ const publishedReviewSchema = v.array(v.looseObject({
   user: v.nullish(v.looseObject({ login: v.string() })),
   body: v.nullish(v.string()),
   state: v.string(),
+  commit_id: v.nullish(v.string()),
   // GitHub omits submitted_at on PENDING reviews (started but not submitted);
   // they are skipped as feedback below, never failures.
   submitted_at: v.nullish(v.string()),
@@ -201,6 +218,43 @@ const threadResponseSchema = v.looseObject({
                     viewerDidAuthor: v.optional(v.boolean()),
                     author: v.nullish(v.looseObject({ login: v.string() })),
                     path: v.optional(v.nullable(v.string())),
+                  }),
+                ),
+                pageInfo: v.optional(v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) })),
+              }),
+            }),
+          ),
+          pageInfo: v.optional(v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) })),
+        }),
+      }),
+    }),
+  }),
+});
+
+const pendingReviewThreadsResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      pullRequest: v.looseObject({
+        reviewThreads: v.looseObject({
+          nodes: v.array(
+            v.looseObject({
+              id: v.string(),
+              isOutdated: v.boolean(),
+              path: v.optional(v.nullable(v.string())),
+              line: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+              startLine: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1)))),
+              diffSide: v.optional(v.nullable(v.string())),
+              startDiffSide: v.optional(v.nullable(v.string())),
+              comments: v.looseObject({
+                nodes: v.array(
+                  v.looseObject({
+                    id: v.string(),
+                    body: v.string(),
+                    createdAt: v.string(),
+                    author: v.nullish(v.looseObject({ login: v.string() })),
+                    pullRequestReview: v.optional(
+                      v.looseObject({ id: v.string(), state: v.string() }),
+                    ),
                   }),
                 ),
                 pageInfo: v.optional(v.looseObject({ hasNextPage: v.boolean(), endCursor: v.nullish(v.string()) })),
@@ -499,6 +553,43 @@ export interface GitHubMergeWriter {
   }): Promise<Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>>;
 }
 
+/**
+ * Spike-proven pending-review operations (2026-08-09). Discard, empty-review,
+ * reply, and thread-state behavior are unproven and deliberately absent.
+ */
+export interface GitHubPendingReviewGateway {
+  /**
+   * Bounded authenticated read of the viewer's one pending review. Returns
+   * None only with a complete result proving no viewer-owned pending review;
+   * pagination, missing identity, foreign data, or incomplete comments are
+   * Unavailable. The account argument must come from the authenticated-account
+   * reader, never from renderer input.
+   */
+  getViewerPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: GitHubLogin;
+  }): Promise<Result<PendingReviewRead, GitHubReadFailure>>;
+
+  /** Create the viewer's pending review with its first inline thread. */
+  startPendingReviewWithThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+
+  /** Append one inline thread to the known pending review. */
+  addPendingReviewThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewNodeId;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+}
+
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
 export type FetchedDiffRefs = {
   readonly repositoryPath: AbsolutePath;
@@ -575,6 +666,7 @@ type GitHubReadOperation =
   | "get_merge_policy_evidence"
   | "get_comments"
   | "get_reviews"
+  | "get_pending_review"
   | "load_conversation"
   | "get_repository_permission"
   | "get_branch_protection"
@@ -1277,6 +1369,174 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
       : ok({ reviewId });
   }
 
+  async getViewerPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: GitHubLogin;
+  }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
+    const reviews = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (reviews._tag === "err") return commandFailure("get_pending_review", reviews.error);
+    const parsed = v.safeParse(publishedReviewSchema, reviews.value);
+    if (!parsed.success) return invalid("get_pending_review");
+    const pending = parsed.output.filter(
+      (review) => review.state === "PENDING" && review.user?.login === input.account,
+    );
+    if (pending.length === 0) {
+      // None is provable only with a complete bounded result; an incomplete
+      // page is Unavailable, never proof that no pending review exists.
+      return parsed.output.length < 100
+        ? ok({ _tag: "None" })
+        : invalid("get_pending_review");
+    }
+    if (pending.length > 1) return invalid("get_pending_review");
+    const rawReview = pending[0]!;
+    const restId = parseReviewId(rawReview);
+    const nodeId = rawReview.node_id;
+    const commitId = rawReview.commit_id;
+    const parsedRestId = restId === undefined ? err({ _tag: "InvalidDomainValue" as const, field: "reviewRestId" }) : parseGitHubReviewRestId(restId);
+    const parsedNodeId = nodeId === undefined ? err({ _tag: "InvalidDomainValue" as const, field: "reviewNodeId" }) : parseGitHubReviewNodeId(nodeId);
+    const parsedCommit = commitId === undefined || commitId === null ? err({ _tag: "InvalidDomainValue" as const, field: "reviewCommitId" }) : parseGitSha(commitId);
+    if (parsedRestId._tag === "err" || parsedNodeId._tag === "err" || parsedCommit._tag === "err") {
+      return invalid("get_pending_review");
+    }
+
+    const response = await this.commands.runJson({
+      argv: [
+        "gh", "api", "graphql", "--hostname", input.profile.githubHost,
+        "-f", `query=${pendingReviewThreadsQuery}`,
+        "-F", `owner=${input.pr.owner}`,
+        "-F", `name=${input.pr.repo}`,
+        "-F", `number=${input.pr.number}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return commandFailure("get_pending_review", response.error);
+    const threads = v.safeParse(pendingReviewThreadsResponseSchema, response.value);
+    if (!threads.success) return invalid("get_pending_review");
+    const connection = threads.output.data.repository.pullRequest.reviewThreads;
+    if (connection.pageInfo?.hasNextPage === true) return invalid("get_pending_review");
+
+    const comments: Array<ViewerPendingReview["comments"][number]> = [];
+    for (const thread of connection.nodes) {
+      if (thread.comments.pageInfo?.hasNextPage === true) return invalid("get_pending_review");
+      for (const comment of thread.comments.nodes) {
+        // Only comments owned by a PENDING review of the authenticated viewer
+        // are actionable. The single-pending-review-per-PR rule plus the
+        // owning-review state prove the thread belongs to this review without
+        // matching node IDs across the REST/GraphQL boundaries.
+        if (comment.pullRequestReview === undefined || comment.pullRequestReview.state !== "PENDING") continue;
+        if (comment.author?.login !== input.account) continue;
+        const reviewCommentId = parseGitHubReviewCommentId(comment.id);
+        const threadId = parseGitHubThreadId(thread.id);
+        const createdAt = parseGitHubTimestamp(comment.createdAt);
+        const anchor = pendingReviewAnchor(thread);
+        if (reviewCommentId._tag === "err" || threadId._tag === "err" || createdAt._tag === "err" || anchor === undefined) {
+          return invalid("get_pending_review");
+        }
+        comments.push({
+          reviewCommentId: reviewCommentId.value,
+          threadId: threadId.value,
+          body: comment.body,
+          anchor,
+          createdAt: createdAt.value,
+        });
+      }
+    }
+    // A pending review with no actionable comments is the unproven empty-review
+    // case; it must not look like an importable owner.
+    if (comments.length === 0) return invalid("get_pending_review");
+    const createdAt = comments.map((comment) => comment.createdAt).sort()[0]!;
+    const updatedAt = comments.map((comment) => comment.createdAt).sort().at(-1)!;
+    return ok({
+      _tag: "Pending",
+      review: {
+        restId: parsedRestId.value,
+        nodeId: parsedNodeId.value,
+        author: input.account,
+        pr: input.pr,
+        headSha: parsedCommit.value,
+        comments,
+        createdAt,
+        updatedAt,
+      },
+    });
+  }
+
+  async startPendingReviewWithThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    const created = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`, "--input", "-"],
+      stdin: JSON.stringify({
+        commit_id: input.headSha,
+        body: input.body,
+        comments: [pendingReviewComment(input.anchor, input.body)],
+      }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (created._tag === "err") return err(writeFailure(created.error));
+    const pending = parsePendingReview(created.value);
+    const nodeId = nestedString(created.value, ["node_id"]);
+    if (pending === undefined || nodeId === undefined) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a PENDING review identity." });
+    }
+    // The create receipt is not a full owner: thread and comment identity come
+    // only from the proven bounded read-back. A failed read-back leaves the
+    // confirmed remote create unreconciled rather than inventing identities.
+    return this.pendingReviewAfterWrite(input.profile, input.pr, { restId: pending.reviewId, nodeId });
+  }
+
+  async addPendingReviewThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewNodeId;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    const side = input.anchor.side === "new" ? "RIGHT" : "LEFT";
+    const appendQuery = `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body}} pageInfo{hasNextPage}}}}`;
+    const appended = await this.commands.runJson({
+      argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=${appendQuery}`, "-F", `reviewId=${input.reviewId}`, "-F", `path=${input.anchor.path}`, "-F", `line=${input.anchor.line}`, "-f", `body=${input.body}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (appended._tag === "err") return err(writeFailure(appended.error));
+    const threadId = nestedString(appended.value, ["data", "addPullRequestReviewThread", "thread", "id"]);
+    const commentId = nestedString(appended.value, ["data", "addPullRequestReviewThread", "thread", "comments", "nodes", "0", "id"]);
+    if (threadId === undefined || commentId === undefined) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a thread identity." });
+    }
+    return this.pendingReviewAfterWrite(input.profile, input.pr, { nodeId: input.reviewId });
+  }
+
+  /** Read back the confirmed owner after a write; an unreconciled write is unavailable. */
+  private async pendingReviewAfterWrite(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    expected: { readonly restId?: string; readonly nodeId?: string },
+  ): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    const account = parseGitHubLogin(profile.ghAccount);
+    if (account._tag === "err") {
+      return err({ _tag: "GitHubWriteFailure", category: "auth", message: "GitHub authentication is required." });
+    }
+    const read = await this.getViewerPendingReview({ profile, pr, account: account.value });
+    const matches =
+      read._tag === "ok" &&
+      read.value._tag === "Pending" &&
+      (expected.restId === undefined || read.value.review.restId === expected.restId) &&
+      (expected.nodeId === undefined || read.value.review.nodeId === expected.nodeId);
+    if (!matches) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "The pending review could not be confirmed after the write." });
+    }
+    return ok(read.value.review);
+  }
+
   async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
     const response = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`, "--input", "-"],
@@ -1730,6 +1990,48 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
       : ok(this.values.submittedReview);
   }
 
+  async getViewerPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: GitHubLogin;
+  }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
+    void input;
+    const value = this.values.viewerPendingReview;
+    if (value === undefined) return missing("get_pending_review");
+    // Import isolation: a foreign account never sees the viewer's pending review.
+    return value.account === input.account ? ok(value.read) : ok({ _tag: "None" });
+  }
+
+  async startPendingReviewWithThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    void input;
+    const value = this.values.pendingReviewStart;
+    if (value === undefined) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending-review start fixture." });
+    }
+    return value.failure === undefined ? ok(value.review) : err(value.failure);
+  }
+
+  async addPendingReviewThread(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewNodeId;
+    readonly anchor: PendingReviewAnchor;
+    readonly body: string;
+  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    void input;
+    const value = this.values.pendingReviewAddThread;
+    if (value === undefined) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending-review append fixture." });
+    }
+    return value.failure === undefined ? ok(value.review) : err(value.failure);
+  }
+
   async mergePullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -1791,6 +2093,10 @@ export type FakeGitHubAdapterValues = {
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
   readonly pendingReview: { readonly reviewId: string; readonly state: "PENDING" };
   readonly submittedReview: { readonly reviewId: string };
+  /** Spike-proven pending-review gateway fixtures; an absent reader is unimplemented. */
+  readonly viewerPendingReview?: { readonly account: GitHubLogin; readonly read: PendingReviewRead };
+  readonly pendingReviewStart?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
+  readonly pendingReviewAddThread?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
   readonly mergeResult: { readonly mergeCommitSha?: GitSha };
   /** Thread ids proven to belong to the fixture pull request (owner/repo/number). */
   readonly threadTargets: ReadonlyArray<{ readonly threadId: GitHubThreadId; readonly pr: PullRequestRef }>;
@@ -2442,6 +2748,41 @@ function toGitHubReviewComment(comment: PendingReviewComment): Record<string, un
       ? {}
       : { start_line: comment.line, start_side: side }),
   };
+}
+
+/** REST create-review comment shape for one pending-review start. */
+function pendingReviewComment(anchor: PendingReviewAnchor, body: string): Record<string, unknown> {
+  const side = anchor.side === "new" ? "RIGHT" : "LEFT";
+  return {
+    path: anchor.path,
+    line: anchor.line,
+    side,
+    body,
+    ...(anchor.startLine === anchor.line
+      ? {}
+      : { start_line: anchor.startLine, start_side: side }),
+  };
+}
+
+/** Domain anchor from a spike-proven thread shape, normalizing the LEFT single-line quirk. */
+function pendingReviewAnchor(thread: {
+  readonly path?: string | null | undefined;
+  readonly line?: number | null | undefined;
+  readonly startLine?: number | null | undefined;
+  readonly diffSide?: string | null | undefined;
+}): PendingReviewAnchor | undefined {
+  const path = thread.path === undefined || thread.path === null
+    ? err({ _tag: "InvalidDomainValue" as const, field: "threadPath" })
+    : parseRepoRelativePath(thread.path);
+  if (path._tag === "err" || thread.line === undefined || thread.line === null) return undefined;
+  const side = thread.diffSide === "LEFT" ? "old" : thread.diffSide === "RIGHT" ? "new" : undefined;
+  if (side === undefined) return undefined;
+  // GitHub reports LEFT single-line threads as an inverted range; the adapter
+  // normalizes startLine > line to a single-line anchor.
+  const startLine = thread.startLine === undefined || thread.startLine === null || thread.startLine > thread.line
+    ? thread.line
+    : thread.startLine;
+  return { path: path.value, startLine, line: thread.line, side };
 }
 
 function parseReviewId(input: unknown): string | undefined {

@@ -19,6 +19,16 @@ export type FindingId = Brand<string, "FindingId">;
 export type LocalReviewItemId = Brand<string, "LocalReviewItemId">;
 /** An opaque GitHub GraphQL review-thread node identifier. */
 export type GitHubThreadId = Brand<string, "GitHubThreadId">;
+/** GitHub REST pull-request review identifier (serialized integer). */
+export type GitHubReviewRestId = Brand<string, "GitHubReviewRestId">;
+/** Opaque GitHub GraphQL pull-request review node identifier. */
+export type GitHubReviewNodeId = Brand<string, "GitHubReviewNodeId">;
+/** Opaque GitHub GraphQL review-comment node identifier. */
+export type GitHubReviewCommentId = Brand<string, "GitHubReviewCommentId">;
+/** GitHub account login as proven by the authenticated-account reader. */
+export type GitHubLogin = Brand<string, "GitHubLogin">;
+/** Durable client-owned identifier for one pending-review write intent. */
+export type PendingReviewRequestId = Brand<string, "PendingReviewRequestId">;
 export type AbsolutePath = Brand<string, "AbsolutePath">;
 export type RepoRelativePath = Brand<string, "RepoRelativePath">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
@@ -120,6 +130,47 @@ export function parseGitHubThreadId(
   input: unknown,
 ): Result<GitHubThreadId, InvalidDomainValue> {
   return parseSafeSlug<"GitHubThreadId">(input, "githubThreadId");
+}
+
+/** Parse a GitHub REST review identifier (a serialized positive integer). */
+export function parseGitHubReviewRestId(
+  input: unknown,
+): Result<GitHubReviewRestId, InvalidDomainValue> {
+  if (typeof input !== "string" || !/^[1-9]\d*$/.test(input)) {
+    return err({ _tag: "InvalidDomainValue", field: "githubReviewRestId" });
+  }
+  return ok(brand(input));
+}
+
+/** Parse an opaque GitHub GraphQL review node identifier. */
+export function parseGitHubReviewNodeId(
+  input: unknown,
+): Result<GitHubReviewNodeId, InvalidDomainValue> {
+  return parseSafeSlug<"GitHubReviewNodeId">(input, "githubReviewNodeId");
+}
+
+/** Parse an opaque GitHub GraphQL review-comment node identifier. */
+export function parseGitHubReviewCommentId(
+  input: unknown,
+): Result<GitHubReviewCommentId, InvalidDomainValue> {
+  return parseSafeSlug<"GitHubReviewCommentId">(input, "githubReviewCommentId");
+}
+
+/** Parse a GitHub account login. */
+export function parseGitHubLogin(
+  input: unknown,
+): Result<GitHubLogin, InvalidDomainValue> {
+  return parseSafeSlug<"GitHubLogin">(input, "githubLogin");
+}
+
+/** Parse a durable pending-review write-request identifier. */
+export function parsePendingReviewRequestId(
+  input: unknown,
+): Result<PendingReviewRequestId, InvalidDomainValue> {
+  if (typeof input !== "string" || !/^pending-review-[a-zA-Z0-9._-]+$/.test(input)) {
+    return err({ _tag: "InvalidDomainValue", field: "pendingReviewRequestId" });
+  }
+  return ok(brand(input));
 }
 
 /** Parse a durable Insight run identifier. */

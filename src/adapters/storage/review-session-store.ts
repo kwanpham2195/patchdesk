@@ -34,6 +34,10 @@ import {
   type RemoteWriteReceipt,
   type ReviewBatch,
 } from "../../domain/review-batch";
+import {
+  parsePendingReviewState,
+  pendingReviewMatchesSession,
+} from "../../domain/pending-review";
 import { parseReviewResult } from "../../domain/review-result";
 import type {
   ReviewSession,
@@ -179,6 +183,7 @@ const reviewSessionSchema = v.strictObject({
   draftContent: v.optional(v.unknown()),
   batch: v.optional(v.strictObject({ state: v.unknown() })),
   batchContent: v.optional(v.unknown()),
+  pendingReview: v.optional(v.unknown()),
   submittedReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -729,6 +734,22 @@ export function parseStoredReviewSession(
   ) {
     return invalidRead();
   }
+  const pendingReview =
+    raw.output.pendingReview === undefined
+      ? ok(undefined)
+      : parsePendingReviewState(raw.output.pendingReview);
+  if (pendingReview._tag === "err") return invalidRead();
+  if (
+    pendingReview.value !== undefined &&
+    !pendingReviewMatchesSession(pendingReview.value, {
+      host: host.value,
+      owner: owner.value,
+      repo: repo.value,
+      number: prNumber.value,
+    })
+  ) {
+    return invalidRead();
+  }
   const prContext = raw.output.prContext === undefined
     ? undefined
     : {
@@ -772,6 +793,9 @@ export function parseStoredReviewSession(
     ...(storedBatch.value.batchContent === undefined
       ? {}
       : { batchContent: storedBatch.value.batchContent }),
+    ...(pendingReview.value === undefined
+      ? {}
+      : { pendingReview: pendingReview.value }),
     ...(submittedReview === undefined
       ? {}
       : { submittedReview: submittedReview.value }),

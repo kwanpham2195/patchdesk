@@ -1338,3 +1338,229 @@ describe("GitHubAdapter review write boundary", () => {
     expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(JSON.parse(mergePayload));
   });
 });
+
+describe("GitHubAdapter pending-review gateway", () => {
+  const account = "pmquan2cfw";
+  const reviewId = 9001;
+  const reviewNodeId = "PRR_kwDORJzsQM7e6QwJ";
+  const threadId = "PRRT_kwDORJzsQM0001";
+  const commentId = "PRRC_kwDORJzsQM7fI2Rd";
+  const reviewListUrl = `repos/centraldigital/patchdesk/pulls/42/reviews?per_page=100&page=1`;
+
+  function reviewsPayload(overrides: Record<string, unknown> = {}): string {
+    return JSON.stringify([{
+      id: reviewId,
+      node_id: reviewNodeId,
+      user: { login: account },
+      body: "Summary body",
+      state: "PENDING",
+      commit_id: headSha,
+      ...overrides,
+    }]);
+  }
+
+  function threadsPayload(overrides: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [{
+                id: threadId,
+                isOutdated: false,
+                path: "src/review.ts",
+                line: 7,
+                startLine: 7,
+                diffSide: "RIGHT",
+                startDiffSide: "RIGHT",
+                comments: {
+                  nodes: [{
+                    id: commentId,
+                    body: "Comment body",
+                    createdAt: "2026-08-09T11:34:50Z",
+                    author: { login: account },
+                    pullRequestReview: { id: reviewNodeId, state: "PENDING" },
+                  }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      },
+      ...overrides,
+    });
+  }
+
+  const exited = (stdout: string): CommandExecution => ({ _tag: "Exited", exitCode: 0, stdout, stderr: "" });
+
+  it("returns None only for a complete result with no viewer pending review", async () => {
+    const executor = new FakeProcessExecutor([
+      exited(JSON.stringify([{ id: 1, state: "COMMENTED", user: { login: "other" }, submitted_at: "2026-08-08T00:00:00Z" }])),
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getViewerPendingReview({ profile, pr, account: account as never })).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
+    expect(executor.requests[0]).toContain(reviewListUrl);
+  });
+
+  it("imports the viewer's pending review with complete bounded thread/comment identity", async () => {
+    const executor = new FakeProcessExecutor([
+      exited(reviewsPayload()),
+      exited(threadsPayload()),
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.getViewerPendingReview({ profile, pr, account: account as never });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value).toMatchObject({
+      _tag: "Pending",
+      review: {
+        restId: "9001",
+        nodeId: reviewNodeId,
+        author: account,
+        headSha,
+        comments: [{ reviewCommentId: commentId, threadId, body: "Comment body" }],
+      },
+    });
+    // The GraphQL probe selects the owning review so the adapter can prove
+    // which threads belong to the PENDING review.
+    expect(executor.requests[1]?.join(" ")).toContain("pullRequestReview { id state }");
+  });
+
+  it("normalizes GitHub's inverted LEFT single-line range", async () => {
+    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
+    const node = ((threads["data"] as Record<string, unknown>)["repository"] as Record<string, unknown>)["pullRequest"] as Record<string, unknown>;
+    ((node["reviewThreads"] as Record<string, unknown>)["nodes"] as Array<Record<string, unknown>>)[0] = {
+      id: threadId,
+      isOutdated: false,
+      path: "src/review.ts",
+      line: 7,
+      startLine: 8,
+      diffSide: "LEFT",
+      comments: {
+        nodes: [{
+          id: commentId,
+          body: "Comment body",
+          createdAt: "2026-08-09T11:34:50Z",
+          author: { login: account },
+          pullRequestReview: { id: reviewNodeId, state: "PENDING" },
+        }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    };
+    const executor = new FakeProcessExecutor([exited(reviewsPayload()), exited(JSON.stringify(threads))]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.getViewerPendingReview({ profile, pr, account: account as never });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value._tag).toBe("Pending");
+    if (result.value._tag !== "Pending") return;
+    expect(result.value.review.comments[0]?.anchor).toEqual({ path: "src/review.ts", startLine: 7, line: 7, side: "old" });
+  });
+
+  it("treats foreign-author and non-pending threads as non-actionable", async () => {
+    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
+    const node = ((threads["data"] as Record<string, unknown>)["repository"] as Record<string, unknown>)["pullRequest"] as Record<string, unknown>;
+    ((node["reviewThreads"] as Record<string, unknown>)["nodes"] as Array<Record<string, unknown>>)[0] = {
+      id: threadId,
+      isOutdated: false,
+      path: "src/review.ts",
+      line: 7,
+      startLine: 7,
+      diffSide: "RIGHT",
+      comments: {
+        nodes: [{
+          id: commentId,
+          body: "Comment body",
+          createdAt: "2026-08-09T11:34:50Z",
+          author: { login: "other" },
+          pullRequestReview: { id: reviewNodeId, state: "PENDING" },
+        }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    };
+    const executor = new FakeProcessExecutor([exited(reviewsPayload()), exited(JSON.stringify(threads))]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    // No actionable comments: an empty pending review is the unproven case.
+    await expect(adapter.getViewerPendingReview({ profile, pr, account: account as never })).resolves.toMatchObject({ _tag: "err" });
+  });
+
+  it("fails closed on pagination, incomplete threads, and malformed data", async () => {
+    const fullReviews = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, state: "COMMENTED", user: { login: "other" }, submitted_at: "2026-08-08T00:00:00Z" }));
+    const paginated = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([exited(JSON.stringify(fullReviews))])));
+    await expect(paginated.getViewerPendingReview({ profile, pr, account: account as never })).resolves.toMatchObject({ _tag: "err" });
+
+    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
+    const node = ((threads["data"] as Record<string, unknown>)["repository"] as Record<string, unknown>)["pullRequest"] as Record<string, unknown>;
+    (node["reviewThreads"] as Record<string, unknown>)["pageInfo"] = { hasNextPage: true, endCursor: "cursor" };
+    const incompleteThreads = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([exited(reviewsPayload()), exited(JSON.stringify(threads))])));
+    await expect(incompleteThreads.getViewerPendingReview({ profile, pr, account: account as never })).resolves.toMatchObject({ _tag: "err" });
+
+    const malformed = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([exited("{not-json"), exited(threadsPayload())])));
+    await expect(malformed.getViewerPendingReview({ profile, pr, account: account as never })).resolves.toMatchObject({ _tag: "err" });
+  });
+
+  it("starts a review with its first thread and reads the full owner back", async () => {
+    const executor = new FakeProcessExecutor([
+      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha })),
+      exited(reviewsPayload()),
+      exited(threadsPayload()),
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.startPendingReviewWithThread({
+      profile,
+      pr,
+      headSha: mustParse(parseGitSha(headSha)),
+      anchor: { path: "src/review.ts" as never, startLine: 7, line: 7, side: "new" },
+      body: "Comment body",
+    });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.restId).toBe("9001");
+    // The REST create passes the head SHA and the single inline comment.
+    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual({
+      commit_id: headSha,
+      body: "Comment body",
+      comments: [{ path: "src/review.ts", line: 7, side: "RIGHT", body: "Comment body" }],
+    });
+  });
+
+  it("never fabricates a pending owner when the create read-back cannot be proven", async () => {
+    const missingRead = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha })),
+      exited(JSON.stringify([{ id: reviewId, state: "PENDING", user: { login: account } }])),
+      exited(threadsPayload()),
+    ])));
+    const result = await missingRead.startPendingReviewWithThread({ profile, pr, headSha: mustParse(parseGitSha(headSha)), anchor: { path: "src/review.ts" as never, startLine: 7, line: 7, side: "new" }, body: "Comment body" });
+    expect(result).toMatchObject({ _tag: "err", error: { category: "unavailable" } });
+  });
+
+  it("appends a thread through the spike-proven GraphQL mutation and reads back", async () => {
+    const executor = new FakeProcessExecutor([
+      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_kwDORJzsQM0002", path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }] } } } } })),
+      exited(reviewsPayload()),
+      exited(threadsPayload()),
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.addPendingReviewThread({ profile, pr, reviewId: reviewNodeId as never, anchor: { path: "src/review.ts" as never, startLine: 9, line: 9, side: "new" }, body: "More" });
+    expect(result._tag).toBe("ok");
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(request).toContain("addPullRequestReviewThread");
+    expect(request).toContain("pullRequestReviewId:$reviewId");
+  });
+
+  it("rejects an append whose mutation response lacks thread identity", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_ok", comments: { nodes: [] } } } } })),
+    ])));
+    const result = await adapter.addPendingReviewThread({ profile, pr, reviewId: reviewNodeId as never, anchor: { path: "src/review.ts" as never, startLine: 9, line: 9, side: "new" }, body: "More" });
+    expect(result).toMatchObject({ _tag: "err", error: { category: "unavailable" } });
+  });
+
+  it("isolates the viewer's pending review from a foreign account", async () => {
+    const executor = new FakeProcessExecutor([exited(reviewsPayload())]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.getViewerPendingReview({ profile, pr, account: "other" as never })).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
+  });
+});

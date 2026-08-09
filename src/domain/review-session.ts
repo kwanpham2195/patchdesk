@@ -19,6 +19,7 @@ import {
   type RemoteWriteReceipt,
   type ReviewBatch,
 } from "./review-batch";
+import type { PendingReviewState } from "./pending-review";
 import type {
   ReviewAttempt,
   ReviewAttemptState,
@@ -93,6 +94,8 @@ export type ReviewSession = {
   readonly batch?: Pick<ReviewBatch, "state">;
   /** Full validated batch retained so interrupted GitHub writes are never guessed or replayed. */
   readonly batchContent?: ReviewBatch;
+  /** The viewer's GitHub pending-review owner with durable write intents. */
+  readonly pendingReview?: PendingReviewState;
   readonly submittedReview?: SubmittedReviewRef;
   /** Receipts from a reconciled publication retained after its successor draft is installed. */
   readonly archivedReceipts?: ReadonlyArray<RemoteWriteReceipt>;
