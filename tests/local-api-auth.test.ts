@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -900,3 +901,106 @@ function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly
   if (result._tag === "err") throw new Error("Invalid fixture");
   return result.value;
 }
+
+async function pendingReviewFixture(pendingReviewValues: Record<string, unknown>): Promise<{ readonly api: LocalApiServer; readonly request: { readonly profileId: string; readonly reviewId: string; readonly command: unknown } }> {
+  const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-pending-")));
+  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const host = must(parseGitHubHost("github.com")); const owner = must(parseGitHubOwner("centraldigital")); const repo = must(parseGitHubRepoName("patchdesk")); const number = must(parsePullRequestNumber(42)); const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+  const profile = must(parseWorkspaceProfileConfig({ id: "cfw", label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
+  await new ProfileStore(paths).save(profile);
+  await mkdir(dirname(paths.batchDiscardMarkerFile(profileId)), { recursive: true });
+  await writeFile(paths.batchDiscardMarkerFile(profileId), JSON.stringify({ schemaVersion: 1, profileId, completedAt: "2026-08-09T00:00:00.000Z" }), "utf8");
+  const session = createReviewSession({ key: { profileId, host, owner, repo, prNumber: number, headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath("/tmp/patch.diff")), worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha }, createdAt: "2026-07-16T00:00:00.000Z" as never });
+  const sessions = new ReviewSessionStore(paths);
+  await sessions.save(session);
+  await writeFile(session.patchPath, "", "utf8");
+  const reviews = new ReviewStore(paths);
+  const remote = new ReviewRemoteStore(paths, reviews);
+  const reviewId = createReviewId(session.key);
+  const remoteSaved = await remote.saveCandidate({ profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha, ref: { host, owner, repo, number }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: session.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
+  if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
+  const review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha, createdAt: session.createdAt });
+  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: session.createdAt } });
+  const github = new FakeGitHubAdapter({
+    authenticatedAccount: { host: "github.com", account: "fixture" },
+    pullRequest: { headSha } as never,
+    ...pendingReviewValues,
+  } as never);
+  const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github });
+  if (startup._tag !== "started") throw new Error("Expected local API");
+  return {
+    api: startup.server,
+    request: {
+      profileId,
+      reviewId,
+      command: {
+        _tag: "Start",
+        expected: { sessionId: session.id, headSha, patchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
+        anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        body: "Start with this",
+      },
+    },
+  };
+}
+
+describe("local API pending-review boundary", () => {
+  it("keeps pending-review commands behind the capability and rejects invalid DTOs", async () => {
+    const fixture = await pendingReviewFixture({});
+    try {
+      const headers = { Origin: allowedOrigin, "Content-Type": "application/json" };
+      const noCapability = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers, body: JSON.stringify(fixture.request) });
+      expect(noCapability.status).toBe(401);
+      const writeHeaders = () => ({ ...headers, "X-Patchdesk-Capability": capability });
+      const invalidAnchor = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { ...fixture.request.command, anchor: { path: "src/a.ts", startLine: 5, line: 1, side: "new" } } }) });
+      expect(invalidAnchor.status).toBe(400);
+      const unknownTag = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify({ ...fixture.request, command: { _tag: "Discard", expected: fixture.request.command.expected } }) });
+      expect(unknownTag.status).toBe(400);
+    } finally { await fixture.api.stop(); }
+  });
+
+  it("runs a Start command and returns the pending-review projection", async () => {
+    const reviewValue = {
+      restId: "9001",
+      nodeId: "PRR_kwDORJzsQM7e6QwJ",
+      author: "fixture",
+      pr: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
+      headSha: "abcdef1234567890abcdef1234567890abcdef12",
+      comments: [{ reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd", threadId: "PRRT_kwDORJzsQM0001", body: "Comment body", anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" }, createdAt: "2026-08-09T11:34:50.000Z" }],
+      createdAt: "2026-08-09T11:34:50.000Z",
+      updatedAt: "2026-08-09T11:34:50.000Z",
+    };
+    const fixture = await pendingReviewFixture({
+      viewerPendingReview: { account: "fixture", read: { _tag: "None" } },
+      pendingReviewStart: { review: reviewValue },
+    });
+    try {
+      const response = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify(fixture.request) });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        pendingReview: { state: "pending", count: 1, review: { nodeId: "PRR_kwDORJzsQM7e6QwJ" } },
+      });
+    } finally { await fixture.api.stop(); }
+  });
+
+  it("reports an unavailable write as outcome_unknown with the recovery lock", async () => {
+    const fixture = await pendingReviewFixture({
+      pendingReviewStart: { failure: { _tag: "GitHubWriteFailure", category: "unavailable", message: "timeout" } },
+    });
+    try {
+      const response = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify(fixture.request) });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({ error: "outcome_unknown", pendingReview: { state: "recovery_required", action: "start" } });
+    } finally { await fixture.api.stop(); }
+  });
+
+  it("reconciles an unknown outcome through the explicit recover route", async () => {
+    const fixture = await pendingReviewFixture({
+      viewerPendingReview: { account: "fixture", read: { _tag: "None" } },
+    });
+    try {
+      const response = await fetch(new URL("v1/reviews/pending-review/recover", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ profileId: fixture.request.profileId, reviewId: fixture.request.reviewId }) });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ pendingReview: { state: "none" } });
+    } finally { await fixture.api.stop(); }
+  });
+});
