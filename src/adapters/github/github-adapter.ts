@@ -1516,7 +1516,10 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly body: string;
   }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
     const side = input.anchor.side === "new" ? "RIGHT" : "LEFT";
-    const appendQuery = `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body}} pageInfo{hasNextPage}}}}`;
+    // pageInfo belongs inside the comments connection: PullRequestReviewThread
+    // has no pageInfo field, and GitHub rejects the mutation at schema
+    // validation before executing it. The read-back never runs in that case.
+    const appendQuery = `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
     const appended = await this.commands.runJson({
       argv: ["gh", "api", "graphql", "--hostname", input.profile.githubHost, "-f", `query=${appendQuery}`, "-F", `reviewId=${input.reviewId}`, "-F", `path=${input.anchor.path}`, "-F", `line=${input.anchor.line}`, "-f", `body=${input.body}`],
       timeoutMs: commandTimeoutMs,

@@ -1551,6 +1551,25 @@ describe("GitHubAdapter pending-review gateway", () => {
     expect(request).toContain("pullRequestReviewId:$reviewId");
   });
 
+  it("keeps pageInfo inside the comments connection in the AddThread selection", async () => {
+    // PullRequestReviewThread has no pageInfo field; the old
+    // `comments(first:100){nodes{id body}} pageInfo{hasNextPage}` shape made
+    // GitHub reject the mutation at schema validation (409 github_rejected)
+    // before any execution. The query must nest pageInfo under comments.
+    const executor = new FakeProcessExecutor([
+      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_kwDORJzsQM0002", path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }], pageInfo: { hasNextPage: false } } } } } })),
+      exited(reviewsPayload()),
+      exited(threadsPayload()),
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const result = await adapter.addPendingReviewThread({ profile, pr, reviewId: reviewNodeId as never, anchor: { path: "src/review.ts" as never, startLine: 9, line: 9, side: "new" }, body: "More" });
+    expect(result._tag).toBe("ok");
+    const request = executor.requests[0]?.join(" ") ?? "";
+    expect(request).toContain("comments(first:100){nodes{id body} pageInfo{hasNextPage}}");
+    expect(request).not.toMatch(/nodes\{id body\}\} pageInfo/);
+    expect(request).toContain("diffSide");
+  });
+
   it("rejects an append whose mutation response lacks thread identity", async () => {
     const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
       exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_ok", comments: { nodes: [] } } } } })),
