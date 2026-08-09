@@ -173,6 +173,14 @@ export function parsePendingReviewRequestId(
   return ok(brand(input));
 }
 
+/** Build a durable pending-review write-request identifier. */
+export function createPendingReviewRequestId(
+  now: IsoTimestamp,
+): PendingReviewRequestId {
+  const compact = now.replace(/[^a-zA-Z0-9.-]/g, "");
+  return brand(`pending-review-${compact}`);
+}
+
 /** Parse a durable Insight run identifier. */
 export function parseInsightRunId(input: unknown): Result<InsightRunId, InvalidDomainValue> {
   if (typeof input !== "string" || !insightRunIdSyntax.test(input)) return err({ _tag: "InvalidDomainValue", field: "insightRunId" });
