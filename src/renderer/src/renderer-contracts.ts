@@ -530,6 +530,34 @@ const mergeReasonSchema = v.strictObject({
   availability: v.picklist(["available", "partial", "unavailable"]),
   openOnGitHub: v.boolean(),
 });
+const pendingReviewCommentSchema = v.strictObject({
+  threadId: v.pipe(v.string(), v.minLength(1)),
+  body: v.string(),
+  path: v.pipe(v.string(), v.minLength(1)),
+  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  side: v.picklist(["new", "old"]),
+});
+const pendingReviewProjectionSchema = v.variant("state", [
+  v.strictObject({ state: v.literal("none") }),
+  v.strictObject({
+    state: v.literal("unavailable"),
+    action: v.picklist(["refresh", "check_github_again"]),
+  }),
+  v.strictObject({
+    state: v.literal("pending"),
+    count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    review: v.strictObject({
+      nodeId: v.pipe(v.string(), v.minLength(1)),
+      headSha: v.pipe(v.string(), v.minLength(7)),
+      comments: v.array(pendingReviewCommentSchema),
+    }),
+  }),
+  v.strictObject({
+    state: v.literal("recovery_required"),
+    action: v.picklist(["start", "add_thread", "submit"]),
+  }),
+]);
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
   review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
@@ -539,9 +567,14 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
-  draft: v.optional(reviewBatchSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
+  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
+export type PendingReviewProjection = v.InferOutput<typeof pendingReviewProjectionSchema>;
+export function parsePendingReviewProjection(input: unknown): PendingReviewProjection | undefined {
+  const parsed = v.safeParse(pendingReviewProjectionSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
 export function parseReviewBatchProjection(input: unknown): WorkbenchResponse["draft"] | undefined {
   const parsed = v.safeParse(reviewBatchSchema, input);
   return parsed.success ? parsed.output : undefined;

@@ -16,7 +16,7 @@ import {
   parseReviewBatch,
   type ReviewAnchor,
 } from "../../../domain/review-batch";
-import { requestJson } from "../api-client";
+import { PatchdeskApiError, requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import {
@@ -33,6 +33,7 @@ import {
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
+import type { PendingReviewComposerActions } from "../components/review-diff-view";
 import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
 import { ReviewDraftDock } from "../components/review-draft-dock";
 import { Badge } from "../components/ui/badge";
@@ -53,6 +54,7 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   parseCommitDiffResponse,
   parseModelCatalog,
+  parsePendingReviewProjection,
   parsePublicationPreview,
   parseReviewBatchProjection,
   parseWorkbenchResponse,
@@ -63,6 +65,16 @@ import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
+
+function boundedPendingReviewError(cause: unknown): string {
+  if (cause instanceof PatchdeskApiError) {
+    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "stale_head") return "The pull request changed. Refresh, then finish the review.";
+    if (cause.kind === "rejected" || cause.kind === "github_rejected") return "GitHub rejected the submission.";
+    if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Check GitHub again or refresh.";
+  }
+  return "Patchdesk could not finish this review. Check GitHub again or refresh.";
+}
 
 function pullRequestExternalRef(
   model: WorkbenchResponse,
@@ -530,6 +542,99 @@ export function ReviewWorkbenchFlow({
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
     workbench.revision.patchHash !== undefined;
+  // GitHub pending-review actions: the header action, composer split, Finish
+  // review modal, and explicit Check GitHub again recovery all own their
+  // requests here; the renderer never calls GitHub directly.
+  const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
+  const [finishDialogOpen, setFinishDialogOpen] = useState(false);
+  const [finishDialogError, setFinishDialogError] = useState<string | undefined>(undefined);
+  const applyPendingReviewProjection = useCallback((value: unknown): void => {
+    const projection = parsePendingReviewProjection(
+      typeof value === "object" && value !== null
+        ? (value as Record<string, unknown>)["pendingReview"]
+        : undefined,
+    );
+    if (projection !== undefined) onWorkbenchPatch({ pendingReview: projection });
+  }, [onWorkbenchPatch]);
+  const runPendingReviewCommand = useCallback(async (command: {
+    readonly _tag: "Start" | "AddThread";
+    readonly pendingReviewNodeId?: string;
+    readonly anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" };
+    readonly body: string;
+  } | {
+    readonly _tag: "Submit";
+    readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+    readonly summaryBody: string;
+  }): Promise<void> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot accept review comments.");
+    setPendingReviewBusy(true);
+    try {
+      const expected = {
+        sessionId: workbench.session.id,
+        headSha: workbench.revision.reviewedHeadSha,
+        patchHash,
+      };
+      const value = command._tag === "Submit"
+        ? await requestJson("/v1/reviews/pending-review/command", {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+              command: { _tag: "Submit", expected, event: command.event, summaryBody: command.summaryBody },
+            },
+          })
+        : await requestJson("/v1/reviews/pending-review/command", {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+              command: {
+                _tag: command._tag,
+                expected,
+                ...(command._tag === "AddThread" ? { pendingReviewNodeId: command.pendingReviewNodeId } : {}),
+                anchor: command.anchor,
+                body: command.body,
+              },
+            },
+          });
+      applyPendingReviewProjection(value);
+      setFinishDialogError(undefined);
+    } finally {
+      setPendingReviewBusy(false);
+    }
+  }, [applyPendingReviewProjection, workbench]);
+  const checkGitHubAgain = useCallback(async (): Promise<void> => {
+    setPendingReviewBusy(true);
+    try {
+      const value = await requestJson("/v1/reviews/pending-review/recover", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+        },
+      });
+      applyPendingReviewProjection(value);
+      setFinishDialogError(undefined);
+    } finally {
+      setPendingReviewBusy(false);
+    }
+  }, [applyPendingReviewProjection, workbench]);
+  const pendingReviewComposer: PendingReviewComposerActions | undefined =
+    workbench.pendingReview === undefined
+      ? undefined
+      : {
+          state: workbench.pendingReview.state === "pending"
+            ? { state: "pending" as const, nodeId: workbench.pendingReview.review.nodeId }
+            : { state: workbench.pendingReview.state as "none" | "unavailable" | "recovery_required" },
+          busy: pendingReviewBusy,
+          onStartReview: async (anchor, body) => {
+            await runPendingReviewCommand({ _tag: "Start", anchor, body });
+          },
+          onAddReviewComment: async (nodeId, anchor, body) => {
+            await runPendingReviewCommand({ _tag: "AddThread", pendingReviewNodeId: nodeId, anchor, body });
+          },
+        };
   const localCommentAuthoring: LocalCommentAuthoring | undefined = canWriteDirectConversation
     ? {
         enabled: true,
@@ -754,6 +859,32 @@ export function ReviewWorkbenchFlow({
           ...(localCommentAuthoring === undefined
             ? {}
             : { localCommentAuthoring }),
+          ...(pendingReviewComposer === undefined
+            ? {}
+            : { pendingReviewComposer }),
+          ...(pendingReviewComposer === undefined
+            ? {}
+            : {
+                pendingReview: {
+                  projection: workbench.pendingReview,
+                  busy: pendingReviewBusy,
+                  finishDialogOpen,
+                  onOpenFinishDialog: () => setFinishDialogOpen(true),
+                  onCloseFinishDialog: () => setFinishDialogOpen(false),
+                  onSubmit: async (event, summaryBody) => {
+                    try {
+                      await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
+                      setFinishDialogOpen(false);
+                    } catch (cause) {
+                      setFinishDialogError(boundedPendingReviewError(cause));
+                    }
+                  },
+                  onCheckGitHubAgain: checkGitHubAgain,
+                  ...(finishDialogError === undefined
+                    ? {}
+                    : { finishDialogError }),
+                },
+              }),
           ...(canWriteDirectConversation ? { setThreadState, replyToThread, editComment, deleteComment } : {}),
           reportNavigationState: onNavigationStateChange,
         }}

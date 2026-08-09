@@ -1392,7 +1392,8 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
         : invalid("get_pending_review");
     }
     if (pending.length > 1) return invalid("get_pending_review");
-    const rawReview = pending[0]!;
+    const rawReview = pending[0];
+    if (rawReview === undefined) return invalid("get_pending_review");
     const restId = parseReviewId(rawReview);
     const nodeId = rawReview.node_id;
     const commitId = rawReview.commit_id;
@@ -1448,8 +1449,10 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     // A pending review with no actionable comments is the unproven empty-review
     // case; it must not look like an importable owner.
     if (comments.length === 0) return invalid("get_pending_review");
-    const createdAt = comments.map((comment) => comment.createdAt).sort()[0]!;
-    const updatedAt = comments.map((comment) => comment.createdAt).sort().at(-1)!;
+    const sortedCreatedAt = comments.map((comment) => comment.createdAt).sort();
+    const createdAt = sortedCreatedAt[0];
+    const updatedAt = sortedCreatedAt[sortedCreatedAt.length - 1];
+    if (createdAt === undefined || updatedAt === undefined) return invalid("get_pending_review");
     return ok({
       _tag: "Pending",
       review: {

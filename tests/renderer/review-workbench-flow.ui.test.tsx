@@ -2330,3 +2330,184 @@ describe("ReviewWorkbenchFlow", () => {
       vi.useRealTimers();
     }
   });
+
+describe("ReviewWorkbenchFlow pending review", () => {
+  const pendingProjection = (overrides: Record<string, unknown> = {}) => ({
+    state: "pending" as const,
+    count: 2,
+    review: {
+      nodeId: "PRR_kwDORJzsQM7e6QwJ",
+      headSha: "a".repeat(40),
+      comments: [
+        { threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        { threadId: "PRRT_2", body: "Second", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+      ],
+    },
+    ...overrides,
+  });
+
+  const withPending = (pendingReview: unknown, patchHash = "patch-hash"): WorkbenchResponse => ({
+    ...projection(),
+    revision: { ...projection().revision, patchHash: patchHash as never },
+    pendingReview: pendingReview as WorkbenchResponse["pendingReview"],
+  });
+
+  function stubRequest(responses: Record<string, unknown>) {
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
+      const response = responses[input.path];
+      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    return request;
+  }
+
+  async function openComposer(user: ReturnType<typeof userEvent.setup>) {
+    void user;
+    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+    fireEvent.click(authorButtons[1] as HTMLElement);
+    return {
+      composer: screen.getByRole("region", { name: "Inline comment composer" }),
+      input: screen.getByRole("textbox", { name: "Inline comment" }),
+    };
+  }
+
+  it("shows Start a review in the header when none exists and directs to the Diff composer", async () => {
+    const user = userEvent.setup();
+    void user;
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "none" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Start a review" }));
+    // The header action leads to valid inline authoring; it creates nothing.
+    expect(screen.getByRole("region", { name: "Review diff" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Finish review · " })).toBeNull();
+  });
+
+  it("shows Finish review · N when a pending review is confirmed and opens the modal", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending(pendingProjection())}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const finish = screen.getByRole("button", { name: "Finish review · 2" });
+    expect(finish).toBeTruthy();
+    await user.click(finish);
+    expect(screen.getByRole("dialog", { name: "Finish review" })).toBeTruthy();
+    expect(screen.getByText("First")).toBeTruthy();
+    expect(screen.getByText("Second")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Discard/ })).toBeNull();
+  });
+
+  it("offers Comment now and Start a review before a pending review; only Add review comment after", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "none" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const first = await openComposer(user);
+    expect(within(first.composer).getByRole("button", { name: "Start a review" })).toBeTruthy();
+    expect(within(first.composer).getByRole("button", { name: "Comment now" })).toBeTruthy();
+    expect(within(first.composer).queryByRole("button", { name: "Add review comment" })).toBeNull();
+
+    rerender(
+      <ReviewWorkbenchFlow
+        workbench={withPending(pendingProjection())}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const second = await openComposer(user);
+    expect(within(second.composer).getByRole("button", { name: "Add review comment" })).toBeTruthy();
+    expect(within(second.composer).queryByRole("button", { name: "Comment now" })).toBeNull();
+    expect(within(second.composer).queryByRole("button", { name: "Start a review" })).toBeNull();
+  });
+
+  it("sends the Start command with the selected anchor and applies the returned projection", async () => {
+    const user = userEvent.setup();
+    const request = stubRequest({
+      "/v1/reviews/pending-review/command": { pendingReview: pendingProjection({ count: 1 }) },
+    });
+    const onWorkbenchPatch = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "none" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={onWorkbenchPatch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const { composer, input } = await openComposer(user);
+    fireEvent.change(input, { target: { value: "Start with this" } });
+    await user.click(within(composer).getByRole("button", { name: "Start a review" }));
+    const call = request.mock.calls.find((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
+    expect(call).toBeDefined();
+    const body = (call?.[0] as { readonly body?: unknown }).body as { readonly command?: unknown };
+    expect(body?.command).toMatchObject({
+      _tag: "Start",
+      anchor: { path: "src/a.ts", side: "new" },
+      body: "Start with this",
+      expected: { sessionId: "session-a", headSha: "a".repeat(40), patchHash: "patch-hash" },
+    });
+    await waitFor(() => expect(onWorkbenchPatch).toHaveBeenCalledWith(expect.objectContaining({ pendingReview: expect.objectContaining({ state: "pending", count: 1 }) })));
+  });
+
+  it("locks the composer and offers Check GitHub again when the pending read is unavailable", async () => {
+    const user = userEvent.setup();
+    const request = stubRequest({
+      "/v1/reviews/pending-review/recover": { pendingReview: { state: "none" } },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "unavailable", action: "refresh" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const { composer } = await openComposer(user);
+    expect(within(composer).getByText(/Pending review state is unavailable/)).toBeTruthy();
+    expect(within(composer).queryByRole("button", { name: "Start a review" })).toBeNull();
+    expect(within(composer).queryByRole("button", { name: "Comment now" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/reviews/pending-review/recover" }));
+  });
+
+  it("shows a recovery notice while a write outcome is unknown", async () => {
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "recovery_required", action: "submit" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/needs reconciliation/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Finish review/ })).toBeNull();
+  });
+});

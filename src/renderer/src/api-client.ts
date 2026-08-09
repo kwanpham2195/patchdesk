@@ -12,6 +12,10 @@ export type ApiFailureKind =
   | "github_rejected"
   | "pending_review"
   | "ambiguous_write"
+  | "rejected"
+  | "outcome_unknown"
+  | "no_pending_review"
+  | "pending_review_locked"
   | "internal";
 
 export class PatchdeskApiError extends Error {
@@ -118,6 +122,10 @@ function safeMessage(kind: ApiFailureKind): string {
     case "github_rejected": return "GitHub rejected this action.";
     case "pending_review": return "You have an unfinished review on this pull request on GitHub. Submit or discard it there, then comment again.";
     case "ambiguous_write": return "Patchdesk could not confirm whether GitHub completed the write.";
+    case "rejected": return "GitHub rejected the pending review write.";
+    case "outcome_unknown": return "GitHub could not confirm the pending review write. Check GitHub again before continuing.";
+    case "no_pending_review": return "The pending review no longer exists. Refresh to see the current state.";
+    case "pending_review_locked": return "The pending review write is still being reconciled. Check GitHub again.";
     case "internal": return "Patchdesk could not complete the request.";
   }
 }

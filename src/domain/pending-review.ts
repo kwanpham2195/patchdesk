@@ -344,11 +344,14 @@ export function parsePendingReviewState(
       ? invalidPendingReviewState()
       : ok({ _tag: "Pending", review: review.value });
   }
+  if (operation.value === undefined || startedAt.value === undefined) {
+    return invalidPendingReviewState();
+  }
   return ok({
     _tag: raw.output._tag,
     ...(review.value === undefined ? {} : { review: review.value }),
-    operation: operation.value!,
-    startedAt: startedAt.value!,
+    operation: operation.value,
+    startedAt: startedAt.value,
   });
 }
 

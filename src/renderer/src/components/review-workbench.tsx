@@ -12,9 +12,10 @@ import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contract
 import { Conversation } from "./conversation";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
-import type { LocalCommentAuthoring, LocalCommentLocation, ReviewInlineAnnotation } from "./review-diff-view";
+import type { LocalCommentAuthoring, LocalCommentLocation, PendingReviewComposerActions, ReviewInlineAnnotation } from "./review-diff-view";
 import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview, type PullRequestOverviewMerge } from "./pr-overview-sheet";
 import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
+import { FinishReviewDialog } from "./finish-review-dialog";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
@@ -106,6 +107,21 @@ export type ReviewWorkbenchActions = {
   readonly addFinding?: (finding: ReviewFinding) => Promise<void>;
   readonly dismissFinding?: (finding: ReviewFinding, reason: string) => Promise<void>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  readonly pendingReviewComposer?: PendingReviewComposerActions;
+  /** GitHub pending-review header action, Finish modal, and recovery. */
+  readonly pendingReview?: {
+    readonly projection: WorkbenchResponse["pendingReview"];
+    readonly busy: boolean;
+    readonly finishDialogOpen: boolean;
+    readonly onOpenFinishDialog: () => void;
+    readonly onCloseFinishDialog: () => void;
+    readonly onSubmit: (
+      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      summaryBody: string,
+    ) => Promise<void>;
+    readonly onCheckGitHubAgain: () => Promise<void>;
+    readonly finishDialogError?: string;
+  };
   readonly setThreadState?: (
     threadId: string,
     state: "open" | "resolved",
@@ -428,8 +444,15 @@ export function ReviewWorkbench({
               <ExternalLink /> Open on GitHub
             </Button>
             <Button variant="outline" size="sm" onClick={() => setOverviewOpen(true)}>PR overview</Button>
+            {actions.pendingReview === undefined || terminal ? null : (
+              <PendingReviewHeaderAction
+                pendingReview={actions.pendingReview}
+                onNavigateToDiff={() => setActiveTab("diff")}
+              />
+            )}
           </div>
         </div>
+        <PendingReviewNotice pendingReview={actions.pendingReview} />
         <p className="text-xs text-muted-foreground" title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}>
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ← {model.pullRequest?.headBranch ?? "unknown"} · {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} · refreshed {model.revision.refreshedAt}
           {hasUpdates ? (
@@ -520,6 +543,7 @@ export function ReviewWorkbench({
                         {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
                         {...(selectedCommitSha === undefined ? { annotations } : {})}
                         {...(selectedCommitSha === undefined ? (actions.localCommentAuthoring === undefined ? {} : { localCommentAuthoring: actions.localCommentAuthoring }) : (commitCommentAuthoring === undefined ? {} : { localCommentAuthoring: commitCommentAuthoring }))}
+                        {...(actions.pendingReviewComposer === undefined ? {} : { pendingReviewComposer: actions.pendingReviewComposer })}
                         {...(selectedCommitSha === undefined && (actions.setThreadState !== undefined || actions.replyToThread !== undefined || actions.editComment !== undefined || actions.deleteComment !== undefined) ? { conversationActions: { ...(actions.setThreadState === undefined ? {} : { setThreadState: actions.setThreadState }), ...(actions.replyToThread === undefined ? {} : { replyToThread: actions.replyToThread }), ...(actions.editComment === undefined ? {} : { editComment: actions.editComment }), ...(actions.deleteComment === undefined ? {} : { deleteComment: actions.deleteComment }) } } : {})}
                         hideFileNavigation
                         surfaceAction={undefined}
@@ -550,6 +574,21 @@ export function ReviewWorkbench({
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
       <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} onViewFindings={viewFindings} />
+      {actions.pendingReview === undefined || actions.pendingReview.projection?.state !== "pending" ? null : (
+        <FinishReviewDialog
+          open={actions.pendingReview.finishDialogOpen}
+          onOpenChange={actions.pendingReview.onCloseFinishDialog}
+          projection={actions.pendingReview.projection}
+          actions={{
+            busy: actions.pendingReview.busy,
+            onSubmit: actions.pendingReview.onSubmit,
+            onCheckGitHubAgain: actions.pendingReview.onCheckGitHubAgain,
+          }}
+          {...(actions.pendingReview.finishDialogError === undefined
+            ? {}
+            : { error: actions.pendingReview.finishDialogError })}
+        />
+      )}
       {actions.merge === undefined || actions.merge.readiness._tag === "Blocked" ? null : (
         <MergeConfirmationDialog
           defaultOpen={mergeDialogOpen}
@@ -570,8 +609,66 @@ export function ReviewWorkbench({
   );
 }
 
-function FindingFocusHeader({
-  finding,
+function PendingReviewHeaderAction({
+  pendingReview,
+  onNavigateToDiff,
+}: {
+  readonly pendingReview: NonNullable<ReviewWorkbenchActions["pendingReview"]>;
+  readonly onNavigateToDiff: () => void;
+}): React.JSX.Element | null {
+  const projection = pendingReview.projection;
+  if (projection === undefined || projection.state === "none") {
+    // Start a review directs the maintainer to select a valid inline Diff
+    // range; it never creates an empty remote review (unproven path).
+    return (
+      <Button variant="outline" size="sm" onClick={onNavigateToDiff} data-review-header-start>
+        Start a review
+      </Button>
+    );
+  }
+  if (projection.state === "pending") {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={pendingReview.onOpenFinishDialog}
+        disabled={pendingReview.busy}
+        data-review-header-finish
+      >
+        Finish review · {projection.count}
+      </Button>
+    );
+  }
+  return null;
+}
+
+function PendingReviewNotice({
+  pendingReview,
+}: {
+  readonly pendingReview: ReviewWorkbenchActions["pendingReview"];
+}): React.JSX.Element | null {
+  const projection = pendingReview?.projection;
+  if (projection === undefined || projection.state === "none" || projection.state === "pending") return null;
+  const recovery = projection.state === "recovery_required";
+  return (
+    <div role="status" data-review-pending-recovery className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+      {recovery
+        ? <>A pending review write needs reconciliation (started {projection.action}). GitHub was not changed without your confirmation.</>
+        : <>The pending review state is unavailable right now. New review comments are paused.</>}
+      {" "}
+      <button
+        type="button"
+        className="underline decoration-amber-600/60 underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+        disabled={pendingReview?.busy === true}
+        onClick={() => void pendingReview?.onCheckGitHubAgain()}
+      >
+        Check GitHub again
+      </button>
+    </div>
+  );
+}
+
+function FindingFocusHeader({  finding,
   onAdd,
   onDismiss,
 }: {

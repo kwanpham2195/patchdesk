@@ -158,8 +158,10 @@ export type ReviewInlineAnnotation = {
     readonly path: string;
     readonly startLine: number;
     readonly line: number;
+    readonly side: "new" | "old";
     readonly onCancel: () => void;
     readonly onSave: (body: string) => Promise<void>;
+    readonly pendingReview?: PendingReviewComposerActions;
   };
 };
 
@@ -168,6 +170,23 @@ export type LocalCommentLocation = {
   readonly startLine: number;
   readonly line: number;
   readonly side: "new" | "old";
+};
+
+export type PendingReviewComposerActions = {
+  readonly state:
+    | { readonly state: "none" }
+    | { readonly state: "pending"; readonly nodeId: string }
+    | { readonly state: "unavailable" | "recovery_required" };
+  readonly busy: boolean;
+  readonly onStartReview: (
+    anchor: LocalCommentLocation,
+    body: string,
+  ) => Promise<void>;
+  readonly onAddReviewComment: (
+    nodeId: string,
+    anchor: LocalCommentLocation,
+    body: string,
+  ) => Promise<void>;
 };
 
 export type LocalCommentAuthoring = {
@@ -234,6 +253,8 @@ type ReviewDiffViewProps = {
   readonly virtualized?: boolean;
   /** Local-only composer. Callers omit it for walkthroughs and stale snapshots. */
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  /** GitHub pending-review composer actions; drives the inline action split. */
+  readonly pendingReviewComposer?: PendingReviewComposerActions;
   /** Direct GitHub conversation actions; the surface wraps them to apply published mutations locally. */
   readonly conversationActions?: ReviewConversationActions;
 };
@@ -253,6 +274,7 @@ function ReviewDiffSurface({
   sourceSession,
   virtualized = true,
   localCommentAuthoring,
+  pendingReviewComposer,
   conversationActions,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
@@ -503,11 +525,15 @@ function ReviewDiffSurface({
         path: authoringSelection.id,
         startLine: authoringSelection.range.start,
         line: authoringSelection.range.end,
+        side: authoringSelection.range.side === "additions" ? "new" : "old",
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
+        ...(pendingReviewComposer === undefined
+          ? {}
+          : { pendingReview: pendingReviewComposer }),
       },
     };
-  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring]);
+  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring, pendingReviewComposer]);
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
     () =>
       createdThreads.map((entry) => {
@@ -1596,28 +1622,36 @@ function InlineCommentComposer({
   path,
   startLine,
   line,
+  side,
   onCancel,
   onSave,
+  pendingReview,
 }: {
   readonly path: string;
   readonly startLine: number;
   readonly line: number;
+  readonly side: "new" | "old";
   readonly onCancel: () => void;
   readonly onSave: (body: string) => Promise<void>;
+  readonly pendingReview?: PendingReviewComposerActions;
 }): React.JSX.Element {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const save = async (): Promise<void> => {
-    if (body.trim().length === 0 || saving) return;
+  const pendingState = pendingReview?.state.state;
+  const writeDisabled = pendingState === "unavailable" || pendingState === "recovery_required";
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    if (body.trim().length === 0 || saving || pendingReview?.busy === true) return;
     setSaving(true); setError(undefined);
-    try { await onSave(body); }
+    try { await action(); }
     catch (cause: unknown) {
       if (cause instanceof PatchdeskApiError) {
-        console.error("Inline comment failed", { kind: cause.kind, status: cause.status, correlationId: cause.correlationId });
+        console.error("Inline review comment failed", { kind: cause.kind, status: cause.status, correlationId: cause.correlationId });
         if (cause.kind === "stale_head") setError("This pull request has changed. Refresh and try again.");
-        else if (cause.kind === "github_rejected") setError("GitHub rejected this comment.");
+        else if (cause.kind === "github_rejected" || cause.kind === "rejected") setError("GitHub rejected this comment.");
         else if (cause.kind === "revision_conflict") setError("This comment cannot be published against the current diff.");
+        else if (cause.kind === "outcome_unknown") setError("GitHub could not confirm this write. Check GitHub again before trying again.");
+        else if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") setError("The pending review changed. Refresh to see its current state.");
         else setError(`Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`);
       } else {
         setError(cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.");
@@ -1625,11 +1659,19 @@ function InlineCommentComposer({
     }
     finally { setSaving(false); }
   };
+  const anchor = { path, startLine, line, side };
+  const startOrAdd = (): Promise<void> => {
+    if (pendingReview === undefined) return onSave(body);
+    const state = pendingReview.state;
+    if (state.state === "pending") return pendingReview.onAddReviewComment(state.nodeId, anchor, body);
+    return pendingReview.onStartReview(anchor, body);
+  };
   const cancel = (): void => {
     if (body.trim().length > 0 && !window.confirm("Discard this unsent comment?")) return;
     onCancel();
   };
-  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · publishes to GitHub</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void save(); } }} placeholder="Write an inline comment" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void save()} disabled={body.trim().length === 0 || saving}>{saving ? "Commenting…" : "Comment"}</Button><Button size="sm" variant="outline" onClick={cancel} disabled={saving}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
+  const busy = saving || pendingReview?.busy === true;
+  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · {pendingState === "pending" ? "joins your pending review on GitHub" : pendingState === "none" ? "publishes to GitHub" : "GitHub write is paused"}</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !writeDisabled) { event.preventDefault(); void run(startOrAdd); } }} placeholder="Write an inline comment" disabled={writeDisabled} /><div className="mt-2 flex gap-2">{pendingReview === undefined ? <Button size="sm" onClick={() => void run(() => onSave(body))} disabled={body.trim().length === 0 || busy}>Comment</Button> : writeDisabled ? <p className="text-sm text-amber-600 dark:text-amber-400">Pending review state is unavailable. Check GitHub again or refresh before commenting.</p> : pendingState === "pending" ? <Button size="sm" onClick={() => void run(startOrAdd)} disabled={body.trim().length === 0 || busy}>Add review comment</Button> : <><Button size="sm" onClick={() => void run(startOrAdd)} disabled={body.trim().length === 0 || busy}>Start a review</Button><Button size="sm" variant="outline" onClick={() => void run(() => onSave(body))} disabled={body.trim().length === 0 || busy}>Comment now</Button></>}<Button size="sm" variant="outline" onClick={cancel} disabled={busy}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
