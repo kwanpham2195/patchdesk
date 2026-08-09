@@ -44,16 +44,16 @@ _Avoid_: Resolved finding, deleted finding
 An approval, comment, or request for changes that the maintainer explicitly publishes to GitHub.
 _Avoid_: Submitted batch, published review batch
 
-**Review draft**:
-The maintainer's unpublished Review body, inline comments, and thread actions for a review. It remains local until the maintainer explicitly publishes it to GitHub.
-_Avoid_: Review batch, local batch
+**GitHub pending review**:
+The authenticated viewer's remote `PENDING` review for the represented pull request. It is the one authoritative editable Review draft after the maintainer starts a review; Patchdesk reads, appends to, finishes, and discards it through GitHub and keeps no second editable local copy. The final summary is supplied only in the Finish review modal and sent only on Submit.
+_Avoid_: Review draft, Review batch, local batch
 
 **Review body**:
-The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, findings, verdict, and maintainer guidance that do not belong in separate inline comments.
+The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, findings, verdict, and maintainer guidance that do not belong in separate inline comments. In the GitHub pending review flow it is supplied only from the Finish review modal at Submit.
 _Avoid_: Shared body, review summary
 
 **Conversation**:
-The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the local Review draft. Returned as a single unified payload by the GitHub adapter. The Conversation screen is read-only; all writes go through the Review draft or GitHub directly. It loads eagerly when a review opens and reloads with each GitHub refresh.
+The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. Returned as a single unified payload by the GitHub adapter. The Conversation screen is read-only; all writes go through the GitHub pending review or GitHub directly. It loads eagerly when a review opens and reloads with each GitHub refresh.
 _Avoid_: Published feedback, discussion tab, timeline
 
 **Conversation thread**:
@@ -69,7 +69,7 @@ An explicit maintainer action that changes a mapped Conversation thread between 
 _Avoid_: Draft action, batched action
 
 **Direct conversation comment**:
-An inline GitHub comment or reply that a maintainer explicitly submits from the diff. It publishes immediately and never becomes part of the local Review draft.
+An inline GitHub comment or reply that a maintainer explicitly submits from the diff. **Comment now** publishes immediately and only while no viewer pending review is confirmed; it never becomes part of the GitHub pending review.
 _Avoid_: Inline draft, queued reply
 
 **Partial conversation thread**:
