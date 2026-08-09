@@ -59,6 +59,7 @@ import {
   parseReviewBatchProjection,
   parseWorkbenchResponse,
   type CommitDiffResponse,
+  type PendingReviewProjection,
 } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
 import {
@@ -74,6 +75,19 @@ function boundedPendingReviewError(cause: unknown): string {
     if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Check GitHub again or refresh.";
   }
   return "Patchdesk could not finish this review. Check GitHub again or refresh.";
+}
+
+/**
+ * The exact pending-review thread ids a projection confirms. Only ids that
+ * parse as GitHub thread ids are journaled: detection matches real remote
+ * threads, and an unparseable id would silently break the detector request.
+ */
+function threadIdsOf(projection: PendingReviewProjection | undefined): ReadonlyArray<GitHubThreadId> {
+  if (projection === undefined || projection.state !== "pending") return [];
+  return projection.review.comments.flatMap((comment) => {
+    const parsed = parseGitHubThreadId(comment.threadId);
+    return parsed._tag === "ok" ? [parsed.value] : [];
+  });
 }
 
 function pullRequestExternalRef(
@@ -548,13 +562,14 @@ export function ReviewWorkbenchFlow({
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const [finishDialogError, setFinishDialogError] = useState<string | undefined>(undefined);
-  const applyPendingReviewProjection = useCallback((value: unknown): void => {
+  const applyPendingReviewProjection = useCallback((value: unknown): PendingReviewProjection | undefined => {
     const projection = parsePendingReviewProjection(
       typeof value === "object" && value !== null
         ? (value as Record<string, unknown>)["pendingReview"]
         : undefined,
     );
     if (projection !== undefined) onWorkbenchPatch({ pendingReview: projection });
+    return projection;
   }, [onWorkbenchPatch]);
   const runPendingReviewCommand = useCallback(async (command: {
     readonly _tag: "Start" | "AddThread";
@@ -571,6 +586,13 @@ export function ReviewWorkbenchFlow({
   }): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot accept review comments.");
+    // The prior projection's thread ids are the baseline for journaling: only
+    // the exact ids this command adds (Start/AddThread) or confirms absent
+    // (Discard) may be excluded from detection.
+    const priorThreadIds =
+      command._tag === "Start" || command._tag === "AddThread" || command._tag === "Discard"
+        ? threadIdsOf(workbench.pendingReview)
+        : [];
     setPendingReviewBusy(true);
     try {
       const expected = {
@@ -610,8 +632,30 @@ export function ReviewWorkbenchFlow({
                 },
               },
             });
-      applyPendingReviewProjection(value);
+      const projection = applyPendingReviewProjection(value);
       setFinishDialogError(undefined);
+      // Journal the exact pending-thread mutations so the detector never reads
+      // this window's own Start/AddThread/Discard as a remote update. Entries
+      // survive until an explicit refresh/reload replaces the represented
+      // snapshot; a Submit keeps them because the threads persist remotely.
+      if (command._tag === "Start" || command._tag === "AddThread") {
+        const added = threadIdsOf(projection).filter((id) => !priorThreadIds.includes(id));
+        if (added.length > 0) {
+          setRecentWrites((current) => [
+            ...current,
+            ...added.map((threadId) => ({ _tag: "PendingThread" as const, threadId })),
+          ]);
+        }
+      } else if (command._tag === "Discard" && projection?.state === "none") {
+        // Confirmed absence: the threads the prior projection owned are gone
+        // from the candidate snapshot, so they must be masked on both sides.
+        if (priorThreadIds.length > 0) {
+          setRecentWrites((current) => [
+            ...current,
+            ...priorThreadIds.map((threadId) => ({ _tag: "PendingThread" as const, threadId })),
+          ]);
+        }
+      }
     } finally {
       setPendingReviewBusy(false);
     }

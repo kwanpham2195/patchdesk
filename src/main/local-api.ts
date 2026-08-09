@@ -121,6 +121,7 @@ const reviewLoadSchema = union([
 const recentReviewWriteSchema = variant("_tag", [
   strictObject({ _tag: picklist(["Comment"] as const), commentId: pipe(string(), minLength(1)), reviewId: optional(pipe(string(), minLength(1))) }),
   strictObject({ _tag: picklist(["ThreadState"] as const), threadId: pipe(string(), minLength(1)), state: picklist(["open", "resolved"] as const) }),
+  strictObject({ _tag: picklist(["PendingThread"] as const), threadId: pipe(string(), minLength(1)) }),
 ]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -773,6 +774,10 @@ export async function startLocalApiServer(
           commentId: entry.commentId,
           ...(entry.reviewId === undefined ? {} : { reviewId: entry.reviewId }),
         });
+      } else if (entry._tag === "PendingThread") {
+        const parsedThreadId = parseGitHubThreadId(entry.threadId);
+        if (parsedThreadId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+        recentWrites.push({ _tag: "PendingThread", threadId: parsedThreadId.value });
       } else {
         const parsedThreadId = parseGitHubThreadId(entry.threadId);
         if (parsedThreadId._tag === "err") return context.json({ error: "invalid_input" }, 400);

@@ -37,6 +37,10 @@ export type RecentReviewWrite =
       readonly _tag: "ThreadState";
       readonly threadId: GitHubThreadId;
       readonly state: "open" | "resolved";
+    }
+  | {
+      readonly _tag: "PendingThread";
+      readonly threadId: GitHubThreadId;
     };
 
 export type DetectionResult = {
@@ -364,11 +368,14 @@ function withoutRecentWrites(
   if (journal.length === 0) return { candidate, represented };
   const commentIds = new Set<string>();
   const latestThreadStateById = new Map<GitHubThreadId, "open" | "resolved">();
+  const pendingThreadIds = new Set<GitHubThreadId>();
   for (const entry of journal) {
     if (entry._tag === "Comment") {
       commentIds.add(entry.commentId);
-    } else {
+    } else if (entry._tag === "ThreadState") {
       latestThreadStateById.set(entry.threadId, entry.state);
+    } else {
+      pendingThreadIds.add(entry.threadId);
     }
   }
   const withoutComments = (comments: GitHubComments): GitHubComments => ({
@@ -383,9 +390,19 @@ function withoutRecentWrites(
       }))
       .filter((thread) => thread.comments.length > 0),
   });
+  // A pending-review thread this session created (Start/AddThread) appears only
+  // in the candidate snapshot; one this session discarded appears only in the
+  // represented snapshot. Removing the exact journaled thread from BOTH sides
+  // is symmetric, so neither the app-owned addition nor the removal reads as a
+  // remote update, while any unrelated thread change still differs.
+  const withoutOwnPendingThreads = (comments: GitHubComments): GitHubComments => ({
+    ...comments,
+    threads: comments.threads.filter((thread) => !pendingThreadIds.has(thread.id)),
+  });
   const representedWithoutOwnComments = withoutComments(represented);
+  const representedWithoutOwn = withoutOwnPendingThreads(representedWithoutOwnComments);
   return {
-    candidate: withoutComments(candidate),
+    candidate: withoutOwnPendingThreads(withoutComments(candidate)),
     // Thread-state normalization is intentionally asymmetric: the successful
     // local change must not read as an update, so the represented side is
     // forced to the requested state, while the candidate side keeps whatever
@@ -393,8 +410,8 @@ function withoutRecentWrites(
     // blocks writes; a false stale signal during GitHub propagation is
     // deliberately preferred over a false fresh signal.
     represented: {
-      ...representedWithoutOwnComments,
-      threads: representedWithoutOwnComments.threads.map((thread) => {
+      ...representedWithoutOwn,
+      threads: representedWithoutOwn.threads.map((thread) => {
         const forced = latestThreadStateById.get(thread.id);
         return forced === undefined ? thread : { ...thread, state: forced };
       }),

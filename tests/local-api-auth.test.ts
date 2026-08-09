@@ -178,6 +178,8 @@ describe("local API capability boundary", () => {
     { recentWrites: [{ _tag: "ThreadState", threadId: "not a thread id!", state: "resolved" }] },
     { recentWrites: [{ _tag: "ThreadState", threadId: "pending:local-1", state: "resolved" }] },
     { recentWrites: [{ _tag: "ThreadState", threadId: "PRRT_x", state: "half" }] },
+    { recentWrites: [{ _tag: "PendingThread", threadId: "not a thread id!" }] },
+    { recentWrites: [{ _tag: "PendingThread" }] },
     { recentWrites: [{ _tag: "Unknown" }] },
   ])("rejects a malformed write journal on detect-updates: %j", async (journal) => {
     const startup = await startLocalApiServer({ capability, allowedOrigin });

@@ -2576,3 +2576,106 @@ describe("ReviewWorkbenchFlow pending review discard", () => {
     await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish review" })).toBeNull());
   });
 });
+describe("pending-review write journaling", () => {
+  const withPending = (pendingReview: unknown): WorkbenchResponse => ({
+    ...projection(),
+    revision: { ...projection().revision, patchHash: "patch-hash" as never },
+    pendingReview: pendingReview as WorkbenchResponse["pendingReview"],
+  });
+
+  // The accessible fallback (no constructable stylesheets) renders the
+  // composer synchronously so a Start can be driven in jsdom.
+  const withFallbackDom = async (run: () => Promise<void>): Promise<void> => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    try {
+      await run();
+    } finally {
+      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
+    }
+  };
+
+  function stubRequestWithDetectCapture(responses: Record<string, unknown>) {
+    const detectBodies: Array<{ readonly recentWrites?: unknown }> = [];
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      if (input.path === "/v1/reviews/detect-updates") {
+        detectBodies.push((input.body ?? {}) as { readonly recentWrites?: unknown });
+        return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      }
+      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
+      const response = responses[input.path];
+      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    return { request, detectBodies };
+  }
+
+  it("journals only the newly confirmed thread after a successful Start", async () => {
+    await withFallbackDom(async () => {
+      const user = userEvent.setup();
+      const { request, detectBodies } = stubRequestWithDetectCapture({
+        "/v1/reviews/pending-review/command": {
+          pendingReview: {
+            state: "pending",
+            count: 1,
+            review: {
+              nodeId: "PRR_kwDORJzsQM7e6QwJ",
+              headSha: "a".repeat(40),
+              comments: [{ threadId: "PRRT_journal_1", body: "test", path: "src/a.ts", startLine: 1, line: 1, side: "new" }],
+            },
+          },
+        },
+      });
+      render(
+        <ReviewWorkbenchFlow
+          workbench={withPending({ state: "none" })}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("tab", { name: "Diff" }));
+      const row = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
+      const addButton = row?.querySelector<HTMLButtonElement>('button[aria-label="Add comment on src/a.ts"]');
+      if (!addButton) throw new Error("Expected inline comment action");
+      await user.click(addButton);
+      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "test");
+      const startButtons = screen.getAllByRole("button", { name: "Start a review" });
+      await user.click(startButtons.at(-1) as HTMLButtonElement);
+      await vi.waitFor(() => expect(request.mock.calls.some((c) => (c[0] as { path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
+      const detectsBefore = detectBodies.length;
+      window.dispatchEvent(new Event("focus"));
+      await vi.waitFor(() => expect(detectBodies.length).toBeGreaterThan(detectsBefore), { timeout: 4000 });
+      const body = detectBodies.at(-1);
+      expect(body?.recentWrites).toEqual([{ _tag: "PendingThread", threadId: "PRRT_journal_1" }]);
+    });
+  });
+
+  it("journals the prior pending thread after a confirmed Discard", async () => {
+    const user = userEvent.setup();
+    const { request, detectBodies } = stubRequestWithDetectCapture({
+      "/v1/reviews/pending-review/command": { pendingReview: { state: "none" } },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "pending", count: 1, review: { nodeId: "PRR_kwDORJzsQM7e6QwJ", headSha: "a".repeat(40), comments: [{ threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" }] } })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Finish review · 1" }));
+    await user.click(screen.getByRole("button", { name: "Discard review" }));
+    await user.click(screen.getByRole("button", { name: "Confirm discard" }));
+    await vi.waitFor(() => expect(request.mock.calls.some((c) => (c[0] as { path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
+    const detectsBefore = detectBodies.length;
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(detectBodies.length).toBeGreaterThan(detectsBefore), { timeout: 4000 });
+    const body = detectBodies.at(-1);
+    expect(body?.recentWrites).toEqual([{ _tag: "PendingThread", threadId: "PRRT_1" }]);
+  });
+});
