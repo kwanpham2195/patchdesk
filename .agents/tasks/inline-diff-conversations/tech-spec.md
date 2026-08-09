@@ -14,9 +14,9 @@ plan: .agents/tasks/inline-diff-conversations/plans/2026-08-09-github-pending-re
 
 Replace Patchdesk’s local `ReviewBatch` draft and hidden Review draft dock with a GitHub-native pending-review lifecycle.
 
-A maintainer starts a review from the Diff, creating a remote `PENDING` review with the first inline thread. Patchdesk reads the signed-in maintainer’s pending review, renders its pending comments in the Diff, lets the maintainer add more review comments, and finishes it from a GitHub-style modal. The final summary and Comment/Approve/Request changes decision are supplied only at submit time. Discard deletes the pending review after explicit confirmation.
+A maintainer starts a review from the Diff, creating a remote `PENDING` review with the first inline thread. Patchdesk reads the signed-in maintainer’s pending review, renders its pending comments in the Diff, lets the maintainer add more review comments, and finishes it from a GitHub-style modal. The final summary and Comment/Approve/Request changes decision are supplied only at submit time. Discard is implemented from the normal-response DELETE/read-back contract and uses conservative `OutcomeUnknown` recovery for its explicitly accepted unvalidated timeout/lost-response case.
 
-This design is conditional on the disposable-PR validation spike in the linked plan. It specifies only contracts that the spike must prove. Unknown API behavior remains an open question, not an implied feature.
+This design is conditional on the validation spike in the linked plan. Redacted evidence at `fbb91b4` proves the bounded reader, Start with first thread, append, Submit, Comment-now rejection while pending, and create/add/submit lost-response reconciliation for the tested account/PR. `dbacd62` proves normal-response Discard DELETE and bounded absence read-back. The evidence records an environment deviation: the owner used a real open-repository PR and their own account rather than the planned sandbox/disposable PR and dedicated test account. The product owner explicitly accepts the unvalidated Discard timeout/lost-response path only when it persists `OutcomeUnknown`, forbids automatic retry, locks conflicting controls, and requires explicit reconciliation. Isolation with repository access, empty review, Reply/Resolve/Unresolve, and head-change behavior remain open gates, not implied features.
 
 ## Context / Current State
 
@@ -30,7 +30,7 @@ This design is conditional on the disposable-PR validation spike in the linked p
 ## Goals
 
 - Make one viewer-owned GitHub pending review the remote source of truth for active review comments.
-- Use a GitHub-style header and Finish review modal instead of the hidden bottom dock.
+- Use a GitHub-style header and Finish review modal instead of the hidden bottom dock; expose Discard only after its separate validation gate passes.
 - Import a pending review started on GitHub by the authenticated account.
 - Offer **Comment now** or **Start a review** before a review exists; use **Add review comment** afterward.
 - Keep explicit refresh, capability protection, sandboxing, freshness, exact-head validation, confirmation, and unknown-outcome recovery.
@@ -52,9 +52,12 @@ This design is conditional on the disposable-PR validation spike in the linked p
 3. An incomplete pending-review read is `Unavailable`, never `None`.
 4. Starting or adding a pending inline comment requires an open, fresh Review, represented patch/hash, valid full same-side anchor, and final GitHub head match.
 5. Submit and discard require an explicit user action. Discard additionally requires destructive confirmation.
-6. Before any create, add, submit, or discard remote write, persist a typed operation intent. A timeout or lost response moves the state to `OutcomeUnknown`; no automatic retry is allowed.
-7. Only explicit Refresh replaces the represented remote snapshot. After refresh, new coordinate writes require the new head; an existing remote pending review remains available to submit or discard.
-8. Comment bodies, raw GitHub output, credentials, repository paths, and stack traces do not enter logs, diagnostics, toasts, or protocol failures.
+6. Before any create, add, submit, or discard remote write, persist a typed operation intent. A timeout, lost response, or failed post-write persistence moves the state to `OutcomeUnknown`; no automatic retry is allowed.
+7. Only initial Review open and explicit Refresh replace the represented GitHub snapshot. A user-initiated recovery read (`Check GitHub again`) may reconcile the narrow pending-review owner but must not silently replace that broader snapshot. After Refresh, new coordinate writes require the new head.
+8. Whether an existing remote pending review can be submitted or discarded after a head change is a validation-spike result. Until it is proved, the UI must preserve recovery evidence and block the unsupported action rather than claiming GitHub permits it.
+9. The product owner approved **discard** for every persisted legacy `batchContent` class, including ordinary, pending, in-flight, and unknown records. The migration may remove local evidence only through its tested path, without a remote write, automatic retry, local fallback, or assumption that a GitHub outcome was absent.
+10. The final summary is modal-local and enters a remote command only at Submit. `ViewerPendingReview` has no editable local summary field; the behavior of an imported remote review that already has a body is an open product/spike question.
+11. Comment bodies, raw GitHub output, credentials, repository paths, and stack traces do not enter logs, diagnostics, toasts, or protocol failures.
 
 ## Design Constraints
 
@@ -179,7 +182,7 @@ export type PendingReviewState =
 
 ### Types, Interfaces, and APIs
 
-The adapter is the only GitHub API boundary. Its exact GraphQL selections and REST URLs are defined only after the spike.
+The adapter is the only GitHub API boundary. `fbb91b4` proves the reader, Start, append, and Submit request/response shapes below; `dbacd62` proves normal-response Discard DELETE and bounded absence read-back. The product owner accepts an unvalidated timeout/lost-response Discard path only as `OutcomeUnknown` with no automatic retry, locked conflicting controls, and explicit Check GitHub again reconciliation.
 
 ```ts
 export type PendingReviewRead =
@@ -234,7 +237,7 @@ export interface GitHubPendingReviewGateway {
 }
 ```
 
-`getViewerPendingReview()` must resolve the authenticated account before invoking the adapter and compare it with the remote author inside the adapter. It returns `Unavailable` for pagination/incomplete data rather than granting a false absence.
+The pending-review service resolves the authenticated account through the existing main-process reader, then passes that typed identity to `getViewerPendingReview()`. The adapter validates the remote PR and author against that input. It returns `Unavailable` for pagination, incomplete comments, missing identity proof, malformed data, or a filtered foreign result rather than granting a false absence. It may return `None` only when the spike-proven bounded query establishes that no viewer-owned pending review exists.
 
 The service owns lifecycle, persistence, and gates:
 
@@ -308,11 +311,15 @@ type PendingReviewCommandDto =
     };
 ```
 
-The workbench response replaces `draft?: ReviewBatch` with a read projection. It may contain comment bodies because that data already crosses the existing validated Conversation/read projection; it never includes capability values, raw adapter errors, or persistence paths.
+The workbench response replaces `draft?: ReviewBatch` with a read projection. It may contain comment bodies because that data already crosses the existing validated Conversation/read projection; it never includes capability values, raw adapter errors, or persistence paths. `unavailable` is not `none`: it retains the last confirmed pending projection when present and otherwise disables Start/Comment now until an explicit retry can establish a safe result.
 
 ```ts
 type PendingReviewProjection =
   | { readonly state: "none" }
+  | {
+      readonly state: "unavailable";
+      readonly action: "refresh" | "check_github_again";
+    }
   | {
       readonly state: "pending";
       readonly count: number;
@@ -383,19 +390,21 @@ selected Diff range + body + user click
   -> renderer validates projection, clears composer, shows Finish review · N
 ```
 
-`Comment now` stays on the existing `InlineConversationService` route. It remains an explicit immediate GitHub write and cannot run through the pending-review service.
+The header's `Start a review` action leads the maintainer to select a valid Diff range and open the inline composer. It must not create an empty remote review unless the empty-review spike gate is accepted. `Comment now` stays on the existing `InlineConversationService` route only while no viewer pending review is confirmed. It remains an explicit immediate GitHub write and cannot run through the pending-review service. Once a pending review is confirmed, the composer exposes only `Add review comment`; it must not offer an unproven fallback that publishes immediately or creates a local draft. When the pending-review read is unavailable, both new-comment branches remain disabled rather than treating unavailable as `None`.
 
 ### Proposed / New Flow: import, refresh, and finish
 
 ```txt
-Review open | explicit Refresh | Check GitHub again
+Initial Review open | explicit Refresh | explicit Check GitHub again
   -> resolveAuthenticatedAccount()
   -> getViewerPendingReview(profile, PR, account)
-  -> adapter parses complete remote result and proves author + PR
+  -> adapter parses a spike-proven complete bounded result and proves author + PR
   -> PendingReviewService.reconcile()
   -> persist None | Pending | resolved recovery state
   -> ReviewWorkbenchProjection
   -> header Start a review | Finish review · N
+
+Only initial open and explicit Refresh replace the represented GitHub snapshot. `Check GitHub again` is available only to recover a persisted uncertain pending-review operation; it reconciles that operation without implicitly refreshing conversation, checks, or the Diff.
 
 Finish review modal + Submit
   -> strict Submit DTO
@@ -417,17 +426,18 @@ Finish review -> Discard review -> AlertDialog confirmation
   -> PendingReviewService.discard()
   -> persist WriteInFlight(Discard)
   -> discardPendingReview()
-  -> persist None
-  -> reconcile/read remote state
-  -> header Start a review
+  -> persist confirmed None or OutcomeUnknown
+  -> header Start a review only after a confirmed outcome
+
+A discard receipt may update the narrow pending-review projection. It does not trigger an implicit broader GitHub refresh; an uncertain discard stays locked until explicit `Check GitHub again` reconciliation.
 ```
 
 ### Failure Flow
 
 - Invalid DTO/ID/anchor: local API returns safe `invalid_input`; the service and adapter do not run.
 - Stale session/head/patch: retain the displayed remote pending review, reject new coordinate writes, and offer explicit Refresh.
-- Non-matching account/PR: adapter returns `None` for no viewer review or `NotFound` for a targeted mutation; it never exposes another reviewer’s content.
-- Incomplete pending read: return `Unavailable`; keep current projection and do not render Start a review as proof that none exists.
+- Non-matching account/PR: the adapter never exposes another reviewer’s content. A foreign or unprovable result is `Unavailable`, not proof that the viewer has no pending review; a targeted mutation may return `NotFound` only after its target-specific proof fails.
+- Incomplete pending read: return `Unavailable`; keep the current projection and do not render Start a review as proof that none exists.
 - Rejected remote write: persist a safe rejected outcome, leave confirmed remote state unchanged, and show bounded copy.
 - Timeout/lost response/persist failure: persist `OutcomeUnknown`, lock conflicting controls, show Check GitHub again/Open on GitHub, and prohibit retry until reconciliation.
 
@@ -435,7 +445,7 @@ Finish review -> Discard review -> AlertDialog confirmation
 
 - Start, AddThread, Submit, and Discard are serialized per Review/session. Each intent has a persisted `PendingReviewRequestId` before its remote write.
 - No create/add/submit/discard is retried automatically. GitHub does not document `clientMutationId` as an idempotency key.
-- Reconciliation is read-only and may run again. It maps a known remote result to the stored request intent or leaves `OutcomeUnknown` locked.
+- Reconciliation is read-only and runs only at initial open, explicit Refresh, or the maintainer's explicit `Check GitHub again` recovery action. It maps a known remote result to the stored request intent or leaves `OutcomeUnknown` locked; it does not replace the broader represented snapshot outside initial open or Refresh.
 - Renderer requests are awaited/owned by `ReviewWorkbenchFlow`; no detached mutation or background refresh is introduced.
 - Pass an optional caller-owned `AbortSignal` through any new service/adapter operation only if the existing local API request lifecycle exposes one. Do not add an unowned controller.
 
@@ -466,17 +476,17 @@ Log only this bounded metadata through the existing application log seam. Do not
 ### Change
 
 - `src/domain/ids.ts` — only the parsed GitHub review/comment/login IDs proven by the spike.
-- `src/domain/review-session.ts` and storage adapters — replace batch persistence with pending-review durable state after approved existing-data handling.
-- `src/adapters/github/github-adapter.ts` — authenticated pending read, add-thread, discard, strict response parsers, fake-adapter support.
+- `src/domain/review-session.ts` and storage adapters — add pending-review durable state only after the approved discard migration and its tests. Remove legacy batch persistence without a remote write, automatic retry, local fallback, or assertion that a GitHub-side outcome did not occur.
+- `src/adapters/github/github-adapter.ts` — authenticated pending read, start, add-thread, Submit, strict response parsers, and fake-adapter support for the `fbb91b4`-proven contracts. Do not add Discard until its separate validation gate passes.
 - `src/services/review-refresh-service.ts` and workbench projection — reconcile/project pending review on open/refresh/recovery.
 - `src/main/local-api.ts` and `src/main/desktop-bridge.ts` — strict protected pending-review command route and safe projection.
 - `src/renderer/src/renderer-contracts.ts` — pending-review response codecs.
 - `src/renderer/src/flows/review-workbench-flow.tsx` — request ownership, split composer actions, pending projection, Analysis/Finding commands.
 - `src/renderer/src/components/review-workbench.tsx` and `review-diff-view.tsx` — header action, modal mount, Diff action labels and pending annotation behavior.
 - `src/renderer/src/flows/app-fixtures.tsx`, renderer/browser/local-API tests — fixture and observable contract migration.
-- `CONTEXT.md`, task `spec.md`, and ADR references — vocabulary and supersession links.
+- `CONTEXT.md`, task `spec.md`, and ADR references — vocabulary and supersession links. The new ADR must explicitly scope supersession to Review drafting; historical ADRs remain current until that change lands.
 
-### Delete after migration and explicit existing-draft data decision
+### Delete after the approved legacy-data discard migration
 
 - `src/domain/review-batch.ts`
 - `src/services/review-batch-controller.ts`
@@ -491,7 +501,7 @@ Log only this bounded metadata through the existing application log seam. Do not
 
 ### Slice 1: Parse and reconcile a viewer pending review
 
-- **Red:** adapter/service behavior test supplies a complete same-PR/same-account pending review and expects `Pending`; supplies other-account, other-PR, and incomplete results and expects no actionable pending projection.
+- **Red:** adapter/service behavior test supplies a complete same-PR/same-account pending review and expects `Pending`; supplies other-account, other-PR, malformed, and incomplete results and expects `Unavailable`, preserved prior state when present, and no Start/Comment-now action.
 - **Green:** add the parsed domain types, fake gateway read, strict adapter parser, and `reconcile()` projection.
 - **Refactor:** isolate ID/author/PR checks in the adapter; keep no GraphQL JSON outside it.
 
@@ -519,11 +529,11 @@ Log only this bounded metadata through the existing application log seam. Do not
 - **Green:** add `OutcomeUnknown` transition, Check GitHub again route, explicit-refresh reconciliation, and bounded recovery UI.
 - **Refactor:** centralize operation-to-recovery status mapping in the domain module.
 
-### Slice 6: Remove local draft UI and prove the real surface
+### Slice 6: Apply approved legacy-data discard, remove local draft UI, and prove the real surface
 
-- **Red:** browser/renderer tests assert no hidden draft dock remains, the header action works in Files and Insights, dialog focus returns to its trigger, and 960px/1280px/1440px have no viewport overflow.
-- **Green:** remove dock/batch/publication components and legacy routes after all production callers migrate.
-- **Refactor:** remove stale fixture paths and obsolete tests rather than retaining aliases.
+- **Red:** migration tests cover the approved discard of Local, PendingReview, Applying, and unknown/partial-failure `batchContent`. They prove migration issues no remote write or retry and never treats local deletion as proof that the GitHub outcome was absent. Browser/renderer tests assert no hidden draft dock remains, the header action works in Files and Insights by directing a no-review maintainer to valid inline authoring without creating an empty remote review, dialog focus returns to its trigger, and 960px/1280px/1440px have no viewport overflow.
+- **Green:** implement the approved discard migration; then remove dock/batch/publication components and legacy routes after all production callers migrate. The new bounded pending-review reader remains responsible for any remote-side reconciliation.
+- **Refactor:** remove stale fixture paths and obsolete tests rather than retaining aliases; do not retain compatibility aliases or an undocumented local-draft fallback.
 
 Run focused adapter/service/renderer tests after each slice, then `pnpm typecheck`, `pnpm lint`, `pnpm test -- --run`, `pnpm build`, `pnpm run test:a11y`, and `pnpm exec playwright test`. Live Electron verification remains read-only unless the user separately authorizes the disposable-PR spike.
 
@@ -532,6 +542,7 @@ Run focused adapter/service/renderer tests after each slice, then `pnpm typechec
 1. **Required validation:** Can GitHub create an empty pending review without using the final summary, then append a thread? This governs unmapped/general Analysis/Finding content.
 2. **Required validation:** Which bounded API selection joins a pending review to complete actionable thread/comment IDs and its author? A partial result must not look like no pending review.
 3. **Required validation:** Does a reply or thread-state mutation join the active pending review, publish separately, or fail? Only proven operations join this feature.
-4. **Required user decision:** Existing persisted `batchContent` needs an explicit retain, export, or discard choice before its storage/code is removed. No silent migration or deletion is specified.
-5. **GitHub behavior:** Confirm discarded pending-review semantics and every unknown-outcome reconciliation path on a disposable PR before enabling the UI.
-6. **Refresh policy:** The selected behavior permits submit/discard of a remote pending review after explicit Refresh even when its anchors became outdated. Confirm the exact GitHub result in the spike and revise if it rejects the operation.
+4. **Approved data treatment:** The product owner selected discard for all legacy `batchContent` classes. The migration must be tested to remove local data without a remote write or automatic retry; a later bounded pending-review read, not local deletion, determines any GitHub-side outcome.
+5. **GitHub behavior:** `dbacd62` proves pending-review DELETE semantics and normal absence read-back. The product owner accepted the unvalidated timeout/lost-response path: preserve `OutcomeUnknown`, never retry automatically, and require explicit reconciliation rather than claiming success.
+6. **Refresh policy:** After a head change and explicit Refresh, new coordinate writes are blocked until they use the refreshed revision. Whether the pre-existing pending review may be submitted or discarded is unproven; preserve it for recovery and enable either action only if the spike proves the exact result.
+7. **Imported summary behavior:** Confirm how a pending review started on GitHub with a pre-existing review body behaves when Patchdesk submits the modal-only final summary. This requires a product decision after the spike; do not create a second local summary field.
