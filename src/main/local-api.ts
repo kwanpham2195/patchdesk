@@ -1082,6 +1082,11 @@ type PendingReviewCommandDto =
       readonly expected: ReviewWriteExpectation;
       readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
       readonly summaryBody: string;
+    }
+  | {
+      readonly _tag: "Discard";
+      readonly expected: ReviewWriteExpectation;
+      readonly confirmation: true;
     };
 
 async function pendingReviewCommandResponse(context: Context, service: PendingReviewService | undefined, sessions: ReviewSessionStore, body: unknown): Promise<Response> {
@@ -1092,7 +1097,9 @@ async function pendingReviewCommandResponse(context: Context, service: PendingRe
     ? await service.start({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, anchor: parsed.command.anchor, body: parsed.command.body })
     : parsed.command._tag === "AddThread"
       ? await service.addThread({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, pendingReviewNodeId: parsed.command.pendingReviewNodeId, anchor: parsed.command.anchor, body: parsed.command.body })
-      : await service.submit({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, event: parsed.command.event, summaryBody: parsed.command.summaryBody });
+      : parsed.command._tag === "Submit"
+        ? await service.submit({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, event: parsed.command.event, summaryBody: parsed.command.summaryBody })
+        : await service.discard({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, confirmation: parsed.command.confirmation });
   if (result._tag === "ok") {
     return context.json({ pendingReview: projectPendingReview(result.value.state, false) });
   }
@@ -1152,6 +1159,11 @@ function parsePendingReviewCommand(body: unknown): { readonly profileId: Workspa
     const summaryBody = readObjectField(raw, "summaryBody");
     if ((event !== "APPROVE" && event !== "COMMENT" && event !== "REQUEST_CHANGES") || typeof summaryBody !== "string") return undefined;
     return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Submit", expected, event, summaryBody } };
+  }
+  if (tag === "Discard") {
+    // Discard is destructive: the DTO must carry the explicit confirmation.
+    if (readObjectField(raw, "confirmation") !== true) return undefined;
+    return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Discard", expected, confirmation: true } };
   }
   return undefined;
 }

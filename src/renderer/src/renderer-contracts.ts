@@ -555,7 +555,7 @@ const pendingReviewProjectionSchema = v.variant("state", [
   }),
   v.strictObject({
     state: v.literal("recovery_required"),
-    action: v.picklist(["start", "add_thread", "submit"]),
+    action: v.picklist(["start", "add_thread", "submit", "discard"]),
   }),
 ]);
 const workbenchProjectionSchema = v.strictObject({

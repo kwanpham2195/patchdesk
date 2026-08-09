@@ -55,6 +55,11 @@ const submitOperation: PendingReviewOperation = {
   reviewId: "4891263665" as never,
   event: "COMMENT",
 };
+const discardOperation: PendingReviewOperation = {
+  _tag: "Discard",
+  requestId: "pending-review-discard-1" as never,
+  reviewId: "4891263665" as never,
+};
 
 function review(): ViewerPendingReview {
   const parsed = parseViewerPendingReview(reviewRaw);
@@ -76,6 +81,11 @@ describe("parsePendingReviewState", () => {
       {
         _tag: "OutcomeUnknown" as const,
         operation: submitOperation,
+        startedAt: "2026-08-09T11:35:00.000Z",
+      },
+      {
+        _tag: "OutcomeUnknown" as const,
+        operation: discardOperation,
         startedAt: "2026-08-09T11:35:00.000Z",
       },
     ]) {
@@ -158,16 +168,18 @@ describe("parsePendingReviewState", () => {
 });
 
 describe("pending-review state transitions", () => {
-  it("Start is legal only from None; AddThread/Submit only from the matching Pending review", () => {
+  it("Start is legal only from None; AddThread/Submit/Discard only from the matching Pending review", () => {
     expect(canStartPendingReviewOperation({ _tag: "None" }, startOperation)).toBe(true);
     expect(canStartPendingReviewOperation({ _tag: "Pending", review: review() }, startOperation)).toBe(false);
     const pending = { _tag: "Pending" as const, review: review() };
     expect(canStartPendingReviewOperation(pending, addThreadOperation)).toBe(true);
     expect(canStartPendingReviewOperation(pending, submitOperation)).toBe(true);
+    expect(canStartPendingReviewOperation(pending, discardOperation)).toBe(true);
     expect(
       canStartPendingReviewOperation(pending, { ...addThreadOperation, reviewId: "PRR_other000000000" as never }),
     ).toBe(false);
     expect(canStartPendingReviewOperation({ _tag: "None" }, submitOperation)).toBe(false);
+    expect(canStartPendingReviewOperation({ _tag: "None" }, discardOperation)).toBe(false);
   });
 
   it("locked states reject every new operation", () => {
@@ -250,6 +262,15 @@ describe("reconcilePendingReviewState", () => {
     expect(reconcilePendingReviewState(locked(startOperation), { _tag: "None" })).toEqual({ _tag: "None" });
     const stillLocked = reconcilePendingReviewState(locked(startOperation), { _tag: "Unavailable" });
     expect(stillLocked).toMatchObject({ _tag: "OutcomeUnknown", operation: startOperation });
+  });
+
+  it("maps Discard: not executed stays Pending; complete absence resolves to None", () => {
+    expect(reconcilePendingReviewState(locked(discardOperation), { _tag: "Pending", review: review() })).toMatchObject({
+      _tag: "Pending",
+    });
+    expect(reconcilePendingReviewState(locked(discardOperation), { _tag: "None" })).toEqual({ _tag: "None" });
+    const stillLocked = reconcilePendingReviewState(locked(discardOperation), { _tag: "Unavailable" });
+    expect(stillLocked).toMatchObject({ _tag: "OutcomeUnknown", operation: discardOperation });
   });
 
   it("maps Submit that did not execute back to Pending; ambiguous absence stays locked", () => {

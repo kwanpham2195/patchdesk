@@ -119,6 +119,7 @@ export type ReviewWorkbenchActions = {
       event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
       summaryBody: string,
     ) => Promise<void>;
+    readonly onDiscard: () => Promise<void>;
     readonly onCheckGitHubAgain: () => Promise<void>;
     readonly finishDialogError?: string;
   };
@@ -582,6 +583,7 @@ export function ReviewWorkbench({
           actions={{
             busy: actions.pendingReview.busy,
             onSubmit: actions.pendingReview.onSubmit,
+            onDiscard: actions.pendingReview.onDiscard,
             onCheckGitHubAgain: actions.pendingReview.onCheckGitHubAgain,
           }}
           {...(actions.pendingReview.finishDialogError === undefined

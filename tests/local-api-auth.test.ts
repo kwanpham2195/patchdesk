@@ -903,6 +903,7 @@ function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly
 }
 
 async function pendingReviewFixture(pendingReviewValues: Record<string, unknown>): Promise<{ readonly api: LocalApiServer; readonly request: { readonly profileId: string; readonly reviewId: string; readonly command: unknown } }> {
+  const durablePendingReview = pendingReviewValues["pendingReviewState"];
   const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-pending-")));
   const profileId = must(parseWorkspaceProfileId("cfw"));
   const host = must(parseGitHubHost("github.com")); const owner = must(parseGitHubOwner("centraldigital")); const repo = must(parseGitHubRepoName("patchdesk")); const number = must(parsePullRequestNumber(42)); const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
@@ -912,7 +913,10 @@ async function pendingReviewFixture(pendingReviewValues: Record<string, unknown>
   await writeFile(paths.batchDiscardMarkerFile(profileId), JSON.stringify({ schemaVersion: 1, profileId, completedAt: "2026-08-09T00:00:00.000Z" }), "utf8");
   const session = createReviewSession({ key: { profileId, host, owner, repo, prNumber: number, headSha }, pr: { headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath("/tmp/patch.diff")), worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha }, createdAt: "2026-07-16T00:00:00.000Z" as never });
   const sessions = new ReviewSessionStore(paths);
-  await sessions.save(session);
+  await sessions.save({
+    ...session,
+    ...(durablePendingReview === undefined ? {} : { pendingReview: durablePendingReview }),
+  });
   await writeFile(session.patchPath, "", "utf8");
   const reviews = new ReviewStore(paths);
   const remote = new ReviewRemoteStore(paths, reviews);
@@ -1000,6 +1004,43 @@ describe("local API pending-review boundary", () => {
     });
     try {
       const response = await fetch(new URL("v1/reviews/pending-review/recover", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ profileId: fixture.request.profileId, reviewId: fixture.request.reviewId }) });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ pendingReview: { state: "none" } });
+    } finally { await fixture.api.stop(); }
+  });
+});
+
+describe("local API pending-review discard boundary", () => {
+  it("requires the explicit destructive confirmation in the Discard DTO", async () => {
+    const fixture = await pendingReviewFixture({});
+    try {
+      const headers = { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
+      const command = { _tag: "Discard", expected: (fixture.request.command as { readonly expected: unknown }).expected, confirmation: false };
+      const rejected = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers, body: JSON.stringify({ ...fixture.request, command }) });
+      expect(rejected.status).toBe(400);
+      const withoutConfirmation = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers, body: JSON.stringify({ ...fixture.request, command: { _tag: "Discard", expected: (fixture.request.command as { readonly expected: unknown }).expected } }) });
+      expect(withoutConfirmation.status).toBe(400);
+    } finally { await fixture.api.stop(); }
+  });
+
+  it("runs a confirmed Discard against a durable Pending owner and returns none", async () => {
+    const reviewValue = {
+      restId: "9001",
+      nodeId: "PRR_kwDORJzsQM7e6QwJ",
+      author: "fixture",
+      pr: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 },
+      headSha: "abcdef1234567890abcdef1234567890abcdef12",
+      comments: [{ reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd", threadId: "PRRT_kwDORJzsQM0001", body: "Comment body", anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" }, createdAt: "2026-08-09T11:34:50.000Z" }],
+      createdAt: "2026-08-09T11:34:50.000Z",
+      updatedAt: "2026-08-09T11:34:50.000Z",
+    };
+    const fixture = await pendingReviewFixture({
+      viewerPendingReview: { account: "fixture", read: { _tag: "Pending", review: reviewValue } },
+      pendingReviewDiscard: {},
+      pendingReviewState: { _tag: "Pending", review: reviewValue },
+    });
+    try {
+      const response = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ ...fixture.request, command: { _tag: "Discard", expected: (fixture.request.command as { readonly expected: unknown }).expected, confirmation: true } }) });
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ pendingReview: { state: "none" } });
     } finally { await fixture.api.stop(); }

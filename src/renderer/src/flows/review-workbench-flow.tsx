@@ -565,6 +565,9 @@ export function ReviewWorkbenchFlow({
     readonly _tag: "Submit";
     readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
     readonly summaryBody: string;
+  } | {
+    readonly _tag: "Discard";
+    readonly confirmation: true;
   }): Promise<void> => {
     const patchHash = workbench.revision.patchHash;
     if (patchHash === undefined) throw new Error("The current Diff cannot accept review comments.");
@@ -575,29 +578,38 @@ export function ReviewWorkbenchFlow({
         headSha: workbench.revision.reviewedHeadSha,
         patchHash,
       };
-      const value = command._tag === "Submit"
+      const value = command._tag === "Discard"
         ? await requestJson("/v1/reviews/pending-review/command", {
             method: "POST",
             body: {
               profileId: workbench.session.key.profileId,
               reviewId: workbench.review.id,
-              command: { _tag: "Submit", expected, event: command.event, summaryBody: command.summaryBody },
+              command: { _tag: "Discard", expected, confirmation: command.confirmation },
             },
           })
-        : await requestJson("/v1/reviews/pending-review/command", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              command: {
-                _tag: command._tag,
-                expected,
-                ...(command._tag === "AddThread" ? { pendingReviewNodeId: command.pendingReviewNodeId } : {}),
-                anchor: command.anchor,
-                body: command.body,
+        : command._tag === "Submit"
+          ? await requestJson("/v1/reviews/pending-review/command", {
+              method: "POST",
+              body: {
+                profileId: workbench.session.key.profileId,
+                reviewId: workbench.review.id,
+                command: { _tag: "Submit", expected, event: command.event, summaryBody: command.summaryBody },
               },
-            },
-          });
+            })
+          : await requestJson("/v1/reviews/pending-review/command", {
+              method: "POST",
+              body: {
+                profileId: workbench.session.key.profileId,
+                reviewId: workbench.review.id,
+                command: {
+                  _tag: command._tag,
+                  expected,
+                  ...(command._tag === "AddThread" ? { pendingReviewNodeId: command.pendingReviewNodeId } : {}),
+                  anchor: command.anchor,
+                  body: command.body,
+                },
+              },
+            });
       applyPendingReviewProjection(value);
       setFinishDialogError(undefined);
     } finally {
@@ -874,6 +886,14 @@ export function ReviewWorkbenchFlow({
                   onSubmit: async (event, summaryBody) => {
                     try {
                       await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
+                      setFinishDialogOpen(false);
+                    } catch (cause) {
+                      setFinishDialogError(boundedPendingReviewError(cause));
+                    }
+                  },
+                  onDiscard: async () => {
+                    try {
+                      await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
                       setFinishDialogOpen(false);
                     } catch (cause) {
                       setFinishDialogError(boundedPendingReviewError(cause));

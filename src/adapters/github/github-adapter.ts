@@ -34,6 +34,7 @@ import {
   type IsoTimestamp,
   type GitHubLogin,
   type GitHubReviewNodeId,
+  type GitHubReviewRestId,
   type GitHubThreadId,
   type GitHubHost,
   type GitHubOwner,
@@ -588,6 +589,17 @@ export interface GitHubPendingReviewGateway {
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+
+  /**
+   * Delete the viewer's pending review (dbacd62-proven REST DELETE contract,
+   * normal confirmed response). Timeout or lost response is an unavailable
+   * outcome; the caller must never retry automatically.
+   */
+  discardPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewRestId;
+  }): Promise<Result<void, GitHubWriteFailure>>;
 }
 
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
@@ -1540,6 +1552,23 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     return ok(read.value.review);
   }
 
+  async discardPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewRestId;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    // The DELETE endpoint answers 204 with an empty body, so this boundary
+    // uses runText: any exit-0 response is the confirmed absence receipt, and
+    // GitHub's HTTP error exits classify as typed failures. Never retried by
+    // the caller; a timeout is an unavailable outcome.
+    const response = await this.commands.runText({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "DELETE", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(writeFailure(response.error));
+    return ok(undefined);
+  }
+
   async createInlineComment(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly coordinates: GitHubReviewCoordinates; readonly body: string }): Promise<Result<{ readonly commentId: string; readonly reviewId?: string }, GitHubWriteFailure>> {
     const response = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`, "--input", "-"],
@@ -2035,6 +2064,19 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     return value.failure === undefined ? ok(value.review) : err(value.failure);
   }
 
+  async discardPendingReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly reviewId: GitHubReviewRestId;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    const value = this.values.pendingReviewDiscard;
+    if (value === undefined) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending-review discard fixture." });
+    }
+    return value.failure === undefined ? ok(undefined) : err(value.failure);
+  }
+
   async mergePullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -2100,6 +2142,7 @@ export type FakeGitHubAdapterValues = {
   readonly viewerPendingReview?: { readonly account: GitHubLogin; readonly read: PendingReviewRead };
   readonly pendingReviewStart?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
   readonly pendingReviewAddThread?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
+  readonly pendingReviewDiscard?: { readonly failure?: GitHubWriteFailure };
   readonly mergeResult: { readonly mergeCommitSha?: GitSha };
   /** Thread ids proven to belong to the fixture pull request (owner/repo/number). */
   readonly threadTargets: ReadonlyArray<{ readonly threadId: GitHubThreadId; readonly pr: PullRequestRef }>;

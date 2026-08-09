@@ -10,6 +10,7 @@ import {
 } from "../../src/adapters/github/command-runner";
 import {
   createFetchedDiffRefs,
+  FakeGitHubAdapter,
   GitHubAdapter,
 } from "../../src/adapters/github/github-adapter";
 import {
@@ -1562,5 +1563,29 @@ describe("GitHubAdapter pending-review gateway", () => {
     const executor = new FakeProcessExecutor([exited(reviewsPayload())]);
     const adapter = new GitHubAdapter(new CommandRunner(executor));
     await expect(adapter.getViewerPendingReview({ profile, pr, account: "other" as never })).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
+  });
+});
+
+describe("GitHubAdapter pending-review discard", () => {
+  it("deletes the pending review through the dbacd62-proven REST endpoint and accepts the empty 204 body", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: "", stderr: "" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never })).resolves.toEqual({ _tag: "ok", value: undefined });
+    expect(executor.requests[0]).toEqual(["gh", "api", "--hostname", "github.com", "--method", "DELETE", "repos/centraldigital/patchdesk/pulls/42/reviews/9001"]);
+  });
+
+  it("classifies a not-found discard as unavailable (conservative, never a confirmed absence)", async () => {
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" },
+    ]);
+    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    await expect(adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never })).resolves.toMatchObject({ _tag: "err", error: { _tag: "GitHubWriteFailure", category: "unavailable" } });
+  });
+
+  it("keeps the fake discard seam unimplemented until a fixture is supplied", async () => {
+    const adapter = new FakeGitHubAdapter({ pullRequest: { headSha } as never, authenticatedAccount: { host: "github.com", account: "pmquan2cfw" } } as never);
+    await expect(adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never })).resolves.toMatchObject({ _tag: "err", error: { category: "unavailable" } });
   });
 });

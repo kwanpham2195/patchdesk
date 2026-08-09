@@ -2410,7 +2410,9 @@ describe("ReviewWorkbenchFlow pending review", () => {
     expect(screen.getByRole("dialog", { name: "Finish review" })).toBeTruthy();
     expect(screen.getByText("First")).toBeTruthy();
     expect(screen.getByText("Second")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Discard/ })).toBeNull();
+    // Discard exists but is separate from Submit and needs its own confirmation.
+    expect(screen.getByRole("button", { name: "Discard review" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Confirm discard" })).toBeNull();
   });
 
   it("offers Comment now and Start a review before a pending review; only Add review comment after", async () => {
@@ -2509,5 +2511,68 @@ describe("ReviewWorkbenchFlow pending review", () => {
     expect(screen.getByText(/needs reconciliation/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Finish review/ })).toBeNull();
+  });
+});
+
+describe("ReviewWorkbenchFlow pending review discard", () => {
+  const pendingProjection = (overrides: Record<string, unknown> = {}) => ({
+    state: "pending" as const,
+    count: 2,
+    review: {
+      nodeId: "PRR_kwDORJzsQM7e6QwJ",
+      headSha: "a".repeat(40),
+      comments: [
+        { threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        { threadId: "PRRT_2", body: "Second", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+      ],
+    },
+    ...overrides,
+  });
+
+  const withPending = (pendingReview: unknown): WorkbenchResponse => ({
+    ...projection(),
+    revision: { ...projection().revision, patchHash: "patch-hash" as never },
+    pendingReview: pendingReview as WorkbenchResponse["pendingReview"],
+  });
+
+  function stubRequest(responses: Record<string, unknown>) {
+    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
+      const response = responses[input.path];
+      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    return request;
+  }
+
+  it("sends the confirmed Discard command from the finish modal and applies the none projection", async () => {
+    const user = userEvent.setup();
+    const request = stubRequest({
+      "/v1/reviews/pending-review/command": { pendingReview: { state: "none" } },
+    });
+    const onWorkbenchPatch = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending(pendingProjection({ count: 1 }))}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={onWorkbenchPatch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Finish review · 1" }));
+    // The destructive confirmation is separate from the submit path.
+    await user.click(screen.getByRole("button", { name: "Discard review" }));
+    const commandCalls = request.mock.calls.filter((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
+    expect(commandCalls).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Confirm discard" }));
+    await vi.waitFor(() => expect(request.mock.calls.some((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
+    const discardCall = request.mock.calls.find((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
+    const body = (discardCall?.[0] as { readonly body?: unknown }).body as { readonly command?: unknown };
+    expect(body?.command).toMatchObject({ _tag: "Discard", confirmation: true, expected: { sessionId: "session-a", headSha: "a".repeat(40), patchHash: "patch-hash" } });
+    await vi.waitFor(() => expect(onWorkbenchPatch).toHaveBeenCalledWith(expect.objectContaining({ pendingReview: { state: "none" } })));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish review" })).toBeNull());
   });
 });

@@ -111,6 +111,7 @@ function makeGateway(overrides: Record<string, unknown> = {}) {
     startPendingReviewWithThread: vi.fn(async () => ok(review())),
     addPendingReviewThread: vi.fn(async () => ok(review())),
     submitPendingReview: vi.fn(async () => ok({ reviewId: "9001" })),
+    discardPendingReview: vi.fn(async () => ok(undefined)),
     getPullRequest: vi.fn(async () => ok({ headSha } as never)),
     ...overrides,
   };
@@ -342,5 +343,66 @@ describe("projectPendingReview", () => {
       operation: { _tag: "Submit", requestId: "pending-review-1" as never, reviewId: "9001" as never, event: "COMMENT" },
       startedAt: "2026-08-09T11:35:00.000Z" as never,
     }, false)).toEqual({ state: "recovery_required", action: "submit" });
+  });
+});
+
+describe("PendingReviewService.discard", () => {
+  it("persists the intent, deletes exactly once, and confirms None", async () => {
+    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
+    const gateway = makeGateway();
+    const result = await service(fixture.current(), gateway, fixture.store).discard({
+      profileId,
+      reviewId,
+      expected: expected as never,
+      confirmation: true,
+    });
+    expect(result).toMatchObject({ _tag: "ok", value: { state: { _tag: "None" } } });
+    expect(gateway.discardPendingReview).toHaveBeenCalledTimes(1);
+    expect(gateway.discardPendingReview).toHaveBeenCalledWith(expect.objectContaining({ reviewId: "9001" }));
+    expect(fixture.saves.map((saved) => saved.pendingReview?._tag)).toEqual(["WriteInFlight", "None"]);
+    expect(fixture.current().pendingReview).toEqual({ _tag: "None" });
+  });
+
+  it("rejects a discard without the explicit confirmation", async () => {
+    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
+    const gateway = makeGateway();
+    const result = await service(fixture.current(), gateway, fixture.store).discard({
+      profileId,
+      reviewId,
+      expected: expected as never,
+      confirmation: false as never,
+    });
+    expect(result).toEqual({ _tag: "err", error: "invalid_input" });
+    expect(gateway.discardPendingReview).not.toHaveBeenCalled();
+  });
+
+  it("cannot discard without a pending review", async () => {
+    const fixture = makeStore(session());
+    const gateway = makeGateway();
+    const result = await service(fixture.current(), gateway, fixture.store).discard({
+      profileId,
+      reviewId,
+      expected: expected as never,
+      confirmation: true,
+    });
+    expect(result).toEqual({ _tag: "err", error: "no_pending_review" });
+    expect(gateway.discardPendingReview).not.toHaveBeenCalled();
+  });
+
+  it("a lost discard response becomes OutcomeUnknown with action discard and is never retried", async () => {
+    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
+    const gateway = makeGateway({
+      discardPendingReview: vi.fn(async () => err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "timeout" })),
+    });
+    const result = await service(fixture.current(), gateway, fixture.store).discard({
+      profileId,
+      reviewId,
+      expected: expected as never,
+      confirmation: true,
+    });
+    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(fixture.current().pendingReview).toMatchObject({ _tag: "OutcomeUnknown", operation: { _tag: "Discard" } });
+    expect(projectPendingReview(fixture.current().pendingReview as never, false)).toEqual({ state: "recovery_required", action: "discard" });
+    expect(gateway.discardPendingReview).toHaveBeenCalledTimes(1);
   });
 });

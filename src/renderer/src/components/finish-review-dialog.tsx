@@ -25,6 +25,7 @@ export type FinishReviewActions = {
     event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
     summaryBody: string,
   ) => Promise<void>;
+  readonly onDiscard: () => Promise<void>;
   readonly onCheckGitHubAgain: () => Promise<void>;
 };
 
@@ -50,6 +51,7 @@ export function FinishReviewDialog({
   const [event, setEvent] = useState<"COMMENT" | "APPROVE" | "REQUEST_CHANGES">("COMMENT");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
+  const [discardArmed, setDiscardArmed] = useState(false);
   const summaryRef = useRef<HTMLTextAreaElement>(null);
   const locked = actions.busy || submitting;
 
@@ -61,6 +63,7 @@ export function FinishReviewDialog({
       setEvent("COMMENT");
       setSubmitting(false);
       setSubmitError(undefined);
+      setDiscardArmed(false);
       // Focus the summary input when the modal opens (initial focus behavior).
       window.setTimeout(() => summaryRef.current?.focus(), 0);
     }
@@ -76,6 +79,26 @@ export function FinishReviewDialog({
     } catch {
       setSubmitError(error ?? "Patchdesk could not finish this review. Check GitHub again or refresh.");
       setSubmitting(false);
+    }
+  };
+
+  // Discard is destructive and requires a separate explicit confirmation
+  // step inside the modal; it is never a second dialog.
+  const discard = async (): Promise<void> => {
+    if (locked) return;
+    if (!discardArmed) {
+      setDiscardArmed(true);
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(undefined);
+    try {
+      await actions.onDiscard();
+      onOpenChange(false);
+    } catch {
+      setSubmitError(error ?? "Patchdesk could not discard this review. Check GitHub again or refresh.");
+      setSubmitting(false);
+      setDiscardArmed(false);
     }
   };
 
@@ -139,6 +162,18 @@ export function FinishReviewDialog({
             <p role="alert" className="text-sm text-destructive">{error}</p>
           )}
           <div className="flex justify-end gap-2">
+            {discardArmed ? (
+              <>
+                <Button variant="outline" size="sm" disabled={locked} onClick={() => setDiscardArmed(false)}>Keep editing</Button>
+                <Button variant="destructive" size="sm" disabled={locked || submitting} onClick={() => void discard()} data-review-discard-confirm>
+                  Confirm discard
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" disabled={locked} onClick={() => void discard()} data-review-discard>
+                Discard review
+              </Button>
+            )}
             <Button variant="outline" size="sm" disabled={locked} onClick={() => onOpenChange(false)}>Close</Button>
             <Button
               variant="outline"

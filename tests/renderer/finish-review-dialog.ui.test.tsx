@@ -22,13 +22,13 @@ const projection: PendingReviewProjection = {
 afterEach(cleanup);
 
 describe("FinishReviewDialog", () => {
-  it("renders the pending-comment ledger, decision choice, and no Discard action", () => {
+  it("renders the pending-comment ledger, decision choice, and the single discard entry point", () => {
     render(
       <FinishReviewDialog
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
       />,
     );
     const dialog = screen.getByRole("dialog", { name: "Finish review" });
@@ -36,8 +36,33 @@ describe("FinishReviewDialog", () => {
     expect(within(dialog).getByText("Second comment")).toBeTruthy();
     expect(within(dialog).getByText("src/b.ts:3–5 (old)")).toBeTruthy();
     expect(within(dialog).getByRole("combobox", { name: "Review decision" })).toBeTruthy();
-    expect(within(dialog).queryByRole("button", { name: /Discard/ })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Discard review" })).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Confirm discard" })).toBeNull();
     expect(within(dialog).getByRole("button", { name: "Submit review" })).toBeTruthy();
+  });
+
+  it("requires a separate explicit confirmation before Discard invokes the write", async () => {
+    const user = userEvent.setup();
+    const onDiscard = vi.fn(async () => undefined);
+    const onOpenChange = vi.fn();
+    render(
+      <FinishReviewDialog
+        open
+        onOpenChange={onOpenChange}
+        projection={projection}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard, onCheckGitHubAgain: vi.fn() }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Discard review" }));
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirm discard" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("button", { name: "Confirm discard" })).toBeNull();
+    expect(onDiscard).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Discard review" }));
+    await user.click(screen.getByRole("button", { name: "Confirm discard" }));
+    await vi.waitFor(() => expect(onDiscard).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it("focuses the summary input when opened and keeps the summary modal-local", () => {
@@ -46,7 +71,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
       />,
     );
     const summary = screen.getByRole("textbox", { name: "Final review summary" });
@@ -62,7 +87,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={onOpenChange}
         projection={projection}
-        actions={{ busy: false, onSubmit, onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit, onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
       />,
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Final review summary" }), { target: { value: "Only on submit" } });
@@ -80,7 +105,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: true, onSubmit: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: true, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
       />,
     );
     expect((screen.getByRole("button", { name: "Submit review" }) as HTMLButtonElement).disabled).toBe(true);
@@ -96,7 +121,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit, onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit, onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
         error="GitHub could not confirm the submission. Check GitHub again before trying again."
       />,
     );

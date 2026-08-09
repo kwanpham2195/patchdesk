@@ -73,6 +73,11 @@ export type PendingReviewOperation =
       readonly requestId: PendingReviewRequestId;
       readonly reviewId: GitHubReviewRestId;
       readonly event: GitHubReviewEvent;
+    }
+  | {
+      readonly _tag: "Discard";
+      readonly requestId: PendingReviewRequestId;
+      readonly reviewId: GitHubReviewRestId;
     };
 
 /**
@@ -138,7 +143,7 @@ export function canStartPendingReviewOperation(
   if (operation._tag === "AddThread") {
     return state._tag === "Pending" && state.review.nodeId === operation.reviewId;
   }
-  if (operation._tag === "Submit") {
+  if (operation._tag === "Submit" || operation._tag === "Discard") {
     return state._tag === "Pending" && state.review.restId === operation.reviewId;
   }
   return false;
@@ -228,6 +233,22 @@ export function reconcilePendingReviewState(
     }
     return state;
   }
+  if (operation._tag === "Discard") {
+    if (read._tag === "Pending") {
+      // The pending review still exists: the discard did not execute. The
+      // lock lifts to the confirmed Pending owner so the maintainer can
+      // retry.
+      return { _tag: "Pending", review: read.review };
+    }
+    if (read._tag === "None") {
+      // No viewer pending review remains: the discard intent is satisfied
+      // (or an equivalent absence was reached). Unlike Submit there is no
+      // submitted-artifact ambiguity to protect, so the lock resolves to
+      // None and a fresh review may be started.
+      return { _tag: "None" };
+    }
+    return state;
+  }
   // AddThread
   if (read._tag === "Pending") {
     // The thread created by this operation is a thread on the same review
@@ -291,6 +312,11 @@ const operationSchema = v.variant("_tag", [
     requestId: v.string(),
     reviewId: v.string(),
     event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+  }),
+  v.strictObject({
+    _tag: v.literal("Discard"),
+    requestId: v.string(),
+    reviewId: v.string(),
   }),
 ]);
 
@@ -450,11 +476,13 @@ function parseOperation(
   const requestId = parsePendingReviewRequestId(input.requestId);
   if (requestId._tag === "err") return invalidPendingReviewState();
   if (input._tag === "Start") return ok({ _tag: "Start", requestId: requestId.value });
-  if (input._tag === "Submit") {
+  if (input._tag === "Submit" || input._tag === "Discard") {
     const reviewId = parseGitHubReviewRestId(input.reviewId);
     return reviewId._tag === "err"
       ? invalidPendingReviewState()
-      : ok({ _tag: "Submit", requestId: requestId.value, reviewId: reviewId.value, event: input.event });
+      : input._tag === "Submit"
+        ? ok({ _tag: "Submit", requestId: requestId.value, reviewId: reviewId.value, event: input.event })
+        : ok({ _tag: "Discard", requestId: requestId.value, reviewId: reviewId.value });
   }
   const reviewId = parseGitHubReviewNodeId(input.reviewId);
   const anchor = parseAnchor(input.anchor);

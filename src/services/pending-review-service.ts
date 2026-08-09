@@ -50,6 +50,13 @@ export type SubmitPendingReviewInput = {
   readonly summaryBody: string;
 };
 
+export type DiscardPendingReviewInput = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly expected: ReviewWriteExpectation;
+  readonly confirmation: true;
+};
+
 export type PendingReviewServiceFailure =
   | "invalid_input"
   | "not_found"
@@ -88,12 +95,11 @@ export type PendingReviewProjection =
         }>;
       };
     }
-  | { readonly state: "recovery_required"; readonly action: "start" | "add_thread" | "submit" };
+  | { readonly state: "recovery_required"; readonly action: "start" | "add_thread" | "submit" | "discard" };
 
 type Gateway = GitHubPendingReviewGateway &
   Pick<GitHubReader, "getPullRequest" | "resolveAuthenticatedAccount"> &
   Pick<GitHubReviewWriter, "submitPendingReview">;
-
 /**
  * Owns the viewer's GitHub pending review lifecycle: reconcile (import at
  * open/refresh, recover at Check GitHub again), start with its first thread,
@@ -230,6 +236,30 @@ export class PendingReviewService {
     });
   }
 
+  async discard(input: DiscardPendingReviewInput): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
+    if (input.confirmation !== true) return err("invalid_input");
+    return this.serializedWrite(input.profileId, input.reviewId, input.expected, async (profile, session) => {
+      const state = session.pendingReview ?? { _tag: "None" as const };
+      if (state._tag !== "Pending") return err("no_pending_review");
+      const operation: PendingReviewOperation = {
+        _tag: "Discard",
+        requestId: createPendingReviewRequestId(this.now()),
+        reviewId: state.review.restId,
+      };
+      return this.executeWrite(session, state, operation, async () => {
+        // dbacd62-proven contract: the normal DELETE response is the confirmed
+        // absence receipt; a timeout or lost response is an unavailable
+        // outcome and is never retried automatically.
+        const discarded = await this.github.discardPendingReview({
+          profile,
+          pr: sessionPr(session),
+          reviewId: state.review.restId,
+        });
+        return discarded._tag === "ok" ? ok(undefined) : err(discarded.error);
+      });
+    });
+  }
+
   private async serializedWrite(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -308,7 +338,8 @@ export function projectPendingReview(
     return { state: "unavailable", action: isPendingReviewLocked(state) ? "check_github_again" : "refresh" };
   }
   if (state._tag === "WriteInFlight" || state._tag === "OutcomeUnknown") {
-    return { state: "recovery_required", action: state.operation._tag === "Start" ? "start" : state.operation._tag === "AddThread" ? "add_thread" : "submit" };
+    const action = state.operation._tag === "Start" ? "start" as const : state.operation._tag === "AddThread" ? "add_thread" as const : state.operation._tag === "Submit" ? "submit" as const : "discard" as const;
+    return { state: "recovery_required", action };
   }
   if (state._tag === "None") return { state: "none" };
   return {
