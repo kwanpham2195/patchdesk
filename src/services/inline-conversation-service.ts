@@ -2,6 +2,7 @@ import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github
 import type { GitHubReviewCoordinates } from "../domain/patch";
 import { parseGitHubThreadId, type ReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewWriteExpectation, ReviewWriteGate } from "./review-write-gate";
+import type { ReviewWriteCoordinator } from "./review-write-coordinator";
 import { err, ok, type Result } from "../domain/result";
 
 export type DirectConversationCommand =
@@ -56,6 +57,7 @@ export type DirectConversationFailure =
   | "pending_review"
   | "github_read_failed"
   | "github_write_failed"
+  | "review_write_in_progress"
   | "confirmation_required";
 
 type Gateway = Pick<GitHubReader, "getPullRequest" | "getReviewThreadTarget" | "getReviewCommentTarget"> & Pick<GitHubReviewWriter, "createInlineComment" | "createThreadReply" | "setReviewThreadState" | "updateThreadComment" | "deleteThreadComment">;
@@ -65,9 +67,27 @@ export class InlineConversationService {
   constructor(
     private readonly gate: Pick<ReviewWriteGate, "requireFresh">,
     private readonly github: Gateway,
+    private readonly writeCoordinator?: ReviewWriteCoordinator,
   ) {}
 
   async execute(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly command: DirectConversationCommand;
+  }): Promise<Result<DirectConversationReceipt, DirectConversationFailure>> {
+    const localValidation = validateLocalCommand(input.command);
+    if (localValidation._tag === "err") return localValidation;
+    const key = `${input.profileId}:${input.reviewId}`;
+    if (this.writeCoordinator !== undefined && !this.writeCoordinator.acquire(key))
+      return err("review_write_in_progress");
+    try {
+      return await this.executeUnlocked(input);
+    } finally {
+      this.writeCoordinator?.release(key);
+    }
+  }
+
+  private async executeUnlocked(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly command: DirectConversationCommand;
@@ -142,6 +162,18 @@ export class InlineConversationService {
     if (!target.value.found) return err("not_found");
     return target.value.viewerDidAuthor === true ? ok(undefined) : err("permission_denied");
   }
+}
+
+function validateLocalCommand(command: DirectConversationCommand): Result<void, DirectConversationFailure> {
+  if ((command._tag === "CreateComment" || command._tag === "Reply" || command._tag === "EditComment") && command.body.trim().length === 0)
+    return err("invalid_input");
+  if (command._tag === "DeleteComment" && !command.confirmation)
+    return err("confirmation_required");
+  if (command._tag === "CreateComment" && coordinatesFor(command.anchor) === undefined)
+    return err("invalid_input");
+  if ((command._tag === "Reply" || command._tag === "SetThreadState") && parseGitHubThreadId(command.threadId)._tag === "err")
+    return err("not_found");
+  return ok(undefined);
 }
 
 function coordinatesFor(anchor: Extract<DirectConversationCommand, { readonly _tag: "CreateComment" }> ["anchor"]): GitHubReviewCoordinates | undefined {

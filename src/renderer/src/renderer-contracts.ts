@@ -558,6 +558,26 @@ const pendingReviewProjectionSchema = v.variant("state", [
     action: v.picklist(["start", "add_thread", "submit", "discard"]),
   }),
 ]);
+const directSummaryReviewProjectionSchema = v.variant("state", [
+  v.strictObject({ state: v.literal("idle") }),
+  v.strictObject({
+    state: v.literal("confirmed"),
+    receipt: v.strictObject({
+      reviewId: v.pipe(v.string(), v.minLength(1)),
+      event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+    }),
+  }),
+  v.strictObject({ state: v.literal("recovery_required") }),
+]);
+const directSummaryReviewResponseSchema = v.strictObject({
+  directSummary: directSummaryReviewProjectionSchema,
+});
+export type DirectSummaryReviewProjection = v.InferOutput<typeof directSummaryReviewProjectionSchema>;
+export function parseDirectSummaryReviewResponse(input: unknown): DirectSummaryReviewProjection | undefined {
+  const parsed = v.safeParse(directSummaryReviewResponseSchema, input);
+  return parsed.success ? parsed.output.directSummary : undefined;
+}
+
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
   review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
@@ -567,7 +587,7 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
-  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
+  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type PendingReviewProjection = v.InferOutput<typeof pendingReviewProjectionSchema>;

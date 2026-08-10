@@ -16,6 +16,7 @@ export type ApiFailureKind =
   | "outcome_unknown"
   | "no_pending_review"
   | "pending_review_locked"
+  | "review_already_submitted"
   | "internal";
 
 export class PatchdeskApiError extends Error {
@@ -25,6 +26,7 @@ export class PatchdeskApiError extends Error {
     readonly retryable: boolean,
     readonly correlationId: string,
     message: string,
+    readonly responseBody?: unknown,
   ) {
     super(message);
     this.name = "PatchdeskApiError";
@@ -65,6 +67,7 @@ export async function requestJson(
     response.status === 408 || response.status === 429 || response.status >= 500,
     response.correlationId,
     safeMessage(kind),
+    response.body,
   );
 }
 
@@ -96,11 +99,13 @@ function errorCode(value: unknown): string | undefined {
 
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
+  if (code === "outcome_unknown") return "outcome_unknown";
+  if (code === "review_already_submitted") return "review_already_submitted";
   if (code?.includes("revision") === true || code === "conflict") return "revision_conflict";
   if (code === "not_fresh" || code?.includes("stale") === true) return "stale_head";
   if (code === "not_found" || code === "unavailable") return "unavailable";
   if (code === "permission_denied" || code === "confirmation_required") return "github_rejected";
-  if (code === "pending_review") return "pending_review";
+  if (code === "pending_review" || code === "pending_review_exists") return "pending_review";
   if (code?.includes("storage") === true) return "storage";
   if (code?.includes("ambiguous") === true) return "ambiguous_write";
   if (status === 401 || status === 403 || code?.includes("auth") === true) return "auth";
@@ -126,6 +131,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "outcome_unknown": return "GitHub could not confirm the pending review write. Check GitHub again before continuing.";
     case "no_pending_review": return "The pending review no longer exists. Refresh to see the current state.";
     case "pending_review_locked": return "The pending review write is still being reconciled. Check GitHub again.";
+    case "review_already_submitted": return "This review summary was already submitted. Refresh to see the current GitHub state.";
     case "internal": return "Patchdesk could not complete the request.";
   }
 }

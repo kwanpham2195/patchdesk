@@ -2388,9 +2388,42 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Start a review" }));
-    // The header action leads to valid inline authoring; it creates nothing.
+    expect(screen.getByRole("dialog", { name: "Start review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add inline comment" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Write review summary" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Add inline comment" }));
+    // Choosing inline authoring leads to the Diff and creates nothing.
     expect(screen.getByRole("region", { name: "Review diff" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Finish review · " })).toBeNull();
+  });
+
+  it("reconciles an uncertain direct summary through the recovery endpoint before reopening submission", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+      if (input.path === "/v1/reviews/direct-summary/submit") return { ok: false, status: 503, body: { error: "outcome_unknown" }, correlationId: "submit" };
+      if (input.path === "/v1/reviews/direct-summary/recover") return { ok: true, body: { directSummary: { state: "idle" } }, correlationId: "recover" };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "none" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Start a review" }));
+    await user.click(screen.getByRole("button", { name: "Write review summary" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), { target: { value: "Summary" } });
+    await user.click(screen.getByRole("button", { name: "Submit review" }));
+    await screen.findByRole("button", { name: "Check GitHub again" });
+    expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/reviews/direct-summary/recover" })));
+    expect(screen.getByRole("textbox", { name: "Review summary" })).toBeTruthy();
   });
 
   it("shows Finish review · N when a pending review is confirmed and opens the modal", async () => {

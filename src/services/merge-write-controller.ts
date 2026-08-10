@@ -11,6 +11,7 @@ import { mergePullRequest, type MergeMethod } from "./merge-service";
 import { readObjectField } from "./read-object-field";
 import type { ReviewWriteGate } from "./review-write-gate";
 
+import type { ReviewWriteCoordinator } from "./review-write-coordinator";
 /** Main-process merge boundary; the renderer supplies only an already-confirmed method and acknowledgement. */
 export class MergeWriteController {
   private readonly inFlight = new Set<string>();
@@ -24,6 +25,7 @@ export class MergeWriteController {
     private readonly operations: MergeOperationStore,
     private readonly writeGate?: ReviewWriteGate,
     private readonly reviews?: Pick<ReviewStore, "load" | "save">,
+    private readonly writeCoordinator?: ReviewWriteCoordinator,
   ) {}
 
   async merge(input: unknown): Promise<Result<unknown, { readonly reason: string }>> {
@@ -37,8 +39,11 @@ export class MergeWriteController {
     const acknowledgedWarnings = readObjectField(input, "acknowledgedWarnings");
     if (profileId._tag === "err" || sessionId._tag === "err" || reviewId._tag === "err" || expectedHead._tag === "err" || expectedPatch._tag === "err" || expectedRevision._tag === "err" || !isMethod(method) || typeof acknowledgedWarnings !== "boolean" || this.writeGate === undefined) return err({ reason: "invalid_input" });
     const key = `${profileId.value}:${reviewId.value}`;
-    if (this.inFlight.has(key)) return err({ reason: "merge_in_progress" });
-    this.inFlight.add(key);
+    const acquired = this.writeCoordinator === undefined
+      ? !this.inFlight.has(key)
+      : this.writeCoordinator.acquire(key);
+    if (!acquired) return err({ reason: "merge_in_progress" });
+    if (this.writeCoordinator === undefined) this.inFlight.add(key);
     try {
     const gated = await this.writeGate.requireFresh(profileId.value, reviewId.value, { sessionId: sessionId.value, headSha: expectedHead.value, patchHash: expectedPatch.value, draftRevision: expectedRevision.value });
     if (gated._tag === "err") return err({ reason: gated.error.reason });
@@ -72,7 +77,8 @@ export class MergeWriteController {
     const removed = await this.operations.removeAfterSessionReceipt(profileId.value, sessionId.value);
     return removed._tag === "ok" ? ok({ session: merged.value.session, readiness: merged.value.readiness, ...(terminalReview === undefined ? {} : { review: terminalReview }) }) : err({ reason: "merge_outcome_unknown" });
     } finally {
-      this.inFlight.delete(key);
+      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
+      else this.writeCoordinator.release(key);
     }
   }
 }

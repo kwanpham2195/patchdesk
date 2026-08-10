@@ -26,8 +26,14 @@ export type FinishReviewActions = {
     summaryBody: string,
   ) => Promise<void>;
   readonly onDiscard: () => Promise<void>;
-  readonly onCheckGitHubAgain: () => Promise<void>;
+  readonly onCheckGitHubAgain?: () => Promise<void>;
 };
+
+const DECISION_LABELS = {
+  COMMENT: "Comment",
+  APPROVE: "Approve",
+  REQUEST_CHANGES: "Request changes",
+} as const;
 
 /**
  * GitHub-style Finish review modal. The final summary is modal-local: it is
@@ -104,7 +110,7 @@ export function FinishReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!locked) onOpenChange(next); }}>
-      <DialogContent className="max-h-[min(85vh,48rem)] overflow-y-auto" aria-label="Finish review">
+      <DialogContent className="max-h-[min(85vh,48rem)] overflow-y-auto sm:max-w-xl" aria-label="Finish review">
         <DialogHeader>
           <DialogTitle>Finish review</DialogTitle>
           <DialogDescription>
@@ -116,12 +122,12 @@ export function FinishReviewDialog({
             <h3 className="mb-2 text-sm font-medium">Pending comments · {projection.count}</h3>
             <ul className="max-h-56 space-y-2 overflow-y-auto">
               {projection.review.comments.map((comment) => (
-                <li key={comment.threadId} className="rounded-md border bg-muted/40 p-2">
-                  <p className="font-mono text-xs text-muted-foreground">
+                <li key={comment.threadId} className="min-w-0 rounded-md border bg-muted/40 p-2">
+                  <p className="min-w-0 break-words font-mono text-xs text-muted-foreground">
                     {comment.path}:{comment.startLine}
                     {comment.line === comment.startLine ? "" : `–${comment.line}`} ({comment.side})
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>
+                  <p className="mt-1 min-w-0 whitespace-pre-wrap break-words text-sm">{comment.body}</p>
                 </li>
               ))}
             </ul>
@@ -138,14 +144,16 @@ export function FinishReviewDialog({
               aria-label="Final review summary"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-finish-review-decision-row>
             <label className="text-sm font-medium" htmlFor="finish-review-decision">Decision</label>
             <Select
               value={event}
               onValueChange={(value) => setEvent(value as "COMMENT" | "APPROVE" | "REQUEST_CHANGES")}
             >
-              <SelectTrigger aria-label="Review decision" className="w-44">
-                <SelectValue />
+              <SelectTrigger id="finish-review-decision" aria-label="Review decision" className="w-44 min-w-0">
+                <SelectValue>
+                  {(value) => DECISION_LABELS[(value ?? "COMMENT") as keyof typeof DECISION_LABELS]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="COMMENT">Comment</SelectItem>
@@ -156,36 +164,35 @@ export function FinishReviewDialog({
             <Badge variant="outline" data-finish-review-count>{projection.count} pending</Badge>
           </div>
           {submitError === undefined ? null : (
-            <p role="alert" className="text-sm text-destructive">{submitError}</p>
+            <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{submitError}</p>{actions.onCheckGitHubAgain === undefined ? null : <Button variant="outline" size="sm" disabled={locked} onClick={() => void actions.onCheckGitHubAgain?.()}>Check GitHub again</Button>}</div>
           )}
           {error === undefined ? null : (
             <p role="alert" className="text-sm text-destructive">{error}</p>
           )}
-          <div className="flex justify-end gap-2">
-            {discardArmed ? (
-              <>
-                <Button variant="outline" size="sm" disabled={locked} onClick={() => setDiscardArmed(false)}>Keep editing</Button>
-                <Button variant="destructive" size="sm" disabled={locked || submitting} onClick={() => void discard()} data-review-discard-confirm>
-                  Confirm discard
+          {/* Discard is destructive and stays visually separate from the
+              Close/Submit group; both groups wrap independently at narrow
+              widths so nothing clips horizontally. */}
+          <div className="flex flex-wrap items-center justify-between gap-2" data-finish-review-actions>
+            <div className="flex flex-wrap items-center gap-2" data-finish-review-actions-danger>
+              {discardArmed ? (
+                <>
+                  <Button variant="outline" size="sm" disabled={locked} onClick={() => setDiscardArmed(false)}>Keep editing</Button>
+                  <Button variant="destructive" size="sm" disabled={locked || submitting} onClick={() => void discard()} data-review-discard-confirm>
+                    Confirm discard
+                  </Button>
+                </>
+              ) : (
+                <Button variant="ghost" size="sm" disabled={locked} onClick={() => void discard()} data-review-discard>
+                  Discard review
                 </Button>
-              </>
-            ) : (
-              <Button variant="ghost" size="sm" disabled={locked} onClick={() => void discard()} data-review-discard>
-                Discard review
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2" data-finish-review-actions-primary>
+              <Button variant="outline" size="sm" disabled={locked} onClick={() => onOpenChange(false)}>Close</Button>
+              <Button size="sm" disabled={locked || submitting} onClick={() => void submit()}>
+                {submitting ? "Submitting…" : "Submit review"}
               </Button>
-            )}
-            <Button variant="outline" size="sm" disabled={locked} onClick={() => onOpenChange(false)}>Close</Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={locked}
-              onClick={() => void actions.onCheckGitHubAgain()}
-            >
-              Check GitHub again
-            </Button>
-            <Button size="sm" disabled={locked || submitting} onClick={() => void submit()}>
-              {submitting ? "Submitting…" : "Submit review"}
-            </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

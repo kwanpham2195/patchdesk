@@ -35,6 +35,13 @@ Updated 2026-08-09. Execute independent plans in priority order. Use the design 
   - Scope: schema-valid AddThread, pending-thread inline feedback, stale-composer removal, and symmetric own-write detection exclusion. It does not authorize GitHub writes.
   - Verification: full suite 1034/1 skipped, typecheck, lint, build clean; playwright 33/33; `git diff --check` clean. The user-owned pending review on cfw-bo-staff-api#717 is untouched; no GitHub write was made.
 
+- **2026-08-09 — Add summary-only GitHub reviews**
+  - Priority: P1
+  - Effort: M/L
+  - Status: IMPLEMENTATION UNDER VALIDATION WAIVER — direct Comment/Approve/Request changes evidence is in `.agents/research/2026-08-10-summary-only-review-direct-submission-spike.md`; the product owner explicitly waived the remaining live validation rows
+  - Plan: `.agents/PLANS/2026-08-09-summary-only-review.md`
+  - Recommendation: direct immediate summary submission, not an unproven empty pending review.
+
 - The plan is intentionally one slice. Establishing scroll ownership and the reader layout must happen together; splitting them would create intermediate states with competing scroll containers.
 - 002 is independent of 001; they touch different surfaces (settings/inbox vs Walkthrough reader).
 - 003 is independent of 001 and 002, but its executor must preserve and reconcile the pre-existing dirty PR Overview component before editing.

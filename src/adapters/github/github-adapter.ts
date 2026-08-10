@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as v from "valibot";
 
 import type { CommandFailure, CommandRunner } from "./command-runner";
@@ -50,6 +51,7 @@ import {
   type PendingReviewRead,
   type ViewerPendingReview,
 } from "../../domain/pending-review";
+import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
 import type { GitHubReviewEvent, GitHubWriteFailure } from "../../domain/review-batch";
 import type { RevisionComparison } from "../../domain/review-comparison";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
@@ -545,6 +547,25 @@ export interface GitHubReviewWriter {
   dismissReview?(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly reviewId: string; readonly message: string }): Promise<Result<void, GitHubWriteFailure>>;
 }
 
+export type DirectSummaryPublishedReview = DirectSummaryReviewReceipt & {
+  readonly bodyDigest: string;
+};
+
+export interface GitHubDirectSummaryGateway {
+  getViewerDirectSummaryReviews(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly account: GitHubLogin;
+  }): Promise<Result<{ readonly reviews: ReadonlyArray<DirectSummaryPublishedReview>; readonly complete: boolean }, GitHubReadFailure>>;
+  createDirectSummaryReview(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha: GitSha;
+    readonly event: GitHubReviewEvent;
+    readonly body: string;
+  }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>>;
+}
+
 export interface GitHubMergeWriter {
   mergePullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -679,6 +700,7 @@ type GitHubReadOperation =
   | "get_comments"
   | "get_reviews"
   | "get_pending_review"
+  | "get_direct_summary_reviews"
   | "load_conversation"
   | "get_repository_permission"
   | "get_branch_protection"
@@ -1379,6 +1401,38 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     return reviewId === undefined
       ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a submitted review ID." })
       : ok({ reviewId });
+  }
+
+  async createDirectSummaryReview(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly headSha: GitSha; readonly event: GitHubReviewEvent; readonly body: string }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>> {
+    const response = await this.commands.runJson({
+      argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`, "--input", "-"],
+      stdin: JSON.stringify({ commit_id: input.headSha, event: input.event, body: input.body }),
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err") return err(directSummaryWriteFailure(response.error));
+    const receipt = parseDirectSummaryReceipt(response.value, input.event);
+    return receipt === undefined
+      ? err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a submitted summary review receipt." })
+      : ok(receipt);
+  }
+
+  async getViewerDirectSummaryReviews(input: { readonly profile: WorkspaceProfileConfig; readonly pr: PullRequestRef; readonly account: GitHubLogin }): Promise<Result<{ readonly reviews: ReadonlyArray<DirectSummaryPublishedReview>; readonly complete: boolean }, GitHubReadFailure>> {
+    const response = await this.commands.runJson({ argv: ["gh", "api", "--hostname", input.profile.githubHost, `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`], timeoutMs: commandTimeoutMs });
+    if (response._tag === "err") return commandFailure("get_direct_summary_reviews", response.error);
+    const parsed = v.safeParse(publishedReviewSchema, response.value);
+    if (!parsed.success) return invalid("get_direct_summary_reviews");
+    const reviews: DirectSummaryPublishedReview[] = [];
+    for (const raw of parsed.output) {
+      if (raw.user?.login !== input.account || raw.submitted_at === undefined || raw.submitted_at === null) continue;
+      if (raw.state === "DISMISSED") continue;
+      const event = directSummaryEvent(raw.state);
+      const reviewId = parseGitHubReviewRestId(String(raw.id));
+      const headSha = raw.commit_id === undefined || raw.commit_id === null ? undefined : parseGitSha(raw.commit_id);
+      const submittedAt = parseGitHubTimestamp(raw.submitted_at);
+      if (event === undefined || reviewId._tag === "err" || headSha === undefined || headSha._tag === "err" || submittedAt._tag === "err") return invalid("get_direct_summary_reviews");
+      reviews.push({ reviewId: reviewId.value, event, headSha: headSha.value, submittedAt: submittedAt.value, bodyDigest: digestReviewBody(raw.body ?? "") });
+    }
+    return ok({ reviews, complete: parsed.output.length < 100 });
   }
 
   async getViewerPendingReview(input: {
@@ -2860,6 +2914,13 @@ function writeFailure(failure: CommandFailure): GitHubWriteFailure {
   return { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub review request could not be confirmed." };
 }
 
+function directSummaryWriteFailure(failure: CommandFailure): GitHubWriteFailure {
+  if (failure._tag === "CommandFailed") {
+    return { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub review request could not be confirmed." };
+  }
+  return writeFailure(failure);
+}
+
 function invalid(
   operation: GitHubReadOperation,
 ): Result<never, GitHubReadFailure> {
@@ -2878,4 +2939,26 @@ function isManagedFetchedRef(value: string): boolean {
     !value.includes("..") &&
     !value.includes("//")
   );
+}
+
+function directSummaryEvent(state: string): GitHubReviewEvent | undefined {
+  if (state === "COMMENTED") return "COMMENT";
+  if (state === "APPROVED") return "APPROVE";
+  if (state === "CHANGES_REQUESTED") return "REQUEST_CHANGES";
+  return undefined;
+}
+
+function digestReviewBody(body: string): string {
+  return createHash("sha256").update(body).digest("hex");
+}
+
+function parseDirectSummaryReceipt(value: unknown, expectedEvent: GitHubReviewEvent): DirectSummaryReviewReceipt | undefined {
+  const raw = v.safeParse(v.looseObject({ id: v.union([v.string(), v.number()]), state: v.string(), commit_id: v.nullish(v.string()), submitted_at: v.nullish(v.string()) }), value);
+  if (!raw.success || raw.output.commit_id === undefined || raw.output.commit_id === null || raw.output.submitted_at === undefined || raw.output.submitted_at === null || directSummaryEvent(raw.output.state) !== expectedEvent) return undefined;
+  const reviewId = parseGitHubReviewRestId(String(raw.output.id));
+  const headSha = parseGitSha(raw.output.commit_id);
+  const submittedAt = parseGitHubTimestamp(raw.output.submitted_at);
+  return reviewId._tag === "err" || headSha._tag === "err" || submittedAt._tag === "err"
+    ? undefined
+    : { reviewId: reviewId.value, event: expectedEvent, headSha: headSha.value, submittedAt: submittedAt.value };
 }

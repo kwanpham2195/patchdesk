@@ -38,6 +38,7 @@ import {
   parsePendingReviewState,
   pendingReviewMatchesSession,
 } from "../../domain/pending-review";
+import { parseDirectSummaryReviewState, type DirectSummaryReviewState } from "../../domain/direct-summary-review";
 import { parseReviewResult } from "../../domain/review-result";
 import type {
   ReviewSession,
@@ -184,6 +185,7 @@ const reviewSessionSchema = v.strictObject({
   batch: v.optional(v.strictObject({ state: v.unknown() })),
   batchContent: v.optional(v.unknown()),
   pendingReview: v.optional(v.unknown()),
+  directSummaryReview: v.optional(v.unknown()),
   submittedReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -739,6 +741,12 @@ export function parseStoredReviewSession(
       ? ok(undefined)
       : parsePendingReviewState(raw.output.pendingReview);
   if (pendingReview._tag === "err") return invalidRead();
+  const directSummaryReview =
+    raw.output.directSummaryReview === undefined
+      ? ok(undefined)
+      : parseDirectSummaryReviewState(raw.output.directSummaryReview);
+  if (directSummaryReview._tag === "err") return invalidRead();
+  if (directSummaryReview.value !== undefined && !directSummaryReviewMatchesSession(directSummaryReview.value, headSha.value)) return invalidRead();
   if (
     pendingReview.value !== undefined &&
     !pendingReviewMatchesSession(pendingReview.value, {
@@ -796,6 +804,9 @@ export function parseStoredReviewSession(
     ...(pendingReview.value === undefined
       ? {}
       : { pendingReview: pendingReview.value }),
+    ...(directSummaryReview.value === undefined
+      ? {}
+      : { directSummaryReview: directSummaryReview.value }),
     ...(submittedReview === undefined
       ? {}
       : { submittedReview: submittedReview.value }),
@@ -1236,6 +1247,12 @@ function parseDebugTraceEvent(
     at: at.value,
     ...(attemptId === undefined ? {} : { attemptId: attemptId.value }),
   });
+}
+
+function directSummaryReviewMatchesSession(state: DirectSummaryReviewState, sessionHeadSha: string): boolean {
+  return state._tag === "Confirmed"
+    ? state.receipt.headSha === sessionHeadSha
+    : state.operation.headSha === sessionHeadSha;
 }
 
 function invalidRead(): Result<never, StorageFailure> {

@@ -13,6 +13,7 @@ import { createReviewSession } from "../../src/domain/review-session";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok } from "../../src/domain/result";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
+import { ReviewWriteCoordinator } from "../../src/services/review-write-coordinator";
 
 const roots: string[] = [];
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
@@ -57,6 +58,13 @@ describe("MergeWriteController", () => {
     await expect(fixture.controller.merge(fixture.request)).resolves.toEqual({ _tag: "err", error: { reason: "merge_outcome_unknown" } });
     expect(fixture.mergeRequests).toEqual([{ method: "squash", headSha: fixture.session.key.headSha }]);
   });
+  it("shares the review write coordinator with other review writes", async () => {
+    const fixture = await mergeFixture();
+    const key = `${fixture.profileId}:${fixture.request.reviewId}`;
+    expect(fixture.coordinator.acquire(key)).toBe(true);
+    await expect(fixture.controller.merge(fixture.request)).resolves.toEqual({ _tag: "err", error: { reason: "merge_in_progress" } });
+    fixture.coordinator.release(key);
+  });
 
   it("rejects a concurrent merge before it can issue a second remote write", async () => {
     let resolve: ((value: ReturnType<typeof ok<{ readonly mergeCommitSha?: never }>>) => void) | undefined;
@@ -98,8 +106,9 @@ async function mergeFixture(options: { readonly acknowledgedWarnings?: boolean; 
       return ok({ profile, review: {} as never, session: { ...session, id: expected.sessionId, key: { ...session.key, headSha: expected.headSha } } as never, snapshot: {} as never });
     },
   } as never;
-  const controller = new MergeWriteController(profiles, sessions, gateway, ["squash"], () => now, new MergeOperationStore(paths), gate);
-  return { controller, sessions, profileId, session, mergeRequests, request: { profileId, reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa", sessionId: session.id, expectedHeadSha: session.key.headSha, expectedPatchHash: "a".repeat(64), expectedRevision: now, method: "squash", acknowledgedWarnings: options.acknowledgedWarnings ?? true } };
+  const coordinator = new ReviewWriteCoordinator();
+  const controller = new MergeWriteController(profiles, sessions, gateway, ["squash"], () => now, new MergeOperationStore(paths), gate, undefined, coordinator);
+  return { controller, coordinator, sessions, profileId, session, mergeRequests, request: { profileId, reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa", sessionId: session.id, expectedHeadSha: session.key.headSha, expectedPatchHash: "a".repeat(64), expectedRevision: now, method: "squash", acknowledgedWarnings: options.acknowledgedWarnings ?? true } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T { if (result._tag === "err") throw new Error("Invalid fixture"); return result.value; }

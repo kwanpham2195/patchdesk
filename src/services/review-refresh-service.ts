@@ -41,6 +41,10 @@ export type RecentReviewWrite =
   | {
       readonly _tag: "PendingThread";
       readonly threadId: GitHubThreadId;
+    }
+  | {
+      readonly _tag: "DirectSummaryReview";
+      readonly reviewId: string;
     };
 
 export type DetectionResult = {
@@ -374,7 +378,7 @@ function withoutRecentWrites(
       commentIds.add(entry.commentId);
     } else if (entry._tag === "ThreadState") {
       latestThreadStateById.set(entry.threadId, entry.state);
-    } else {
+    } else if (entry._tag === "PendingThread") {
       pendingThreadIds.add(entry.threadId);
     }
   }
@@ -429,6 +433,10 @@ function withoutJournaledFeedback(
   const commentIds = new Set<string>();
   const reviewIds = new Set<string>();
   for (const entry of journal) {
+    if (entry._tag === "DirectSummaryReview") {
+      reviewIds.add(entry.reviewId);
+      continue;
+    }
     if (entry._tag !== "Comment") continue;
     commentIds.add(entry.commentId);
     if (entry.reviewId !== undefined) reviewIds.add(entry.reviewId);

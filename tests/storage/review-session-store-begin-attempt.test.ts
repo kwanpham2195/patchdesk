@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,6 +35,26 @@ afterEach(async () => {
 });
 
 describe("ReviewSessionStore.beginAttempt", () => {
+  it("rejects direct-summary evidence bound to a different session head", async () => {
+    const fixture = await createFixture();
+    const raw = JSON.parse(await readFile(fixture.paths.sessionFile(fixture.profileId, fixture.session.id), "utf8")) as Record<string, unknown>;
+    raw.directSummaryReview = {
+      _tag: "Confirmed",
+      receipt: {
+        reviewId: "9001",
+        event: "COMMENT",
+        headSha: "1".repeat(40),
+        submittedAt: "2026-07-24T00:00:00.000Z",
+      },
+    };
+    await writeFile(fixture.paths.sessionFile(fixture.profileId, fixture.session.id), JSON.stringify(raw), "utf8");
+
+    await expect(fixture.store.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
+    });
+  });
+
   it("requires the persisted local batch to be discarded before a rerun", async () => {
     const fixture = await createFixture();
     const attemptId = must(parseReviewAttemptId("001"));

@@ -10,6 +10,7 @@ import type { AnalysisCompletionService } from "./analysis-completion-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import { applyReviewBatch, submitReviewBatch } from "./review-submission-service";
 import { readObjectField } from "./read-object-field";
+import type { ReviewWriteCoordinator } from "./review-write-coordinator";
 
 export type ReviewWriteResponse = {
   readonly session: unknown;
@@ -29,6 +30,7 @@ export class ReviewWriteController {
     private readonly now: () => IsoTimestamp,
     private readonly completion?: Pick<AnalysisCompletionService, "consumeForPublication" | "consume">,
     private readonly writeGate?: ReviewWriteGate,
+    private readonly writeCoordinator?: ReviewWriteCoordinator,
   ) {}
 
   async submitBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
@@ -132,8 +134,11 @@ export class ReviewWriteController {
     const expectedPatch = parseContentHash(readObjectField(input, "expectedPatchHash"));
     if (profileId._tag === "err" || sessionId._tag === "err" || reviewId._tag === "err" || expectedHead._tag === "err" || expectedPatch._tag === "err" || expectedRevision._tag === "err" || readObjectField(input, "acknowledgement") !== true || this.writeGate === undefined) return err({ reason: "invalid_input" });
     const key = `${profileId.value}:${reviewId.value}`;
-    if (this.inFlight.has(key)) return err({ reason: "review_write_in_progress" });
-    this.inFlight.add(key);
+    const acquired = this.writeCoordinator === undefined
+      ? !this.inFlight.has(key)
+      : this.writeCoordinator.acquire(key);
+    if (!acquired) return err({ reason: "review_write_in_progress" });
+    if (this.writeCoordinator === undefined) this.inFlight.add(key);
     try {
       const gated = await this.writeGate.requireFresh(profileId.value, reviewId.value, { sessionId: sessionId.value, headSha: expectedHead.value, patchHash: expectedPatch.value, draftRevision: expectedRevision.value });
       if (gated._tag === "err") return err({ reason: gated.error.reason });
@@ -143,7 +148,10 @@ export class ReviewWriteController {
       const batch = session.value.batchContent;
       if (batch === undefined || batch.updatedAt !== expectedRevision.value) return err({ reason: "revision_conflict" });
       return operation({ profile: profile.value, session: session.value, batch });
-    } finally { this.inFlight.delete(key); }
+    } finally {
+      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
+      else this.writeCoordinator.release(key);
+    }
   }
 
   private async persistFailure(error: unknown): Promise<void> {

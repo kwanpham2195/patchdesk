@@ -20,6 +20,7 @@ import {
   type ReviewBatch,
 } from "./review-batch";
 import type { PendingReviewState } from "./pending-review";
+import type { DirectSummaryReviewState } from "./direct-summary-review";
 import type {
   ReviewAttempt,
   ReviewAttemptState,
@@ -96,6 +97,8 @@ export type ReviewSession = {
   readonly batchContent?: ReviewBatch;
   /** The viewer's GitHub pending-review owner with durable write intents. */
   readonly pendingReview?: PendingReviewState;
+  /** Durable receipt or recovery lock for a directly submitted summary review. */
+  readonly directSummaryReview?: DirectSummaryReviewState;
   readonly submittedReview?: SubmittedReviewRef;
   /** Receipts from a reconciled publication retained after its successor draft is installed. */
   readonly archivedReceipts?: ReadonlyArray<RemoteWriteReceipt>;

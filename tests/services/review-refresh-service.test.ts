@@ -439,6 +439,31 @@ describe("ReviewRefreshService", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("ignores a direct summary review this session submitted when detecting updates", async () => {
+    const submittedAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
+    const ownReview = { id: "42", nodeId: "PRR_own", author: "pmquan2", body: "Summary", event: "COMMENTED" as const, submittedAt, canDismiss: true };
+    const represented = { ...snapshot, publishedFeedback: { reviews: [], comments: [], complete: true } };
+    const changed = { ...snapshot, publishedFeedback: { reviews: [ownReview], comments: [], complete: true } };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: { async load() { return ok({} as never); } },
+      reviews: { async load() { return ok({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: at, refreshedAt: at, snapshotHash: hashSnapshot(represented) } }); }, save },
+      sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
+      remote: { async load() { return ok(represented); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(represented) }); } },
+      github: {
+        async getPullRequest() { return ok(snapshot.pullRequest); },
+        async getPullRequestChecks() { return ok(snapshot.checks); },
+        async getPullRequestComments() { return ok(snapshot.comments); },
+        async getPullRequestPublishedFeedback() { return ok(changed.publishedFeedback as never); },
+        async getPullRequestCommits() { return ok([]); },
+        async getMergePolicy() { return ok({} as never); },
+      },
+      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "DirectSummaryReview", reviewId: "42" }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("detects an external reply inside a thread this session resolved (no whole-thread masking)", async () => {
     // The app resolved thread t locally; the journal carries a ThreadState
     // entry. An external reply then lands in that same thread. Normalization

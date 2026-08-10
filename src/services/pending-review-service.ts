@@ -28,6 +28,7 @@ import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewWriteExpectation, ReviewWriteGate } from "./review-write-gate";
+import type { ReviewWriteCoordinator } from "./review-write-coordinator";
 import type { PullRequestRef } from "../domain/pull-request";
 
 export type StartPendingReviewInput = {
@@ -115,6 +116,7 @@ export class PendingReviewService {
     private readonly sessions: Pick<ReviewSessionStore, "load" | "save">,
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
+    private readonly writeCoordinator?: ReviewWriteCoordinator,
   ) {}
 
   /**
@@ -128,6 +130,11 @@ export class PendingReviewService {
     readonly reviewId: ReviewId;
     readonly recover?: boolean;
   }): Promise<Result<{ readonly session: ReviewSession; readonly state: PendingReviewState; readonly unavailable: boolean }, PendingReviewServiceFailure>> {
+    const key = `${input.profileId}:${input.reviewId}`;
+    const acquired = this.writeCoordinator === undefined ? !this.inFlight.has(key) : this.writeCoordinator.acquire(key);
+    if (!acquired) return err("review_write_in_progress");
+    if (this.writeCoordinator === undefined) this.inFlight.add(key);
+    try {
     const current = await this.gate.requireCurrentSession(input.profileId, input.reviewId);
     if (current._tag === "err") return err(mapGateFailure(current.error.reason));
     const session = current.value.session;
@@ -167,6 +174,10 @@ export class PendingReviewService {
       return ok({ session, state: stored, unavailable: true });
     }
     return ok({ session: { ...session, pendingReview: next }, state: next, unavailable: false });
+    } finally {
+      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
+      else this.writeCoordinator.release(key);
+    }
   }
 
   async start(input: StartPendingReviewInput): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
@@ -267,8 +278,11 @@ export class PendingReviewService {
     operation: (profile: WorkspaceProfileConfig, session: ReviewSession) => Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>>,
   ): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     const key = `${profileId}:${reviewId}`;
-    if (this.inFlight.has(key)) return err("review_write_in_progress");
-    this.inFlight.add(key);
+    const acquired = this.writeCoordinator === undefined
+      ? !this.inFlight.has(key)
+      : this.writeCoordinator.acquire(key);
+    if (!acquired) return err("review_write_in_progress");
+    if (this.writeCoordinator === undefined) this.inFlight.add(key);
     try {
       const fresh = await this.gate.requireFresh(profileId, reviewId, expected);
       if (fresh._tag === "err") return err(mapGateFailure(fresh.error.reason));
@@ -281,7 +295,8 @@ export class PendingReviewService {
       if (current.value.headSha !== session.key.headSha) return err("stale_head");
       return operation(profile, session);
     } finally {
-      this.inFlight.delete(key);
+      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
+      else this.writeCoordinator.release(key);
     }
   }
 

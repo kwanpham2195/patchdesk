@@ -8,7 +8,7 @@ import { parseReviewBatch } from "../../../domain/review-batch";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitHubThreadId, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
-import type { CommitDiffResponse, WorkbenchResponse } from "../renderer-contracts";
+import type { CommitDiffResponse, DirectSummaryReviewProjection, WorkbenchResponse } from "../renderer-contracts";
 import { Conversation } from "./conversation";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
@@ -16,6 +16,8 @@ import type { LocalCommentAuthoring, LocalCommentLocation, PendingReviewComposer
 import { CanonicalReviewOverviewSheet, type CanonicalReviewOverview, type PullRequestOverviewMerge } from "./pr-overview-sheet";
 import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
 import { FinishReviewDialog } from "./finish-review-dialog";
+import { SummaryReviewDialog } from "./summary-review-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
@@ -108,6 +110,14 @@ export type ReviewWorkbenchActions = {
   readonly dismissFinding?: (finding: ReviewFinding, reason: string) => Promise<void>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
+  readonly directSummary?: {
+    readonly busy: boolean;
+    readonly state: DirectSummaryReviewProjection["state"];
+    readonly receipt?: Extract<DirectSummaryReviewProjection, { readonly state: "confirmed" }>["receipt"];
+    readonly error?: string;
+    readonly onSubmit: (event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES", body: string) => Promise<DirectSummaryReviewProjection>;
+    readonly onRecover: () => Promise<DirectSummaryReviewProjection>;
+  };
   /** GitHub pending-review header action, Finish modal, and recovery. */
   readonly pendingReview?: {
     readonly projection: WorkbenchResponse["pendingReview"];
@@ -217,6 +227,7 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title = model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
   const [overviewOpen, setOverviewOpen] = useState(initialState?.overviewOpen ?? false);
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [selectedMergeMethod, setSelectedMergeMethod] = useState<MergeMethod>("squash");
   const [navigatorVisible, setNavigatorVisible] = useState(true);
@@ -462,10 +473,10 @@ export function ReviewWorkbench({
             {actions.merge === undefined || terminal ? null : (
               model.mergeReadiness._tag === "Blocked" ? null : (
                 <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <Button variant="outline" size="sm" disabled={freshnessLabel !== "Current"}>
-                      <GitMerge /> Merge <ChevronDown />
-                    </Button>
+                  <DropdownMenuTrigger
+                    render={<Button variant="outline" size="sm" disabled={freshnessLabel !== "Current"} />}
+                  >
+                    <GitMerge /> Merge <ChevronDown />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     {actions.merge.methods.includes("merge") ? <DropdownMenuItem onClick={() => { setSelectedMergeMethod("merge"); setMergeDialogOpen(true); }}>Create a merge commit</DropdownMenuItem> : null}
@@ -489,7 +500,10 @@ export function ReviewWorkbench({
             {actions.pendingReview === undefined || terminal ? null : (
               <PendingReviewHeaderAction
                 pendingReview={actions.pendingReview}
+                directSummary={actions.directSummary}
                 onNavigateToDiff={() => setActiveTab("diff")}
+                onOpenSummary={() => setSummaryDialogOpen(true)}
+                summaryAvailable={actions.directSummary?.state === "idle"}
               />
             )}
           </div>
@@ -632,6 +646,18 @@ export function ReviewWorkbench({
             : { error: actions.pendingReview.finishDialogError })}
         />
       )}
+      {actions.directSummary === undefined ? null : (
+        <SummaryReviewDialog
+          open={summaryDialogOpen}
+          onOpenChange={setSummaryDialogOpen}
+          busy={actions.directSummary.busy}
+          state={actions.directSummary.state}
+          {...(actions.directSummary.receipt === undefined ? {} : { receipt: actions.directSummary.receipt })}
+          {...(actions.directSummary.error === undefined ? {} : { error: actions.directSummary.error })}
+          onSubmit={actions.directSummary.onSubmit}
+          onRecover={actions.directSummary.onRecover}
+        />
+      )}
       {actions.merge === undefined || actions.merge.readiness._tag === "Blocked" ? null : (
         <MergeConfirmationDialog
           defaultOpen={mergeDialogOpen}
@@ -654,20 +680,39 @@ export function ReviewWorkbench({
 
 function PendingReviewHeaderAction({
   pendingReview,
+  directSummary,
   onNavigateToDiff,
+  onOpenSummary,
+  summaryAvailable,
 }: {
   readonly pendingReview: NonNullable<ReviewWorkbenchActions["pendingReview"]>;
+  readonly directSummary: ReviewWorkbenchActions["directSummary"];
   readonly onNavigateToDiff: () => void;
+  readonly onOpenSummary: () => void;
+  readonly summaryAvailable: boolean;
 }): React.JSX.Element | null {
+  const [startChoiceOpen, setStartChoiceOpen] = useState(false);
   const projection = pendingReview.projection;
   if (projection === undefined || projection.state === "none") {
+    if (directSummary?.state === "confirmed" || directSummary?.state === "recovery_required") {
+      return <Button variant="outline" size="sm" onClick={onOpenSummary} disabled={directSummary.busy} data-review-header-summary-state>
+        {directSummary.state === "confirmed" ? "View submitted review" : "Recover submitted review"}
+      </Button>;
+    }
     // Start a review directs the maintainer to select a valid inline Diff
     // range; it never creates an empty remote review (unproven path).
-    return (
-      <Button variant="outline" size="sm" onClick={onNavigateToDiff} data-review-header-start>
-        Start a review
-      </Button>
-    );
+    return <>
+      <Button variant="outline" size="sm" onClick={() => setStartChoiceOpen(true)} data-review-header-start>Start a review</Button>
+      <Dialog open={startChoiceOpen} onOpenChange={setStartChoiceOpen}>
+        <DialogContent aria-label="Start review">
+          <DialogHeader><DialogTitle>Start review</DialogTitle><DialogDescription>Choose how to start. Inline comments begin a GitHub pending review only after you select a changed line.</DialogDescription></DialogHeader>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => { setStartChoiceOpen(false); onNavigateToDiff(); }}>Add inline comment</Button>
+            <Button onClick={() => { setStartChoiceOpen(false); onOpenSummary(); }} disabled={!summaryAvailable}>Write review summary</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>;
   }
   if (projection.state === "pending") {
     return (

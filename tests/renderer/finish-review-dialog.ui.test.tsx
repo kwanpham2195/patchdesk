@@ -28,7 +28,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
     const dialog = screen.getByRole("dialog", { name: "Finish review" });
@@ -50,7 +50,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={onOpenChange}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onDiscard, onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard }}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Discard review" }));
@@ -71,7 +71,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
     const summary = screen.getByRole("textbox", { name: "Final review summary" });
@@ -87,7 +87,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={onOpenChange}
         projection={projection}
-        actions={{ busy: false, onSubmit, onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
       />,
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Final review summary" }), { target: { value: "Only on submit" } });
@@ -105,7 +105,7 @@ describe("FinishReviewDialog", () => {
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: true, onSubmit: vi.fn(), onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: true, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
     expect((screen.getByRole("button", { name: "Submit review" }) as HTMLButtonElement).disabled).toBe(true);
@@ -114,20 +114,71 @@ describe("FinishReviewDialog", () => {
     expect((closeButtons[0] as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("surfaces a bounded submit failure and offers Check GitHub again", async () => {
+  it("surfaces a bounded submit failure and leaves recovery outside the modal", async () => {
     const onSubmit = vi.fn(async () => { throw new Error("write failed"); });
     render(
       <FinishReviewDialog
         open
         onOpenChange={vi.fn()}
         projection={projection}
-        actions={{ busy: false, onSubmit, onDiscard: vi.fn(), onCheckGitHubAgain: vi.fn() }}
+        actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
         error="GitHub could not confirm the submission. Check GitHub again before trying again."
       />,
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Final review summary" }), { target: { value: "Summary" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
+    // The modal never hosts the recovery control; the unavailable/recovery
+    // notice outside the modal owns Check GitHub again.
+    expect(screen.queryByRole("button", { name: "Check GitHub again" })).toBeNull();
+  });
+
+  it("shows human decision labels in the closed select and submits uppercase values", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => undefined);
+    render(
+      <FinishReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        projection={projection}
+        actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
+      />,
+    );
+    const decision = screen.getByRole("combobox", { name: "Review decision" });
+    expect(decision.textContent).toContain("Comment");
+    expect(decision.textContent).not.toContain("COMMENT");
+    await user.click(decision);
+    await user.click(await screen.findByRole("option", { name: "Approve" }));
+    expect(decision.textContent).toContain("Approve");
+    expect(decision.textContent).not.toContain("APPROVE");
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledWith("APPROVE", ""));
+  });
+
+  it("keeps Discard in a separate footer group from Close and Submit", () => {
+    render(
+      <FinishReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        projection={projection}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Finish review" });
+    const dangerGroup = dialog.querySelector('[data-finish-review-actions-danger]');
+    const primaryGroup = dialog.querySelector('[data-finish-review-actions-primary]');
+    expect(dangerGroup).not.toBeNull();
+    expect(primaryGroup).not.toBeNull();
+    expect(dangerGroup?.textContent).toContain("Discard review");
+    expect(dangerGroup?.textContent).not.toContain("Submit review");
+    expect(dangerGroup?.textContent).not.toContain("Close");
+    expect(primaryGroup?.textContent).toContain("Close");
+    expect(primaryGroup?.textContent).toContain("Submit review");
+    expect(primaryGroup?.textContent).not.toContain("Discard");
+    // Both footer groups and the decision row wrap instead of clipping.
+    const actions = dialog.querySelector('[data-finish-review-actions]');
+    expect(actions?.className).toContain("flex-wrap");
+    expect(actions?.className).toContain("justify-between");
+    expect(dialog.querySelector('[data-finish-review-decision-row]')?.className).toContain("flex-wrap");
   });
 });

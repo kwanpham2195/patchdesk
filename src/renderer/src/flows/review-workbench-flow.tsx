@@ -53,12 +53,14 @@ import type { InsightFailureCategory } from "../../../domain/insight-record";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   parseCommitDiffResponse,
+  parseDirectSummaryReviewResponse,
   parseModelCatalog,
   parsePendingReviewProjection,
   parsePublicationPreview,
   parseReviewBatchProjection,
   parseWorkbenchResponse,
   type CommitDiffResponse,
+  type DirectSummaryReviewProjection,
   type PendingReviewProjection,
 } from "../renderer-contracts";
 import { useInsightRun } from "../hooks/use-insight-run";
@@ -69,12 +71,24 @@ import {
 
 function boundedPendingReviewError(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "pending_review") return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
     if (cause.kind === "stale_head") return "The pull request changed. Refresh, then finish the review.";
     if (cause.kind === "rejected" || cause.kind === "github_rejected") return "GitHub rejected the submission.";
     if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Check GitHub again or refresh.";
   }
   return "Patchdesk could not finish this review. Check GitHub again or refresh.";
+}
+
+function boundedDirectSummaryError(cause: unknown): string {
+  if (cause instanceof PatchdeskApiError) {
+    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "pending_review") return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
+    if (cause.kind === "review_already_submitted") return "This review summary was already submitted. Refresh to see the current GitHub state.";
+    if (cause.kind === "stale_head") return "The pull request changed. Refresh before submitting a review summary.";
+    if (cause.kind === "rejected" || cause.kind === "github_rejected") return "GitHub rejected the review summary.";
+  }
+  return "Patchdesk could not submit this review summary. Check GitHub again or refresh.";
 }
 
 /**
@@ -656,6 +670,15 @@ export function ReviewWorkbenchFlow({
           ]);
         }
       }
+    } catch (cause) {
+      if (cause instanceof PatchdeskApiError && (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout")) {
+        const projected = applyPendingReviewProjection(cause.responseBody);
+        if (projected === undefined) {
+          const action = command._tag === "Start" ? "start" : command._tag === "AddThread" ? "add_thread" : command._tag === "Submit" ? "submit" : "discard";
+          onWorkbenchPatch({ pendingReview: { state: "recovery_required", action } });
+        }
+      }
+      throw cause;
     } finally {
       setPendingReviewBusy(false);
     }
@@ -676,6 +699,57 @@ export function ReviewWorkbenchFlow({
       setPendingReviewBusy(false);
     }
   }, [applyPendingReviewProjection, workbench]);
+  const [directSummaryBusy, setDirectSummaryBusy] = useState(false);
+  const [directSummaryError, setDirectSummaryError] = useState<string | undefined>(undefined);
+  const [directSummaryState, setDirectSummaryState] = useState<DirectSummaryReviewProjection>(workbench.directSummary ?? { state: "idle" });
+  useEffect(() => {
+    setDirectSummaryState(workbench.directSummary ?? { state: "idle" });
+  }, [workbench.directSummary]);
+  const submitDirectSummary = useCallback(async (event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES", body: string): Promise<DirectSummaryReviewProjection> => {
+    const patchHash = workbench.revision.patchHash;
+    if (patchHash === undefined) throw new Error("The current Diff cannot accept a review summary.");
+    setDirectSummaryBusy(true);
+    try {
+      const value = await runDirectCommand(() => requestJson("/v1/reviews/direct-summary/submit", {
+        method: "POST",
+        body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash }, event, body },
+      }));
+      const result = parseDirectSummaryReviewResponse(value);
+      if (result === undefined) throw new Error("Invalid direct summary review response");
+      setDirectSummaryState(result);
+      if (result.state === "confirmed") {
+        setRecentWrites((current) => [...current, { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId }]);
+      }
+      setDirectSummaryError(undefined);
+      return result;
+    } catch (cause) {
+      // The renderer is the protocol boundary for API failures: retain only
+      // stable failure kinds and lock submission until explicit reconciliation.
+      if (cause instanceof PatchdeskApiError && (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout"))
+        setDirectSummaryState({ state: "recovery_required" });
+      setDirectSummaryError(boundedDirectSummaryError(cause));
+      throw cause;
+    } finally { setDirectSummaryBusy(false); }
+  }, [runDirectCommand, workbench]);
+  const recoverDirectSummary = useCallback(async (): Promise<DirectSummaryReviewProjection> => {
+    setDirectSummaryBusy(true);
+    try {
+      const value = await runDirectCommand(() => requestJson("/v1/reviews/direct-summary/recover", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } }));
+      const result = parseDirectSummaryReviewResponse(value);
+      if (result === undefined) throw new Error("Invalid direct summary recovery response");
+      setDirectSummaryState(result);
+      if (result.state === "confirmed") {
+        setRecentWrites((current) => [...current, { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId }]);
+      }
+      setDirectSummaryError(undefined);
+      return result;
+    } catch (cause) {
+      // Reconciliation failures leave the state locked; only an explicit
+      // successful GitHub read may return it to the submit form.
+      setDirectSummaryError(boundedDirectSummaryError(cause));
+      throw cause;
+    } finally { setDirectSummaryBusy(false); }
+  }, [runDirectCommand, workbench]);
   const pendingReviewComposer: PendingReviewComposerActions | undefined =
     workbench.pendingReview === undefined
       ? undefined
@@ -949,6 +1023,9 @@ export function ReviewWorkbenchFlow({
                     : { finishDialogError }),
                 },
               }),
+          ...(workbench.pendingReview?.state === "none"
+            ? { directSummary: { busy: directSummaryBusy, state: directSummaryState.state, ...(directSummaryState.state === "confirmed" ? { receipt: directSummaryState.receipt } : {}), onSubmit: submitDirectSummary, onRecover: recoverDirectSummary, ...(directSummaryError === undefined ? {} : { error: directSummaryError }) } }
+            : {}),
           ...(canWriteDirectConversation ? { setThreadState, replyToThread, editComment, deleteComment } : {}),
           reportNavigationState: onNavigationStateChange,
         }}

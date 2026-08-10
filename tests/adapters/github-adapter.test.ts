@@ -15,6 +15,7 @@ import {
 } from "../../src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
+  parseGitHubLogin,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseAbsolutePath,
@@ -200,6 +201,25 @@ describe("CommandRunner", () => {
       _tag: "err",
       error: { _tag: "CommandInvalidJson" },
     });
+
+describe("GitHubAdapter direct summary writes", () => {
+  it("fails closed when gh exits generically after the request may have dispatched", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 502: Bad Gateway" },
+    ])));
+
+    await expect(adapter.createDirectSummaryReview({
+      profile,
+      pr,
+      headSha: mustParse(parseGitSha(headSha)),
+      event: "COMMENT",
+      body: "Summary",
+    })).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub review request could not be confirmed." },
+    });
+  });
+});
     expect(
       await auth.runJson({ argv: ["gh", "api", "user"], timeoutMs: 5 }),
     ).toEqual({
@@ -1606,5 +1626,26 @@ describe("GitHubAdapter pending-review discard", () => {
   it("keeps the fake discard seam unimplemented until a fixture is supplied", async () => {
     const adapter = new FakeGitHubAdapter({ pullRequest: { headSha } as never, authenticatedAccount: { host: "github.com", account: "pmquan2cfw" } } as never);
     await expect(adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never })).resolves.toMatchObject({ _tag: "err", error: { category: "unavailable" } });
+  });
+});
+
+describe("GitHubAdapter direct summary reads", () => {
+  it("ignores dismissed reviews while retaining submitted direct summaries", async () => {
+    const adapter = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: JSON.stringify([
+          { id: 100, user: { login: "pmquan2cfw" }, state: "DISMISSED", commit_id: headSha, submitted_at: "2026-08-01T00:00:00Z", body: "Dismissed" },
+          { id: 101, user: { login: "pmquan2cfw" }, state: "COMMENTED", commit_id: headSha, submitted_at: "2026-08-01T00:01:00Z", body: "Summary" },
+        ]),
+        stderr: "",
+      },
+    ])));
+
+    await expect(adapter.getViewerDirectSummaryReviews({ profile, pr, account: mustParse(parseGitHubLogin("pmquan2cfw")) })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { complete: true, reviews: [{ reviewId: "101", event: "COMMENT", headSha }] },
+    });
   });
 });

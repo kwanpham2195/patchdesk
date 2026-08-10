@@ -42,6 +42,7 @@ import type { InsightFindingDismissal, InsightRecord, RetainedInsight } from "..
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewAttempt } from "../domain/review-attempt";
 import type { PendingReviewProjection } from "./pending-review-service";
+import { projectDirectSummaryReview, type DirectSummaryReviewProjection } from "./direct-summary-review-service";
 import { projectPendingReview } from "./pending-review-service";
 import type { PendingReviewState } from "../domain/pending-review";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
@@ -97,6 +98,7 @@ export type ReviewWorkbenchProjection = {
   };
   readonly draft?: ReviewBatch;
   readonly pendingReview?: PendingReviewProjection;
+  readonly directSummary?: DirectSummaryReviewProjection;
   readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
@@ -364,6 +366,7 @@ export class ReviewWorkbenchProjectionService {
         pendingReview?.state ?? session.pendingReview ?? { _tag: "None" },
         pendingReview?.unavailable ?? false,
       ),
+      directSummary: projectDirectSummaryReview(session.directSummaryReview),
       conversation,
       checks,
       mergeReadiness,

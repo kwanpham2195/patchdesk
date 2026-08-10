@@ -42,6 +42,7 @@ import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import type {
+  GitHubDirectSummaryGateway,
   GitHubMergeWriter,
   GitHubPendingReviewGateway,
   GitHubReader,
@@ -58,6 +59,8 @@ import { InlineConversationService, type DirectConversationCommand } from "../se
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import { PendingReviewService, projectPendingReview, type PendingReviewProjection } from "../services/pending-review-service";
 import type { PendingReviewAnchor } from "../domain/pending-review";
+import { DirectSummaryReviewService, projectDirectSummaryReview } from "../services/direct-summary-review-service";
+import { ReviewWriteCoordinator } from "../services/review-write-coordinator";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
 import { UnifiedReviewMigration } from "../services/unified-review-migration";
 import { LegacyBatchDiscardMigration } from "../services/legacy-batch-discard-migration";
@@ -122,6 +125,7 @@ const recentReviewWriteSchema = variant("_tag", [
   strictObject({ _tag: picklist(["Comment"] as const), commentId: pipe(string(), minLength(1)), reviewId: optional(pipe(string(), minLength(1))) }),
   strictObject({ _tag: picklist(["ThreadState"] as const), threadId: pipe(string(), minLength(1)), state: picklist(["open", "resolved"] as const) }),
   strictObject({ _tag: picklist(["PendingThread"] as const), threadId: pipe(string(), minLength(1)) }),
+  strictObject({ _tag: picklist(["DirectSummaryReview"] as const), reviewId: pipe(string(), minLength(1)) }),
 ]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -317,6 +321,7 @@ export async function startLocalApiServer(
   );
   const publicationAuthorizations = new PublicationAuthorizationStore(paths);
   const analysisCompletion = new AnalysisCompletionService(publicationAuthorizations);
+  const writeCoordinator = new ReviewWriteCoordinator();
   const writer =
     configuration.reviewWriter ??
     (isGitHubReviewWriter(github) ? github : undefined);
@@ -337,6 +342,7 @@ export async function startLocalApiServer(
           () => new Date().toISOString() as never,
           analysisCompletion,
           reviewWriteGate,
+          writeCoordinator,
         );
   const reviewBatches = new ReviewBatchController(
     sessions,
@@ -391,9 +397,12 @@ export async function startLocalApiServer(
     reviews,
     insights,
   );
-  const inlineConversations = new InlineConversationService(reviewWriteGate, github);
+  const inlineConversations = new InlineConversationService(reviewWriteGate, github, writeCoordinator);
   const pendingReviews = isGitHubPendingReviewGateway(github)
-    ? new PendingReviewService(reviewWriteGate, sessions, github as GitHubPendingReviewGateway & GitHubReader & GitHubReviewWriter, () => new Date().toISOString() as never)
+    ? new PendingReviewService(reviewWriteGate, sessions, github as GitHubPendingReviewGateway & GitHubReader & GitHubReviewWriter, () => new Date().toISOString() as never, writeCoordinator)
+    : undefined;
+  const directSummaryReviews = isGitHubDirectSummaryGateway(github) && isGitHubPendingReviewGateway(github)
+    ? new DirectSummaryReviewService(reviewWriteGate, sessions, github as GitHubDirectSummaryGateway & GitHubPendingReviewGateway & GitHubReader, () => new Date().toISOString() as never, writeCoordinator)
     : undefined;
   const reviewRefresh = new ReviewRefreshService({
     profiles,
@@ -479,6 +488,7 @@ export async function startLocalApiServer(
           new MergeOperationStore(paths),
           reviewWriteGate,
           reviews,
+          writeCoordinator,
         );
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();
@@ -671,6 +681,8 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/inline-conversations/command", async (context) => inlineConversationResponse(context, inlineConversations, await jsonBody(context)));
   app.post("/v1/reviews/pending-review/command", async (context) => pendingReviewCommandResponse(context, pendingReviews, sessions, await jsonBody(context)));
   app.post("/v1/reviews/pending-review/recover", async (context) => pendingReviewRecoverResponse(context, pendingReviews, await jsonBody(context)));
+  app.post("/v1/reviews/direct-summary/submit", async (context) => directSummarySubmitResponse(context, directSummaryReviews, await jsonBody(context)));
+  app.post("/v1/reviews/direct-summary/recover", async (context) => directSummaryRecoverResponse(context, directSummaryReviews, await jsonBody(context)));
   app.post("/v1/reviews/published-comments/edit", async (context) => publishedFeedbackResponse(context, publishedFeedback, "edit", await jsonBody(context)));
   app.post("/v1/reviews/published-comments/delete", async (context) => publishedFeedbackResponse(context, publishedFeedback, "delete", await jsonBody(context)));
   app.post("/v1/reviews/published-reviews/dismiss", async (context) => publishedFeedbackResponse(context, publishedFeedback, "dismiss", await jsonBody(context)));
@@ -778,10 +790,12 @@ export async function startLocalApiServer(
         const parsedThreadId = parseGitHubThreadId(entry.threadId);
         if (parsedThreadId._tag === "err") return context.json({ error: "invalid_input" }, 400);
         recentWrites.push({ _tag: "PendingThread", threadId: parsedThreadId.value });
-      } else {
+      } else if (entry._tag === "ThreadState") {
         const parsedThreadId = parseGitHubThreadId(entry.threadId);
         if (parsedThreadId._tag === "err") return context.json({ error: "invalid_input" }, 400);
         recentWrites.push({ _tag: "ThreadState", threadId: parsedThreadId.value, state: entry.state });
+      } else {
+        recentWrites.push({ _tag: "DirectSummaryReview", reviewId: entry.reviewId });
       }
     }
     return response(context, await reviewWorkbench.detectUpdates({
@@ -1051,6 +1065,9 @@ function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {
     "submitPendingReview" in value
   );
 }
+function isGitHubDirectSummaryGateway(value: unknown): value is GitHubDirectSummaryGateway {
+  return typeof value === "object" && value !== null && "getViewerDirectSummaryReviews" in value && "createDirectSummaryReview" in value;
+}
 function isGitHubPendingReviewGateway(value: unknown): value is GitHubPendingReviewGateway {
   return (
     typeof value === "object" &&
@@ -1136,9 +1153,40 @@ async function storedPendingReviewProjection(sessions: ReviewSessionStore, profi
 function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
   if (failure === "invalid_input") return 400;
   if (failure === "not_found") return 404;
-  if (failure === "not_fresh" || failure === "stale_head" || failure === "permission_denied" || failure === "rejected" || failure === "review_write_in_progress" || failure === "no_pending_review" || failure === "pending_review_locked") return 409;
+  if (failure === "not_fresh" || failure === "stale_head" || failure === "permission_denied" || failure === "rejected" || failure === "review_write_in_progress" || failure === "review_already_submitted" || failure === "no_pending_review" || failure === "pending_review_locked" || failure === "pending_review_exists") return 409;
   if (failure === "unavailable" || failure === "outcome_unknown") return 503;
   return 400;
+}
+
+async function directSummarySubmitResponse(context: Context, service: DirectSummaryReviewService | undefined, body: unknown): Promise<Response> {
+  if (service === undefined) return context.json({ error: "review_write_unavailable" }, 503);
+  const parsed = parseDirectSummaryCommand(body);
+  if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
+  const result = await service.submit(parsed);
+  return result._tag === "ok"
+    ? context.json({ directSummary: projectDirectSummaryReview(result.value) })
+    : context.json({ error: result.error }, pendingReviewFailureStatus(result.error));
+}
+
+async function directSummaryRecoverResponse(context: Context, service: DirectSummaryReviewService | undefined, body: unknown): Promise<Response> {
+  if (service === undefined) return context.json({ error: "review_write_unavailable" }, 503);
+  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
+  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
+  const result = await service.reconcile({ profileId: profileId.value, reviewId: reviewId.value });
+  return result._tag === "ok"
+    ? context.json({ directSummary: projectDirectSummaryReview(result.value) })
+    : context.json({ error: result.error }, pendingReviewFailureStatus(result.error));
+}
+
+function parseDirectSummaryCommand(body: unknown): { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly expected: ReviewWriteExpectation; readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES"; readonly body: string } | undefined {
+  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
+  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  const expected = parseReviewWriteExpectation(readObjectField(body, "expected"));
+  const event = readObjectField(body, "event");
+  const summary = readObjectField(body, "body");
+  if (profileId._tag === "err" || reviewId._tag === "err" || expected === undefined || typeof summary !== "string" || summary.trim().length === 0 || (event !== "APPROVE" && event !== "COMMENT" && event !== "REQUEST_CHANGES")) return undefined;
+  return { profileId: profileId.value, reviewId: reviewId.value, expected, event, body: summary };
 }
 
 function parsePendingReviewCommand(body: unknown): { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly command: PendingReviewCommandDto } | undefined {
@@ -1197,7 +1245,7 @@ async function inlineConversationResponse(context: Context, service: InlineConve
   if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
   if (result._tag === "ok") return context.json(result.value);
-  const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "permission_denied" || result.error === "confirmation_required" ? 409 : result.error === "pending_review" ? 409 : result.error === "github_read_failed" || result.error === "github_write_failed" ? 503 : 400;
+  const status = result.error === "not_found" ? 404 : result.error === "not_fresh" || result.error === "permission_denied" || result.error === "confirmation_required" || result.error === "pending_review" || result.error === "review_write_in_progress" ? 409 : result.error === "github_read_failed" || result.error === "github_write_failed" ? 503 : 400;
   return context.json({ error: result.error }, status);
 }
 
