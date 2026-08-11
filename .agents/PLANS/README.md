@@ -1,17 +1,18 @@
 # Implementation Plans
 
-Updated 2026-08-11. The only active implementation plan is the current
-review-submission and Walkthrough slice. Use the design artifacts named by that
-plan as structural references; production styling should continue using the
-existing Base UI/shadcn primitives and Tailwind utilities.
+Updated 2026-08-11. The only active implementation plan is the Codex CLI account
+Insight-provider slice. It preserves the existing Insight lifecycle and authority
+boundaries; production styling continues using the existing Base UI/shadcn primitives
+and Tailwind utilities.
 
 ## Current active plan
 
-- **2026-08-10 — Improve review submission recovery and Walkthrough discussion context**
+- **2026-08-11 — Add the Codex CLI account Insight provider**
   - Priority: P1
   - Effort: L
   - Status: TODO
-  - Plan: `.agents/PLANS/2026-08-10-review-submission-and-walkthrough-context.md`
+  - Plan: `.agents/PLANS/2026-08-11-codex-cli-account-provider.md`
+  - Depends on: ADR-0016 and deterministic fake-app-server coverage.
 
 ## Historical and deferred plans
 
@@ -20,6 +21,11 @@ maintainer explicitly promotes one back into this section.
 
 ### Prior plan status
 
+- **2026-08-10 — Improve review submission recovery and Walkthrough discussion context**
+  - Priority: P1
+  - Effort: L
+  - Status: DONE
+  - Plan: `.agents/PLANS/2026-08-10-review-submission-and-walkthrough-context.md`
 - **001 — Make the Walkthrough result reader-first with a docked chapter rail**
   - Priority: P1
   - Effort: M/L
