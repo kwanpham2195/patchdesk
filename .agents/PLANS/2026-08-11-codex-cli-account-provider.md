@@ -22,6 +22,7 @@ adr: docs/adr/0016-use-the-local-codex-cli-account.md
 - Risk: HIGH — adds a subscription-backed child process and a new model-provider boundary.
 - Depends on: ADR-0016, committed as `9d93f47`.
 - Planned at: `9d93f47` on `fix/inline-conversation-freshness-repair`.
+- Research: [Plannotator Codex app-server research](../research/2026-08-11-plannotator-codex-app-server.md).
 
 ## Purpose
 
