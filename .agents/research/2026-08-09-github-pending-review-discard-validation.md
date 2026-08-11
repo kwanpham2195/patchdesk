@@ -3,9 +3,9 @@ created_at: 2026-08-09
 repos:
   - patchdesk
 status: complete
-spec: .agents/tasks/inline-diff-conversations/spec.md
-tech-spec: .agents/tasks/inline-diff-conversations/tech-spec.md
-plan: .agents/tasks/inline-diff-conversations/plans/2026-08-09-github-pending-review-workbench.md
+spec: .agents/archive/inline-diff-conversations/spec.md
+tech-spec: .agents/archive/inline-diff-conversations/tech-spec.md
+plan: .agents/archive/inline-diff-conversations/plans/2026-08-09-github-pending-review-workbench.md
 spike: .agents/research/2026-08-09-github-pending-review-spike.md
 ---
 

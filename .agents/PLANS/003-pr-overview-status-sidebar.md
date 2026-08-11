@@ -3,7 +3,7 @@ created_at: "2026-08-06"
 repos:
   - patchdesk
 status: DONE
-spec: .agents/tasks/pr-overview-status-sidebar/spec.md
+spec: .agents/archive/pr-overview-status-sidebar/spec.md
 ---
 
 # Plan 003: Refine PR Overview into a status-led sidebar
@@ -23,8 +23,8 @@ spec: .agents/tasks/pr-overview-status-sidebar/spec.md
 - **Category:** UI direction
 - **Implementation state:** Not started. The pre-existing PR Overview edit partially reorders Checks and merge readiness, but removes represented context and reduces check metadata; it is not accepted as the target implementation without reconciliation.
 - **Planned at:** commit `b3a5868`, 2026-08-06
-- **Spec:** `.agents/tasks/pr-overview-status-sidebar/spec.md`
-- **Design references:** `.agents/tasks/unified-review-workbench/design/design.md` and `concepts/04-pr-overview-overlay.png`
+- **Spec:** `.agents/archive/pr-overview-status-sidebar/spec.md`
+- **Design references:** `.agents/archive/unified-review-workbench/design/design.md` and `concepts/04-pr-overview-overlay.png`
 
 ## Why this matters
 

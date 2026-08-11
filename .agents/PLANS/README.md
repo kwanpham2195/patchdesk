@@ -1,8 +1,24 @@
 # Implementation Plans
 
-Updated 2026-08-09. Execute independent plans in priority order. Use the design artifacts named by each plan as structural references; production styling should continue using the existing Base UI/shadcn primitives and Tailwind utilities.
+Updated 2026-08-11. The only active implementation plan is the current
+review-submission and Walkthrough slice. Use the design artifacts named by that
+plan as structural references; production styling should continue using the
+existing Base UI/shadcn primitives and Tailwind utilities.
 
-## Execution order and status
+## Current active plan
+
+- **2026-08-10 — Improve review submission recovery and Walkthrough discussion context**
+  - Priority: P1
+  - Effort: L
+  - Status: TODO
+  - Plan: `.agents/PLANS/2026-08-10-review-submission-and-walkthrough-context.md`
+
+## Historical and deferred plans
+
+The entries below are retained context only. They are not active work unless a
+maintainer explicitly promotes one back into this section.
+
+### Prior plan status
 
 - **001 — Make the Walkthrough result reader-first with a docked chapter rail**
   - Priority: P1

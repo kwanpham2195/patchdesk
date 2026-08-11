@@ -8,7 +8,7 @@ Tests mirror those boundaries under `tests/`. Browser coverage is in `tests/brow
 
 ## Development and Verification
 
-Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`. Design app: `pnpm dev:design`.
+Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`.
 
 Before starting any task, make sure the dev log tails are live in herdr:
 
@@ -48,6 +48,12 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 ## Memory
 
 - Read `brain/index.md` before Patchdesk work.
+- Put stand-alone research notes in `.agents/research/`. Use `.agents/tasks/`
+  for task packages whose specification and design come first, and
+  `.agents/PLANS/` only for long-running execution plans.
+- A completed task package is closed reference material. Do not add research,
+  plans, or implementation artifacts to it; route follow-up work using the
+  locations above.
 - For Pierre or Flue integration research, use `$librarian` for upstream sources.
 - Do not use broad Git cleanup commands such as `git clean` or `git reset --hard`.
 - Backward compatibility requires a user request.

@@ -2,8 +2,8 @@
 created_at: 2026-08-09
 repos: [patchdesk]
 status: done
-spec: .agents/tasks/inline-diff-conversations/spec.md
-tech-spec: .agents/tasks/inline-diff-conversations/tech-spec.md
+spec: .agents/archive/inline-diff-conversations/spec.md
+tech-spec: .agents/archive/inline-diff-conversations/tech-spec.md
 ---
 
 # Pending-review inline lifecycle correction

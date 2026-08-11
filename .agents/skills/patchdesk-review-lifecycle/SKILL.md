@@ -32,5 +32,5 @@ Preserve one Review across revisions and keep each Review session immutable. The
 ## Prove the surface
 
 1. Cover freshness detection versus Refresh, no-drop draft migration, Insight concurrency and retention, cancellation and late suppression, model authority, receipt recovery, write gates, and redaction.
-2. Use the approved design artifact. For the Unified Review Workbench, use `.agents/tasks/unified-review-workbench/design/`; do not create a parallel `src/design/` source.
+2. Use the approved design artifact. For the Unified Review Workbench, use `.agents/archive/unified-review-workbench/design/`; do not create a parallel `src/design/` source.
 3. Run focused, phase, and full gates. Delegate live UI verification to `$patchdesk-electron-tester` as required by `AGENTS.md`.

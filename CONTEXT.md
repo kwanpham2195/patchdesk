@@ -36,6 +36,26 @@ _Avoid_: Model comment, automated review comment
 A current Finding whose evidence identifies an unambiguous location in the current pull request diff.
 _Avoid_: Inline finding, GitHub finding
 
+**Finding evidence hunk**:
+The exact containing diff hunk from the represented pull request patch for a Mapped Finding, with that Finding's anchored line range highlighted and expanded by default. It is evidence in Analysis, not a generated code excerpt or an alternate File view.
+_Avoid_: Code snippet, generated hunk, mini diff
+
+**Finding review command**:
+An explicit maintainer action that uses a current Mapped Finding's suggested text, or its explanation when no suggested text is available, to start or append to the viewer's GitHub pending review. It is one GitHub write after the action is clicked; it has no Analysis-side editor, local queue, or automatic execution when Analysis completes. A confirmed GitHub failure leaves the Finding actionable; an uncertain outcome locks further Finding commands until explicit GitHub reconciliation.
+_Avoid_: Auto review, model comment, Finding draft
+
+**Pending-review Finding**:
+A current Mapped Finding identified by a pending Finding review receipt for the viewer's confirmed GitHub pending review. It prevents a duplicate command for that pending review, without becoming an editable Analysis disposition or local comment copy.
+_Avoid_: Added Finding, queued Finding, local inclusion
+
+**Finding review receipt**:
+Immutable provenance that connects one Analysis run and Finding on one represented revision to the GitHub thread created by its Finding review command. It becomes published when GitHub confirms submission, is removed by a confirmed discard, and is never an editable local comment copy. A receipt visibly identifies the Finding as in the viewer's Pending review or Published. A published receipt makes that Finding unavailable for the rest of its Analysis run and represented revision; a refreshed revision or regenerated Analysis has a new identity and may offer a new Finding. Removing the receipt after a confirmed discard makes its Finding actionable again.
+_Avoid_: Finding draft, comment mirror, publication queue
+
+**Finding-backed pending review**:
+The viewer's GitHub pending review when it contains at least one current Finding review receipt. Only this state exposes the Analysis-summary action in the Analysis screen.
+_Avoid_: Analysis review, generated pending review
+
 **Dismissed finding**:
 A Finding the maintainer has judged to be a false positive, accepted risk, or irrelevant and recorded a reason for excluding.
 _Avoid_: Resolved finding, deleted finding
@@ -49,8 +69,12 @@ The authenticated viewer's remote `PENDING` review for the represented pull requ
 _Avoid_: Review draft, Review batch, local batch
 
 **Review body**:
-The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, findings, verdict, and maintainer guidance that do not belong in separate inline comments. In the GitHub pending review flow it is supplied only from the Finish review modal at Submit.
+The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, verdict, and maintainer guidance that do not belong in separate inline comments; it may reference only Findings the maintainer explicitly chose to publish. In the GitHub pending review flow it is supplied only from the Finish review modal at Submit.
 _Avoid_: Shared body, review summary
+
+**Analysis review summary**:
+The high-level scope, change, verification, and proposed-verdict portion of a current Analysis result. It may prefill the shared Finish review interface only after a Finding command has established the viewer's pending review; the maintainer may edit it and it does not choose the GitHub outcome, create an empty review, publish Finding detail, or become a saved local draft. An outdated Analysis result is readable evidence only and cannot supply review actions or a summary.
+_Avoid_: Analysis body, generated review draft
 
 **Conversation**:
 The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. Returned as a single unified payload by the GitHub adapter. The Conversation screen is read-only; all writes go through the GitHub pending review or GitHub directly. It loads eagerly when a review opens and reloads with each GitHub refresh.

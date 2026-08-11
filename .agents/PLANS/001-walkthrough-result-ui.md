@@ -3,7 +3,7 @@ created_at: "2026-08-05"
 repos:
   - patchdesk
 status: BLOCKED
-spec: .agents/tasks/unified-review-workbench/design/walkthrough-result-wireframe.html
+spec: .agents/archive/unified-review-workbench/design/walkthrough-result-wireframe.html
 ---
 
 # Plan 001: Make the Walkthrough result reader-first with a docked chapter rail
@@ -12,7 +12,7 @@ spec: .agents/tasks/unified-review-workbench/design/walkthrough-result-wireframe
 >
 > **Drift check (run first):** `git diff --stat c5e1f67..HEAD -- src/renderer/src/components/narrative-walkthrough.tsx src/renderer/src/components/narrative-walkthrough-diff.tsx src/renderer/src/components/review-workbench.tsx src/renderer/src/flows/review-workbench-flow.tsx src/renderer/src/components/review-draft-dock.tsx tests/renderer/narrative-walkthrough.ui.test.tsx tests/renderer/review-workbench-flow.ui.test.tsx`
 >
-> Also run `git status -sb`. Preserve unrelated work. The low-fidelity wireframe is currently an untracked design artifact at `.agents/tasks/unified-review-workbench/design/walkthrough-result-wireframe.html`; do not delete, reset, or overwrite it.
+> Also run `git status -sb`. Preserve unrelated work. The low-fidelity wireframe is currently an untracked design artifact at `.agents/archive/unified-review-workbench/design/walkthrough-result-wireframe.html`; do not delete, reset, or overwrite it.
 
 ## Status
 
@@ -23,7 +23,7 @@ spec: .agents/tasks/unified-review-workbench/design/walkthrough-result-wireframe
 - **Category:** direction / tech-debt
 - **Implementation state:** Renderer implementation and full static gate complete; post-fix mobile CDP interaction proof is blocked by the tester hanging on a click against the development instance.
 - **Planned at:** commit `c5e1f67`, 2026-08-05
-- **Design reference:** `.agents/tasks/unified-review-workbench/design/walkthrough-result-wireframe.html`, Reader-first direction and its “Scroll model” note
+- **Design reference:** `.agents/archive/unified-review-workbench/design/walkthrough-result-wireframe.html`, Reader-first direction and its “Scroll model” note
 
 ## Why this matters
 
@@ -67,7 +67,7 @@ The following facts describe the code at planned commit `c5e1f67`.
 - Use strict TypeScript, existing Base UI/shadcn primitives, existing Tailwind utility conventions, and the project’s current `ScrollArea`, `Collapsible`, `Badge`, `Alert`, and `Button` components. Do not add a dependency or a second styling system.
 - Match the Walkthrough vocabulary in `CONTEXT.md`: call it a `Walkthrough`, `Insight`, `Review`, `Review draft`, `Published feedback`, `Support`, `section`, `hunk`, and `current/outdated/failed` result. Do not call it a “model review” or “completed review.”
 - ADR 0004 requires one persistent Review workbench with `Files` and `Insights` as primary surfaces and a persistent collapsible Review draft dock. ADR 0007 says Walkthrough may navigate to Files but cannot create GitHub inline-comment drafts. ADR 0012 keeps Analysis and Walkthrough independent. ADR 0013 keeps Walkthrough bounded, non-authoritative, and tool-free.
-- Use the approved design artifact in `.agents/tasks/unified-review-workbench/design/`; do not create a `src/design/` source of truth.
+- Use the approved design artifact in `.agents/archive/unified-review-workbench/design/`; do not create a `src/design/` source of truth.
 - The live UI must be verified by a dedicated tester using `$patchdesk-electron-tester`. Unit tests and builds do not replace live evidence.
 
 ## Commands you will need

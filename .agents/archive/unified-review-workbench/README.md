@@ -1,8 +1,11 @@
 # Unified Review Workbench
 
-This task package owns the remaining spec and design repair for Patchdesk's
-unified Review workbench. The original implementation program is complete and
-archived. Start new implementation work from the current repair ExecPlan.
+Status: closed reference package — do not add new artifacts here.
+
+This package records the original unified Review workbench program and its
+later repair work. The original implementation program is complete and
+archived. New research belongs in `.agents/research/`; new long-running
+implementation work belongs in `.agents/PLANS/`.
 
 ## Start here
 
@@ -19,17 +22,8 @@ Read these files in order:
 
 The specification and ADRs own behavior. The design reference owns layout and
 interaction composition when it agrees with those contracts. The two reviews
-record current code and UI gaps. The combined repair ExecPlan is the only active
-implementation plan.
-
-## Active implementation
-
-- [Combined spec and design repair ExecPlan](plans/2026-08-03-unified-review-spec-and-design-repair.md) — TODO
-
-The repair covers all 18 spec/code findings and all 16 design findings. It
-includes protected-route and lifecycle safety matrices, deterministic UI
-states, focused tests, full repository gates, and required packaged/live
-Electron verification.
+and repair ExecPlan are historical evidence; they do not authorize new work in
+this package.
 
 ## Archived implementation
 
