@@ -20,6 +20,14 @@ _Avoid_: Prepared review
 An optional model execution that adds findings to a review session.
 _Avoid_: Review run, model review
 
+**Insight provider**:
+A selectable source for Analysis runs and Walkthroughs. Initially, the choices are Pi and the Codex CLI account provider.
+_Avoid_: Model, login
+
+**Codex CLI account provider**:
+An Insight provider that uses the maintainer's existing local Codex CLI account without Patchdesk reading or persisting its credentials.
+_Avoid_: ChatGPT login, OAuth provider, Codex API key
+
 **Analysis result**:
 The latest successful Review body and Findings produced by an analysis run. It remains bound to the pull request revision that was analyzed.
 _Avoid_: Completed review, model review
