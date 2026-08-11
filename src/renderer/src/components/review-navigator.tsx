@@ -10,38 +10,31 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 
-export type ReviewNavigatorSection = "files" | "findings" | "commits";
-type Finding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
+export type ReviewNavigatorSection = "files" | "commits";
 
 type ReviewNavigatorProps = {
   readonly patch: string;
   readonly commits: WorkbenchResponse["commits"];
-  readonly findings: ReadonlyArray<Finding>;
   readonly section: ReviewNavigatorSection;
   readonly selectedPath?: string;
-  readonly selectedFindingId?: string;
   readonly activePath?: string;
   readonly selectedCommitSha?: string;
   readonly onSectionChange: (section: ReviewNavigatorSection) => void;
   readonly onFileSelect: (path: string) => void;
-  readonly onFindingSelect: (finding: Finding) => void;
   readonly onCommitSelect: (sha: string) => void;
   readonly onCollapse?: () => void;
 };
 
-/** The review navigator owns browsing, Finding, and commit selection. */
+/** The review navigator owns browsing and commit selection. */
 export function ReviewNavigator({
   patch,
   commits,
-  findings,
   section,
   selectedPath,
-  selectedFindingId,
   activePath,
   selectedCommitSha,
   onSectionChange,
   onFileSelect,
-  onFindingSelect,
   onCommitSelect,
   onCollapse,
 }: ReviewNavigatorProps): React.JSX.Element {
@@ -63,7 +56,6 @@ export function ReviewNavigator({
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
           <TabsList variant="line" aria-label="Review navigator" className="min-w-0 shrink-0">
             <TabsTrigger value="files">Browse</TabsTrigger>
-            <TabsTrigger value="findings">Findings</TabsTrigger>
             <TabsTrigger value="commits">Commits</TabsTrigger>
           </TabsList>
           {onCollapse === undefined ? null : (
@@ -83,16 +75,6 @@ export function ReviewNavigator({
           ) : (
             <PierreFileTree files={parsed.files} {...(selectedPath === undefined ? {} : { selectedPath })} {...(fileTreeActivePath === undefined ? {} : { activePath: fileTreeActivePath })} onSelect={onFileSelect} />
           )}
-        </TabsContent>
-        <TabsContent value="findings" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
-          <div className="flex flex-col gap-1" aria-label="Review findings">
-            {findings.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No current mapped findings.</p> : findings.map((finding) => (
-              <button key={finding.id} type="button" aria-current={finding.id === selectedFindingId ? "true" : undefined} className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => onFindingSelect(finding)}>
-                <span className="flex w-full items-center gap-2"><Badge variant="outline">{finding.severity}</Badge><Badge variant={finding.disposition === "dismissed" ? "outline" : finding.disposition === "added" ? "secondary" : "default"}>{finding.disposition ?? "open"}</Badge><span className="truncate">{finding.title}</span></span>
-                <span className="w-full truncate text-xs text-muted-foreground">{finding.file ?? "No file"}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`}</span>
-              </button>
-            ))}
-          </div>
         </TabsContent>
         <TabsContent value="commits" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
           <div className="flex flex-col gap-1" aria-label="Review commits">

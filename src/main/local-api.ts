@@ -33,7 +33,6 @@ import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
-import { AnalysisCompletionService } from "../services/analysis-completion-service";
 import {
   StorageManagementService,
   type TrashMover,
@@ -52,13 +51,12 @@ import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import { ReviewWriteController } from "../services/review-write-controller";
 import { ReviewBatchController } from "../services/review-batch-controller";
-import { AnalysisDraftService } from "../services/analysis-draft-service";
 import { PublicationPreviewService } from "../services/publication-preview-service";
 import { PublishedFeedbackService, type PublishedFeedbackFailure } from "../services/published-feedback-service";
 import { InlineConversationService, type DirectConversationCommand } from "../services/inline-conversation-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import { PendingReviewService, projectPendingReview, type PendingReviewProjection } from "../services/pending-review-service";
-import type { PendingReviewAnchor } from "../domain/pending-review";
+import type { FindingReviewSource, PendingReviewAnchor } from "../domain/pending-review";
 import { DirectSummaryReviewService, projectDirectSummaryReview } from "../services/direct-summary-review-service";
 import { ReviewWriteCoordinator } from "../services/review-write-coordinator";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
@@ -95,7 +93,7 @@ import {
 } from "../services/review-workflow-starter";
 import { err, ok, type Result } from "../domain/result";
 import type { SafeRunProjection } from "../services/run-projection";
-import { parseContentHash, parseFindingId, parseGitHubReviewNodeId, parseGitHubThreadId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseRepoRelativePath, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type GitHubReviewNodeId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
+import { parseContentHash, parseFindingId, parseGitHubReviewNodeId, parseGitHubThreadId, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseRepoRelativePath, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type GitHubReviewNodeId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 
 const localApiConfigurationSchema = object({
@@ -133,16 +131,9 @@ const reviewUpdateSchema = strictObject({
   recentWrites: optional(array(recentReviewWriteSchema)),
 });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
-const insightCompletionSchema = variant("_tag", [
-  strictObject({ _tag: picklist(["SaveAsReviewDraft"] as const) }),
-  strictObject({ _tag: picklist(["OpenPreviewWhenComplete"] as const) }),
-  strictObject({ _tag: picklist(["PublishWhenComplete"] as const), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), authorizationId: pipe(string(), minLength(1)) }),
-]);
-const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]), completion: optional(insightCompletionSchema) });
+const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
-const analysisDraftSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), analysisRunId: pipe(string(), minLength(1)), expectedRevision: pipe(string(), minLength(1)) });
-const analysisDraftMutationSchema = strictObject({ ...analysisDraftSchema.entries, acknowledgement: optional(boolean()) });
 const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedHeadSha: optional(pipe(string(), minLength(40))), expectedPatchHash: optional(pipe(string(), minLength(64))), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
 const publicationRecoverySchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)) });
 const publishedCommentEditSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commentId: pipe(string(), minLength(1)), body: string() });
@@ -194,8 +185,7 @@ export type LocalApiConfiguration = {
   /** Composition-root local log stream; defaults to a fresh on-disk service. */
   readonly logs?: Pick<AppLogService, "write" | "tail">;
   /** Main-process-owned durable Review Insight lifecycle seam. */
-  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding" | "addFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "configureCompletion">>;
-  readonly analysisDraft?: Pick<AnalysisDraftService, "seedCurrent" | "previewMergeCurrent" | "previewReplaceCurrent" | "mergeCurrent" | "replaceCurrent" | "addFindingCurrent">;
+  readonly insights?: Pick<InsightRunCoordinator, "start" | "cancel" | "observe" | "dismissFinding"> & Partial<Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">>;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -320,7 +310,6 @@ export async function startLocalApiServer(
     paths,
   );
   const publicationAuthorizations = new PublicationAuthorizationStore(paths);
-  const analysisCompletion = new AnalysisCompletionService(publicationAuthorizations);
   const writeCoordinator = new ReviewWriteCoordinator();
   const writer =
     configuration.reviewWriter ??
@@ -340,7 +329,6 @@ export async function startLocalApiServer(
             ...(writer.setReviewThreadState === undefined ? {} : { setReviewThreadState: writer.setReviewThreadState.bind(writer) }),
           },
           () => new Date().toISOString() as never,
-          analysisCompletion,
           reviewWriteGate,
           writeCoordinator,
         );
@@ -349,24 +337,6 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     { reviews, insights, publicationAuthorizations },
   );
-  const analysisDrafts = configuration.analysisDraft ?? new AnalysisDraftService({ sessions, insights, reviews, remote: remoteReviews });
-  if (configuration.insights?.configureCompletion !== undefined && reviewWrites !== undefined && analysisDrafts !== undefined) {
-    configuration.insights.configureCompletion(async (input) => {
-      const seeded = await analysisDrafts.seedCurrent({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, analysisRunId: input.analysisRunId, expectedRevision: input.expectedDraftRevision, now: new Date().toISOString() as never });
-      if (seeded._tag === "err") {
-        if (input.completion._tag === "PublishWhenComplete") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: seeded.error.reason === "draft_not_empty" ? "draft_not_empty" : "needs_attention" });
-        return;
-      }
-      if (input.completion._tag !== "PublishWhenComplete") return;
-      const rebound = await analysisCompletion.rebindDraftRevision({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, headSha: input.expectedHeadSha, patchHash: input.expectedPatchHash, analysisRunId: input.analysisRunId, expectedDraftRevision: input.expectedDraftRevision, event: input.completion.event, authorizationId: input.completion.authorizationId, nextDraftRevision: seeded.value.updatedAt });
-      if (rebound._tag === "err") {
-        await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: "needs_attention" });
-        return;
-      }
-      const published = await reviewWrites.confirmPublication({ profileId: input.profileId, reviewId: input.reviewId, sessionId: input.sessionId, expectedHeadSha: input.expectedHeadSha, expectedPatchHash: input.expectedPatchHash, analysisRunId: input.analysisRunId, expectedRevision: seeded.value.updatedAt, acknowledgement: true, authorizationId: input.completion.authorizationId, event: input.completion.event });
-      if (published._tag === "err") await analysisCompletion.revoke({ profileId: input.profileId, reviewId: input.reviewId, authorizationId: input.completion.authorizationId, reason: "needs_attention" });
-    });
-  }
   const publicationPreviews = new PublicationPreviewService(profiles, sessions, github, reviewWriteGate);
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
@@ -759,7 +729,6 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/insights/analysis/cancel", async (context) => insightCancelResponse(context, configuration.insights, "analysis", await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/cancel", async (context) => insightCancelResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
   app.post("/v1/reviews/insights/analysis/findings/:findingId/dismiss", async (context) => insightFindingResponse(context, configuration.insights, "dismiss", context.req.param("findingId"), await jsonBody(context)));
-  app.post("/v1/reviews/insights/analysis/findings/:findingId/add", async (context) => insightFindingResponse(context, configuration.insights, "add", context.req.param("findingId"), await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/progress", async (context) => insightWalkthroughProgressResponse(context, configuration.insights, await jsonBody(context)));
   app.get("/v1/reviews/insights/runs/:runId", async (context) => {
     if (configuration.insights === undefined) return context.json({ error: "workflow_unavailable" }, 503);
@@ -822,13 +791,6 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/batch", async (context) =>
     response(context, await reviewBatches.update(await jsonBody(context))),
   );
-  app.post("/v1/reviews/draft/seed-analysis", async (context) => seedAnalysisDraftResponse(context, analysisDrafts, await jsonBody(context)));
-  app.post("/v1/reviews/draft/merge-preview", async (context) => analysisDraftPreviewResponse(context, analysisDrafts, "merge", await jsonBody(context)));
-  app.post("/v1/reviews/draft/replace-preview", async (context) => analysisDraftPreviewResponse(context, analysisDrafts, "replace", await jsonBody(context)));
-  app.post("/v1/reviews/draft/merge", async (context) => analysisDraftMutationResponse(context, analysisDrafts, "merge", await jsonBody(context)));
-  app.post("/v1/reviews/draft/replace", async (context) => analysisDraftMutationResponse(context, analysisDrafts, "replace", await jsonBody(context)));
-  app.post("/v1/reviews/draft/findings/:findingId/add", async (context) => analysisDraftFindingResponse(context, analysisDrafts, context.req.param("findingId"), await jsonBody(context)));
-
   app.post("/v1/reviews/complete", async (context) =>
     response(context, await reviewCompletion.complete(await jsonBody(context))),
   );
@@ -838,17 +800,6 @@ export async function startLocalApiServer(
       : response(context, await mergeWrites.merge(await jsonBody(context))),
   );
   app.post("/v1/storage/clear-local-data", async (context) => {
-    const body = await jsonBody(context);
-    const parsed = safeParse(
-      object({ profileId: pipe(string(), minLength(1)) }),
-      body,
-    );
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    if (profileId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-    return storageResponse(context, await storageManagement.clearLocalData(profileId.value));
-  });
-  app.post("/v1/storage/cache/clear", async (context) => {
     const body = await jsonBody(context);
     const parsed = safeParse(
       object({ profileId: pipe(string(), minLength(1)) }),
@@ -1091,6 +1042,7 @@ type PendingReviewCommandDto =
       readonly expected: ReviewWriteExpectation;
       readonly anchor: PendingReviewAnchor;
       readonly body: string;
+      readonly finding?: FindingReviewSource;
     }
   | {
       readonly _tag: "AddThread";
@@ -1098,6 +1050,7 @@ type PendingReviewCommandDto =
       readonly pendingReviewNodeId: GitHubReviewNodeId;
       readonly anchor: PendingReviewAnchor;
       readonly body: string;
+      readonly finding?: FindingReviewSource;
     }
   | {
       readonly _tag: "Submit";
@@ -1116,9 +1069,9 @@ async function pendingReviewCommandResponse(context: Context, service: PendingRe
   const parsed = parsePendingReviewCommand(body);
   if (parsed === undefined) return context.json({ error: "invalid_input" }, 400);
   const result = parsed.command._tag === "Start"
-    ? await service.start({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, anchor: parsed.command.anchor, body: parsed.command.body })
+    ? await service.start({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, anchor: parsed.command.anchor, body: parsed.command.body, ...(parsed.command.finding === undefined ? {} : { finding: parsed.command.finding }) })
     : parsed.command._tag === "AddThread"
-      ? await service.addThread({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, pendingReviewNodeId: parsed.command.pendingReviewNodeId, anchor: parsed.command.anchor, body: parsed.command.body })
+      ? await service.addThread({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, pendingReviewNodeId: parsed.command.pendingReviewNodeId, anchor: parsed.command.anchor, body: parsed.command.body, ...(parsed.command.finding === undefined ? {} : { finding: parsed.command.finding }) })
       : parsed.command._tag === "Submit"
         ? await service.submit({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, event: parsed.command.event, summaryBody: parsed.command.summaryBody })
         : await service.discard({ profileId: parsed.profileId, reviewId: parsed.reviewId, expected: parsed.command.expected, confirmation: parsed.command.confirmation });
@@ -1153,7 +1106,7 @@ async function storedPendingReviewProjection(sessions: ReviewSessionStore, profi
 function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
   if (failure === "invalid_input") return 400;
   if (failure === "not_found") return 404;
-  if (failure === "not_fresh" || failure === "stale_head" || failure === "permission_denied" || failure === "rejected" || failure === "review_write_in_progress" || failure === "review_already_submitted" || failure === "no_pending_review" || failure === "pending_review_locked" || failure === "pending_review_exists") return 409;
+  if (failure === "not_fresh" || failure === "stale_head" || failure === "permission_denied" || failure === "self_approval_not_allowed" || failure === "rejected" || failure === "review_write_in_progress" || failure === "no_pending_review" || failure === "pending_review_locked" || failure === "pending_review_exists") return 409;
   if (failure === "unavailable" || failure === "outcome_unknown") return 503;
   return 400;
 }
@@ -1200,12 +1153,15 @@ function parsePendingReviewCommand(body: unknown): { readonly profileId: Workspa
     const anchor = parsePendingReviewAnchor(readObjectField(raw, "anchor"));
     const bodyValue = readObjectField(raw, "body");
     if (anchor === undefined || typeof bodyValue !== "string" || bodyValue.trim().length === 0) return undefined;
-    if (tag === "Start") return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Start", expected, anchor, body: bodyValue } };
+    const finding = readObjectField(raw, "finding");
+    const parsedFinding = finding === undefined ? undefined : parseFindingReviewSource(finding);
+    if (finding !== undefined && parsedFinding === undefined) return undefined;
+    if (tag === "Start") return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Start", expected, anchor, body: bodyValue, ...(parsedFinding === undefined ? {} : { finding: parsedFinding }) } };
     const pendingReviewNodeId = readObjectField(raw, "pendingReviewNodeId");
     if (typeof pendingReviewNodeId !== "string") return undefined;
     const parsedNodeId = parseGitHubReviewNodeId(pendingReviewNodeId);
     if (parsedNodeId._tag === "err") return undefined;
-    return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "AddThread", expected, pendingReviewNodeId: parsedNodeId.value, anchor, body: bodyValue } };
+    return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "AddThread", expected, pendingReviewNodeId: parsedNodeId.value, anchor, body: bodyValue, ...(parsedFinding === undefined ? {} : { finding: parsedFinding }) } };
   }
   if (tag === "Submit") {
     const event = readObjectField(raw, "event");
@@ -1219,6 +1175,17 @@ function parsePendingReviewCommand(body: unknown): { readonly profileId: Workspa
     return { profileId: profileId.value, reviewId: reviewId.value, command: { _tag: "Discard", expected, confirmation: true } };
   }
   return undefined;
+}
+
+function parseFindingReviewSource(raw: unknown): FindingReviewSource | undefined {
+  const analysisRunId = parseInsightRunId(readObjectField(raw, "analysisRunId"));
+  const findingId = parseFindingId(readObjectField(raw, "findingId"));
+  const sessionId = parseReviewSessionId(readObjectField(raw, "sessionId"));
+  const headSha = parseGitSha(readObjectField(raw, "headSha"));
+  const patchHash = parseContentHash(readObjectField(raw, "patchHash"));
+  return analysisRunId._tag === "err" || findingId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err"
+    ? undefined
+    : { analysisRunId: analysisRunId.value, findingId: findingId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value };
 }
 
 function parseReviewWriteExpectation(raw: unknown): ReviewWriteExpectation | undefined {
@@ -1348,11 +1315,7 @@ async function insightRunResponse(context: Context, coordinator: LocalApiConfigu
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
   const reviewId = parseReviewId(parsed.output.reviewId);
   if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const completion = parsed.output.completion === undefined ? undefined : parsed.output.completion._tag === "PublishWhenComplete"
-    ? (() => { const authorizationId = parsePublicationAuthorizationId(parsed.output.completion.authorizationId); return authorizationId._tag === "err" ? undefined : { ...parsed.output.completion, authorizationId: authorizationId.value } as const; })()
-    : parsed.output.completion;
-  if (parsed.output.completion?._tag === "PublishWhenComplete" && completion === undefined) return context.json({ error: "invalid_input" }, 400);
-  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning, ...(completion === undefined ? {} : { completion }) });
+  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning });
   return insightResultResponse(context, result, 202);
 }
 
@@ -1370,7 +1333,7 @@ async function insightCancelResponse(context: Context, coordinator: LocalApiConf
 
 function insightResultResponse(
   context: Context,
-  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["addFinding"]>>
+  result: Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>> | Awaited<ReturnType<NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]>>
   | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
@@ -1378,7 +1341,7 @@ function insightResultResponse(
   const status = result.error === "invalid_request" || result.error === "model_unavailable" ? 400
     : result.error === "ownership_mismatch" ? 403
       : result.error === "not_found" ? 404
-      : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" || result.error === "stale_request" || result.error === "not_available" || result.error === "draft_unavailable" ? 409
+      : result.error === "terminal_review" || result.error === "already_running" || result.error === "not_active" || result.error === "stale_request" || result.error === "not_available" ? 409
         : 503;
   return context.json({ error: result.error }, status);
 }
@@ -1395,7 +1358,7 @@ async function insightWalkthroughProgressResponse(context: Context, coordinator:
   return insightResultResponse(context, result);
 }
 
-async function insightFindingResponse(context: Context, coordinator: LocalApiConfiguration["insights"], action: "add" | "dismiss", findingIdInput: string, body: unknown): Promise<Response> {
+async function insightFindingResponse(context: Context, coordinator: LocalApiConfiguration["insights"], action: "dismiss", findingIdInput: string, body: unknown): Promise<Response> {
   if (coordinator === undefined) return context.json({ error: "workflow_unavailable" }, 503);
   const parsed = safeParse(insightFindingSchema, body);
   const findingId = parseFindingId(findingIdInput);
@@ -1404,66 +1367,10 @@ async function insightFindingResponse(context: Context, coordinator: LocalApiCon
   const reviewId = parseReviewId(parsed.output.reviewId);
   const runId = parseInsightRunId(parsed.output.runId);
   if (profileId._tag === "err" || reviewId._tag === "err" || runId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = action === "dismiss"
-    ? coordinator.dismissFinding === undefined
-      ? err("storage_unavailable" as const)
-      : await coordinator.dismissFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value, reason: parsed.output.reason ?? "" })
-    : coordinator.addFinding === undefined
-      ? err("storage_unavailable" as const)
-      : await coordinator.addFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value });
+  const result = coordinator.dismissFinding === undefined
+    ? err("storage_unavailable" as const)
+    : await coordinator.dismissFinding({ profileId: profileId.value, reviewId: reviewId.value, runId: runId.value, findingId: findingId.value, reason: parsed.output.reason ?? "" });
   return insightResultResponse(context, result);
-}
-
-type ParsedAnalysisDraftRequest = { readonly profileId: ReturnType<typeof parseWorkspaceProfileId> extends Result<infer T, unknown> ? T : never; readonly reviewId: ReturnType<typeof parseReviewId> extends Result<infer T, unknown> ? T : never; readonly sessionId: ReturnType<typeof parseReviewSessionId> extends Result<infer T, unknown> ? T : never; readonly analysisRunId: ReturnType<typeof parseInsightRunId> extends Result<infer T, unknown> ? T : never; readonly expectedRevision: ReturnType<typeof parseIsoTimestamp> extends Result<infer T, unknown> ? T : never };
-
-function parseAnalysisDraftRequest(body: unknown): Result<ParsedAnalysisDraftRequest, "invalid_input"> {
-  const parsed = safeParse(analysisDraftSchema, body);
-  if (!parsed.success) return err("invalid_input");
-  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-  const reviewId = parseReviewId(parsed.output.reviewId);
-  const sessionId = parseReviewSessionId(parsed.output.sessionId);
-  const analysisRunId = parseInsightRunId(parsed.output.analysisRunId);
-  const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
-  return profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || analysisRunId._tag === "err" || expectedRevision._tag === "err" ? err("invalid_input") : ok({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, analysisRunId: analysisRunId.value, expectedRevision: expectedRevision.value });
-}
-
-function analysisDraftFailureResponse(context: Context, failure: { readonly reason: string; readonly merge?: unknown; readonly replacement?: unknown }): Response {
-  if (failure.reason === "draft_not_empty") return context.json({ error: failure.reason, merge: failure.merge, replacement: failure.replacement }, 409);
-  const status = failure.reason === "not_found" ? 404 : failure.reason === "stale_request" ? 409 : failure.reason === "invalid_input" ? 400 : 503;
-  return context.json({ error: failure.reason }, status);
-}
-
-async function seedAnalysisDraftResponse(context: Context, service: Pick<AnalysisDraftService, "seedCurrent">, body: unknown): Promise<Response> {
-  const parsed = parseAnalysisDraftRequest(body);
-  if (parsed._tag === "err") return context.json({ error: parsed.error }, 400);
-  const result = await service.seedCurrent({ ...parsed.value, now: new Date().toISOString() as never });
-  return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
-}
-
-async function analysisDraftPreviewResponse(context: Context, service: Pick<AnalysisDraftService, "previewMergeCurrent" | "previewReplaceCurrent">, action: "merge" | "replace", body: unknown): Promise<Response> {
-  const parsed = parseAnalysisDraftRequest(body);
-  if (parsed._tag === "err") return context.json({ error: parsed.error }, 400);
-  const result = action === "merge" ? await service.previewMergeCurrent({ ...parsed.value, now: new Date().toISOString() as never }) : await service.previewReplaceCurrent({ ...parsed.value, now: new Date().toISOString() as never });
-  return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
-}
-
-async function analysisDraftFindingResponse(context: Context, service: Pick<AnalysisDraftService, "addFindingCurrent">, findingIdInput: string, body: unknown): Promise<Response> {
-  const parsed = parseAnalysisDraftRequest(body);
-  const findingId = parseFindingId(findingIdInput);
-  if (parsed._tag === "err" || findingId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = await service.addFindingCurrent({ ...parsed.value, findingId: findingId.value, now: new Date().toISOString() as never });
-  return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
-}
-
-async function analysisDraftMutationResponse(context: Context, service: Pick<AnalysisDraftService, "mergeCurrent" | "replaceCurrent">, action: "merge" | "replace", body: unknown): Promise<Response> {
-  const parsed = safeParse(analysisDraftMutationSchema, body);
-  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-  const base = parseAnalysisDraftRequest(parsed.output);
-  if (base._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = action === "merge"
-    ? await service.mergeCurrent({ ...base.value, now: new Date().toISOString() as never })
-    : await service.replaceCurrent({ ...base.value, acknowledgement: parsed.output.acknowledgement === true, now: new Date().toISOString() as never });
-  return result._tag === "ok" ? context.json(result.value) : analysisDraftFailureResponse(context, result.error);
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
@@ -1478,10 +1385,7 @@ function response(
 ): Response {
   return result._tag === "ok"
     ? context.json(result.value)
-    : context.json(
-        { error: result.error.reason },
-        statusForReason(result.error.reason),
-      );
+    : context.json({ error: result.error.reason }, statusForReason(result.error.reason));
 }
 
 type StorageRouteFailure = {
@@ -1505,21 +1409,11 @@ function storageResponse(
 ): Response {
   if (result._tag === "ok") return context.json(result.value);
   const tag = result.error._tag;
-  if (tag === "ProfileNotFound" || tag === "SessionNotFound") {
-    return context.json({ error: "not_found" }, 404);
-  }
-  if (tag === "ProfileUnavailable" || tag === "StorageUnavailable") {
-    return context.json({ error: "storage_unavailable" }, 503);
-  }
-  if (tag === "SessionRunning" || tag === "SessionImmutable" || tag === "SessionNotDiscardable") {
-    return context.json({ error: tag }, 409);
-  }
-  if (tag === "InvalidQuarantineEntryName") {
-    return context.json({ error: "invalid_input" }, 400);
-  }
-  if (tag === "TrashUnavailable") {
-    return context.json({ error: "trash_unavailable" }, 503);
-  }
+  if (tag === "ProfileNotFound" || tag === "SessionNotFound") return context.json({ error: "not_found" }, 404);
+  if (tag === "ProfileUnavailable" || tag === "StorageUnavailable") return context.json({ error: "storage_unavailable" }, 503);
+  if (tag === "SessionRunning" || tag === "SessionImmutable" || tag === "SessionNotDiscardable") return context.json({ error: tag }, 409);
+  if (tag === "InvalidQuarantineEntryName") return context.json({ error: "invalid_input" }, 400);
+  if (tag === "TrashUnavailable") return context.json({ error: "trash_unavailable" }, 503);
   return context.json({ error: "storage" }, 503);
 }
 

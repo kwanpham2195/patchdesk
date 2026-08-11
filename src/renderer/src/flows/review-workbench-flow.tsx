@@ -10,8 +10,8 @@ import {
   parseRepoRelativePath,
   type GitHubThreadId,
 } from "../../../domain/ids";
-import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import type { RecentReviewWrite } from "../../../services/review-refresh-service";
+import { renderAnalysisReviewSummary } from "../../../services/analysis-review-body";
 import {
   parseReviewBatch,
   type ReviewAnchor,
@@ -68,25 +68,47 @@ import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
+import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 
 function boundedPendingReviewError(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "pending_review") return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "stale_head") return "The pull request changed. Refresh, then finish the review.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected") return "GitHub rejected the submission.";
-    if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Check GitHub again or refresh.";
+    if (
+      cause.kind === "outcome_unknown" ||
+      cause.kind === "ambiguous_write" ||
+      cause.kind === "timeout"
+    )
+      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "pending_review")
+      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
+    if (cause.kind === "stale_head")
+      return "The pull request changed. Refresh, then finish the review.";
+    if (cause.kind === "rejected" || cause.kind === "github_rejected")
+      return "GitHub rejected the submission.";
+    if (
+      cause.kind === "no_pending_review" ||
+      cause.kind === "pending_review_locked"
+    )
+      return "The pending review changed. Check GitHub again or refresh.";
   }
   return "Patchdesk could not finish this review. Check GitHub again or refresh.";
 }
 
 function boundedDirectSummaryError(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout") return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "pending_review") return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "review_already_submitted") return "This review summary was already submitted. Refresh to see the current GitHub state.";
-    if (cause.kind === "stale_head") return "The pull request changed. Refresh before submitting a review summary.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected") return "GitHub rejected the review summary.";
+    if (
+      cause.kind === "outcome_unknown" ||
+      cause.kind === "ambiguous_write" ||
+      cause.kind === "timeout"
+    )
+      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "pending_review")
+      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
+    if (cause.kind === "self_approval_not_allowed")
+      return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
+    if (cause.kind === "stale_head")
+      return "The pull request changed. Refresh before submitting a review summary.";
+    if (cause.kind === "rejected" || cause.kind === "github_rejected")
+      return "GitHub rejected the review summary.";
   }
   return "Patchdesk could not submit this review summary. Check GitHub again or refresh.";
 }
@@ -96,7 +118,9 @@ function boundedDirectSummaryError(cause: unknown): string {
  * parse as GitHub thread ids are journaled: detection matches real remote
  * threads, and an unparseable id would silently break the detector request.
  */
-function threadIdsOf(projection: PendingReviewProjection | undefined): ReadonlyArray<GitHubThreadId> {
+function threadIdsOf(
+  projection: PendingReviewProjection | undefined,
+): ReadonlyArray<GitHubThreadId> {
   if (projection === undefined || projection.state !== "pending") return [];
   return projection.review.comments.flatMap((comment) => {
     const parsed = parseGitHubThreadId(comment.threadId);
@@ -179,7 +203,9 @@ export function ReviewWorkbenchFlow({
   // Typed comment/thread-state writes made by this window since the last
   // projection replace. The detector excludes them so own writes never read as
   // remote updates; cleared once a refresh/reload re-baselines the snapshot.
-  const [recentWrites, setRecentWrites] = useState<ReadonlyArray<RecentReviewWrite>>([]);
+  const [recentWrites, setRecentWrites] = useState<
+    ReadonlyArray<RecentReviewWrite>
+  >([]);
   const replaceWorkbench = useCallback(
     (next: WorkbenchResponse): void => {
       setRecentWrites([]);
@@ -256,7 +282,8 @@ export function ReviewWorkbenchFlow({
       // A detector that began before an explicit refresh replaced the
       // projection must not reapply its result to the new snapshot.
       const current = workbenchRef.current;
-      if (generationRef.current !== generation || snapshotKey(current) !== key) return;
+      if (generationRef.current !== generation || snapshotKey(current) !== key)
+        return;
       if (isDetection(value) && value.updatesAvailable) {
         // A stale value is written only on the transition into updates_available:
         // re-writing the identical freshness on an already-stale projection is
@@ -307,7 +334,8 @@ export function ReviewWorkbenchFlow({
     // delayed observation, not one per browser event.
     const scheduleFocusDetect = (): void => {
       if (document.visibilityState !== "visible") return;
-      if (focusTimerRef.current !== undefined) window.clearTimeout(focusTimerRef.current);
+      if (focusTimerRef.current !== undefined)
+        window.clearTimeout(focusTimerRef.current);
       focusTimerRef.current = window.setTimeout(() => {
         focusTimerRef.current = undefined;
         void runDetect();
@@ -321,7 +349,8 @@ export function ReviewWorkbenchFlow({
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
-      if (focusTimerRef.current !== undefined) window.clearTimeout(focusTimerRef.current);
+      if (focusTimerRef.current !== undefined)
+        window.clearTimeout(focusTimerRef.current);
       focusTimerRef.current = undefined;
     };
   }, [runDetect, workbench.review.status]);
@@ -393,7 +422,8 @@ export function ReviewWorkbenchFlow({
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
     ): Promise<{ readonly commentId: string } | void> => {
       const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined) throw new Error("The current Diff cannot accept comments.");
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot accept comments.");
       const value = await runDirectCommand(() =>
         requestJson("/v1/reviews/inline-conversations/command", {
           method: "POST",
@@ -425,7 +455,9 @@ export function ReviewWorkbenchFlow({
           {
             _tag: "Comment",
             commentId: receipt.commentId,
-            ...(receipt.reviewId === undefined ? {} : { reviewId: receipt.reviewId }),
+            ...(receipt.reviewId === undefined
+              ? {}
+              : { reviewId: receipt.reviewId }),
           },
         ]);
         return { commentId: receipt.commentId };
@@ -437,110 +469,154 @@ export function ReviewWorkbenchFlow({
     [workbench, runDirectCommand],
   );
 
-  const setThreadState = useCallback(async (threadId: string, state: "open" | "resolved"): Promise<void> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot update this thread.");
-    const parsedThreadId = parseGitHubThreadId(threadId);
-    if (parsedThreadId._tag === "err") throw new Error("The thread id is not valid for this Review.");
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/inline-conversations/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: {
-            _tag: "SetThreadState",
-            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-            threadId,
-            state,
+  const setThreadState = useCallback(
+    async (threadId: string, state: "open" | "resolved"): Promise<void> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot update this thread.");
+      const parsedThreadId = parseGitHubThreadId(threadId);
+      if (parsedThreadId._tag === "err")
+        throw new Error("The thread id is not valid for this Review.");
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/inline-conversations/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: {
+              _tag: "SetThreadState",
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              threadId,
+              state,
+            },
           },
-        },
-      }),
-    );
-    const receipt = parseDirectConversationReceipt(value);
-    if (receipt?._tag === "ThreadStateChanged") {
-      setRecentWrites((current) => [...current, { _tag: "ThreadState", threadId: parsedThreadId.value, state }]);
-    }
-  }, [workbench, runDirectCommand]);
+        }),
+      );
+      const receipt = parseDirectConversationReceipt(value);
+      if (receipt?._tag === "ThreadStateChanged") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "ThreadState", threadId: parsedThreadId.value, state },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
 
-  const replyToThread = useCallback(async (threadId: string, body: string): Promise<string | void> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot accept replies.");
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/inline-conversations/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: {
-            _tag: "Reply",
-            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-            threadId,
-            body,
+  const replyToThread = useCallback(
+    async (threadId: string, body: string): Promise<string | void> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot accept replies.");
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/inline-conversations/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: {
+              _tag: "Reply",
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              threadId,
+              body,
+            },
           },
-        },
-      }),
-    );
-    const receipt = parseDirectConversationReceipt(value);
-    if (receipt?._tag === "ReplyCreated") {
-      setRecentWrites((current) => [
-        ...current,
-        {
-          _tag: "Comment",
-          commentId: receipt.commentId,
-          ...(receipt.reviewId === undefined ? {} : { reviewId: receipt.reviewId }),
-        },
-      ]);
-      return receipt.commentId;
-    }
-    return undefined;
-  }, [workbench, runDirectCommand]);
+        }),
+      );
+      const receipt = parseDirectConversationReceipt(value);
+      if (receipt?._tag === "ReplyCreated") {
+        setRecentWrites((current) => [
+          ...current,
+          {
+            _tag: "Comment",
+            commentId: receipt.commentId,
+            ...(receipt.reviewId === undefined
+              ? {}
+              : { reviewId: receipt.reviewId }),
+          },
+        ]);
+        return receipt.commentId;
+      }
+      return undefined;
+    },
+    [workbench, runDirectCommand],
+  );
 
-  const editComment = useCallback(async (commentId: string, body: string): Promise<void> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot edit comments.");
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/inline-conversations/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: {
-            _tag: "EditComment",
-            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-            commentId,
-            body,
+  const editComment = useCallback(
+    async (commentId: string, body: string): Promise<void> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot edit comments.");
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/inline-conversations/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: {
+              _tag: "EditComment",
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              commentId,
+              body,
+            },
           },
-        },
-      }),
-    );
-    if (parseDirectConversationReceipt(value)?._tag === "CommentEdited") {
-      setRecentWrites((current) => [...current, { _tag: "Comment", commentId }]);
-    }
-  }, [workbench, runDirectCommand]);
+        }),
+      );
+      if (parseDirectConversationReceipt(value)?._tag === "CommentEdited") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "Comment", commentId },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
 
-  const deleteComment = useCallback(async (commentId: string): Promise<void> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot delete comments.");
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/inline-conversations/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: {
-            _tag: "DeleteComment",
-            expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash },
-            commentId,
-            confirmation: true,
+  const deleteComment = useCallback(
+    async (commentId: string): Promise<void> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot delete comments.");
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/inline-conversations/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: {
+              _tag: "DeleteComment",
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              commentId,
+              confirmation: true,
+            },
           },
-        },
-      }),
-    );
-    if (parseDirectConversationReceipt(value)?._tag === "CommentDeleted") {
-      setRecentWrites((current) => [...current, { _tag: "Comment", commentId }]);
-    }
-  }, [workbench, runDirectCommand]);
+        }),
+      );
+      if (parseDirectConversationReceipt(value)?._tag === "CommentDeleted") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "Comment", commentId },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
   const parsedDraft =
     workbench.draft === undefined
       ? undefined
@@ -575,114 +651,173 @@ export function ReviewWorkbenchFlow({
   // requests here; the renderer never calls GitHub directly.
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
-  const [finishDialogError, setFinishDialogError] = useState<string | undefined>(undefined);
-  const applyPendingReviewProjection = useCallback((value: unknown): PendingReviewProjection | undefined => {
-    const projection = parsePendingReviewProjection(
-      typeof value === "object" && value !== null
-        ? (value as Record<string, unknown>)["pendingReview"]
-        : undefined,
-    );
-    if (projection !== undefined) onWorkbenchPatch({ pendingReview: projection });
-    return projection;
-  }, [onWorkbenchPatch]);
-  const runPendingReviewCommand = useCallback(async (command: {
-    readonly _tag: "Start" | "AddThread";
-    readonly pendingReviewNodeId?: string;
-    readonly anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" };
-    readonly body: string;
-  } | {
-    readonly _tag: "Submit";
-    readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
-    readonly summaryBody: string;
-  } | {
-    readonly _tag: "Discard";
-    readonly confirmation: true;
-  }): Promise<void> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot accept review comments.");
-    // The prior projection's thread ids are the baseline for journaling: only
-    // the exact ids this command adds (Start/AddThread) or confirms absent
-    // (Discard) may be excluded from detection.
-    const priorThreadIds =
-      command._tag === "Start" || command._tag === "AddThread" || command._tag === "Discard"
-        ? threadIdsOf(workbench.pendingReview)
-        : [];
-    setPendingReviewBusy(true);
-    try {
-      const expected = {
-        sessionId: workbench.session.id,
-        headSha: workbench.revision.reviewedHeadSha,
-        patchHash,
-      };
-      const value = command._tag === "Discard"
-        ? await requestJson("/v1/reviews/pending-review/command", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              command: { _tag: "Discard", expected, confirmation: command.confirmation },
-            },
-          })
-        : command._tag === "Submit"
-          ? await requestJson("/v1/reviews/pending-review/command", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-                command: { _tag: "Submit", expected, event: command.event, summaryBody: command.summaryBody },
-              },
-            })
-          : await requestJson("/v1/reviews/pending-review/command", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-                command: {
-                  _tag: command._tag,
-                  expected,
-                  ...(command._tag === "AddThread" ? { pendingReviewNodeId: command.pendingReviewNodeId } : {}),
-                  anchor: command.anchor,
-                  body: command.body,
+  const [finishDialogInitialSummary, setFinishDialogInitialSummary] = useState<
+    string | undefined
+  >(undefined);
+  const [finishDialogError, setFinishDialogError] = useState<
+    string | undefined
+  >(undefined);
+  const applyPendingReviewProjection = useCallback(
+    (value: unknown): PendingReviewProjection | undefined => {
+      const projection = parsePendingReviewProjection(
+        typeof value === "object" && value !== null
+          ? (value as Record<string, unknown>)["pendingReview"]
+          : undefined,
+      );
+      if (projection !== undefined)
+        onWorkbenchPatch({ pendingReview: projection });
+      return projection;
+    },
+    [onWorkbenchPatch],
+  );
+  const runPendingReviewCommand = useCallback(
+    async (
+      command:
+        | {
+            readonly _tag: "Start" | "AddThread";
+            readonly pendingReviewNodeId?: string;
+            readonly anchor: {
+              readonly path: string;
+              readonly startLine: number;
+              readonly line: number;
+              readonly side: "new" | "old";
+            };
+            readonly body: string;
+          }
+        | {
+            readonly _tag: "Submit";
+            readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+            readonly summaryBody: string;
+          }
+        | {
+            readonly _tag: "Discard";
+            readonly confirmation: true;
+          },
+    ): Promise<void> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot accept review comments.");
+      // The prior projection's thread ids are the baseline for journaling: only
+      // the exact ids this command adds (Start/AddThread) or confirms absent
+      // (Discard) may be excluded from detection.
+      const priorThreadIds =
+        command._tag === "Start" ||
+        command._tag === "AddThread" ||
+        command._tag === "Discard"
+          ? threadIdsOf(workbench.pendingReview)
+          : [];
+      setPendingReviewBusy(true);
+      try {
+        const expected = {
+          sessionId: workbench.session.id,
+          headSha: workbench.revision.reviewedHeadSha,
+          patchHash,
+        };
+        const value =
+          command._tag === "Discard"
+            ? await requestJson("/v1/reviews/pending-review/command", {
+                method: "POST",
+                body: {
+                  profileId: workbench.session.key.profileId,
+                  reviewId: workbench.review.id,
+                  command: {
+                    _tag: "Discard",
+                    expected,
+                    confirmation: command.confirmation,
+                  },
                 },
-              },
+              })
+            : command._tag === "Submit"
+              ? await requestJson("/v1/reviews/pending-review/command", {
+                  method: "POST",
+                  body: {
+                    profileId: workbench.session.key.profileId,
+                    reviewId: workbench.review.id,
+                    command: {
+                      _tag: "Submit",
+                      expected,
+                      event: command.event,
+                      summaryBody: command.summaryBody,
+                    },
+                  },
+                })
+              : await requestJson("/v1/reviews/pending-review/command", {
+                  method: "POST",
+                  body: {
+                    profileId: workbench.session.key.profileId,
+                    reviewId: workbench.review.id,
+                    command: {
+                      _tag: command._tag,
+                      expected,
+                      ...(command._tag === "AddThread"
+                        ? { pendingReviewNodeId: command.pendingReviewNodeId }
+                        : {}),
+                      anchor: command.anchor,
+                      body: command.body,
+                    },
+                  },
+                });
+        const projection = applyPendingReviewProjection(value);
+        setFinishDialogError(undefined);
+        // Journal the exact pending-thread mutations so the detector never reads
+        // this window's own Start/AddThread/Discard as a remote update. Entries
+        // survive until an explicit refresh/reload replaces the represented
+        // snapshot; a Submit keeps them because the threads persist remotely.
+        if (command._tag === "Start" || command._tag === "AddThread") {
+          const added = threadIdsOf(projection).filter(
+            (id) => !priorThreadIds.includes(id),
+          );
+          if (added.length > 0) {
+            setRecentWrites((current) => [
+              ...current,
+              ...added.map((threadId) => ({
+                _tag: "PendingThread" as const,
+                threadId,
+              })),
+            ]);
+          }
+        } else if (command._tag === "Discard" && projection?.state === "none") {
+          // Confirmed absence: the threads the prior projection owned are gone
+          // from the candidate snapshot, so they must be masked on both sides.
+          if (priorThreadIds.length > 0) {
+            setRecentWrites((current) => [
+              ...current,
+              ...priorThreadIds.map((threadId) => ({
+                _tag: "PendingThread" as const,
+                threadId,
+              })),
+            ]);
+          }
+        }
+      } catch (cause) {
+        if (
+          cause instanceof PatchdeskApiError &&
+          (cause.kind === "outcome_unknown" ||
+            cause.kind === "ambiguous_write" ||
+            cause.kind === "timeout")
+        ) {
+          const projected = applyPendingReviewProjection(cause.responseBody);
+          if (projected === undefined) {
+            const action =
+              command._tag === "Start"
+                ? "start"
+                : command._tag === "AddThread"
+                  ? "add_thread"
+                  : command._tag === "Submit"
+                    ? "submit"
+                    : "discard";
+            onWorkbenchPatch({
+              pendingReview: { state: "recovery_required", action },
             });
-      const projection = applyPendingReviewProjection(value);
-      setFinishDialogError(undefined);
-      // Journal the exact pending-thread mutations so the detector never reads
-      // this window's own Start/AddThread/Discard as a remote update. Entries
-      // survive until an explicit refresh/reload replaces the represented
-      // snapshot; a Submit keeps them because the threads persist remotely.
-      if (command._tag === "Start" || command._tag === "AddThread") {
-        const added = threadIdsOf(projection).filter((id) => !priorThreadIds.includes(id));
-        if (added.length > 0) {
-          setRecentWrites((current) => [
-            ...current,
-            ...added.map((threadId) => ({ _tag: "PendingThread" as const, threadId })),
-          ]);
+          }
         }
-      } else if (command._tag === "Discard" && projection?.state === "none") {
-        // Confirmed absence: the threads the prior projection owned are gone
-        // from the candidate snapshot, so they must be masked on both sides.
-        if (priorThreadIds.length > 0) {
-          setRecentWrites((current) => [
-            ...current,
-            ...priorThreadIds.map((threadId) => ({ _tag: "PendingThread" as const, threadId })),
-          ]);
-        }
+        throw cause;
+      } finally {
+        setPendingReviewBusy(false);
       }
-    } catch (cause) {
-      if (cause instanceof PatchdeskApiError && (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout")) {
-        const projected = applyPendingReviewProjection(cause.responseBody);
-        if (projected === undefined) {
-          const action = command._tag === "Start" ? "start" : command._tag === "AddThread" ? "add_thread" : command._tag === "Submit" ? "submit" : "discard";
-          onWorkbenchPatch({ pendingReview: { state: "recovery_required", action } });
-        }
-      }
-      throw cause;
-    } finally {
-      setPendingReviewBusy(false);
-    }
-  }, [applyPendingReviewProjection, workbench]);
+    },
+    [applyPendingReviewProjection, workbench],
+  );
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
     try {
@@ -700,82 +835,148 @@ export function ReviewWorkbenchFlow({
     }
   }, [applyPendingReviewProjection, workbench]);
   const [directSummaryBusy, setDirectSummaryBusy] = useState(false);
-  const [directSummaryError, setDirectSummaryError] = useState<string | undefined>(undefined);
-  const [directSummaryState, setDirectSummaryState] = useState<DirectSummaryReviewProjection>(workbench.directSummary ?? { state: "idle" });
+  const [directSummaryError, setDirectSummaryError] = useState<
+    string | undefined
+  >(undefined);
+  const [directSummaryState, setDirectSummaryState] =
+    useState<DirectSummaryReviewProjection>(
+      workbench.directSummary ?? { state: "idle" },
+    );
   useEffect(() => {
     setDirectSummaryState(workbench.directSummary ?? { state: "idle" });
   }, [workbench.directSummary]);
-  const submitDirectSummary = useCallback(async (event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES", body: string): Promise<DirectSummaryReviewProjection> => {
-    const patchHash = workbench.revision.patchHash;
-    if (patchHash === undefined) throw new Error("The current Diff cannot accept a review summary.");
-    setDirectSummaryBusy(true);
-    try {
-      const value = await runDirectCommand(() => requestJson("/v1/reviews/direct-summary/submit", {
-        method: "POST",
-        body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id, expected: { sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, patchHash }, event, body },
-      }));
-      const result = parseDirectSummaryReviewResponse(value);
-      if (result === undefined) throw new Error("Invalid direct summary review response");
-      setDirectSummaryState(result);
-      if (result.state === "confirmed") {
-        setRecentWrites((current) => [...current, { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId }]);
+  const submitDirectSummary = useCallback(
+    async (
+      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      body: string,
+    ): Promise<DirectSummaryReviewProjection> => {
+      const patchHash = workbench.revision.patchHash;
+      if (patchHash === undefined)
+        throw new Error("The current Diff cannot accept a review summary.");
+      setDirectSummaryBusy(true);
+      try {
+        const value = await runDirectCommand(() =>
+          requestJson("/v1/reviews/direct-summary/submit", {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+              expected: {
+                sessionId: workbench.session.id,
+                headSha: workbench.revision.reviewedHeadSha,
+                patchHash,
+              },
+              event,
+              body,
+            },
+          }),
+        );
+        const result = parseDirectSummaryReviewResponse(value);
+        if (result === undefined)
+          throw new Error("Invalid direct summary review response");
+        setDirectSummaryState(result);
+        if (result.state === "confirmed") {
+          setRecentWrites((current) => [
+            ...current,
+            { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId },
+          ]);
+        }
+        setDirectSummaryError(undefined);
+        return result;
+      } catch (cause) {
+        // The renderer is the protocol boundary for API failures: retain only
+        // stable failure kinds and lock submission until explicit reconciliation.
+        if (
+          cause instanceof PatchdeskApiError &&
+          (cause.kind === "outcome_unknown" ||
+            cause.kind === "ambiguous_write" ||
+            cause.kind === "timeout")
+        )
+          setDirectSummaryState({
+            state: "recovery_required",
+            resolution: "check_required",
+          });
+        setDirectSummaryError(boundedDirectSummaryError(cause));
+        throw cause;
+      } finally {
+        setDirectSummaryBusy(false);
       }
-      setDirectSummaryError(undefined);
-      return result;
-    } catch (cause) {
-      // The renderer is the protocol boundary for API failures: retain only
-      // stable failure kinds and lock submission until explicit reconciliation.
-      if (cause instanceof PatchdeskApiError && (cause.kind === "outcome_unknown" || cause.kind === "ambiguous_write" || cause.kind === "timeout"))
-        setDirectSummaryState({ state: "recovery_required" });
-      setDirectSummaryError(boundedDirectSummaryError(cause));
-      throw cause;
-    } finally { setDirectSummaryBusy(false); }
-  }, [runDirectCommand, workbench]);
-  const recoverDirectSummary = useCallback(async (): Promise<DirectSummaryReviewProjection> => {
-    setDirectSummaryBusy(true);
-    try {
-      const value = await runDirectCommand(() => requestJson("/v1/reviews/direct-summary/recover", { method: "POST", body: { profileId: workbench.session.key.profileId, reviewId: workbench.review.id } }));
-      const result = parseDirectSummaryReviewResponse(value);
-      if (result === undefined) throw new Error("Invalid direct summary recovery response");
-      setDirectSummaryState(result);
-      if (result.state === "confirmed") {
-        setRecentWrites((current) => [...current, { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId }]);
+    },
+    [runDirectCommand, workbench],
+  );
+  const recoverDirectSummary =
+    useCallback(async (): Promise<DirectSummaryReviewProjection> => {
+      setDirectSummaryBusy(true);
+      try {
+        const value = await runDirectCommand(() =>
+          requestJson("/v1/reviews/direct-summary/recover", {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+            },
+          }),
+        );
+        const result = parseDirectSummaryReviewResponse(value);
+        if (result === undefined)
+          throw new Error("Invalid direct summary recovery response");
+        setDirectSummaryState(result);
+        if (result.state === "confirmed") {
+          setRecentWrites((current) => [
+            ...current,
+            { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId },
+          ]);
+        }
+        setDirectSummaryError(undefined);
+        return result;
+      } catch (cause) {
+        // Reconciliation failures leave the state locked; only an explicit
+        // successful GitHub read may return it to the submit form.
+        setDirectSummaryError(boundedDirectSummaryError(cause));
+        throw cause;
+      } finally {
+        setDirectSummaryBusy(false);
       }
-      setDirectSummaryError(undefined);
-      return result;
-    } catch (cause) {
-      // Reconciliation failures leave the state locked; only an explicit
-      // successful GitHub read may return it to the submit form.
-      setDirectSummaryError(boundedDirectSummaryError(cause));
-      throw cause;
-    } finally { setDirectSummaryBusy(false); }
-  }, [runDirectCommand, workbench]);
+    }, [runDirectCommand, workbench]);
   const pendingReviewComposer: PendingReviewComposerActions | undefined =
     workbench.pendingReview === undefined
       ? undefined
       : {
-          state: workbench.pendingReview.state === "pending"
-            ? { state: "pending" as const, nodeId: workbench.pendingReview.review.nodeId }
-            : { state: workbench.pendingReview.state as "none" | "unavailable" | "recovery_required" },
+          state:
+            workbench.pendingReview.state === "pending"
+              ? {
+                  state: "pending" as const,
+                  nodeId: workbench.pendingReview.review.nodeId,
+                }
+              : {
+                  state: workbench.pendingReview.state as
+                    "none" | "unavailable" | "recovery_required",
+                },
           busy: pendingReviewBusy,
           onStartReview: async (anchor, body) => {
             await runPendingReviewCommand({ _tag: "Start", anchor, body });
           },
           onAddReviewComment: async (nodeId, anchor, body) => {
-            await runPendingReviewCommand({ _tag: "AddThread", pendingReviewNodeId: nodeId, anchor, body });
+            await runPendingReviewCommand({
+              _tag: "AddThread",
+              pendingReviewNodeId: nodeId,
+              anchor,
+              body,
+            });
           },
         };
-  const localCommentAuthoring: LocalCommentAuthoring | undefined = canWriteDirectConversation
-    ? {
-        enabled: true,
-        onSave: saveInlineComment,
-        onSelectionChange: (location) => {
-          const path = parseRepoRelativePath(location.path);
-          if (path._tag === "ok")
-            setSelectedRepairAnchor({ ...location, path: path.value });
-        },
-      }
-    : undefined;
+  const localCommentAuthoring: LocalCommentAuthoring | undefined =
+    canWriteDirectConversation
+      ? {
+          enabled: true,
+          onSave: saveInlineComment,
+          onSelectionChange: (location) => {
+            const path = parseRepoRelativePath(location.path);
+            if (path._tag === "ok")
+              setSelectedRepairAnchor({ ...location, path: path.value });
+          },
+        }
+      : undefined;
   const externalPullRequest = pullRequestExternalRef(workbench);
   const mergeAction: PullRequestOverviewMerge | undefined =
     workbench.review.status === "open" &&
@@ -833,112 +1034,98 @@ export function ReviewWorkbenchFlow({
           },
         }
       : undefined;
-  const addFindingToDraft = useCallback(
+  const addFindingToPendingReview = useCallback(
     async (finding: AnalysisFinding): Promise<void> => {
-      const batch = workbench.draft;
       const runId = workbench.insights.analysis.retained?.runId;
-      if (batch === undefined || runId === undefined)
-        throw new Error("Analysis draft is unavailable");
-      const body = finding.suggestedComment ?? finding.explanation;
+      const patchHash = workbench.revision.patchHash;
+      const status =
+        workbench.analysisReviewActions?.findings[finding.id]?.state;
+      if (
+        runId === undefined ||
+        patchHash === undefined ||
+        status !== "actionable" ||
+        finding.mappingStatus !== "mapped" ||
+        finding.file === undefined ||
+        finding.lineStart === undefined ||
+        workbench.fullPatch === undefined
+      )
+        throw new Error(
+          "This Finding is not actionable on the current Review.",
+        );
+      const mapped = mapFindingLocation(
+        parseUnifiedPatch(workbench.fullPatch),
+        {
+          file: finding.file,
+          lineStart: finding.lineStart,
+          ...(finding.lineEnd === undefined
+            ? {}
+            : { lineEnd: finding.lineEnd }),
+          ...(finding.diffSide === undefined
+            ? {}
+            : { diffSide: finding.diffSide }),
+        },
+      );
+      const path =
+        mapped.path === undefined
+          ? undefined
+          : parseRepoRelativePath(mapped.path);
+      if (
+        path?._tag !== "ok" ||
+        mapped.line === undefined ||
+        mapped.side === undefined
+      )
+        throw new Error(
+          "Patchdesk could not verify this Finding's diff anchor.",
+        );
+      const anchor = {
+        path: path.value,
+        startLine: mapped.startLine ?? mapped.line,
+        line: mapped.line,
+        side: mapped.side,
+      };
+      const expected = {
+        sessionId: workbench.session.id,
+        headSha: workbench.revision.reviewedHeadSha,
+        patchHash,
+      };
+      const pending = workbench.pendingReview;
       const command =
-        finding.mappingStatus === "mapped" &&
-        finding.file !== undefined &&
-        finding.lineStart !== undefined &&
-        workbench.fullPatch !== undefined
-          ? (() => {
-              const mapped = mapFindingLocation(
-                parseUnifiedPatch(workbench.fullPatch as string),
-                {
-                  file: finding.file,
-                  lineStart: finding.lineStart,
-                  ...(finding.lineEnd === undefined
-                    ? {}
-                    : { lineEnd: finding.lineEnd }),
-                  ...(finding.diffSide === undefined
-                    ? {}
-                    : { diffSide: finding.diffSide }),
-                },
-              );
-              const path =
-                mapped.path === undefined
-                  ? undefined
-                  : parseRepoRelativePath(mapped.path);
-              if (
-                path?._tag === "ok" &&
-                mapped.line !== undefined &&
-                mapped.side !== undefined
-              ) {
-                const anchor = {
-                  path: path.value,
-                  startLine: mapped.startLine ?? mapped.line,
-                  line: mapped.line,
-                  side: mapped.side,
-                };
-                const fingerprint = fingerprintPatchAnchor(
-                  workbench.fullPatch as string,
-                  anchor,
-                );
-                if (fingerprint !== undefined)
-                  return {
-                    _tag: "AddFindingInlineComment" as const,
-                    reviewId: workbench.review.id,
-                    findingId: finding.id,
-                    runId,
-                    anchor,
-                    fingerprint,
-                    body,
-                  };
-              }
-              return {
-                _tag: "AddFindingGeneralComment" as const,
-                reviewId: workbench.review.id,
+        pending?.state === "none"
+          ? {
+              _tag: "Start" as const,
+              expected,
+              anchor,
+              body: finding.suggestedComment ?? finding.explanation,
+              finding: {
+                analysisRunId: runId,
                 findingId: finding.id,
-                runId,
-                body,
-              };
-            })()
-          : {
-              _tag: "AddFindingGeneralComment" as const,
-              reviewId: workbench.review.id,
-              findingId: finding.id,
-              runId,
-              body,
-            };
-      const value = await requestJson("/v1/reviews/batch", {
+                ...expected,
+              },
+            }
+          : pending?.state === "pending"
+            ? {
+                _tag: "AddThread" as const,
+                expected,
+                pendingReviewNodeId: pending.review.nodeId,
+                anchor,
+                body: finding.suggestedComment ?? finding.explanation,
+                finding: {
+                  analysisRunId: runId,
+                  findingId: finding.id,
+                  ...expected,
+                },
+              }
+            : undefined;
+      if (command === undefined)
+        throw new Error("Check GitHub again before changing this Finding.");
+      await requestJson("/v1/reviews/pending-review/command", {
         method: "POST",
         body: {
           profileId: workbench.session.key.profileId,
-          sessionId: workbench.session.id,
-          expectedRevision: batch.updatedAt,
+          reviewId: workbench.review.id,
           command,
         },
       });
-      const next = parseBatchResponse(value);
-      if (next === undefined) throw new Error("Invalid Review batch response");
-      onWorkbenchPatch({ draft: next });
-    },
-    [onWorkbenchPatch, workbench],
-  );
-  const dismissFindingFromWorkbench = useCallback(
-    async (finding: AnalysisFinding, reason: string): Promise<void> => {
-      const runId = workbench.insights.analysis.retained?.runId;
-      if (
-        runId === undefined ||
-        workbench.insights.analysis.status !== "current"
-      )
-        throw new Error("Analysis is not current");
-      await requestJson(
-        `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`,
-        {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            runId,
-            reason,
-          },
-        },
-      );
       const value = await requestJson("/v1/reviews/load", {
         method: "POST",
         body: {
@@ -961,15 +1148,15 @@ export function ReviewWorkbenchFlow({
         {...(initialUiState === undefined
           ? {}
           : { initialState: initialUiState })}
-        {...(onUiStateChange === undefined ? {} : { onStateChange: onUiStateChange })}
+        {...(onUiStateChange === undefined
+          ? {}
+          : { onStateChange: onUiStateChange })}
         actions={{
           detectUpdates: runDetect,
           refresh,
           ...(refreshing === true ? { refreshing: true } : {}),
           ...(refreshError === true ? { refreshError: true } : {}),
           ...(mergeAction === undefined ? {} : { merge: mergeAction }),
-          addFinding: addFindingToDraft,
-          dismissFinding: dismissFindingFromWorkbench,
           loadCommitDiff: async (
             commitSha: string,
           ): Promise<CommitDiffResponse> => {
@@ -999,11 +1186,24 @@ export function ReviewWorkbenchFlow({
                   projection: workbench.pendingReview,
                   busy: pendingReviewBusy,
                   finishDialogOpen,
-                  onOpenFinishDialog: () => setFinishDialogOpen(true),
-                  onCloseFinishDialog: () => setFinishDialogOpen(false),
+                  ...(finishDialogInitialSummary === undefined
+                    ? {}
+                    : { finishDialogInitialSummary }),
+                  onOpenFinishDialog: () => {
+                    setFinishDialogInitialSummary(undefined);
+                    setFinishDialogOpen(true);
+                  },
+                  onCloseFinishDialog: () => {
+                    setFinishDialogOpen(false);
+                    setFinishDialogInitialSummary(undefined);
+                  },
                   onSubmit: async (event, summaryBody) => {
                     try {
-                      await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
+                      await runPendingReviewCommand({
+                        _tag: "Submit",
+                        event,
+                        summaryBody,
+                      });
                       setFinishDialogOpen(false);
                     } catch (cause) {
                       setFinishDialogError(boundedPendingReviewError(cause));
@@ -1011,7 +1211,10 @@ export function ReviewWorkbenchFlow({
                   },
                   onDiscard: async () => {
                     try {
-                      await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
+                      await runPendingReviewCommand({
+                        _tag: "Discard",
+                        confirmation: true,
+                      });
                       setFinishDialogOpen(false);
                     } catch (cause) {
                       setFinishDialogError(boundedPendingReviewError(cause));
@@ -1024,9 +1227,29 @@ export function ReviewWorkbenchFlow({
                 },
               }),
           ...(workbench.pendingReview?.state === "none"
-            ? { directSummary: { busy: directSummaryBusy, state: directSummaryState.state, ...(directSummaryState.state === "confirmed" ? { receipt: directSummaryState.receipt } : {}), onSubmit: submitDirectSummary, onRecover: recoverDirectSummary, ...(directSummaryError === undefined ? {} : { error: directSummaryError }) } }
+            ? {
+                directSummary: {
+                  busy: directSummaryBusy,
+                  state: directSummaryState.state,
+                  approvalCapability:
+                    workbench.directSummaryDecision ?? "unknown",
+                  ...(directSummaryState.state === "confirmed"
+                    ? { receipt: directSummaryState.receipt }
+                    : {}),
+                  ...(directSummaryState.state === "recovery_required"
+                    ? { recoveryResolution: directSummaryState.resolution }
+                    : {}),
+                  onSubmit: submitDirectSummary,
+                  onRecover: recoverDirectSummary,
+                  ...(directSummaryError === undefined
+                    ? {}
+                    : { error: directSummaryError }),
+                },
+              }
             : {}),
-          ...(canWriteDirectConversation ? { setThreadState, replyToThread, editComment, deleteComment } : {}),
+          ...(canWriteDirectConversation
+            ? { setThreadState, replyToThread, editComment, deleteComment }
+            : {}),
           reportNavigationState: onNavigationStateChange,
         }}
         slots={{
@@ -1038,7 +1261,11 @@ export function ReviewWorkbenchFlow({
                 : { initialDetail: initialUiState.insightDetail })}
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
-              onAnalysisCompletion={() => setAutoOpenPublication(true)}
+              onAddFinding={addFindingToPendingReview}
+              onFinishWithAnalysisSummary={(summary) => {
+                setFinishDialogInitialSummary(summary);
+                setFinishDialogOpen(true);
+              }}
             />
           ),
           conversation: null,
@@ -1083,40 +1310,20 @@ export function ReviewWorkbenchFlow({
 type AnalysisFinding = NonNullable<
   WorkbenchResponse["insights"]["analysis"]["retained"]
 >["value"]["findings"][number];
-type AnalysisCompletionChoice =
-  | "SaveAsReviewDraft"
-  | "OpenPreviewWhenComplete"
-  | "PublishWhenComplete:COMMENT"
-  | "PublishWhenComplete:APPROVE"
-  | "PublishWhenComplete:REQUEST_CHANGES";
-
-function analysisCompletionAction(
-  choice: AnalysisCompletionChoice,
-): Parameters<ReturnType<typeof useInsightRun>["run"]>[2] {
-  if (choice === "SaveAsReviewDraft") return { _tag: "SaveAsReviewDraft" };
-  if (choice === "OpenPreviewWhenComplete")
-    return { _tag: "OpenPreviewWhenComplete" };
-  const event = choice.slice("PublishWhenComplete:".length) as
-    "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
-  return {
-    _tag: "PublishWhenComplete",
-    event,
-    authorizationId: `publication-${crypto.randomUUID()}`,
-  };
-}
-
 function InsightsSlot({
   workbench,
   initialDetail,
   onWorkbenchReplace,
   onWorkbenchPatch,
-  onAnalysisCompletion,
+  onAddFinding,
+  onFinishWithAnalysisSummary,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly initialDetail?: "analysis" | "walkthrough";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
-  readonly onAnalysisCompletion: () => void;
+  readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
+  readonly onFinishWithAnalysisSummary: (summary: string) => void;
 }): React.JSX.Element {
   const navigateToFiles = useReviewWorkbenchNavigation();
   const [models, setModels] = useState<
@@ -1124,8 +1331,6 @@ function InsightsSlot({
   >([]);
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<InsightReasoning>("medium");
-  const [analysisCompletion, setAnalysisCompletion] =
-    useState<AnalysisCompletionChoice>("OpenPreviewWhenComplete");
   const [runDialogType, setRunDialogType] =
     useState<InsightRunDialogType | null>(null);
   const [runDialogAction, setRunDialogAction] = useState<
@@ -1145,6 +1350,7 @@ function InsightsSlot({
   const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<
     string | undefined
   >(workbench.insights.walkthrough.progress?.currentSectionId);
+  const [walkthroughFocused, setWalkthroughFocused] = useState(false);
   const [progressError, setProgressError] = useState(false);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
@@ -1166,10 +1372,6 @@ function InsightsSlot({
     activeRun: workbench.insights.analysis.activeRun,
     onWorkbenchReplace,
     onInsightPatch,
-    onCompleted: () => {
-      if (analysisCompletion === "OpenPreviewWhenComplete")
-        onAnalysisCompletion();
-    },
   });
   const walkthroughRun = useInsightRun({
     profileId,
@@ -1248,119 +1450,7 @@ function InsightsSlot({
     );
     await reloadWorkbench();
   };
-  const addFinding = async (finding: AnalysisFinding): Promise<void> => {
-    const batch = workbench.draft;
-    const runId = workbench.insights.analysis.retained?.runId;
-    if (batch === undefined || runId === undefined) return;
-    const body = finding.suggestedComment ?? finding.explanation;
-    let command:
-      | {
-          readonly _tag: "AddFindingInlineComment";
-          readonly reviewId: string;
-          readonly findingId: string;
-          readonly runId: string;
-          readonly anchor: {
-            readonly path: string;
-            readonly startLine: number;
-            readonly line: number;
-            readonly side: "new" | "old";
-          };
-          readonly fingerprint: NonNullable<
-            ReturnType<typeof fingerprintPatchAnchor>
-          >;
-          readonly body: string;
-        }
-      | {
-          readonly _tag: "AddFindingGeneralComment";
-          readonly reviewId: string;
-          readonly findingId: string;
-          readonly runId: string;
-          readonly body: string;
-        };
-    if (
-      finding.mappingStatus === "mapped" &&
-      finding.file !== undefined &&
-      finding.lineStart !== undefined &&
-      workbench.fullPatch !== undefined
-    ) {
-      const mapped = mapFindingLocation(
-        parseUnifiedPatch(workbench.fullPatch),
-        {
-          file: finding.file,
-          lineStart: finding.lineStart,
-          ...(finding.lineEnd === undefined
-            ? {}
-            : { lineEnd: finding.lineEnd }),
-          ...(finding.diffSide === undefined
-            ? {}
-            : { diffSide: finding.diffSide }),
-        },
-      );
-      const path =
-        mapped.path === undefined
-          ? undefined
-          : parseRepoRelativePath(mapped.path);
-      const line = mapped.line;
-      const side = mapped.side;
-      if (
-        path !== undefined &&
-        path._tag === "ok" &&
-        line !== undefined &&
-        side !== undefined
-      ) {
-        const startLine = mapped.startLine ?? line;
-        const anchor = { path: path.value, startLine, line, side };
-        const fingerprint = fingerprintPatchAnchor(workbench.fullPatch, anchor);
-        if (fingerprint !== undefined) {
-          command = {
-            _tag: "AddFindingInlineComment",
-            reviewId,
-            findingId: finding.id,
-            runId,
-            anchor,
-            fingerprint,
-            body,
-          };
-        } else {
-          command = {
-            _tag: "AddFindingGeneralComment",
-            reviewId,
-            findingId: finding.id,
-            runId,
-            body,
-          };
-        }
-      } else {
-        command = {
-          _tag: "AddFindingGeneralComment",
-          reviewId,
-          findingId: finding.id,
-          runId,
-          body,
-        };
-      }
-    } else {
-      command = {
-        _tag: "AddFindingGeneralComment",
-        reviewId,
-        findingId: finding.id,
-        runId,
-        body,
-      };
-    }
-    const value = await requestJson("/v1/reviews/batch", {
-      method: "POST",
-      body: {
-        profileId,
-        sessionId: workbench.session.id,
-        expectedRevision: batch.updatedAt,
-        command,
-      },
-    });
-    const next = parseBatchResponse(value);
-    if (next === undefined) throw new Error("Invalid Review batch response");
-    onWorkbenchPatch({ draft: next });
-  };
+  const addFinding = onAddFinding;
   const selectedProjection =
     selectedInsight === "analysis"
       ? workbench.insights.analysis
@@ -1419,20 +1509,10 @@ function InsightsSlot({
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
     selectedProjection.retained === undefined;
-  const analysisControlsVisible =
-    selectedInsight === "analysis" &&
-    !analysisFirstRunActive &&
-    !selectedIsOutdated;
   const runSelected = (): void => {
     if (model === null || selectedInsight === "overview") return;
     if (selectedInsight === "analysis") {
-      analysisRun.run(
-        model,
-        reasoning,
-        selectedIsOutdated
-          ? undefined
-          : analysisCompletionAction(analysisCompletion),
-      );
+      analysisRun.run(model, reasoning);
     } else {
       walkthroughRun.run(model, reasoning);
     }
@@ -1455,18 +1535,87 @@ function InsightsSlot({
         : undefined;
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
+  const analysisSummaryScope = {
+    baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
+    headShort: workbench.session.key.headSha.slice(0, 7),
+    commitCount: workbench.commits.length,
+    fileCount:
+      workbench.pullRequest?.changedFileCount ??
+      (workbench.fullPatch === undefined
+        ? 0
+        : parseUnifiedPatch(workbench.fullPatch).length),
+    additions: workbench.pullRequest?.additions ?? 0,
+    deletions: workbench.pullRequest?.deletions ?? 0,
+    changedFiles:
+      workbench.fullPatch === undefined
+        ? []
+        : parseUnifiedPatch(workbench.fullPatch).map((file) => ({
+            path: file.newPath,
+            additions: file.additions,
+            deletions: file.deletions,
+          })),
+  };
+  const analysisResult = workbench.insights.analysis.retained?.value;
+
   const retainedAnalysis =
     selectedInsight === "analysis" &&
     workbench.insights.analysis.retained !== undefined ? (
       <AnalysisReader
         result={workbench.insights.analysis.retained.value}
         onBack={() => setSelectedInsight("overview")}
+        findingStatuses={Object.fromEntries(
+          Object.entries(workbench.analysisReviewActions?.findings ?? {}).map(
+            ([id, status]) => [id, status.state],
+          ),
+        )}
+        {...(workbench.insights.analysis.status === "current" &&
+        workbench.fullPatch !== undefined
+          ? { evidencePatch: workbench.fullPatch }
+          : {})}
+        canFinishWithAnalysisSummary={
+          workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
+        }
+        {...(workbench.analysisReviewActions?.canFinishWithAnalysisSummary ===
+          true && analysisResult !== undefined
+          ? {
+              onFinishWithAnalysisSummary: () =>
+                onFinishWithAnalysisSummary(
+                  renderAnalysisReviewSummary({
+                    result: analysisResult,
+                    scope: analysisSummaryScope,
+                  }),
+                ),
+            }
+          : {})}
         {...(workbench.insights.analysis.status === "current"
           ? { onAddFinding: addFinding, onDismissFinding: dismissFinding }
           : {})}
         scope={readerScope}
       />
     ) : null;
+  const walkthroughRetained = workbench.insights.walkthrough.retained;
+  const walkthroughDiscussionAvailable =
+    walkthroughRetained !== undefined &&
+    workbench.insights.walkthrough.status === "current" &&
+    workbench.insights.walkthrough.artifactStatus === "verified" &&
+    workbench.revision.freshness === "fresh" &&
+    workbench.fullPatch !== undefined &&
+    workbench.revision.patchHash !== undefined &&
+    workbench.conversation.inline?.complete === true &&
+    walkthroughRetained.value.snapshot.profileId ===
+      workbench.session.key.profileId &&
+    walkthroughRetained.value.snapshot.sessionId === workbench.session.id &&
+    walkthroughRetained.value.snapshot.headSha ===
+      workbench.revision.reviewedHeadSha &&
+    walkthroughRetained.value.snapshot.patchHash ===
+      workbench.revision.patchHash;
+  const walkthroughAnnotations =
+    walkthroughDiscussionAvailable && workbench.fullPatch !== undefined
+      ? projectReadOnlyConversationAnnotations(
+          parseUnifiedPatch(workbench.fullPatch),
+          workbench.conversation.inline?.threads ?? [],
+        )
+      : undefined;
   const retainedWalkthrough =
     selectedInsight === "walkthrough" &&
     workbench.insights.walkthrough.retained !== undefined ? (
@@ -1481,6 +1630,14 @@ function InsightsSlot({
         workbench.fullPatch !== undefined
           ? { rawPatch: workbench.fullPatch }
           : {})}
+        {...(walkthroughAnnotations === undefined
+          ? {}
+          : { annotations: walkthroughAnnotations })}
+        {...(walkthroughDiscussionAvailable
+          ? {}
+          : { discussionUnavailable: true })}
+        focused={walkthroughFocused}
+        onFocusedChange={setWalkthroughFocused}
         actions={{
           onMarkSectionReviewed: (sectionId) => {
             const next = reviewedWalkthroughSections.includes(sectionId)
@@ -1517,49 +1674,55 @@ function InsightsSlot({
       />
     ) : null;
   const retainedReader = retainedAnalysis ?? retainedWalkthrough;
+  const walkthroughFocusActive =
+    selectedInsight === "walkthrough" && walkthroughFocused;
   return (
     <section
       aria-label="Review insights"
       className="flex h-full min-h-0 w-full flex-col gap-2"
     >
       <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
-        <nav
-          aria-label="Insight navigation"
-          className="flex shrink-0 items-center gap-2 overflow-x-auto border-b pb-2"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={navigateToFiles === undefined}
-            onClick={navigateToFiles}
+        {walkthroughFocusActive ? null : (
+          <nav
+            aria-label="Insight navigation"
+            className="flex shrink-0 items-center gap-2 overflow-x-auto border-b pb-2"
           >
-            Files
-          </Button>
-          <InsightRailButton
-            selected={selectedInsight === "overview"}
-            onClick={() => setSelectedInsight("overview")}
-            title="Overview"
-            status="Current"
-          />
-          <InsightRailButton
-            selected={selectedInsight === "analysis"}
-            onClick={() => setSelectedInsight("analysis")}
-            title="Analysis"
-            status={insightStatusLabel(workbench.insights.analysis.status)}
-            {...(workbench.insights.analysis.retained === undefined
-              ? {}
-              : { revision: workbench.insights.analysis.retained.headSha })}
-          />
-          <InsightRailButton
-            selected={selectedInsight === "walkthrough"}
-            onClick={() => setSelectedInsight("walkthrough")}
-            title="Walkthrough"
-            status={insightStatusLabel(workbench.insights.walkthrough.status)}
-            {...(workbench.insights.walkthrough.retained === undefined
-              ? {}
-              : { revision: workbench.insights.walkthrough.retained.headSha })}
-          />
-        </nav>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={navigateToFiles === undefined}
+              onClick={navigateToFiles}
+            >
+              Files
+            </Button>
+            <InsightRailButton
+              selected={selectedInsight === "overview"}
+              onClick={() => setSelectedInsight("overview")}
+              title="Overview"
+              status="Current"
+            />
+            <InsightRailButton
+              selected={selectedInsight === "analysis"}
+              onClick={() => setSelectedInsight("analysis")}
+              title="Analysis"
+              status={insightStatusLabel(workbench.insights.analysis.status)}
+              {...(workbench.insights.analysis.retained === undefined
+                ? {}
+                : { revision: workbench.insights.analysis.retained.headSha })}
+            />
+            <InsightRailButton
+              selected={selectedInsight === "walkthrough"}
+              onClick={() => setSelectedInsight("walkthrough")}
+              title="Walkthrough"
+              status={insightStatusLabel(workbench.insights.walkthrough.status)}
+              {...(workbench.insights.walkthrough.retained === undefined
+                ? {}
+                : {
+                    revision: workbench.insights.walkthrough.retained.headSha,
+                  })}
+            />
+          </nav>
+        )}
         <article
           aria-label={
             selectedInsight === "overview"
@@ -1577,60 +1740,54 @@ function InsightsSlot({
             />
           ) : (
             <>
-              <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b pb-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {selectedInsight}
-                  </p>
-                  <h2 className="truncate text-lg font-semibold">
-                    {selectedInsight === "analysis"
-                      ? "Analysis document"
-                      : selectedInsight === "walkthrough" &&
-                          workbench.insights.walkthrough.retained !== undefined
-                        ? workbench.insights.walkthrough.retained.value.title
-                        : "Walkthrough document"}
-                  </h2>
-                  <p className="truncate text-sm text-muted-foreground">
-                    {selectedRetained === undefined
-                      ? "No retained result for this revision."
-                      : selectedIsOutdated
-                        ? `Retained revision ${selectedRetained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`
-                        : `Retained from ${selectedRetained.headSha.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {analysisControlsVisible ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label="Open Analysis"
-                      onClick={() => setSelectedInsight("analysis")}
-                    >
-                      Open Analysis
-                    </Button>
-                  ) : null}
-                  {selectedRunning?.busy ||
-                  selectedProjection?.status === "running" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={selectedRunning?.cancel}
-                    >
-                      Cancel
-                    </Button>
-                  ) : analysisFirstRunActive ||
-                    selectedIsOutdated ||
-                    selectedProjection?.retained === undefined ? null : (
-                    <Button
-                      size="sm"
-                      onClick={() => openRunDialog("regenerate")}
-                      disabled={!runEnabled}
-                    >
-                      Regenerate
-                    </Button>
-                  )}
-                </div>
-              </header>
+              {walkthroughFocusActive ? null : (
+                <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b pb-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {selectedInsight}
+                    </p>
+                    <h2 className="truncate text-lg font-semibold">
+                      {selectedInsight === "analysis"
+                        ? "Analysis document"
+                        : selectedInsight === "walkthrough" &&
+                            workbench.insights.walkthrough.retained !==
+                              undefined
+                          ? workbench.insights.walkthrough.retained.value.title
+                          : "Walkthrough document"}
+                    </h2>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {selectedRetained === undefined
+                        ? "No retained result for this revision."
+                        : selectedIsOutdated
+                          ? `Retained revision ${selectedRetained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`
+                          : `Retained from ${selectedRetained.headSha.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedRunning?.busy ||
+                    selectedProjection?.status === "running" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={selectedRunning?.cancel}
+                      >
+                        Cancel
+                      </Button>
+                    ) : analysisFirstRunActive ||
+                      selectedIsOutdated ||
+                      selectedProjection?.status === "failed" ||
+                      selectedProjection?.retained === undefined ? null : (
+                      <Button
+                        size="sm"
+                        onClick={() => openRunDialog("regenerate")}
+                        disabled={!runEnabled}
+                      >
+                        Regenerate
+                      </Button>
+                    )}
+                  </div>
+                </header>
+              )}
               {catalogError || models.length === 0 ? (
                 <p role="alert" className="py-2 text-sm text-destructive">
                   No eligible model configured. Set an API key or ambient
@@ -1706,32 +1863,6 @@ function InsightsSlot({
           models={models}
           model={model}
           reasoning={reasoning}
-          {...(runDialogType === "analysis"
-            ? {
-                completion: analysisCompletion,
-                completionOptions: [
-                  { value: "SaveAsReviewDraft", label: "Save as Review draft" },
-                  {
-                    value: "OpenPreviewWhenComplete",
-                    label: "Open preview when complete",
-                  },
-                  {
-                    value: "PublishWhenComplete:COMMENT",
-                    label: "Publish as Comment",
-                  },
-                  {
-                    value: "PublishWhenComplete:APPROVE",
-                    label: "Publish as Approve",
-                  },
-                  {
-                    value: "PublishWhenComplete:REQUEST_CHANGES",
-                    label: "Publish as Request changes",
-                  },
-                ],
-                onCompletionChange: (value: string) =>
-                  setAnalysisCompletion(value as AnalysisCompletionChoice),
-              }
-            : {})}
           onOpenChange={(open) => {
             if (!open) closeRunDialog();
           }}
@@ -1870,30 +2001,11 @@ function InsightFailed({
         ? "This Insight run failed. No retained result is available."
         : "This Insight run failed. The previous retained result remains available below."
       : failureMessage(failure.category);
-  const generic = failure?.category === undefined;
   return (
-    <div className="flex flex-col gap-3 py-6">
-      <p role="alert" className="text-sm text-destructive">
+    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 border border-amber-500/50 bg-amber-500/10 px-3 py-4">
+      <p role="alert" className="text-sm text-amber-900 dark:text-amber-100">
         {message}
       </p>
-      {generic ? (
-        <p className="text-sm text-muted-foreground">
-          No additional failure details are available.
-        </p>
-      ) : null}
-      {failure?.model === undefined ? null : (
-        <p className="text-sm text-muted-foreground">
-          Selected model: {failure.model}
-          {failure.reasoning === undefined
-            ? ""
-            : ` · Reasoning: ${failure.reasoning}`}
-        </p>
-      )}
-      {failure?.runId === undefined ? null : (
-        <p className="text-xs text-muted-foreground">
-          Correlation ID: {failure.runId}
-        </p>
-      )}
       {projection.retained === undefined ? (
         <p className="text-sm text-muted-foreground">
           No retained result is available.
@@ -1905,7 +2017,7 @@ function InsightFailed({
         </p>
       )}
       <Button size="sm" onClick={onRetry}>
-        Run again
+        Try again
       </Button>
     </div>
   );
@@ -1988,13 +2100,18 @@ function InsightEmpty({
   readonly disabled: boolean;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-3 py-6">
+    <div className="flex max-w-2xl flex-col items-start gap-3 py-6">
       <h3 className="font-medium">No {type} has been generated</h3>
       <p className="text-sm text-muted-foreground">
         Run this optional Insight for the represented Review snapshot.
       </p>
-      <Button size="sm" onClick={onRun} disabled={disabled}>
-        Run
+      <Button
+        size="sm"
+        className="self-start"
+        onClick={onRun}
+        disabled={disabled}
+      >
+        {type === "analysis" ? "Generate analysis" : "Generate Walkthrough"}
       </Button>
     </div>
   );
@@ -2432,9 +2549,21 @@ function emptyDraftForWorkbench(
  * command callback casts raw JSON to a receipt anymore.
  */
 type DirectConversationReceipt =
-  | { readonly _tag: "CommentCreated"; readonly commentId: string; readonly reviewId?: string }
-  | { readonly _tag: "ReplyCreated"; readonly commentId: string; readonly reviewId?: string }
-  | { readonly _tag: "ThreadStateChanged"; readonly threadId: GitHubThreadId; readonly state: "open" | "resolved" }
+  | {
+      readonly _tag: "CommentCreated";
+      readonly commentId: string;
+      readonly reviewId?: string;
+    }
+  | {
+      readonly _tag: "ReplyCreated";
+      readonly commentId: string;
+      readonly reviewId?: string;
+    }
+  | {
+      readonly _tag: "ThreadStateChanged";
+      readonly threadId: GitHubThreadId;
+      readonly state: "open" | "resolved";
+    }
   | { readonly _tag: "CommentEdited"; readonly commentId: string }
   | { readonly _tag: "CommentDeleted"; readonly commentId: string };
 
@@ -2445,8 +2574,13 @@ function parseDirectConversationReceipt(
   const record = value as Record<string, unknown>;
   const tag = record._tag;
   if (tag === "CommentCreated" || tag === "ReplyCreated") {
-    if (typeof record.commentId !== "string" || record.commentId.length === 0) return undefined;
-    if (record.reviewId !== undefined && (typeof record.reviewId !== "string" || record.reviewId.length === 0)) return undefined;
+    if (typeof record.commentId !== "string" || record.commentId.length === 0)
+      return undefined;
+    if (
+      record.reviewId !== undefined &&
+      (typeof record.reviewId !== "string" || record.reviewId.length === 0)
+    )
+      return undefined;
     return {
       _tag: tag,
       commentId: record.commentId,
@@ -2454,13 +2588,19 @@ function parseDirectConversationReceipt(
     };
   }
   if (tag === "ThreadStateChanged") {
-    if (record.state !== "open" && record.state !== "resolved") return undefined;
+    if (record.state !== "open" && record.state !== "resolved")
+      return undefined;
     const parsedThreadId = parseGitHubThreadId(record.threadId);
     if (parsedThreadId._tag === "err") return undefined;
-    return { _tag: "ThreadStateChanged", threadId: parsedThreadId.value, state: record.state };
+    return {
+      _tag: "ThreadStateChanged",
+      threadId: parsedThreadId.value,
+      state: record.state,
+    };
   }
   if (tag === "CommentEdited" || tag === "CommentDeleted") {
-    if (typeof record.commentId !== "string" || record.commentId.length === 0) return undefined;
+    if (typeof record.commentId !== "string" || record.commentId.length === 0)
+      return undefined;
     return { _tag: tag, commentId: record.commentId };
   }
   return undefined;

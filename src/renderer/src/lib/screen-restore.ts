@@ -11,7 +11,7 @@ const SETTINGS_RESTORE_KEY = "patchdesk.settings.v1";
 
 export type WorkbenchUiState = {
   activeTab?: "conversation" | "diff" | "insights";
-  section?: "files" | "findings" | "commits" | "insights";
+  section?: "files" | "commits" | "insights";
   selectedPath?: string;
 };
 
@@ -76,7 +76,7 @@ function parseWorkbenchUiState(raw: string): WorkbenchUiState | undefined {
     if (record.activeTab === "conversation" || record.activeTab === "diff" || record.activeTab === "insights") {
       result.activeTab = record.activeTab;
     }
-    if (record.section === "files" || record.section === "findings" || record.section === "commits" || record.section === "insights") {
+    if (record.section === "files" || record.section === "commits" || record.section === "insights") {
       result.section = record.section;
     }
     if (typeof record.selectedPath === "string" && record.selectedPath.length > 0) {

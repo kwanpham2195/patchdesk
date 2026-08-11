@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderAnalysisReviewBody } from "../../src/services/analysis-review-body";
+import { renderAnalysisReviewBody, renderAnalysisReviewSummary } from "../../src/services/analysis-review-body";
 import type { ReviewResult } from "../../src/domain/review-result";
 
 const result: ReviewResult = {
@@ -51,5 +51,19 @@ describe("renderAnalysisReviewBody", () => {
     expect(body).not.toContain("# Human Reviewer Callouts");
     expect(body).toContain("No changed files were reported.");
     expect(body).toContain("No findings.");
+  });
+});
+
+describe("renderAnalysisReviewSummary", () => {
+  it("keeps high-level context while omitting every Finding", () => {
+    const body = renderAnalysisReviewSummary({
+      result,
+      scope: { baseShort: "base", headShort: "head", commitCount: 2, fileCount: 2, additions: 4, deletions: 1, changedFiles: [] },
+    });
+    expect(body).toContain("# Review Scope");
+    expect(body).toContain("# Verdict");
+    expect(body).not.toContain("# Findings");
+    expect(body).not.toContain("Second");
+    expect(body).not.toContain("First");
   });
 });

@@ -23,12 +23,12 @@ export type DirectSummaryReviewFailure =
   | "unavailable"
   | "outcome_unknown"
   | "review_write_in_progress"
-  | "review_already_submitted";
+  | "self_approval_not_allowed";
 
 export type DirectSummaryReviewProjection =
   | { readonly state: "idle" }
   | { readonly state: "confirmed"; readonly receipt: { readonly reviewId: string; readonly event: GitHubReviewEvent } }
-  | { readonly state: "recovery_required" };
+  | { readonly state: "recovery_required"; readonly resolution: "check_required" | "manual_resolution_required" };
 
 type Gateway = GitHubDirectSummaryGateway & Pick<GitHubPendingReviewGateway, "getViewerPendingReview"> & Pick<GitHubReader, "getPullRequest" | "resolveAuthenticatedAccount">;
 
@@ -62,7 +62,6 @@ export class DirectSummaryReviewService {
       const fresh = await this.gate.requireFresh(input.profileId, input.reviewId, input.expected);
       if (fresh._tag === "err") return err(mapGateFailure(fresh.error.reason));
       const existing = fresh.value.session.directSummaryReview;
-      if (existing?._tag === "Confirmed") return err("review_already_submitted");
       if (existing?._tag === "OutcomeUnknown" || existing?._tag === "WriteInFlight") return err("outcome_unknown");
       const pr = sessionPr(fresh.value.session);
       const current = await this.github.getPullRequest({ profile: fresh.value.profile, pr });
@@ -72,6 +71,8 @@ export class DirectSummaryReviewService {
       if (account._tag === "err") return err("unavailable");
       const login = parseGitHubLogin(account.value.account);
       if (login._tag === "err") return err("unavailable");
+      if (input.event === "APPROVE" && current.value.author !== undefined && current.value.author.toLowerCase() === login.value.toLowerCase())
+        return err("self_approval_not_allowed");
       const pending = await this.github.getViewerPendingReview({ profile: fresh.value.profile, pr, account: login.value });
       if (pending._tag === "err" || pending.value._tag === "Unavailable") return err("unavailable");
       if (pending.value._tag === "Pending") return err("pending_review_exists");
@@ -96,7 +97,7 @@ export class DirectSummaryReviewService {
       const written = await this.github.createDirectSummaryReview({ profile: fresh.value.profile, pr, headSha: fresh.value.session.key.headSha, event: input.event, body });
       if (written._tag === "err") {
         if (written.error.category === "unavailable") {
-          await this.persist(fresh.value.session, { _tag: "OutcomeUnknown", operation });
+          await this.persist(fresh.value.session, { _tag: "OutcomeUnknown", operation, resolution: "check_required" });
           return err("outcome_unknown");
         }
         await this.clear(fresh.value.session);
@@ -104,7 +105,7 @@ export class DirectSummaryReviewService {
       }
       const confirmed: DirectSummaryReviewState = { _tag: "Confirmed", receipt: written.value };
       if (!(await this.persist(fresh.value.session, confirmed))) {
-        await this.persist(fresh.value.session, { _tag: "OutcomeUnknown", operation });
+        await this.persist(fresh.value.session, { _tag: "OutcomeUnknown", operation, resolution: "check_required" });
         return err("outcome_unknown");
       }
       return ok(confirmed);
@@ -141,9 +142,17 @@ export class DirectSummaryReviewService {
     // A matching review outside the bounded recovery window is evidence that
     // this read is not a complete absence proof. Keep the durable lock rather
     // than treating it as a safe no-write result and allowing a duplicate.
-    if (candidates.some((review) => !submittedWithinRecoveryWindow(review.submittedAt, stored.operation.startedAt))) return ok(stored);
+    if (candidates.some((review) => !submittedWithinRecoveryWindow(review.submittedAt, stored.operation.startedAt))) {
+      const unresolved: DirectSummaryReviewState = { _tag: "OutcomeUnknown", operation: stored.operation, resolution: "manual_resolution_required" };
+      if (!(await this.save(current.value.session, unresolved))) return err("unavailable");
+      return ok(unresolved);
+    }
     const matches = candidates;
-    if (matches.length > 1) return ok(stored);
+    if (matches.length > 1) {
+      const unresolved: DirectSummaryReviewState = { _tag: "OutcomeUnknown", operation: stored.operation, resolution: "manual_resolution_required" };
+      if (!(await this.save(current.value.session, unresolved))) return err("unavailable");
+      return ok(unresolved);
+    }
     const match = matches[0];
     const next = match === undefined
       ? undefined
@@ -182,7 +191,7 @@ export class DirectSummaryReviewService {
 export function projectDirectSummaryReview(state: DirectSummaryReviewState | undefined): DirectSummaryReviewProjection {
   if (state === undefined) return { state: "idle" };
   if (state._tag === "Confirmed") return { state: "confirmed", receipt: { reviewId: state.receipt.reviewId, event: state.receipt.event } };
-  return { state: "recovery_required" };
+  return { state: "recovery_required", resolution: state._tag === "OutcomeUnknown" ? state.resolution : "check_required" };
 }
 
 /** GitHub review timestamps have second precision while local intents retain milliseconds. */

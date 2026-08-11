@@ -11,6 +11,8 @@ import {
   type ReviewInlineAnnotation,
 } from "./review-diff-view";
 import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
+import { parseGitHubThreadId } from "../../../domain/ids";
+import { citedHunkRelation, type ReadOnlyConversationAnnotation } from "../inline-conversation-mapping";
 
 export type NarrativeHunk = {
   readonly id: string;
@@ -59,7 +61,7 @@ export function NarrativeWalkthroughDiff({
   readonly allHunks?: ReadonlyArray<NarrativeHunk>;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly preferences?: ReviewViewPreferences;
-  readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
 }): React.JSX.Element {
   const sourcePatch = useMemo(
     () => patch ?? buildFallbackPatch(allHunks ?? hunks),
@@ -79,17 +81,35 @@ export function NarrativeWalkthroughDiff({
   const [localPreferences, setLocalPreferences] = useState<ReviewViewPreferences>(
     () => preferences ?? DEFAULT_REVIEW_VIEW_PREFERENCES,
   );
-  const visibleAnnotations = useMemo(
-    () =>
-      annotations.filter((annotation) =>
-        hunks.some((hunk) => {
-          if (hunk.path !== annotation.path) return false;
-          const start = annotation.side === "new" ? hunk.newStart : hunk.oldStart;
-          const count = annotation.side === "new" ? hunk.newLines : hunk.oldLines;
-          return count > 0 && annotation.start >= start && annotation.start < start + count;
-        }),
-      ),
+  const visibleConversation = useMemo(
+    () => annotations.flatMap((annotation) => {
+      const relation = hunks.flatMap((hunk) => citedHunkRelation(annotation, hunk) ?? []).at(0);
+      return relation === undefined ? [] : [{ annotation, relation }];
+    }),
     [annotations, hunks],
+  );
+  const visibleAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
+    () => visibleConversation.flatMap(({ annotation }) => {
+      const threadId = parseGitHubThreadId(annotation.id);
+      if (threadId._tag === "err") return [];
+      return [{
+        id: `walkthrough-conversation:${annotation.id}`,
+        path: annotation.path,
+        start: annotation.start,
+        end: annotation.end,
+        side: annotation.side,
+        severity: "conversation" as const,
+        title: "Conversation",
+        explanation: "",
+        conversationThread: {
+          target: { _tag: "thread" as const, id: threadId.value },
+          state: annotation.state,
+          ...(annotation.complete === undefined ? {} : { complete: annotation.complete }),
+          comments: annotation.comments,
+        },
+      }];
+    }),
+    [visibleConversation],
   );
   const selectedPath = hunks[0]?.path;
 
@@ -108,6 +128,7 @@ export function NarrativeWalkthroughDiff({
         </span>
         <span className="shrink-0 text-muted-foreground">{hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk{hunks.length === 1 ? "" : "s"}</span>
       </div>
+      {visibleConversation.some(({ relation }) => relation === "partial") ? <p className="border-b px-2 py-1.5 text-xs text-muted-foreground">A conversation thread overlaps this cited range; its GitHub anchor is shown without clipping.</p> : null}
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">Stored patch unavailable for this section.</p>
       ) : (

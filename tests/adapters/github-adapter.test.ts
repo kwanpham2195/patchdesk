@@ -1524,7 +1524,7 @@ describe("GitHubAdapter pending-review gateway", () => {
 
   it("starts a review with its first thread and reads the full owner back", async () => {
     const executor = new FakeProcessExecutor([
-      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha })),
+      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha, comments: [{ node_id: commentId }] })),
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
@@ -1538,7 +1538,8 @@ describe("GitHubAdapter pending-review gateway", () => {
     });
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
-    expect(result.value.restId).toBe("9001");
+    expect(result.value.review.restId).toBe("9001");
+    expect(result.value.createdThreadId).toBe(threadId);
     // The REST create passes the head SHA and the single inline comment.
     expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual({
       commit_id: headSha,
@@ -1549,7 +1550,7 @@ describe("GitHubAdapter pending-review gateway", () => {
 
   it("never fabricates a pending owner when the create read-back cannot be proven", async () => {
     const missingRead = new GitHubAdapter(new CommandRunner(new FakeProcessExecutor([
-      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha })),
+      exited(JSON.stringify({ id: reviewId, node_id: reviewNodeId, state: "PENDING", commit_id: headSha, comments: [{ node_id: commentId }] })),
       exited(JSON.stringify([{ id: reviewId, state: "PENDING", user: { login: account } }])),
       exited(threadsPayload()),
     ])));
@@ -1559,7 +1560,7 @@ describe("GitHubAdapter pending-review gateway", () => {
 
   it("appends a thread through the spike-proven GraphQL mutation and reads back", async () => {
     const executor = new FakeProcessExecutor([
-      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_kwDORJzsQM0002", path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }] } } } } })),
+      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: threadId, path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }] } } } } })),
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
@@ -1577,7 +1578,7 @@ describe("GitHubAdapter pending-review gateway", () => {
     // GitHub reject the mutation at schema validation (409 github_rejected)
     // before any execution. The query must nest pageInfo under comments.
     const executor = new FakeProcessExecutor([
-      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "PRRT_kwDORJzsQM0002", path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }], pageInfo: { hasNextPage: false } } } } } })),
+      exited(JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: threadId, path: "src/review.ts", line: 9, startLine: 9, diffSide: "RIGHT", comments: { nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }], pageInfo: { hasNextPage: false } } } } } })),
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);

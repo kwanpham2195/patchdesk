@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, FileSearch, GitMerge, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, GitMerge, RefreshCw, Sparkles, XCircle } from "lucide-react";
 
 import type {
   CheckSummary,
@@ -89,8 +89,6 @@ export type CanonicalReviewOverview = {
     readonly analysis: ReviewInsightState;
     readonly walkthrough: ReviewInsightState;
   };
-  /** Current safely mapped Findings from the represented Analysis session. */
-  readonly mappedFindingCount: number;
   readonly terminalState?: "merged" | "closed";
 };
 
@@ -101,14 +99,12 @@ export function CanonicalReviewOverviewSheet({
   overview,
   merge,
   onRefresh,
-  onViewFindings,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly overview: CanonicalReviewOverview;
   readonly merge?: PullRequestOverviewMerge;
   readonly onRefresh?: () => Promise<void>;
-  readonly onViewFindings?: () => void;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -162,15 +158,6 @@ export function CanonicalReviewOverviewSheet({
               text={insightStatusLabel(overview.insights.walkthrough.status)}
               tone={insightTone(overview.insights.walkthrough.status)}
             />
-            {overview.mappedFindingCount === 0 || onViewFindings === undefined ? null : (
-              <div className="flex items-center justify-between gap-3 py-1">
-                <span className="flex min-w-0 items-center gap-2">
-                  <FileSearch className="size-3.5 shrink-0 text-status-success" aria-hidden="true" />
-                  <span className="truncate">{overview.mappedFindingCount} current mapped {overview.mappedFindingCount === 1 ? "Finding" : "Findings"}</span>
-                </span>
-                <Button size="xs" variant="outline" onClick={onViewFindings}>View findings</Button>
-              </div>
-            )}
           </OverviewRow>
           <Separator />
           <OverviewRow

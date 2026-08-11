@@ -4,6 +4,8 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { FindingEvidenceHunk } from "./finding-evidence-hunk";
 
 type AnalysisResult = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"];
 type AnalysisFinding = AnalysisResult["findings"][number];
@@ -13,6 +15,10 @@ export type AnalysisReaderProps = {
   readonly onBack: () => void;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onDismissFinding?: (finding: AnalysisFinding, reason: string) => Promise<void>;
+  readonly findingStatuses?: Readonly<Record<string, "actionable" | "pending_review" | "published" | "locked">>;
+  readonly evidencePatch?: string;
+  readonly canFinishWithAnalysisSummary?: boolean;
+  readonly onFinishWithAnalysisSummary?: () => void;
   readonly scope: {
     readonly baseShort: string;
     readonly headShort: string;
@@ -25,7 +31,7 @@ export type AnalysisReaderProps = {
 };
 
 /** Persistent read-side view of one retained Analysis result. */
-export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding, scope }: AnalysisReaderProps): React.JSX.Element {
+export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding, findingStatuses, evidencePatch, canFinishWithAnalysisSummary = false, onFinishWithAnalysisSummary, scope }: AnalysisReaderProps): React.JSX.Element {
   const [actionError, setActionError] = useState<string | undefined>();
   const runAction = async (action: () => Promise<void>): Promise<void> => {
     setActionError(undefined);
@@ -38,7 +44,10 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Analysis reader</p>
           <h2 className="text-xl font-semibold">{result.changeSummary}</h2>
         </div>
-        <Button variant="outline" size="sm" onClick={onBack}>Back to Insights</Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {canFinishWithAnalysisSummary && onFinishWithAnalysisSummary !== undefined ? <Button size="sm" onClick={onFinishWithAnalysisSummary}>Finish review with Analysis summary</Button> : null}
+          <Button variant="outline" size="sm" onClick={onBack}>Back to Insights</Button>
+        </div>
       </div>
       {actionError !== undefined ? <p role="alert" className="text-sm text-destructive">{actionError}</p> : null}
       <Card>
@@ -78,7 +87,7 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
         <CardContent>
           {result.findings.length === 0 ? <p className="text-sm text-muted-foreground">No Findings were reported.</p> : (
             <ul className="flex flex-col gap-3">
-              {result.findings.map((finding) => <AnalysisFindingRow key={finding.id} finding={finding} {...(onAddFinding === undefined ? {} : { onAddFinding: (value) => runAction(() => onAddFinding(value)) })} {...(onDismissFinding === undefined ? {} : { onDismissFinding: (value, reason) => runAction(() => onDismissFinding(value, reason)) })} />)}
+              {result.findings.map((finding) => <AnalysisFindingRow key={finding.id} finding={finding} status={findingStatuses?.[finding.id]} {...(evidencePatch === undefined ? {} : { evidencePatch })} {...(onAddFinding === undefined ? {} : { onAddFinding: (value) => runAction(() => onAddFinding(value)) })} {...(onDismissFinding === undefined ? {} : { onDismissFinding: (value, reason) => runAction(() => onDismissFinding(value, reason)) })} />)}
             </ul>
           )}
         </CardContent>
@@ -97,9 +106,18 @@ export function AnalysisReader({ result, onBack, onAddFinding, onDismissFinding,
   );
 }
 
-function AnalysisFindingRow({ finding, onAddFinding, onDismissFinding }: { readonly finding: AnalysisFinding; readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>; readonly onDismissFinding?: (finding: AnalysisFinding, reason: string) => Promise<void> }): React.JSX.Element {
+function AnalysisFindingRow({ finding, status, evidencePatch, onAddFinding, onDismissFinding }: { readonly finding: AnalysisFinding; readonly status?: "actionable" | "pending_review" | "published" | "locked" | undefined; readonly evidencePatch?: string | undefined; readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>; readonly onDismissFinding?: (finding: AnalysisFinding, reason: string) => Promise<void> }): React.JSX.Element {
   const [reason, setReason] = useState("");
   const disposition = finding.disposition ?? "open";
+  const reviewStatus = status ?? (disposition === "dismissed" ? "dismissed" : "unavailable");
+  const evidenceAnchor = evidencePatch === undefined || finding.file === undefined || finding.lineStart === undefined
+    ? undefined
+    : (() => {
+        const location = mapFindingLocation(parseUnifiedPatch(evidencePatch), { file: finding.file, lineStart: finding.lineStart, ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }), ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }) });
+        return location.mappingStatus === "mapped" && location.path !== undefined && location.line !== undefined && location.side !== undefined
+          ? { path: location.path, startLine: location.startLine ?? location.line, line: location.line, side: location.side }
+          : undefined;
+      })();
   return (
     <li className="rounded-md border p-3">
       <div className="flex items-start justify-between gap-3">
@@ -108,12 +126,14 @@ function AnalysisFindingRow({ finding, onAddFinding, onDismissFinding }: { reado
           <p className="mt-1 text-sm text-muted-foreground">{finding.explanation}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge variant={disposition === "dismissed" ? "outline" : disposition === "added" ? "secondary" : "default"}>{disposition}</Badge>
-          {disposition === "open" && onAddFinding !== undefined ? <Button size="xs" variant="outline" onClick={() => onAddFinding(finding)}>Add</Button> : null}
+          <Badge variant={reviewStatus === "published" || reviewStatus === "pending_review" ? "secondary" : reviewStatus === "locked" || disposition === "dismissed" ? "outline" : "default"}>{reviewStatus.replaceAll("_", " ")}</Badge>
+          {disposition === "open" && reviewStatus === "actionable" && onAddFinding !== undefined ? <Button size="xs" variant="outline" onClick={() => onAddFinding(finding)}>Add to review</Button> : null}
           {disposition === "open" && onDismissFinding !== undefined ? <Button size="xs" variant="ghost" onClick={() => onDismissFinding(finding, reason)} disabled={reason.trim().length === 0}>Dismiss</Button> : null}
         </div>
       </div>
       {finding.file !== undefined ? <p className="mt-2 text-xs text-muted-foreground">{finding.file}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`}</p> : null}
+      {evidencePatch === undefined || evidenceAnchor === undefined ? null : <FindingEvidenceHunk patch={evidencePatch} anchor={evidenceAnchor} />}
+      {reviewStatus === "locked" ? <p className="mt-2 text-sm text-muted-foreground">Check GitHub again before changing this Finding.</p> : null}
       {disposition === "open" && onDismissFinding !== undefined ? <input aria-label={`Dismiss reason for ${finding.title}`} className="mt-2 w-full rounded border px-2 py-1 text-sm" placeholder="Dismissal reason" value={reason} onChange={(event) => setReason(event.target.value)} /> : null}
     </li>
   );

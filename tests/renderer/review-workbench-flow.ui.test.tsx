@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
@@ -146,12 +153,12 @@ describe("ReviewWorkbenchFlow", () => {
     ).toBeTruthy();
   });
 
-  it("applies typed fixture initial state to the production navigator and overview", async () => {
-    const value = createUnifiedReviewFixture("files-finding-selected");
+  it("keeps Findings in Analysis instead of the Diff navigator", async () => {
+    const value = createUnifiedReviewFixture("files-default");
     render(
       <ReviewWorkbenchFlow
         workbench={value}
-        initialUiState={unifiedReviewInitialState("files-finding-selected")}
+        initialUiState={unifiedReviewInitialState("files-default")}
         onWorkbenchReplace={vi.fn()}
         onWorkbenchPatch={vi.fn()}
         onNavigationStateChange={vi.fn()}
@@ -160,13 +167,10 @@ describe("ReviewWorkbenchFlow", () => {
     );
     await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
     expect(
-      screen.getByRole("tab", { name: "Findings", selected: true }),
+      screen.getByRole("tab", { name: "Browse", selected: true }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: /Keep writes behind the stale-head check/,
-      }),
-    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Commits" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Findings" })).toBeNull();
 
     cleanup();
     const overview = createUnifiedReviewFixture("pr-overview");
@@ -239,16 +243,50 @@ describe("ReviewWorkbenchFlow", () => {
     Object.defineProperty(window, "patchdesk", {
       configurable: true,
       value: {
-        request: vi.fn(async (request: { readonly path: string; readonly method?: string; readonly body?: unknown }) => {
-          calls.push(request.path);
-          if (request.path === "/v1/reviews/publication/preview")
-            return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
-          if (request.path === "/v1/reviews/publication/confirm")
-            return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
-          if (request.path === "/v1/reviews/refresh" || request.path === "/v1/reviews/load")
-            return { ok: true, status: 200, correlationId: request.path, body: workbench };
-          throw new Error(`unexpected ${request.path}`);
-        }),
+        request: vi.fn(
+          async (request: {
+            readonly path: string;
+            readonly method?: string;
+            readonly body?: unknown;
+          }) => {
+            calls.push(request.path);
+            if (request.path === "/v1/reviews/publication/preview")
+              return {
+                ok: true,
+                status: 200,
+                correlationId: "preview",
+                body: {
+                  reviewId: workbench.review.id,
+                  sessionId: workbench.session.id,
+                  headSha: workbench.revision.reviewedHeadSha,
+                  draftRevision: workbench.draft?.updatedAt,
+                  event: "COMMENT",
+                  body: "# Review",
+                  inlineComments: [],
+                  threadActions: [],
+                  warnings: [],
+                },
+              };
+            if (request.path === "/v1/reviews/publication/confirm")
+              return {
+                ok: true,
+                status: 200,
+                correlationId: "confirm",
+                body: { batch: workbench.draft },
+              };
+            if (
+              request.path === "/v1/reviews/refresh" ||
+              request.path === "/v1/reviews/load"
+            )
+              return {
+                ok: true,
+                status: 200,
+                correlationId: request.path,
+                body: workbench,
+              };
+            throw new Error(`unexpected ${request.path}`);
+          },
+        ),
       },
     });
     render(
@@ -260,11 +298,17 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "Preview publication" }));
-    await user.click(screen.getByRole("button", { name: "Confirm publication" }));
+    await user.click(
+      screen.getByRole("button", { name: "Preview publication" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirm publication" }),
+    );
     // After confirm, refresh then load should be called in sequence.
     // Wait for the async confirm handler to complete.
-    await vi.waitFor(() => expect(calls).toContain("/v1/reviews/load"), { timeout: 5000 });
+    await vi.waitFor(() => expect(calls).toContain("/v1/reviews/load"), {
+      timeout: 5000,
+    });
     const confirmIndex = calls.indexOf("/v1/reviews/publication/confirm");
     const refreshIndex = calls.indexOf("/v1/reviews/refresh");
     const loadIndex = calls.indexOf("/v1/reviews/load");
@@ -280,8 +324,12 @@ describe("ReviewWorkbenchFlow", () => {
       summaryBody: "",
       items: [],
     });
-    expect(value.conversation.entries.filter(e => e._tag === "ReviewSummary")).toHaveLength(1);
-    expect(value.conversation.entries.filter(e => e._tag === "IssueComment")).toHaveLength(1);
+    expect(
+      value.conversation.entries.filter((e) => e._tag === "ReviewSummary"),
+    ).toHaveLength(1);
+    expect(
+      value.conversation.entries.filter((e) => e._tag === "IssueComment"),
+    ).toHaveLength(1);
     render(
       <ReviewWorkbenchFlow
         workbench={value}
@@ -298,7 +346,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.getByText("0 included")).toBeTruthy();
   });
 
-  it("shows Analysis completion choices in the explicit run setup dialog", async () => {
+  it("does not offer local draft or publication completion choices in the Analysis run dialog", async () => {
     const request = vi.fn(async (input: { readonly path: string }) => {
       if (input.path === "/v1/reviews/models")
         return {
@@ -335,22 +383,20 @@ describe("ReviewWorkbenchFlow", () => {
     await user.click(screen.getByRole("tab", { name: "Insights" }));
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: "Run" }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole("button", {
+            name: "Generate analysis",
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false),
     );
-    await user.click(screen.getByRole("button", { name: "Run" }));
+    await user.click(screen.getByRole("button", { name: "Generate analysis" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByLabelText("Insight model")).toBeTruthy();
     expect(screen.getByLabelText("Insight reasoning")).toBeTruthy();
-    expect(screen.getByLabelText("Analysis completion").textContent).toContain(
-      "Open preview when complete",
-    );
-    await user.click(screen.getByLabelText("Analysis completion"));
-    expect(screen.getByText("Save as Review draft")).toBeTruthy();
-    expect(screen.getByText("Publish as Comment")).toBeTruthy();
-    expect(screen.getByText("Publish as Approve")).toBeTruthy();
-    expect(screen.getByText("Publish as Request changes")).toBeTruthy();
+    expect(screen.queryByLabelText("Analysis completion")).toBeNull();
+    expect(screen.queryByText("Save as Review draft")).toBeNull();
+    expect(screen.queryByText("Publish as Comment")).toBeNull();
   });
 
   it("shows provider guidance and disables Insight runs for an intentional empty catalog", async () => {
@@ -384,8 +430,11 @@ describe("ReviewWorkbenchFlow", () => {
       expect(screen.getByText(/No eligible model configured/)).toBeTruthy(),
     );
     expect(
-      (screen.getByRole("button", { name: /^Run$/ }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Generate analysis",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -440,11 +489,14 @@ describe("ReviewWorkbenchFlow", () => {
     await user.click(screen.getByRole("tab", { name: "Insights" }));
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: /^Run$/ }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole("button", {
+            name: "Generate analysis",
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false),
     );
-    await user.click(screen.getByRole("button", { name: /^Run$/ }));
+    await user.click(screen.getByRole("button", { name: "Generate analysis" }));
     const modelSelect = screen.getByLabelText("Insight model");
     const last = models[268];
     if (last === undefined) throw new Error("Expected last universal model");
@@ -531,11 +583,16 @@ describe("ReviewWorkbenchFlow", () => {
     );
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: "Run" }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole("button", {
+            name: "Generate Walkthrough",
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false),
     );
-    await user.click(screen.getByRole("button", { name: "Run" }));
+    await user.click(
+      screen.getByRole("button", { name: "Generate Walkthrough" }),
+    );
     expect(
       calls.some(
         (call) => call.path === "/v1/reviews/insights/walkthrough/run",
@@ -633,11 +690,11 @@ describe("ReviewWorkbenchFlow", () => {
     );
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: "Run again" }) as HTMLButtonElement)
+        (screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement)
           .disabled,
       ).toBe(false),
     );
-    await user.click(screen.getByRole("button", { name: "Run again" }));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(
       screen.getByRole("heading", { name: "Run Analysis again" }),
     ).toBeTruthy();
@@ -690,7 +747,6 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
     await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("button", { name: "Open Analysis" }));
     expect(
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
@@ -799,7 +855,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
   });
 
-  it("renders a first-run Analysis failure diagnostic without inventing retained content", () => {
+  it("renders a first-run Analysis failure without exposing diagnostics", () => {
     const value = createUnifiedReviewFixture("analysis-failed");
     render(
       <ReviewWorkbenchFlow
@@ -814,21 +870,15 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByText("The Insight failed unexpectedly. Try again."),
     ).toBeTruthy();
-    expect(
-      screen.getByText("Selected model: fixture-model · Reasoning: medium"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review",
-      ),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Run again" })).toBeTruthy();
+    expect(screen.queryByText(/Selected model:/)).toBeNull();
+    expect(screen.queryByText(/Correlation ID:/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: "Analysis reader" }),
     ).toBeNull();
   });
 
-  it("renders a persisted first-run failure diagnostic without retained content", () => {
+  it("renders a persisted first-run failure without diagnostics", () => {
     const value = createUnifiedReviewFixture("analysis-failed");
     value.insights.analysis = {
       ...value.insights.analysis,
@@ -853,20 +903,14 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByText("The Insight failed unexpectedly. Try again."),
     ).toBeTruthy();
-    expect(
-      screen.getByText("Selected model: fixture-model · Reasoning: medium"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Selected model:/)).toBeNull();
+    expect(screen.queryByText(/Correlation ID:/)).toBeNull();
     expect(
       screen.queryByRole("region", { name: "Analysis reader" }),
     ).toBeNull();
   });
 
-  it("renders safe category, selected run configuration, and run correlation for both Insight types", () => {
+  it("renders bounded failure copy without provider diagnostics", () => {
     const value = createUnifiedReviewFixture("analysis-failed");
     const diagnostic = {
       runId: "insight-analysis-1-aaaaaaaaaaaa-review",
@@ -898,17 +942,11 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
     expect(screen.getByText(/provider rate limit was reached/)).toBeTruthy();
-    expect(
-      screen.getByText("Selected model: fixture-model · Reasoning: high"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Selected model:/)).toBeNull();
+    expect(screen.queryByText(/Correlation ID:/)).toBeNull();
   });
 
-  it("renders replacement failure diagnostics while keeping retained Analysis readable", () => {
+  it("keeps retained Analysis readable after a bounded replacement failure", () => {
     const value = createUnifiedReviewFixture("analysis-replacement-failed");
     render(
       <ReviewWorkbenchFlow
@@ -925,20 +963,11 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByText("The Insight failed unexpectedly. Try again."),
     ).toBeTruthy();
-    expect(
-      screen.getByText("Selected model: fixture-model · Reasoning: medium"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Correlation ID: insight-analysis-1-aaaaaaaaaaaa-review",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Selected model:/)).toBeNull();
+    expect(screen.queryByText(/Correlation ID:/)).toBeNull();
     expect(
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
-    expect(
-      screen.getAllByText("Review completed for Patchdesk workbench").length,
-    ).toBeGreaterThanOrEqual(2);
   });
 
   it("keeps retained Analysis readable beneath a replacement-running treatment", () => {
@@ -991,9 +1020,7 @@ describe("ReviewWorkbenchFlow", () => {
       name: "Insight navigation",
     });
     expect(insightNavigation.className).not.toContain("md:flex-col");
-    expect(
-      screen.getByRole("button", { name: /Walkthrough/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Walkthrough/ })).toBeTruthy();
     const feedbackDock = document.querySelector<HTMLElement>(
       "[data-review-workbench-feedback]",
     );
@@ -1004,13 +1031,90 @@ describe("ReviewWorkbenchFlow", () => {
       throw new Error("Expected the retained bottom docks");
     expect(feedbackDock.classList.contains("hidden")).toBe(true);
     expect(draftDock.classList.contains("hidden")).toBe(true);
-    await userEvent
-      .setup()
-      .click(screen.getByRole("tab", { name: "Diff" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
     expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
     expect(
       screen.getAllByLabelText("Review diff").length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("hides only Insights-local chrome while Walkthrough focus is active", async () => {
+    const calls: Array<{ readonly path: string }> = [];
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      calls.push(input);
+      if (input.path === "/v1/reviews/models")
+        return {
+          ok: true,
+          body: {
+            models: [{ id: "fixture-model", label: "Fixture model" }],
+            defaultModel: "fixture-model",
+          },
+          correlationId: "models",
+        };
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          body: { updatesAvailable: false },
+          correlationId: "detect",
+        };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={createUnifiedReviewFixture("walkthrough-current")}
+        initialUiState={unifiedReviewInitialState("walkthrough-current")}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Focus section" }),
+      ).toBeTruthy(),
+    );
+    const callsBeforeFocus = calls.length;
+    await user.click(screen.getByRole("button", { name: "Focus section" }));
+
+    expect(
+      screen.queryByRole("navigation", { name: "Insight navigation" }),
+    ).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-review-insight-document="walkthrough"] > header',
+      ),
+    ).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Review workbench" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Walkthrough chapters" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Next section" })).toBeTruthy();
+    expect(calls).toHaveLength(callsBeforeFocus);
+
+    await user.click(screen.getByRole("button", { name: "Exit focus" }));
+    expect(
+      screen.getByRole("navigation", { name: "Insight navigation" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelector(
+        '[data-review-insight-document="walkthrough"] > header',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Walkthrough chapters" }),
+    ).toBeTruthy();
+    expect(calls).toHaveLength(callsBeforeFocus);
+    expect(calls.some((call) => call.path.includes("/progress"))).toBe(false);
   });
 
   it("keeps outdated Walkthrough readable beneath its treatment", () => {
@@ -1167,78 +1271,6 @@ describe("ReviewWorkbenchFlow", () => {
     );
   });
 
-  it("shows only current mapped Findings and focuses their evidence", async () => {
-    const value = {
-      ...projection(),
-      fullPatch:
-        "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1,2 @@\\n-old\\n+new\\n+mapped\\n",
-      insights: {
-        analysis: {
-          status: "current" as const,
-          retained: {
-            sessionId: "session-a",
-            headSha: "a".repeat(40),
-            generatedAt: "2026-08-01T00:00:00.000Z",
-            value: {
-              changeSummary: "Findings",
-              verdict: "comment" as const,
-              summary: "Findings",
-              findings: [
-                {
-                  id: "mapped",
-                  severity: "P1" as const,
-                  title: "Mapped finding",
-                  file: "src/a.ts",
-                  lineStart: 2,
-                  diffSide: "new" as const,
-                  explanation: "Mapped",
-                  confidence: "high" as const,
-                  mappingStatus: "mapped" as const,
-                },
-                {
-                  id: "unmapped",
-                  severity: "P2" as const,
-                  title: "Outdated finding",
-                  explanation: "Outdated",
-                  confidence: "medium" as const,
-                  mappingStatus: "unmapped" as const,
-                },
-              ],
-              validationPlan: [],
-              assumptions: [],
-            },
-          },
-        },
-        walkthrough: { status: "not_generated" as const },
-      },
-    };
-    render(
-      <ReviewWorkbenchFlow
-        workbench={value}
-        onWorkbenchReplace={vi.fn()}
-        onWorkbenchPatch={vi.fn()}
-        onNavigationStateChange={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-    );
-    await userEvent
-      .setup()
-      .click(screen.getByRole("tab", { name: "Diff" }));
-    await userEvent
-      .setup()
-      .click(screen.getByRole("tab", { name: "Findings" }));
-    expect(screen.getByRole("button", { name: /Mapped finding/ })).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: /Outdated finding/ }),
-    ).toBeNull();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: /Mapped finding/ }));
-    expect(
-      screen.getByLabelText("Review diff").getAttribute("data-selected-path"),
-    ).toBe("src/a.ts");
-  });
-
   it("selects the newest commit and suppresses stale commit responses", async () => {
     const value = {
       ...projection(),
@@ -1390,12 +1422,16 @@ describe("ReviewWorkbenchFlow", () => {
       expect(within(dialog).getByText("main ← feature")).toBeTruthy();
       expect(within(dialog).getByText("a".repeat(8))).toBeTruthy();
       expect(within(dialog).getByText(/Refreshed 2026-08-01/)).toBeTruthy();
-      expect(within(dialog).getByText("1 commit · 3 files changed")).toBeTruthy();
+      expect(
+        within(dialog).getByText("1 commit · 3 files changed"),
+      ).toBeTruthy();
       expect(
         within(dialog).getByRole("button", { name: "Refresh GitHub state" }),
       ).toBeTruthy();
 
-      expect(within(dialog).getByRole("button", { name: "Checks" })).toBeTruthy();
+      expect(
+        within(dialog).getByRole("button", { name: "Checks" }),
+      ).toBeTruthy();
       expect(within(dialog).getByText("Passing")).toBeTruthy();
       await user.click(within(dialog).getByRole("button", { name: "Checks" }));
       expect(within(dialog).getByText("unit")).toBeTruthy();
@@ -1480,42 +1516,6 @@ describe("ReviewWorkbenchFlow", () => {
       );
     });
 
-    it("shows current mapped-Finding count and routes View findings to the existing Findings surface", async () => {
-      const user = userEvent.setup();
-      render(
-        <ReviewWorkbenchFlow
-          workbench={createUnifiedReviewFixture("walkthrough-current")}
-          initialUiState={unifiedReviewInitialState("walkthrough-current")}
-          onWorkbenchReplace={vi.fn()}
-          onWorkbenchPatch={vi.fn()}
-          onNavigationStateChange={vi.fn()}
-          onNavigate={vi.fn()}
-        />,
-      );
-      await user.click(screen.getByRole("button", { name: "PR overview" }));
-      const dialog = screen.getByRole("dialog");
-
-      expect(within(dialog).getByText("Walkthrough")).toBeTruthy();
-      expect(
-        within(dialog).getAllByText("Current").length,
-      ).toBeGreaterThanOrEqual(2);
-      expect(within(dialog).getByText("1 current mapped Finding")).toBeTruthy();
-      await user.click(
-        within(dialog).getByRole("button", { name: "View findings" }),
-      );
-      expect(
-        screen.queryByRole("heading", { name: "PR overview" }),
-      ).toBeNull();
-      expect(
-        screen.getByRole("tab", { name: "Findings", selected: true }),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole("button", {
-          name: /Keep writes behind the stale-head check/,
-        }),
-      ).toBeTruthy();
-    });
-
     it("renders acknowledgement-required and blocked merge states with friendly copy and no duplicate alert", async () => {
       const user = userEvent.setup();
       const base = {
@@ -1531,7 +1531,11 @@ describe("ReviewWorkbenchFlow", () => {
         mergeReadiness: {
           _tag: "NeedsAcknowledgement" as const,
           blockers: [],
-          warnings: ["request_changes", "high_severity_finding", "analysis_finding"],
+          warnings: [
+            "request_changes",
+            "high_severity_finding",
+            "analysis_finding",
+          ],
         },
         mergeReasons: [],
       };
@@ -1548,7 +1552,9 @@ describe("ReviewWorkbenchFlow", () => {
       let dialog = screen.getByRole("dialog");
       expect(within(dialog).getByText("Changes requested.")).toBeTruthy();
       expect(
-        within(dialog).getByText("High-severity local findings need acknowledgement."),
+        within(dialog).getByText(
+          "High-severity local findings need acknowledgement.",
+        ),
       ).toBeTruthy();
       expect(
         within(dialog).getByText(
@@ -1617,7 +1623,9 @@ describe("ReviewWorkbenchFlow", () => {
         }),
       ).toBeNull();
       expect(within(dialog).queryByText("Merge blocked")).toBeNull();
-      expect(within(dialog).queryByRole("button", { name: "Checks" })).toBeTruthy();
+      expect(
+        within(dialog).queryByRole("button", { name: "Checks" }),
+      ).toBeTruthy();
     });
 
     it("keeps terminal Reviews readable in PR Overview without Refresh or merge controls", async () => {
@@ -1641,7 +1649,9 @@ describe("ReviewWorkbenchFlow", () => {
           ),
         ).toBeTruthy();
         expect(
-          within(dialog).queryByRole("button", { name: "Refresh GitHub state" }),
+          within(dialog).queryByRole("button", {
+            name: "Refresh GitHub state",
+          }),
         ).toBeNull();
         expect(
           within(dialog).queryByRole("button", {
@@ -1710,23 +1720,40 @@ describe("ReviewWorkbenchFlow", () => {
   it("publishes an inline comment, skips the background refresh, and journals the write for detection", async () => {
     vi.useFakeTimers();
     try {
-      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
-        if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-        if (input.path === "/v1/reviews/inline-conversations/command")
-          // The REST create receipt has no thread id.
-          return { ok: true, body: { _tag: "CommentCreated", commentId: "c-optimistic", reviewId: "review-42" }, correlationId: "command" };
-        if (input.path === "/v1/reviews/refresh")
-          return { ok: true, body: projection(), correlationId: "refresh" };
-        throw new Error(`unexpected ${input.path}`);
-      });
+      const request = vi.fn(
+        async (input: { readonly path: string; readonly body?: unknown }) => {
+          if (input.path === "/v1/reviews/detect-updates")
+            return {
+              ok: true,
+              body: { updatesAvailable: false },
+              correlationId: "detect",
+            };
+          if (input.path === "/v1/reviews/inline-conversations/command")
+            // The REST create receipt has no thread id.
+            return {
+              ok: true,
+              body: {
+                _tag: "CommentCreated",
+                commentId: "c-optimistic",
+                reviewId: "review-42",
+              },
+              correlationId: "command",
+            };
+          if (input.path === "/v1/reviews/refresh")
+            return { ok: true, body: projection(), correlationId: "refresh" };
+          throw new Error(`unexpected ${input.path}`);
+        },
+      );
       Object.defineProperty(window, "patchdesk", {
         configurable: true,
         value: { request },
       });
       const withPatchHash = {
         ...projection(),
-        revision: { ...projection().revision, patchHash: "patch-hash" as const },
+        revision: {
+          ...projection().revision,
+          patchHash: "patch-hash" as const,
+        },
       };
       render(
         <ReviewWorkbenchFlow
@@ -1739,21 +1766,31 @@ describe("ReviewWorkbenchFlow", () => {
       );
       await vi.advanceTimersByTimeAsync(0);
       fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      const authorButtons = screen.getAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
       // The fixture patch has one deleted and one added line; the added line's
       // author button is the one that anchors a new-side comment.
       expect(authorButtons.length).toBeGreaterThan(1);
       const addedAuthorButton = authorButtons[1];
-      if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
+      if (addedAuthorButton === undefined)
+        throw new Error("fixture: added-line author button missing");
       fireEvent.click(addedAuthorButton);
-      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Optimistic body" } });
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        { target: { value: "Optimistic body" } },
+      );
       fireEvent.click(screen.getByRole("button", { name: "Comment" }));
       await vi.advanceTimersByTimeAsync(0);
       const commandCall = request.mock.calls.find(
-        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+        (call) =>
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/inline-conversations/command",
       );
       expect(commandCall).toBeDefined();
-      expect((commandCall?.[0] as { readonly body: unknown }).body).toMatchObject({
+      expect(
+        (commandCall?.[0] as { readonly body: unknown }).body,
+      ).toMatchObject({
         profileId: "profile",
         reviewId: "review-42",
         command: {
@@ -1764,7 +1801,9 @@ describe("ReviewWorkbenchFlow", () => {
       });
       expect(
         request.mock.calls.some(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/refresh",
+          (call) =>
+            (call[0] as { readonly path: string }).path ===
+            "/v1/reviews/refresh",
         ),
       ).toBe(false);
       // A direct receipt never triggers an immediate detection pass; the typed
@@ -1773,15 +1812,31 @@ describe("ReviewWorkbenchFlow", () => {
       await vi.advanceTimersByTimeAsync(90_000);
       const detectCall = request.mock.calls.find(
         (call) =>
-          (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates" &&
-          (call[0] as { readonly body?: { readonly recentWrites?: unknown } }).body?.recentWrites !== undefined,
+          (call[0] as { readonly path: string }).path ===
+            "/v1/reviews/detect-updates" &&
+          (call[0] as { readonly body?: { readonly recentWrites?: unknown } })
+            .body?.recentWrites !== undefined,
       );
       expect(detectCall).toBeDefined();
       expect(
-        (detectCall?.[0] as { readonly body?: { readonly recentWrites?: ReadonlyArray<{ readonly _tag: string; readonly commentId: string; readonly reviewId?: string }> } }).body?.recentWrites,
-      ).toEqual([{ _tag: "Comment", commentId: "c-optimistic", reviewId: "review-42" }]);
+        (
+          detectCall?.[0] as {
+            readonly body?: {
+              readonly recentWrites?: ReadonlyArray<{
+                readonly _tag: string;
+                readonly commentId: string;
+                readonly reviewId?: string;
+              }>;
+            };
+          }
+        ).body?.recentWrites,
+      ).toEqual([
+        { _tag: "Comment", commentId: "c-optimistic", reviewId: "review-42" },
+      ]);
       await vi.advanceTimersByTimeAsync(0);
-      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+      expect(
+        screen.queryByRole("textbox", { name: "Inline comment" }),
+      ).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -1789,13 +1844,23 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("does not run an immediate detection pass after a direct conversation receipt", async () => {
     const user = userEvent.setup();
-    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      if (input.path === "/v1/reviews/inline-conversations/command")
-        return { ok: true, body: { _tag: "CommentCreated", commentId: "c-new" }, correlationId: "command" };
-      throw new Error(`unexpected ${input.path}`);
-    });
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return {
+            ok: true,
+            body: { _tag: "CommentCreated", commentId: "c-new" },
+            correlationId: "command",
+          };
+        throw new Error(`unexpected ${input.path}`);
+      },
+    );
     Object.defineProperty(window, "patchdesk", {
       configurable: true,
       value: { request },
@@ -1815,21 +1880,31 @@ describe("ReviewWorkbenchFlow", () => {
     );
     const detectCount = (): number =>
       request.mock.calls.filter(
-        (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+        (call) =>
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates",
       ).length;
     // The initial visible-Review detection is the only one so far.
     await waitFor(() => expect(detectCount()).toBe(1));
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+    const authorButtons = screen.getAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
     const addedAuthorButton = authorButtons[1];
-    if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
+    if (addedAuthorButton === undefined)
+      throw new Error("fixture: added-line author button missing");
     await user.click(addedAuthorButton);
-    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Body");
+    await user.type(
+      screen.getByRole("textbox", { name: "Inline comment" }),
+      "Body",
+    );
     await user.click(screen.getByRole("button", { name: "Comment" }));
     await waitFor(() =>
       expect(
         request.mock.calls.some(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/inline-conversations/command",
+          (call) =>
+            (call[0] as { readonly path: string }).path ===
+            "/v1/reviews/inline-conversations/command",
         ),
       ).toBe(true),
     );
@@ -1844,7 +1919,11 @@ describe("ReviewWorkbenchFlow", () => {
     try {
       const request = vi.fn(async (input: { readonly path: string }) => {
         if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
         throw new Error(`unexpected ${input.path}`);
       });
       vi.stubGlobal("window", window);
@@ -1863,7 +1942,9 @@ describe("ReviewWorkbenchFlow", () => {
       );
       const detectCount = (): number =>
         request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+          (call) =>
+            (call[0] as { readonly path: string }).path ===
+            "/v1/reviews/detect-updates",
         ).length;
       // waitFor cannot poll under vitest fake timers (no global jest), so the
       // initial effect is flushed by advancing timers instead.
@@ -1884,7 +1965,11 @@ describe("ReviewWorkbenchFlow", () => {
     try {
       const request = vi.fn(async (input: { readonly path: string }) => {
         if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
         throw new Error(`unexpected ${input.path}`);
       });
       vi.stubGlobal("window", window);
@@ -1903,7 +1988,9 @@ describe("ReviewWorkbenchFlow", () => {
       );
       const detectCount = (): number =>
         request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
+          (call) =>
+            (call[0] as { readonly path: string }).path ===
+            "/v1/reviews/detect-updates",
         ).length;
       await vi.advanceTimersByTimeAsync(0);
       expect(detectCount()).toBe(1);
@@ -1922,9 +2009,13 @@ describe("ReviewWorkbenchFlow", () => {
       resolveDetect = resolve;
     });
     const value = projection();
-    const refreshed = { ...value, session: { ...value.session, id: "session-b" } };
+    const refreshed = {
+      ...value,
+      session: { ...value.session, id: "session-b" },
+    };
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/detect-updates") return await pendingDetect;
+      if (input.path === "/v1/reviews/detect-updates")
+        return await pendingDetect;
       if (input.path === "/v1/reviews/refresh")
         return { ok: true, body: refreshed, correlationId: "refresh" };
       throw new Error(`unexpected ${input.path}`);
@@ -1953,383 +2044,538 @@ describe("ReviewWorkbenchFlow", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
     // The stale detection completes after refresh replaced the projection; it
     // must not reapply updates_available to the newly refreshed Review.
-    resolveDetect({ ok: true, body: { updatesAvailable: true }, correlationId: "detect" });
+    resolveDetect({
+      ok: true,
+      body: { updatesAvailable: true },
+      correlationId: "detect",
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(patch).not.toHaveBeenCalled();
   });
 });
 
-  it("invalidates an in-flight detector when publication refresh replaces the projection", async () => {
-    vi.useFakeTimers();
-    try {
-      const workbench = createUnifiedReviewFixture("publication-ready");
-      // The wire codec re-derives the projection, so refresh/load responses must
-      // be wire-valid (the fixture model is a renderer shape).
-      const refreshed = {
-        ...projection(),
-        draft: workbench.draft,
-        session: { ...projection().session, id: "session-b" },
-      };
-      let resolvePendingDetect!: (value: unknown) => void;
-      const pendingDetect = new Promise((resolve) => {
-        resolvePendingDetect = resolve;
-      });
-      let detectCalls = 0;
-      const request = vi.fn(async (input: { readonly path: string; readonly method?: string; readonly body?: unknown }) => {
+it("invalidates an in-flight detector when publication refresh replaces the projection", async () => {
+  vi.useFakeTimers();
+  try {
+    const workbench = createUnifiedReviewFixture("publication-ready");
+    // The wire codec re-derives the projection, so refresh/load responses must
+    // be wire-valid (the fixture model is a renderer shape).
+    const refreshed = {
+      ...projection(),
+      draft: workbench.draft,
+      session: { ...projection().session, id: "session-b" },
+    };
+    let resolvePendingDetect!: (value: unknown) => void;
+    const pendingDetect = new Promise((resolve) => {
+      resolvePendingDetect = resolve;
+    });
+    let detectCalls = 0;
+    const request = vi.fn(
+      async (input: {
+        readonly path: string;
+        readonly method?: string;
+        readonly body?: unknown;
+      }) => {
         if (input.path === "/v1/reviews/detect-updates") {
           detectCalls += 1;
           // The first detection (on mount) completes normally; the second is
           // the one still in flight while publication confirm refreshes.
           if (detectCalls === 1)
-            return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: false } };
+            return {
+              ok: true,
+              status: 200,
+              correlationId: "detect",
+              body: { updatesAvailable: false },
+            };
           return await pendingDetect;
         }
         if (input.path === "/v1/reviews/publication/preview")
-          return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "preview",
+            body: {
+              reviewId: workbench.review.id,
+              sessionId: workbench.session.id,
+              headSha: workbench.revision.reviewedHeadSha,
+              draftRevision: workbench.draft?.updatedAt,
+              event: "COMMENT",
+              body: "# Review",
+              inlineComments: [],
+              threadActions: [],
+              warnings: [],
+            },
+          };
         if (input.path === "/v1/reviews/publication/confirm")
-          return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "confirm",
+            body: { batch: workbench.draft },
+          };
         if (input.path === "/v1/reviews/refresh")
-          return { ok: true, status: 200, correlationId: "refresh", body: refreshed };
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "refresh",
+            body: refreshed,
+          };
         if (input.path === "/v1/reviews/load")
-          return { ok: true, status: 200, correlationId: "load", body: refreshed };
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "load",
+            body: refreshed,
+          };
         throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      const replace = vi.fn();
-      const patch = vi.fn();
-      render(
-        <ReviewWorkbenchFlow
-          workbench={workbench}
-          onWorkbenchReplace={replace}
-          onWorkbenchPatch={patch}
-          onNavigationStateChange={vi.fn()}
-          onNavigate={vi.fn()}
-        />,
-      );
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCalls).toBe(1);
-      // Start the second detection (in flight) via the focus debounce.
-      window.dispatchEvent(new Event("focus"));
-      await vi.advanceTimersByTimeAsync(1_500);
-      expect(detectCalls).toBe(2);
-      // Drive the publication confirmation while that detector is pending.
-      fireEvent.click(screen.getByRole("button", { name: "Preview publication" }));
-      for (let i = 0; i < 20; i += 1) {
-        await vi.advanceTimersByTimeAsync(50);
-        if (screen.queryByRole("dialog") !== null) break;
-      }
-      fireEvent.click(screen.getByRole("button", { name: "Confirm publication" }));
-      await vi.advanceTimersByTimeAsync(100);
-      await vi.advanceTimersByTimeAsync(0);
-      // The publication refresh (then load) replaced the projection with the
-      // refreshed session (the parsed projection is structurally re-derived).
-      expect(
-        replace.mock.calls.some(
-          (call) => (call[0] as { readonly session: { readonly id: string } }).session.id === "session-b",
-        ),
-      ).toBe(true);
-      // The stale detector completes after publication refresh replaced the
-      // projection; it must not reapply updates_available to the new projection.
-      resolvePendingDetect({ ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: true } });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(patch).not.toHaveBeenCalled();
-      expect(patch).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          revision: expect.objectContaining({ freshness: "updates_available" }),
-        }),
-      );
-    } finally {
-      vi.useRealTimers();
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const replace = vi.fn();
+    const patch = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={workbench}
+        onWorkbenchReplace={replace}
+        onWorkbenchPatch={patch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCalls).toBe(1);
+    // Start the second detection (in flight) via the focus debounce.
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(detectCalls).toBe(2);
+    // Drive the publication confirmation while that detector is pending.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Preview publication" }),
+    );
+    for (let i = 0; i < 20; i += 1) {
+      await vi.advanceTimersByTimeAsync(50);
+      if (screen.queryByRole("dialog") !== null) break;
     }
-  });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm publication" }),
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(0);
+    // The publication refresh (then load) replaced the projection with the
+    // refreshed session (the parsed projection is structurally re-derived).
+    expect(
+      replace.mock.calls.some(
+        (call) =>
+          (call[0] as { readonly session: { readonly id: string } }).session
+            .id === "session-b",
+      ),
+    ).toBe(true);
+    // The stale detector completes after publication refresh replaced the
+    // projection; it must not reapply updates_available to the new projection.
+    resolvePendingDetect({
+      ok: true,
+      status: 200,
+      correlationId: "detect",
+      body: { updatesAvailable: true },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(patch).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        revision: expect.objectContaining({ freshness: "updates_available" }),
+      }),
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-  it("keeps detection paused while two direct commands overlap and resumes only after both complete", async () => {
-    vi.useFakeTimers();
-    try {
-      const pendingCommands: Array<(value: unknown) => void> = [];
-      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+it("keeps detection paused while two direct commands overlap and resumes only after both complete", async () => {
+  vi.useFakeTimers();
+  try {
+    const pendingCommands: Array<(value: unknown) => void> = [];
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
         if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
         if (input.path === "/v1/reviews/inline-conversations/command")
-          return await new Promise((resolve) => { pendingCommands.push(resolve); });
+          return await new Promise((resolve) => {
+            pendingCommands.push(resolve);
+          });
         throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      const withPatchHash = {
-        ...projection(),
-        revision: { ...projection().revision, patchHash: "patch-hash" as const },
-      };
-      render(
-        <ReviewWorkbenchFlow
-          workbench={withPatchHash}
-          onWorkbenchReplace={vi.fn()}
-          onWorkbenchPatch={vi.fn()}
-          onNavigationStateChange={vi.fn()}
-          onNavigate={vi.fn()}
-        />,
-      );
-      const detectCount = (): number =>
-        request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
-        ).length;
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCount()).toBe(1);
-      // Start two overlapping inline creates; both commands stay in flight.
-      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
-      fireEvent.click(authorButtons[0] as HTMLElement);
-      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "First" } });
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-      const secondAuthor = screen.getAllByRole("button", { name: "Add comment on src/a.ts" }).at(-1);
-      if (secondAuthor === undefined) throw new Error("fixture: second author button missing");
-      fireEvent.click(secondAuthor);
-      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Second" } });
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(pendingCommands).toHaveLength(2);
-      // While both commands are in flight, a detector tick must be skipped.
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(1);
-      // The first command completes; the second is still running, so the
-      // detector must stay paused even though one command finished.
-      pendingCommands[0]?.({ ok: true, body: { _tag: "CommentCreated", commentId: "c-1" }, correlationId: "command" });
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(1);
-      // The second command completes; the next detector tick may run.
-      pendingCommands[1]?.({ ok: true, body: { _tag: "CommentCreated", commentId: "c-2" }, correlationId: "command" });
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const withPatchHash = {
+      ...projection(),
+      revision: { ...projection().revision, patchHash: "patch-hash" as const },
+    };
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPatchHash}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const detectCount = (): number =>
+      request.mock.calls.filter(
+        (call) =>
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates",
+      ).length;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount()).toBe(1);
+    // Start two overlapping inline creates; both commands stay in flight.
+    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    const authorButtons = screen.getAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
+    fireEvent.click(authorButtons[0] as HTMLElement);
+    fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), {
+      target: { value: "First" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    await vi.advanceTimersByTimeAsync(0);
+    const secondAuthor = screen
+      .getAllByRole("button", { name: "Add comment on src/a.ts" })
+      .at(-1);
+    if (secondAuthor === undefined)
+      throw new Error("fixture: second author button missing");
+    fireEvent.click(secondAuthor);
+    fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), {
+      target: { value: "Second" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pendingCommands).toHaveLength(2);
+    // While both commands are in flight, a detector tick must be skipped.
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(1);
+    // The first command completes; the second is still running, so the
+    // detector must stay paused even though one command finished.
+    pendingCommands[0]?.({
+      ok: true,
+      body: { _tag: "CommentCreated", commentId: "c-1" },
+      correlationId: "command",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(1);
+    // The second command completes; the next detector tick may run.
+    pendingCommands[1]?.({
+      ok: true,
+      body: { _tag: "CommentCreated", commentId: "c-2" },
+      correlationId: "command",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-  it("coalesces visibility and focus into exactly one debounced detection", async () => {
-    vi.useFakeTimers();
-    try {
-      const request = vi.fn(async (input: { readonly path: string }) => {
-        if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-        throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      render(
-        <ReviewWorkbenchFlow
-          workbench={projection()}
-          onWorkbenchReplace={vi.fn()}
-          onWorkbenchPatch={vi.fn()}
-          onNavigationStateChange={vi.fn()}
-          onNavigate={vi.fn()}
-        />,
-      );
-      const detectCount = (): number =>
-        request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
-        ).length;
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCount()).toBe(1);
-      // A focus regain commonly emits both events back to back.
-      document.dispatchEvent(new Event("visibilitychange"));
-      window.dispatchEvent(new Event("focus"));
-      // No immediate request from visibilitychange, and no duplicate at 1s.
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(detectCount()).toBe(1);
-      await vi.advanceTimersByTimeAsync(500);
-      expect(detectCount()).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+it("coalesces visibility and focus into exactly one debounced detection", async () => {
+  vi.useFakeTimers();
+  try {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          body: { updatesAvailable: false },
+          correlationId: "detect",
+        };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={projection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const detectCount = (): number =>
+      request.mock.calls.filter(
+        (call) =>
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates",
+      ).length;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount()).toBe(1);
+    // A focus regain commonly emits both events back to back.
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    // No immediate request from visibilitychange, and no duplicate at 1s.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(detectCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(detectCount()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-  it("treats a malformed create receipt as a bounded failure: no journal record and no confirmed card", async () => {
-    vi.useFakeTimers();
-    try {
-      const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
+it("treats a malformed create receipt as a bounded failure: no journal record and no confirmed card", async () => {
+  vi.useFakeTimers();
+  try {
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
         if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
         if (input.path === "/v1/reviews/inline-conversations/command")
           // A success envelope missing its comment id is malformed: the local
           // write cannot be confirmed, so nothing may be journaled.
-          return { ok: true, body: { _tag: "CommentCreated" }, correlationId: "command" };
+          return {
+            ok: true,
+            body: { _tag: "CommentCreated" },
+            correlationId: "command",
+          };
         throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      const withPatchHash = {
-        ...projection(),
-        revision: { ...projection().revision, patchHash: "patch-hash" as const },
-      };
-      render(
-        <ReviewWorkbenchFlow
-          workbench={withPatchHash}
-          onWorkbenchReplace={vi.fn()}
-          onWorkbenchPatch={vi.fn()}
-          onNavigationStateChange={vi.fn()}
-          onNavigate={vi.fn()}
-        />,
-      );
-      await vi.advanceTimersByTimeAsync(0);
-      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
-      const addedAuthorButton = authorButtons[1];
-      if (addedAuthorButton === undefined) throw new Error("fixture: added-line author button missing");
-      fireEvent.click(addedAuthorButton);
-      fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), { target: { value: "Body" } });
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-      // The command resolved with 200, but the malformed receipt must not be
-      // treated as a confirmed mutation: the next detection carries no journal.
-      await vi.advanceTimersByTimeAsync(90_000);
-      const detectCall = request.mock.calls.find(
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const withPatchHash = {
+      ...projection(),
+      revision: { ...projection().revision, patchHash: "patch-hash" as const },
+    };
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPatchHash}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    const authorButtons = screen.getAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
+    const addedAuthorButton = authorButtons[1];
+    if (addedAuthorButton === undefined)
+      throw new Error("fixture: added-line author button missing");
+    fireEvent.click(addedAuthorButton);
+    fireEvent.change(screen.getByRole("textbox", { name: "Inline comment" }), {
+      target: { value: "Body" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    await vi.advanceTimersByTimeAsync(0);
+    // The command resolved with 200, but the malformed receipt must not be
+    // treated as a confirmed mutation: the next detection carries no journal.
+    await vi.advanceTimersByTimeAsync(90_000);
+    const detectCall = request.mock.calls.find(
+      (call) =>
+        (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates" &&
+        (call[0] as { readonly body?: { readonly recentWrites?: unknown } })
+          .body?.recentWrites !== undefined,
+    );
+    expect(detectCall).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not restart the detector when the parent recreates the patch callback", async () => {
+  vi.useFakeTimers();
+  try {
+    const value = projection();
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "detect",
+          body: { updatesAvailable: true },
+        };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const detectCount = (): number =>
+      request.mock.calls.filter(
         (call) =>
-          (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates" &&
-          (call[0] as { readonly body?: { readonly recentWrites?: unknown } }).body?.recentWrites !== undefined,
-      );
-      expect(detectCall).toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not restart the detector when the parent recreates the patch callback", async () => {
-    vi.useFakeTimers();
-    try {
-      const value = projection();
-      const request = vi.fn(async (input: { readonly path: string }) => {
-        if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: true } };
-        throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      const detectCount = (): number =>
-        request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
-        ).length;
-      // App passes onWorkbenchPatch as an inline function and re-renders when
-      // it applies a functional setState; the prop therefore gets a fresh
-      // identity after every patch. The detector cadence must not depend on it.
-      const PatchRecreatingParent = () => {
-        const [, force] = useState(0);
-        return (
-          <ReviewWorkbenchFlow
-            workbench={value}
-            onWorkbenchReplace={vi.fn()}
-            onWorkbenchPatch={() => force((count) => count + 1)}
-            onNavigationStateChange={vi.fn()}
-            onNavigate={vi.fn()}
-          />
-        );
-      };
-      render(<PatchRecreatingParent />);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCount()).toBe(1);
-      // The positive detection made the parent render again, recreating the
-      // callback; that must not spawn an immediate second request.
-      await vi.advanceTimersByTimeAsync(50);
-      expect(detectCount()).toBe(1);
-      // The normal cadence still holds: the next interval fires exactly once.
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not start a detector while a post-publication refresh is pending", async () => {
-    vi.useFakeTimers();
-    try {
-      const workbench = createUnifiedReviewFixture("publication-ready");
-      const refreshed = {
-        ...projection(),
-        draft: workbench.draft,
-        session: { ...projection().session, id: "session-b" },
-      };
-      let resolveRefresh!: (value: unknown) => void;
-      const pendingRefresh = new Promise((resolve) => {
-        resolveRefresh = resolve;
-      });
-      const request = vi.fn(async (input: { readonly path: string }) => {
-        if (input.path === "/v1/reviews/detect-updates")
-          return { ok: true, status: 200, correlationId: "detect", body: { updatesAvailable: false } };
-        if (input.path === "/v1/reviews/publication/preview")
-          return { ok: true, status: 200, correlationId: "preview", body: { reviewId: workbench.review.id, sessionId: workbench.session.id, headSha: workbench.revision.reviewedHeadSha, draftRevision: workbench.draft?.updatedAt, event: "COMMENT", body: "# Review", inlineComments: [], threadActions: [], warnings: [] } };
-        if (input.path === "/v1/reviews/publication/confirm")
-          return { ok: true, status: 200, correlationId: "confirm", body: { batch: workbench.draft } };
-        if (input.path === "/v1/reviews/refresh")
-          return await pendingRefresh;
-        if (input.path === "/v1/reviews/load")
-          return { ok: true, status: 200, correlationId: "load", body: refreshed };
-        throw new Error(`unexpected ${input.path}`);
-      });
-      Object.defineProperty(window, "patchdesk", {
-        configurable: true,
-        value: { request },
-      });
-      const replace = vi.fn();
-      render(
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates",
+      ).length;
+    // App passes onWorkbenchPatch as an inline function and re-renders when
+    // it applies a functional setState; the prop therefore gets a fresh
+    // identity after every patch. The detector cadence must not depend on it.
+    const PatchRecreatingParent = () => {
+      const [, force] = useState(0);
+      return (
         <ReviewWorkbenchFlow
-          workbench={workbench}
-          onWorkbenchReplace={replace}
-          onWorkbenchPatch={vi.fn()}
+          workbench={value}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={() => force((count) => count + 1)}
           onNavigationStateChange={vi.fn()}
           onNavigate={vi.fn()}
-        />,
+        />
       );
-      const detectCount = (): number =>
-        request.mock.calls.filter(
-          (call) => (call[0] as { readonly path: string }).path === "/v1/reviews/detect-updates",
-        ).length;
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCount()).toBe(1);
-      // Drive the publication confirmation; the refresh it triggers stays
-      // pending, so its generation has incremented but no response arrived.
-      fireEvent.click(screen.getByRole("button", { name: "Preview publication" }));
-      for (let i = 0; i < 20; i += 1) {
-        await vi.advanceTimersByTimeAsync(50);
-        if (screen.queryByRole("dialog") !== null) break;
-      }
-      fireEvent.click(screen.getByRole("button", { name: "Confirm publication" }));
-      await vi.advanceTimersByTimeAsync(0);
-      // A focus-return debounce and a full interval tick during the pending
-      // refresh must not start detector work.
-      window.dispatchEvent(new Event("focus"));
-      await vi.advanceTimersByTimeAsync(1_500);
-      expect(detectCount()).toBe(1);
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(1);
-      // The refresh resolves; the load replaces the projection with the
-      // refreshed session.
-      resolveRefresh({ ok: true, status: 200, correlationId: "refresh", body: refreshed });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        replace.mock.calls.some(
-          (call) => (call[0] as { readonly session: { readonly id: string } }).session.id === "session-b",
-        ),
-      ).toBe(true);
-      // Once the refresh window closes, the next interval tick may detect.
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(2);
-    } finally {
-      vi.useRealTimers();
+    };
+    render(<PatchRecreatingParent />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount()).toBe(1);
+    // The positive detection made the parent render again, recreating the
+    // callback; that must not spawn an immediate second request.
+    await vi.advanceTimersByTimeAsync(50);
+    expect(detectCount()).toBe(1);
+    // The normal cadence still holds: the next interval fires exactly once.
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not start a detector while a post-publication refresh is pending", async () => {
+  vi.useFakeTimers();
+  try {
+    const workbench = createUnifiedReviewFixture("publication-ready");
+    const refreshed = {
+      ...projection(),
+      draft: workbench.draft,
+      session: { ...projection().session, id: "session-b" },
+    };
+    let resolveRefresh!: (value: unknown) => void;
+    const pendingRefresh = new Promise((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "detect",
+          body: { updatesAvailable: false },
+        };
+      if (input.path === "/v1/reviews/publication/preview")
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "preview",
+          body: {
+            reviewId: workbench.review.id,
+            sessionId: workbench.session.id,
+            headSha: workbench.revision.reviewedHeadSha,
+            draftRevision: workbench.draft?.updatedAt,
+            event: "COMMENT",
+            body: "# Review",
+            inlineComments: [],
+            threadActions: [],
+            warnings: [],
+          },
+        };
+      if (input.path === "/v1/reviews/publication/confirm")
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "confirm",
+          body: { batch: workbench.draft },
+        };
+      if (input.path === "/v1/reviews/refresh") return await pendingRefresh;
+      if (input.path === "/v1/reviews/load")
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "load",
+          body: refreshed,
+        };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const replace = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={workbench}
+        onWorkbenchReplace={replace}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const detectCount = (): number =>
+      request.mock.calls.filter(
+        (call) =>
+          (call[0] as { readonly path: string }).path ===
+          "/v1/reviews/detect-updates",
+      ).length;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount()).toBe(1);
+    // Drive the publication confirmation; the refresh it triggers stays
+    // pending, so its generation has incremented but no response arrived.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Preview publication" }),
+    );
+    for (let i = 0; i < 20; i += 1) {
+      await vi.advanceTimersByTimeAsync(50);
+      if (screen.queryByRole("dialog") !== null) break;
     }
-  });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm publication" }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    // A focus-return debounce and a full interval tick during the pending
+    // refresh must not start detector work.
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(detectCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(1);
+    // The refresh resolves; the load replaces the projection with the
+    // refreshed session.
+    resolveRefresh({
+      ok: true,
+      status: 200,
+      correlationId: "refresh",
+      body: refreshed,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      replace.mock.calls.some(
+        (call) =>
+          (call[0] as { readonly session: { readonly id: string } }).session
+            .id === "session-b",
+      ),
+    ).toBe(true);
+    // Once the refresh window closes, the next interval tick may detect.
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(detectCount()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 describe("ReviewWorkbenchFlow pending review", () => {
   const pendingProjection = (overrides: Record<string, unknown> = {}) => ({
@@ -2339,35 +2585,66 @@ describe("ReviewWorkbenchFlow pending review", () => {
       nodeId: "PRR_kwDORJzsQM7e6QwJ",
       headSha: "a".repeat(40),
       comments: [
-        { threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
-        { threadId: "PRRT_2", body: "Second", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        {
+          threadId: "PRRT_1",
+          body: "First",
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+        },
+        {
+          threadId: "PRRT_2",
+          body: "Second",
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+        },
       ],
     },
     ...overrides,
   });
 
-  const withPending = (pendingReview: unknown, patchHash = "patch-hash"): WorkbenchResponse => ({
+  const withPending = (
+    pendingReview: unknown,
+    patchHash = "patch-hash",
+  ): WorkbenchResponse => ({
     ...projection(),
     revision: { ...projection().revision, patchHash: patchHash as never },
     pendingReview: pendingReview as WorkbenchResponse["pendingReview"],
   });
 
   function stubRequest(responses: Record<string, unknown>) {
-    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
-      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
-      const response = responses[input.path];
-      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
-      throw new Error(`unexpected ${input.path}`);
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
+        if (input.path === "/v1/reviews/refresh")
+          return { ok: true, body: projection(), correlationId: "refresh" };
+        const response = responses[input.path];
+        if (response !== undefined)
+          return { ok: true, body: response, correlationId: "x" };
+        throw new Error(`unexpected ${input.path}`);
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
     });
-    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
     return request;
   }
 
   async function openComposer(user: ReturnType<typeof userEvent.setup>) {
     void user;
     fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-    const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+    const authorButtons = screen.getAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
     fireEvent.click(authorButtons[1] as HTMLElement);
     return {
       composer: screen.getByRole("region", { name: "Inline comment composer" }),
@@ -2389,23 +2666,50 @@ describe("ReviewWorkbenchFlow pending review", () => {
     );
     await user.click(screen.getByRole("button", { name: "Start a review" }));
     expect(screen.getByRole("dialog", { name: "Start review" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add inline comment" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Write review summary" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Add inline comment" }));
+    expect(
+      screen.getByRole("button", { name: "Add inline comment" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Write review summary" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Add inline comment" }),
+    );
     // Choosing inline authoring leads to the Diff and creates nothing.
     expect(screen.getByRole("region", { name: "Review diff" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Finish review · " })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Finish review · " }),
+    ).toBeNull();
   });
 
   it("reconciles an uncertain direct summary through the recovery endpoint before reopening submission", async () => {
     const user = userEvent.setup();
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      if (input.path === "/v1/reviews/direct-summary/submit") return { ok: false, status: 503, body: { error: "outcome_unknown" }, correlationId: "submit" };
-      if (input.path === "/v1/reviews/direct-summary/recover") return { ok: true, body: { directSummary: { state: "idle" } }, correlationId: "recover" };
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          body: { updatesAvailable: false },
+          correlationId: "detect",
+        };
+      if (input.path === "/v1/reviews/direct-summary/submit")
+        return {
+          ok: false,
+          status: 503,
+          body: { error: "outcome_unknown" },
+          correlationId: "submit",
+        };
+      if (input.path === "/v1/reviews/direct-summary/recover")
+        return {
+          ok: true,
+          body: { directSummary: { state: "idle" } },
+          correlationId: "recover",
+        };
       throw new Error(`unexpected ${input.path}`);
     });
-    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
     render(
       <ReviewWorkbenchFlow
         workbench={withPending({ state: "none" })}
@@ -2416,14 +2720,26 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Start a review" }));
-    await user.click(screen.getByRole("button", { name: "Write review summary" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), { target: { value: "Summary" } });
+    await user.click(
+      screen.getByRole("button", { name: "Write review summary" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), {
+      target: { value: "Summary" },
+    });
     await user.click(screen.getByRole("button", { name: "Submit review" }));
-    await screen.findByRole("button", { name: "Check GitHub again" });
+    await screen.findByRole("button", { name: "Check GitHub status" });
     expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
-    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/reviews/direct-summary/recover" })));
-    expect(screen.getByRole("textbox", { name: "Review summary" })).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Check GitHub status" }),
+    );
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/v1/reviews/direct-summary/recover" }),
+      ),
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Review summary" }),
+    ).toBeTruthy();
   });
 
   it("shows Finish review · N when a pending review is confirmed and opens the modal", async () => {
@@ -2445,7 +2761,9 @@ describe("ReviewWorkbenchFlow pending review", () => {
     expect(screen.getByText("Second")).toBeTruthy();
     // Discard exists but is separate from Submit and needs its own confirmation.
     expect(screen.getByRole("button", { name: "Discard review" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Confirm discard" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Confirm discard" }),
+    ).toBeNull();
   });
 
   it("offers Comment now and Start a review before a pending review; only Add review comment after", async () => {
@@ -2460,9 +2778,17 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     const first = await openComposer(user);
-    expect(within(first.composer).getByRole("button", { name: "Start a review" })).toBeTruthy();
-    expect(within(first.composer).getByRole("button", { name: "Comment now" })).toBeTruthy();
-    expect(within(first.composer).queryByRole("button", { name: "Add review comment" })).toBeNull();
+    expect(
+      within(first.composer).getByRole("button", { name: "Start a review" }),
+    ).toBeTruthy();
+    expect(
+      within(first.composer).getByRole("button", { name: "Comment now" }),
+    ).toBeTruthy();
+    expect(
+      within(first.composer).queryByRole("button", {
+        name: "Add review comment",
+      }),
+    ).toBeNull();
 
     rerender(
       <ReviewWorkbenchFlow
@@ -2474,15 +2800,25 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     const second = await openComposer(user);
-    expect(within(second.composer).getByRole("button", { name: "Add review comment" })).toBeTruthy();
-    expect(within(second.composer).queryByRole("button", { name: "Comment now" })).toBeNull();
-    expect(within(second.composer).queryByRole("button", { name: "Start a review" })).toBeNull();
+    expect(
+      within(second.composer).getByRole("button", {
+        name: "Add review comment",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(second.composer).queryByRole("button", { name: "Comment now" }),
+    ).toBeNull();
+    expect(
+      within(second.composer).queryByRole("button", { name: "Start a review" }),
+    ).toBeNull();
   });
 
   it("sends the Start command with the selected anchor and applies the returned projection", async () => {
     const user = userEvent.setup();
     const request = stubRequest({
-      "/v1/reviews/pending-review/command": { pendingReview: pendingProjection({ count: 1 }) },
+      "/v1/reviews/pending-review/command": {
+        pendingReview: pendingProjection({ count: 1 }),
+      },
     });
     const onWorkbenchPatch = vi.fn();
     render(
@@ -2496,23 +2832,46 @@ describe("ReviewWorkbenchFlow pending review", () => {
     );
     const { composer, input } = await openComposer(user);
     fireEvent.change(input, { target: { value: "Start with this" } });
-    await user.click(within(composer).getByRole("button", { name: "Start a review" }));
-    const call = request.mock.calls.find((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
+    await user.click(
+      within(composer).getByRole("button", { name: "Start a review" }),
+    );
+    const call = request.mock.calls.find(
+      (entry) =>
+        (entry[0] as { readonly path: string }).path ===
+        "/v1/reviews/pending-review/command",
+    );
     expect(call).toBeDefined();
-    const body = (call?.[0] as { readonly body?: unknown }).body as { readonly command?: unknown };
+    const body = (call?.[0] as { readonly body?: unknown }).body as {
+      readonly command?: unknown;
+    };
     expect(body?.command).toMatchObject({
       _tag: "Start",
       anchor: { path: "src/a.ts", side: "new" },
       body: "Start with this",
-      expected: { sessionId: "session-a", headSha: "a".repeat(40), patchHash: "patch-hash" },
+      expected: {
+        sessionId: "session-a",
+        headSha: "a".repeat(40),
+        patchHash: "patch-hash",
+      },
     });
-    await waitFor(() => expect(onWorkbenchPatch).toHaveBeenCalledWith(expect.objectContaining({ pendingReview: expect.objectContaining({ state: "pending", count: 1 }) })));
+    await waitFor(() =>
+      expect(onWorkbenchPatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pendingReview: expect.objectContaining({
+            state: "pending",
+            count: 1,
+          }),
+        }),
+      ),
+    );
   });
 
   it("locks the composer and offers Check GitHub again when the pending read is unavailable", async () => {
     const user = userEvent.setup();
     const request = stubRequest({
-      "/v1/reviews/pending-review/recover": { pendingReview: { state: "none" } },
+      "/v1/reviews/pending-review/recover": {
+        pendingReview: { state: "none" },
+      },
     });
     render(
       <ReviewWorkbenchFlow
@@ -2524,17 +2883,30 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     const { composer } = await openComposer(user);
-    expect(within(composer).getByText(/Pending review state is unavailable/)).toBeTruthy();
-    expect(within(composer).queryByRole("button", { name: "Start a review" })).toBeNull();
-    expect(within(composer).queryByRole("button", { name: "Comment now" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/reviews/pending-review/recover" }));
+    expect(
+      within(composer).getByText(/Pending review state is unavailable/),
+    ).toBeTruthy();
+    expect(
+      within(composer).queryByRole("button", { name: "Start a review" }),
+    ).toBeNull();
+    expect(
+      within(composer).queryByRole("button", { name: "Comment now" }),
+    ).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v1/reviews/pending-review/recover" }),
+    );
   });
 
   it("shows a recovery notice while a write outcome is unknown", async () => {
     render(
       <ReviewWorkbenchFlow
-        workbench={withPending({ state: "recovery_required", action: "submit" })}
+        workbench={withPending({
+          state: "recovery_required",
+          action: "submit",
+        })}
         onWorkbenchReplace={vi.fn()}
         onWorkbenchPatch={vi.fn()}
         onNavigationStateChange={vi.fn()}
@@ -2542,7 +2914,9 @@ describe("ReviewWorkbenchFlow pending review", () => {
       />,
     );
     expect(screen.getByText(/needs reconciliation/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Finish review/ })).toBeNull();
   });
 });
@@ -2555,8 +2929,22 @@ describe("ReviewWorkbenchFlow pending review discard", () => {
       nodeId: "PRR_kwDORJzsQM7e6QwJ",
       headSha: "a".repeat(40),
       comments: [
-        { threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
-        { threadId: "PRRT_2", body: "Second", path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+        {
+          threadId: "PRRT_1",
+          body: "First",
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+        },
+        {
+          threadId: "PRRT_2",
+          body: "Second",
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+        },
       ],
     },
     ...overrides,
@@ -2569,21 +2957,35 @@ describe("ReviewWorkbenchFlow pending review discard", () => {
   });
 
   function stubRequest(responses: Record<string, unknown>) {
-    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
-      if (input.path === "/v1/reviews/detect-updates") return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
-      const response = responses[input.path];
-      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
-      throw new Error(`unexpected ${input.path}`);
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
+        if (input.path === "/v1/reviews/refresh")
+          return { ok: true, body: projection(), correlationId: "refresh" };
+        const response = responses[input.path];
+        if (response !== undefined)
+          return { ok: true, body: response, correlationId: "x" };
+        throw new Error(`unexpected ${input.path}`);
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
     });
-    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
     return request;
   }
 
   it("sends the confirmed Discard command from the finish modal and applies the none projection", async () => {
     const user = userEvent.setup();
     const request = stubRequest({
-      "/v1/reviews/pending-review/command": { pendingReview: { state: "none" } },
+      "/v1/reviews/pending-review/command": {
+        pendingReview: { state: "none" },
+      },
     });
     const onWorkbenchPatch = vi.fn();
     render(
@@ -2598,15 +3000,49 @@ describe("ReviewWorkbenchFlow pending review discard", () => {
     await user.click(screen.getByRole("button", { name: "Finish review · 1" }));
     // The destructive confirmation is separate from the submit path.
     await user.click(screen.getByRole("button", { name: "Discard review" }));
-    const commandCalls = request.mock.calls.filter((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
+    const commandCalls = request.mock.calls.filter(
+      (entry) =>
+        (entry[0] as { readonly path: string }).path ===
+        "/v1/reviews/pending-review/command",
+    );
     expect(commandCalls).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Confirm discard" }));
-    await vi.waitFor(() => expect(request.mock.calls.some((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
-    const discardCall = request.mock.calls.find((entry) => (entry[0] as { readonly path: string }).path === "/v1/reviews/pending-review/command");
-    const body = (discardCall?.[0] as { readonly body?: unknown }).body as { readonly command?: unknown };
-    expect(body?.command).toMatchObject({ _tag: "Discard", confirmation: true, expected: { sessionId: "session-a", headSha: "a".repeat(40), patchHash: "patch-hash" } });
-    await vi.waitFor(() => expect(onWorkbenchPatch).toHaveBeenCalledWith(expect.objectContaining({ pendingReview: { state: "none" } })));
-    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish review" })).toBeNull());
+    await vi.waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          (entry) =>
+            (entry[0] as { readonly path: string }).path ===
+            "/v1/reviews/pending-review/command",
+        ),
+      ).toBe(true),
+    );
+    const discardCall = request.mock.calls.find(
+      (entry) =>
+        (entry[0] as { readonly path: string }).path ===
+        "/v1/reviews/pending-review/command",
+    );
+    const body = (discardCall?.[0] as { readonly body?: unknown }).body as {
+      readonly command?: unknown;
+    };
+    expect(body?.command).toMatchObject({
+      _tag: "Discard",
+      confirmation: true,
+      expected: {
+        sessionId: "session-a",
+        headSha: "a".repeat(40),
+        patchHash: "patch-hash",
+      },
+    });
+    await vi.waitFor(() =>
+      expect(onWorkbenchPatch).toHaveBeenCalledWith(
+        expect.objectContaining({ pendingReview: { state: "none" } }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Finish review" }),
+      ).toBeNull(),
+    );
   });
 });
 describe("pending-review write journaling", () => {
@@ -2620,28 +3056,45 @@ describe("pending-review write journaling", () => {
   // composer synchronously so a Start can be driven in jsdom.
   const withFallbackDom = async (run: () => Promise<void>): Promise<void> => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    Object.defineProperty(window, "CSSStyleSheet", {
+      configurable: true,
+      value: undefined,
+    });
     try {
       await run();
     } finally {
-      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      if (styleSheet === undefined)
+        delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
     }
   };
 
   function stubRequestWithDetectCapture(responses: Record<string, unknown>) {
     const detectBodies: Array<{ readonly recentWrites?: unknown }> = [];
-    const request = vi.fn(async (input: { readonly path: string; readonly body?: unknown }) => {
-      if (input.path === "/v1/reviews/detect-updates") {
-        detectBodies.push((input.body ?? {}) as { readonly recentWrites?: unknown });
-        return { ok: true, body: { updatesAvailable: false }, correlationId: "detect" };
-      }
-      if (input.path === "/v1/reviews/refresh") return { ok: true, body: projection(), correlationId: "refresh" };
-      const response = responses[input.path];
-      if (response !== undefined) return { ok: true, body: response, correlationId: "x" };
-      throw new Error(`unexpected ${input.path}`);
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/detect-updates") {
+          detectBodies.push(
+            (input.body ?? {}) as { readonly recentWrites?: unknown },
+          );
+          return {
+            ok: true,
+            body: { updatesAvailable: false },
+            correlationId: "detect",
+          };
+        }
+        if (input.path === "/v1/reviews/refresh")
+          return { ok: true, body: projection(), correlationId: "refresh" };
+        const response = responses[input.path];
+        if (response !== undefined)
+          return { ok: true, body: response, correlationId: "x" };
+        throw new Error(`unexpected ${input.path}`);
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
     });
-    Object.defineProperty(window, "patchdesk", { configurable: true, value: { request } });
     return { request, detectBodies };
   }
 
@@ -2656,7 +3109,16 @@ describe("pending-review write journaling", () => {
             review: {
               nodeId: "PRR_kwDORJzsQM7e6QwJ",
               headSha: "a".repeat(40),
-              comments: [{ threadId: "PRRT_journal_1", body: "test", path: "src/a.ts", startLine: 1, line: 1, side: "new" }],
+              comments: [
+                {
+                  threadId: "PRRT_journal_1",
+                  body: "test",
+                  path: "src/a.ts",
+                  startLine: 1,
+                  line: 1,
+                  side: "new",
+                },
+              ],
             },
           },
         },
@@ -2671,30 +3133,71 @@ describe("pending-review write journaling", () => {
         />,
       );
       await user.click(screen.getByRole("tab", { name: "Diff" }));
-      const row = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
-      const addButton = row?.querySelector<HTMLButtonElement>('button[aria-label="Add comment on src/a.ts"]');
+      const row = document.querySelector<HTMLElement>(
+        '[data-line-type="change-addition"]',
+      );
+      const addButton = row?.querySelector<HTMLButtonElement>(
+        'button[aria-label="Add comment on src/a.ts"]',
+      );
       if (!addButton) throw new Error("Expected inline comment action");
       await user.click(addButton);
-      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "test");
-      const startButtons = screen.getAllByRole("button", { name: "Start a review" });
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "test",
+      );
+      const startButtons = screen.getAllByRole("button", {
+        name: "Start a review",
+      });
       await user.click(startButtons.at(-1) as HTMLButtonElement);
-      await vi.waitFor(() => expect(request.mock.calls.some((c) => (c[0] as { path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
+      await vi.waitFor(() =>
+        expect(
+          request.mock.calls.some(
+            (c) =>
+              (c[0] as { path: string }).path ===
+              "/v1/reviews/pending-review/command",
+          ),
+        ).toBe(true),
+      );
       const detectsBefore = detectBodies.length;
       window.dispatchEvent(new Event("focus"));
-      await vi.waitFor(() => expect(detectBodies.length).toBeGreaterThan(detectsBefore), { timeout: 4000 });
+      await vi.waitFor(
+        () => expect(detectBodies.length).toBeGreaterThan(detectsBefore),
+        { timeout: 4000 },
+      );
       const body = detectBodies.at(-1);
-      expect(body?.recentWrites).toEqual([{ _tag: "PendingThread", threadId: "PRRT_journal_1" }]);
+      expect(body?.recentWrites).toEqual([
+        { _tag: "PendingThread", threadId: "PRRT_journal_1" },
+      ]);
     });
   });
 
   it("journals the prior pending thread after a confirmed Discard", async () => {
     const user = userEvent.setup();
     const { request, detectBodies } = stubRequestWithDetectCapture({
-      "/v1/reviews/pending-review/command": { pendingReview: { state: "none" } },
+      "/v1/reviews/pending-review/command": {
+        pendingReview: { state: "none" },
+      },
     });
     render(
       <ReviewWorkbenchFlow
-        workbench={withPending({ state: "pending", count: 1, review: { nodeId: "PRR_kwDORJzsQM7e6QwJ", headSha: "a".repeat(40), comments: [{ threadId: "PRRT_1", body: "First", path: "src/a.ts", startLine: 1, line: 1, side: "new" }] } })}
+        workbench={withPending({
+          state: "pending",
+          count: 1,
+          review: {
+            nodeId: "PRR_kwDORJzsQM7e6QwJ",
+            headSha: "a".repeat(40),
+            comments: [
+              {
+                threadId: "PRRT_1",
+                body: "First",
+                path: "src/a.ts",
+                startLine: 1,
+                line: 1,
+                side: "new",
+              },
+            ],
+          },
+        })}
         onWorkbenchReplace={vi.fn()}
         onWorkbenchPatch={vi.fn()}
         onNavigationStateChange={vi.fn()}
@@ -2704,11 +3207,24 @@ describe("pending-review write journaling", () => {
     await user.click(screen.getByRole("button", { name: "Finish review · 1" }));
     await user.click(screen.getByRole("button", { name: "Discard review" }));
     await user.click(screen.getByRole("button", { name: "Confirm discard" }));
-    await vi.waitFor(() => expect(request.mock.calls.some((c) => (c[0] as { path: string }).path === "/v1/reviews/pending-review/command")).toBe(true));
+    await vi.waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          (c) =>
+            (c[0] as { path: string }).path ===
+            "/v1/reviews/pending-review/command",
+        ),
+      ).toBe(true),
+    );
     const detectsBefore = detectBodies.length;
     window.dispatchEvent(new Event("focus"));
-    await vi.waitFor(() => expect(detectBodies.length).toBeGreaterThan(detectsBefore), { timeout: 4000 });
+    await vi.waitFor(
+      () => expect(detectBodies.length).toBeGreaterThan(detectsBefore),
+      { timeout: 4000 },
+    );
     const body = detectBodies.at(-1);
-    expect(body?.recentWrites).toEqual([{ _tag: "PendingThread", threadId: "PRRT_1" }]);
+    expect(body?.recentWrites).toEqual([
+      { _tag: "PendingThread", threadId: "PRRT_1" },
+    ]);
   });
 });

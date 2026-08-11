@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   CircleAlert,
   ChevronDown,
+  Focus,
   Square,
 } from "lucide-react";
 
@@ -25,12 +26,17 @@ import {
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
-import type { ReviewInlineAnnotation } from "./review-diff-view";
+import type { ReadOnlyConversationAnnotation } from "../inline-conversation-mapping";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 
 type NarrativeHunk = {
@@ -90,6 +96,9 @@ export function NarrativeWalkthrough({
   rawPatch,
   sourceSession,
   annotations,
+  discussionUnavailable,
+  focused = false,
+  onFocusedChange,
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
   readonly reviewedSectionIds: ReadonlyArray<string>;
@@ -97,7 +106,10 @@ export function NarrativeWalkthrough({
   readonly currentSectionId?: string;
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
-  readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
+  readonly discussionUnavailable?: boolean;
+  readonly focused?: boolean;
+  readonly onFocusedChange?: (focused: boolean) => void;
   readonly actions: NarrativeWalkthroughActions;
   readonly preferences?: ReviewViewPreferences;
 }): React.JSX.Element {
@@ -123,8 +135,17 @@ export function NarrativeWalkthrough({
   const fallbackSection = sections[0] as NarrativeSection | undefined;
   const activeSection: NarrativeSection =
     sections[sectionIndex] ?? fallbackSection ?? nullSection();
+  const activeChapter = useMemo(
+    () =>
+      walkthrough.chapters.find((chapter) =>
+        chapter.sections.some((section) => section.id === activeSection.id),
+      ),
+    [activeSection.id, walkthrough.chapters],
+  );
   const [supportOpen, setSupportOpen] = useState(false);
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusToggleRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusAfterExitRef = useRef(false);
   const sectionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
@@ -139,6 +160,20 @@ export function NarrativeWalkthrough({
   const focusHeading = useCallback(() => {
     sectionHeadingRef.current?.focus();
   }, []);
+
+  const requestFocusChange = useCallback(
+    (next: boolean) => {
+      if (!next) restoreFocusAfterExitRef.current = true;
+      onFocusedChange?.(next);
+    },
+    [onFocusedChange],
+  );
+
+  useEffect(() => {
+    if (focused || !restoreFocusAfterExitRef.current) return;
+    restoreFocusAfterExitRef.current = false;
+    focusToggleRef.current?.focus();
+  }, [focused]);
 
   const focusHeadingAfterMoveRef = useRef(false);
   const scrollSectionAfterMoveRef = useRef(false);
@@ -190,10 +225,21 @@ export function NarrativeWalkthrough({
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        if (focused) {
+          requestFocusChange(false);
+          return;
+        }
         focusHeading();
       }
     },
-    [canGoNext, canGoPrev, focusHeading, goToOffset],
+    [
+      canGoNext,
+      canGoPrev,
+      focusHeading,
+      focused,
+      goToOffset,
+      requestFocusChange,
+    ],
   );
 
   useEffect(() => {
@@ -224,146 +270,174 @@ export function NarrativeWalkthrough({
   return (
     <div
       data-walkthrough-takeover
-      data-walkthrough-layout="docked"
+      data-walkthrough-layout={focused ? "focused" : "docked"}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <div
         data-walkthrough-stage
-        className="flex h-full min-h-0 min-w-0 flex-1 flex-col min-[1280px]:grid min-[1280px]:grid-cols-[16rem_minmax(0,1fr)]"
+        className={cn(
+          "flex h-full min-h-0 min-w-0 flex-1 flex-col min-[1280px]:grid",
+          focused
+            ? "min-[1280px]:grid-cols-1"
+            : "min-[1280px]:grid-cols-[16rem_minmax(0,1fr)]",
+        )}
       >
-        <aside
-          role="region"
-          aria-label="Walkthrough chapters"
-          data-walkthrough-chapter-dock
-          className="max-h-40 min-h-0 min-w-0 shrink-0 overflow-y-auto border-b bg-card px-3 py-2 min-[1280px]:max-h-none min-[1280px]:border-r min-[1280px]:border-b-0"
-        >
-          <div className="flex items-baseline justify-between gap-2 px-1">
-            <h2 className="text-sm font-semibold">Chapters</h2>
-            <span
-              role="status"
-              aria-label="Walkthrough progress"
-              data-walkthrough-progress
-              className="text-[11px] tabular-nums text-muted-foreground"
-            >
-              {sectionIndex + 1}/{sections.length} · {reviewedCount} of{" "}
-              {sections.length} section
-              {sections.length === 1 ? "" : "s"} reviewed
-            </span>
-          </div>
-          <Separator className="my-1.5" />
-          <ol
-            className="flex min-w-0 flex-col gap-3"
-            aria-label="Walkthrough sections"
+        {focused ? null : (
+          <aside
+            role="region"
+            aria-label="Walkthrough chapters"
+            data-walkthrough-chapter-dock
+            className="max-h-40 min-h-0 min-w-0 shrink-0 overflow-y-auto border-b bg-card px-3 py-2 min-[1280px]:max-h-none min-[1280px]:border-r min-[1280px]:border-b-0"
           >
-            {walkthrough.chapters.map((chapter) => (
-              <li key={chapter.id} className="min-w-0">
-                <h3
-                  className="truncate px-1 text-[11px] font-semibold text-muted-foreground"
-                  title={chapter.title}
-                >
-                  {chapter.title}
-                </h3>
-                <ol
-                  className="mt-1 flex min-w-0 flex-col gap-0.5 border-l border-border/60 pl-2"
-                  aria-label={`${chapter.title} sections`}
-                >
-                  {chapter.sections.map((section, chapterSectionIndex) => {
-                    const active = section.id === activeSection.id;
-                    const reviewed = reviewedSet.has(section.id);
-                    return (
-                      <li key={section.id} className="min-w-0">
-                        <Button
-                          ref={(node) => {
-                            sectionButtonRefs.current[section.id] = node;
-                          }}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className={cn(
-                            "h-auto min-h-7 min-w-0 w-full justify-start gap-2 rounded-md px-2 py-1 text-left text-xs leading-4",
-                            active &&
-                              "border-l-2 border-primary bg-muted pl-[6px] font-semibold text-foreground",
-                          )}
-                          aria-current={active ? "true" : undefined}
-                          onClick={() => selectSection(section.id)}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
-                          >
-                            {String(chapterSectionIndex + 1).padStart(2, "0")}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">
-                            {section.title}
-                          </span>
-                          {reviewed ? (
-                            <Badge
-                              variant="outline"
-                              className="h-4 px-1 text-[10px]"
-                              aria-label="Reviewed"
+            <div className="flex items-baseline justify-between gap-2 px-1">
+              <h2 className="text-sm font-semibold">Chapters</h2>
+              <span
+                role="status"
+                aria-label="Walkthrough progress"
+                data-walkthrough-progress
+                className="text-[11px] tabular-nums text-muted-foreground"
+              >
+                {sectionIndex + 1}/{sections.length} · {reviewedCount} of{" "}
+                {sections.length} section
+                {sections.length === 1 ? "" : "s"} reviewed
+              </span>
+            </div>
+            <Separator className="my-1.5" />
+            <ol
+              className="flex min-w-0 flex-col gap-3"
+              aria-label="Walkthrough sections"
+            >
+              {walkthrough.chapters.map((chapter) => (
+                <li key={chapter.id} className="min-w-0">
+                  <h3
+                    className="truncate px-1 text-[11px] font-semibold text-muted-foreground"
+                    title={chapter.title}
+                  >
+                    {chapter.title}
+                  </h3>
+                  <ol
+                    className="mt-1 flex min-w-0 flex-col gap-0.5 border-l border-border/60 pl-2"
+                    aria-label={`${chapter.title} sections`}
+                  >
+                    {chapter.sections.map((section, chapterSectionIndex) => {
+                      const active = section.id === activeSection.id;
+                      const reviewed = reviewedSet.has(section.id);
+                      return (
+                        <li key={section.id} className="min-w-0">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  ref={(node) => {
+                                    sectionButtonRefs.current[section.id] =
+                                      node;
+                                  }}
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className={cn(
+                                    "h-auto min-h-7 min-w-0 w-full justify-start gap-2 rounded-md px-2 py-1 text-left text-xs leading-4",
+                                    active &&
+                                      "border-l-2 border-primary bg-muted pl-[6px] font-semibold text-foreground",
+                                  )}
+                                  aria-current={active ? "true" : undefined}
+                                  title={section.title}
+                                  onClick={() => selectSection(section.id)}
+                                />
+                              }
                             >
-                              done
-                            </Badge>
-                          ) : null}
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </li>
-            ))}
-          </ol>
-          <Separator className="my-1.5" />
-          <Collapsible open={supportOpen} onOpenChange={setSupportOpen}>
-            <CollapsibleTrigger
-              render={
+                              <span
+                                aria-hidden="true"
+                                className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
+                              >
+                                {String(chapterSectionIndex + 1).padStart(
+                                  2,
+                                  "0",
+                                )}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {section.title}
+                              </span>
+                              {reviewed ? (
+                                <Badge
+                                  variant="outline"
+                                  className="h-4 px-1 text-[10px]"
+                                  aria-label="Reviewed"
+                                >
+                                  done
+                                </Badge>
+                              ) : null}
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="right"
+                              align="start"
+                              className="max-w-80"
+                            >
+                              {section.title}
+                            </TooltipContent>
+                          </Tooltip>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </li>
+              ))}
+            </ol>
+            <Separator className="my-1.5" />
+            <Collapsible open={supportOpen} onOpenChange={setSupportOpen}>
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full justify-between px-1 text-xs"
+                  />
+                }
+              >
+                <span className="min-w-0">Support</span>
+                <ChevronDown
+                  data-disclosure-motion="chevron"
+                  className={supportOpen ? "size-4" : "size-4 -rotate-90"}
+                  aria-hidden="true"
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent motion="disclosure" className="pt-2">
+                <p className="walkthrough-support-copy px-1 text-xs">
+                  {walkthrough.support.hunks.length} supporting or mechanical
+                  hunk
+                  {walkthrough.support.hunks.length === 1 ? "" : "s"} outside
+                  the reading path.
+                </p>
+                <ul
+                  className="walkthrough-support-copy mt-2 max-h-48 overflow-y-auto px-1 text-xs"
+                  aria-label="Support hunks"
+                >
+                  {walkthrough.support.hunks.map((hunk) => (
+                    <li key={hunk.id} className="break-all py-0.5">
+                      {hunk.id} · {hunk.path}
+                    </li>
+                  ))}
+                </ul>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant={supportReviewed ? "secondary" : "outline"}
                   size="sm"
-                  className="h-7 w-full justify-between px-1 text-xs"
-                />
-              }
-            >
-              <span className="min-w-0">Support</span>
-              <ChevronDown
-                data-disclosure-motion="chevron"
-                className={supportOpen ? "size-4" : "size-4 -rotate-90"}
-                aria-hidden="true"
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent motion="disclosure" className="pt-2">
-              <p className="walkthrough-support-copy px-1 text-xs">
-                {walkthrough.support.hunks.length} supporting or mechanical hunk
-                {walkthrough.support.hunks.length === 1 ? "" : "s"} outside the
-                reading path.
-              </p>
-              <ul
-                className="walkthrough-support-copy mt-2 max-h-48 overflow-y-auto px-1 text-xs"
-                aria-label="Support hunks"
-              >
-                {walkthrough.support.hunks.map((hunk) => (
-                  <li key={hunk.id} className="break-all py-0.5">
-                    {hunk.id} · {hunk.path}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                type="button"
-                variant={supportReviewed ? "secondary" : "outline"}
-                size="sm"
-                className="mt-3 w-full"
-                aria-pressed={supportReviewed}
-                onClick={actions.onMarkSupportReviewed}
-              >
-                <Square />
-                {supportReviewed ? "Support reviewed" : "Mark Support reviewed"}
-              </Button>
-            </CollapsibleContent>
-          </Collapsible>
-        </aside>
+                  className="mt-3 w-full"
+                  aria-pressed={supportReviewed}
+                  onClick={actions.onMarkSupportReviewed}
+                >
+                  <Square />
+                  {supportReviewed
+                    ? "Support reviewed"
+                    : "Mark Support reviewed"}
+                </Button>
+              </CollapsibleContent>
+            </Collapsible>
+          </aside>
+        )}
         <ScrollArea
           role="region"
           aria-label="Walkthrough reading surface"
@@ -375,6 +449,12 @@ export function NarrativeWalkthrough({
             data-walkthrough-section-id={activeSection.id}
             className="flex min-h-full min-w-0 flex-col gap-3 p-4"
           >
+            <p
+              className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              title={activeChapter?.title ?? "Walkthrough"}
+            >
+              CHAPTER · {activeChapter?.title ?? "Walkthrough"}
+            </p>
             <h3
               ref={sectionHeadingRef}
               tabIndex={-1}
@@ -385,6 +465,12 @@ export function NarrativeWalkthrough({
             <p className="text-sm text-muted-foreground">
               {activeSection.prose}
             </p>
+            {discussionUnavailable ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                Inline discussion is unavailable or incomplete. Refresh GitHub
+                state to check for replies.
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">
                 <CircleAlert />
@@ -396,6 +482,28 @@ export function NarrativeWalkthrough({
                   reviewed
                 </Badge>
               ) : null}
+              {onFocusedChange === undefined ? null : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        ref={focusToggleRef}
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label={focused ? "Exit focus" : "Focus section"}
+                        aria-pressed={focused}
+                        onClick={() => requestFocusChange(!focused)}
+                      />
+                    }
+                  >
+                    <Focus aria-hidden="true" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {focused ? "Exit focus" : "Focus section"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
             {walkthrough.citationStatus === "verified" ? null : (
               <Alert>

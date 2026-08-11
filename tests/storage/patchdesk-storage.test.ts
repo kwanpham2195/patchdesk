@@ -175,7 +175,7 @@ describe("Patchdesk storage", () => {
     });
     expect(parseStoredReviewSession({
       ...session,
-      schemaVersion: 5,
+      schemaVersion: 6,
     })).toMatchObject({
       _tag: "err",
       error: { _tag: "StorageFailure", reason: "invalid_stored_value" },
@@ -215,7 +215,7 @@ describe("Patchdesk storage", () => {
     expect(parseStoredReviewSession(legacy)).toMatchObject({
       _tag: "ok",
       value: {
-        schemaVersion: 4,
+        schemaVersion: 5,
         batch: { state: { _tag: "Local" } },
         batchContent: {
           state: { _tag: "Local" },
@@ -275,7 +275,7 @@ describe("Patchdesk storage", () => {
     expect(parsed).toMatchObject({
       _tag: "ok",
       value: {
-        schemaVersion: 4,
+        schemaVersion: 5,
         batchContent: {
           items: [{ provenance: { _tag: "model", attemptId: "001" } }],
         },

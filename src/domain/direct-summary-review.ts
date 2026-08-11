@@ -31,7 +31,7 @@ export type DirectSummaryReviewReceipt = {
 /** Durable evidence for a one-shot, immediately published review summary. */
 export type DirectSummaryReviewState =
   | { readonly _tag: "WriteInFlight"; readonly operation: DirectSummaryReviewOperation }
-  | { readonly _tag: "OutcomeUnknown"; readonly operation: DirectSummaryReviewOperation }
+  | { readonly _tag: "OutcomeUnknown"; readonly operation: DirectSummaryReviewOperation; readonly resolution: "check_required" | "manual_resolution_required" }
   | { readonly _tag: "Confirmed"; readonly receipt: DirectSummaryReviewReceipt };
 
 export type InvalidDirectSummaryReviewState = { readonly _tag: "InvalidDirectSummaryReviewState" };
@@ -46,7 +46,7 @@ const operationSchema = v.strictObject({
 });
 const stateSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("WriteInFlight"), operation: operationSchema }),
-  v.strictObject({ _tag: v.literal("OutcomeUnknown"), operation: operationSchema }),
+  v.strictObject({ _tag: v.literal("OutcomeUnknown"), operation: operationSchema, resolution: v.optional(v.picklist(["check_required", "manual_resolution_required"])) }),
   v.strictObject({
     _tag: v.literal("Confirmed"),
     receipt: v.strictObject({ reviewId: v.string(), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), headSha: v.string(), submittedAt: v.string() }),
@@ -65,7 +65,10 @@ export function parseDirectSummaryReviewState(input: unknown): Result<DirectSumm
       : ok({ _tag: "Confirmed", receipt: { reviewId: reviewId.value, event: parsed.output.receipt.event, headSha: headSha.value, submittedAt: submittedAt.value } });
   }
   const operation = parseOperation(parsed.output.operation);
-  return operation._tag === "err" ? invalid() : ok({ _tag: parsed.output._tag, operation: operation.value });
+  if (operation._tag === "err") return invalid();
+  return parsed.output._tag === "OutcomeUnknown"
+    ? ok({ _tag: "OutcomeUnknown", operation: operation.value, resolution: parsed.output.resolution ?? "check_required" })
+    : ok({ _tag: "WriteInFlight", operation: operation.value });
 }
 
 function parseOperation(input: v.InferOutput<typeof operationSchema>): Result<DirectSummaryReviewOperation, InvalidDirectSummaryReviewState> {

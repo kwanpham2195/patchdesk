@@ -37,7 +37,7 @@ const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 
 function session(directSummaryReview?: DirectSummaryReviewState): ReviewSession {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: "session-a" as never,
     key: sessionKey,
     state: { _tag: "Created" },
@@ -95,13 +95,18 @@ function service(sessionValue: ReviewSession, gateway: ReturnType<typeof makeGat
 }
 
 describe("DirectSummaryReviewService.submit", () => {
-  it("does not create another review after a confirmed direct summary", async () => {
+  it("creates another review after a confirmed direct summary", async () => {
     const confirmed: DirectSummaryReviewState = {
       _tag: "Confirmed",
       receipt: { reviewId: "9001" as never, event: "COMMENT", headSha, submittedAt: "2026-08-09T11:35:00.000Z" as never },
     };
     const fixture = makeStore(session(confirmed));
-    const gateway = makeGateway();
+    const gateway = makeGateway({
+      getViewerDirectSummaryReviews: vi.fn(async () => ok({
+        complete: true,
+        reviews: [{ reviewId: "9001" as never, event: "COMMENT" as const, headSha, bodyDigest: "b".repeat(64), submittedAt: "2026-08-09T11:34:00.000Z" as never }],
+      })),
+    });
 
     const result = await service(fixture.current(), gateway, fixture.store).submit({
       profileId,
@@ -111,8 +116,14 @@ describe("DirectSummaryReviewService.submit", () => {
       body: "A second summary",
     });
 
-    expect(result).toEqual({ _tag: "err", error: "review_already_submitted" });
-    expect(gateway.createDirectSummaryReview).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ _tag: "ok", value: { _tag: "Confirmed", receipt: { reviewId: "9002" } } });
+    expect(gateway.createDirectSummaryReview).toHaveBeenCalledTimes(1);
+    expect(fixture.current().directSummaryReview).toMatchObject({ _tag: "Confirmed", receipt: { reviewId: "9002" } });
+    expect(gateway.getViewerDirectSummaryReviews).toHaveBeenCalledTimes(1);
+    expect(fixture.store.save.mock.calls[0]?.[0].directSummaryReview).toMatchObject({
+      _tag: "WriteInFlight",
+      operation: { baselineReviewIds: ["9001"] },
+    });
   });
 
   it("blocks when GitHub reports an existing pending review", async () => {
@@ -137,9 +148,29 @@ describe("DirectSummaryReviewService.submit", () => {
     expect(gateway.createDirectSummaryReview).not.toHaveBeenCalled();
   });
 
+  it("rejects author approval before persisting intent or writing to GitHub", async () => {
+    const fixture = makeStore(session());
+    const gateway = makeGateway({
+      getPullRequest: vi.fn(async () => ok({ headSha, author: "PMQUAN2CFW" } as never)),
+    });
+
+    const result = await service(fixture.current(), gateway, fixture.store).submit({
+      profileId,
+      reviewId,
+      expected: expected as never,
+      event: "APPROVE",
+      body: "Approve my own pull request",
+    });
+
+    expect(result).toEqual({ _tag: "err", error: "self_approval_not_allowed" });
+    expect(fixture.store.save).not.toHaveBeenCalled();
+    expect(gateway.createDirectSummaryReview).not.toHaveBeenCalled();
+  });
+
   it("requires reconciliation rather than replaying an uncertain write", async () => {
     const unknown: DirectSummaryReviewState = {
       _tag: "OutcomeUnknown",
+      resolution: "check_required",
       operation: {
         requestId: "direct-summary-1",
         event: "COMMENT",
@@ -210,6 +241,7 @@ describe("DirectSummaryReviewService.reconcile", () => {
   it("recognizes a lost response submitted in the same GitHub timestamp second", async () => {
     const unknown: DirectSummaryReviewState = {
       _tag: "OutcomeUnknown",
+      resolution: "check_required",
       operation: {
         requestId: "direct-summary-1",
         event: "COMMENT",
@@ -242,6 +274,7 @@ describe("DirectSummaryReviewService.reconcile", () => {
   it("keeps an unknown operation locked when the only match is outside the recovery window", async () => {
     const unknown: DirectSummaryReviewState = {
       _tag: "OutcomeUnknown",
+      resolution: "check_required",
       operation: {
         requestId: "direct-summary-2",
         event: "COMMENT",
@@ -267,8 +300,8 @@ describe("DirectSummaryReviewService.reconcile", () => {
 
     const result = await service(fixture.current(), gateway, fixture.store).reconcile({ profileId, reviewId });
 
-    expect(result).toMatchObject({ _tag: "ok", value: { _tag: "OutcomeUnknown" } });
-    expect(fixture.current().directSummaryReview).toMatchObject({ _tag: "OutcomeUnknown" });
-    expect(fixture.store.save).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ _tag: "ok", value: { _tag: "OutcomeUnknown", resolution: "manual_resolution_required" } });
+    expect(fixture.current().directSummaryReview).toMatchObject({ _tag: "OutcomeUnknown", resolution: "manual_resolution_required" });
+    expect(fixture.store.save).toHaveBeenCalledTimes(1);
   });
 });

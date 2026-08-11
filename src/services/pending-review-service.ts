@@ -12,9 +12,12 @@ import {
   reconcilePendingReviewState,
   rejectPendingReviewWrite,
   type GitHubReviewEvent,
+  type FindingReviewReceipt,
+  type FindingReviewSource,
   type PendingReviewAnchor,
   type PendingReviewOperation,
   type PendingReviewState,
+  type PendingReviewThreadWrite,
   type ViewerPendingReview,
 } from "../domain/pending-review";
 import {
@@ -37,6 +40,7 @@ export type StartPendingReviewInput = {
   readonly expected: ReviewWriteExpectation;
   readonly anchor: PendingReviewAnchor;
   readonly body: string;
+  readonly finding?: FindingReviewSource;
 };
 
 export type AddPendingReviewThreadInput = StartPendingReviewInput & {
@@ -182,10 +186,12 @@ export class PendingReviewService {
 
   async start(input: StartPendingReviewInput): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     return this.serializedWrite(input.profileId, input.reviewId, input.expected, async (profile, session) => {
+      if (input.finding !== undefined && (input.finding.sessionId !== session.id || input.finding.headSha !== session.key.headSha)) return err("invalid_input");
       const state = session.pendingReview ?? { _tag: "None" as const };
       const operation: PendingReviewOperation = {
         _tag: "Start",
         requestId: createPendingReviewRequestId(this.now()),
+        ...(input.finding === undefined ? {} : { finding: input.finding }),
       };
       return this.executeWrite(session, state, operation, async () => {
         const created = await this.github.startPendingReviewWithThread({
@@ -202,12 +208,14 @@ export class PendingReviewService {
 
   async addThread(input: AddPendingReviewThreadInput): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     return this.serializedWrite(input.profileId, input.reviewId, input.expected, async (profile, session) => {
+      if (input.finding !== undefined && (input.finding.sessionId !== session.id || input.finding.headSha !== session.key.headSha)) return err("invalid_input");
       const state = session.pendingReview ?? { _tag: "None" as const };
       const operation: PendingReviewOperation = {
         _tag: "AddThread",
         requestId: createPendingReviewRequestId(this.now()),
         reviewId: input.pendingReviewNodeId,
         anchor: input.anchor,
+        ...(input.finding === undefined ? {} : { finding: input.finding }),
       };
       return this.executeWrite(session, state, operation, async () => {
         const appended = await this.github.addPendingReviewThread({
@@ -304,7 +312,7 @@ export class PendingReviewService {
     session: ReviewSession,
     state: PendingReviewState,
     operation: PendingReviewOperation,
-    write: () => Promise<Result<ViewerPendingReview | undefined, { readonly _tag: "GitHubWriteFailure"; readonly category: "auth" | "rejected" | "unavailable" | "pending_review"; readonly message: string }>>,
+    write: () => Promise<Result<PendingReviewThreadWrite | ViewerPendingReview | undefined, { readonly _tag: "GitHubWriteFailure"; readonly category: "auth" | "rejected" | "unavailable" | "pending_review"; readonly message: string }>>,
   ): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     const begun = beginPendingReviewWrite(state, operation, this.now());
     if (begun._tag === "err") {
@@ -327,19 +335,34 @@ export class PendingReviewService {
       if (rejected._tag === "ok") await this.persist(session, rejected.value);
       return err(written.error.category === "auth" ? "permission_denied" : "rejected");
     }
-    const confirmed = confirmPendingReviewWrite(begun.value, written.value);
+    const writtenReview = written.value === undefined
+      ? undefined
+      : "review" in written.value
+        ? written.value.review
+        : written.value;
+    const confirmed = confirmPendingReviewWrite(begun.value, writtenReview);
     if (confirmed._tag === "err") return err("outcome_unknown");
-    // A confirmed receipt must be durable before success is reported.
-    if (!(await this.persist(session, confirmed.value))) {
+    const receipts = nextFindingReceipts(session.findingReviewReceipts, begun.value, written.value, confirmed.value);
+    if (receipts === undefined) {
       const unknown = markPendingReviewOutcomeUnknown(begun.value);
       if (unknown._tag === "ok") await this.persist(session, unknown.value);
       return err("outcome_unknown");
     }
-    return ok({ session: { ...session, pendingReview: confirmed.value }, state: confirmed.value });
+    // A confirmed receipt must be durable before success is reported.
+    if (!(await this.persist(session, confirmed.value, receipts))) {
+      const unknown = markPendingReviewOutcomeUnknown(begun.value);
+      if (unknown._tag === "ok") await this.persist(session, unknown.value);
+      return err("outcome_unknown");
+    }
+    const { findingReviewReceipts: _previousReceipts, ...sessionWithoutReceipts } = session;
+    void _previousReceipts;
+    return ok({ session: { ...sessionWithoutReceipts, pendingReview: confirmed.value, ...(receipts.length === 0 ? {} : { findingReviewReceipts: receipts }) }, state: confirmed.value });
   }
 
-  private async persist(session: ReviewSession, pendingReview: PendingReviewState): Promise<boolean> {
-    const saved = await this.sessions.save({ ...session, pendingReview, updatedAt: this.now() });
+  private async persist(session: ReviewSession, pendingReview: PendingReviewState, findingReviewReceipts = session.findingReviewReceipts): Promise<boolean> {
+    const { findingReviewReceipts: _previousReceipts, ...sessionWithoutReceipts } = session;
+    void _previousReceipts;
+    const saved = await this.sessions.save({ ...sessionWithoutReceipts, pendingReview, ...(findingReviewReceipts === undefined || findingReviewReceipts.length === 0 ? {} : { findingReviewReceipts }), updatedAt: this.now() });
     return saved._tag === "ok";
   }
 }
@@ -388,4 +411,29 @@ function mapGateFailure(reason: string): PendingReviewServiceFailure {
   if (reason === "terminal" || reason === "stale") return "permission_denied";
   if (reason === "not_fresh") return "not_fresh";
   return "unavailable";
+}
+
+function nextFindingReceipts(
+  existing: ReadonlyArray<FindingReviewReceipt> | undefined,
+  begun: PendingReviewState,
+  written: PendingReviewThreadWrite | ViewerPendingReview | undefined,
+  confirmed: PendingReviewState,
+): ReadonlyArray<FindingReviewReceipt> | undefined {
+  const receipts = existing ?? [];
+  if (begun._tag !== "WriteInFlight") return undefined;
+  const operation = begun.operation;
+  const finding = operation._tag === "Start" || operation._tag === "AddThread" ? operation.finding : undefined;
+  if (finding !== undefined) {
+    if (written === undefined || !("createdThreadId" in written) || confirmed._tag !== "Pending") return undefined;
+    if (finding.sessionId === "" || finding.headSha !== confirmed.review.headSha || receipts.some((receipt) => receipt.analysisRunId === finding.analysisRunId && receipt.findingId === finding.findingId && receipt.sessionId === finding.sessionId && receipt.headSha === finding.headSha && receipt.patchHash === finding.patchHash)) return undefined;
+    if (!confirmed.review.comments.some((comment) => comment.threadId === written.createdThreadId)) return undefined;
+    return [...receipts, { ...finding, threadId: written.createdThreadId, pendingReviewNodeId: confirmed.review.nodeId, state: "pending" }];
+  }
+  if (operation._tag === "Submit" && begun.review !== undefined) {
+    return receipts.map((receipt) => receipt.state === "pending" && receipt.pendingReviewNodeId === begun.review?.nodeId ? { ...receipt, state: "published" as const } : receipt);
+  }
+  if (operation._tag === "Discard" && begun.review !== undefined) {
+    return receipts.filter((receipt) => receipt.state !== "pending" || receipt.pendingReviewNodeId !== begun.review?.nodeId);
+  }
+  return receipts;
 }

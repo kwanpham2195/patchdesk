@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   parseGitHubHost,
+  parseContentHash,
+  parseFindingId,
+  parseInsightRunId,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
@@ -38,6 +41,13 @@ const sessionKey = {
   headSha,
 };
 const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
+const finding = {
+  analysisRunId: must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-fixture")),
+  findingId: must(parseFindingId("finding-1")),
+  sessionId: "session-a" as never,
+  headSha,
+  patchHash: must(parseContentHash("a".repeat(64))),
+};
 
 const reviewRaw = {
   restId: "9001",
@@ -63,10 +73,15 @@ const review = (): ViewerPendingReview => {
   if (parsed._tag === "err") throw new Error("fixture");
   return parsed.value;
 };
+const createdThreadId = (): ViewerPendingReview["comments"][number]["threadId"] => {
+  const threadId = review().comments.at(0)?.threadId;
+  if (threadId === undefined) throw new Error("fixture");
+  return threadId;
+};
 
 function session(pendingReview?: PendingReviewState): ReviewSession {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: "session-a" as never,
     key: sessionKey,
     state: { _tag: "Created" },
@@ -108,8 +123,8 @@ function makeGateway(overrides: Record<string, unknown> = {}) {
   return {
     resolveAuthenticatedAccount: vi.fn(async () => ok({ host: "github.com", account: "pmquan2cfw" })),
     getViewerPendingReview: vi.fn(async () => ok({ _tag: "None" })),
-    startPendingReviewWithThread: vi.fn(async () => ok(review())),
-    addPendingReviewThread: vi.fn(async () => ok(review())),
+    startPendingReviewWithThread: vi.fn(async () => ok({ review: review(), createdThreadId: createdThreadId() })),
+    addPendingReviewThread: vi.fn(async () => ok({ review: review(), createdThreadId: createdThreadId() })),
     submitPendingReview: vi.fn(async () => ok({ reviewId: "9001" })),
     discardPendingReview: vi.fn(async () => ok(undefined)),
     getPullRequest: vi.fn(async () => ok({ headSha } as never)),
@@ -164,6 +179,28 @@ describe("PendingReviewService.reconcile", () => {
     const recovered = await service(fixture.current(), gateway, fixture.store).reconcile({ profileId, reviewId, recover: true });
     expect(recovered).toMatchObject({ _tag: "ok", value: { state: { _tag: "Pending", review: { restId: "9001" } } } });
     expect(fixture.current().pendingReview).toMatchObject({ _tag: "Pending" });
+  });
+});
+
+describe("PendingReviewService Finding receipts", () => {
+  it("writes one exact pending Finding receipt atomically with the confirmed start", async () => {
+    const fixture = makeStore(session());
+    const result = await service(fixture.current(), makeGateway(), fixture.store).start({
+      profileId, reviewId, expected: expected as never,
+      anchor: { path: "docs/docs.go" as never, startLine: 2908, line: 2908, side: "new" }, body: "Comment body", finding,
+    });
+    expect(result._tag).toBe("ok");
+    expect(fixture.current().findingReviewReceipts).toEqual([{ ...finding, threadId: createdThreadId(), pendingReviewNodeId: review().nodeId, state: "pending" }]);
+  });
+
+  it("publishes and discards only receipts owned by the confirmed pending review", async () => {
+    const receipt = { ...finding, threadId: createdThreadId(), pendingReviewNodeId: review().nodeId, state: "pending" as const };
+    const submitted = makeStore({ ...session({ _tag: "Pending", review: review() }), findingReviewReceipts: [receipt] });
+    await service(submitted.current(), makeGateway(), submitted.store).submit({ profileId, reviewId, expected: expected as never, event: "COMMENT", summaryBody: "Summary" });
+    expect(submitted.current().findingReviewReceipts).toEqual([{ ...receipt, state: "published" }]);
+    const discarded = makeStore({ ...session({ _tag: "Pending", review: review() }), findingReviewReceipts: [receipt] });
+    await service(discarded.current(), makeGateway(), discarded.store).discard({ profileId, reviewId, expected: expected as never, confirmation: true });
+    expect(discarded.current().findingReviewReceipts).toBeUndefined();
   });
 });
 

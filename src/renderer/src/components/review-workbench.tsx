@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, GitMerge, LoaderCircle, PanelLeftOpen, XCircle } from "lucide-react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { mapConversationThread } from "../inline-conversation-mapping";
+import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
 import { parseReviewBatch } from "../../../domain/review-batch";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitHubThreadId, parsePullRequestNumber, parseRepoRelativePath } from "../../../domain/ids";
@@ -22,7 +22,6 @@ import { ReviewNavigator, type ReviewNavigatorSection } from "./review-navigator
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { loadReviewViewPreferences, saveReviewViewPreferences, type ReviewViewPreferences } from "../review-view-preferences";
 import { cn } from "@/lib/utils";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -32,8 +31,6 @@ import {
 } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-type ReviewFinding = NonNullable<WorkbenchResponse["insights"]["analysis"]["retained"]>["value"]["findings"][number];
-
 function pullRequestExternalRef(model: WorkbenchResponse): PullRequestRef | undefined {
   const source = model.pullRequest?.ref ?? { host: model.session.key.host, owner: model.session.key.owner, repo: model.session.key.repo, number: model.session.key.prNumber };
   const host = parseGitHubHost(source.host);
@@ -42,12 +39,6 @@ function pullRequestExternalRef(model: WorkbenchResponse): PullRequestRef | unde
   const number = parsePullRequestNumber(source.number);
   if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return undefined;
   return { host: host.value, owner: owner.value, repo: repo.value, number: number.value };
-}
-
-function initialFindings(model: WorkbenchResponse): ReadonlyArray<ReviewFinding> {
-  const retained = model.insights.analysis.retained;
-  if (model.insights.analysis.status !== "current" || retained === undefined || retained.sessionId !== model.session.id || retained.headSha !== model.revision.reviewedHeadSha) return [];
-  return retained.value.findings.filter((finding) => finding.mappingStatus === "mapped");
 }
 
 function draftInlineAnnotations(
@@ -106,14 +97,14 @@ export type ReviewWorkbenchActions = {
   /** True when the last explicit refresh failed; surfaces bounded error copy. */
   readonly refreshError?: boolean;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
-  readonly addFinding?: (finding: ReviewFinding) => Promise<void>;
-  readonly dismissFinding?: (finding: ReviewFinding, reason: string) => Promise<void>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly directSummary?: {
     readonly busy: boolean;
     readonly state: DirectSummaryReviewProjection["state"];
     readonly receipt?: Extract<DirectSummaryReviewProjection, { readonly state: "confirmed" }>["receipt"];
+    readonly recoveryResolution?: Extract<DirectSummaryReviewProjection, { readonly state: "recovery_required" }>["resolution"];
+    readonly approvalCapability: "allowed" | "blocked_author" | "unknown";
     readonly error?: string;
     readonly onSubmit: (event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES", body: string) => Promise<DirectSummaryReviewProjection>;
     readonly onRecover: () => Promise<DirectSummaryReviewProjection>;
@@ -123,6 +114,7 @@ export type ReviewWorkbenchActions = {
     readonly projection: WorkbenchResponse["pendingReview"];
     readonly busy: boolean;
     readonly finishDialogOpen: boolean;
+    readonly finishDialogInitialSummary?: string;
     readonly onOpenFinishDialog: () => void;
     readonly onCloseFinishDialog: () => void;
     readonly onSubmit: (
@@ -164,7 +156,6 @@ export type ReviewWorkbenchInitialState = {
   readonly activeTab?: "conversation" | "diff" | "insights";
   readonly section?: ReviewNavigatorSection | "insights";
   readonly selectedPath?: string;
-  readonly selectedFindingId?: string;
   readonly selectedCommitSha?: string;
   readonly overviewOpen?: boolean;
   readonly draftExpanded?: boolean;
@@ -247,10 +238,6 @@ export function ReviewWorkbench({
     onStateChange?.({ activeTab, section, ...(persistedPath === undefined ? {} : { selectedPath: persistedPath }) });
   }, [activeTab, onStateChange, section, selectedPath]);
   const [activePath, setActivePath] = useState<string | undefined>(initialState?.selectedPath);
-  const [selectedFinding, setSelectedFinding] = useState<ReviewFinding | undefined>(() => {
-    if (initialState?.selectedFindingId === undefined) return undefined;
-    return initialFindings(model).find((finding) => finding.id === initialState.selectedFindingId);
-  });
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(initialState?.selectedCommitSha);
   const feedbackRegionRef = useRef<HTMLDivElement>(null);
   const initializedRevision = useRef(model.revision.reviewedHeadSha);
@@ -260,13 +247,11 @@ export function ReviewWorkbench({
   const selectedCommit = selectedCommitSha === undefined ? undefined : model.commits.find((commit) => commit.sha === selectedCommitSha);
   const loadCommit = useCallback((sha: string): void => {
     setSection("commits");
-    setSelectedFinding(undefined);
     setSelectedCommitSha(sha);
   }, []);
   const selectSection = useCallback((next: ReviewNavigatorSection): void => {
     setActiveTab("diff");
     setSection(next);
-    setSelectedFinding(undefined);
     if (next !== "commits") {
       setSelectedCommitSha(undefined);
     }
@@ -275,17 +260,10 @@ export function ReviewWorkbench({
   const selectCommit = useCallback((sha: string): void => {
     loadCommit(sha);
   }, [loadCommit]);
-  const selectFinding = useCallback((finding: typeof findings[number]): void => {
-    setSection("findings");
-    setSelectedCommitSha(undefined);
-    setSelectedFinding(finding);
-    if (finding.file !== undefined) { setSelectedPath(finding.file); setActivePath(finding.file); }
-  }, []);
   useEffect(() => {
     if (initializedRevision.current === model.revision.reviewedHeadSha) return;
     initializedRevision.current = model.revision.reviewedHeadSha;
     setSelectedCommitSha(undefined);
-    setSelectedFinding(undefined);
     setSelectedPath(undefined);
     setActivePath(undefined);
     setSection("files");
@@ -301,22 +279,26 @@ export function ReviewWorkbench({
   const commitDiffState = useCommitDiff({ ...(selectedCommitSha === undefined ? {} : { selectedSha: selectedCommitSha }), revisionKey: model.revision.reviewedHeadSha, loadCommitDiff: actions.loadCommitDiff });
   const commitCommentAuthoring = useMemo(() => selectedCommitSha === undefined || model.fullPatch === undefined ? undefined : createCommitCommentAuthoring(actions.localCommentAuthoring, model.fullPatch), [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha]);
   const commitDiff = commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
-  const conversationAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(() => {
+  const readOnlyConversationAnnotations = useMemo(() => {
     if (model.fullPatch === undefined) return [];
-    const files = parseUnifiedPatch(model.fullPatch);
-    return (model.conversation.inline?.threads ?? []).flatMap((thread) => {
+    return projectReadOnlyConversationAnnotations(
+      parseUnifiedPatch(model.fullPatch),
+      model.conversation.inline?.threads ?? [],
+    );
+  }, [model.conversation.inline, model.fullPatch]);
+  const conversationAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(() => {
+    return readOnlyConversationAnnotations.flatMap((thread) => {
       // The wire model carries plain string ids; the annotation target needs
       // the verified GitHub thread id so Reply and Resolve are only reachable
       // through an id the mutation layer accepts.
       const parsedThreadId = parseGitHubThreadId(thread.id);
-      const mapped = mapConversationThread(files, thread);
-      if (mapped._tag !== "Mapped" || parsedThreadId._tag === "err") return [];
+      if (parsedThreadId._tag === "err") return [];
       return [{
         id: `conversation:${thread.id}`,
-        path: mapped.path,
-        start: mapped.start,
-        end: mapped.end,
-        side: mapped.side,
+        path: thread.path,
+        start: thread.start,
+        end: thread.end,
+        side: thread.side,
         severity: "conversation",
         title: "Conversation",
         explanation: "",
@@ -340,7 +322,7 @@ export function ReviewWorkbench({
         },
       }];
     });
-  }, [actions.deleteComment, actions.editComment, actions.replyToThread, actions.setThreadState, model.conversation.inline, model.fullPatch]);
+  }, [actions.deleteComment, actions.editComment, actions.replyToThread, actions.setThreadState, readOnlyConversationAnnotations]);
   const pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
     model.pendingReview?.state !== "pending"
       ? []
@@ -389,12 +371,6 @@ export function ReviewWorkbench({
   ];
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
-  const selectedFindingLocation = selectedFinding === undefined ? undefined : {
-    ...(selectedFinding.file === undefined ? {} : { file: selectedFinding.file }),
-    ...(selectedFinding.lineStart === undefined ? {} : { lineStart: selectedFinding.lineStart }),
-    ...(selectedFinding.lineEnd === undefined ? {} : { lineEnd: selectedFinding.lineEnd }),
-    ...(selectedFinding.diffSide === undefined ? {} : { diffSide: selectedFinding.diffSide }),
-  };
   const externalPullRequest = pullRequestExternalRef(model);
   const overview: CanonicalReviewOverview = {
     repository,
@@ -424,7 +400,6 @@ export function ReviewWorkbench({
       analysis: { status: model.insights.analysis.status },
       walkthrough: { status: model.insights.walkthrough.status },
     },
-    mappedFindingCount: findings.length,
     ...(model.review.status === "open" ? {} : { terminalState: model.review.status }),
   };
   const commitHeader = selectedCommit === undefined || commitDiff === undefined ? undefined : {
@@ -436,14 +411,8 @@ export function ReviewWorkbench({
   const navigateToFiles = useCallback((): void => {
     setActiveTab("diff");
     setSection("files");
-    setSelectedFinding(undefined);
     setSelectedCommitSha(undefined);
   }, []);
-  /** Closes PR Overview and moves to the existing current Findings surface. */
-  const viewFindings = useCallback((): void => {
-    setOverviewOpen(false);
-    selectSection("findings");
-  }, [selectSection]);
   const focusPublishedFeedback = useCallback((): void => {
     const feedbackRegion = feedbackRegionRef.current;
     const region = feedbackRegion?.querySelector<HTMLElement>('[aria-label="Published feedback"]') ?? feedbackRegion;
@@ -500,10 +469,9 @@ export function ReviewWorkbench({
             {actions.pendingReview === undefined || terminal ? null : (
               <PendingReviewHeaderAction
                 pendingReview={actions.pendingReview}
-                directSummary={actions.directSummary}
                 onNavigateToDiff={() => setActiveTab("diff")}
                 onOpenSummary={() => setSummaryDialogOpen(true)}
-                summaryAvailable={actions.directSummary?.state === "idle"}
+                summaryAvailable={actions.directSummary !== undefined && actions.directSummary.state !== "recovery_required"}
               />
             )}
           </div>
@@ -553,15 +521,12 @@ export function ReviewWorkbench({
                   {navigatorVisible ? <ReviewNavigator
                     patch={model.fullPatch}
                     commits={model.commits}
-                    findings={findings}
                     section={section}
                     {...(selectedPath === undefined ? {} : { selectedPath })}
-                    {...(selectedFinding === undefined ? {} : { selectedFindingId: selectedFinding.id })}
                     {...(activePath === undefined ? {} : { activePath })}
                     {...(selectedCommitSha === undefined ? {} : { selectedCommitSha })}
                     onSectionChange={selectSection}
-                    onFileSelect={(path) => { setSection("files"); setSelectedFinding(undefined); setSelectedPath(path); setActivePath(path); }}
-                    onFindingSelect={selectFinding}
+                    onFileSelect={(path) => { setSection("files"); setSelectedPath(path); setActivePath(path); }}
                     onCommitSelect={selectCommit}
                     onCollapse={() => setNavigatorVisible(false)}
                   /> : (
@@ -583,18 +548,10 @@ export function ReviewWorkbench({
                       <p className="p-6 text-sm text-muted-foreground">No patch is available for this Review session.</p>
                     ) : (
                       <>
-                      {selectedFinding !== undefined && selectedCommitSha === undefined && analysisIsCurrent ? (
-                        <FindingFocusHeader
-                          finding={selectedFinding}
-                          {...(actions.addFinding === undefined ? {} : { onAdd: actions.addFinding })}
-                          {...(actions.dismissFinding === undefined ? {} : { onDismiss: actions.dismissFinding })}
-                        />
-                      ) : null}
                       <DiffWorkbench
                         key={selectedCommitSha ?? model.revision.reviewedHeadSha}
                         patch={displayedPatch}
                         {...(selectedCommitSha === undefined ? { sourceSession: { profileId: model.session.key.profileId, sessionId: model.session.id } } : {})}
-                        {...(selectedFindingLocation === undefined || selectedCommitSha !== undefined ? {} : { finding: selectedFindingLocation })}
                         {...(selectedPath === undefined || selectedCommitSha !== undefined ? {} : { controlledSelectedPath: selectedPath, onSelectedPathChange: (path: string) => { setSelectedPath(path); setActivePath(path); } })}
                         {...(selectedCommitSha === undefined ? { onActiveFileChange: (path: string) => setActivePath(path) } : {})}
                         {...(selectedCommitSha === undefined ? { annotations } : {})}
@@ -629,12 +586,13 @@ export function ReviewWorkbench({
       </div>
       <div className="hidden min-h-0 shrink-0" data-review-workbench-draft-dock>{slots.draftDock}</div>
 
-      <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} onViewFindings={viewFindings} />
+      <CanonicalReviewOverviewSheet open={overviewOpen} onOpenChange={setOverviewOpen} overview={overview} {...(actions.merge === undefined ? {} : { merge: actions.merge })} onRefresh={actions.refresh} />
       {actions.pendingReview === undefined || actions.pendingReview.projection?.state !== "pending" ? null : (
         <FinishReviewDialog
           open={actions.pendingReview.finishDialogOpen}
           onOpenChange={actions.pendingReview.onCloseFinishDialog}
           projection={actions.pendingReview.projection}
+          {...(actions.pendingReview.finishDialogInitialSummary === undefined ? {} : { initialSummary: actions.pendingReview.finishDialogInitialSummary })}
           actions={{
             busy: actions.pendingReview.busy,
             onSubmit: actions.pendingReview.onSubmit,
@@ -653,9 +611,12 @@ export function ReviewWorkbench({
           busy={actions.directSummary.busy}
           state={actions.directSummary.state}
           {...(actions.directSummary.receipt === undefined ? {} : { receipt: actions.directSummary.receipt })}
+          {...(actions.directSummary.recoveryResolution === undefined ? {} : { recoveryResolution: actions.directSummary.recoveryResolution })}
+          approvalCapability={actions.directSummary.approvalCapability}
           {...(actions.directSummary.error === undefined ? {} : { error: actions.directSummary.error })}
           onSubmit={actions.directSummary.onSubmit}
           onRecover={actions.directSummary.onRecover}
+          {...(externalPullRequest === undefined ? {} : { onOpenPullRequest: () => { void openPullRequestExternalUrl(pullRequestPageUrl(externalPullRequest).toString(), externalPullRequest); } })}
         />
       )}
       {actions.merge === undefined || actions.merge.readiness._tag === "Blocked" ? null : (
@@ -680,13 +641,11 @@ export function ReviewWorkbench({
 
 function PendingReviewHeaderAction({
   pendingReview,
-  directSummary,
   onNavigateToDiff,
   onOpenSummary,
   summaryAvailable,
 }: {
   readonly pendingReview: NonNullable<ReviewWorkbenchActions["pendingReview"]>;
-  readonly directSummary: ReviewWorkbenchActions["directSummary"];
   readonly onNavigateToDiff: () => void;
   readonly onOpenSummary: () => void;
   readonly summaryAvailable: boolean;
@@ -694,11 +653,6 @@ function PendingReviewHeaderAction({
   const [startChoiceOpen, setStartChoiceOpen] = useState(false);
   const projection = pendingReview.projection;
   if (projection === undefined || projection.state === "none") {
-    if (directSummary?.state === "confirmed" || directSummary?.state === "recovery_required") {
-      return <Button variant="outline" size="sm" onClick={onOpenSummary} disabled={directSummary.busy} data-review-header-summary-state>
-        {directSummary.state === "confirmed" ? "View submitted review" : "Recover submitted review"}
-      </Button>;
-    }
     // Start a review directs the maintainer to select a valid inline Diff
     // range; it never creates an empty remote review (unproven path).
     return <>
@@ -753,40 +707,6 @@ function PendingReviewNotice({
         Check GitHub again
       </button>
     </div>
-  );
-}
-
-function FindingFocusHeader({  finding,
-  onAdd,
-  onDismiss,
-}: {
-  readonly finding: ReviewFinding;
-  readonly onAdd?: (finding: ReviewFinding) => Promise<void>;
-  readonly onDismiss?: (finding: ReviewFinding, reason: string) => Promise<void>;
-}): React.JSX.Element {
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  const disposition = finding.disposition ?? "open";
-  const run = async (action: () => Promise<void>): Promise<void> => {
-    setBusy(true);
-    setError(false);
-    try { await action(); } catch { setError(true); } finally { setBusy(false); }
-  };
-  return (
-    <header aria-label="Finding focus" className="flex flex-wrap items-center gap-3 border-b bg-card px-4 py-3">
-      <Badge variant={finding.severity === "P0" || finding.severity === "P1" ? "destructive" : "outline"}>{finding.severity}</Badge>
-      <div className="min-w-0 flex-1">
-        <h2 className="truncate font-medium">{finding.title}</h2>
-        <p className="text-xs text-muted-foreground">{finding.file ?? "General finding"}{finding.lineStart === undefined ? "" : `:${finding.lineStart}`} · {disposition}</p>
-      </div>
-      {error ? <p role="alert" className="text-xs text-destructive">Finding action could not be saved.</p> : null}
-      {disposition === "open" && onAdd !== undefined ? <Button size="xs" variant="outline" disabled={busy} onClick={() => void run(() => onAdd(finding))}>Add to review</Button> : null}
-      {disposition === "open" && onDismiss !== undefined ? <>
-        <input aria-label="Dismiss reason" className="h-7 w-36 rounded border px-2 text-xs" placeholder="Dismiss reason" value={reason} onChange={(event) => setReason(event.target.value)} />
-        <Button size="xs" variant="ghost" disabled={busy || reason.trim().length === 0} onClick={() => void run(() => onDismiss(finding, reason.trim()))}>Dismiss</Button>
-      </> : null}
-    </header>
   );
 }
 

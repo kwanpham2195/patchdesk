@@ -16,7 +16,7 @@ export type ApiFailureKind =
   | "outcome_unknown"
   | "no_pending_review"
   | "pending_review_locked"
-  | "review_already_submitted"
+  | "self_approval_not_allowed"
   | "internal";
 
 export class PatchdeskApiError extends Error {
@@ -100,7 +100,7 @@ function errorCode(value: unknown): string | undefined {
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
   if (code === "outcome_unknown") return "outcome_unknown";
-  if (code === "review_already_submitted") return "review_already_submitted";
+  if (code === "self_approval_not_allowed") return "self_approval_not_allowed";
   if (code?.includes("revision") === true || code === "conflict") return "revision_conflict";
   if (code === "not_fresh" || code?.includes("stale") === true) return "stale_head";
   if (code === "not_found" || code === "unavailable") return "unavailable";
@@ -131,7 +131,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "outcome_unknown": return "GitHub could not confirm the pending review write. Check GitHub again before continuing.";
     case "no_pending_review": return "The pending review no longer exists. Refresh to see the current state.";
     case "pending_review_locked": return "The pending review write is still being reconciled. Check GitHub again.";
-    case "review_already_submitted": return "This review summary was already submitted. Refresh to see the current GitHub state.";
+    case "self_approval_not_allowed": return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
     case "internal": return "Patchdesk could not complete the request.";
   }
 }

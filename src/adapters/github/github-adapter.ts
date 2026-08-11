@@ -49,6 +49,7 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
   type PendingReviewAnchor,
   type PendingReviewRead,
+  type PendingReviewThreadWrite,
   type ViewerPendingReview,
 } from "../../domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
@@ -600,7 +601,7 @@ export interface GitHubPendingReviewGateway {
     readonly headSha: GitSha;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>>;
 
   /** Append one inline thread to the known pending review. */
   addPendingReviewThread(input: {
@@ -609,7 +610,7 @@ export interface GitHubPendingReviewGateway {
     readonly reviewId: GitHubReviewNodeId;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>>;
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>>;
 
   /**
    * Delete the viewer's pending review (dbacd62-proven REST DELETE contract,
@@ -1540,7 +1541,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly headSha: GitSha;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     const created = await this.commands.runJson({
       argv: ["gh", "api", "--hostname", input.profile.githubHost, "--method", "POST", `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`, "--input", "-"],
       stdin: JSON.stringify({
@@ -1553,13 +1554,14 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     if (created._tag === "err") return err(writeFailure(created.error));
     const pending = parsePendingReview(created.value);
     const nodeId = nestedString(created.value, ["node_id"]);
-    if (pending === undefined || nodeId === undefined) {
+    const createdCommentId = nestedString(created.value, ["comments", "0", "node_id"]);
+    if (pending === undefined || nodeId === undefined || createdCommentId === undefined) {
       return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a PENDING review identity." });
     }
     // The create receipt is not a full owner: thread and comment identity come
     // only from the proven bounded read-back. A failed read-back leaves the
     // confirmed remote create unreconciled rather than inventing identities.
-    return this.pendingReviewAfterWrite(input.profile, input.pr, { restId: pending.reviewId, nodeId });
+    return this.pendingReviewAfterWrite(input.profile, input.pr, { restId: pending.reviewId, nodeId, createdCommentId });
   }
 
   async addPendingReviewThread(input: {
@@ -1568,7 +1570,7 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     readonly reviewId: GitHubReviewNodeId;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     const side = input.anchor.side === "new" ? "RIGHT" : "LEFT";
     // pageInfo belongs inside the comments connection: PullRequestReviewThread
     // has no pageInfo field, and GitHub rejects the mutation at schema
@@ -1584,15 +1586,15 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     if (threadId === undefined || commentId === undefined) {
       return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not return a thread identity." });
     }
-    return this.pendingReviewAfterWrite(input.profile, input.pr, { nodeId: input.reviewId });
+    return this.pendingReviewAfterWrite(input.profile, input.pr, { nodeId: input.reviewId, createdThreadId: threadId });
   }
 
   /** Read back the confirmed owner after a write; an unreconciled write is unavailable. */
   private async pendingReviewAfterWrite(
     profile: WorkspaceProfileConfig,
     pr: PullRequestRef,
-    expected: { readonly restId?: string; readonly nodeId?: string },
-  ): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+    expected: { readonly restId?: string; readonly nodeId?: string; readonly createdThreadId?: string; readonly createdCommentId?: string },
+  ): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     const account = parseGitHubLogin(profile.ghAccount);
     if (account._tag === "err") {
       return err({ _tag: "GitHubWriteFailure", category: "auth", message: "GitHub authentication is required." });
@@ -1606,7 +1608,16 @@ export class GitHubAdapter implements GitHubReader, GitHubReviewWriter, GitHubMe
     if (!matches) {
       return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "The pending review could not be confirmed after the write." });
     }
-    return ok(read.value.review);
+    const parsedCreatedThread = expected.createdThreadId === undefined ? undefined : parseGitHubThreadId(expected.createdThreadId);
+    const createdThread = expected.createdThreadId === undefined
+      ? read.value.review.comments.find((comment) => comment.reviewCommentId === expected.createdCommentId)?.threadId
+      : parsedCreatedThread?._tag === "ok"
+        ? parsedCreatedThread.value
+        : undefined;
+    if (createdThread === undefined || !read.value.review.comments.some((comment) => comment.threadId === createdThread)) {
+      return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "GitHub did not confirm the created review thread." });
+    }
+    return ok({ review: read.value.review, createdThreadId: createdThread });
   }
 
   async discardPendingReview(input: {
@@ -2097,13 +2108,13 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     readonly headSha: GitSha;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     void input;
     const value = this.values.pendingReviewStart;
     if (value === undefined) {
       return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending-review start fixture." });
     }
-    return value.failure === undefined ? ok(value.review) : err(value.failure);
+    return value.failure === undefined ? ok(value.write) : err(value.failure);
   }
 
   async addPendingReviewThread(input: {
@@ -2112,13 +2123,13 @@ export class FakeGitHubAdapter implements GitHubReader, GitHubReviewWriter, GitH
     readonly reviewId: GitHubReviewNodeId;
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
-  }): Promise<Result<ViewerPendingReview, GitHubWriteFailure>> {
+  }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     void input;
     const value = this.values.pendingReviewAddThread;
     if (value === undefined) {
       return err({ _tag: "GitHubWriteFailure", category: "unavailable", message: "Missing pending-review append fixture." });
     }
-    return value.failure === undefined ? ok(value.review) : err(value.failure);
+    return value.failure === undefined ? ok(value.write) : err(value.failure);
   }
 
   async discardPendingReview(input: {
@@ -2197,8 +2208,8 @@ export type FakeGitHubAdapterValues = {
   readonly submittedReview: { readonly reviewId: string };
   /** Spike-proven pending-review gateway fixtures; an absent reader is unimplemented. */
   readonly viewerPendingReview?: { readonly account: GitHubLogin; readonly read: PendingReviewRead };
-  readonly pendingReviewStart?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
-  readonly pendingReviewAddThread?: { readonly review: ViewerPendingReview; readonly failure?: GitHubWriteFailure };
+  readonly pendingReviewStart?: { readonly write: PendingReviewThreadWrite; readonly failure?: GitHubWriteFailure };
+  readonly pendingReviewAddThread?: { readonly write: PendingReviewThreadWrite; readonly failure?: GitHubWriteFailure };
   readonly pendingReviewDiscard?: { readonly failure?: GitHubWriteFailure };
   readonly mergeResult: { readonly mergeCommitSha?: GitSha };
   /** Thread ids proven to belong to the fixture pull request (owner/repo/number). */

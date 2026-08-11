@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -70,6 +71,16 @@ export type WorkbenchSessionProjection = {
     readonly headSha: GitSha;
   };
 };
+export type AnalysisFindingReviewStatus =
+  | { readonly state: "actionable" }
+  | { readonly state: "pending_review" }
+  | { readonly state: "published" }
+  | { readonly state: "locked" };
+
+export type AnalysisReviewActionsProjection = {
+  readonly findings: Readonly<Record<string, AnalysisFindingReviewStatus>>;
+  readonly canFinishWithAnalysisSummary: boolean;
+};
 
 export type ReviewWorkbenchProjection = {
   readonly state: "review";
@@ -96,9 +107,12 @@ export type ReviewWorkbenchProjection = {
     readonly analysis: InsightProjection<ReviewResult>;
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
   };
+  readonly analysisReviewActions: AnalysisReviewActionsProjection;
   readonly draft?: ReviewBatch;
   readonly pendingReview?: PendingReviewProjection;
   readonly directSummary?: DirectSummaryReviewProjection;
+  /** Advisory only; the direct-summary service rechecks the account and PR author before writing. */
+  readonly directSummaryDecision: "allowed" | "blocked_author" | "unknown";
   readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
@@ -159,7 +173,7 @@ export class ReviewWorkbenchProjectionService {
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const session = await this.loadSession(input);
     if (session._tag === "err") return session;
-    return this.project(session.value, undefined, "local", undefined, false, pendingReview);
+    return this.project(session.value.profile, session.value.session, undefined, "local", undefined, false, pendingReview);
   }
 
   /** Projects the exact remote snapshot represented by the durable Review. */
@@ -173,7 +187,7 @@ export class ReviewWorkbenchProjectionService {
   }): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const session = await this.loadSession({ profileId: input.profileId, sessionId: input.sessionId });
     if (session._tag === "err") return session;
-    return this.project(session.value, {
+    return this.project(session.value.profile, session.value.session, {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
       conversation: ok(
         input.snapshot.conversation ?? conversationFromSnapshot(input.snapshot),
@@ -209,7 +223,7 @@ export class ReviewWorkbenchProjectionService {
         headSha: session.value.key.headSha,
       }),
     ]);
-    return this.project(session.value, {
+    return this.project(profile.value, session.value, {
       current,
       conversation: conversationResult,
       checks,
@@ -238,17 +252,18 @@ export class ReviewWorkbenchProjectionService {
 
   private async loadSession(
     input: LoadWorkbenchInput,
-  ): Promise<Result<ReviewSession, WorkbenchProjectionFailure>> {
+  ): Promise<Result<{ readonly profile: WorkspaceProfileConfig; readonly session: ReviewSession }, WorkbenchProjectionFailure>> {
     const [profile, session] = await Promise.all([
       this.profiles.load(input.profileId),
       this.sessions.load(input.profileId, input.sessionId),
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    return ok(session.value);
+    return ok({ profile: profile.value, session: session.value });
   }
 
   private async project(
+    profile: WorkspaceProfileConfig,
     session: ReviewSession,
     remote: {
       readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
@@ -343,6 +358,14 @@ export class ReviewWorkbenchProjectionService {
             ? "open" as const
             : "closed" as const;
 
+    const analysisReviewActions = projectAnalysisReviewActions({
+      analysis,
+      session,
+      freshness,
+      patchHash: patchHash as ContentHash | undefined,
+      pendingReview: pendingReview?.state ?? session.pendingReview,
+    });
+
     return ok({
       state: "review",
       review: { id: createReviewId(session.key), status: reviewStatus },
@@ -361,12 +384,14 @@ export class ReviewWorkbenchProjectionService {
         analysis,
         walkthrough,
       },
+      analysisReviewActions,
       ...(session.batchContent === undefined ? {} : { draft: session.batchContent }),
       pendingReview: projectPendingReview(
         pendingReview?.state ?? session.pendingReview ?? { _tag: "None" },
         pendingReview?.unavailable ?? false,
       ),
       directSummary: projectDirectSummaryReview(session.directSummaryReview),
+      directSummaryDecision: directSummaryDecision(profile, pullRequest),
       conversation,
       checks,
       mergeReadiness,
@@ -494,6 +519,43 @@ export class ReviewWorkbenchProjectionService {
       ...(liveRun === undefined ? {} : { liveRun }),
     }));
   }
+}
+
+function projectAnalysisReviewActions(input: {
+  readonly analysis: InsightProjection<ReviewResult>;
+  readonly session: ReviewSession;
+  readonly freshness: ReviewWorkbenchProjection["revision"]["freshness"];
+  readonly patchHash: ContentHash | undefined;
+  readonly pendingReview: PendingReviewState | undefined;
+}): AnalysisReviewActionsProjection {
+  const retained = input.analysis.retained;
+  const current = retained !== undefined && retained.runId !== undefined && input.analysis.status === "current" && input.analysis.artifactStatus === "verified" && input.freshness === "fresh" && input.patchHash !== undefined && retained.sessionId === input.session.id && retained.headSha === input.session.key.headSha;
+  if (!current || retained === undefined || retained.runId === undefined || input.patchHash === undefined) return { findings: {}, canFinishWithAnalysisSummary: false };
+  const locked = input.pendingReview?._tag === "WriteInFlight" || input.pendingReview?._tag === "OutcomeUnknown";
+  const receipts = input.session.findingReviewReceipts ?? [];
+  const findings: Record<string, AnalysisFindingReviewStatus> = {};
+  for (const finding of retained.value.findings) {
+    if (finding.disposition === "dismissed") continue;
+    const receipt = receipts.find((candidate) => candidate.analysisRunId === retained.runId && candidate.findingId === finding.id && candidate.sessionId === input.session.id && candidate.headSha === input.session.key.headSha && candidate.patchHash === input.patchHash);
+    findings[finding.id] = receipt === undefined
+      ? locked ? { state: "locked" } : { state: "actionable" }
+      : receipt.state === "pending" ? { state: "pending_review" } : { state: "published" };
+  }
+  const pendingReviewNodeId = input.pendingReview?._tag === "Pending" ? input.pendingReview.review.nodeId : undefined;
+  return {
+    findings,
+    canFinishWithAnalysisSummary: pendingReviewNodeId !== undefined && receipts.some((receipt) => receipt.state === "pending" && receipt.pendingReviewNodeId === pendingReviewNodeId && receipt.analysisRunId === retained.runId && receipt.sessionId === input.session.id && receipt.headSha === input.session.key.headSha && receipt.patchHash === input.patchHash),
+  };
+}
+
+function directSummaryDecision(
+  profile: WorkspaceProfileConfig,
+  pullRequest: PullRequestSummary | undefined,
+): "allowed" | "blocked_author" | "unknown" {
+  if (pullRequest?.author === undefined || profile.ghAccount.length === 0) return "unknown";
+  return pullRequest.author.toLowerCase() === profile.ghAccount.toLowerCase()
+    ? "blocked_author"
+    : "allowed";
 }
 
 function projectSession(session: ReviewSession): WorkbenchSessionProjection {

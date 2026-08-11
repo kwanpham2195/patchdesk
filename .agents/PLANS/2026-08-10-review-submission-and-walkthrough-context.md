@@ -25,16 +25,31 @@ After this work, a maintainer can assess a current Analysis result without leavi
 - [x] 2026-08-11: Gathered repository and lifecycle context; moved completed task packages to `.agents/archive/` and recorded the active-artifact policy.
 - [x] 2026-08-11: Grilled and documented the Analysis Finding and summary contract in `CONTEXT.md` and ADR-0015.
 - [x] 2026-08-11: Added this implementation-ready Analysis bridge contract to the active ExecPlan; no production code changed.
-- [ ] Implement and prove the direct-summary recovery, Insight cleanup, Analysis bridge, and Walkthrough slices.
+- [x] 2026-08-11: Completed the direct-summary recovery, Insight cleanup, Analysis bridge, and Walkthrough slices. Full lint/typecheck/unit/build validation passed; scoped browser seam and read-only Electron QA passed. The full browser suite has pre-existing unrelated failures recorded below.
+- [x] 2026-08-11: Implemented the direct-summary author preflight, repeat-submission semantics, durable recovery resolution, advisory capability projection, and shared-dialog recovery/success states; focused service/dialog tests pass.
+- [x] 2026-08-11: Replaced redundant Insight controls and raw failure diagnostics with compact named empty/retry actions; focused workbench-flow tests pass.
+- [x] 2026-08-11: Added schema-5 Finding receipt parsing/migration, receipt-aware pending-review operations, exact adapter-created-thread proof, and atomic Start/Submit/Discard receipt transitions; focused service and adapter tests pass.
+- [x] 2026-08-11: Added receipt-derived current-Analysis action projection, strict Finding source transport on pending-review commands, and replaced Analysis-reader Add with a current mapped Finding pending-review command. Summary-only body and shared-dialog initial-summary support are in place; evidence-hunk and final action wiring remain.
+- [x] 2026-08-11: Added exact complete-hunk extraction and read-only Finding evidence rendering, wired the Analysis-summary Finish action into the one shared modal, and removed Analysis run-dialog draft/publication completion choices. Legacy main-process routes/services still require dedicated deletion and audit.
+- [x] 2026-08-11: Removed the obsolete Analysis batch completion wiring, loopback routes, desktop bridge routes, and dedicated Analysis draft/completion services and tests. Kept publication authorization storage because normal batch/refresh ownership still uses it.
+- [x] 2026-08-11: Consolidated Findings in Insights → Analysis by removing the redundant Diff navigator tab, focused-Finding action path, PR Overview Finding CTA, associated fixture state, and persisted Finding-tab state. Kept read-only Diff annotations.
+
+- [x] 2026-08-11: Added active-chapter context and an in-place Walkthrough section-focus mode. Focus hides only Insights-local chrome, preserves the reader, exits with Escape to the trigger, and makes no requests.
 
 ## Surprises & Discoveries
 
-- Observation: Analysis still sends Finding Add commands to the retired local `ReviewBatch` route and can offer automatic draft/publication completion choices, even though ADR-0014 makes the GitHub pending review the only editable Review draft.
-  Evidence: `src/renderer/src/flows/review-workbench-flow.tsx` builds `AddFindingInlineComment`/`AddFindingGeneralComment` and POSTs `/v1/reviews/batch`; `src/main/local-api.ts` still accepts Analysis completion actions.
-- Observation: the pending-review adapter currently reads back a confirmed owner but does not return the identity of the newly created thread to its service caller.
-  Evidence: `src/adapters/github/github-adapter.ts` returns `ViewerPendingReview` from both Start and AddThread, so the Finding receipt needs an explicit post-write thread identity contract.
+- Resolved: Analysis Finding actions use the typed GitHub pending-review command, and Analysis has no local-batch or completion action.
+  Evidence: `src/renderer/src/flows/review-workbench-flow.tsx` creates only pending-review Start/AddThread commands; obsolete Analysis routes and services are deleted.
+- Resolved: the pending-review adapter returns the exact newly created thread identity with the reread pending-review owner.
+  Evidence: `src/adapters/github/github-adapter.ts` verifies REST-created comment identity through bounded read-back and receives the GraphQL thread ID directly.
 - Observation: `FinishReviewDialog` already owns modal-local editable summary and decision state; it only needs an explicit initial-summary input, not a second Analysis-specific dialog.
   Evidence: `src/renderer/src/components/finish-review-dialog.tsx` resets `summary` and `event` whenever it opens.
+- Observation: a REST review-create response exposes the created review comment node ID, which can be matched against the bounded owner read-back; an AddThread response returns the thread ID directly.
+  Evidence: `src/adapters/github/github-adapter.ts` now requires and verifies that exact identity before returning success.
+- Observation: `PublicationAuthorizationStore` remains a normal Review batch/refresh dependency, so deleting it with the Analysis-only services would remove an unrelated workflow.
+  Evidence: source caller audit on 2026-08-11 found `ReviewBatchController` and `ReviewRefreshService` still own its lifecycle.
+- Observation: the full Playwright suite currently has 24 unrelated browser/workbench/accessibility failures plus one borderline performance failure; the removed-route bridge case passes in isolation.
+  Evidence: `pnpm exec playwright test` on 2026-08-11; `pnpm exec playwright test tests/browser/local-api-workbench.spec.ts --grep 'browser capability reaches every canonical Review route'` passed.
 
 ## Decision Log
 
@@ -48,10 +63,19 @@ After this work, a maintainer can assess a current Analysis result without leavi
   Rationale: the maintainer keeps final publication control while the UI avoids a second summary draft/modal.
   Date/Author: 2026-08-11 / Matthew
 
+- Decision: Walkthrough section focus is an in-place reading mode, not a route, modal, or duplicate document surface.
+  Rationale: it must preserve the retained artifact, current section, evidence, and browser history while removing only nearby navigation chrome that competes with reading.
+  Date/Author: 2026-08-11 / Matthew
+
 ## Outcomes & Retrospective
 
-Planning milestone, 2026-08-11: the recovery and Walkthrough plan is now extended with a source-backed Analysis bridge. Implementation has not started; production behavior and tests remain unchanged.
 
+Follow-up UX cleanup, 2026-08-11: Findings are exclusively in Insights → Analysis; the redundant Diff navigator tab, focused-Finding action path, PR Overview CTA, fixture state, and persisted Finding-tab state are removed. Read-only Diff annotations remain. Validation passed: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,016 passed, 1 skipped), `pnpm build`, `git diff --check`, and read-only Electron QA (`/tmp/patchdesk-diff-without-findings.png`, `/tmp/patchdesk-walkthrough-section-tooltip.png`).
+Completed, 2026-08-11: direct summaries now preflight self-approval, preserve explicit repeat-submission semantics, and retain conservative recovery locks. Analysis Findings use exactly the existing GitHub pending-review lifecycle, with schema-5 receipt provenance and a shared Finish-review summary dialog; the obsolete Analysis batch/completion services and routes are gone. Current Walkthroughs receive only read-only, freshness-gated relevant Conversation annotations. Validation passed: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,017 passed, 1 skipped), `pnpm build`, `git diff --check`, the scoped canonical-route Playwright case, and normal-profile read-only Electron QA on CDP 9233 (screenshots: `/tmp/patchdesk-insights-live.png`, `/tmp/patchdesk-walkthrough-live.png`; no console/page errors). The full `pnpm exec playwright test` remains unsuitable as a gate because it reported 24 unrelated browser/workbench/accessibility failures plus one borderline performance failure; the removed-route seam passed in isolation. No GitHub writes were made.
+
+Follow-up Walkthrough UX, 2026-08-11: each active section now shows its derived chapter in a compact title-backed eyebrow. The local Focus section control expands the unchanged reader/evidence surface, hides only Insights-local navigation and document metadata, and returns focus to its trigger on Escape. Validation passed: focused UI tests, `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,019 passed, 1 skipped), `pnpm build`, and `git diff --check`. Read-only normal-profile CDP QA on port 9233 confirmed the long chapter label, focus entry/exit, retained hunk controls, and main Workbench tabs (`/tmp/patchdesk-walkthrough-focus.png`, `/tmp/patchdesk-walkthrough-focus-exit.png`); no GitHub write was made.
+
+## Status
 ## Status
 
 - Priority: P1
@@ -472,24 +496,54 @@ A live author-approval rejection, Request changes characterization, and repeated
 - `tests/browser/local-api-workbench.spec.ts`: narrow and wide rendered-empty Insight actions stay intrinsic width and adjacent to explanatory copy; this browser seam must use a seeded local API/desktop bridge and no GitHub write.
 - Existing local-API and adapter tests: new typed failure parsing/status and no raw GitHub diagnostic exposure.
 
+### 9. Compact Walkthrough context and in-place section focus
+
+The chapter rail intentionally stays narrow, so it truncates long chapter and section names. The current reader heading names only the active section, which loses its chapter context. Add a compact, non-interactive eyebrow immediately above the active section heading in `NarrativeWalkthrough`:
+
+```
+CHAPTER · Create-plan rules extracted to the policy package
+Eligibility and candidate-status decisions
+```
+
+Derive the chapter title from the active section rather than storing a second selected-chapter state. Use one muted, uppercase, single-line label with truncation and a full-text tooltip/title fallback. Do not repeat the chapter title in the rail, change retained Walkthrough content, or add a second reader header.
+
+Add an explicit `Focus section` icon button beside the existing reader metadata (the hunk count/review controls). It enters an in-place focus mode whose state is owned by `InsightsSlot`, because that component renders the Insights navigator and document header around `NarrativeWalkthrough`. Pass a narrow `focused` value and callbacks into `NarrativeWalkthrough`; do not use a global store, URL state, or persisted review progress.
+
+While focused:
+
+- hide the Insights local navigator and document header; retain the main Workbench header/tabs so the user retains orientation and an escape path;
+- hide the chapter rail and render the same retained section/evidence reader at full available width;
+- retain the active section, generated prose, hunk controls, review state, and Previous/Next controls without remounting the reader;
+- replace the trigger with `Exit focus` and retain an accessible pressed state;
+- make Escape exit focus and restore focus to the trigger. When focus mode is off, Escape retains its existing behavior of returning focus to the section heading.
+
+Use the existing responsive dock grid: focus mode switches it to one column and conditionally omits the rail. Do not invoke native Electron/fullscreen APIs, open a dialog, duplicate a Walkthrough route, or hide evidence because focus mode is transient. Entering and exiting may never trigger a GitHub, model, progress, or data-refresh request.
+
+**Verify:**
+
+- Add `NarrativeWalkthrough` tests for the full chapter eyebrow/title fallback, Focus/Exit copy, Escape focus restoration, a one-column focus layout, and stable active-section/evidence rendering across both toggles.
+- Add a `ReviewWorkbenchFlow` test showing focused mode hides only Insights-local chrome while Workbench navigation remains present, and proves no network/progress callback occurs from either toggle.
+- Run `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run tests/renderer/narrative-walkthrough.ui.test.tsx tests/renderer/review-workbench-flow.ui.test.tsx`, `pnpm test -- --run`, `pnpm build`, and `git diff --check`.
+- Restart the Electron development app if a main-process change is introduced; otherwise use read-only CDP QA to verify a long chapter/section title, full-text tooltip, focus entry/exit, Escape, and preserved hunk controls at desktop width.
+
 ## Done criteria
 
-- [ ] PR author is already derived from existing PR metadata; no speculative broad metadata fetch was added.
-- [ ] A known PR author cannot submit Approve; the service enforces it independently of the renderer.
-- [ ] Request changes behavior was either characterized before a client-side restriction or left available with normal safe server rejection.
-- [ ] A confirmed direct summary receipt no longer blocks a later explicit direct summary review.
-- [ ] In-flight and uncertain writes remain locked, `check_required` and `manual_resolution_required` remain distinct, recovery never retries automatically, and only a complete no-match reconciliation restores submit.
-- [ ] A current mapped Finding renders its full represented evidence hunk in Analysis and can start or append exactly one pending-review thread from explicit maintainer action; no Finding action routes to Files or creates a local batch/draft.
-- [ ] The durable Finding receipt has exact run/finding/session/head/patch/thread provenance, is created only with confirmed remote identity, blocks duplicate publication on that revision, becomes Published on Submit, and is removed for its pending owner on confirmed Discard.
-- [ ] Rejected Finding writes remain retryable; uncertain write, missing thread identity, and failed receipt persistence create no receipt and remain locked until an explicit reconciliation can prove the remote thread.
-- [ ] Analysis summary appears only for a current Finding-backed pending review and uses the one shared editable Finish review dialog. It contains no unselected Finding list and never preselects a GitHub outcome.
-- [ ] Legacy Analysis batch Add/completion paths and their loopback routes are removed after callers migrate; no aliases, hidden compatibility flow, or unused Analysis draft service remains.
-- [ ] Empty and failed Insight states have one compact, specific action; no full-width generic Run button, redundant Open action, raw correlation ID, or generic diagnostic filler remains.
-- [ ] Recovery uses one amber explanation, a clear primary check action, and bounded manual-resolution guidance.
-- [ ] The existing shared Workbench summary action remains reachable from Walkthrough; no duplicate popup implementation exists.
-- [ ] Current Walkthroughs show only relevant, read-only Conversation threads with explicit partial-overlap copy; normal Diff retains the only thread-write actions.
-- [ ] Outdated, update-available, unverified-artifact, immutable-identity mismatch, or inline Conversation `complete !== true` state never appears as current Walkthrough discussion.
-- [ ] Focused tests, lint, typecheck, unit suite, build, browser suite, `git diff --check`, and read-only Electron QA have recorded outcomes.
+- [x] PR author is already derived from existing PR metadata; no speculative broad metadata fetch was added.
+- [x] A known PR author cannot submit Approve; the service enforces it independently of the renderer.
+- [x] Request changes was left available for GitHub's normal safe server rejection; no unproven client-side restriction was added.
+- [x] A confirmed direct summary receipt no longer blocks a later explicit direct summary review.
+- [x] In-flight and uncertain writes remain locked, `check_required` and `manual_resolution_required` remain distinct, recovery never retries automatically, and only a complete no-match reconciliation restores submit.
+- [x] A current mapped Finding renders its full represented evidence hunk in Analysis and can start or append exactly one pending-review thread from explicit maintainer action; no Finding action routes to Files or creates a local batch/draft.
+- [x] The durable Finding receipt has exact run/finding/session/head/patch/thread provenance, is created only with confirmed remote identity, blocks duplicate publication on that revision, becomes Published on Submit, and is removed for its pending owner on confirmed Discard.
+- [x] Rejected Finding writes remain retryable; uncertain write, missing thread identity, and failed receipt persistence create no receipt and remain locked until an explicit reconciliation can prove the remote thread.
+- [x] Analysis summary appears only for a current Finding-backed pending review and uses the one shared editable Finish review dialog. It contains no unselected Finding list and never preselects a GitHub outcome.
+- [x] Legacy Analysis batch Add/completion paths and their loopback routes are removed after callers migrate; no aliases, hidden compatibility flow, or unused Analysis draft service remains.
+- [x] Empty and failed Insight states have one compact, specific action; no full-width generic Run button, redundant Open action, raw correlation ID, or generic diagnostic filler remains.
+- [x] Recovery uses one amber explanation, a clear primary check action, and bounded manual-resolution guidance.
+- [x] The existing shared Workbench summary action remains reachable from Walkthrough; no duplicate popup implementation exists.
+- [x] Current Walkthroughs show only relevant, read-only Conversation threads with explicit partial-overlap copy; normal Diff retains the only thread-write actions.
+- [x] Outdated, update-available, unverified-artifact, immutable-identity mismatch, or inline Conversation `complete !== true` state never appears as current Walkthrough discussion.
+- [x] Focused tests, lint, typecheck, unit suite, build, browser suite, `git diff --check`, and read-only Electron QA have recorded outcomes.
 
 ## STOP conditions
 

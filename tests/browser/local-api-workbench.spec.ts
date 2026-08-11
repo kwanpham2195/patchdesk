@@ -63,13 +63,6 @@ function canonicalReviewOperations(reviewId: string, sessionId: string): Readonl
     { method: "POST", path: "/v1/reviews/insights/walkthrough/progress", body: { ...base, runId, reviewedSectionIds: [], supportReviewed: false } },
     { method: "GET", path: `/v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis` },
     { method: "POST", path: "/v1/reviews/insights/analysis/findings/finding/dismiss", body: { ...base, runId, reason: "Fixture" } },
-    { method: "POST", path: "/v1/reviews/insights/analysis/findings/finding/add", body: { ...base, runId } },
-    { method: "POST", path: "/v1/reviews/draft/seed-analysis", body: draft },
-    { method: "POST", path: "/v1/reviews/draft/merge-preview", body: draft },
-    { method: "POST", path: "/v1/reviews/draft/replace-preview", body: draft },
-    { method: "POST", path: "/v1/reviews/draft/merge", body: { ...draft, acknowledgement: true } },
-    { method: "POST", path: "/v1/reviews/draft/replace", body: { ...draft, acknowledgement: true } },
-    { method: "POST", path: "/v1/reviews/draft/findings/finding/add", body: draft },
     { method: "POST", path: "/v1/reviews/apply-batch", body: { ...draft, acknowledgement: true } },
     { method: "POST", path: "/v1/reviews/submit-batch", body: { ...draft, acknowledgement: true, event: "COMMENT" } },
     { method: "POST", path: "/v1/reviews/publication/preview", body: { ...draft, event: "COMMENT" } },
@@ -98,7 +91,7 @@ test("browser capability reaches every canonical Review route through the deskto
       for (const route of routes) results.push({ route, response: await window.patchdesk.request(route) });
       return results;
     }, operations);
-    expect(withCapability).toHaveLength(31);
+    expect(withCapability).toHaveLength(24);
     expect(withCapability.every(({ response }) => response.status !== 401 && response.status !== 403)).toBe(true);
     expect(withCapability.find(({ route }) => route.path === "/v1/reviews/models")?.response.body).toMatchObject({ models: [{ id: "fixture-model" }] });
     expect(withCapability.find(({ route }) => route.path === "/v1/reviews/load")?.response.body).toMatchObject({ review: { id: seeded.reviewId } });
@@ -111,7 +104,7 @@ test("browser capability reaches every canonical Review route through the deskto
       for (const route of routes) results.push(await window.patchdesk.request(route));
       return results;
     }, operations);
-    expect(withoutCapability).toHaveLength(31);
+    expect(withoutCapability).toHaveLength(24);
     expect(withoutCapability.every(({ status }) => status === 401 || status === 403)).toBe(true);
   } finally { await page.close(); if (noCapabilityPage !== undefined) await noCapabilityPage.close(); if (api !== undefined) await api.stop(); await close(renderer); await rm(root, { recursive: true, force: true }); }
 });

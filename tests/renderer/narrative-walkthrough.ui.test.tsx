@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -146,6 +146,20 @@ function buildActions(
   };
 }
 
+function FocusableNarrativeWalkthrough(): React.JSX.Element {
+  const [focused, setFocused] = useState(false);
+  return (
+    <NarrativeWalkthrough
+      walkthrough={buildWalkthrough()}
+      reviewedSectionIds={[]}
+      supportReviewed={false}
+      focused={focused}
+      onFocusedChange={setFocused}
+      actions={buildActions()}
+    />
+  );
+}
+
 describe("narrative walkthrough takeover", () => {
   it("uses a docked reader layout with grouped navigation and progress", () => {
     const scrollIntoView = vi.fn();
@@ -212,6 +226,83 @@ describe("narrative walkthrough takeover", () => {
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  it("preserves each full chapter-rail section title", () => {
+    render(
+      <NarrativeWalkthrough
+        walkthrough={buildWalkthrough()}
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        actions={buildActions()}
+      />,
+    );
+
+    const section = screen.getByRole("button", {
+      name: "How reads stay read-only",
+    });
+    expect(section.getAttribute("title")).toBe("How reads stay read-only");
+  });
+
+  it("derives a full chapter-context eyebrow for the active section", () => {
+    const walkthrough = buildWalkthrough();
+    const chapter = walkthrough.chapters[1];
+    if (chapter === undefined) throw new Error("Expected second chapter");
+    const title = "Create-plan rules extracted to the policy package";
+    render(
+      <NarrativeWalkthrough
+        walkthrough={{
+          ...walkthrough,
+          chapters: [walkthrough.chapters[0] as never, { ...chapter, title }],
+        }}
+        currentSectionId="section-2"
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        actions={buildActions()}
+      />,
+    );
+
+    const eyebrow = screen.getByText(`CHAPTER · ${title}`);
+    expect(eyebrow.getAttribute("title")).toBe(title);
+  });
+
+  it("focuses the current section in place and restores the trigger after Escape", () => {
+    render(<FocusableNarrativeWalkthrough />);
+
+    const reader = document.querySelector("[data-walkthrough-reader]");
+    expect(reader).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Focus section" }));
+
+    const exitFocus = screen.getByRole("button", { name: "Exit focus" });
+    expect(exitFocus.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      document.querySelector('[data-walkthrough-layout="focused"]'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-walkthrough-chapter-dock]"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-walkthrough-stage]")?.getAttribute("class"),
+    ).toContain("min-[1280px]:grid-cols-1");
+    expect(
+      screen.getByRole("heading", { name: "Why this snapshot matters" }),
+    ).toBeTruthy();
+    expect(document.querySelector("[data-walkthrough-reader]")).toBe(reader);
+
+    fireEvent.keyDown(
+      document.querySelector("[data-walkthrough-takeover]") as HTMLElement,
+      { key: "Escape" },
+    );
+    expect(
+      document.querySelector('[data-walkthrough-layout="docked"]'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Walkthrough chapters" }),
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Focus section" }),
+    );
+    expect(document.querySelector("[data-walkthrough-reader]")).toBe(reader);
   });
 
   it("does not steal focus when the takeover first mounts", () => {

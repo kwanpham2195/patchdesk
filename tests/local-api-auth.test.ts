@@ -202,7 +202,6 @@ describe("local API capability boundary", () => {
       async cancel(input) { return ok({ runId: input.runId, type: input.type, status: "cancelling" as const }); },
       async observe(input) { return ok({ runId: input.runId, type: input.type, status: "running" as const }); },
       async dismissFinding(input) { return ok({ findingId: input.findingId, status: "dismissed" as const }); },
-      async addFinding() { return err("draft_unavailable" as const); },
     };
     const startup = await startLocalApiServer({ capability, allowedOrigin, insights });
     if (startup._tag !== "started") throw new Error("Expected local API startup");
@@ -222,8 +221,7 @@ describe("local API capability boundary", () => {
     expect(dismissed.status).toBe(200);
     expect(await dismissed.json()).toEqual({ findingId: "finding-1", status: "dismissed" });
     const added = await fetch(new URL("v1/reviews/insights/analysis/findings/finding-1/add", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, runId }) });
-    expect(added.status).toBe(409);
-    expect(await added.json()).toEqual({ error: "draft_unavailable" });
+    expect(added.status).toBe(404);
   });
 
   it("serves intentional empty and complete universal model catalogs without truncation", async () => {
@@ -835,7 +833,7 @@ function canonicalReviewRouteFixtures(): ReadonlyArray<CanonicalReviewRouteFixtu
     { method: "POST", path: "v1/reviews/insights/analysis/cancel", body: cancel, authenticatedStatus: 200 },
     { method: "POST", path: "v1/reviews/insights/walkthrough/cancel", body: { ...cancel, type: "walkthrough" }, authenticatedStatus: 200 },
     { method: "GET", path: `v1/reviews/insights/runs/${insightRunId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis`, authenticatedStatus: 200 },
-    { method: "POST", path: "v1/reviews/insights/analysis/findings/finding-1/add", body: finding, authenticatedStatus: 409 },
+    { method: "POST", path: "v1/reviews/insights/analysis/findings/finding-1/add", body: finding, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/insights/analysis/findings/finding-1/dismiss", body: finding, authenticatedStatus: 200 },
     { method: "POST", path: "v1/reviews/insights/walkthrough/progress", body: { profileId: "cfw", reviewId, runId: insightRunId, reviewedSectionIds: [], supportReviewed: false }, authenticatedStatus: 200 },
     { method: "POST", path: "v1/reviews/draft/seed-analysis", body: draft, authenticatedStatus: 404 },
@@ -978,7 +976,7 @@ describe("local API pending-review boundary", () => {
     };
     const fixture = await pendingReviewFixture({
       viewerPendingReview: { account: "fixture", read: { _tag: "None" } },
-      pendingReviewStart: { review: reviewValue },
+      pendingReviewStart: { write: { review: reviewValue, createdThreadId: "PRRT_kwDORJzsQM0001" } },
     });
     try {
       const response = await fetch(new URL("v1/reviews/pending-review/command", fixture.api.url), { method: "POST", headers: { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify(fixture.request) });

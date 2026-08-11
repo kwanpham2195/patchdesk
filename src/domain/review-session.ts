@@ -19,7 +19,7 @@ import {
   type RemoteWriteReceipt,
   type ReviewBatch,
 } from "./review-batch";
-import type { PendingReviewState } from "./pending-review";
+import type { FindingReviewReceipt, PendingReviewState } from "./pending-review";
 import type { DirectSummaryReviewState } from "./direct-summary-review";
 import type {
   ReviewAttempt,
@@ -70,7 +70,7 @@ export type MergeDecisionRef = {
 
 export type ReviewSession = {
   /** The in-memory representation is always normalized to the current schema. */
-  readonly schemaVersion: 4;
+  readonly schemaVersion: 5;
   /** Legacy Insight fields retained during the one-time Review migration. */
   readonly analysisRunId?: string;
   readonly walkthrough?: unknown;
@@ -97,6 +97,8 @@ export type ReviewSession = {
   readonly batchContent?: ReviewBatch;
   /** The viewer's GitHub pending-review owner with durable write intents. */
   readonly pendingReview?: PendingReviewState;
+  /** Immutable Analysis Finding provenance for the authoritative pending review. */
+  readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
   /** Durable receipt or recovery lock for a directly submitted summary review. */
   readonly directSummaryReview?: DirectSummaryReviewState;
   readonly submittedReview?: SubmittedReviewRef;
@@ -135,7 +137,7 @@ export function createReviewSession(input: {
   readonly batch?: Pick<ReviewBatch, "state">;
 }): ReviewSession {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,

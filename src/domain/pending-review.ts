@@ -9,10 +9,14 @@ import {
   parseGitHubReviewNodeId,
   parseGitHubReviewRestId,
   parseGitSha,
+  parseContentHash,
+  parseFindingId,
+  parseInsightRunId,
   parseIsoTimestamp,
   parsePendingReviewRequestId,
   parsePullRequestNumber,
   parseRepoRelativePath,
+  parseReviewSessionId,
   parseGitHubThreadId,
   type GitHubLogin,
   type GitHubReviewNodeId,
@@ -23,6 +27,10 @@ import {
   type RepoRelativePath,
   type GitHubThreadId,
   type GitHubReviewCommentId,
+  type ContentHash,
+  type FindingId,
+  type InsightRunId,
+  type ReviewSessionId,
 } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 import { err, ok, type Result } from "./result";
@@ -58,15 +66,37 @@ export type ViewerPendingReview = {
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
 };
+/** Immutable Analysis identity carried with the one pending-review write it authorizes. */
+export type FindingReviewSource = {
+  readonly analysisRunId: InsightRunId;
+  readonly findingId: FindingId;
+  readonly sessionId: ReviewSessionId;
+  readonly headSha: GitSha;
+  readonly patchHash: ContentHash;
+};
+
+/** Durable proof that one Analysis Finding owns an exact GitHub review thread. */
+export type FindingReviewReceipt = FindingReviewSource & {
+  readonly threadId: GitHubThreadId;
+  readonly pendingReviewNodeId: GitHubReviewNodeId;
+  readonly state: "pending" | "published";
+};
+
+/** The adapter must return the identity it created; the service never guesses it. */
+export type PendingReviewThreadWrite = {
+  readonly review: ViewerPendingReview;
+  readonly createdThreadId: GitHubThreadId;
+};
 
 /** One durable remote write planned against the pending-review owner. */
 export type PendingReviewOperation =
-  | { readonly _tag: "Start"; readonly requestId: PendingReviewRequestId }
+  | { readonly _tag: "Start"; readonly requestId: PendingReviewRequestId; readonly finding?: FindingReviewSource }
   | {
       readonly _tag: "AddThread";
       readonly requestId: PendingReviewRequestId;
       readonly reviewId: GitHubReviewNodeId;
       readonly anchor: PendingReviewAnchor;
+      readonly finding?: FindingReviewSource;
     }
   | {
       readonly _tag: "Submit";
@@ -217,6 +247,10 @@ export function reconcilePendingReviewState(
   if (read._tag === "Unavailable") return state;
   const operation = state.operation;
   const startedAt = state.startedAt;
+  if ((operation._tag === "Start" || operation._tag === "AddThread") && operation.finding !== undefined) {
+    // The remote owner alone cannot prove which exact thread this Finding created.
+    return state;
+  }
   if (operation._tag === "Start") {
     return read._tag === "Pending" ? { _tag: "Pending", review: read.review } : { _tag: "None" };
   }
@@ -296,16 +330,37 @@ const reviewSchema = v.strictObject({
   updatedAt: v.string(),
 });
 
+const findingSourceSchema = v.strictObject({
+  analysisRunId: v.string(),
+  findingId: v.string(),
+  sessionId: v.string(),
+  headSha: v.string(),
+  patchHash: v.string(),
+});
+
+const findingReceiptSchema = v.strictObject({
+  analysisRunId: v.string(),
+  findingId: v.string(),
+  sessionId: v.string(),
+  headSha: v.string(),
+  patchHash: v.string(),
+  threadId: v.string(),
+  pendingReviewNodeId: v.string(),
+  state: v.picklist(["pending", "published"]),
+});
+
 const operationSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("Start"),
     requestId: v.string(),
+    finding: v.optional(findingSourceSchema),
   }),
   v.strictObject({
     _tag: v.literal("AddThread"),
     requestId: v.string(),
     reviewId: v.string(),
     anchor: anchorSchema,
+    finding: v.optional(findingSourceSchema),
   }),
   v.strictObject({
     _tag: v.literal("Submit"),
@@ -470,12 +525,27 @@ function parseAnchor(
   };
 }
 
+function parseFindingReviewSource(input: unknown): Result<FindingReviewSource, InvalidPendingReviewState> {
+  const raw = v.safeParse(findingSourceSchema, input);
+  if (!raw.success) return invalidPendingReviewState();
+  const analysisRunId = parseInsightRunId(raw.output.analysisRunId);
+  const findingId = parseFindingId(raw.output.findingId);
+  const sessionId = parseReviewSessionId(raw.output.sessionId);
+  const headSha = parseGitSha(raw.output.headSha);
+  const patchHash = parseContentHash(raw.output.patchHash);
+  if (analysisRunId._tag === "err" || findingId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err") return invalidPendingReviewState();
+  return ok({ analysisRunId: analysisRunId.value, findingId: findingId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value });
+}
+
 function parseOperation(
   input: v.InferOutput<typeof operationSchema>,
 ): Result<PendingReviewOperation, InvalidPendingReviewState> {
   const requestId = parsePendingReviewRequestId(input.requestId);
   if (requestId._tag === "err") return invalidPendingReviewState();
-  if (input._tag === "Start") return ok({ _tag: "Start", requestId: requestId.value });
+  if (input._tag === "Start") {
+    const finding = input.finding === undefined ? ok(undefined) : parseFindingReviewSource(input.finding);
+    return finding._tag === "err" ? finding : ok({ _tag: "Start", requestId: requestId.value, ...(finding.value === undefined ? {} : { finding: finding.value }) });
+  }
   if (input._tag === "Submit" || input._tag === "Discard") {
     const reviewId = parseGitHubReviewRestId(input.reviewId);
     return reviewId._tag === "err"
@@ -486,9 +556,10 @@ function parseOperation(
   }
   const reviewId = parseGitHubReviewNodeId(input.reviewId);
   const anchor = parseAnchor(input.anchor);
-  return reviewId._tag === "err" || anchor === undefined
+  const finding = input.finding === undefined ? ok(undefined) : parseFindingReviewSource(input.finding);
+  return reviewId._tag === "err" || anchor === undefined || finding._tag === "err"
     ? invalidPendingReviewState()
-    : ok({ _tag: "AddThread", requestId: requestId.value, reviewId: reviewId.value, anchor });
+    : ok({ _tag: "AddThread", requestId: requestId.value, reviewId: reviewId.value, anchor, ...(finding.value === undefined ? {} : { finding: finding.value }) });
 }
 
 function invalidPendingReview(): Result<never, InvalidPendingReview> {
@@ -497,6 +568,29 @@ function invalidPendingReview(): Result<never, InvalidPendingReview> {
 
 function invalidPendingReviewState(): Result<never, InvalidPendingReviewState> {
   return err({ _tag: "InvalidPendingReviewState" });
+}
+
+/** Parse receipts and reject duplicate Finding identities or unproven pending threads. */
+export function parseFindingReviewReceipts(
+  input: unknown,
+  session: { readonly id: ReviewSessionId; readonly headSha: GitSha; readonly pendingReview?: PendingReviewState },
+): Result<ReadonlyArray<FindingReviewReceipt>, InvalidPendingReviewState> {
+  const raw = v.safeParse(v.array(findingReceiptSchema), input);
+  if (!raw.success) return invalidPendingReviewState();
+  const receipts: FindingReviewReceipt[] = [];
+  const identities = new Set<string>();
+  for (const value of raw.output) {
+    const source = parseFindingReviewSource(value);
+    const threadId = parseGitHubThreadId(value.threadId);
+    const pendingReviewNodeId = parseGitHubReviewNodeId(value.pendingReviewNodeId);
+    if (source._tag === "err" || threadId._tag === "err" || pendingReviewNodeId._tag === "err" || source.value.sessionId !== session.id || source.value.headSha !== session.headSha) return invalidPendingReviewState();
+    const identity = `${source.value.analysisRunId}:${source.value.findingId}:${source.value.sessionId}:${source.value.headSha}:${source.value.patchHash}`;
+    if (identities.has(identity)) return invalidPendingReviewState();
+    identities.add(identity);
+    if (value.state === "pending" && (session.pendingReview?._tag !== "Pending" || session.pendingReview.review.nodeId !== pendingReviewNodeId.value || !session.pendingReview.review.comments.some((comment) => comment.threadId === threadId.value))) return invalidPendingReviewState();
+    receipts.push({ ...source.value, threadId: threadId.value, pendingReviewNodeId: pendingReviewNodeId.value, state: value.state });
+  }
+  return ok(receipts);
 }
 
 /** Session binding check: a confirmed review must belong to the session's pull request. */

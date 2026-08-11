@@ -2,11 +2,10 @@ import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { createEmptyReviewBatch, type GitHubReviewEvent, type ReviewBatch } from "../domain/review-batch";
-import { parseContentHash, parseGitSha, parseInsightRunId, parseIsoTimestamp, parsePublicationAuthorizationId, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
+import { parseContentHash, parseGitSha, parseIsoTimestamp, parseReviewId, parseReviewSessionId, parseWorkspaceProfileId, type IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { AnalysisCompletionService } from "./analysis-completion-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import { applyReviewBatch, submitReviewBatch } from "./review-submission-service";
 import { readObjectField } from "./read-object-field";
@@ -28,7 +27,6 @@ export class ReviewWriteController {
     private readonly sessions: ReviewSessionStore,
     private readonly github: Pick<GitHubReader, "getPullRequest"> & Partial<Pick<GitHubReader, "getPullRequestComments">> & GitHubReviewWriter,
     private readonly now: () => IsoTimestamp,
-    private readonly completion?: Pick<AnalysisCompletionService, "consumeForPublication" | "consume">,
     private readonly writeGate?: ReviewWriteGate,
     private readonly writeCoordinator?: ReviewWriteCoordinator,
   ) {}
@@ -50,48 +48,15 @@ export class ReviewWriteController {
   }
 
   async confirmPublication(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {
-    const suppliedAuthorizationId = readObjectField(input, "authorizationId");
-    const completion = this.completion;
-    if (suppliedAuthorizationId === undefined || completion === undefined) {
-      const applied = await this.applyBatch(input);
-      if (applied._tag === "err") return applied;
-      const batch = applied.value.batch as NonNullable<ReviewSession["batchContent"]> | undefined;
-      if (batch === undefined) return err({ reason: "review_write_failed" });
-      const next = { ...(typeof input === "object" && input !== null ? input : {}), expectedRevision: batch.updatedAt };
-      const submitted = await this.submitBatch(next);
-      return submitted._tag === "ok" ? this.rotateToSuccessorDraft({ session: submitted.value.session as ReviewSession, batch: submitted.value.batch as ReviewBatch }) : submitted;
-    }
-    return this.withLoadedBatch(input, async ({ profile, session, batch }) => {
-      const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
-      const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-      const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
-      const authorizationId = parsePublicationAuthorizationId(suppliedAuthorizationId);
-      const event = readObjectField(input, "event");
-      const analysisRunId = parseInsightRunId(readObjectField(input, "analysisRunId"));
-      const patchHash = parseContentHash(readObjectField(input, "expectedPatchHash"));
-      const expectedDraftRevision = parseIsoTimestamp(readObjectField(input, "expectedRevision"));
-      if (profileId._tag === "err" || reviewId._tag === "err" || sessionId._tag === "err" || authorizationId._tag === "err" || !isReviewEvent(event)) return err({ reason: "invalid_input" });
-      if (this.writeGate !== undefined && (analysisRunId._tag !== "ok" || patchHash._tag !== "ok" || expectedDraftRevision._tag !== "ok" || completion.consume === undefined)) return err({ reason: "invalid_input" });
-      const consumed = completion.consume !== undefined && analysisRunId._tag === "ok" && patchHash._tag === "ok" && expectedDraftRevision._tag === "ok"
-        ? await completion.consume({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, headSha: session.key.headSha, patchHash: patchHash.value, analysisRunId: analysisRunId.value, expectedDraftRevision: expectedDraftRevision.value, event, authorizationId: authorizationId.value, consumedAt: this.now() })
-        : await completion.consumeForPublication({ profileId: profileId.value, reviewId: reviewId.value, sessionId: sessionId.value, headSha: session.key.headSha, event, authorizationId: authorizationId.value, consumedAt: this.now() });
-      if (consumed._tag === "err") return err({ reason: consumed.error });
-      const applied = await applyReviewBatch({ profile, session, batch, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
-      if (applied._tag === "err") {
-        await this.persistFailure(applied.error);
-        return err({ reason: failureReason(applied.error._tag) });
-      }
-      const submitted = await submitReviewBatch({ profile, session: applied.value.session, batch: applied.value.batch, event, gateway: this.github, now: this.now(), persist: async (next) => (await this.sessions.save(next))._tag === "ok" });
-      if (submitted._tag === "err") {
-        await this.persistFailure(submitted.error);
-        return err({ reason: failureReason(submitted.error._tag) });
-      }
-      // submitReviewBatch has already durably recorded the submitted evidence.
-      // Install the successor and archive that evidence in one final session
-      // replacement; if this save fails, the submitted marker remains
-      // recoverable instead of being mistaken for a fresh local draft.
-      return this.rotateToSuccessorDraft({ session: submitted.value.session, batch: submitted.value.batch });
-    });
+    const applied = await this.applyBatch(input);
+    if (applied._tag === "err") return applied;
+    const batch = applied.value.batch as NonNullable<ReviewSession["batchContent"]> | undefined;
+    if (batch === undefined) return err({ reason: "review_write_failed" });
+    const next = { ...(typeof input === "object" && input !== null ? input : {}), expectedRevision: batch.updatedAt };
+    const submitted = await this.submitBatch(next);
+    return submitted._tag === "ok"
+      ? this.rotateToSuccessorDraft({ session: submitted.value.session as ReviewSession, batch: submitted.value.batch as ReviewBatch })
+      : submitted;
   }
 
   /** A confirmed publication archives its submitted evidence on the session and

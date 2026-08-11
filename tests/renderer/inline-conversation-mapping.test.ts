@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseUnifiedPatch } from "../../src/domain/patch";
-import { mapConversationThread } from "../../src/renderer/src/inline-conversation-mapping";
+import { citedHunkRelation, mapConversationThread, projectReadOnlyConversationAnnotations } from "../../src/renderer/src/inline-conversation-mapping";
 import { toDiffLineAnnotation } from "../../src/renderer/src/review-diff-annotations";
 
 const patch = parseUnifiedPatch(`diff --git a/src/example.ts b/src/example.ts
@@ -86,5 +86,19 @@ describe("mapConversationThread", () => {
     expect(
       toDiffLineAnnotation({ ...annotation, start: 5, end: 5 }).lineNumber,
     ).toBe(5);
+  });
+});
+
+describe("projectReadOnlyConversationAnnotations", () => {
+  it("keeps only current mapped data and classifies exact and partial cited ranges", () => {
+    const [annotation] = projectReadOnlyConversationAnnotations(patch, [thread({ start: 1, end: 2 })]);
+    expect(annotation).toMatchObject({ id: "thread-1", path: "src/example.ts", start: 1, end: 2, side: "new" });
+    if (annotation === undefined) throw new Error("fixture");
+    expect(citedHunkRelation(annotation, { path: "src/example.ts", newStart: 1, newLines: 3, oldStart: 1, oldLines: 3 })).toBe("exact");
+    expect(citedHunkRelation(annotation, { path: "src/example.ts", newStart: 2, newLines: 2, oldStart: 2, oldLines: 2 })).toBe("partial");
+  });
+
+  it("excludes outdated and invalid ranges without carrying mutation capability", () => {
+    expect(projectReadOnlyConversationAnnotations(patch, [thread({ state: "outdated" }), thread({ start: 1, end: 5 })])).toEqual([]);
   });
 });

@@ -46,12 +46,14 @@ export function FinishReviewDialog({
   projection,
   actions,
   error,
+  initialSummary,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly projection: Extract<PendingReviewProjection, { readonly state: "pending" }>;
   readonly actions: FinishReviewActions;
   readonly error?: string;
+  readonly initialSummary?: string;
 }): React.JSX.Element {
   const [summary, setSummary] = useState("");
   const [event, setEvent] = useState<"COMMENT" | "APPROVE" | "REQUEST_CHANGES">("COMMENT");
@@ -65,7 +67,7 @@ export function FinishReviewDialog({
   // never seeded from or written back into the durable projection.
   useEffect(() => {
     if (open) {
-      setSummary("");
+      setSummary(initialSummary ?? "");
       setEvent("COMMENT");
       setSubmitting(false);
       setSubmitError(undefined);
@@ -73,7 +75,7 @@ export function FinishReviewDialog({
       // Focus the summary input when the modal opens (initial focus behavior).
       window.setTimeout(() => summaryRef.current?.focus(), 0);
     }
-  }, [open]);
+  }, [initialSummary, open]);
 
   const submit = async (): Promise<void> => {
     if (locked) return;

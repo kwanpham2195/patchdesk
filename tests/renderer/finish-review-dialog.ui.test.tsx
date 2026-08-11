@@ -78,6 +78,20 @@ describe("FinishReviewDialog", () => {
     expect(summary).toBeTruthy();
   });
 
+  it("seeds a supplied Analysis summary on open while keeping Comment selected", () => {
+    render(
+      <FinishReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        projection={projection}
+        initialSummary={"# Review Scope\nAnalysis context"}
+        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
+      />,
+    );
+    expect((screen.getByRole("textbox", { name: "Final review summary" }) as HTMLTextAreaElement).value).toBe("# Review Scope\nAnalysis context");
+    expect(screen.getByRole("combobox", { name: "Review decision" }).textContent).toContain("Comment");
+  });
+
   it("sends the selected event and modal summary only on Submit", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(async () => undefined);

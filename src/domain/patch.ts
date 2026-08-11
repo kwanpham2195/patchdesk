@@ -12,6 +12,54 @@ export type FindingLocationInput = { readonly file?: string; readonly lineStart?
 export type FindingLocation = { readonly mappingStatus: "mapped" | "unmapped" | "invalid_line"; readonly postable: boolean; readonly path?: string; readonly side?: "new" | "old"; readonly line?: number; readonly startLine?: number; readonly warning?: "binary" | "omitted" };
 export type GitHubReviewCoordinates = { readonly path: string; readonly line: number; readonly side: "LEFT" | "RIGHT"; readonly start_line?: number; readonly start_side?: "LEFT" | "RIGHT" };
 
+/** One exact unified-diff hunk plus its original file header for read-only Finding evidence. */
+export type FindingEvidenceHunk = {
+  readonly patch: string;
+  readonly path: string;
+  readonly selectedRange: { readonly start: number; readonly end: number; readonly side: "new" | "old" };
+};
+
+/** Extracts a complete containing hunk without synthesizing or clipping diff content. */
+export function extractFindingEvidenceHunk(
+  patch: string,
+  anchor: { readonly path: string; readonly startLine: number; readonly line: number; readonly side: "new" | "old" },
+): FindingEvidenceHunk | undefined {
+  if (anchor.startLine < 1 || anchor.line < anchor.startLine) return undefined;
+  const lines = patch.split("\n");
+  let fileStart = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+    if (fileMatch !== null) { fileStart = index; continue; }
+    if (fileStart < 0) continue;
+    if (line === "GIT binary patch" || line.startsWith("Binary files ") || line.includes("diff too large")) { fileStart = -1; continue; }
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk === null) continue;
+    let oldLine = Number(hunk[1]);
+    let newLine = Number(hunk[3]);
+    let hunkEnd = index + 1;
+    let containsStart = false;
+    let containsEnd = false;
+    for (; hunkEnd < lines.length; hunkEnd += 1) {
+      const hunkLine = lines[hunkEnd] ?? "";
+      if (hunkLine.startsWith("diff --git ") || hunkLine.startsWith("@@ ")) break;
+      if (hunkLine.startsWith("\\")) continue;
+      const lineNumber = anchor.side === "new" ? newLine : oldLine;
+      const present = anchor.side === "new" ? !hunkLine.startsWith("-") : !hunkLine.startsWith("+");
+      if (present && lineNumber === anchor.startLine) containsStart = true;
+      if (present && lineNumber === anchor.line) containsEnd = true;
+      if (!hunkLine.startsWith("+")) oldLine += 1;
+      if (!hunkLine.startsWith("-")) newLine += 1;
+    }
+    if (!containsStart || !containsEnd) continue;
+    const header = lines.slice(fileStart, index);
+    const paths = /^diff --git a\/(.+) b\/(.+)$/.exec(header[0] ?? "");
+    if (paths === null || (paths[1] !== anchor.path && paths[2] !== anchor.path)) continue;
+    return { patch: [...header, ...lines.slice(index, hunkEnd)].join("\n"), path: anchor.path, selectedRange: { start: anchor.startLine, end: anchor.line, side: anchor.side } };
+  }
+  return undefined;
+}
+
 /** Parse only the unified-diff location metadata Patchdesk needs for navigation and write eligibility. */
 export function parseUnifiedPatch(patch: string): ReadonlyArray<ParsedPatchFile> {
   const files: Array<{ oldPath: string; newPath: string; kind: ParsedPatchFile["kind"]; oldLines: Set<number>; newLines: Set<number>; additions: number; deletions: number }> = [];

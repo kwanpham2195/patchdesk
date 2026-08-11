@@ -36,6 +36,7 @@ import {
 } from "../../domain/review-batch";
 import {
   parsePendingReviewState,
+  parseFindingReviewReceipts,
   pendingReviewMatchesSession,
 } from "../../domain/pending-review";
 import { parseDirectSummaryReviewState, type DirectSummaryReviewState } from "../../domain/direct-summary-review";
@@ -152,7 +153,7 @@ type LegacyReviewDraft = {
 };
 
 const reviewSessionSchema = v.strictObject({
-  schemaVersion: v.picklist([2, 3, 4]),
+  schemaVersion: v.picklist([2, 3, 4, 5]),
   id: v.string(),
   key: v.strictObject({
     profileId: v.string(),
@@ -185,6 +186,7 @@ const reviewSessionSchema = v.strictObject({
   batch: v.optional(v.strictObject({ state: v.unknown() })),
   batchContent: v.optional(v.unknown()),
   pendingReview: v.optional(v.unknown()),
+  findingReviewReceipts: v.optional(v.unknown()),
   directSummaryReview: v.optional(v.unknown()),
   submittedReview: v.optional(
     v.strictObject({
@@ -741,6 +743,14 @@ export function parseStoredReviewSession(
       ? ok(undefined)
       : parsePendingReviewState(raw.output.pendingReview);
   if (pendingReview._tag === "err") return invalidRead();
+  const findingReviewReceipts = raw.output.findingReviewReceipts === undefined
+    ? ok(undefined)
+    : parseFindingReviewReceipts(raw.output.findingReviewReceipts, {
+        id: id.value,
+        headSha: headSha.value,
+        ...(pendingReview.value === undefined ? {} : { pendingReview: pendingReview.value }),
+      });
+  if (findingReviewReceipts._tag === "err") return invalidRead();
   const directSummaryReview =
     raw.output.directSummaryReview === undefined
       ? ok(undefined)
@@ -771,7 +781,7 @@ export function parseStoredReviewSession(
       };
 
   return ok({
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: id.value,
     key: {
       profileId: profileId.value,
@@ -804,6 +814,9 @@ export function parseStoredReviewSession(
     ...(pendingReview.value === undefined
       ? {}
       : { pendingReview: pendingReview.value }),
+    ...(findingReviewReceipts.value === undefined
+      ? {}
+      : { findingReviewReceipts: findingReviewReceipts.value }),
     ...(directSummaryReview.value === undefined
       ? {}
       : { directSummaryReview: directSummaryReview.value }),
@@ -980,7 +993,10 @@ function parseStoredBatch(
   },
   StorageFailure
 > {
-  if (input.schemaVersion === 4) {
+  if (input.schemaVersion < 5 && input.findingReviewReceipts !== undefined) {
+    return invalidRead();
+  }
+  if (input.schemaVersion === 4 || input.schemaVersion === 5) {
     if (input.draft !== undefined || input.draftContent !== undefined) {
       return invalidRead();
     }

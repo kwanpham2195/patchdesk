@@ -566,7 +566,7 @@ const directSummaryReviewProjectionSchema = v.variant("state", [
       event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
     }),
   }),
-  v.strictObject({ state: v.literal("recovery_required") }),
+  v.strictObject({ state: v.literal("recovery_required"), resolution: v.picklist(["check_required", "manual_resolution_required"]) }),
 ]);
 const directSummaryReviewResponseSchema = v.strictObject({
   directSummary: directSummaryReviewProjectionSchema,
@@ -577,6 +577,17 @@ export function parseDirectSummaryReviewResponse(input: unknown): DirectSummaryR
   return parsed.success ? parsed.output.directSummary : undefined;
 }
 
+const analysisFindingReviewStatusSchema = v.variant("state", [
+  v.strictObject({ state: v.literal("actionable") }),
+  v.strictObject({ state: v.literal("pending_review") }),
+  v.strictObject({ state: v.literal("published") }),
+  v.strictObject({ state: v.literal("locked") }),
+]);
+const analysisReviewActionsSchema = v.strictObject({
+  findings: v.record(v.string(), analysisFindingReviewStatusSchema),
+  canFinishWithAnalysisSummary: v.boolean(),
+});
+
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
   review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
@@ -586,7 +597,8 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
-  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
+  analysisReviewActions: v.optional(analysisReviewActionsSchema),
+  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), directSummaryDecision: v.optional(v.picklist(["allowed", "blocked_author", "unknown"])), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type PendingReviewProjection = v.InferOutput<typeof pendingReviewProjectionSchema>;

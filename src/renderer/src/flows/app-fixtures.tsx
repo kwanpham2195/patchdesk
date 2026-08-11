@@ -389,7 +389,6 @@ function CanonicalFixtureWorkbench({
 
 export type UnifiedReviewFixtureState =
   | "files-default"
-  | "files-finding-selected"
   | "files-commit-selected"
   | "updates-draft"
   | "draft-expanded"
@@ -419,12 +418,6 @@ export function unifiedReviewInitialState(
   state: UnifiedReviewFixtureState,
 ): ReviewWorkbenchInitialState {
   switch (state) {
-    case "files-finding-selected":
-      return {
-        section: "findings",
-        selectedFindingId: "mapped",
-        selectedPath: "src/b.ts",
-      };
     case "files-commit-selected":
       return { section: "commits", selectedCommitSha: "b".repeat(40) };
     case "insights-overview":

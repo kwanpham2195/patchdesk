@@ -23,11 +23,11 @@ describe("SummaryReviewDialog", () => {
       />,
     );
 
-    expect(screen.getByText(/could not confirm whether GitHub published/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check GitHub again" })).toBeTruthy();
+    expect(screen.getByText("Review submission needs confirmation")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check GitHub status" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Check GitHub again" }));
+    await user.click(screen.getByRole("button", { name: "Check GitHub status" }));
     expect(onRecover).toHaveBeenCalledTimes(1);
 
     rerender(

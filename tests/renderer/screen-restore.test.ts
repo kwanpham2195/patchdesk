@@ -50,6 +50,8 @@ describe("workbench UI position persistence", () => {
     expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
     window.localStorage.setItem(workbenchUiKey(reviewIdA), JSON.stringify({ section: "commits" }));
     expect(loadWorkbenchUiState(reviewIdA)).toEqual({ section: "commits" });
+    window.localStorage.setItem(workbenchUiKey(reviewIdA), JSON.stringify({ section: "findings" }));
+    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
     window.localStorage.setItem(workbenchUiKey(reviewIdA), JSON.stringify({ selectedPath: 42 }));
     expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
   });
