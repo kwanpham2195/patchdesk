@@ -16,6 +16,10 @@ _Avoid_: Prepared workbench, completed workbench, read-only view
 The local work for a review, anchored to one pinned pull request revision.
 _Avoid_: Prepared review
 
+**Represented-review worktree**:
+Patchdesk's immutable checkout for a Review session's pinned revision. Codex may inspect it only through verified sandboxed read-only tools; it is never the maintainer's original checkout.
+_Avoid_: Local checkout, repository clone
+
 **Analysis run**:
 An optional model execution that adds findings to a review session.
 _Avoid_: Review run, model review
@@ -25,7 +29,7 @@ A selectable source for Analysis runs and Walkthroughs. Initially, the choices a
 _Avoid_: Model, login
 
 **Codex CLI account provider**:
-An Insight provider that uses the maintainer's existing local Codex CLI account without Patchdesk reading or persisting its credentials.
+An Insight provider that uses the maintainer's existing local Codex CLI account without Patchdesk reading or persisting its credentials. It may use verified sandboxed read-only inspection tools only against the immutable represented-review worktree.
 _Avoid_: ChatGPT login, OAuth provider, Codex API key
 
 **Analysis result**:
