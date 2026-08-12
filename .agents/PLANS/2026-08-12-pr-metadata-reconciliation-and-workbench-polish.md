@@ -9,94 +9,113 @@ spec: .agents/specs/2026-08-12-pr-metadata-reconciliation-and-workbench-polish/2
 
 # Reconcile same-revision GitHub state and polish the workbench
 
-> Read this plan, its linked spec, `CONTEXT.md`, ADR-0001, ADR-0012, ADR-0013, and ADR-0017 before editing. Preserve immutable represented-review worktrees, explicit GitHub-write confirmation, and uncertain-write recovery. Use deterministic fakes and read-only Electron verification only; this plan never authorizes a live GitHub write.
+> Read this plan, spec, `CONTEXT.md`, ADR-0001, ADR-0012, ADR-0013, and ADR-0017 before editing. Preserve immutable represented-review worktrees, explicit write confirmation, and uncertain-write recovery. Use deterministic fakes and read-only Electron verification only.
 
 ## Status
 
 - Priority: P1
 - Effort: L
-- Risk: HIGH — changes reconciliation, draft ownership, and merge-write contracts.
+- Risk: HIGH — changes reconciliation, draft ownership, durable freshness, and merge-write contracts.
 
 ## Purpose
 
-Patchdesk should quietly present current GitHub state for the represented revision without making maintainers press **Refresh** after a confirmed action. Refresh remains the explicit operation that adopts changed code. The same slice fixes the light-theme file tree and changes the sidebar merge UX to a method selector plus one **Merge** command.
+Quietly show current GitHub state only for the represented revision; use explicit **Refresh** to adopt changed code. Also fix Pierre light theme and replace merge confirmation dialog with a compact method selector and **Merge** command.
 
 ## Fixed product decisions
 
-- **Revision identity** is the represented head SHA, base SHA, and patch identity. A changed or unprovable identity means automatic reconciliation applies no metadata or draft state; it sets `updates_available` for a verified change or `unavailable` when it cannot prove identity. Either blocks writes; only verified revision change shows Refresh.
-- **Same-revision reconciliation** quietly saves bounded PR metadata, Conversation, merge readiness/methods, and the authoritative viewer pending review. It never changes session, worktree, revision-bound Insights, or patch artifacts.
-- GitHub's current pending-review state replaces Patchdesk's confirmed state when it differs and no pending-review operation is in flight or `OutcomeUnknown`. Drafts are never merged. Old receipt provenance remains history; a Finding is actionable again only with evidence it is neither pending nor published.
-- Terminal merged/closed state is the narrow exception: adopt terminal lifecycle and stop writes, but do not adopt changed revision metadata or a worktree.
-- Keep typed Finish-review summary text stable across a quiet draft replacement/removal. Submit checks an opaque pending-review revision token; drift blocks submit and asks the maintainer to reopen/review. Discard acts on the current adopted draft; absent draft reports no action.
-- Run one coalesced read-only observation after confirmed state-changing Patchdesk writes, and on the existing visible-workbench focus/visibility/periodic schedule. Never observe after failed or uncertain writes; never retry a write.
-- The changed-files tree inherits the active app light/dark theme with no separate preference.
-- Merge uses a selected method and explicit **Merge** button; no confirmation dialog. Warnings require acknowledgement bound to the exact revision and warning code set. The final merge read returns typed outcomes. Refresh applies only to changed revisions; uncertain merge uses existing recovery.
+- Revision identity is `(headSha, baseSha, canonicalPatchHash)`. The observation adapter fetches GitHub's complete unified diff for those SHAs and hashes exactly the normalized bytes used by `ReviewSessionPreparation` for the represented session patch. Missing/incomplete comparison evidence is `unavailable`, never head-only proof.
+- `revision_changed` applies no remote metadata/draft state and exposes Refresh. `unavailable` preserves the last known read-only projection, blocks writes, and hides Refresh. A successful same-revision observation clears unavailable automatically.
+- A terminal merged/closed result is the narrow exception: mark terminal and stop writes, without adopting changed revision state.
+- Same-revision reconciliation quietly saves bounded metadata, Conversation, and the authoritative pending draft; never session/worktree/Insight/patch artifacts. Pending draft adoption is forbidden while `WriteInFlight` or `OutcomeUnknown`.
+- Old Finding receipt evidence becomes Historical on draft replacement/removal. It re-enables a Finding only when complete GitHub pending and published-feedback evidence proves no remaining remote receipt.
+- Finish review preserves typed summary in a stable controller. Submit carries an opaque pending-review revision token and makes no write after drift. Discard targets current adopted draft. A direct reply retains text but Comment now cannot write after an adopted draft appears.
+- Every confirmed state-changing write queues one coalesced, read-only follow-up observation. Failed/uncertain writes queue no **immediate** follow-up; ordinary visible-workbench observation may still update read-only state but must leave locked draft/recovery state intact.
+- `RecentReviewWrite` journal entries are consumed only after a successful same-revision snapshot/projection that contains their receipts; until then they normalize detector propagation only. They are never retained past reconciliation or explicit Refresh.
+- All Refresh, observation, write, and recovery work uses one `ReviewOperationCoordinator` lock keyed by profile/review. Do not retain independent refresh/write locks.
+- Snapshot candidate, session draft transition, and Review freshness transition use an operation journal. Persist candidate first; journal intended old/new hashes and session version; atomically save each optimistic-concurrency transition in order; complete/remove journal last. Recovery either completes the exact transition or marks Review unavailable. Never project a new session draft with old Review snapshot.
+- Merge is selector + **Merge**, no dialog. Warnings require acknowledgement bound to exact revision/warning codes. It returns typed outcomes. `OutcomeUnknown` uses the existing workbench recovery action and `POST /v1/reviews/publication/recover`; extend that route and `ReviewRecoveryService` to reconcile the durable merge operation as well as publication evidence before reloading the workbench. Add no button.
+- Pierre inherits active app light/dark theme; no separate preference.
 
-## Implementation steps
+## Implementation slices
 
-### 1. Record decisions and terms
+### 1. Verify durable contracts before behavior
 
-Create ADR-0017; link it from ADR-0001 without rewriting ADR-0001 history. Keep `CONTEXT.md` a glossary: revision identity, same-revision reconciliation, terminal state, pending-review reconciliation, merge command, and unavailable state. Update Conversation wording: it reconciles automatically for its represented revision.
+Verify/update ADR-0017 and glossary wording. Add `ReviewFreshness` durable union to `Review`:
 
-### 2. Add typed revision and observation contracts
-
-Add a reusable `ReviewObservationService`, not more logic to `ReviewRefreshService`. It owns review-level serialization, two revision reads, bounded GitHub reads, snapshot persistence, terminal handling, and standard workbench projection. `PendingReviewService` remains sole owner of draft transitions and receipt invariants.
-
-Model `reconciled`, `revision_changed`, `unavailable`, `terminal`, and `unchanged` as a closed union. Require full represented revision identity before any automatic projection. Do not put raw GitHub payloads, paths, draft body, Insight output, or raw errors in renderer DTOs.
-
-### 3. Reconcile the authoritative draft safely
-
-Give `PendingReviewService` a same-revision adoption transition. It must retain locked writes unchanged, replace confirmed remote draft state, and classify receipts as pending, published, or historical/superseded based on evidence. When evidence is incomplete, do not re-enable a Finding.
-
-Create an opaque pending-review revision fingerprint. Finish-review open captures it; Submit sends it and returns `pending_review_changed` before a write if the authoritative draft differs. Keep dialog draft text in a controller that survives workbench projection replacement. Direct reply text stays visible but cannot use Comment now after an adopted pending review appears.
-
-### 4. Project and schedule observation through the protected boundary
-
-Evolve `POST /v1/reviews/detect-updates` with strict parsing and a bounded closed response. Renderer identity-checks response review/session/revision before applying it. Preserve one in-flight observation, visibility/focus guards, and coalescing. Successful same-revision observation clears unavailable and restores write availability automatically. Verified revision change marks stale and exposes Refresh. Explicit Refresh stays the only code/worktree adoption path.
-
-### 5. Replace merge dialog with a typed compact merge command
-
-Replace `MergeConfirmationDialog` with a compact PR Overview action group: method selector, readiness/warning context, acknowledgement control where needed, and **Merge** button. Keep accessible labels, focus behavior, wrapping, selected-method retention, and error/recovery state.
-
-Pass `MergeWarningAcknowledgement { revisionIdentity, warningCodes }`, not a boolean. At merge execution, re-read identity/readiness: return `readiness_changed`, `revision_changed`, `unavailable`, `outcome_unknown`, or `merged`. Changed warnings invalidate acknowledgement. On success reload terminal projection; never retry an uncertain merge.
-
-### 6. Make Pierre inherit theme
-
-Use Pierre's supported color-scheme/CSS-variable seam from the immediate container. Preserve tree keyboard navigation, selection, follow-active behavior, scrolling, and status-color contrast.
-
-### 7. Prove each vertical slice
-
-1. Same-revision metadata persists/projection updates; revision identity and worktree remain unchanged.
-2. Base/head/patch change produces `revision_changed`; unprovable identity produces `unavailable`; terminal state wins narrowly.
-3. Pending draft adoption, locked-state preservation, receipt history/evidence, and Finish-review token/text behavior.
-4. Protected route parsing, redaction, renderer stale-response rejection, post-write coalescing, and recovery behavior.
-5. Typed final merge outcomes and revision/warning-bound acknowledgement.
-6. Pierre light/dark and compact merge component/rendering tests.
-
-Then run:
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test -- --run
-pnpm build
-pnpm exec playwright test
-git diff --check
+```ts
+type ReviewFreshness =
+  | { readonly _tag: "Fresh" }
+  | { readonly _tag: "RevisionChanged"; readonly detectedAt: IsoTimestamp; readonly identity: ObservedRevisionIdentity }
+  | { readonly _tag: "Unavailable"; readonly detectedAt: IsoTimestamp; readonly reason: "base_missing" | "diff_incomplete" | "github_read" | "comparison_ambiguous" | "reconciliation_incomplete" };
 ```
 
-Restart Electron before read-only CDP QA. If full Playwright has unrelated failures, record exact baseline failures and run focused browser cases.
+Migrate/parse existing Review records as `Fresh` when they have a represented snapshot and no `detectedUpdate`; map legacy `detectedUpdate` to `RevisionChanged`. Update `ReviewWriteGate.requireFresh()` to allow only `Fresh`; update workbench freshness projection and error mapping. Use compare-and-save expected `Review.updatedAt` on every change.
+
+**Verify:** migration/parser, gate, old detected-update compatibility, unavailable→fresh recovery, and terminal precedence tests.
+
+### 2. Prove canonical remote revision identity
+
+Add `GitHubRevisionIdentityReader` around existing `GitHubReader.getPullRequest()` and `getPullRequestDiff({ snapshot: { baseSha, headSha } })`. Require parsed base SHA and full diff. Normalize GitHub diff by the exact `ReviewSessionPreparation` patch normalization function, then use `contentHash`/the same SHA-256 implementation used for session patches. Compare it to the persisted session patch hash. Return a closed `Same | Changed | Unavailable` result; no head-only fallback.
+
+**Verify:** equal normalized diff, base/head/patch change, missing base, incomplete/failed diff, normalization regression, fake adapter contract.
+
+### 3. Share coordination and make observation recoverable
+
+Replace `ReviewRefreshService` private lock and `ReviewWriteCoordinator` set with injected `ReviewOperationCoordinator.withReviewLock(profileId, reviewId, operation)`. Use it in explicit refresh, `ReviewObservationService`, pending-review writes/adoption, merge controller, and `ReviewRecoveryService.reconcilePublication` (inside existing profile lifecycle lock).
+
+Add `ReviewObservationJournal` storage. Under the shared lock:
+
+```txt
+read Review/session/snapshot @ versions
+-> prove revision identity twice
+-> read bounded metadata/Conversation/pending/publication evidence
+-> save content-addressed candidate snapshot
+-> write observation journal(old/new snapshot, expected Review/session versions)
+-> save session adoption @ expected session version
+-> save Review represented snapshot/freshness @ expected Review.updatedAt
+-> remove journal
+-> project
+```
+
+If a save fails after journal creation, return unavailable; recovery replays only exact expected versions or marks unavailable. Orphaned candidate snapshots are allowed.
+
+**Verify:** lock contention among observation/refresh/write/recovery; save failures at each transition; journal replay/mark-unavailable; no mixed projection.
+
+### 4. Persist every reconciled seam and draft evidence
+
+Extend `ReviewRemoteStore` `snapshotSchema`/`parseReviewRemoteSnapshot` to include bounded `conversation`; update fixtures and old snapshot migration. `PendingReviewService.adoptObservedState()` changes only confirmed states; locked states return unchanged. Add Historical receipt schema/state and complete-evidence classifier. If pending/published readers are incomplete/unavailable, retain receipt non-actionable.
+
+Consume `RecentReviewWrite` entries after the newly persisted snapshot contains their comment/review/thread evidence. Explicit Refresh clears the journal after its complete snapshot is durable. If GitHub propagation still hides a receipt, leave the entry for the next ordinary observation; do not falsely mark freshness stale.
+
+**Verify:** Conversation persistence round trip; adoption/replacement/removal; locked preservation; receipt evidence ambiguity; journal consumption/propagation.
+
+### 5. Protected projection and safe renderer behavior
+
+Evolve detect-updates DTO to closed `reconciled | revision_changed | unavailable | terminal | unchanged`. The renderer keeps one coalesced observation for the visible workbench and identity-checks Review/session/revision before applying it. It retains Finish-review text in flow/controller state. Submit sends pending revision token; drift gives focused error and zero write. The ordinary detector may run during locked recovery but must never replace locked pending state.
+
+**Verify:** route parsing/redaction, stale DTO rejection, write coalescing, no immediate observe after failed/unknown write, text persistence, direct-reply blocking.
+
+### 6. Typed compact merge command
+
+Replace/delete `MergeConfirmationDialog`. Add compact selector, current readiness/warnings, exact acknowledgement, and **Merge** button. `MergeWriteController` parses `MergeWarningAcknowledgement`, acquires shared lock, proves revision identity/readiness, validates same warning set, then sends one merge write. It maps `ReadinessChanged | RevisionChanged | Unavailable | OutcomeUnknown | Merged` to bounded UI states. Existing recovery endpoint is reused for `OutcomeUnknown`; renderer uses its existing recovery action/copy, not a new control.
+
+**Verify:** acknowledgement invalidation, final revision/readiness check, all typed outcomes, recovery endpoint projection, keyboard/focus/narrow sidebar tests.
+
+### 7. Theme and gates
+
+Use Pierre supported container color-scheme/CSS variables. Preserve interaction and contrast. Run focused tests after each slice, then `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`, `pnpm exec playwright test`, and `git diff --check`. Restart Electron before read-only CDP QA; record baseline browser failures.
 
 ## Done criteria
 
-- [ ] Same-revision state, including bounded Conversation and authoritative draft, reconciles quietly.
-- [ ] Changed/unprovable revision identity never gets mixed metadata; writes block correctly.
-- [ ] Refresh appears only for verified revision change and remains the sole worktree/code adoption path.
-- [ ] Draft drift preserves typed Finish-review text and blocks only unsafe Submit.
-- [ ] Receipt history cannot produce duplicate Finding comments.
-- [ ] Compact Merge has no dialog, rechecks current GitHub state, and binds warning acknowledgement to exact warnings/revision.
-- [ ] Tree follows app light/dark mode and keeps contrast/accessibility.
-- [ ] Focused tests, standard gates, and read-only UI proof pass or documented unrelated browser failures remain.
+- [ ] Canonical remote identity is proven or writes fail closed as unavailable.
+- [ ] Freshness state is durable, migrated, parser-validated, and gate-enforced.
+- [ ] Observation, refresh, writes, and recovery share one review lock and recover multi-store transitions without mixed view.
+- [ ] Same-revision snapshot persists Conversation/draft evidence and safely consumes confirmed-write journal entries.
+- [ ] Refresh remains the only changed-revision/worktree adoption path; terminal exception is narrow.
+- [ ] Draft drift preserves typed Finish-review text and cannot duplicate Findings.
+- [ ] Compact one-click Merge has exact warning/revision acknowledgement and a reachable existing uncertain-outcome recovery path.
+- [ ] Tree follows light/dark theme; verification passes or exact baseline failures are documented.
 
 ## Stop conditions
 
-Stop and ask if GitHub cannot supply enough evidence to prove revision identity or receipt publication state, if pending-review recovery cannot distinguish an unresolved write, or if Pierre requires a brittle/global theme override.
+Stop and ask if GitHub diff normalization cannot reproduce session-patch hashing, complete pending/published evidence is unavailable for receipt reactivation, shared coordinator cannot cover all current write/refresh/recovery paths, or the existing recovery action is not reachable from merge outcome UI.
