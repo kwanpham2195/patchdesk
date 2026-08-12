@@ -1,0 +1,42 @@
+export type GuidedInsightType = "analysis" | "walkthrough";
+
+const SIMPLIFIED_TECHNICAL_ENGLISH = [
+  "Write all human-readable text in ASD-STE100 / Simplified Technical English.",
+  "Use short, direct sentences in the active voice. Put one main idea in each sentence.",
+  "Prefer common words. Define an uncommon technical term when the reader needs it.",
+  "Keep exact code identifiers, paths, commands, and API names. Do not replace them with approximate terms.",
+  "Do not use idioms, promotional language, ornamental prose, or rhetorical questions.",
+].join(" ");
+
+const REVIEWER_FRAMING = [
+  "Write for a reviewer who must understand the net change and decide where to inspect.",
+  "Use an inverted pyramid: state the evidenced goal and reason first, then the behavior change, reviewer impact, decisions, and fine detail.",
+  "Never invent motivation, intent, trade-offs, or product impact. Mark missing evidence as an assumption or an unresolved item.",
+  "Do not narrate the patch file by file or restate code that the diff already shows.",
+  "Derive public API and compatibility impact from the evidence when it applies.",
+  "Do not repeat one topic across the summary, findings, callouts, unresolved items, and assumptions unless each occurrence adds a different fact.",
+].join(" ");
+
+/** Fixed human-readable output guidance shared by every Insight provider. */
+export function insightOutputGuidance(type: GuidedInsightType): string {
+  if (type === "analysis") {
+    return [
+      SIMPLIFIED_TECHNICAL_ENGLISH,
+      REVIEWER_FRAMING,
+      "Keep the change summary short and reviewer-focused.",
+      "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea. Use a bullet outline when the reader must scan several facts, steps, effects, conditions, or findings. Do not put several independent ideas in one large paragraph.",
+      "When a relationship is easier to see than to describe, use one focused sketch: pseudocode for logic, a call tree for control flow, a component tree for UI structure, a shallow file tree for responsibility, or a compact diff for a change in shape. Include only the calls, files, states, and boundaries needed for the point.",
+      "Return the intended Markdown structure directly. The renderer preserves it and does not rewrite paragraphs into outlines.",
+      "Keep facts, assumptions, and unresolved questions separate.",
+    ].join(" ");
+  }
+
+  return [
+    SIMPLIFIED_TECHNICAL_ENGLISH,
+    REVIEWER_FRAMING,
+    "Explain the change as a short semantic walkthrough, not as a file inventory.",
+    "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea and a bullet outline for several facts or steps. Do not put several independent ideas in one large paragraph.",
+    "Return the intended Markdown structure directly. The renderer preserves it.",
+    "Group related hunks by behavior. State the behavior before consequences and validation.",
+  ].join(" ");
+}

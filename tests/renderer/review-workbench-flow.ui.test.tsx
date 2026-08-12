@@ -352,8 +352,23 @@ describe("ReviewWorkbenchFlow", () => {
         return {
           ok: true,
           body: {
-            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
-            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
+            providers: [
+              {
+                id: "pi",
+                label: "Pi",
+                available: true,
+                guidance: "Configured.",
+              },
+            ],
+            models: [
+              {
+                provider: "pi",
+                id: "fixture-model",
+                label: "Fixture model",
+                reasoning: ["low", "medium", "high"],
+                defaultReasoning: "medium",
+              },
+            ],
           },
           correlationId: "models",
         };
@@ -397,6 +412,74 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByLabelText("Analysis completion")).toBeNull();
     expect(screen.queryByText("Save as Review draft")).toBeNull();
     expect(screen.queryByText("Publish as Comment")).toBeNull();
+  });
+
+  it("keeps Insight available when Codex is passive but Pi has no model", async () => {
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/insight-providers") {
+        return {
+          ok: true,
+          body: {
+            providers: [
+              {
+                id: "pi",
+                label: "Pi",
+                available: false,
+                guidance: "Configure Pi.",
+              },
+              {
+                id: "codex-cli-account",
+                label: "Codex CLI account",
+                available: true,
+                guidance: "Use Codex.",
+              },
+            ],
+            models: [],
+          },
+          correlationId: "providers",
+        };
+      }
+      if (input.path === "/v1/reviews/detect-updates")
+        return {
+          ok: true,
+          body: { updatesAvailable: false },
+          correlationId: "detect",
+        };
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    const user = userEvent.setup();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={projection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await waitFor(() =>
+      expect(screen.getByText(/No Pi model is configured/)).toBeTruthy(),
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Generate analysis",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Generate analysis" }));
+    await user.selectOptions(
+      screen.getByLabelText("Insight provider"),
+      "codex-cli-account",
+    );
+    expect(
+      screen.getByRole("button", { name: "Load Codex models" }),
+    ).toBeTruthy();
   });
 
   it("shows provider guidance and disables Insight runs for an intentional empty catalog", async () => {
@@ -452,7 +535,17 @@ describe("ReviewWorkbenchFlow", () => {
         if (input.path === "/v1/insight-providers")
           return {
             ok: true,
-            body: { providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }], models },
+            body: {
+              providers: [
+                {
+                  id: "pi",
+                  label: "Pi",
+                  available: true,
+                  guidance: "Configured.",
+                },
+              ],
+              models,
+            },
             correlationId: "models",
           };
         if (input.path === "/v1/reviews/detect-updates")
@@ -531,10 +624,29 @@ describe("ReviewWorkbenchFlow", () => {
           return {
             ok: true,
             body: {
-              providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+              providers: [
+                {
+                  id: "pi",
+                  label: "Pi",
+                  available: true,
+                  guidance: "Configured.",
+                },
+              ],
               models: [
-                { provider: "pi", id: "fast-model", label: "Fast model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
-                { provider: "pi", id: "deep-model", label: "Deep model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
+                {
+                  provider: "pi",
+                  id: "fast-model",
+                  label: "Fast model",
+                  reasoning: ["low", "medium", "high"],
+                  defaultReasoning: "medium",
+                },
+                {
+                  provider: "pi",
+                  id: "deep-model",
+                  label: "Deep model",
+                  reasoning: ["low", "medium", "high"],
+                  defaultReasoning: "medium",
+                },
               ],
             },
             correlationId: "models",
@@ -634,8 +746,23 @@ describe("ReviewWorkbenchFlow", () => {
         return {
           ok: true,
           body: {
-            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
-            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
+            providers: [
+              {
+                id: "pi",
+                label: "Pi",
+                available: true,
+                guidance: "Configured.",
+              },
+            ],
+            models: [
+              {
+                provider: "pi",
+                id: "fixture-model",
+                label: "Fixture model",
+                reasoning: ["low", "medium", "high"],
+                defaultReasoning: "medium",
+              },
+            ],
           },
           correlationId: "models",
         };
@@ -752,9 +879,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Protect the write boundary" }),
-    ).toBeTruthy();
+    expect(screen.getByText("Protect the write boundary")).toBeTruthy();
     expect(screen.getAllByText("Missing guard").length).toBeGreaterThanOrEqual(
       1,
     );
@@ -842,8 +967,8 @@ describe("ReviewWorkbenchFlow", () => {
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
     expect(
-      screen.getAllByText("Review completed for Patchdesk workbench").length,
-    ).toBeGreaterThanOrEqual(2);
+      screen.getByText("Review completed for Patchdesk workbench"),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Run for latest revision" }),
     ).toBeTruthy();
@@ -993,8 +1118,8 @@ describe("ReviewWorkbenchFlow", () => {
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
     expect(
-      screen.getAllByText("Review completed for Patchdesk workbench").length,
-    ).toBeGreaterThanOrEqual(2);
+      screen.getByText("Review completed for Patchdesk workbench"),
+    ).toBeTruthy();
   });
 
   it("renders current Walkthrough content while Files remains the parent navigation", async () => {
@@ -1048,8 +1173,23 @@ describe("ReviewWorkbenchFlow", () => {
         return {
           ok: true,
           body: {
-            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
-            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
+            providers: [
+              {
+                id: "pi",
+                label: "Pi",
+                available: true,
+                guidance: "Configured.",
+              },
+            ],
+            models: [
+              {
+                provider: "pi",
+                id: "fixture-model",
+                label: "Fixture model",
+                reasoning: ["low", "medium", "high"],
+                defaultReasoning: "medium",
+              },
+            ],
           },
           correlationId: "models",
         };
@@ -1082,8 +1222,14 @@ describe("ReviewWorkbenchFlow", () => {
         screen.getByRole("button", { name: "Focus section" }),
       ).toBeTruthy(),
     );
-    await waitFor(() => expect(calls.some((call) => call.path === "/v1/reviews/detect-updates")).toBe(true));
-    const callsBeforeFocus = calls.filter((call) => !call.path.includes("/v1/insight-providers")).length;
+    await waitFor(() =>
+      expect(
+        calls.some((call) => call.path === "/v1/reviews/detect-updates"),
+      ).toBe(true),
+    );
+    const callsBeforeFocus = calls.filter(
+      (call) => !call.path.includes("/v1/insight-providers"),
+    ).length;
     await user.click(screen.getByRole("button", { name: "Focus section" }));
 
     expect(
@@ -1102,7 +1248,9 @@ describe("ReviewWorkbenchFlow", () => {
       screen.queryByRole("region", { name: "Walkthrough chapters" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Next section" })).toBeTruthy();
-    expect(calls.filter((call) => !call.path.includes("/v1/insight-providers"))).toHaveLength(callsBeforeFocus);
+    expect(
+      calls.filter((call) => !call.path.includes("/v1/insight-providers")),
+    ).toHaveLength(callsBeforeFocus);
 
     await user.click(screen.getByRole("button", { name: "Exit focus" }));
     expect(
@@ -1116,7 +1264,9 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByRole("region", { name: "Walkthrough chapters" }),
     ).toBeTruthy();
-    expect(calls.filter((call) => !call.path.includes("/v1/insight-providers"))).toHaveLength(callsBeforeFocus);
+    expect(
+      calls.filter((call) => !call.path.includes("/v1/insight-providers")),
+    ).toHaveLength(callsBeforeFocus);
     expect(calls.some((call) => call.path.includes("/progress"))).toBe(false);
   });
 
@@ -1149,7 +1299,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(screen.queryByRole("button", { name: "Back to files" })).toBeNull();
   });
 
-  it("renders the Analysis document in ADR order and omits empty optional callouts", async () => {
+  it("renders the Analysis decision workspace in attention-first order and omits empty supporting details", async () => {
     const base = projection();
     const value = {
       ...base,
@@ -1187,15 +1337,9 @@ describe("ReviewWorkbenchFlow", () => {
     const headings = Array.from(
       reader.querySelectorAll('[data-slot="card-title"]'),
     ).map((heading) => heading.textContent);
-    expect(headings).toEqual([
-      "Review Scope",
-      "Pull Request Overview",
-      "Reviewed Changes",
-      "Verification",
-      "Findings",
-      "Verdict",
-    ]);
-    expect(screen.queryByText("Human Reviewer Callouts")).toBeNull();
+    expect(headings).toEqual(["No findings", "What changed", "Verification"]);
+    expect(screen.getByText("Ready to approve")).toBeTruthy();
+    expect(screen.queryByText("Supporting details")).toBeNull();
   });
 
   it("opens the PR overview without replacing the workbench", async () => {
@@ -1569,24 +1713,11 @@ describe("ReviewWorkbenchFlow", () => {
       expect(within(dialog).queryByText("analysis_finding")).toBeNull();
       expect(within(dialog).queryByText("Merge blocked")).toBeNull();
       expect(
-        within(dialog).getByRole("button", {
-          name: "Prepare merge confirmation",
-        }),
-      ).toBeTruthy();
-      await user.click(
-        within(dialog).getByRole("button", {
-          name: "Prepare merge confirmation",
-        }),
-      );
-      expect(
-        screen.getByRole("heading", { name: "Confirm merge" }),
+        within(dialog).getByRole("button", { name: "Merge" }),
       ).toBeTruthy();
       expect(
-        screen.getByRole("checkbox", {
-          name: "I acknowledge the merge warnings.",
-        }),
+        within(dialog).getByRole("checkbox", { name: /I acknowledge:/ }),
       ).toBeTruthy();
-      await user.keyboard("{Escape}");
 
       cleanup();
       const blocked = {
@@ -2869,6 +3000,79 @@ describe("ReviewWorkbenchFlow pending review", () => {
     );
   });
 
+  it("shows a bounded error when Check GitHub again fails", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn(async (input: { readonly path: string }) => {
+      if (input.path === "/v1/reviews/detect-updates") {
+        return {
+          ok: true,
+          body: { updatesAvailable: false },
+          correlationId: "detect",
+        };
+      }
+      if (input.path === "/v1/reviews/pending-review/recover") {
+        return {
+          ok: false,
+          status: 409,
+          body: { error: "review_write_in_progress" },
+          correlationId: "recover",
+        };
+      }
+      throw new Error(`unexpected ${input.path}`);
+    });
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "recovery_required", action: "start" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Another Review operation is still finishing",
+    );
+  });
+
+  it("reloads the canonical workbench after recovery clears the pending lock", async () => {
+    const user = userEvent.setup();
+    const recovered = withPending({ state: "none" }, "a".repeat(64));
+    const request = stubRequest({
+      "/v1/reviews/pending-review/recover": {
+        pendingReview: { state: "none" },
+      },
+      "/v1/reviews/load": recovered,
+    });
+    const onWorkbenchReplace = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "recovery_required", action: "start" })}
+        onWorkbenchReplace={onWorkbenchReplace}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v1/reviews/load" }),
+    );
+    await waitFor(() =>
+      expect(onWorkbenchReplace).toHaveBeenCalledWith(recovered),
+    );
+  });
+
   it("locks the composer and offers Check GitHub again when the pending read is unavailable", async () => {
     const user = userEvent.setup();
     const request = stubRequest({
@@ -2900,6 +3104,31 @@ describe("ReviewWorkbenchFlow pending review", () => {
     );
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({ path: "/v1/reviews/pending-review/recover" }),
+    );
+  });
+
+  it("explains when recovery cannot identify the exact Finding comment", async () => {
+    const user = userEvent.setup();
+    stubRequest({
+      "/v1/reviews/pending-review/recover": {
+        pendingReview: { state: "recovery_required", action: "start" },
+      },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "recovery_required", action: "start" })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "cannot identify the exact Finding comment",
     );
   });
 

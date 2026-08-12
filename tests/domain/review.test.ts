@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createReview,
   createReviewId,
-  markDetectedUpdate,
+  markReviewRevisionChanged,
+  markReviewUnavailable,
   markReviewTerminal,
   moveReviewToSession,
   parseReview,
@@ -36,6 +37,7 @@ const identity: ReviewIdentity = {
 };
 const firstSha = must(parseGitSha("1".repeat(40)));
 const secondSha = must(parseGitSha("2".repeat(40)));
+const baseSha = must(parseGitSha("b".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
 const firstSessionId = createReviewSessionId({ ...identity, headSha: firstSha });
@@ -115,21 +117,52 @@ describe("Review", () => {
       }),
     ).toMatchObject({ _tag: "err", error: { _tag: "ReviewTerminal" } });
     expect(
-      markDetectedUpdate(terminal, { detectedAt: later, reason: "head" }, later),
+      markReviewUnavailable(terminal, { detectedAt: later, reason: "github_read" }, later),
     ).toEqual(terminal);
   });
 
-  it("records a bounded remote update without replacing represented state", () => {
-    const updated = markDetectedUpdate(
+  it("records a complete changed revision without replacing represented state", () => {
+    const updated = markReviewRevisionChanged(
       review(),
-      { detectedAt: later, reason: "checks" },
+      {
+        detectedAt: later,
+        identity: { headSha: secondSha, baseSha, canonicalPatchHash: snapshotHash },
+      },
       later,
     );
     expect(updated).toMatchObject({
-      detectedUpdate: { detectedAt: later, reason: "checks" },
+      freshness: {
+        _tag: "RevisionChanged",
+        detectedAt: later,
+        identity: { headSha: secondSha, baseSha, canonicalPatchHash: snapshotHash },
+      },
       currentSessionId: firstSessionId,
       currentHeadSha: firstSha,
       updatedAt: later,
     });
+  });
+
+  it("rejects legacy detection records that lack a canonical revision identity", () => {
+    const { freshness: _freshness, ...legacyFields } = review();
+    void _freshness;
+    const legacy = {
+      ...legacyFields,
+      schemaVersion: 1,
+      detectedUpdate: { detectedAt: later, reason: "checks" },
+    };
+    const parsed = parseReview(legacy);
+    expect(parsed).toMatchObject({ _tag: "err" });
+  });
+
+  it("parses only complete revision-change evidence", () => {
+    const invalid = {
+      ...review(),
+      freshness: {
+        _tag: "RevisionChanged",
+        detectedAt: later,
+        identity: { headSha: secondSha, baseSha },
+      },
+    };
+    expect(parseReview(invalid)).toMatchObject({ _tag: "err" });
   });
 });

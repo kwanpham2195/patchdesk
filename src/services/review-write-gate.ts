@@ -2,6 +2,7 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteSnapshot, ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
 import type { Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -40,6 +41,7 @@ export class ReviewWriteGate {
     private readonly reviews: Pick<ReviewStore, "load"> & Partial<Pick<ReviewStore, "list">>,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly remote: Pick<ReviewRemoteStore, "load">,
+    private readonly observationJournals?: Pick<ReviewObservationJournalStore, "load">,
   ) {}
 
   async hasReviewForSession(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<Result<boolean, ReviewWriteGateFailure>> {
@@ -81,6 +83,12 @@ export class ReviewWriteGate {
     reviewId: ReviewId,
     expected?: ReviewWriteExpectation,
   ): Promise<Result<FreshReview, ReviewWriteGateFailure>> {
+    if (this.observationJournals !== undefined) {
+      const journal = await this.observationJournals.load(profileId, reviewId);
+      if (journal._tag === "err" || journal.value !== undefined) {
+        return err({ reason: "not_fresh" });
+      }
+    }
     const [profile, review] = await Promise.all([
       this.profiles.load(profileId),
       this.reviews.load(profileId, reviewId),
@@ -90,7 +98,7 @@ export class ReviewWriteGate {
     if (profile._tag === "err" || review._tag === "err") return err({ reason: "storage" });
     const value = review.value;
     if (value.status._tag === "Terminal") return err({ reason: "terminal" });
-    if (value.representedRemote === undefined || value.detectedUpdate !== undefined) return err({ reason: "not_fresh" });
+    if (value.representedRemote === undefined || value.freshness._tag !== "Fresh") return err({ reason: "not_fresh" });
     if (value.identity.profileId !== profileId || value.id !== reviewId) return err({ reason: "stale" });
     const session = await this.sessions.load(profileId, value.currentSessionId);
     if (session._tag === "err") return session.error.reason === "not_found" ? err({ reason: "not_found" }) : err({ reason: "storage" });

@@ -14,12 +14,20 @@ import {
 import { createReview } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
-import type { RecentReviewWrite, ReviewRefreshService } from "./review-refresh-service";
+import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+import type {
+  RecentReviewWrite,
+  ReviewRefreshService,
+} from "./review-refresh-service";
+import type { ReviewObservationService } from "./review-observation-service";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";
 import { err, ok, type Result } from "../domain/result";
-import type { PendingReviewState } from "../domain/pending-review";
-import type { PendingReviewService } from "./pending-review-service";
-import type { PrepareReviewSessionFailure, ReviewOpenMode, ReviewSessionPreparation } from "./review-session-preparation";
+import type {
+  PrepareReviewSessionFailure,
+  ReviewOpenMode,
+  ReviewSessionPreparation,
+} from "./review-session-preparation";
 import type {
   ReviewWorkbenchProjection,
   ReviewWorkbenchProjectionService,
@@ -27,7 +35,17 @@ import type {
 } from "./review-workbench-projection";
 import { readObjectField } from "./read-object-field";
 
-export type ReviewWorkbenchFailure = { readonly reason: "invalid_input" | "not_found" | "github_read" | "head_changed" | "storage" | "terminal" | "revision_conflict" | "not_fresh" };
+export type ReviewWorkbenchFailure = {
+  readonly reason:
+    | "invalid_input"
+    | "not_found"
+    | "github_read"
+    | "head_changed"
+    | "storage"
+    | "terminal"
+    | "revision_conflict"
+    | "not_fresh";
+};
 export type { ReviewWorkbenchProjection };
 
 /**
@@ -45,14 +63,25 @@ export class ReviewWorkbenchController {
     private readonly lifecycle?: {
       readonly reviews: Pick<ReviewStore, "load" | "save">;
       readonly remote: Pick<ReviewRemoteStore, "load">;
+      readonly journals?: Pick<ReviewObservationJournalStore, "load">;
       readonly refresh: ReviewRefreshService;
+      readonly observation?: Pick<
+        ReviewObservationService,
+        "observe" | "recover"
+      >;
+      readonly coordinator?: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits?: ReviewCommitService;
-      readonly migration?: { migrateProfile(profileId: WorkspaceProfileId): Promise<Result<unknown, unknown>> };
+      readonly migration?: {
+        migrateProfile(
+          profileId: WorkspaceProfileId,
+        ): Promise<Result<unknown, unknown>>;
+      };
     },
-    private readonly pendingReviewService?: Pick<PendingReviewService, "reconcile">,
   ) {}
 
-  async open(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+  async open(
+    input: unknown,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const identityFields = {
       profileId: parseWorkspaceProfileId(readObjectField(input, "profileId")),
       host: parseGitHubHost(readObjectField(input, "host")),
@@ -60,9 +89,22 @@ export class ReviewWorkbenchController {
       repo: parseGitHubRepoName(readObjectField(input, "repo")),
       number: parsePullRequestNumber(readObjectField(input, "number")),
     };
-    if (identityFields.profileId._tag === "err" || identityFields.host._tag === "err" || identityFields.owner._tag === "err" || identityFields.repo._tag === "err" || identityFields.number._tag === "err") return err({ reason: "invalid_input" });
+    if (
+      identityFields.profileId._tag === "err" ||
+      identityFields.host._tag === "err" ||
+      identityFields.owner._tag === "err" ||
+      identityFields.repo._tag === "err" ||
+      identityFields.number._tag === "err"
+    )
+      return err({ reason: "invalid_input" });
     const profileId = identityFields.profileId.value;
-    const reviewId = createReviewId({ profileId, host: identityFields.host.value, owner: identityFields.owner.value, repo: identityFields.repo.value, prNumber: identityFields.number.value });
+    const reviewId = createReviewId({
+      profileId,
+      host: identityFields.host.value,
+      owner: identityFields.owner.value,
+      repo: identityFields.repo.value,
+      prNumber: identityFields.number.value,
+    });
     return this.serializedOpen(profileId, reviewId, async () => {
       const migrated = await this.migrate(profileId);
       if (migrated._tag === "err") return err({ reason: "storage" });
@@ -70,37 +112,69 @@ export class ReviewWorkbenchController {
     });
   }
 
-  private async openUnlocked(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+  private async openUnlocked(
+    input: unknown,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     const host = parseGitHubHost(readObjectField(input, "host"));
     const owner = parseGitHubOwner(readObjectField(input, "owner"));
     const repo = parseGitHubRepoName(readObjectField(input, "repo"));
     const number = parsePullRequestNumber(readObjectField(input, "number"));
-    if (profileId._tag === "err" || host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err") return err({ reason: "invalid_input" });
+    if (
+      profileId._tag === "err" ||
+      host._tag === "err" ||
+      owner._tag === "err" ||
+      repo._tag === "err" ||
+      number._tag === "err"
+    )
+      return err({ reason: "invalid_input" });
     const requestedMode = readObjectField(input, "mode");
-    if (requestedMode !== undefined && requestedMode !== "full" && requestedMode !== "incremental") return err({ reason: "invalid_input" });
+    if (
+      requestedMode !== undefined &&
+      requestedMode !== "full" &&
+      requestedMode !== "incremental"
+    )
+      return err({ reason: "invalid_input" });
     let mode: ReviewOpenMode = { kind: "full" };
     if (requestedMode === "incremental") {
-      const baseSessionId = parseReviewSessionId(readObjectField(input, "baseSessionId"));
+      const baseSessionId = parseReviewSessionId(
+        readObjectField(input, "baseSessionId"),
+      );
       if (baseSessionId._tag === "err") return err({ reason: "invalid_input" });
       mode = { kind: "incremental", baseSessionId: baseSessionId.value };
     }
     const previousSessionRaw = readObjectField(input, "previousSessionId");
-    const parsedPreviousSessionId = previousSessionRaw === undefined
-      ? undefined
-      : parseReviewSessionId(previousSessionRaw);
-    if (parsedPreviousSessionId?._tag === "err") return err({ reason: "invalid_input" });
-    const previousSessionId = parsedPreviousSessionId?._tag === "ok"
-      ? parsedPreviousSessionId.value
-      : mode.kind === "incremental" ? mode.baseSessionId : undefined;
-    const identity = { profileId: profileId.value, host: host.value, owner: owner.value, repo: repo.value, prNumber: number.value };
+    const parsedPreviousSessionId =
+      previousSessionRaw === undefined
+        ? undefined
+        : parseReviewSessionId(previousSessionRaw);
+    if (parsedPreviousSessionId?._tag === "err")
+      return err({ reason: "invalid_input" });
+    const previousSessionId =
+      parsedPreviousSessionId?._tag === "ok"
+        ? parsedPreviousSessionId.value
+        : mode.kind === "incremental"
+          ? mode.baseSessionId
+          : undefined;
+    const identity = {
+      profileId: profileId.value,
+      host: host.value,
+      owner: owner.value,
+      repo: repo.value,
+      prNumber: number.value,
+    };
     const reviewId = createReviewId(identity);
+    const recovered = await this.recoverObservation(profileId.value, reviewId);
+    if (recovered._tag === "err") return recovered;
     // Durable review records and remote snapshots are derived GitHub caches.
     // Any unreadable or unprojectable state is treated as absent — the opener
     // falls through to fresh preparation instead of blocking on stale data.
-    const existing = this.lifecycle === undefined
-      ? undefined
-      : await this.lifecycle.reviews.load(profileId.value, reviewId);
+    const existing =
+      this.lifecycle === undefined
+        ? undefined
+        : await this.lifecycle.reviews.load(profileId.value, reviewId);
     let existingUpdatedAt: IsoTimestamp | undefined;
     if (existing?._tag === "ok") {
       existingUpdatedAt = existing.value.updatedAt;
@@ -109,7 +183,10 @@ export class ReviewWorkbenchController {
         if (stable._tag === "ok") return stable;
       }
       if (existing.value.representedRemote === undefined) {
-        const initialized = await this.initializeSnapshot(profileId.value, reviewId);
+        const initialized = await this.initializeSnapshot(
+          profileId.value,
+          reviewId,
+        );
         if (initialized._tag === "ok") {
           existingUpdatedAt = initialized.value.updatedAt;
           const stable = await this.projectStable(initialized.value);
@@ -120,115 +197,259 @@ export class ReviewWorkbenchController {
     }
     const prepared = await this.preparation.prepare({
       profileId: profileId.value,
-      pullRequest: { host: host.value, owner: owner.value, repo: repo.value, number: number.value },
+      pullRequest: {
+        host: host.value,
+        owner: owner.value,
+        repo: repo.value,
+        number: number.value,
+      },
       mode,
       ...(previousSessionId === undefined ? {} : { previousSessionId }),
     });
-    if (prepared._tag === "err") return err(mapPreparationFailure(prepared.error));
+    if (prepared._tag === "err")
+      return err(mapPreparationFailure(prepared.error));
     // The lifecycle facade is optional for the legacy/session-only route. Keep
     // its original first-open behavior: prepare, then project the session
     // directly instead of trying to initialize a durable Review snapshot.
     if (this.lifecycle === undefined) {
-      const projected = await this.projection.load({ profileId: profileId.value, sessionId: prepared.value.session.id });
-      return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+      const projected = await this.projection.load({
+        profileId: profileId.value,
+        sessionId: prepared.value.session.id,
+      });
+      return projected._tag === "err"
+        ? err(mapProjectionFailure(projected.error))
+        : projected;
     }
-    let created = createReview({ identity, currentSessionId: prepared.value.session.id, headSha: prepared.value.session.key.headSha, createdAt: prepared.value.session.createdAt });
+    let created = createReview({
+      identity,
+      currentSessionId: prepared.value.session.id,
+      headSha: prepared.value.session.key.headSha,
+      createdAt: prepared.value.session.createdAt,
+    });
     // If we are replacing an existing review, ensure the new updatedAt is strictly
     // later so the CAS guard in ReviewStore.save accepts the replacement.
-    if (existingUpdatedAt !== undefined && Date.parse(created.updatedAt) <= Date.parse(existingUpdatedAt)) {
-      created = { ...created, updatedAt: new Date(Date.parse(existingUpdatedAt) + 1).toISOString() as IsoTimestamp };
+    if (
+      existingUpdatedAt !== undefined &&
+      Date.parse(created.updatedAt) <= Date.parse(existingUpdatedAt)
+    ) {
+      created = {
+        ...created,
+        updatedAt: new Date(
+          Date.parse(existingUpdatedAt) + 1,
+        ).toISOString() as IsoTimestamp,
+      };
     }
     const saved = await this.lifecycle.reviews.save(created, existingUpdatedAt);
     if (saved._tag === "err") return err({ reason: "storage" });
-    const initialized = await this.initializeSnapshot(profileId.value, reviewId);
-    return initialized._tag === "err" ? initialized : this.projectStable(initialized.value);
+    const initialized = await this.initializeSnapshot(
+      profileId.value,
+      reviewId,
+    );
+    return initialized._tag === "err"
+      ? initialized
+      : this.projectStable(initialized.value);
   }
 
-  private async initializeSnapshot(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<Review, ReviewWorkbenchFailure>> {
-    const initialRefresh = await this.lifecycle?.refresh.refresh?.({ profileId, reviewId });
-    if (initialRefresh?._tag === "err") return err({ reason: initialRefresh.error.reason });
-    const refreshedReview = await this.lifecycle?.reviews.load(profileId, reviewId);
-    if (refreshedReview?._tag === "err") return err({ reason: refreshedReview.error.reason === "not_found" ? "not_found" : "storage" });
+  private async initializeSnapshot(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<Review, ReviewWorkbenchFailure>> {
+    const initialRefresh = await this.lifecycle?.refresh.refresh?.({
+      profileId,
+      reviewId,
+    });
+    if (initialRefresh?._tag === "err")
+      return err({ reason: initialRefresh.error.reason });
+    const refreshedReview = await this.lifecycle?.reviews.load(
+      profileId,
+      reviewId,
+    );
+    if (refreshedReview?._tag === "err")
+      return err({
+        reason:
+          refreshedReview.error.reason === "not_found"
+            ? "not_found"
+            : "storage",
+      });
     if (refreshedReview?._tag === "ok") return ok(refreshedReview.value);
     return err({ reason: "storage" });
   }
 
-  private async projectStable(review: Review): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const pendingReview = await this.reconcilePendingReview(review.identity.profileId, review.id);
-    if (this.lifecycle === undefined || review.representedRemote === undefined) {
-      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId }, pendingReview);
-      return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+  private async projectStable(
+    review: Review,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    if (this.lifecycle?.coordinator !== undefined) {
+      return this.lifecycle.coordinator.withReviewLock(
+        review.identity.profileId,
+        review.id,
+        async () => {
+          const current = await this.lifecycle?.reviews.load(
+            review.identity.profileId,
+            review.id,
+          );
+          return current?._tag === "ok"
+            ? this.projectStableUnlocked(current.value)
+            : err({
+                reason:
+                  current?.error.reason === "not_found"
+                    ? "not_found"
+                    : "storage",
+              });
+        },
+      );
     }
-    if (review.representedRemote.headSha !== review.currentHeadSha) {
-      const projected = await this.projection.loadLocal({ profileId: review.identity.profileId, sessionId: review.currentSessionId }, pendingReview);
-      return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
-    }
-    const snapshot = await this.lifecycle.remote.load({ profileId: review.identity.profileId, reviewId: review.id, snapshotHash: review.representedRemote.snapshotHash });
-    if (snapshot._tag === "err") return err({ reason: "storage" });
-    const projected = await this.projection.loadRepresented({ profileId: review.identity.profileId, sessionId: review.currentSessionId, snapshot: snapshot.value, refreshedAt: review.representedRemote.refreshedAt, updatesAvailable: review.detectedUpdate !== undefined, ...(pendingReview === undefined ? {} : { pendingReview }) });
-    return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+    return this.projectStableUnlocked(review);
   }
 
-  async load(input: unknown): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+  private async projectStableUnlocked(
+    review: Review,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    if (this.lifecycle?.journals !== undefined) {
+      const journal = await this.lifecycle.journals.load(
+        review.identity.profileId,
+        review.id,
+      );
+      if (journal._tag === "err" || journal.value !== undefined)
+        return err({ reason: "storage" });
+    }
+    if (
+      this.lifecycle === undefined ||
+      review.representedRemote === undefined
+    ) {
+      const projected = await this.projection.loadLocal({
+        profileId: review.identity.profileId,
+        sessionId: review.currentSessionId,
+      });
+      return projected._tag === "err"
+        ? err(mapProjectionFailure(projected.error))
+        : projected;
+    }
+    if (review.representedRemote.headSha !== review.currentHeadSha) {
+      const projected = await this.projection.loadLocal({
+        profileId: review.identity.profileId,
+        sessionId: review.currentSessionId,
+      });
+      return projected._tag === "err"
+        ? err(mapProjectionFailure(projected.error))
+        : projected;
+    }
+    const snapshot = await this.lifecycle.remote.load({
+      profileId: review.identity.profileId,
+      reviewId: review.id,
+      snapshotHash: review.representedRemote.snapshotHash,
+    });
+    if (snapshot._tag === "err") return err({ reason: "storage" });
+    const projected = await this.projection.loadRepresented({
+      profileId: review.identity.profileId,
+      sessionId: review.currentSessionId,
+      snapshot: snapshot.value,
+      refreshedAt: review.representedRemote.refreshedAt,
+      freshness: review.freshness,
+    });
+    return projected._tag === "err"
+      ? err(mapProjectionFailure(projected.error))
+      : projected;
+  }
+
+  async load(
+    input: unknown,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     if (profileId._tag === "err") return err({ reason: "invalid_input" });
     const migrated = await this.migrate(profileId.value);
     if (migrated._tag === "err") return err({ reason: "storage" });
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
-    if (this.lifecycle !== undefined && reviewId._tag === "err" && sessionId._tag === "err") return err({ reason: "invalid_input" });
+    if (
+      this.lifecycle !== undefined &&
+      reviewId._tag === "err" &&
+      sessionId._tag === "err"
+    )
+      return err({ reason: "invalid_input" });
     if (reviewId._tag === "ok" && this.lifecycle !== undefined) {
-      const review = await this.lifecycle.reviews.load(profileId.value, reviewId.value);
-      if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage" });
-      const pendingReview = await this.reconcilePendingReview(profileId.value, reviewId.value);
-      if (review.value.representedRemote === undefined || review.value.representedRemote.headSha !== review.value.currentHeadSha) {
-        const projected = await this.projection.loadLocal({ profileId: profileId.value, sessionId: review.value.currentSessionId }, pendingReview);
-        return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
-      }
-      const snapshot = await this.lifecycle.remote.load({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        snapshotHash: review.value.representedRemote.snapshotHash,
-      });
-      if (snapshot._tag === "err") return err({ reason: "storage" });
-      const projected = await this.projection.loadRepresented({
-        profileId: profileId.value,
-        sessionId: review.value.currentSessionId,
-        snapshot: snapshot.value,
-        refreshedAt: review.value.representedRemote.refreshedAt,
-        updatesAvailable: review.value.detectedUpdate !== undefined,
-        ...(pendingReview === undefined ? {} : { pendingReview }),
-      });
-      return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+      const recovered = await this.recoverObservation(
+        profileId.value,
+        reviewId.value,
+      );
+      if (recovered._tag === "err") return recovered;
+      const review = await this.lifecycle.reviews.load(
+        profileId.value,
+        reviewId.value,
+      );
+      if (review._tag === "err")
+        return err({
+          reason: review.error.reason === "not_found" ? "not_found" : "storage",
+        });
+      return this.projectStable(review.value);
     }
     if (sessionId._tag === "err") return err({ reason: "invalid_input" });
-    const projected = await this.projection.load({ profileId: profileId.value, sessionId: sessionId.value });
-    return projected._tag === "err" ? err(mapProjectionFailure(projected.error)) : projected;
+    const projected = await this.projection.load({
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+    });
+    return projected._tag === "err"
+      ? err(mapProjectionFailure(projected.error))
+      : projected;
   }
 
-  /** Reconcile the viewer's pending review for this Review before projecting. */
-  private async reconcilePendingReview(
+  private async migrate(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<unknown, unknown>> {
+    return this.lifecycle?.migration === undefined
+      ? { _tag: "ok", value: undefined }
+      : this.lifecycle.migration.migrateProfile(profileId);
+  }
+
+  private async recoverObservation(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<{ readonly state: PendingReviewState; readonly unavailable: boolean } | undefined> {
-    if (this.pendingReviewService === undefined) return undefined;
-    const reconciled = await this.pendingReviewService.reconcile({ profileId, reviewId });
-    return reconciled._tag === "ok"
-      ? { state: reconciled.value.state, unavailable: reconciled.value.unavailable }
-      : undefined;
+  ): Promise<Result<void, ReviewWorkbenchFailure>> {
+    if (this.lifecycle?.journals === undefined) return ok(undefined);
+    const journal = await this.lifecycle.journals.load(profileId, reviewId);
+    if (journal._tag === "err") return err({ reason: "storage" });
+    if (journal.value === undefined) return ok(undefined);
+    if (this.lifecycle.observation === undefined)
+      return err({ reason: "storage" });
+    const recovered = await this.lifecycle.observation.recover({
+      profileId,
+      reviewId,
+    });
+    return recovered._tag === "ok" ? ok(undefined) : err({ reason: "storage" });
   }
 
-  private async migrate(profileId: WorkspaceProfileId): Promise<Result<unknown, unknown>> {
-    return this.lifecycle?.migration === undefined ? { _tag: "ok", value: undefined } : this.lifecycle.migration.migrateProfile(profileId);
-  }
-
-  async commitDiff(input: unknown): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+  async commitDiff(
+    input: unknown,
+  ): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
     const commitSha = parseGitSha(readObjectField(input, "commitSha"));
-    if (profileId._tag === "err" || reviewId._tag === "err" || commitSha._tag === "err" || this.lifecycle?.commits === undefined) return err({ reason: "invalid_input" });
-    const result = await this.lifecycle.commits.diff({ profileId: profileId.value, reviewId: reviewId.value, commitSha: commitSha.value });
-    return result._tag === "err" ? err({ reason: result.error.reason === "not_found" ? "not_found" : result.error.reason === "stale_head" || result.error.reason === "foreign_commit" ? "head_changed" : "storage" }) : result;
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      commitSha._tag === "err" ||
+      this.lifecycle?.commits === undefined
+    )
+      return err({ reason: "invalid_input" });
+    const result = await this.lifecycle.commits.diff({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+      commitSha: commitSha.value,
+    });
+    return result._tag === "err"
+      ? err({
+          reason:
+            result.error.reason === "not_found"
+              ? "not_found"
+              : result.error.reason === "stale_head" ||
+                  result.error.reason === "foreign_commit"
+                ? "head_changed"
+                : "storage",
+        })
+      : result;
   }
 
   async detectUpdates(input: {
@@ -237,36 +458,84 @@ export class ReviewWorkbenchController {
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
     if (this.lifecycle === undefined) return err({ reason: "invalid_input" });
+    const observation = this.lifecycle.observation;
+    if (observation !== undefined) {
+      return observation.observe({
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+        ...(input.recentWrites === undefined
+          ? {}
+          : { recentWrites: input.recentWrites }),
+      });
+    }
     const recentWrites = input.recentWrites ?? [];
-    const detected = await this.lifecycle.refresh.detect({ profileId: input.profileId, reviewId: input.reviewId, ...(recentWrites.length === 0 ? {} : { recentWrites }) });
-    return detected._tag === "err" ? err({ reason: detected.error.reason }) : detected;
+    const detected = await this.lifecycle.refresh.detect({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      ...(recentWrites.length === 0 ? {} : { recentWrites }),
+    });
+    return detected._tag === "err"
+      ? err({ reason: detected.error.reason })
+      : detected;
   }
 
-  async refresh(input: unknown): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+  async refresh(
+    input: unknown,
+  ): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    if (profileId._tag === "ok" && reviewId._tag === "ok" && this.lifecycle !== undefined) {
-      const refreshed = await this.lifecycle.refresh.refresh({ profileId: profileId.value, reviewId: reviewId.value });
-      return refreshed._tag === "err" ? err({ reason: refreshed.error.reason }) : refreshed;
+    if (
+      profileId._tag === "ok" &&
+      reviewId._tag === "ok" &&
+      this.lifecycle !== undefined
+    ) {
+      const refreshed = await this.lifecycle.refresh.refresh({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+      });
+      return refreshed._tag === "err"
+        ? err({ reason: refreshed.error.reason })
+        : refreshed;
     }
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
-    if (profileId._tag === "err" || sessionId._tag === "err") return err({ reason: "invalid_input" });
-    const refreshed = await this.projection.refreshRemote({ profileId: profileId.value, sessionId: sessionId.value });
-    return refreshed._tag === "err" ? err(mapProjectionFailure(refreshed.error)) : refreshed;
+    if (profileId._tag === "err" || sessionId._tag === "err")
+      return err({ reason: "invalid_input" });
+    const refreshed = await this.projection.refreshRemote({
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+    });
+    return refreshed._tag === "err"
+      ? err(mapProjectionFailure(refreshed.error))
+      : refreshed;
   }
 
-  private async serializedOpen<T>(profileId: WorkspaceProfileId, reviewId: ReviewId, operation: () => Promise<Result<T, ReviewWorkbenchFailure>>): Promise<Result<T, ReviewWorkbenchFailure>> {
+  private async serializedOpen<T>(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    operation: () => Promise<Result<T, ReviewWorkbenchFailure>>,
+  ): Promise<Result<T, ReviewWorkbenchFailure>> {
     const key = `${profileId}:${reviewId}`;
     const predecessor = this.openLocks.get(key);
     let release!: () => void;
-    const current = new Promise<void>((resolve) => { release = resolve; });
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     this.openLocks.set(key, current);
     if (predecessor !== undefined) await predecessor;
-    try { return await operation(); } finally { release(); if (this.openLocks.get(key) === current) this.openLocks.delete(key); }
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.openLocks.get(key) === current) this.openLocks.delete(key);
+    }
   }
 }
 
-function mapPreparationFailure(failure: PrepareReviewSessionFailure): ReviewWorkbenchFailure {
+function mapPreparationFailure(
+  failure: PrepareReviewSessionFailure,
+): ReviewWorkbenchFailure {
   switch (failure._tag) {
     case "ProfileNotFound":
     case "IncrementalBaseNotFound":
@@ -285,7 +554,9 @@ function mapPreparationFailure(failure: PrepareReviewSessionFailure): ReviewWork
   }
 }
 
-function mapProjectionFailure(failure: WorkbenchProjectionFailure): ReviewWorkbenchFailure {
+function mapProjectionFailure(
+  failure: WorkbenchProjectionFailure,
+): ReviewWorkbenchFailure {
   switch (failure._tag) {
     case "ProfileNotFound":
     case "SessionNotFound":

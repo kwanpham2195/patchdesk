@@ -8,6 +8,7 @@ test-results/
 .DS_Store
 .superpowers/
 .pi-subagents/
+.pi/subagents/
 PLAN.md
 .env
 .env.*

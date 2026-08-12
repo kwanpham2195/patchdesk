@@ -2,7 +2,7 @@ import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github
 import type { GitHubReviewCoordinates } from "../domain/patch";
 import { parseGitHubThreadId, type ReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewWriteExpectation, ReviewWriteGate } from "./review-write-gate";
-import type { ReviewWriteCoordinator } from "./review-write-coordinator";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { err, ok, type Result } from "../domain/result";
 
 export type DirectConversationCommand =
@@ -67,7 +67,7 @@ export class InlineConversationService {
   constructor(
     private readonly gate: Pick<ReviewWriteGate, "requireFresh">,
     private readonly github: Gateway,
-    private readonly writeCoordinator?: ReviewWriteCoordinator,
+    private readonly writeCoordinator?: ReviewOperationCoordinator,
   ) {}
 
   async execute(input: {

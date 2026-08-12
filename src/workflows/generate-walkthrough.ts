@@ -2,6 +2,7 @@ import { defineAgent, defineWorkflow } from "@flue/runtime";
 import * as v from "valibot";
 
 import type { FlueHarness } from "../flue-runtime-types";
+import { insightOutputGuidance } from "../domain/insight-output-guidance";
 import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
 import { err, ok, type Result } from "../domain/result";
 import { readBoundedArtifact } from "../services/walkthrough-artifact-reader";
@@ -24,7 +25,8 @@ const MAX_HUNK_ALIAS_LENGTH = 16;
 const MAX_TOTAL_SECTIONS = 32;
 const HUNK_ALIAS = /^h[1-9]\d*$/;
 
-const boundedIdentifier = (maxLength: number) => v.pipe(v.string(), v.minLength(1), v.maxLength(maxLength));
+const boundedIdentifier = (maxLength: number) =>
+  v.pipe(v.string(), v.minLength(1), v.maxLength(maxLength));
 const reasoningSchema = v.picklist(["low", "medium", "high"]);
 
 /** Strict main-process input for the finite walkthrough workflow. */
@@ -38,17 +40,34 @@ export const walkthroughInputSchema = v.strictObject({
 });
 
 const walkthroughSectionSchema = v.strictObject({
-  title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_SECTION_TITLE_LENGTH)),
+  title: v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(MAX_SECTION_TITLE_LENGTH),
+  ),
   prose: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_PROSE_LENGTH)),
   hunkIds: v.pipe(
-    v.array(v.pipe(v.string(), v.maxLength(MAX_HUNK_ALIAS_LENGTH), v.regex(HUNK_ALIAS))),
+    v.array(
+      v.pipe(
+        v.string(),
+        v.maxLength(MAX_HUNK_ALIAS_LENGTH),
+        v.regex(HUNK_ALIAS),
+      ),
+    ),
     v.maxLength(MAX_HUNKS_PER_SECTION),
   ),
 });
 
 const walkthroughChapterSchema = v.strictObject({
-  title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_CHAPTER_TITLE_LENGTH)),
-  sections: v.pipe(v.array(walkthroughSectionSchema), v.maxLength(MAX_SECTIONS)),
+  title: v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(MAX_CHAPTER_TITLE_LENGTH),
+  ),
+  sections: v.pipe(
+    v.array(walkthroughSectionSchema),
+    v.maxLength(MAX_SECTIONS),
+  ),
 });
 
 /** Raw structured output accepted from Flue before snapshot normalization. */
@@ -57,7 +76,10 @@ export const walkthroughOutputSchema = v.pipe(
     citationVersion: v.literal(2),
     title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_TITLE_LENGTH)),
     focus: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_FOCUS_LENGTH)),
-    chapters: v.pipe(v.array(walkthroughChapterSchema), v.maxLength(MAX_CHAPTERS)),
+    chapters: v.pipe(
+      v.array(walkthroughChapterSchema),
+      v.maxLength(MAX_CHAPTERS),
+    ),
   }),
   v.check(
     (output) => totalSectionCount(output) <= MAX_TOTAL_SECTIONS,
@@ -67,7 +89,9 @@ export const walkthroughOutputSchema = v.pipe(
 
 export type WalkthroughInput = v.InferOutput<typeof walkthroughInputSchema>;
 export type WalkthroughOutput = v.InferOutput<typeof walkthroughOutputSchema>;
-export type InvalidWalkthroughOutput = { readonly _tag: "InvalidWalkthroughOutput" };
+export type InvalidWalkthroughOutput = {
+  readonly _tag: "InvalidWalkthroughOutput";
+};
 
 /** Parses only the bounded, strict JSON shape emitted by the workflow. */
 export function parseWalkthroughOutput(
@@ -80,8 +104,10 @@ export function parseWalkthroughOutput(
 }
 
 const walkthroughAgent = defineAgent(() => ({
-  instructions:
-    "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result. Write the top-level focus as one or two concise sentences, at most around 300 characters, summarizing the patch's overall behavior without enumerating hunk aliases or paths. Keep each section's prose to one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Explain behavior before consequences and validation, use hunk aliases exactly as supplied, and place mechanical or low-signal changes in Support by leaving them out of primary sections. Never invent a path, line number, hunk alias, or action.",
+  instructions: [
+    "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result.",
+    "Write the top-level focus as one or two concise sentences, at most around 300 characters, summarizing the patch's overall behavior without enumerating hunk aliases or paths. Keep each section's prose to one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Explain behavior before consequences and validation, use hunk aliases exactly as supplied, and place mechanical or low-signal changes in Support by leaving them out of primary sections. Never invent a path, line number, hunk alias, or action.",
+  ].join(" "),
   model: "opencode-go/deepseek-v4-flash",
   skills: [],
 }));
@@ -102,14 +128,23 @@ export async function runWalkthroughWorkflow({
     readWorkflowArtifact(input.patchPath, MAX_ARTIFACT_BYTES),
   ]);
   const manifest = narrativeHunkManifest(patch);
-  if (manifest._tag === "err") throw new Error("Walkthrough patch could not be indexed");
+  if (manifest._tag === "err")
+    throw new Error("Walkthrough patch could not be indexed");
   const response = await harness.session().then((session) =>
-    session.prompt<WalkthroughOutput>(composeWalkthroughPrompt({ input, context, patch, manifest: manifest.value }), {
-      result: walkthroughOutputSchema,
-      tools: [],
-      model: input.model,
-      thinkingLevel: input.reasoning,
-    }),
+    session.prompt<WalkthroughOutput>(
+      composeWalkthroughPrompt({
+        input,
+        context,
+        patch,
+        manifest: manifest.value,
+      }),
+      {
+        result: walkthroughOutputSchema,
+        tools: [],
+        model: input.model,
+        thinkingLevel: input.reasoning,
+      },
+    ),
   );
   return response.data;
 }
@@ -121,7 +156,10 @@ export default defineWorkflow({
   run: runWalkthroughWorkflow,
 });
 
-async function readWorkflowArtifact(path: string, maxBytes: number): Promise<string> {
+async function readWorkflowArtifact(
+  path: string,
+  maxBytes: number,
+): Promise<string> {
   const result = await readBoundedArtifact(path, maxBytes);
   if (result._tag === "ok") return result.value;
   if (result.error.reason === "input_too_large") {
@@ -131,21 +169,31 @@ async function readWorkflowArtifact(path: string, maxBytes: number): Promise<str
 }
 
 function totalSectionCount(output: {
-  readonly chapters: ReadonlyArray<{ readonly sections: ReadonlyArray<unknown> }>;
+  readonly chapters: ReadonlyArray<{
+    readonly sections: ReadonlyArray<unknown>;
+  }>;
 }): number {
-  return output.chapters.reduce((count, chapter) => count + chapter.sections.length, 0);
+  return output.chapters.reduce(
+    (count, chapter) => count + chapter.sections.length,
+    0,
+  );
 }
 
 function composeWalkthroughPrompt(input: {
   readonly input: WalkthroughInput;
   readonly context: string;
   readonly patch: string;
-  readonly manifest: ReadonlyArray<{ readonly id: string; readonly path: string; readonly header: string }>;
+  readonly manifest: ReadonlyArray<{
+    readonly id: string;
+    readonly path: string;
+    readonly header: string;
+  }>;
 }): string {
   const hunkCount = countHunks(input.patch);
   const targetSections = Math.min(12, Math.max(1, Math.ceil(hunkCount / 3)));
   return [
     "Generate a read-only walkthrough for the supplied immutable patch.",
+    insightOutputGuidance("walkthrough"),
     "The persistent reader uses an ordered chapter rail and continuous reading surface; do not return a linear picker or wizard state.",
     "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
     "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
@@ -153,7 +201,9 @@ function composeWalkthroughPrompt(input: {
     "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
     `Profile ${input.input.profileId} and session ${input.input.sessionId} are provenance only; do not repeat them in prose.`,
     "HUNK ALIAS MANIFEST:",
-    input.manifest.map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`).join("\n"),
+    input.manifest
+      .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)
+      .join("\n"),
     "CONTEXT ARTIFACT:",
     input.context,
     "PATCH ARTIFACT:",

@@ -13,7 +13,7 @@ import type { ReviewBatch } from "../../../domain/review-batch";
 import type { ReviewFinding } from "../../../domain/review-result";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
-import { MergeConfirmationDialog, type MergeMethod } from "./merge-confirmation-dialog";
+import { CompactMergeCommand, type MergeMethod } from "./compact-merge-command";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { ReviewBatchPanel, ReviewBatchWriteActions, type ReviewBatchPanelActions } from "./review-batch-panel";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
@@ -41,7 +41,7 @@ export type PullRequestOverviewMerge = {
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly onMerge: (
     method: MergeMethod,
-    acknowledgedWarnings: boolean,
+    warningCodes: ReadonlyArray<string>,
   ) => Promise<{ readonly mergeCommitSha?: string }>;
 };
 
@@ -170,7 +170,7 @@ export function CanonicalReviewOverviewSheet({
             <MergeReadinessDetail overview={overview} />
             {merge === undefined || terminal || overview.mergeReadiness._tag === "Blocked" ? null : (
               <div className="mt-3 border-t pt-3">
-                <MergeConfirmationDialog
+                <CompactMergeCommand
                   readiness={merge.readiness}
                   {...(merge.mergeReasons === undefined ? {} : { mergeReasons: merge.mergeReasons })}
                   {...(merge.pullRequest === undefined ? {} : { pullRequest: merge.pullRequest })}
@@ -377,7 +377,7 @@ export function PullRequestOverviewSheet({
           <div className="flex flex-col gap-3">
             {actions.batch === undefined ? null : <ReviewBatchWriteActions {...(batch === undefined ? {} : { batch })} writeBlocked={freshness !== "fresh"} actions={actions.batch} />}
             {actions.merge === undefined ? null : freshness !== "fresh" ? <p className="text-sm text-muted-foreground">Merge remains unavailable until GitHub confirms the current head.</p> : (
-              <MergeConfirmationDialog
+              <CompactMergeCommand
                 readiness={actions.merge.readiness}
                 {...(actions.merge.mergeReasons === undefined ? {} : { mergeReasons: actions.merge.mergeReasons })}
                 {...(actions.merge.pullRequest === undefined ? {} : { pullRequest: actions.merge.pullRequest })}

@@ -43,10 +43,37 @@ export type RepresentedRemoteState = {
   readonly refreshedAt: IsoTimestamp;
 };
 
-export type DetectedRemoteUpdate = {
-  readonly detectedAt: IsoTimestamp;
-  readonly reason: "head" | "pull_request" | "checks";
+/** A complete remote revision proof. Refresh is available only with this evidence. */
+export type ObservedRevisionIdentity = {
+  readonly headSha: GitSha;
+  readonly baseSha: GitSha;
+  readonly canonicalPatchHash: ContentHash;
 };
+
+export type RevisionUnavailableReason =
+  | "base_missing"
+  | "diff_incomplete"
+  | "github_read"
+  | "comparison_ambiguous"
+  | "reconciliation_incomplete";
+
+/**
+ * Durable authority for remote GitHub writes. A review must be Fresh before
+ * any write can proceed. RevisionChanged is intentionally evidence-complete;
+ * an incomplete comparison remains Unavailable instead of guessing.
+ */
+export type ReviewFreshness =
+  | { readonly _tag: "Fresh" }
+  | {
+      readonly _tag: "RevisionChanged";
+      readonly detectedAt: IsoTimestamp;
+      readonly identity: ObservedRevisionIdentity;
+    }
+  | {
+      readonly _tag: "Unavailable";
+      readonly detectedAt: IsoTimestamp;
+      readonly reason: RevisionUnavailableReason;
+    };
 
 export type ReviewStatus =
   | { readonly _tag: "Open" }
@@ -57,13 +84,13 @@ export type ReviewStatus =
     };
 
 export type Review = {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly id: ReviewId;
   readonly identity: ReviewIdentity;
   readonly currentSessionId: ReviewSessionId;
   readonly currentHeadSha: GitSha;
   readonly representedRemote?: RepresentedRemoteState;
-  readonly detectedUpdate?: DetectedRemoteUpdate;
+  readonly freshness: ReviewFreshness;
   readonly status: ReviewStatus;
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
@@ -71,47 +98,72 @@ export type Review = {
 
 export type InvalidReview = { readonly _tag: "InvalidReview" };
 
-const reviewSchema = v.strictObject({
-  schemaVersion: v.literal(1),
-  id: v.string(),
-  identity: v.strictObject({
-    profileId: v.string(),
-    host: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-    prNumber: v.number(),
+const representedRemoteSchema = v.strictObject({
+  headSha: v.string(),
+  pullRequestUpdatedAt: v.string(),
+  snapshotHash: v.string(),
+  refreshedAt: v.string(),
+});
+
+const identitySchema = v.strictObject({
+  profileId: v.string(),
+  host: v.string(),
+  owner: v.string(),
+  repo: v.string(),
+  prNumber: v.number(),
+});
+
+const statusSchema = v.variant("_tag", [
+  v.strictObject({ _tag: v.literal("Open") }),
+  v.strictObject({
+    _tag: v.literal("Terminal"),
+    state: v.picklist(["merged", "closed"]),
+    observedAt: v.string(),
   }),
+]);
+
+const observedRevisionIdentitySchema = v.strictObject({
+  headSha: v.string(),
+  baseSha: v.string(),
+  canonicalPatchHash: v.string(),
+});
+
+const freshnessSchema = v.variant("_tag", [
+  v.strictObject({ _tag: v.literal("Fresh") }),
+  v.strictObject({
+    _tag: v.literal("RevisionChanged"),
+    detectedAt: v.string(),
+    identity: observedRevisionIdentitySchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("Unavailable"),
+    detectedAt: v.string(),
+    reason: v.picklist([
+      "base_missing",
+      "diff_incomplete",
+      "github_read",
+      "comparison_ambiguous",
+      "reconciliation_incomplete",
+    ]),
+  }),
+]);
+
+const reviewV2Schema = v.strictObject({
+  schemaVersion: v.literal(2),
+  id: v.string(),
+  identity: identitySchema,
   currentSessionId: v.string(),
   currentHeadSha: v.string(),
-  representedRemote: v.optional(
-    v.strictObject({
-      headSha: v.string(),
-      pullRequestUpdatedAt: v.string(),
-      snapshotHash: v.string(),
-      refreshedAt: v.string(),
-    }),
-  ),
-  detectedUpdate: v.optional(
-    v.strictObject({
-      detectedAt: v.string(),
-      reason: v.picklist(["head", "pull_request", "checks"]),
-    }),
-  ),
-  status: v.variant("_tag", [
-    v.strictObject({ _tag: v.literal("Open") }),
-    v.strictObject({
-      _tag: v.literal("Terminal"),
-      state: v.picklist(["merged", "closed"]),
-      observedAt: v.string(),
-    }),
-  ]),
+  representedRemote: v.optional(representedRemoteSchema),
+  freshness: freshnessSchema,
+  status: statusSchema,
   createdAt: v.string(),
   updatedAt: v.string(),
 });
 
-type RawReview = v.InferOutput<typeof reviewSchema>;
+type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
 
-/** Construct a new open Review whose ID is independent of the current head. */
+/** Construct a new Review before its initial remote snapshot is available. */
 export function createReview(input: {
   readonly identity: ReviewIdentity;
   readonly currentSessionId: ReviewSessionId;
@@ -119,11 +171,16 @@ export function createReview(input: {
   readonly createdAt: IsoTimestamp;
 }): Review {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: createReviewId(input.identity),
     identity: input.identity,
     currentSessionId: input.currentSessionId,
     currentHeadSha: input.headSha,
+    freshness: {
+      _tag: "Unavailable",
+      detectedAt: input.createdAt,
+      reason: "reconciliation_incomplete",
+    },
     status: { _tag: "Open" },
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
@@ -144,19 +201,45 @@ export function moveReviewToSession(
     return err({ _tag: "ReviewTerminal" });
   }
 
-  const { detectedUpdate: previousDetectedUpdate, ...withoutDetectedUpdate } = review;
-  void previousDetectedUpdate;
   return ok({
-    ...withoutDetectedUpdate,
+    ...review,
     currentSessionId: input.sessionId,
     currentHeadSha: input.headSha,
     representedRemote: input.representedRemote,
+    freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
   });
 }
 
-/** Clear a phantom detection flag and align the represented freshness marker with the snapshot content. */
-export function healDetectedUpdate(
+/**
+ * Adopt a same-revision remote snapshot after canonical identity proof. The
+ * immutable session stays unchanged; only GitHub-owned represented state moves.
+ */
+export function reconcileReviewRemoteState(
+  review: Review,
+  input: {
+    readonly snapshotHash: ContentHash;
+    readonly pullRequestUpdatedAt: IsoTimestamp;
+    readonly refreshedAt: IsoTimestamp;
+  },
+): Result<Review, { readonly _tag: "ReviewTerminal" | "ReviewNotRepresented" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  if (review.representedRemote === undefined) return err({ _tag: "ReviewNotRepresented" });
+  return ok({
+    ...review,
+    representedRemote: {
+      ...review.representedRemote,
+      snapshotHash: input.snapshotHash,
+      pullRequestUpdatedAt: input.pullRequestUpdatedAt,
+      refreshedAt: input.refreshedAt,
+    },
+    freshness: { _tag: "Fresh" },
+    updatedAt: laterTimestamp(review.updatedAt, input.refreshedAt),
+  });
+}
+
+/** Mark a same-revision reconciliation fresh without replacing its snapshot. */
+export function markReviewFresh(
   review: Review,
   pullRequestUpdatedAt: IsoTimestamp,
   updatedAt: IsoTimestamp,
@@ -164,13 +247,54 @@ export function healDetectedUpdate(
   if (review.status._tag === "Terminal" || review.representedRemote === undefined) {
     return review;
   }
-  const { detectedUpdate: previousDetectedUpdate, ...withoutDetectedUpdate } = review;
-  void previousDetectedUpdate;
   return {
-    ...withoutDetectedUpdate,
+    ...review,
     representedRemote: {
       ...review.representedRemote,
       pullRequestUpdatedAt,
+    },
+    freshness: { _tag: "Fresh" },
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  };
+}
+
+/** Record a complete remote revision proof without adopting that revision. */
+export function markReviewRevisionChanged(
+  review: Review,
+  input: {
+    readonly detectedAt: IsoTimestamp;
+    readonly identity: ObservedRevisionIdentity;
+  },
+  updatedAt: IsoTimestamp,
+): Review {
+  if (review.status._tag === "Terminal") return review;
+  return {
+    ...review,
+    freshness: {
+      _tag: "RevisionChanged",
+      detectedAt: input.detectedAt,
+      identity: input.identity,
+    },
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  };
+}
+
+/** Fail closed when Patchdesk cannot prove the remote revision identity. */
+export function markReviewUnavailable(
+  review: Review,
+  input: {
+    readonly detectedAt: IsoTimestamp;
+    readonly reason: RevisionUnavailableReason;
+  },
+  updatedAt: IsoTimestamp,
+): Review {
+  if (review.status._tag === "Terminal") return review;
+  return {
+    ...review,
+    freshness: {
+      _tag: "Unavailable",
+      detectedAt: input.detectedAt,
+      reason: input.reason,
     },
     updatedAt: laterTimestamp(review.updatedAt, updatedAt),
   };
@@ -193,31 +317,29 @@ export function markReviewTerminal(
   };
 }
 
-/** Record remote activity without replacing the represented remote snapshot. */
-export function markDetectedUpdate(
-  review: Review,
-  update: DetectedRemoteUpdate,
-  updatedAt: IsoTimestamp,
-): Review {
-  if (review.status._tag === "Terminal") {
-    return review;
-  }
-
-  return { ...review, detectedUpdate: update, updatedAt: laterTimestamp(review.updatedAt, updatedAt) };
-}
-
 function laterTimestamp(previous: IsoTimestamp, requested: IsoTimestamp): IsoTimestamp {
   return Date.parse(requested) > Date.parse(previous)
     ? requested
-    : new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp;
+    : (new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp);
 }
 
-/** Parse and validate one persisted Review, including identity-derived ID integrity. */
+/** Parse persisted Review data under the current durable freshness contract. */
 export function parseReview(input: unknown): Result<Review, InvalidReview> {
-  const parsed = v.safeParse(reviewSchema, input);
-  if (!parsed.success) return invalid();
+  const current = v.safeParse(reviewV2Schema, input);
+  return current.success ? parseV2Review(current.output) : invalid();
+}
 
-  const raw: RawReview = parsed.output;
+function parseV2Review(raw: RawReviewV2): Result<Review, InvalidReview> {
+  const base = parseReviewBase(raw);
+  if (base._tag === "err") return base;
+  const freshness = parseFreshness(raw.freshness);
+  if (freshness._tag === "err") return freshness;
+  return ok({ ...base.value, schemaVersion: 2, freshness: freshness.value });
+}
+
+function parseReviewBase(
+  raw: Pick<RawReviewV2, "id" | "identity" | "currentSessionId" | "currentHeadSha" | "representedRemote" | "status" | "createdAt" | "updatedAt">,
+): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
   const host = parseGitHubHost(raw.identity.host);
   const owner = parseGitHubOwner(raw.identity.owner);
@@ -252,35 +374,18 @@ export function parseReview(input: unknown): Result<Review, InvalidReview> {
   };
   if (id.value !== createReviewId(identity)) return invalid();
 
-  const representedRemote = raw.representedRemote;
-  const parsedRemote =
-    representedRemote === undefined
-      ? ok(undefined)
-      : parseRepresentedRemote(representedRemote);
-  const detectedUpdate = raw.detectedUpdate;
-  const parsedUpdate =
-    detectedUpdate === undefined ? ok(undefined) : parseDetectedUpdate(detectedUpdate);
+  const representedRemote = raw.representedRemote === undefined
+    ? ok(undefined)
+    : parseRepresentedRemote(raw.representedRemote);
   const status = parseStatus(raw.status);
-  if (
-    parsedRemote._tag === "err" ||
-    parsedUpdate._tag === "err" ||
-    status._tag === "err"
-  ) {
-    return invalid();
-  }
+  if (representedRemote._tag === "err" || status._tag === "err") return invalid();
 
   return ok({
-    schemaVersion: 1,
     id: id.value,
     identity,
     currentSessionId: sessionId.value,
     currentHeadSha: headSha.value,
-    ...(parsedRemote.value === undefined
-      ? {}
-      : { representedRemote: parsedRemote.value }),
-    ...(parsedUpdate.value === undefined
-      ? {}
-      : { detectedUpdate: parsedUpdate.value }),
+    ...(representedRemote.value === undefined ? {} : { representedRemote: representedRemote.value }),
     status: status.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
@@ -288,7 +393,7 @@ export function parseReview(input: unknown): Result<Review, InvalidReview> {
 }
 
 function parseRepresentedRemote(
-  raw: RawReview["representedRemote"] & object,
+  raw: RawReviewV2["representedRemote"] & object,
 ): Result<RepresentedRemoteState, InvalidReview> {
   const headSha = parseGitSha(raw.headSha);
   const pullRequestUpdatedAt = parseIsoTimestamp(raw.pullRequestUpdatedAt);
@@ -310,16 +415,31 @@ function parseRepresentedRemote(
   });
 }
 
-function parseDetectedUpdate(
-  raw: RawReview["detectedUpdate"] & object,
-): Result<DetectedRemoteUpdate, InvalidReview> {
+function parseFreshness(
+  raw: RawReviewV2["freshness"],
+): Result<ReviewFreshness, InvalidReview> {
+  if (raw._tag === "Fresh") return ok({ _tag: "Fresh" });
   const detectedAt = parseIsoTimestamp(raw.detectedAt);
-  return detectedAt._tag === "err"
-    ? invalid()
-    : ok({ detectedAt: detectedAt.value, reason: raw.reason });
+  if (detectedAt._tag === "err") return invalid();
+  if (raw._tag === "Unavailable") {
+    return ok({ _tag: "Unavailable", detectedAt: detectedAt.value, reason: raw.reason });
+  }
+  const headSha = parseGitSha(raw.identity.headSha);
+  const baseSha = parseGitSha(raw.identity.baseSha);
+  const canonicalPatchHash = parseContentHash(raw.identity.canonicalPatchHash);
+  if (headSha._tag === "err" || baseSha._tag === "err" || canonicalPatchHash._tag === "err") return invalid();
+  return ok({
+    _tag: "RevisionChanged",
+    detectedAt: detectedAt.value,
+    identity: {
+      headSha: headSha.value,
+      baseSha: baseSha.value,
+      canonicalPatchHash: canonicalPatchHash.value,
+    },
+  });
 }
 
-function parseStatus(raw: RawReview["status"]): Result<ReviewStatus, InvalidReview> {
+function parseStatus(raw: RawReviewV2["status"]): Result<ReviewStatus, InvalidReview> {
   if (raw._tag === "Open") return ok({ _tag: "Open" });
   const observedAt = parseIsoTimestamp(raw.observedAt);
   return observedAt._tag === "err"

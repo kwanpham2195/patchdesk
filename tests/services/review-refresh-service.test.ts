@@ -229,7 +229,7 @@ describe("ReviewRefreshService", () => {
     const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
     const detectedAt = must(parseIsoTimestamp("2026-08-01T00:06:00.000Z"));
     const represented = { ...snapshot, comments: { threads: [{ id: must(parseGitHubThreadId("t")), state: "open" as const, comments: [{ id: "c", author: "pmquan2", body: "test", createdAt: commentAt, updatedAt: commentAt, url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r1", location: { path: must(parseRepoRelativePath("a.go")), line: 1, lineEnd: 1, diffSide: "new" as const } }] }], complete: true } };
-    const markedReview: Review = { ...review, representedRemote: { headSha, pullRequestUpdatedAt: at, refreshedAt: at, snapshotHash: hashSnapshot(represented) }, detectedUpdate: { detectedAt, reason: "pull_request" } };
+    const markedReview: Review = { ...review, representedRemote: { headSha, pullRequestUpdatedAt: at, refreshedAt: at, snapshotHash: hashSnapshot(represented) }, freshness: { _tag: "Unavailable", detectedAt, reason: "comparison_ambiguous" } };
     const saved: Review[] = [];
     const service = new ReviewRefreshService({
       profiles: { async load() { return ok({} as never); } },
@@ -248,9 +248,7 @@ describe("ReviewRefreshService", () => {
       preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: markedReview.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
-    expect(saved).toHaveLength(1);
-    expect(saved[0]?.detectedUpdate).toBeUndefined();
-    expect(saved[0]?.representedRemote?.pullRequestUpdatedAt).toBe(commentAt);
+    expect(saved).toHaveLength(0);
   });
 
   it("does not save again when a healed review is re-detected unchanged", async () => {
@@ -280,7 +278,7 @@ describe("ReviewRefreshService", () => {
     const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
     const changed = { ...snapshot, comments: { threads: [{ id: must(parseGitHubThreadId("t")), state: "open" as const, comments: [{ id: "c", author: "pmquan2", body: "new", createdAt: commentAt, updatedAt: commentAt, url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r1", location: { path: must(parseRepoRelativePath("a.go")), line: 1, lineEnd: 1, diffSide: "new" as const } }] }], complete: true } };
     const firstSave = vi.fn(async () => ok(undefined));
-    let marked: Review = { ...review, detectedUpdate: { detectedAt: "2026-08-01T00:07:00.000Z" as never, reason: "checks" } };
+    let marked: Review = { ...review, freshness: { _tag: "Unavailable", detectedAt: "2026-08-01T00:07:00.000Z" as never, reason: "comparison_ambiguous" } };
     const service = new ReviewRefreshService({
       profiles: { async load() { return ok({} as never); } },
       reviews: { async load() { return ok(marked); }, async save(value) { marked = value as Review; return ok(undefined); } },

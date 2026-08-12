@@ -887,11 +887,18 @@ function ReviewPreferences({
           </Select>
           </Field>
         </FieldGroup>
-        {catalogUnavailable || models.length === 0 ? (
+        {catalogUnavailable || (models.length === 0 && codexAvailable !== true) ? (
           <Alert>
             <AlertTitle>No eligible model configured</AlertTitle>
             <AlertDescription>
               Configure an API key or ambient provider credentials in the Electron process, then reload this screen. Your saved preference is kept.
+            </AlertDescription>
+          </Alert>
+        ) : models.length === 0 ? (
+          <Alert>
+            <AlertTitle>No Pi model configured</AlertTitle>
+            <AlertDescription>
+              Codex CLI account is available. Start an Insight and select Codex CLI account to load its models.
             </AlertDescription>
           </Alert>
         ) : null}

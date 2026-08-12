@@ -2,7 +2,7 @@
 created_at: 2026-08-12
 repos:
   - patchdesk
-status: todo
+status: in_progress
 adr: docs/adr/0017-separate-pr-reconciliation-from-revision-refresh-and-merge-confirmation.md
 spec: .agents/specs/2026-08-12-pr-metadata-reconciliation-and-workbench-polish/2026-08-12-tech-spec.md
 ---
@@ -12,6 +12,8 @@ spec: .agents/specs/2026-08-12-pr-metadata-reconciliation-and-workbench-polish/2
 > Read this plan, spec, `CONTEXT.md`, ADR-0001, ADR-0012, ADR-0013, and ADR-0017 before editing. Preserve immutable represented-review worktrees, explicit write confirmation, and uncertain-write recovery. Use deterministic fakes and read-only Electron verification only.
 
 ## Status
+
+- Progress: Slice 1 freshness contract, canonical changed-revision proof, shared review-operation coordinator, durable observation journal, and same-revision bounded adoption are implemented and covered by the full test suite. Review found incomplete recovery ownership and fail-closed gaps. Merge, protected projection, Pierre, and Codex selection work remain.
 
 - Priority: P1
 - Effort: L
@@ -38,6 +40,22 @@ Quietly show current GitHub state only for the represented revision; use explici
 
 ## Implementation slices
 
+### 0. Close review findings before further behavior
+
+Treat an observation journal as write-blocking from its creation until recovery removes it. After a journal exists, every save failure must durably set `Review.freshness` to `Unavailable(reconciliation_incomplete)` before returning. If that save also fails, `ReviewWriteGate` must reject a Review with a journal present. This closes the window where the persisted Review remains `Fresh` after a partial session/Review transition.
+
+Startup recovery must enumerate persisted observation journals after profile migration. It must acquire the review lock and call `ReviewObservationService.recover()` for each journal before the workbench can serve that Review. The existing workbench recovery route must call one recovery operation that first replays an observation journal, then reconciles known merge outcome, then reconciles publication evidence, and finally projects the Review.
+
+Do not call `PendingReviewService.reconcile()` from ordinary workbench projection. Only `ReviewObservationService` may adopt observed pending state, inside its candidate → journal → session → Review transaction. Keep locked pending states unchanged. Reserve pending reconciliation outside that flow for the explicit recovery operation and ensure it cannot alter a locked state.
+
+Replace `MergeConfirmationDialog` with the compact merge selector. Parse a `MergeWarningAcknowledgement` that carries the represented revision and exact current warning codes. Under the shared lock, re-read identity and merge readiness, reject a changed revision or warning set without a write, then send one merge write. Make `/v1/reviews/publication/recover` reconcile the durable merge operation as well as publication state. Add keyboard, focus, and narrow-layout tests. Apply Pierre theme variables in the same UI slice.
+
+Replace the generic no-model alert with provider-specific guidance. Passive catalog loading may show no Pi model while Codex CLI is available. Keep the run dialog reachable whenever either provider is available. When Pi has no model, say so and offer selection of **Codex CLI account**. Selecting it exposes the explicit **Load Codex models** action. Do not imply a Codex account needs an API key. Preserve the existing rule that live Codex model enumeration starts only after that explicit action.
+
+Remove the coordinator non-null assertion and add JSDoc to all new exported service contracts. Remove duplicate changed JSDoc in `Review`.
+
+**Verify:** deterministic post-journal failure tests prove writes are blocked; startup and route recovery replay journals and merge operations; ordinary projection cannot adopt pending state; exact merge acknowledgement and final proof tests pass; renderer tests prove a Codex-only runtime can open the run dialog, load Codex models, and shows correct copy. Run read-only Electron QA with a valid Codex CLI account, no GitHub write.
+
 ### 1. Verify durable contracts before behavior
 
 Verify/update ADR-0017 and glossary wording. Add `ReviewFreshness` durable union to `Review`:
@@ -49,9 +67,9 @@ type ReviewFreshness =
   | { readonly _tag: "Unavailable"; readonly detectedAt: IsoTimestamp; readonly reason: "base_missing" | "diff_incomplete" | "github_read" | "comparison_ambiguous" | "reconciliation_incomplete" };
 ```
 
-Migrate/parse existing Review records as `Fresh` when they have a represented snapshot and no `detectedUpdate`; map legacy `detectedUpdate` to `RevisionChanged`. Update `ReviewWriteGate.requireFresh()` to allow only `Fresh`; update workbench freshness projection and error mapping. Use compare-and-save expected `Review.updatedAt` on every change.
+Use only the new durable Review schema; Patchdesk is unpublished, so do not retain a legacy `detectedUpdate` reader or data migration. Update `ReviewWriteGate.requireFresh()` to allow only `Fresh`; update workbench freshness projection and error mapping. Use compare-and-save expected `Review.updatedAt` on every change.
 
-**Verify:** migration/parser, gate, old detected-update compatibility, unavailable→fresh recovery, and terminal precedence tests.
+**Verify:** parser rejection of legacy/incomplete records, gate, unavailable→fresh recovery, and terminal precedence tests.
 
 ### 2. Prove canonical remote revision identity
 
@@ -108,13 +126,13 @@ Use Pierre supported container color-scheme/CSS variables. Preserve interaction 
 ## Done criteria
 
 - [ ] Canonical remote identity is proven or writes fail closed as unavailable.
-- [ ] Freshness state is durable, migrated, parser-validated, and gate-enforced.
-- [ ] Observation, refresh, writes, and recovery share one review lock and recover multi-store transitions without mixed view.
+- [ ] Freshness state is durable, parser-validated, and gate-enforced.
+- [ ] Observation, refresh, writes, and recovery share one review lock. A persisted journal blocks writes, startup and the recovery route replay it, and no mixed view can project.
 - [ ] Same-revision snapshot persists Conversation/draft evidence and safely consumes confirmed-write journal entries.
 - [ ] Refresh remains the only changed-revision/worktree adoption path; terminal exception is narrow.
 - [ ] Draft drift preserves typed Finish-review text and cannot duplicate Findings.
-- [ ] Compact one-click Merge has exact warning/revision acknowledgement and a reachable existing uncertain-outcome recovery path.
-- [ ] Tree follows light/dark theme; verification passes or exact baseline failures are documented.
+- [ ] Compact one-click Merge has exact warning/revision acknowledgement, final proof, and a reachable uncertain-outcome recovery path that reconciles merge and publication state.
+- [ ] Tree follows light/dark theme. Provider copy distinguishes unavailable Pi models from available but not yet activated Codex CLI models. Verification passes or exact baseline failures are documented.
 
 ## Stop conditions
 

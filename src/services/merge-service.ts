@@ -8,10 +8,12 @@ import type { PullRequestRef } from "../domain/pull-request";
 import { markSessionMerged, type ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
+type MergeWarningCode = MergeReadiness["warnings"][number];
 
-type MergeGateway = Pick<GitHubReader, "getMergePolicy"> &
+type MergeGateway = Pick<GitHubReader, "getMergePolicy" | "getPullRequest" | "getPullRequestDiff"> &
   GitHubMergeWriter;
 
 export type MergeFailure =
@@ -20,6 +22,8 @@ export type MergeFailure =
   | { readonly _tag: "MergeBlocked"; readonly readiness: MergeReadiness }
   | { readonly _tag: "MergeAcknowledgementRequired"; readonly readiness: MergeReadiness }
   | { readonly _tag: "StaleHeadBlocksMerge"; readonly currentHeadSha: GitSha }
+  | { readonly _tag: "RevisionChangedBlocksMerge" }
+  | { readonly _tag: "RevisionUnavailableBlocksMerge" }
   | { readonly _tag: "GitHubMergeFailed" };
 
 /** Performs one explicit merge only after fresh PR evidence satisfies the selected readiness policy. */
@@ -30,19 +34,29 @@ export async function mergePullRequest(input: {
   readonly gateway: MergeGateway;
   readonly method: MergeMethod;
   readonly supportedMethods: ReadonlyArray<MergeMethod>;
-  readonly acknowledgedWarnings: boolean;
+  readonly acknowledgedWarningCodes: ReadonlyArray<MergeWarningCode>;
   readonly now: IsoTimestamp;
 }): Promise<Result<{ readonly session: ReviewSession; readonly readiness: MergeReadiness }, MergeFailure>> {
   if (!input.supportedMethods.includes(input.method))
     return err({ _tag: "MergeMethodUnsupported" });
 
   const pr = sessionPr(input.session);
-  // This is the final remote read before the explicit merge request. A partial
-  // answer is intentionally represented as unknown mergeability and blocks.
+  const revision = await new GitHubRevisionIdentityReader(input.gateway).read({
+    profile: input.profile,
+    pr,
+    session: input.session,
+  });
+  if (revision._tag === "err" || revision.value._tag === "Unavailable") return err({ _tag: "RevisionUnavailableBlocksMerge" });
+  if (revision.value._tag === "Changed") return err({ _tag: "RevisionChangedBlocksMerge" });
+
+  // This is the final remote read before the explicit merge request. It binds
+  // current readiness to the same immutable head/base pair proved above.
   const policy = await input.gateway.getMergePolicy({ profile: input.profile, pr, expectedHeadSha: input.session.key.headSha });
   if (policy._tag === "err") return err({ _tag: "GitHubMergeReadFailed" });
   if (policy.value.headSha !== input.session.key.headSha)
     return err({ _tag: "StaleHeadBlocksMerge", currentHeadSha: policy.value.headSha });
+  if (policy.value.baseSha !== revision.value.identity.baseSha)
+    return err({ _tag: "RevisionChangedBlocksMerge" });
 
   const readiness = evaluateMergeReadiness({
     isCurrentHead: true,
@@ -59,13 +73,12 @@ export async function mergePullRequest(input: {
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ).length,
     ...(input.profile.analysisMergePolicy === undefined ? {} : { analysisMergePolicy: input.profile.analysisMergePolicy }),
-    analysisAcknowledged: input.acknowledgedWarnings,
   });
   if (readiness._tag === "Blocked") return err({ _tag: "MergeBlocked", readiness });
-  if (readiness._tag === "NeedsAcknowledgement" && !input.acknowledgedWarnings)
+  if (!sameWarningCodes(readiness.warnings, input.acknowledgedWarningCodes))
     return err({ _tag: "MergeAcknowledgementRequired", readiness });
 
-  // No await occurs between this final current-head check and the explicit merge request.
+  // No await occurs between this final canonical revision proof and the explicit merge request.
   const merged = await input.gateway.mergePullRequest({
     profile: input.profile,
     pr,
@@ -87,6 +100,13 @@ export async function mergePullRequest(input: {
       },
     },
   });
+}
+
+function sameWarningCodes(
+  expected: ReadonlyArray<MergeWarningCode>,
+  actual: ReadonlyArray<MergeWarningCode>,
+): boolean {
+  return [...new Set(expected)].sort().join("\n") === [...new Set(actual)].sort().join("\n");
 }
 
 function sessionPr(session: ReviewSession): PullRequestRef {

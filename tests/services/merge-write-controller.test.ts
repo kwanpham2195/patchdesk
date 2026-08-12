@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ import { createReviewSession } from "../../src/domain/review-session";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok } from "../../src/domain/result";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
-import { ReviewWriteCoordinator } from "../../src/services/review-write-coordinator";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const roots: string[] = [];
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
@@ -28,6 +28,15 @@ describe("MergeWriteController", () => {
 
     await expect(fixture.controller.merge({ profileId: fixture.profileId, sessionId: fixture.session.id, method: "delete", acknowledgedWarnings: true })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
     await expect(fixture.sessions.load(fixture.profileId, fixture.session.id)).resolves.toMatchObject({ _tag: "ok", value: { state: { _tag: "Created" } } });
+  });
+
+  it("rejects unknown warning codes and a base-unbound acknowledgement", async () => {
+    const fixture = await mergeFixture();
+    const acknowledgement = fixture.request.acknowledgedWarnings;
+
+    await expect(fixture.controller.merge({ ...fixture.request, acknowledgedWarnings: { ...acknowledgement, warningCodes: ["anything"] } })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+    await expect(fixture.controller.merge({ ...fixture.request, acknowledgedWarnings: { ...acknowledgement, revision: { ...acknowledgement.revision, baseSha: "b".repeat(40) } } })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+    expect(fixture.mergeRequests).toEqual([]);
   });
 
   it("delegates the valid merge once and persists its merged session", async () => {
@@ -90,15 +99,19 @@ async function mergeFixture(options: { readonly acknowledgedWarnings?: boolean; 
   const profileId = must(parseWorkspaceProfileId("cfw"));
   const profile = must(parseWorkspaceProfileConfig({ id: profileId, label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
   const key = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")) };
-  const seeded = createReviewSession({ key, pr: { headSha: key.headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha: key.headSha }, createdAt: now });
+  const seeded = createReviewSession({ key, pr: { headSha: key.headSha, baseSha: key.headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha: key.headSha }, createdAt: now });
   const session = { ...seeded, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, seeded.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, seeded.id))), headSha: key.headSha } };
+  await mkdir(paths.sessionDirectory(profileId, session.id), { recursive: true });
+  await writeFile(session.patchPath, "", "utf8");
   const profiles = new ProfileStore(paths);
   const sessions = new ReviewSessionStore(paths);
   await profiles.save(profile);
   await sessions.save(session);
   const mergeRequests: Array<{ readonly method: string; readonly headSha: string }> = [];
   const gateway = {
-    async getMergePolicy() { return ok({ pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable" as const, reviewDecision: "approved" as const, checks: { overall: "passing" as const, checks: [] }, complete: true }); },
+    async getMergePolicy() { return ok({ pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, baseSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable" as const, reviewDecision: "approved" as const, checks: { overall: "passing" as const, checks: [] }, complete: true }); },
+    async getPullRequest() { return ok({ ref: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, baseSha: key.headSha, isOpen: true, isDraft: false, title: "Fixture", author: "fixture", headBranch: "feature", baseBranch: "main", reviewState: "approved" as const, mergeability: "mergeable" as const, labels: [], changedFileCount: 0, updatedAt: now }); },
+    async getPullRequestDiff() { return ok(""); },
     async mergePullRequest(input: { readonly method: string; readonly headSha: string }) { mergeRequests.push({ method: input.method, headSha: input.headSha }); if (options.breakSave === true) { await rm(paths.sessionFile(profileId, session.id)); await mkdir(paths.sessionFile(profileId, session.id), { recursive: true }); } return await (options.mergeResult ?? ok({})); },
   };
   const gate = {
@@ -106,9 +119,10 @@ async function mergeFixture(options: { readonly acknowledgedWarnings?: boolean; 
       return ok({ profile, review: {} as never, session: { ...session, id: expected.sessionId, key: { ...session.key, headSha: expected.headSha } } as never, snapshot: {} as never });
     },
   } as never;
-  const coordinator = new ReviewWriteCoordinator();
+  const coordinator = new ReviewOperationCoordinator();
   const controller = new MergeWriteController(profiles, sessions, gateway, ["squash"], () => now, new MergeOperationStore(paths), gate, undefined, coordinator);
-  return { controller, coordinator, sessions, profileId, session, mergeRequests, request: { profileId, reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa", sessionId: session.id, expectedHeadSha: session.key.headSha, expectedPatchHash: "a".repeat(64), expectedRevision: now, method: "squash", acknowledgedWarnings: options.acknowledgedWarnings ?? true } };
+  const expectedPatchHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  return { controller, coordinator, sessions, profileId, session, mergeRequests, request: { profileId, reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa", sessionId: session.id, expectedHeadSha: session.key.headSha, expectedBaseSha: session.key.headSha, expectedPatchHash, expectedRevision: now, method: "squash", acknowledgedWarnings: { revision: { headSha: session.key.headSha, baseSha: session.key.headSha, patchHash: expectedPatchHash }, warningCodes: options.acknowledgedWarnings === false ? [] : [] } } };
 }
 
 function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T { if (result._tag === "err") throw new Error("Invalid fixture"); return result.value; }

@@ -9,7 +9,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitHubReviewEvent } from "../domain/pending-review";
 import type { ReviewWriteExpectation, ReviewWriteGate } from "./review-write-gate";
-import type { ReviewWriteCoordinator } from "./review-write-coordinator";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { withReviewSessionMutationLock } from "./review-session-mutation-lock";
 
 export type DirectSummaryReviewFailure =
@@ -40,7 +40,7 @@ export class DirectSummaryReviewService {
     private readonly sessions: Pick<ReviewSessionStore, "load" | "save">,
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
-    private readonly writeCoordinator?: ReviewWriteCoordinator,
+    private readonly writeCoordinator?: ReviewOperationCoordinator,
   ) {}
 
   async submit(input: {

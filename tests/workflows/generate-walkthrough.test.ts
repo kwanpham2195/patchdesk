@@ -17,14 +17,18 @@ const validOutput = {
   citationVersion: 2,
   title: "Recovery walkthrough",
   focus: "Follow the recovery decision.",
-  chapters: [{
-    title: "Recovery",
-    sections: [{
-      title: "One action",
-      prose: "The projection selects one action.",
-      hunkIds: ["h1"],
-    }],
-  }],
+  chapters: [
+    {
+      title: "Recovery",
+      sections: [
+        {
+          title: "One action",
+          prose: "The projection selects one action.",
+          hunkIds: ["h1"],
+        },
+      ],
+    },
+  ],
 };
 const baseChapter = validOutput.chapters[0];
 if (baseChapter === undefined) throw new Error("test fixture chapter missing");
@@ -38,7 +42,10 @@ describe("walkthrough artifact boundary", () => {
     await writeFile(path, "0123456789", "utf8");
 
     try {
-      await expect(readBoundedArtifact(path, 10)).resolves.toEqual({ _tag: "ok", value: "0123456789" });
+      await expect(readBoundedArtifact(path, 10)).resolves.toEqual({
+        _tag: "ok",
+        value: "0123456789",
+      });
       await expect(readBoundedArtifact(path, 9)).resolves.toEqual({
         _tag: "err",
         error: { reason: "input_too_large" },
@@ -59,11 +66,16 @@ describe("walkthrough raw output boundary", () => {
         hunkIds: ["h1"],
       })),
     }));
-    expect(v.safeParse(walkthroughOutputSchema, { ...validOutput, chapters }).success).toBe(false);
+    expect(
+      v.safeParse(walkthroughOutputSchema, { ...validOutput, chapters })
+        .success,
+    ).toBe(false);
   });
 
   it("rejects valid JSON with a wrong shape or extra keys", () => {
-    expect(parseWalkthroughOutput({ ...validOutput, unexpected: true })).toEqual({
+    expect(
+      parseWalkthroughOutput({ ...validOutput, unexpected: true }),
+    ).toEqual({
       _tag: "err",
       error: { _tag: "InvalidWalkthroughOutput" },
     });
@@ -76,26 +88,34 @@ describe("walkthrough raw output boundary", () => {
   it("rejects oversized prose, invalid aliases, and aggregate section overflow", () => {
     const oversized = {
       ...validOutput,
-      chapters: [{
-        ...baseChapter,
-        sections: [{
-          ...baseSection,
-          prose: "x".repeat(4_001),
-        }],
-      }],
+      chapters: [
+        {
+          ...baseChapter,
+          sections: [
+            {
+              ...baseSection,
+              prose: "x".repeat(4_001),
+            },
+          ],
+        },
+      ],
     };
     expect(parseWalkthroughOutput(oversized)).toEqual({
       _tag: "err",
       error: { _tag: "InvalidWalkthroughOutput" },
     });
 
-    expect(parseWalkthroughOutput({
-      ...validOutput,
-      chapters: [{
-        ...baseChapter,
-        sections: [{ ...baseSection, hunkIds: ["h12345678901234567"] }],
-      }],
-    })).toEqual({ _tag: "err", error: { _tag: "InvalidWalkthroughOutput" } });
+    expect(
+      parseWalkthroughOutput({
+        ...validOutput,
+        chapters: [
+          {
+            ...baseChapter,
+            sections: [{ ...baseSection, hunkIds: ["h12345678901234567"] }],
+          },
+        ],
+      }),
+    ).toEqual({ _tag: "err", error: { _tag: "InvalidWalkthroughOutput" } });
 
     const chapters = Array.from({ length: 2 }, (_, chapterIndex) => ({
       title: `Chapter ${chapterIndex}`,
@@ -115,31 +135,41 @@ describe("walkthrough raw output boundary", () => {
     const atLimit = {
       ...validOutput,
       focus: "x".repeat(320),
-      chapters: [{
-        ...baseChapter,
-        sections: [{ ...baseSection, prose: "x".repeat(320) }],
-      }],
+      chapters: [
+        {
+          ...baseChapter,
+          sections: [{ ...baseSection, prose: "x".repeat(320) }],
+        },
+      ],
     };
     expect(v.safeParse(walkthroughOutputSchema, atLimit).success).toBe(true);
 
-    expect(v.safeParse(walkthroughOutputSchema, {
-      ...validOutput,
-      chapters: [{
-        ...baseChapter,
-        sections: [{ ...baseSection, prose: "x".repeat(321) }],
-      }],
-    }).success).toBe(false);
+    expect(
+      v.safeParse(walkthroughOutputSchema, {
+        ...validOutput,
+        chapters: [
+          {
+            ...baseChapter,
+            sections: [{ ...baseSection, prose: "x".repeat(321) }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
 
-    expect(v.safeParse(walkthroughOutputSchema, {
-      ...validOutput,
-      focus: "x".repeat(321),
-    }).success).toBe(false);
+    expect(
+      v.safeParse(walkthroughOutputSchema, {
+        ...validOutput,
+        focus: "x".repeat(321),
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("walkthrough workflow harness contract", () => {
   it("forwards explicit choices, bounded result schema, and no write surface", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "patchdesk-walkthrough-harness-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "patchdesk-walkthrough-harness-"),
+    );
     const contextPath = join(directory, "context.json");
     const patchPath = join(directory, "patch.diff");
     const prompts: Array<{
@@ -157,12 +187,15 @@ describe("walkthrough workflow harness contract", () => {
     };
     const createSession = async (): Promise<RecordingSession> => {
       const session: RecordingSession = {
-        prompt: async <T>(text: string, options: {
-          result: v.GenericSchema;
-          model?: string;
-          thinkingLevel?: string;
-          tools: ReadonlyArray<unknown>;
-        }) => {
+        prompt: async <T>(
+          text: string,
+          options: {
+            result: v.GenericSchema;
+            model?: string;
+            thinkingLevel?: string;
+            tools: ReadonlyArray<unknown>;
+          },
+        ) => {
           prompts.push({ text, options });
           return { data: validOutput as T };
         },
@@ -170,12 +203,18 @@ describe("walkthrough workflow harness contract", () => {
       };
       return session;
     };
-    const harness: FlueHarness & { readonly session: () => Promise<RecordingSession> } = {
+    const harness: FlueHarness & {
+      readonly session: () => Promise<RecordingSession>;
+    } = {
       session: createSession,
     };
     let session: RecordingSession | undefined;
     await writeFile(contextPath, "context artifact", "utf8");
-    await writeFile(patchPath, "diff --git a/src/recovery.ts b/src/recovery.ts\n--- a/src/recovery.ts\n+++ b/src/recovery.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n", "utf8");
+    await writeFile(
+      patchPath,
+      "diff --git a/src/recovery.ts b/src/recovery.ts\n--- a/src/recovery.ts\n+++ b/src/recovery.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+      "utf8",
+    );
 
     try {
       const result = await runWalkthroughWorkflow({
@@ -201,7 +240,9 @@ describe("walkthrough workflow harness contract", () => {
       expect(session).toBeDefined();
       if (session === undefined) throw new Error("workflow session missing");
       // The extra write method is test-only; the production FlueHarness type exposes prompt() only.
-      const productionSession: Awaited<ReturnType<FlueHarness["session"]>> = { prompt: session.prompt };
+      const productionSession: Awaited<ReturnType<FlueHarness["session"]>> = {
+        prompt: session.prompt,
+      };
       expect(Object.keys(productionSession)).toEqual(["prompt"]);
       expect(writeRecorder.records).toEqual([]);
       session.write("test-only probe");
@@ -216,7 +257,22 @@ describe("walkthrough workflow harness contract", () => {
       expect(v.safeParse(prompt.options.result, result).success).toBe(true);
       expect(prompt.text).toContain("ordered chapter rail");
       expect(prompt.text).toContain("continuous reading surface");
-      expect(prompt.text).toContain("behavior before consequences and validation");
+      expect(prompt.text).toContain(
+        "behavior before consequences and validation",
+      );
+      expect(prompt.text).toContain(
+        "ASD-STE100 / Simplified Technical English",
+      );
+      expect(prompt.text).toContain(
+        "Use short, direct sentences in the active voice",
+      );
+      expect(prompt.text).toContain("Use an inverted pyramid");
+      expect(prompt.text).toContain("Do not narrate the patch file by file");
+      expect(prompt.text).toContain("Choose the smallest Markdown form");
+      expect(prompt.text).toContain(
+        "Use a short paragraph for one connected idea",
+      );
+      expect(prompt.text).toContain("renderer preserves it");
       expect(prompt.text).toContain("HUNK ALIAS MANIFEST");
       expect(prompt.text).toContain("h1 | ");
       expect(prompt.text).toContain("citationVersion to 2");
@@ -224,14 +280,18 @@ describe("walkthrough workflow harness contract", () => {
       expect(prompt.text).toContain("context artifact");
       expect(prompt.text).toContain("@@ -1,1 +1,1 @@");
       expect(prompt.text).toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
-      expect(prompt.text).not.toMatch(/review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i);
+      expect(prompt.text).not.toMatch(
+        /review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
   it("rejects an oversized artifact before invoking the read-only harness", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "patchdesk-walkthrough-oversized-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "patchdesk-walkthrough-oversized-"),
+    );
     const contextPath = join(directory, "context.json");
     const patchPath = join(directory, "patch.diff");
     let promptCalls = 0;
@@ -246,24 +306,28 @@ describe("walkthrough workflow harness contract", () => {
       },
       write: (reason) => writeRecorder.records.push(reason),
     };
-    const harness: FlueHarness & { readonly session: () => Promise<RecordingSession> } = {
+    const harness: FlueHarness & {
+      readonly session: () => Promise<RecordingSession>;
+    } = {
       session: async () => oversizedSession,
     };
     await writeFile(contextPath, "context artifact", "utf8");
     await writeFile(patchPath, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
 
     try {
-      await expect(runWalkthroughWorkflow({
-        input: {
-          profileId: "profile-1",
-          sessionId: "session-1",
-          contextPath,
-          patchPath,
-          model: "model-explicit",
-          reasoning: "high",
-        },
-        harness,
-      })).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
+      await expect(
+        runWalkthroughWorkflow({
+          input: {
+            profileId: "profile-1",
+            sessionId: "session-1",
+            contextPath,
+            patchPath,
+            model: "model-explicit",
+            reasoning: "high",
+          },
+          harness,
+        }),
+      ).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
       expect(promptCalls).toBe(0);
       expect(writeRecorder.records).toEqual([]);
       oversizedSession.write("test-only probe");

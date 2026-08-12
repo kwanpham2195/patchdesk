@@ -9,7 +9,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewWriteGate } from "./review-write-gate";
 import { applyReviewBatch, submitReviewBatch } from "./review-submission-service";
 import { readObjectField } from "./read-object-field";
-import type { ReviewWriteCoordinator } from "./review-write-coordinator";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 export type ReviewWriteResponse = {
   readonly session: unknown;
@@ -28,7 +28,7 @@ export class ReviewWriteController {
     private readonly github: Pick<GitHubReader, "getPullRequest"> & Partial<Pick<GitHubReader, "getPullRequestComments">> & GitHubReviewWriter,
     private readonly now: () => IsoTimestamp,
     private readonly writeGate?: ReviewWriteGate,
-    private readonly writeCoordinator?: ReviewWriteCoordinator,
+    private readonly writeCoordinator?: ReviewOperationCoordinator,
   ) {}
 
   async submitBatch(input: unknown): Promise<Result<ReviewWriteResponse, ReviewWriteControllerFailure>> {

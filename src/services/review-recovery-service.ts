@@ -10,6 +10,7 @@ import { recoverOrphanedWorkbenchAttempt } from "./review-workbench";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import type { MergeOperation } from "../domain/merge-operation";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import { markSessionMerged, type ReviewSession } from "../domain/review-session";
 import { rejectMergeOperation } from "../domain/merge-operation";
@@ -19,6 +20,7 @@ import type { GitHubComments, GitHubPublishedFeedback } from "../domain/github-c
 import type { PullRequestRef } from "../domain/pull-request";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 export type RecoveryDiagnostic = {
   readonly profileId: WorkspaceProfileId;
@@ -40,7 +42,8 @@ export class ReviewRecoveryService {
       readonly lifecycleGate?: ReviewLifecycleGate;
       /** Stable Review owner used to reject terminal and non-current sessions. */
       readonly reviewGate?: Pick<ReviewWriteGate, "requireCurrentSession">;
-      readonly mergeOperations?: MergeOperationStore;
+      readonly mergeOperations?: Pick<MergeOperationStore, "listPending" | "load" | "removeAfterSessionReceipt" | "reject">;
+      readonly operationCoordinator?: ReviewOperationCoordinator;
       /** Read owner for both merge and publication outcome reconciliation. */
       readonly github?: Partial<Pick<GitHubReader, "getMergeOutcome" | "getPullRequestComments" | "getPullRequestPublishedFeedback" | "resolveAuthenticatedAccount">>;
     } = {},
@@ -55,10 +58,44 @@ export class ReviewRecoveryService {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const operation = () => this.options.operationCoordinator === undefined
+      ? this.reconcilePublicationForProfile(profileId, reviewId)
+      : this.options.operationCoordinator.withReviewLock(profileId, reviewId, () => this.reconcilePublicationForProfile(profileId, reviewId));
     const result = this.options.lifecycleGate === undefined
-      ? await this.reconcilePublicationForProfile(profileId, reviewId)
-      : await this.options.lifecycleGate.withProfileLock(profileId, () => this.reconcilePublicationForProfile(profileId, reviewId));
+      ? await operation()
+      : await this.options.lifecycleGate.withProfileLock(profileId, operation);
     return result;
+  }
+
+  /** Quarantine invalid entries and convert owned-process-less attempts to Interrupted. */
+  /** Reconcile this Review's durable merge and publication evidence. */
+  async reconcileReview(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const operation = async () => {
+      const current = this.options.reviewGate === undefined
+        ? undefined
+        : await this.options.reviewGate.requireCurrentSession(profileId, reviewId);
+      if (current?._tag === "err") {
+        return { recovered: 0, failed: current.error.reason === "storage" ? 1 : 0 };
+      }
+      const merge = await this.reconcileMergeOperations(
+        profileId,
+        current?._tag === "ok" ? current.value.session.id : undefined,
+      );
+      const publication = await this.reconcilePublicationForProfile(profileId, reviewId);
+      return {
+        recovered: merge.recovered + publication.recovered,
+        failed: merge.failed + publication.failed,
+      };
+    };
+    const withReviewLock = () => this.options.operationCoordinator === undefined
+      ? operation()
+      : this.options.operationCoordinator.withReviewLock(profileId, reviewId, operation);
+    return this.options.lifecycleGate === undefined
+      ? await withReviewLock()
+      : await this.options.lifecycleGate.withProfileLock(profileId, withReviewLock);
   }
 
   /** Quarantine invalid entries and convert owned-process-less attempts to Interrupted. */
@@ -201,34 +238,67 @@ export class ReviewRecoveryService {
     return saved._tag === "ok" ? { recovered: 1, failed: 0 } : { recovered: 0, failed: 1 };
   }
 
+  private async reconcileMergeOperations(
+    profileId: WorkspaceProfileId,
+    sessionId?: ReviewSession["id"],
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    if (this.options.mergeOperations === undefined || this.options.github?.getMergeOutcome === undefined) {
+      return { recovered: 0, failed: 0 };
+    }
+    const pending = sessionId === undefined
+      ? await this.options.mergeOperations.listPending(profileId)
+      : await this.options.mergeOperations.load(profileId, sessionId).then((operation) =>
+          operation._tag === "ok"
+            ? { _tag: "ok" as const, value: [operation.value] }
+            : operation.error.reason === "not_found"
+              ? { _tag: "ok" as const, value: [] }
+              : operation,
+        );
+    if (pending._tag === "err") return { recovered: 0, failed: 1 };
+    const profile = await this.profiles.load(profileId);
+    if (profile._tag === "err") return { recovered: 0, failed: 1 };
+    let recovered = 0;
+    let failed = 0;
+    for (const operation of pending.value) {
+      const result = await this.reconcileMergeOperation(profile.value, operation);
+      recovered += result.recovered;
+      failed += result.failed;
+    }
+    return { recovered, failed };
+  }
+
+  private async reconcileMergeOperation(
+    profile: WorkspaceProfileConfig,
+    operation: MergeOperation,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const outcome = await this.options.github?.getMergeOutcome?.({ profile, pr: operation.pr });
+    if (outcome === undefined || outcome._tag === "err") return { recovered: 0, failed: 1 };
+    if (outcome.value.state === "merged") {
+      const session = await this.sessions.load(operation.profileId, operation.sessionId);
+      if (session._tag === "err") return { recovered: 0, failed: 1 };
+      const merged = markSessionMerged(session.value, outcome.value.mergedAt);
+      if (merged._tag === "err") return { recovered: 0, failed: 1 };
+      const saved = await this.sessions.save({
+        ...merged.value,
+        mergeDecision: {
+          mergedAt: outcome.value.mergedAt,
+          ...(outcome.value.mergeCommitSha === undefined ? {} : { mergeCommitSha: outcome.value.mergeCommitSha }),
+        },
+      });
+      if (saved._tag === "err") return { recovered: 0, failed: 1 };
+      const removed = await this.options.mergeOperations?.removeAfterSessionReceipt(operation.profileId, operation.sessionId);
+      return removed?._tag === "ok" ? { recovered: 1, failed: 0 } : { recovered: 0, failed: 1 };
+    }
+    const rejected = rejectMergeOperation(operation, outcome.value.state === "open" ? "merge_failed" : "merge_blocked");
+    if (rejected._tag === "err") return { recovered: 0, failed: 1 };
+    const saved = await this.options.mergeOperations?.reject(rejected.value);
+    return saved?._tag === "ok" ? { recovered: 1, failed: 0 } : { recovered: 0, failed: 1 };
+  }
+
   private async reconcileProfile(
     profileId: WorkspaceProfileId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
-    if (this.options.mergeOperations !== undefined && this.options.github?.getMergeOutcome !== undefined) {
-      const pending = await this.options.mergeOperations.listPending(profileId);
-      if (pending._tag === "ok") {
-        const profile = await this.profiles.load(profileId);
-        if (profile._tag === "err") return { recovered: 0, failed: 1 };
-        for (const operation of pending.value) {
-          const outcome = await this.options.github.getMergeOutcome({ profile: profile.value, pr: operation.pr });
-          if (outcome._tag === "err") {
-            await this.options.diagnostics?.record({ profileId, sessionId: operation.sessionId, category: "recovery", phase: "merge-outcome-read", retryable: true, detail: "Merge outcome could not be reconciled safely." });
-            continue;
-          }
-          if (outcome.value.state === "merged") {
-            const session = await this.sessions.load(profileId, operation.sessionId);
-            if (session._tag === "err") continue;
-            const merged = markSessionMerged(session.value, outcome.value.mergedAt);
-            if (merged._tag === "err") continue;
-            const saved = await this.sessions.save({ ...merged.value, mergeDecision: { mergedAt: outcome.value.mergedAt, ...(outcome.value.mergeCommitSha === undefined ? {} : { mergeCommitSha: outcome.value.mergeCommitSha }) } });
-            if (saved._tag === "ok") await this.options.mergeOperations.removeAfterSessionReceipt(profileId, operation.sessionId);
-            continue;
-          }
-          const rejected = rejectMergeOperation(operation, outcome.value.state === "open" ? "merge_failed" : "merge_blocked");
-          if (rejected._tag === "ok") await this.options.mergeOperations.reject(rejected.value);
-        }
-      }
-    }
+    const merge = await this.reconcileMergeOperations(profileId);
     const scan = await this.sessions.scanSessionEntries(profileId);
     if (scan._tag === "err") {
       if (this.options.diagnostics !== undefined) {
@@ -242,8 +312,8 @@ export class ReviewRecoveryService {
       }
       return { recovered: 0, failed: 1 };
     }
-    let recovered = 0;
-    let failed = 0;
+    let recovered = merge.recovered;
+    let failed = merge.failed;
     // Recovery owns each legacy session's durable publication evidence. Do not
     // resolve through the stable Review pointer here: a newer session can be
     // current while an older session still has a Submitted or Applying batch.

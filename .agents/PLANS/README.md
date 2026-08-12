@@ -10,7 +10,7 @@ Base UI/shadcn primitives and Tailwind utilities.
 - **2026-08-12 — Separate PR metadata reconciliation from revision refresh and polish the workbench**
   - Priority: P1
   - Effort: M
-  - Status: TODO
+  - Status: IN PROGRESS — freshness, canonical proof, shared coordination, observation journal, and bounded same-revision adoption are implemented. Review follow-up requires fail-closed journal recovery, recovery-route merge reconciliation, journal-owned pending adoption, compact merge/Pierre work, and Codex-specific no-model guidance.
   - Plan: `.agents/PLANS/2026-08-12-pr-metadata-reconciliation-and-workbench-polish.md`
   - Depends on: ADR-0017 (to be written as Step 1).
 

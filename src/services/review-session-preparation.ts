@@ -69,6 +69,15 @@ export type PrepareReviewSessionFailure =
   | { readonly _tag: "PreparationUnavailable" }
   | { readonly _tag: "PreparationCleanupUnavailable" };
 
+/**
+ * Canonical Review patch bytes. This is deliberately the identity function:
+ * sessions have always stored GitHub's unified diff verbatim. Keeping the
+ * normalizer explicit binds later remote identity proof to that same contract.
+ */
+export function normalizeReviewPatch(patch: string): string {
+  return patch;
+}
+
 type PreparationDependencies = {
   readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
@@ -516,7 +525,7 @@ export class ReviewSessionPreparation {
     if (recordedPatch._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     try {
       await mkdir(dirname(patchPath), { recursive: true });
-      await writeFile(patchPath, diff.value, "utf8");
+      await writeFile(patchPath, normalizeReviewPatch(diff.value), "utf8");
     } catch {
       return this.abort(journal, { _tag: "PreparationUnavailable" }, "patch_write");
     }
@@ -534,7 +543,7 @@ export class ReviewSessionPreparation {
       },
       comments: comments.value,
       checks: checks.value,
-      changedFiles: parseChangedFiles(diff.value),
+      changedFiles: parseChangedFiles(normalizeReviewPatch(diff.value)),
       patch: { path: patchPath, sha256: "0".repeat(64) },
       rulePaths: profile.rulePaths,
     });

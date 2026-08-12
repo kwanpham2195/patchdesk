@@ -20,7 +20,7 @@ const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha 
 const representedRemote = { headSha: firstSha, pullRequestUpdatedAt: now, snapshotHash: "a".repeat(64) as never, refreshedAt: now };
 
 function projection(): never { return { state: "review" } as never; }
-function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly refresh?: { readonly refresh: ReturnType<typeof vi.fn> }; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> }; readonly lifecycle?: boolean }) {
+function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly refresh?: { readonly refresh: ReturnType<typeof vi.fn> }; readonly journals?: { readonly load: ReturnType<typeof vi.fn> }; readonly observation?: { readonly recover: ReturnType<typeof vi.fn> }; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> }; readonly lifecycle?: boolean }) {
   const prepareCalls = options.prepareCalls ?? vi.fn();
   let storedReview = options.existing;
   const save = options.save ?? vi.fn(async (value: Review) => { storedReview = value; return ok(undefined); });
@@ -31,7 +31,7 @@ function controller(options: { readonly existing?: Review; readonly preparedSess
   const loadRepresented = options.loadRepresented ?? vi.fn(async () => ok(projection()));
   const load = options.load ?? vi.fn(async () => ok(projection()));
   const projectionService = { load, loadLocal, loadRepresented };
-  const value = new ReviewWorkbenchController(prep as never, projectionService as never, options.lifecycle === false ? undefined : { reviews, remote, refresh: options.refresh ?? {}, ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
+  const value = new ReviewWorkbenchController(prep as never, projectionService as never, options.lifecycle === false ? undefined : { reviews, remote, refresh: options.refresh ?? {}, ...(options.journals === undefined ? {} : { journals: options.journals }), ...(options.observation === undefined ? {} : { observation: options.observation }), ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
   return { value, prepareCalls, save };
 }
 
@@ -137,6 +137,27 @@ describe("ReviewWorkbenchController stable open", () => {
     const result = await value.load({ profileId: "cfw", sessionId: firstSessionId });
     expect(result).toEqual({ _tag: "ok", value: { state: "review" } });
     expect(load).toHaveBeenCalledWith({ profileId, sessionId: firstSessionId });
+  });
+
+  it("recovers an observation journal before projecting the Review", async () => {
+    let journalPresent = true;
+    const journals = { load: vi.fn(async () => ok(journalPresent ? { reviewId: review().id } : undefined)) };
+    const observation = { recover: vi.fn(async () => { journalPresent = false; return ok({ _tag: "Reconciled" }); }) };
+    const loadRepresented = vi.fn(async () => ok(projection()));
+    const { value } = controller({ existing: review(), journals, observation, loadRepresented });
+
+    await expect(value.load({ profileId: "cfw", reviewId: review().id })).resolves.toEqual({ _tag: "ok", value: { state: "review" } });
+    expect(observation.recover).toHaveBeenCalledWith({ profileId, reviewId: review().id });
+    expect(loadRepresented).toHaveBeenCalledOnce();
+  });
+
+  it("does not project a Review while an observation journal owns its transition", async () => {
+    const loadRepresented = vi.fn(async () => ok(projection()));
+    const journals = { load: vi.fn(async () => ok({ reviewId: review().id })) };
+    const { value } = controller({ existing: review(), journals, loadRepresented });
+
+    await expect(value.load({ profileId: "cfw", reviewId: review().id })).resolves.toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(loadRepresented).not.toHaveBeenCalled();
   });
 
   it("validates and delegates commit diff requests", async () => {

@@ -23,8 +23,15 @@ import {
   InsightRunDialog,
   type InsightRunDialogType,
 } from "../components/insight-run-dialog";
-import type { InsightProvider, InsightReasoning } from "../../../domain/insight-provider";
-import { loadInsightRunPreference, saveInsightRunPreference, type InsightRunPreference } from "../insight-run-preferences";
+import type {
+  InsightProvider,
+  InsightReasoning,
+} from "../../../domain/insight-provider";
+import {
+  loadInsightRunPreference,
+  saveInsightRunPreference,
+  type InsightRunPreference,
+} from "../insight-run-preferences";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -92,6 +99,22 @@ function boundedPendingReviewError(cause: unknown): string {
       return "The pending review changed. Check GitHub again or refresh.";
   }
   return "Patchdesk could not finish this review. Check GitHub again or refresh.";
+}
+
+function boundedPendingReviewRecoveryError(cause: unknown): string {
+  if (cause instanceof PatchdeskApiError) {
+    if (cause.kind === "review_write_in_progress") {
+      return "Another Review operation is still finishing. Check GitHub again in a moment.";
+    }
+    if (
+      cause.kind === "timeout" ||
+      cause.kind === "unavailable" ||
+      cause.kind === "outcome_unknown"
+    ) {
+      return "Patchdesk could not check GitHub right now. Try again.";
+    }
+  }
+  return "Patchdesk could not reconcile this pending review. Try again or refresh.";
 }
 
 function boundedDirectSummaryError(cause: unknown): string {
@@ -285,6 +308,34 @@ export function ReviewWorkbenchFlow({
       const current = workbenchRef.current;
       if (generationRef.current !== generation || snapshotKey(current) !== key)
         return;
+      const observation = isReviewObservation(value);
+      if (observation !== undefined) {
+        if (observation._tag === "Reconciled") {
+          const next = parseWorkbenchResponse(observation.projection);
+          if (
+            next !== undefined &&
+            next.review.id === current.review.id &&
+            next.session.id === current.session.id &&
+            next.revision.reviewedHeadSha === current.revision.reviewedHeadSha
+          ) {
+            replaceWorkbench(next);
+            setDetectedStaleFreshness(undefined);
+          }
+        } else if (observation._tag === "RevisionChanged") {
+          onWorkbenchPatchRef.current({
+            revision: { ...current.revision, freshness: "updates_available" },
+          });
+        } else if (observation._tag === "Unavailable") {
+          onWorkbenchPatchRef.current({
+            revision: { ...current.revision, freshness: "unavailable" },
+          });
+        } else if (observation._tag === "Terminal") {
+          onWorkbenchPatchRef.current({
+            review: { ...current.review, status: observation.status },
+          });
+        }
+        return;
+      }
       if (isDetection(value) && value.updatesAvailable) {
         // A stale value is written only on the transition into updates_available:
         // re-writing the identical freshness on an already-stale projection is
@@ -821,6 +872,7 @@ export function ReviewWorkbenchFlow({
   );
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
+    setFinishDialogError(undefined);
     try {
       const value = await requestJson("/v1/reviews/pending-review/recover", {
         method: "POST",
@@ -829,12 +881,31 @@ export function ReviewWorkbenchFlow({
           reviewId: workbench.review.id,
         },
       });
-      applyPendingReviewProjection(value);
-      setFinishDialogError(undefined);
+      const projection = applyPendingReviewProjection(value);
+      if (projection?.state === "recovery_required") {
+        setFinishDialogError(
+          "Patchdesk found the pending review, but it cannot identify the exact Finding comment. Inspect or discard the pending review on GitHub, then check again.",
+        );
+      } else {
+        const loaded = await requestJson("/v1/reviews/load", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+          },
+        });
+        const next = parseWorkbenchResponse(loaded);
+        if (next === undefined)
+          throw new Error("Invalid Review projection response");
+        replaceWorkbench(next);
+        setFinishDialogError(undefined);
+      }
+    } catch (cause) {
+      setFinishDialogError(boundedPendingReviewRecoveryError(cause));
     } finally {
       setPendingReviewBusy(false);
     }
-  }, [applyPendingReviewProjection, workbench]);
+  }, [applyPendingReviewProjection, replaceWorkbench, workbench]);
   const [directSummaryBusy, setDirectSummaryBusy] = useState(false);
   const [directSummaryError, setDirectSummaryError] = useState<
     string | undefined
@@ -1004,7 +1075,7 @@ export function ReviewWorkbenchFlow({
           methods: ["squash", "merge", "rebase"] as const,
           onMerge: async (
             method: "merge" | "squash" | "rebase",
-            acknowledgedWarnings: boolean,
+            warningCodes: ReadonlyArray<string>,
           ) => {
             await requestJson("/v1/reviews/merge", {
               method: "POST",
@@ -1013,11 +1084,19 @@ export function ReviewWorkbenchFlow({
                 reviewId: workbench.review.id,
                 sessionId: workbench.session.id,
                 expectedHeadSha: workbench.revision.reviewedHeadSha,
+                expectedBaseSha: workbench.pullRequest?.baseSha ?? "",
                 expectedPatchHash: workbench.revision.patchHash,
                 expectedRevision:
                   workbench.draft?.updatedAt ?? workbench.revision.refreshedAt,
                 method,
-                acknowledgedWarnings,
+                acknowledgedWarnings: {
+                  revision: {
+                    headSha: workbench.revision.reviewedHeadSha,
+                    baseSha: workbench.pullRequest?.baseSha ?? "",
+                    patchHash: workbench.revision.patchHash,
+                  },
+                  warningCodes,
+                },
               },
             });
             const refreshed = await requestJson("/v1/reviews/load", {
@@ -1224,6 +1303,9 @@ export function ReviewWorkbenchFlow({
                   onCheckGitHubAgain: checkGitHubAgain,
                   ...(finishDialogError === undefined
                     ? {}
+                    : { recoveryError: finishDialogError }),
+                  ...(finishDialogError === undefined
+                    ? {}
                     : { finishDialogError }),
                 },
               }),
@@ -1327,10 +1409,19 @@ function InsightsSlot({
   readonly onFinishWithAnalysisSummary: (summary: string) => void;
 }): React.JSX.Element {
   const navigateToFiles = useReviewWorkbenchNavigation();
-  const [catalog, setCatalog] = useState<ReturnType<typeof parseInsightProviderCatalog>>();
+  const [catalog, setCatalog] =
+    useState<ReturnType<typeof parseInsightProviderCatalog>>();
   const [provider, setProvider] = useState<InsightProvider>("pi");
-  const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string; readonly reasoning?: ReadonlyArray<InsightReasoning> }>>([]);
-  const [preferences, setPreferences] = useState<Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>>({});
+  const [models, setModels] = useState<
+    ReadonlyArray<{
+      readonly id: string;
+      readonly label: string;
+      readonly reasoning?: ReadonlyArray<InsightReasoning>;
+    }>
+  >([]);
+  const [preferences, setPreferences] = useState<
+    Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
+  >({});
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<InsightReasoning>("medium");
   const [runDialogType, setRunDialogType] =
@@ -1388,11 +1479,18 @@ function InsightsSlot({
 
   useEffect(() => {
     let active = true;
-    const loadedPreferences: Partial<Record<"analysis" | "walkthrough", InsightRunPreference>> = {};
+    const loadedPreferences: Partial<
+      Record<"analysis" | "walkthrough", InsightRunPreference>
+    > = {};
     const analysisPreference = loadInsightRunPreference(profileId, "analysis");
-    const walkthroughPreference = loadInsightRunPreference(profileId, "walkthrough");
-    if (analysisPreference !== undefined) loadedPreferences.analysis = analysisPreference;
-    if (walkthroughPreference !== undefined) loadedPreferences.walkthrough = walkthroughPreference;
+    const walkthroughPreference = loadInsightRunPreference(
+      profileId,
+      "walkthrough",
+    );
+    if (analysisPreference !== undefined)
+      loadedPreferences.analysis = analysisPreference;
+    if (walkthroughPreference !== undefined)
+      loadedPreferences.walkthrough = walkthroughPreference;
     setPreferences(loadedPreferences);
     const initialPreference = loadedPreferences[initialDetail ?? "analysis"];
     if (initialPreference !== undefined) {
@@ -1412,11 +1510,15 @@ function InsightsSlot({
           return;
         }
         setCatalog(parsed);
-        const piModels = parsed.models.filter((candidate) => candidate.provider === "pi");
+        const piModels = parsed.models.filter(
+          (candidate) => candidate.provider === "pi",
+        );
         setModels(piModels);
-        const selectedModel = initialPreference?.provider === "pi" && piModels.some((candidate) => candidate.id === initialPreference.model)
-          ? initialPreference.model
-          : piModels[0]?.id ?? null;
+        const selectedModel =
+          initialPreference?.provider === "pi" &&
+          piModels.some((candidate) => candidate.id === initialPreference.model)
+            ? initialPreference.model
+            : (piModels[0]?.id ?? null);
         setModel(selectedModel);
         setCatalogError(false);
       })
@@ -1427,34 +1529,79 @@ function InsightsSlot({
         setModel(null);
         setCatalogError(true);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [profileId, initialDetail]);
 
-  const providerAvailable = catalog?.providers.some((candidate) => candidate.id === provider && candidate.available) ?? false;
-  const runEnabled = !catalogError && providerAvailable && model !== null && workbench.review.status === "open";
+  const hasAvailableProvider =
+    catalog?.providers.some((candidate) => candidate.available) ?? false;
+  const runEnabled =
+    !catalogError && hasAvailableProvider && workbench.review.status === "open";
 
-  const activePreferenceType = runDialogType ?? (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
+  const activePreferenceType =
+    runDialogType ??
+    (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
   const changeProvider = (nextProvider: InsightProvider): void => {
     setProvider(nextProvider);
-    const nextModels = catalog?.models.filter((candidate) => candidate.provider === nextProvider) ?? [];
+    const nextModels =
+      catalog?.models.filter(
+        (candidate) => candidate.provider === nextProvider,
+      ) ?? [];
     setModels(nextModels);
     const preference = preferences[activePreferenceType];
-    setModel(preference?.provider === nextProvider && nextModels.some((candidate) => candidate.id === preference.model) ? preference.model : nextModels[0]?.id ?? null);
+    setModel(
+      preference?.provider === nextProvider &&
+        nextModels.some((candidate) => candidate.id === preference.model)
+        ? preference.model
+        : (nextModels[0]?.id ?? null),
+    );
     const first = nextModels[0];
-    setReasoning(preference?.provider === nextProvider ? preference.reasoning : first?.defaultReasoning ?? first?.reasoning[0] ?? "medium");
+    setReasoning(
+      preference?.provider === nextProvider
+        ? preference.reasoning
+        : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
+    );
   };
   const activateCodex = (): void => {
     setCodexActivationPending(true);
     setCodexActivationError(false);
-    void requestJson("/v1/insight-providers/codex/models", { method: "POST", body: {} })
+    void requestJson("/v1/insight-providers/codex/models", {
+      method: "POST",
+      body: {},
+    })
       .then((value) => {
         const parsed = parseInsightProviderCatalog(value);
         if (parsed === undefined) throw new Error("Invalid Codex catalog");
-        setCatalog((current) => current === undefined ? parsed : { ...current, providers: [...current.providers.filter((candidate) => candidate.id !== "codex-cli-account"), ...parsed.providers], models: [...current.models.filter((candidate) => candidate.provider !== "codex-cli-account"), ...parsed.models] });
-        const codexModels = parsed.models.filter((candidate) => candidate.provider === "codex-cli-account");
+        setCatalog((current) =>
+          current === undefined
+            ? parsed
+            : {
+                ...current,
+                providers: [
+                  ...current.providers.filter(
+                    (candidate) => candidate.id !== "codex-cli-account",
+                  ),
+                  ...parsed.providers,
+                ],
+                models: [
+                  ...current.models.filter(
+                    (candidate) => candidate.provider !== "codex-cli-account",
+                  ),
+                  ...parsed.models,
+                ],
+              },
+        );
+        const codexModels = parsed.models.filter(
+          (candidate) => candidate.provider === "codex-cli-account",
+        );
         setModels(codexModels);
         setModel(codexModels[0]?.id ?? null);
-        setReasoning(codexModels[0]?.defaultReasoning ?? codexModels[0]?.reasoning[0] ?? "medium");
+        setReasoning(
+          codexModels[0]?.defaultReasoning ??
+            codexModels[0]?.reasoning[0] ??
+            "medium",
+        );
       })
       .catch(() => setCodexActivationError(true))
       .finally(() => setCodexActivationPending(false));
@@ -1513,46 +1660,6 @@ function InsightsSlot({
         : undefined;
   const selectedRetained = selectedProjection?.retained;
   const selectedIsOutdated = selectedProjection?.status === "outdated";
-  const insightScope = {
-    baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
-    headShort: workbench.session.key.headSha.slice(0, 7),
-    commitCount: workbench.commits.length,
-    fileCount:
-      workbench.pullRequest?.changedFileCount ??
-      (workbench.fullPatch === undefined
-        ? 0
-        : parseUnifiedPatch(workbench.fullPatch).length),
-    additions: workbench.pullRequest?.additions ?? 0,
-    deletions: workbench.pullRequest?.deletions ?? 0,
-    changedFiles:
-      workbench.fullPatch === undefined
-        ? []
-        : parseUnifiedPatch(workbench.fullPatch).map((file) => ({
-            path: file.newPath,
-            additions: file.additions,
-            deletions: file.deletions,
-          })),
-  };
-  const emptyInsightScope = {
-    baseShort: "unknown",
-    headShort: selectedRetained?.headSha.slice(0, 7) ?? "unknown",
-    commitCount: 0,
-    fileCount: 0,
-    additions: 0,
-    deletions: 0,
-    changedFiles: [] as ReadonlyArray<{
-      readonly path: string;
-      readonly additions: number;
-      readonly deletions: number;
-    }>,
-  };
-  const analysisRetainedScope = workbench.insights.analysis.retained?.scope;
-  const readerScope =
-    selectedInsight === "analysis"
-      ? selectedIsOutdated
-        ? (analysisRetainedScope ?? emptyInsightScope)
-        : (analysisRetainedScope ?? insightScope)
-      : insightScope;
   const analysisFirstRunActive =
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
@@ -1570,9 +1677,17 @@ function InsightsSlot({
     const preference = preferences[selectedInsight];
     setProvider(preference?.provider ?? "pi");
     setReasoning(preference?.reasoning ?? "medium");
-    const nextModels = catalog?.models.filter((candidate) => candidate.provider === (preference?.provider ?? "pi")) ?? [];
+    const nextModels =
+      catalog?.models.filter(
+        (candidate) => candidate.provider === (preference?.provider ?? "pi"),
+      ) ?? [];
     setModels(nextModels);
-    setModel(preference !== undefined && nextModels.some((candidate) => candidate.id === preference.model) ? preference.model : nextModels[0]?.id ?? null);
+    setModel(
+      preference !== undefined &&
+        nextModels.some((candidate) => candidate.id === preference.model)
+        ? preference.model
+        : (nextModels[0]?.id ?? null),
+    );
     setRunDialogType(selectedInsight);
     setRunDialogAction(action);
   };
@@ -1581,8 +1696,15 @@ function InsightsSlot({
     if (model === null || selectedInsight === "overview") return;
     closeRunDialog();
     runSelected(() => {
-      saveInsightRunPreference(profileId, selectedInsight, { provider, model, reasoning });
-      setPreferences((current) => ({ ...current, [selectedInsight]: { provider, model, reasoning } }));
+      saveInsightRunPreference(profileId, selectedInsight, {
+        provider,
+        model,
+        reasoning,
+      });
+      setPreferences((current) => ({
+        ...current,
+        [selectedInsight]: { provider, model, reasoning },
+      }));
     });
   };
   const retainedDescription =
@@ -1620,7 +1742,7 @@ function InsightsSlot({
     workbench.insights.analysis.retained !== undefined ? (
       <AnalysisReader
         result={workbench.insights.analysis.retained.value}
-        onBack={() => setSelectedInsight("overview")}
+        checkStatus={workbench.checks.overall}
         findingStatuses={Object.fromEntries(
           Object.entries(workbench.analysisReviewActions?.findings ?? {}).map(
             ([id, status]) => [id, status.state],
@@ -1648,7 +1770,6 @@ function InsightsSlot({
         {...(workbench.insights.analysis.status === "current"
           ? { onAddFinding: addFinding, onDismissFinding: dismissFinding }
           : {})}
-        scope={readerScope}
       />
     ) : null;
   const walkthroughRetained = workbench.insights.walkthrough.retained;
@@ -1801,18 +1922,20 @@ function InsightsSlot({
               {walkthroughFocusActive ? null : (
                 <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b pb-2">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {selectedInsight}
-                    </p>
-                    <h2 className="truncate text-lg font-semibold">
-                      {selectedInsight === "analysis"
-                        ? "Analysis document"
-                        : selectedInsight === "walkthrough" &&
-                            workbench.insights.walkthrough.retained !==
-                              undefined
-                          ? workbench.insights.walkthrough.retained.value.title
-                          : "Walkthrough document"}
-                    </h2>
+                    {selectedInsight === "analysis" ? null : (
+                      <>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {selectedInsight}
+                        </p>
+                        <h2 className="truncate text-lg font-semibold">
+                          {selectedInsight === "walkthrough" &&
+                          workbench.insights.walkthrough.retained !== undefined
+                            ? workbench.insights.walkthrough.retained.value
+                                .title
+                            : "Walkthrough document"}
+                        </h2>
+                      </>
+                    )}
                     <p className="truncate text-sm text-muted-foreground">
                       {selectedRetained === undefined
                         ? "No retained result for this revision."
@@ -1846,10 +1969,13 @@ function InsightsSlot({
                   </div>
                 </header>
               )}
-              {catalogError || models.length === 0 ? (
+              {catalogError ||
+              !hasAvailableProvider ||
+              (provider === "pi" && models.length === 0) ? (
                 <p role="alert" className="py-2 text-sm text-destructive">
-                  No eligible model configured. Set an API key or ambient
-                  provider credentials in the Electron process, then reload.
+                  {catalogError || !hasAvailableProvider
+                    ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
+                    : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
                 </p>
               ) : null}
               {progressError ? (
@@ -1929,8 +2055,14 @@ function InsightsSlot({
           }}
           onModelChange={(nextModel) => {
             setModel(nextModel);
-            const selected = models.find((candidate) => candidate.id === nextModel);
-            if (selected !== undefined && selected.reasoning !== undefined && !selected.reasoning.includes(reasoning)) {
+            const selected = models.find(
+              (candidate) => candidate.id === nextModel,
+            );
+            if (
+              selected !== undefined &&
+              selected.reasoning !== undefined &&
+              !selected.reasoning.includes(reasoning)
+            ) {
               setReasoning(selected.reasoning[0] ?? "medium");
             }
           }}
@@ -2718,4 +2850,35 @@ function isDetection(
     "updatesAvailable" in value &&
     typeof value.updatesAvailable === "boolean"
   );
+}
+
+function isReviewObservation(
+  value: unknown,
+):
+  | { readonly _tag: "Unchanged" }
+  | { readonly _tag: "Reconciled"; readonly projection?: unknown }
+  | { readonly _tag: "RevisionChanged" }
+  | { readonly _tag: "Unavailable" }
+  | { readonly _tag: "Terminal"; readonly status: "merged" | "closed" }
+  | undefined {
+  if (typeof value !== "object" || value === null || !("_tag" in value))
+    return undefined;
+  if (
+    value._tag === "Unchanged" ||
+    value._tag === "RevisionChanged" ||
+    value._tag === "Unavailable"
+  )
+    return { _tag: value._tag };
+  if (value._tag === "Reconciled")
+    return {
+      _tag: "Reconciled",
+      ...("projection" in value ? { projection: value.projection } : {}),
+    };
+  if (
+    value._tag === "Terminal" &&
+    "status" in value &&
+    (value.status === "merged" || value.status === "closed")
+  )
+    return { _tag: "Terminal", status: value.status };
+  return undefined;
 }

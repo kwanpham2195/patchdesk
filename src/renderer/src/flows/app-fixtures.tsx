@@ -6,7 +6,7 @@ import {
 } from "../components/review-workbench";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
-import { MergeConfirmationDialog } from "../components/merge-confirmation-dialog";
+import { CompactMergeCommand } from "../components/compact-merge-command";
 import { ReviewBatchPanel } from "../components/review-batch-panel";
 import { SafeRunPanel } from "../components/safe-run-panel";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
@@ -170,7 +170,7 @@ export function AppFixtureContent({
   if (hash === "#merge-fixture")
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <MergeConfirmationDialog
+        <CompactMergeCommand
           readiness={{
             _tag: "NeedsAcknowledgement",
             blockers: [],

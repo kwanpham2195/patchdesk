@@ -316,16 +316,34 @@ export type SessionEntryScan = {
 /** Owns durable session and attempt artifacts; debug JSONL is never read as state. */
 export class ReviewSessionStore {
   private readonly beginLocks = new Map<string, Promise<void>>();
+  private readonly saveLocks = new Map<string, Promise<void>>();
 
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  async save(session: unknown): Promise<Result<void, StorageFailure>> {
+  async save(
+    session: unknown,
+    expectedUpdatedAt?: IsoTimestamp,
+  ): Promise<Result<void, StorageFailure>> {
     const parsed = parseStoredReviewSession(session);
     if (parsed._tag === "err") return invalidWrite();
-    return writeAtomicJson(
-      this.paths.sessionFile(parsed.value.key.profileId, parsed.value.id),
-      parsed.value,
-    );
+    const value = parsed.value;
+    const key = `${value.key.profileId}:${value.id}`;
+    return this.withSaveLock(key, async () => {
+      const current = await this.load(value.key.profileId, value.id);
+      if (current._tag === "err") {
+        if (current.error.reason !== "not_found" || expectedUpdatedAt !== undefined) return current;
+      } else if (
+        expectedUpdatedAt !== undefined &&
+        (current.value.updatedAt !== expectedUpdatedAt ||
+          Date.parse(value.updatedAt) <= Date.parse(current.value.updatedAt))
+      ) {
+        return invalidWrite();
+      }
+      return writeAtomicJson(
+        this.paths.sessionFile(value.key.profileId, value.id),
+        value,
+      );
+    });
   }
 
   async load(
@@ -601,6 +619,24 @@ export class ReviewSessionStore {
     } finally {
       release?.();
       if (this.beginLocks.get(key) === current) this.beginLocks.delete(key);
+    }
+  }
+  private async withSaveLock<T>(
+    key: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const predecessor = this.saveLocks.get(key);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.saveLocks.set(key, current);
+    if (predecessor !== undefined) await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.saveLocks.get(key) === current) this.saveLocks.delete(key);
     }
   }
 }

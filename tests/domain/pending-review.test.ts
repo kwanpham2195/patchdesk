@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adoptObservedPendingReview,
   beginPendingReviewWrite,
   canStartPendingReviewOperation,
   confirmPendingReviewWrite,
   markPendingReviewOutcomeUnknown,
+  parseFindingReviewReceipts,
   parsePendingReviewState,
   parseViewerPendingReview,
   pendingReviewMatchesSession,
@@ -19,14 +21,24 @@ const reviewRaw = {
   restId: "4891263665",
   nodeId: "PRR_kwDORJzsQM7e6QwJ",
   author: "pmquan2cfw",
-  pr: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 80 },
+  pr: {
+    host: "github.com",
+    owner: "centraldigital",
+    repo: "patchdesk",
+    number: 80,
+  },
   headSha: "3cc09e865fedf015cd86263594e094d94c006916",
   comments: [
     {
       reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd",
       threadId: "PRRT_kwDORJzsQM0001",
       body: "Comment body",
-      anchor: { path: "docs/docs.go", startLine: 2908, line: 2908, side: "new" },
+      anchor: {
+        path: "docs/docs.go",
+        startLine: 2908,
+        line: 2908,
+        side: "new",
+      },
       createdAt: "2026-08-09T11:34:50.000Z",
     },
   ],
@@ -96,7 +108,9 @@ describe("parsePendingReviewState", () => {
   });
 
   it("rejects malformed identities, timestamps, and anchors", () => {
-    expect(parsePendingReviewState({ _tag: "None", extra: true } as never)._tag).toBe("err");
+    expect(
+      parsePendingReviewState({ _tag: "None", extra: true } as never)._tag,
+    ).toBe("err");
     expect(
       parsePendingReviewState({
         _tag: "Pending",
@@ -117,7 +131,12 @@ describe("parsePendingReviewState", () => {
           comments: [
             {
               ...reviewRaw.comments[0],
-              anchor: { path: "docs/docs.go", startLine: 9, line: 8, side: "new" },
+              anchor: {
+                path: "docs/docs.go",
+                startLine: 9,
+                line: 8,
+                side: "new",
+              },
             },
           ],
         },
@@ -144,15 +163,25 @@ describe("parsePendingReviewState", () => {
       ...reviewRaw,
       comments: [reviewRaw.comments[0], reviewRaw.comments[0]],
     };
-    expect(parsePendingReviewState({ _tag: "Pending", review: duplicate })._tag).toBe("err");
+    expect(
+      parsePendingReviewState({ _tag: "Pending", review: duplicate })._tag,
+    ).toBe("err");
   });
 
   it("rejects a confirmed review that does not match the represented PR", () => {
     const foreign = {
       ...reviewRaw,
-      pr: { host: "github.com", owner: "other-org", repo: "other-repo", number: 1 },
+      pr: {
+        host: "github.com",
+        owner: "other-org",
+        repo: "other-repo",
+        number: 1,
+      },
     };
-    const parsed = parsePendingReviewState({ _tag: "Pending", review: foreign });
+    const parsed = parsePendingReviewState({
+      _tag: "Pending",
+      review: foreign,
+    });
     expect(parsed._tag).toBe("ok");
     if (parsed._tag === "ok") {
       expect(
@@ -169,17 +198,35 @@ describe("parsePendingReviewState", () => {
 
 describe("pending-review state transitions", () => {
   it("Start is legal only from None; AddThread/Submit/Discard only from the matching Pending review", () => {
-    expect(canStartPendingReviewOperation({ _tag: "None" }, startOperation)).toBe(true);
-    expect(canStartPendingReviewOperation({ _tag: "Pending", review: review() }, startOperation)).toBe(false);
-    const pending = { _tag: "Pending" as const, review: review() };
-    expect(canStartPendingReviewOperation(pending, addThreadOperation)).toBe(true);
-    expect(canStartPendingReviewOperation(pending, submitOperation)).toBe(true);
-    expect(canStartPendingReviewOperation(pending, discardOperation)).toBe(true);
     expect(
-      canStartPendingReviewOperation(pending, { ...addThreadOperation, reviewId: "PRR_other000000000" as never }),
+      canStartPendingReviewOperation({ _tag: "None" }, startOperation),
+    ).toBe(true);
+    expect(
+      canStartPendingReviewOperation(
+        { _tag: "Pending", review: review() },
+        startOperation,
+      ),
     ).toBe(false);
-    expect(canStartPendingReviewOperation({ _tag: "None" }, submitOperation)).toBe(false);
-    expect(canStartPendingReviewOperation({ _tag: "None" }, discardOperation)).toBe(false);
+    const pending = { _tag: "Pending" as const, review: review() };
+    expect(canStartPendingReviewOperation(pending, addThreadOperation)).toBe(
+      true,
+    );
+    expect(canStartPendingReviewOperation(pending, submitOperation)).toBe(true);
+    expect(canStartPendingReviewOperation(pending, discardOperation)).toBe(
+      true,
+    );
+    expect(
+      canStartPendingReviewOperation(pending, {
+        ...addThreadOperation,
+        reviewId: "PRR_other000000000" as never,
+      }),
+    ).toBe(false);
+    expect(
+      canStartPendingReviewOperation({ _tag: "None" }, submitOperation),
+    ).toBe(false);
+    expect(
+      canStartPendingReviewOperation({ _tag: "None" }, discardOperation),
+    ).toBe(false);
   });
 
   it("locked states reject every new operation", () => {
@@ -189,7 +236,9 @@ describe("pending-review state transitions", () => {
       startedAt: "2026-08-09T11:35:00.000Z" as never,
     };
     expect(canStartPendingReviewOperation(locked, startOperation)).toBe(false);
-    expect(canStartPendingReviewOperation(locked, addThreadOperation)).toBe(false);
+    expect(canStartPendingReviewOperation(locked, addThreadOperation)).toBe(
+      false,
+    );
   });
 
   it("begin -> confirm persists the receipt state", () => {
@@ -229,7 +278,10 @@ describe("pending-review state transitions", () => {
     );
     if (begun._tag !== "ok") throw new Error("fixture");
     const rejected = rejectPendingReviewWrite(begun.value);
-    expect(rejected).toMatchObject({ _tag: "ok", value: { _tag: "Pending", review: { restId: "4891263665" } } });
+    expect(rejected).toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Pending", review: { restId: "4891263665" } },
+    });
   });
 
   it("timeout or lost response becomes OutcomeUnknown with the same operation", () => {
@@ -247,6 +299,32 @@ describe("pending-review state transitions", () => {
   });
 });
 
+describe("unresolved Finding ownership", () => {
+  it("round-trips a proven pending owner with one unresolved Finding", () => {
+    const unresolvedFinding = {
+      analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
+      findingId: "finding-1" as never,
+      sessionId:
+        "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never,
+      headSha: reviewRaw.headSha as never,
+      patchHash: "a".repeat(64) as never,
+    };
+    expect(
+      parsePendingReviewState({
+        _tag: "Pending",
+        review: reviewRaw,
+        unresolvedFinding,
+      }),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        _tag: "Pending",
+        unresolvedFinding: { findingId: "finding-1" },
+      },
+    });
+  });
+});
+
 describe("reconcilePendingReviewState", () => {
   const locked = (operation: PendingReviewOperation): PendingReviewState => ({
     _tag: "OutcomeUnknown",
@@ -255,29 +333,86 @@ describe("reconcilePendingReviewState", () => {
   });
 
   it("maps a proven Start result and leaves Unavailable locked", () => {
-    expect(reconcilePendingReviewState(locked(startOperation), { _tag: "Pending", review: review() })).toMatchObject({
+    expect(
+      reconcilePendingReviewState(locked(startOperation), {
+        _tag: "Pending",
+        review: review(),
+      }),
+    ).toMatchObject({
       _tag: "Pending",
       review: { restId: "4891263665" },
     });
-    expect(reconcilePendingReviewState(locked(startOperation), { _tag: "None" })).toEqual({ _tag: "None" });
-    const stillLocked = reconcilePendingReviewState(locked(startOperation), { _tag: "Unavailable" });
-    expect(stillLocked).toMatchObject({ _tag: "OutcomeUnknown", operation: startOperation });
+    expect(
+      reconcilePendingReviewState(locked(startOperation), { _tag: "None" }),
+    ).toEqual({ _tag: "None" });
+    const stillLocked = reconcilePendingReviewState(locked(startOperation), {
+      _tag: "Unavailable",
+    });
+    expect(stillLocked).toMatchObject({
+      _tag: "OutcomeUnknown",
+      operation: startOperation,
+    });
+  });
+
+  it("exposes the proven owner while keeping an ambiguous Finding unresolved", () => {
+    const findingStart: PendingReviewOperation = {
+      ...startOperation,
+      finding: {
+        analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
+        findingId: "finding-1" as never,
+        sessionId: "session-a" as never,
+        headSha: "1".repeat(40) as never,
+        patchHash: "a".repeat(64) as never,
+      },
+    };
+    expect(
+      reconcilePendingReviewState(locked(findingStart), { _tag: "None" }),
+    ).toEqual({ _tag: "None" });
+    expect(
+      reconcilePendingReviewState(locked(findingStart), {
+        _tag: "Pending",
+        review: review(),
+      }),
+    ).toMatchObject({
+      _tag: "Pending",
+      review: { restId: "4891263665" },
+      unresolvedFinding: { findingId: "finding-1" },
+    });
   });
 
   it("maps Discard: not executed stays Pending; complete absence resolves to None", () => {
-    expect(reconcilePendingReviewState(locked(discardOperation), { _tag: "Pending", review: review() })).toMatchObject({
+    expect(
+      reconcilePendingReviewState(locked(discardOperation), {
+        _tag: "Pending",
+        review: review(),
+      }),
+    ).toMatchObject({
       _tag: "Pending",
     });
-    expect(reconcilePendingReviewState(locked(discardOperation), { _tag: "None" })).toEqual({ _tag: "None" });
-    const stillLocked = reconcilePendingReviewState(locked(discardOperation), { _tag: "Unavailable" });
-    expect(stillLocked).toMatchObject({ _tag: "OutcomeUnknown", operation: discardOperation });
+    expect(
+      reconcilePendingReviewState(locked(discardOperation), { _tag: "None" }),
+    ).toEqual({ _tag: "None" });
+    const stillLocked = reconcilePendingReviewState(locked(discardOperation), {
+      _tag: "Unavailable",
+    });
+    expect(stillLocked).toMatchObject({
+      _tag: "OutcomeUnknown",
+      operation: discardOperation,
+    });
   });
 
   it("maps Submit that did not execute back to Pending; ambiguous absence stays locked", () => {
-    expect(reconcilePendingReviewState(locked(submitOperation), { _tag: "Pending", review: review() })).toMatchObject({
+    expect(
+      reconcilePendingReviewState(locked(submitOperation), {
+        _tag: "Pending",
+        review: review(),
+      }),
+    ).toMatchObject({
       _tag: "Pending",
     });
-    expect(reconcilePendingReviewState(locked(submitOperation), { _tag: "None" })).toMatchObject({
+    expect(
+      reconcilePendingReviewState(locked(submitOperation), { _tag: "None" }),
+    ).toMatchObject({
       _tag: "OutcomeUnknown",
     });
   });
@@ -291,7 +426,12 @@ describe("reconcilePendingReviewState", () => {
           reviewCommentId: "PRRC_kwDORJzsQM7fI2Xp",
           threadId: "PRRT_kwDORJzsQM0002",
           body: "Newer",
-          anchor: { path: "docs/docs.go", startLine: 2912, line: 2912, side: "new" },
+          anchor: {
+            path: "docs/docs.go",
+            startLine: 2912,
+            line: 2912,
+            side: "new",
+          },
           createdAt: "2026-08-09T11:36:00.000Z",
         },
       ],
@@ -300,15 +440,115 @@ describe("reconcilePendingReviewState", () => {
     const parsed = parseViewerPendingReview(newerReview);
     if (parsed._tag !== "ok") throw new Error("fixture");
     expect(
-      reconcilePendingReviewState(locked(addThreadOperation), { _tag: "Pending", review: parsed.value }),
+      reconcilePendingReviewState(locked(addThreadOperation), {
+        _tag: "Pending",
+        review: parsed.value,
+      }),
     ).toMatchObject({ _tag: "Pending", review: { restId: "4891263665" } });
     // No comment newer than the write start: the thread did not land.
-    const stale = reconcilePendingReviewState(locked(addThreadOperation), { _tag: "Pending", review: review() });
+    const stale = reconcilePendingReviewState(locked(addThreadOperation), {
+      _tag: "Pending",
+      review: review(),
+    });
     expect(stale).toMatchObject({ _tag: "OutcomeUnknown" });
   });
 
   it("never reconciles a confirmed state", () => {
     const confirmed: PendingReviewState = { _tag: "Pending", review: review() };
-    expect(reconcilePendingReviewState(confirmed, { _tag: "None" })).toBe(confirmed);
+    expect(reconcilePendingReviewState(confirmed, { _tag: "None" })).toBe(
+      confirmed,
+    );
+  });
+});
+
+describe("adoptObservedPendingReview", () => {
+  it("adopts a confirmed remote owner but preserves write recovery ownership", () => {
+    expect(
+      adoptObservedPendingReview(
+        { _tag: "None" },
+        { _tag: "Pending", review: review() },
+      ),
+    ).toEqual({ _tag: "Pending", review: review() });
+    const locked: PendingReviewState = {
+      _tag: "OutcomeUnknown",
+      review: review(),
+      operation: addThreadOperation,
+      startedAt: "2026-08-09T11:35:00.000Z" as never,
+    };
+    expect(adoptObservedPendingReview(locked, { _tag: "None" })).toEqual(
+      locked,
+    );
+  });
+});
+
+describe("parseFindingReviewReceipts", () => {
+  it("keeps pending receipts valid while their owner has a locked operation", () => {
+    const owner = review();
+    const threadId = owner.comments[0]?.threadId;
+    if (threadId === undefined) throw new Error("fixture");
+    const sessionId =
+      "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never;
+    const receipt = {
+      analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
+      findingId: "finding-1",
+      sessionId,
+      headSha: reviewRaw.headSha,
+      patchHash: "a".repeat(64),
+      threadId,
+      pendingReviewNodeId: reviewRaw.nodeId,
+      state: "pending",
+    };
+    for (const _tag of ["WriteInFlight", "OutcomeUnknown"] as const) {
+      expect(
+        parseFindingReviewReceipts([receipt], {
+          id: sessionId,
+          headSha: reviewRaw.headSha as never,
+          pendingReview: {
+            _tag,
+            review: owner,
+            operation: {
+              _tag: "Discard",
+              requestId: "pending-review-discard-1" as never,
+              reviewId: owner.restId,
+            },
+            startedAt: "2026-08-09T11:35:00.000Z" as never,
+          },
+        }),
+      ).toMatchObject({ _tag: "ok" });
+    }
+  });
+
+  it("accepts the receipt fields in addition to the strict Finding identity", () => {
+    const pendingReview = {
+      _tag: "Pending" as const,
+      review: review(),
+    };
+    const threadId = pendingReview.review.comments[0]?.threadId;
+    if (threadId === undefined) throw new Error("fixture");
+    expect(
+      parseFindingReviewReceipts(
+        [
+          {
+            analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
+            findingId: "finding-1",
+            sessionId:
+              "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab",
+            headSha: reviewRaw.headSha,
+            patchHash: "a".repeat(64),
+            threadId,
+            pendingReviewNodeId: reviewRaw.nodeId,
+            state: "pending",
+          },
+        ],
+        {
+          id: "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never,
+          headSha: reviewRaw.headSha as never,
+          pendingReview,
+        },
+      ),
+    ).toMatchObject({
+      _tag: "ok",
+      value: [{ threadId, state: "pending" }],
+    });
   });
 });

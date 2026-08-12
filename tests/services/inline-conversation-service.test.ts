@@ -4,7 +4,7 @@ import { InlineConversationService, type DirectConversationCommand } from "../..
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitHubThreadId, parseGitSha, parsePullRequestNumber, parseReviewId, parseWorkspaceProfileId } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
-import { ReviewWriteCoordinator } from "../../src/services/review-write-coordinator";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -118,7 +118,7 @@ describe("InlineConversationService", () => {
   it("does not enter while a direct-summary write owns the Review write coordinator", async () => {
     const gate = makeGate();
     const createThreadReply = vi.fn(async () => ok({ commentId: "PRRC_reply" }));
-    const coordinator = new ReviewWriteCoordinator();
+    const coordinator = new ReviewOperationCoordinator();
     const key = `${profileId}:${reviewId}`;
     expect(coordinator.acquire(key)).toBe(true);
     const service = new InlineConversationService(gate, makeGateway({ createThreadReply }) as never, coordinator);
@@ -130,7 +130,7 @@ describe("InlineConversationService", () => {
 
   it("validates local commands before checking the shared coordinator", async () => {
     const gate = makeGate();
-    const coordinator = new ReviewWriteCoordinator();
+    const coordinator = new ReviewOperationCoordinator();
     const key = `${profileId}:${reviewId}`;
     expect(coordinator.acquire(key)).toBe(true);
     const service = new InlineConversationService(gate, makeGateway() as never, coordinator);

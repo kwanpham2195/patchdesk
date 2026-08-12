@@ -1,9 +1,9 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   startLocalApiServer,
@@ -22,6 +22,7 @@ import { ReviewStore } from "../src/adapters/storage/review-store";
 import { ReviewRemoteStore } from "../src/adapters/storage/review-remote-store";
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { ProfileSettingsService } from "../src/services/profile-service";
+import { ReviewDiagnosticService } from "../src/services/review-diagnostic-service";
 import { err, ok } from "../src/domain/result";
 import type { PiRuntimeModelCatalog } from "../src/adapters/pi/pi-runtime-model-catalog";
 
@@ -29,18 +30,32 @@ const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";
 const canonicalInsightRunId = "insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
 let localApi: LocalApiServer | undefined;
+let defaultPaths: PatchdeskPaths;
+const defaultPathRoots: string[] = [];
+
+beforeEach(async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-local-api-"));
+  defaultPathRoots.push(root);
+  defaultPaths = PatchdeskPaths.forTest(root);
+});
 
 afterEach(async () => {
   if (localApi !== undefined) {
     await localApi.stop();
     localApi = undefined;
   }
+  await Promise.all(defaultPathRoots.splice(0).map((root) => rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 100,
+    retryDelay: 50,
+  })));
 });
 
 describe("local API capability boundary", () => {
   it("keeps provider status passive and Codex model loading explicit", async () => {
     let activated = 0;
-    const startup = await startLocalApiServer({ capability, allowedOrigin, insightProviders: {
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths, insightProviders: {
       async passive() { return ok({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Use external login." }], models: [] }); },
       async activateCodex() { activated += 1; return ok({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Use external login." }], models: [{ provider: "codex-cli-account", id: "fixture", label: "Fixture", reasoning: ["low"], defaultReasoning: "low" }] }); },
     } as never });
@@ -61,6 +76,7 @@ describe("local API capability boundary", () => {
     const startup = await startLocalApiServer({
       capability,
       allowedOrigin,
+      paths: defaultPaths,
       supportedReviewModels: ["fixture-model"],
       workflowInvoker: { async invoke() { return ok({}); } },
     });
@@ -139,7 +155,7 @@ describe("local API capability boundary", () => {
   });
 
   it("rejects invalid and forged publication recovery identities without invoking publication writes", async () => {
-    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths });
     if (startup._tag !== "started") throw new Error("Expected local API startup");
     localApi = startup.server;
     const headers = writeHeaders();
@@ -153,6 +169,7 @@ describe("local API capability boundary", () => {
     const startup = await startLocalApiServer({
       capability,
       allowedOrigin,
+      paths: defaultPaths,
       supportedReviewModels: ["fixture-model"],
       insights: {
         async start(input) { return ok({ runId: canonicalInsightRunId as never, type: input.type, status: "queued" as const }); },
@@ -201,7 +218,7 @@ describe("local API capability boundary", () => {
     { recentWrites: [{ _tag: "PendingThread" }] },
     { recentWrites: [{ _tag: "Unknown" }] },
   ])("rejects a malformed write journal on detect-updates: %j", async (journal) => {
-    const startup = await startLocalApiServer({ capability, allowedOrigin });
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths });
     if (startup._tag !== "started") throw new Error("Expected local API startup");
     localApi = startup.server;
     const response = await fetch(new URL("v1/reviews/detect-updates", localApi.url), {
@@ -222,7 +239,7 @@ describe("local API capability boundary", () => {
       async observe(input) { return ok({ runId: input.runId, type: input.type, status: "running" as const }); },
       async dismissFinding(input) { return ok({ findingId: input.findingId, status: "dismissed" as const }); },
     };
-    const startup = await startLocalApiServer({ capability, allowedOrigin, insights });
+    const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths, insights });
     if (startup._tag !== "started") throw new Error("Expected local API startup");
     localApi = startup.server;
     const invalid = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, model: "model", reasoning: "low", localPath: "/tmp/private" }) });
@@ -255,7 +272,7 @@ describe("local API capability boundary", () => {
           return ok({ models });
         },
       };
-      const startup = await startLocalApiServer({ capability, allowedOrigin, modelCatalog });
+      const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths, modelCatalog });
       if (startup._tag !== "started") throw new Error("Expected local API startup");
       localApi = startup.server;
       const response = await fetch(new URL("v1/reviews/models", localApi.url), { headers });
@@ -270,7 +287,7 @@ describe("local API capability boundary", () => {
 
   it("maps authenticated review-run parsing, catalog, and missing-session failures", async () => {
     const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability, "Content-Type": "application/json" };
-    const configured = await startLocalApiServer({ capability, allowedOrigin, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke() { return ok({}); } } });
+    const configured = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths, supportedReviewModels: ["fixture-model"], workflowInvoker: { async invoke() { return ok({}); } } });
     if (configured._tag !== "started") throw new Error("Expected local API startup");
     localApi = configured.server;
     const invalid = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers, body: JSON.stringify({}) });
@@ -282,7 +299,7 @@ describe("local API capability boundary", () => {
     await localApi.stop();
     localApi = undefined;
 
-    const unavailable = await startLocalApiServer({ capability, allowedOrigin, workflowInvoker: { async invoke() { return ok({}); } } });
+    const unavailable = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths, workflowInvoker: { async invoke() { return ok({}); } } });
     if (unavailable._tag !== "started") throw new Error("Expected local API startup");
     localApi = unavailable.server;
     const catalog = await fetch(new URL("v1/reviews/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", sessionId: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456", model: "fixture-model", reasoning: "medium" }) });
@@ -340,7 +357,7 @@ describe("local API capability boundary", () => {
     const fixture = await mergeApiFixture();
     localApi = fixture.api;
 
-    const mergeRequest = { profileId: fixture.profileId, reviewId: fixture.reviewId, sessionId: fixture.session.id, expectedHeadSha: fixture.session.key.headSha, expectedPatchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", expectedRevision: fixture.session.batchContent?.updatedAt ?? fixture.session.updatedAt, method: "squash", acknowledgedWarnings: true };
+    const mergeRequest = { profileId: fixture.profileId, reviewId: fixture.reviewId, sessionId: fixture.session.id, expectedHeadSha: fixture.session.key.headSha, expectedBaseSha: fixture.session.pr.baseSha, expectedPatchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", expectedRevision: fixture.session.batchContent?.updatedAt ?? fixture.session.updatedAt, method: "squash", acknowledgedWarnings: { revision: { headSha: fixture.session.key.headSha, baseSha: fixture.session.pr.baseSha, patchHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }, warningCodes: [] } };
     const response = await fetch(new URL("v1/reviews/merge", localApi.url), { method: "POST", headers: writeHeaders(), body: JSON.stringify(mergeRequest) });
     const responseBody = await response.json();
     expect(response.status, JSON.stringify(responseBody)).toBe(200);
@@ -385,6 +402,7 @@ describe("local API capability boundary", () => {
 
   it("exports a sanitized support bundle only through the authenticated route", async () => {
     localApi = await startTestLocalApi();
+    await recordFixtureDiagnostic();
     const response = await fetch(new URL("v1/diagnostics/support-bundle", localApi.url), {
       method: "POST",
       headers: {
@@ -406,6 +424,7 @@ describe("local API capability boundary", () => {
 
   it("lists redacted diagnostic activity only through the authenticated route", async () => {
     localApi = await startTestLocalApi();
+    await recordFixtureDiagnostic();
     const response = await fetch(new URL("v1/diagnostics?profileId=cfw", localApi.url), {
       headers: {
         "X-Patchdesk-Capability": capability,
@@ -496,6 +515,7 @@ describe("local API capability boundary", () => {
     const startup = await startLocalApiServer({
       capability,
       allowedOrigin,
+      paths: defaultPaths,
       appMetadata: {
         productName: "Patchdesk",
         version: "0.1.0",
@@ -787,7 +807,7 @@ async function mergeApiFixture() {
   const remoteSaved = await remote.saveCandidate({ profileId: fixture.profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha: fixture.session.key.headSha, ref: { host: fixture.session.key.host, owner: fixture.session.key.owner, repo: fixture.session.key.repo, number: fixture.session.key.prNumber }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: fixture.session.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
   if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
   const review = createReview({ identity: { profileId: fixture.profileId, host: fixture.session.key.host, owner: fixture.session.key.owner, repo: fixture.session.key.repo, prNumber: fixture.session.key.prNumber }, currentSessionId: fixture.session.id, headSha: fixture.session.key.headSha, createdAt: fixture.session.createdAt });
-  await reviews.save({ ...review, representedRemote: { headSha: fixture.session.key.headSha, pullRequestUpdatedAt: fixture.session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: fixture.session.createdAt } });
+  await reviews.save({ ...review, representedRemote: { headSha: fixture.session.key.headSha, pullRequestUpdatedAt: fixture.session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: fixture.session.createdAt }, freshness: { _tag: "Fresh" } });
   const methods: string[] = [];
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths: fixture.paths, github: fixture.github, mergeWriter: { async mergePullRequest(input) { methods.push(input.method); return ok({}); } } });
   if (startup._tag !== "started") throw new Error("Expected local API startup");
@@ -798,17 +818,17 @@ async function persistedReviewFixture() {
   const paths = PatchdeskPaths.forTest(await mkdtemp(join(tmpdir(), "patchdesk-api-run-")));
   const profileId = must(parseWorkspaceProfileId("cfw"));
   const key = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)), headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")) };
-  const seeded = createReviewSession({ key, pr: { headSha: key.headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha: key.headSha }, createdAt: must(parseIsoTimestamp("2026-08-01T00:00:00.000Z")) });
+  const seeded = createReviewSession({ key, pr: { headSha: key.headSha, baseSha: key.headSha, isDraft: false, isOpen: true }, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, "placeholder" as never))), headSha: key.headSha }, createdAt: must(parseIsoTimestamp("2026-08-01T00:00:00.000Z")) });
   const session = { ...seeded, patchPath: must(parseAbsolutePath(paths.patchFile(profileId, seeded.id))), worktree: { path: must(parseAbsolutePath(paths.worktreeDirectory(profileId, seeded.id))), headSha: key.headSha } };
   const profile = must(parseWorkspaceProfileConfig({ id: profileId, label: "CFW", githubHost: "github.com", ghAccount: "fixture", ownerFilters: [], workspaceRoots: [], rulePaths: [], repos: [] }));
   await new ProfileStore(paths).save(profile);
   await new ReviewSessionStore(paths).save(session);
-  const github = new FakeGitHubAdapter({ pullRequest: { ref: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isDraft: false, isOpen: true, title: "Fixture PR", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: "2026-08-01T00:00:00.000Z" as never }, mergePolicy: { pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable", reviewDecision: "approved", checks: { overall: "passing", checks: [] }, complete: true }, checks: { overall: "passing", checks: [] }, comments: { threads: [], complete: true } });
+  const github = new FakeGitHubAdapter({ pullRequest: { ref: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, baseSha: key.headSha, changedFileCount: 0, isDraft: false, isOpen: true, title: "Fixture PR", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: "2026-08-01T00:00:00.000Z" as never }, diff: "", mergePolicy: { pr: { host: key.host, owner: key.owner, repo: key.repo, number: key.prNumber }, headSha: key.headSha, baseSha: key.headSha, isOpen: true, isDraft: false, mergeability: "mergeable", reviewDecision: "approved", checks: { overall: "passing", checks: [] }, complete: true }, checks: { overall: "passing", checks: [] }, comments: { threads: [], complete: true } });
   return { paths, profileId, session, github };
 }
 
 async function startTestLocalApi(): Promise<LocalApiServer> {
-  const startup = await startLocalApiServer({ capability, allowedOrigin });
+  const startup = await startLocalApiServer({ capability, allowedOrigin, paths: defaultPaths });
   if (startup._tag !== "started") {
     throw new Error("Expected valid local API startup");
   }
@@ -840,7 +860,7 @@ function canonicalReviewRouteFixtures(): ReadonlyArray<CanonicalReviewRouteFixtu
   const finding = { profileId: "cfw", reviewId, runId: insightRunId, reason: "Not applicable." };
   return [
     { method: "GET", path: "v1/reviews/models", authenticatedStatus: 200 },
-    { method: "POST", path: "v1/reviews/open", body: identity, authenticatedStatus: 503 },
+    { method: "POST", path: "v1/reviews/open", body: identity, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/load", body: { profileId: "cfw", reviewId }, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/detect-updates", body: update, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/refresh", body: update, authenticatedStatus: 404 },
@@ -869,12 +889,27 @@ function canonicalReviewRouteFixtures(): ReadonlyArray<CanonicalReviewRouteFixtu
     { method: "POST", path: "v1/reviews/published-reviews/dismiss", body: { profileId: "cfw", reviewId, publishedReviewId: "review-1", message: "No longer relevant", confirmation: true }, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/apply-batch", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, acknowledgement: true }, authenticatedStatus: 404 },
     { method: "POST", path: "v1/reviews/submit-batch", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, event: "COMMENT", acknowledgement: true }, authenticatedStatus: 404 },
-    { method: "POST", path: "v1/reviews/merge", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedPatchHash, expectedRevision: revision, method: "squash", acknowledgedWarnings: true }, authenticatedStatus: 404 },
+    { method: "POST", path: "v1/reviews/merge", body: { profileId: "cfw", reviewId, sessionId, expectedHeadSha, expectedBaseSha: expectedHeadSha, expectedPatchHash, expectedRevision: revision, method: "squash", acknowledgedWarnings: { revision: { headSha: expectedHeadSha, baseSha: expectedHeadSha, patchHash: expectedPatchHash }, warningCodes: [] } }, authenticatedStatus: 404 },
   ];
 }
 
 function writeHeaders(): Record<string, string> {
   return { "X-Patchdesk-Capability": capability, Origin: allowedOrigin, "Content-Type": "application/json" };
+}
+
+async function recordFixtureDiagnostic(): Promise<void> {
+  const diagnostics = new ReviewDiagnosticService(
+    defaultPaths,
+    () => "2026-08-12T00:00:00.000Z",
+  );
+  const recorded = await diagnostics.record({
+    profileId: must(parseWorkspaceProfileId("cfw")),
+    category: "migration",
+    phase: "attempt-recover",
+    retryable: false,
+    detail: "Fixture diagnostic.",
+  });
+  if (recorded._tag === "err") throw new Error("Expected fixture diagnostic");
 }
 
 async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewWriter["createPendingReview"]>>) {
@@ -908,7 +943,7 @@ async function reviewWriteFixture(createResult: Awaited<ReturnType<GitHubReviewW
   const remoteSaved = await remote.saveCandidate({ profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha, ref: { host, owner, repo, number }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: completed.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
   if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
   const review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha, createdAt: completed.createdAt });
-  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: completed.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: completed.createdAt } });
+  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: completed.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: completed.createdAt }, freshness: { _tag: "Fresh" } });
   const github = new FakeGitHubAdapter({ pullRequest: { headSha } } as never);
   const writer: GitHubReviewWriter = { async createPendingReview() { return createResult; }, async submitPendingReview() { return { _tag: "ok", value: { reviewId: "9001" } }; } };
   const startup = await startLocalApiServer({ capability, allowedOrigin, paths, github, reviewWriter: writer });
@@ -943,7 +978,7 @@ async function pendingReviewFixture(pendingReviewValues: Record<string, unknown>
   const remoteSaved = await remote.saveCandidate({ profileId, reviewId, snapshot: { schemaVersion: 1, pullRequest: { headSha, ref: { host, owner, repo, number }, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "main", reviewState: "unknown", mergeability: "unknown", labels: [], isDraft: false, isOpen: true, updatedAt: session.createdAt }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "unknown", checks: [] } } });
   if (remoteSaved._tag !== "ok") throw new Error("Expected remote fixture");
   const review = createReview({ identity: { profileId, host, owner, repo, prNumber: number }, currentSessionId: session.id, headSha, createdAt: session.createdAt });
-  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: session.createdAt } });
+  await reviews.save({ ...review, representedRemote: { headSha, pullRequestUpdatedAt: session.createdAt, snapshotHash: remoteSaved.value.snapshotHash, refreshedAt: session.createdAt }, freshness: { _tag: "Fresh" } });
   const github = new FakeGitHubAdapter({
     authenticatedAccount: { host: "github.com", account: "fixture" },
     pullRequest: { headSha } as never,

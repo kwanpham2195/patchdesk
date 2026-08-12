@@ -15,7 +15,7 @@ import type {
 import type { ReviewSession } from "../../src/domain/review-session";
 import { ok, type Result } from "../../src/domain/result";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
-import { ReviewWriteCoordinator } from "../../src/services/review-write-coordinator";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewWriteGate } from "../../src/services/review-write-gate";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -84,7 +84,7 @@ function makeGateway(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function service(sessionValue: ReviewSession, gateway: ReturnType<typeof makeGateway>, store: ReturnType<typeof makeStore>["store"], coordinator?: ReviewWriteCoordinator) {
+function service(sessionValue: ReviewSession, gateway: ReturnType<typeof makeGateway>, store: ReturnType<typeof makeStore>["store"], coordinator?: ReviewOperationCoordinator) {
   return new DirectSummaryReviewService(
     makeGate(sessionValue),
     store,
@@ -218,7 +218,7 @@ describe("DirectSummaryReviewService coordination", () => {
       createDirectSummaryReview: vi.fn(() => new Promise(() => undefined)),
     });
     const fixture = makeStore(session());
-    const coordinator = new ReviewWriteCoordinator();
+    const coordinator = new ReviewOperationCoordinator();
     void service(fixture.current(), gateway, fixture.store, coordinator).submit({ profileId, reviewId, expected: expected as never, event: "COMMENT", body: "First" });
     await new Promise((resolve) => setTimeout(resolve, 0));
     const second = await service(fixture.current(), gateway, fixture.store, coordinator).submit({ profileId, reviewId, expected: expected as never, event: "COMMENT", body: "Second" });

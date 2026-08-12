@@ -79,7 +79,7 @@ export type FindingReviewSource = {
 export type FindingReviewReceipt = FindingReviewSource & {
   readonly threadId: GitHubThreadId;
   readonly pendingReviewNodeId: GitHubReviewNodeId;
-  readonly state: "pending" | "published";
+  readonly state: "pending" | "published" | "historical";
 };
 
 /** The adapter must return the identity it created; the service never guesses it. */
@@ -90,7 +90,11 @@ export type PendingReviewThreadWrite = {
 
 /** One durable remote write planned against the pending-review owner. */
 export type PendingReviewOperation =
-  | { readonly _tag: "Start"; readonly requestId: PendingReviewRequestId; readonly finding?: FindingReviewSource }
+  | {
+      readonly _tag: "Start";
+      readonly requestId: PendingReviewRequestId;
+      readonly finding?: FindingReviewSource;
+    }
   | {
       readonly _tag: "AddThread";
       readonly requestId: PendingReviewRequestId;
@@ -117,16 +121,22 @@ export type PendingReviewOperation =
  */
 export type PendingReviewState =
   | { readonly _tag: "None" }
-  | { readonly _tag: "Pending"; readonly review: ViewerPendingReview }
+  | {
+      readonly _tag: "Pending";
+      readonly review: ViewerPendingReview;
+      readonly unresolvedFinding?: FindingReviewSource;
+    }
   | {
       readonly _tag: "WriteInFlight";
       readonly review?: ViewerPendingReview;
+      readonly unresolvedFinding?: FindingReviewSource;
       readonly operation: PendingReviewOperation;
       readonly startedAt: IsoTimestamp;
     }
   | {
       readonly _tag: "OutcomeUnknown";
       readonly review?: ViewerPendingReview;
+      readonly unresolvedFinding?: FindingReviewSource;
       readonly operation: PendingReviewOperation;
       readonly startedAt: IsoTimestamp;
     };
@@ -162,6 +172,26 @@ export function isPendingReviewConfirmed(
 export function isPendingReviewLocked(state: PendingReviewState): boolean {
   return state._tag === "WriteInFlight" || state._tag === "OutcomeUnknown";
 }
+/**
+ * Adopt the authenticated viewer's authoritative remote draft only when no
+ * write is in flight or uncertain. A locked operation owns its recovery
+ * evidence; an ordinary observation must not replace it.
+ */
+export function adoptObservedPendingReview(
+  current: PendingReviewState,
+  observed: PendingReviewRead,
+): PendingReviewState {
+  if (isPendingReviewLocked(current) || observed._tag === "Unavailable")
+    return current;
+  if (observed._tag !== "Pending") return { _tag: "None" };
+  return pendingOwner(
+    observed.review,
+    current._tag === "Pending" &&
+      current.review.nodeId === observed.review.nodeId
+      ? current.unresolvedFinding
+      : undefined,
+  );
+}
 
 /** Whether an operation can start from the current state. */
 export function canStartPendingReviewOperation(
@@ -171,10 +201,14 @@ export function canStartPendingReviewOperation(
   if (isPendingReviewLocked(state)) return false;
   if (operation._tag === "Start") return state._tag === "None";
   if (operation._tag === "AddThread") {
-    return state._tag === "Pending" && state.review.nodeId === operation.reviewId;
+    return (
+      state._tag === "Pending" && state.review.nodeId === operation.reviewId
+    );
   }
   if (operation._tag === "Submit" || operation._tag === "Discard") {
-    return state._tag === "Pending" && state.review.restId === operation.reviewId;
+    return (
+      state._tag === "Pending" && state.review.restId === operation.reviewId
+    );
   }
   return false;
 }
@@ -191,6 +225,9 @@ export function beginPendingReviewWrite(
   return ok({
     _tag: "WriteInFlight",
     ...(state._tag === "Pending" ? { review: state.review } : {}),
+    ...(state._tag === "Pending" && state.unresolvedFinding !== undefined
+      ? { unresolvedFinding: state.unresolvedFinding }
+      : {}),
     operation,
     startedAt,
   });
@@ -204,7 +241,13 @@ export function confirmPendingReviewWrite(
   if (state._tag !== "WriteInFlight") return invalidPendingReview();
   return nextReview === undefined
     ? ok({ _tag: "None" })
-    : ok({ _tag: "Pending", review: nextReview });
+    : ok({
+        _tag: "Pending",
+        review: nextReview,
+        ...(state.unresolvedFinding === undefined
+          ? {}
+          : { unresolvedFinding: state.unresolvedFinding }),
+      });
 }
 
 /**
@@ -217,7 +260,13 @@ export function rejectPendingReviewWrite(
   if (state._tag !== "WriteInFlight") return invalidPendingReview();
   return state.review === undefined
     ? ok({ _tag: "None" })
-    : ok({ _tag: "Pending", review: state.review });
+    : ok({
+        _tag: "Pending",
+        review: state.review,
+        ...(state.unresolvedFinding === undefined
+          ? {}
+          : { unresolvedFinding: state.unresolvedFinding }),
+      });
 }
 
 /** A timeout, lost response, or failed receipt persistence becomes OutcomeUnknown. */
@@ -228,6 +277,9 @@ export function markPendingReviewOutcomeUnknown(
   return ok({
     _tag: "OutcomeUnknown",
     ...(state.review === undefined ? {} : { review: state.review }),
+    ...(state.unresolvedFinding === undefined
+      ? {}
+      : { unresolvedFinding: state.unresolvedFinding }),
     operation: state.operation,
     startedAt: state.startedAt,
   });
@@ -247,18 +299,32 @@ export function reconcilePendingReviewState(
   if (read._tag === "Unavailable") return state;
   const operation = state.operation;
   const startedAt = state.startedAt;
-  if ((operation._tag === "Start" || operation._tag === "AddThread") && operation.finding !== undefined) {
-    // The remote owner alone cannot prove which exact thread this Finding created.
-    return state;
+  if (
+    (operation._tag === "Start" || operation._tag === "AddThread") &&
+    operation.finding !== undefined
+  ) {
+    // The remote owner alone cannot prove which exact thread this Finding
+    // created. Keep that one Finding locked, but expose the proven owner for
+    // inspection, other comments, submission, or discard.
+    if (read._tag === "Pending") {
+      return {
+        _tag: "Pending",
+        review: read.review,
+        unresolvedFinding: operation.finding,
+      };
+    }
+    return operation._tag === "Start" ? { _tag: "None" } : state;
   }
   if (operation._tag === "Start") {
-    return read._tag === "Pending" ? { _tag: "Pending", review: read.review } : { _tag: "None" };
+    return read._tag === "Pending"
+      ? { _tag: "Pending", review: read.review }
+      : { _tag: "None" };
   }
   if (operation._tag === "Submit") {
     if (read._tag === "Pending") {
       // The pending review still exists: the submit did not execute. The lock
       // lifts to the confirmed Pending owner so the maintainer can retry.
-      return { _tag: "Pending", review: read.review };
+      return pendingOwner(read.review, state.unresolvedFinding);
     }
     if (read._tag === "None") {
       // No pending review remains. Without a matching submitted-review
@@ -272,7 +338,7 @@ export function reconcilePendingReviewState(
       // The pending review still exists: the discard did not execute. The
       // lock lifts to the confirmed Pending owner so the maintainer can
       // retry.
-      return { _tag: "Pending", review: read.review };
+      return pendingOwner(read.review, state.unresolvedFinding);
     }
     if (read._tag === "None") {
       // No viewer pending review remains: the discard intent is satisfied
@@ -290,14 +356,27 @@ export function reconcilePendingReviewState(
     const landed = read.review.comments.some(
       (comment) => comment.createdAt > startedAt,
     );
-    return landed ? { _tag: "Pending", review: read.review } : state;
+    return landed ? pendingOwner(read.review, state.unresolvedFinding) : state;
   }
   // The review is gone (submitted or absent): without thread identity proof
   // the outcome stays locked.
   return state;
 }
 
-export type InvalidPendingReviewState = { readonly _tag: "InvalidPendingReviewState" };
+function pendingOwner(
+  review: ViewerPendingReview,
+  unresolvedFinding: FindingReviewSource | undefined,
+): PendingReviewState {
+  return {
+    _tag: "Pending",
+    review,
+    ...(unresolvedFinding === undefined ? {} : { unresolvedFinding }),
+  };
+}
+
+export type InvalidPendingReviewState = {
+  readonly _tag: "InvalidPendingReviewState";
+};
 
 const anchorSchema = v.strictObject({
   path: v.string(),
@@ -346,7 +425,7 @@ const findingReceiptSchema = v.strictObject({
   patchHash: v.string(),
   threadId: v.string(),
   pendingReviewNodeId: v.string(),
-  state: v.picklist(["pending", "published"]),
+  state: v.picklist(["pending", "published", "historical"]),
 });
 
 const operationSchema = v.variant("_tag", [
@@ -380,16 +459,19 @@ const stateSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("Pending"),
     review: reviewSchema,
+    unresolvedFinding: v.optional(findingSourceSchema),
   }),
   v.strictObject({
     _tag: v.literal("WriteInFlight"),
     review: v.optional(reviewSchema),
+    unresolvedFinding: v.optional(findingSourceSchema),
     operation: operationSchema,
     startedAt: v.string(),
   }),
   v.strictObject({
     _tag: v.literal("OutcomeUnknown"),
     review: v.optional(reviewSchema),
+    unresolvedFinding: v.optional(findingSourceSchema),
     operation: operationSchema,
     startedAt: v.string(),
   }),
@@ -412,7 +494,10 @@ export function parsePendingReviewState(
     raw.output._tag === "OutcomeUnknown"
       ? raw.output.review
       : undefined;
-  const review = reviewInput === undefined ? ok(undefined) : parseViewerPendingReview(reviewInput);
+  const review =
+    reviewInput === undefined
+      ? ok(undefined)
+      : parseViewerPendingReview(reviewInput);
   if (review._tag === "err") return invalidPendingReviewState();
   const operation =
     raw.output._tag === "WriteInFlight" || raw.output._tag === "OutcomeUnknown"
@@ -421,16 +506,35 @@ export function parsePendingReviewState(
   if (operation._tag === "err") return invalidPendingReviewState();
   if (raw.output._tag === "None") return ok({ _tag: "None" });
   if (raw.output._tag === "Pending") {
-    return review.value === undefined
-      ? invalidPendingReviewState()
-      : ok({ _tag: "Pending", review: review.value });
+    if (review.value === undefined) return invalidPendingReviewState();
+    const unresolvedFinding =
+      raw.output.unresolvedFinding === undefined
+        ? ok(undefined)
+        : parseFindingReviewSource(raw.output.unresolvedFinding);
+    return unresolvedFinding._tag === "err"
+      ? unresolvedFinding
+      : ok({
+          _tag: "Pending",
+          review: review.value,
+          ...(unresolvedFinding.value === undefined
+            ? {}
+            : { unresolvedFinding: unresolvedFinding.value }),
+        });
   }
   if (operation.value === undefined || startedAt.value === undefined) {
     return invalidPendingReviewState();
   }
+  const unresolvedFinding =
+    raw.output.unresolvedFinding === undefined
+      ? ok(undefined)
+      : parseFindingReviewSource(raw.output.unresolvedFinding);
+  if (unresolvedFinding._tag === "err") return unresolvedFinding;
   return ok({
     _tag: raw.output._tag,
     ...(review.value === undefined ? {} : { review: review.value }),
+    ...(unresolvedFinding.value === undefined
+      ? {}
+      : { unresolvedFinding: unresolvedFinding.value }),
     operation: operation.value,
     startedAt: startedAt.value,
   });
@@ -480,7 +584,12 @@ export function parseViewerPendingReview(
     restId: restId.value,
     nodeId: nodeId.value,
     author: author.value,
-    pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value },
+    pr: {
+      host: host.value,
+      owner: owner.value,
+      repo: repo.value,
+      number: number.value,
+    },
     headSha: headSha.value,
     comments,
     createdAt: createdAt.value,
@@ -525,7 +634,9 @@ function parseAnchor(
   };
 }
 
-function parseFindingReviewSource(input: unknown): Result<FindingReviewSource, InvalidPendingReviewState> {
+function parseFindingReviewSource(
+  input: unknown,
+): Result<FindingReviewSource, InvalidPendingReviewState> {
   const raw = v.safeParse(findingSourceSchema, input);
   if (!raw.success) return invalidPendingReviewState();
   const analysisRunId = parseInsightRunId(raw.output.analysisRunId);
@@ -533,8 +644,21 @@ function parseFindingReviewSource(input: unknown): Result<FindingReviewSource, I
   const sessionId = parseReviewSessionId(raw.output.sessionId);
   const headSha = parseGitSha(raw.output.headSha);
   const patchHash = parseContentHash(raw.output.patchHash);
-  if (analysisRunId._tag === "err" || findingId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err") return invalidPendingReviewState();
-  return ok({ analysisRunId: analysisRunId.value, findingId: findingId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value });
+  if (
+    analysisRunId._tag === "err" ||
+    findingId._tag === "err" ||
+    sessionId._tag === "err" ||
+    headSha._tag === "err" ||
+    patchHash._tag === "err"
+  )
+    return invalidPendingReviewState();
+  return ok({
+    analysisRunId: analysisRunId.value,
+    findingId: findingId.value,
+    sessionId: sessionId.value,
+    headSha: headSha.value,
+    patchHash: patchHash.value,
+  });
 }
 
 function parseOperation(
@@ -543,23 +667,52 @@ function parseOperation(
   const requestId = parsePendingReviewRequestId(input.requestId);
   if (requestId._tag === "err") return invalidPendingReviewState();
   if (input._tag === "Start") {
-    const finding = input.finding === undefined ? ok(undefined) : parseFindingReviewSource(input.finding);
-    return finding._tag === "err" ? finding : ok({ _tag: "Start", requestId: requestId.value, ...(finding.value === undefined ? {} : { finding: finding.value }) });
+    const finding =
+      input.finding === undefined
+        ? ok(undefined)
+        : parseFindingReviewSource(input.finding);
+    return finding._tag === "err"
+      ? finding
+      : ok({
+          _tag: "Start",
+          requestId: requestId.value,
+          ...(finding.value === undefined ? {} : { finding: finding.value }),
+        });
   }
   if (input._tag === "Submit" || input._tag === "Discard") {
     const reviewId = parseGitHubReviewRestId(input.reviewId);
     return reviewId._tag === "err"
       ? invalidPendingReviewState()
       : input._tag === "Submit"
-        ? ok({ _tag: "Submit", requestId: requestId.value, reviewId: reviewId.value, event: input.event })
-        : ok({ _tag: "Discard", requestId: requestId.value, reviewId: reviewId.value });
+        ? ok({
+            _tag: "Submit",
+            requestId: requestId.value,
+            reviewId: reviewId.value,
+            event: input.event,
+          })
+        : ok({
+            _tag: "Discard",
+            requestId: requestId.value,
+            reviewId: reviewId.value,
+          });
   }
   const reviewId = parseGitHubReviewNodeId(input.reviewId);
   const anchor = parseAnchor(input.anchor);
-  const finding = input.finding === undefined ? ok(undefined) : parseFindingReviewSource(input.finding);
-  return reviewId._tag === "err" || anchor === undefined || finding._tag === "err"
+  const finding =
+    input.finding === undefined
+      ? ok(undefined)
+      : parseFindingReviewSource(input.finding);
+  return reviewId._tag === "err" ||
+    anchor === undefined ||
+    finding._tag === "err"
     ? invalidPendingReviewState()
-    : ok({ _tag: "AddThread", requestId: requestId.value, reviewId: reviewId.value, anchor, ...(finding.value === undefined ? {} : { finding: finding.value }) });
+    : ok({
+        _tag: "AddThread",
+        requestId: requestId.value,
+        reviewId: reviewId.value,
+        anchor,
+        ...(finding.value === undefined ? {} : { finding: finding.value }),
+      });
 }
 
 function invalidPendingReview(): Result<never, InvalidPendingReview> {
@@ -573,24 +726,65 @@ function invalidPendingReviewState(): Result<never, InvalidPendingReviewState> {
 /** Parse receipts and reject duplicate Finding identities or unproven pending threads. */
 export function parseFindingReviewReceipts(
   input: unknown,
-  session: { readonly id: ReviewSessionId; readonly headSha: GitSha; readonly pendingReview?: PendingReviewState },
+  session: {
+    readonly id: ReviewSessionId;
+    readonly headSha: GitSha;
+    readonly pendingReview?: PendingReviewState;
+  },
 ): Result<ReadonlyArray<FindingReviewReceipt>, InvalidPendingReviewState> {
   const raw = v.safeParse(v.array(findingReceiptSchema), input);
   if (!raw.success) return invalidPendingReviewState();
   const receipts: FindingReviewReceipt[] = [];
   const identities = new Set<string>();
   for (const value of raw.output) {
-    const source = parseFindingReviewSource(value);
+    const source = parseFindingReviewSource({
+      analysisRunId: value.analysisRunId,
+      findingId: value.findingId,
+      sessionId: value.sessionId,
+      headSha: value.headSha,
+      patchHash: value.patchHash,
+    });
     const threadId = parseGitHubThreadId(value.threadId);
-    const pendingReviewNodeId = parseGitHubReviewNodeId(value.pendingReviewNodeId);
-    if (source._tag === "err" || threadId._tag === "err" || pendingReviewNodeId._tag === "err" || source.value.sessionId !== session.id || source.value.headSha !== session.headSha) return invalidPendingReviewState();
+    const pendingReviewNodeId = parseGitHubReviewNodeId(
+      value.pendingReviewNodeId,
+    );
+    if (
+      source._tag === "err" ||
+      threadId._tag === "err" ||
+      pendingReviewNodeId._tag === "err" ||
+      source.value.sessionId !== session.id ||
+      source.value.headSha !== session.headSha
+    )
+      return invalidPendingReviewState();
     const identity = `${source.value.analysisRunId}:${source.value.findingId}:${source.value.sessionId}:${source.value.headSha}:${source.value.patchHash}`;
     if (identities.has(identity)) return invalidPendingReviewState();
     identities.add(identity);
-    if (value.state === "pending" && (session.pendingReview?._tag !== "Pending" || session.pendingReview.review.nodeId !== pendingReviewNodeId.value || !session.pendingReview.review.comments.some((comment) => comment.threadId === threadId.value))) return invalidPendingReviewState();
-    receipts.push({ ...source.value, threadId: threadId.value, pendingReviewNodeId: pendingReviewNodeId.value, state: value.state });
+    const owner = pendingReviewOwner(session.pendingReview);
+    if (
+      value.state === "pending" &&
+      (owner === undefined ||
+        owner.nodeId !== pendingReviewNodeId.value ||
+        !owner.comments.some((comment) => comment.threadId === threadId.value))
+    )
+      return invalidPendingReviewState();
+    receipts.push({
+      ...source.value,
+      threadId: threadId.value,
+      pendingReviewNodeId: pendingReviewNodeId.value,
+      state: value.state,
+    });
   }
   return ok(receipts);
+}
+
+function pendingReviewOwner(
+  state: PendingReviewState | undefined,
+): ViewerPendingReview | undefined {
+  if (state?._tag === "Pending") return state.review;
+  if (state?._tag === "WriteInFlight" || state?._tag === "OutcomeUnknown") {
+    return state.review;
+  }
+  return undefined;
 }
 
 /** Session binding check: a confirmed review must belong to the session's pull request. */

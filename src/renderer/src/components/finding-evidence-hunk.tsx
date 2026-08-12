@@ -26,7 +26,8 @@ export function FindingEvidenceHunk({
     [anchor, patch],
   );
   const parsed = useMemo(
-    () => evidence === undefined ? undefined : parseReviewDiff(evidence.patch),
+    () =>
+      evidence === undefined ? undefined : parseReviewDiff(evidence.patch),
     [evidence],
   );
   if (evidence === undefined || parsed === undefined) return null;
@@ -35,12 +36,20 @@ export function FindingEvidenceHunk({
     fileMode: "all",
   };
   return (
-    <section aria-label={`Finding evidence ${evidence.path}`} className="mt-3 overflow-hidden rounded-md border">
+    <section
+      aria-label={`Finding evidence ${evidence.path}`}
+      className="mt-3 overflow-hidden rounded-md border"
+    >
       <p className="border-b bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
         {evidence.path}:{evidence.selectedRange.start}
-        {evidence.selectedRange.end === evidence.selectedRange.start ? "" : `–${evidence.selectedRange.end}`}
+        {evidence.selectedRange.end === evidence.selectedRange.start
+          ? ""
+          : `–${evidence.selectedRange.end}`}
       </p>
-      <div className="max-h-80 overflow-auto">
+      <div
+        aria-label="Resizable code evidence"
+        className="h-[50vh] min-h-96 max-h-[75vh] resize-y overflow-auto"
+      >
         <ReviewDiffView
           patch={evidence.patch}
           parsedFiles={parsed.files}

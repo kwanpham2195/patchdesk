@@ -33,15 +33,16 @@ const commentSchema = v.strictObject({
     path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
   })),
 });
-const commentsSchema = v.strictObject({
-  threads: v.array(v.strictObject({
-    id: v.string(), state: v.picklist(["open", "resolved", "outdated", "unknown"]),
-    comments: v.array(commentSchema), complete: v.optional(v.boolean()),
-    incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
-    location: v.optional(v.strictObject({
-      path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
-    })),
+const conversationThreadSchema = v.strictObject({
+  id: v.string(), state: v.picklist(["open", "resolved", "outdated", "unknown"]),
+  comments: v.array(commentSchema), complete: v.optional(v.boolean()),
+  incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+  location: v.optional(v.strictObject({
+    path: v.string(), line: v.optional(v.number()), lineEnd: v.optional(v.number()), diffSide: v.optional(v.picklist(["new", "old"])),
   })),
+});
+const commentsSchema = v.strictObject({
+  threads: v.array(conversationThreadSchema),
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
 });
@@ -65,7 +66,7 @@ const pullRequestSchema = v.strictObject({
 });
 const mergePolicySchema = v.strictObject({
   pr: v.strictObject({ host: v.string(), owner: v.string(), repo: v.string(), number: v.number() }),
-  headSha: v.string(), isOpen: v.boolean(), isDraft: v.boolean(), mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  headSha: v.string(), baseSha: v.optional(v.string()), isOpen: v.boolean(), isDraft: v.boolean(), mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   mergeStateStatus: v.optional(v.picklist(["blocked", "behind", "dirty", "draft", "has_hooks", "unstable", "clean", "unknown", "unavailable"])),
   reviewDecision: v.picklist(["approved", "changes_requested", "review_required", "unknown"]), checks: checksSchema, complete: v.boolean(),
   incompleteReason: v.optional(v.picklist(["head_mismatch", "pagination", "permission", "unavailable", "mapping"])),
@@ -98,7 +99,30 @@ const publishedFeedbackSchema = v.strictObject({
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
 });
-const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), mergePolicy: v.optional(mergePolicySchema), mergeEvidence: v.optional(mergeEvidenceSchema) });
+const conversationIssueCommentSchema = v.strictObject({
+  ...commentSchema.entries,
+  reviewId: v.optional(v.string()),
+  canEdit: v.optional(v.boolean()),
+  canDelete: v.optional(v.boolean()),
+});
+const conversationReviewSchema = v.strictObject({
+  id: v.string(), nodeId: v.optional(v.string()), author: v.string(), body: v.string(),
+  event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]),
+  submittedAt: v.string(), canDismiss: v.boolean(),
+});
+const conversationSchema = v.strictObject({
+  prDescription: v.string(),
+  entries: v.array(v.variant("_tag", [
+    v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
+    v.strictObject({ _tag: v.literal("IssueComment"), comment: conversationIssueCommentSchema }),
+    v.strictObject({ _tag: v.literal("ReviewSummary"), review: conversationReviewSchema }),
+    v.strictObject({ _tag: v.literal("GeneralThread"), thread: conversationThreadSchema }),
+  ])),
+  inline: v.optional(commentsSchema),
+  complete: v.optional(v.boolean()),
+  incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+});
+const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), conversation: v.optional(conversationSchema), mergePolicy: v.optional(mergePolicySchema), mergeEvidence: v.optional(mergeEvidenceSchema) });
 
 /** Content-addressed storage for the complete remote snapshot represented by a Review. */
 export class ReviewRemoteStore {
@@ -150,8 +174,9 @@ export function parseReviewRemoteSnapshot(input: unknown): Result<ReviewRemoteSn
   const mergePolicy = parsed.output.mergePolicy === undefined ? ok(undefined) : parseMergePolicy(parsed.output.mergePolicy);
   const mergeEvidence = parsed.output.mergeEvidence === undefined ? ok(undefined) : parseMergeEvidence(parsed.output.mergeEvidence);
   const publishedFeedback = parsed.output.publishedFeedback === undefined ? ok(undefined) : parsePublishedFeedback(parsed.output.publishedFeedback);
-  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || mergePolicy._tag === "err" || mergeEvidence._tag === "err") return invalidRead();
-  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }), ...(mergeEvidence.value === undefined ? {} : { mergeEvidence: mergeEvidence.value }) });
+  const conversation = parsed.output.conversation === undefined ? ok(undefined) : parseConversation(parsed.output.conversation);
+  if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || conversation._tag === "err" || mergePolicy._tag === "err" || mergeEvidence._tag === "err") return invalidRead();
+  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(conversation.value === undefined ? {} : { conversation: conversation.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }), ...(mergeEvidence.value === undefined ? {} : { mergeEvidence: mergeEvidence.value }) });
 }
 
 export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
@@ -223,6 +248,61 @@ function parsePublishedFeedback(input: v.InferOutput<typeof publishedFeedbackSch
   return ok({ reviews, comments, ...(input.complete === undefined ? {} : { complete: input.complete }), ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
 }
 
+function parseConversation(
+  input: v.InferOutput<typeof conversationSchema>,
+): Result<Conversation, StorageFailure> {
+  const entries: Conversation["entries"][number][] = [];
+  for (const entry of input.entries) {
+    if (entry._tag === "PrDescription") {
+      entries.push({ _tag: "PrDescription", body: entry.body });
+      continue;
+    }
+    if (entry._tag === "ReviewSummary") {
+      const review = parsePublishedFeedback({ reviews: [entry.review], comments: [] });
+      const parsedReview = review._tag === "ok" ? review.value.reviews[0] : undefined;
+      if (parsedReview === undefined) return invalidRead();
+      entries.push({ _tag: "ReviewSummary", review: parsedReview });
+      continue;
+    }
+    if (entry._tag === "GeneralThread") {
+      const thread = parseComments({ threads: [entry.thread] });
+      const parsedThread = thread._tag === "ok" ? thread.value.threads[0] : undefined;
+      if (parsedThread === undefined) return invalidRead();
+      entries.push({ _tag: "GeneralThread", thread: parsedThread });
+      continue;
+    }
+    const createdAt = parseIsoTimestamp(entry.comment.createdAt);
+    const updatedAt = entry.comment.updatedAt === undefined ? undefined : parseIsoTimestamp(entry.comment.updatedAt);
+    const location = entry.comment.location === undefined ? undefined : parseLocation(entry.comment.location);
+    if (createdAt._tag === "err" || (updatedAt !== undefined && updatedAt._tag === "err") || (location !== undefined && location._tag === "err")) return invalidRead();
+    entries.push({
+      _tag: "IssueComment",
+      comment: {
+        id: entry.comment.id,
+        author: entry.comment.author,
+        body: entry.comment.body,
+        createdAt: createdAt.value,
+        ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
+        ...(entry.comment.url === undefined ? {} : { url: entry.comment.url }),
+        ...(entry.comment.viewerDidAuthor === undefined ? {} : { viewerDidAuthor: entry.comment.viewerDidAuthor }),
+        ...(location === undefined ? {} : { location: location.value }),
+        ...(entry.comment.reviewId === undefined ? {} : { reviewId: entry.comment.reviewId }),
+        ...(entry.comment.canEdit === undefined ? {} : { canEdit: entry.comment.canEdit }),
+        ...(entry.comment.canDelete === undefined ? {} : { canDelete: entry.comment.canDelete }),
+      },
+    });
+  }
+  const inline = input.inline === undefined ? ok(undefined) : parseComments(input.inline);
+  if (inline._tag === "err") return invalidRead();
+  return ok({
+    prDescription: input.prDescription,
+    entries,
+    ...(inline.value === undefined ? {} : { inline: inline.value }),
+    ...(input.complete === undefined ? {} : { complete: input.complete }),
+    ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }),
+  });
+}
+
 function parseComments(input: v.InferOutput<typeof commentsSchema>): Result<GitHubComments, StorageFailure> {
   const threads: GitHubComments["threads"][number][] = [];
   for (const thread of input.threads) {
@@ -255,10 +335,10 @@ function parseLocation(input: { path: string; line?: number | undefined; lineEnd
 }
 
 function parseMergePolicy(input: v.InferOutput<typeof mergePolicySchema>): Result<MergePolicySnapshot, StorageFailure> {
-  const host = parseGitHubHost(input.pr.host), owner = parseGitHubOwner(input.pr.owner), repo = parseGitHubRepoName(input.pr.repo), number = parsePullRequestNumber(input.pr.number), head = parseGitSha(input.headSha);
+  const host = parseGitHubHost(input.pr.host), owner = parseGitHubOwner(input.pr.owner), repo = parseGitHubRepoName(input.pr.repo), number = parsePullRequestNumber(input.pr.number), head = parseGitSha(input.headSha), base = input.baseSha === undefined ? undefined : parseGitSha(input.baseSha);
   const checks = parseChecks(input.checks);
-  if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err" || head._tag === "err" || checks._tag === "err") return invalidRead();
-  return ok({ pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value }, headSha: head.value, isOpen: input.isOpen, isDraft: input.isDraft, mergeability: input.mergeability, ...(input.mergeStateStatus === undefined ? {} : { mergeStateStatus: input.mergeStateStatus }), reviewDecision: input.reviewDecision, checks: checks.value, complete: input.complete, ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
+  if (host._tag === "err" || owner._tag === "err" || repo._tag === "err" || number._tag === "err" || head._tag === "err" || base?._tag === "err" || checks._tag === "err") return invalidRead();
+  return ok({ pr: { host: host.value, owner: owner.value, repo: repo.value, number: number.value }, headSha: head.value, ...(base === undefined ? {} : { baseSha: base.value }), isOpen: input.isOpen, isDraft: input.isDraft, mergeability: input.mergeability, ...(input.mergeStateStatus === undefined ? {} : { mergeStateStatus: input.mergeStateStatus }), reviewDecision: input.reviewDecision, checks: checks.value, complete: input.complete, ...(input.incompleteReason === undefined ? {} : { incompleteReason: input.incompleteReason }) });
 }
 
 function parseMergeEvidence(input: v.InferOutput<typeof mergeEvidenceSchema>): Result<GitHubMergeEvidence, StorageFailure> {

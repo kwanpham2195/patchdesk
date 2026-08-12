@@ -104,6 +104,8 @@ export type GitHubMergePolicyEvidence = {
 export type MergePolicySnapshot = {
   readonly pr: PullRequestRef;
   readonly headSha: GitSha;
+  /** Exact base SHA for final merge identity proof; production adapter reads always include it. */
+  readonly baseSha?: GitSha;
   readonly isOpen: boolean;
   readonly isDraft: boolean;
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";

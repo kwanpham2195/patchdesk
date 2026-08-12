@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { GitStatus } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 
@@ -28,6 +28,7 @@ export function PierreFileTree(props: PierreFileTreeProps): React.JSX.Element {
 
 function PierreFileTreeModel({ files, selectedPath, activePath, onSelect }: PierreFileTreeProps): React.JSX.Element {
   const applyingPassivePath = useRef(false);
+  const [appearance, setAppearance] = useState<"light" | "dark">(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
   const { model } = useFileTree({ paths: files.map((file) => file.path), gitStatus: files.flatMap((file) => file.gitStatus === undefined ? [] : [{ path: file.path, status: file.gitStatus }]), ...(activePath === undefined ? {} : { initialSelectedPaths: [activePath] }), initialExpansion: "open", search: files.length >= 500, onSelectionChange: (paths) => { const path = paths[0]; if (path !== undefined && !applyingPassivePath.current) onSelect(path); } });
   useEffect(() => { if (selectedPath !== undefined) model.scrollToPath(selectedPath, { focus: false }); }, [model, selectedPath]);
   useEffect(() => {
@@ -43,5 +44,13 @@ function PierreFileTreeModel({ files, selectedPath, activePath, onSelect }: Pier
     }
     model.scrollToPath(activePath, { focus: false, offset: "nearest" });
   }, [activePath, model]);
-  return <FileTree model={model} aria-label="Changed files" data-active-path={activePath} style={{ height: "100%", minHeight: 0, "--trees-git-added-color-override": "light-dark(#007a5e, #5eead4)", "--trees-git-deleted-color-override": "light-dark(#be123c, #ff8580)", "--trees-git-ignored-color-override": "light-dark(#64748b, #a8a8ae)", "--trees-git-modified-color-override": "light-dark(#006f93, #68cdf2)", "--trees-git-renamed-color-override": "light-dark(#806000, #ffe38a)", "--trees-git-untracked-color-override": "light-dark(#007a5e, #5eead4)" } as React.CSSProperties} />;
+  useEffect(() => {
+    const onAppearance = (event: Event): void => {
+      const value = (event as CustomEvent<"light" | "dark">).detail;
+      if (value === "light" || value === "dark") setAppearance(value);
+    };
+    window.addEventListener("patchdesk:appearance", onAppearance);
+    return () => window.removeEventListener("patchdesk:appearance", onAppearance);
+  }, []);
+  return <FileTree model={model} aria-label="Changed files" data-active-path={activePath} data-theme={appearance} style={{ colorScheme: appearance, height: "100%", minHeight: 0, "--trees-git-added-color-override": "light-dark(#007a5e, #5eead4)", "--trees-git-deleted-color-override": "light-dark(#be123c, #ff8580)", "--trees-git-ignored-color-override": "light-dark(#64748b, #a8a8ae)", "--trees-git-modified-color-override": "light-dark(#006f93, #68cdf2)", "--trees-git-renamed-color-override": "light-dark(#806000, #ffe38a)", "--trees-git-untracked-color-override": "light-dark(#007a5e, #5eead4)" } as React.CSSProperties} />;
 }

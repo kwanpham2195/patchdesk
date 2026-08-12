@@ -96,6 +96,13 @@ export class PatchdeskPaths {
     return join(this.profileWorkbenchesDirectory(profileId), reviewId);
   }
 
+  reviewObservationJournalFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(this.reviewDirectory(profileId, reviewId), "observation-journal.json");
+  }
+
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");
   }
