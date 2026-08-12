@@ -4,6 +4,7 @@ repos:
   - patchdesk
 status: todo
 adr: docs/adr/0017-separate-pr-metadata-reconciliation-from-revision-refresh.md
+spec: .agents/specs/2026-08-12-pr-metadata-reconciliation-and-workbench-polish/2026-08-12-tech-spec.md
 ---
 
 # Separate PR metadata reconciliation from revision refresh and polish the workbench
