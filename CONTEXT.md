@@ -61,7 +61,7 @@ A current Mapped Finding identified by a pending Finding review receipt for the 
 _Avoid_: Added Finding, queued Finding, local inclusion
 
 **Finding review receipt**:
-Immutable provenance that connects one Analysis run and Finding on one represented revision to the GitHub thread created by its Finding review command. It becomes published when GitHub confirms submission, is removed by a confirmed discard, and is never an editable local comment copy. A receipt visibly identifies the Finding as in the viewer's Pending review or Published. A published receipt makes that Finding unavailable for the rest of its Analysis run and represented revision; a refreshed revision or regenerated Analysis has a new identity and may offer a new Finding. Removing the receipt after a confirmed discard makes its Finding actionable again.
+Immutable provenance connecting one Analysis Finding on one represented revision to its GitHub thread. A receipt is Pending, Published, or Historical. Historical receipts never authorize the adopted draft; their Finding is actionable again only with evidence it is neither pending nor published.
 _Avoid_: Finding draft, comment mirror, publication queue
 
 **Finding-backed pending review**:
@@ -77,8 +77,30 @@ An approval, comment, or request for changes that the maintainer explicitly publ
 _Avoid_: Submitted batch, published review batch
 
 **GitHub pending review**:
-The authenticated viewer's remote `PENDING` review for the represented pull request. It is the one authoritative editable Review draft after the maintainer starts a review; Patchdesk reads, appends to, finishes, and discards it through GitHub and keeps no second editable local copy. The final summary is supplied only in the Finish review modal and sent only on Submit.
+The authenticated viewer's remote `PENDING` review for the represented pull request. It is the one authoritative editable Review draft; Patchdesk has no second editable local copy.
 _Avoid_: Review draft, Review batch, local batch
+
+**Pending-review reconciliation**:
+The same-revision operation that adopts a different authoritative GitHub pending-review state when no pending-review operation is locked. GitHub wins; Patchdesk never merges drafts. The adopted draft owns later Finding review commands.
+_Avoid_: Pending-review conflict resolution, draft merge
+
+**Merge command**:
+The explicit maintainer action that selects a GitHub merge method and sends the merge. It rechecks current GitHub state and requires acknowledgement for current merge warnings.
+_Avoid_: Automatic merge, stale merge permission
+
+**Workbench theme inheritance**:
+Embedded workbench surfaces, including the changed-files tree, use Patchdesk's active light/dark theme automatically. They have no independent theme preference.
+_Avoid_: Tree theme, dark-only panel
+
+**Remote state unavailable**:
+Patchdesk could not confirm the current GitHub state. It may show the last known read-only state, but cannot authorize writes until a current same-revision check succeeds.
+_Avoid_: Fresh state, no changes
+
+**Terminal remote state**:
+GitHub has reported that the represented pull request is merged or closed. Patchdesk adopts that final Review state and stops further review and merge writes.
+
+**Post-write reconciliation**:
+The one read-only check after a confirmed Patchdesk GitHub write. It never repeats the write.
 
 **Review body**:
 The shared Markdown message that accompanies a GitHub review. It describes the reviewed scope, evidence, verdict, and maintainer guidance that do not belong in separate inline comments; it may reference only Findings the maintainer explicitly chose to publish. In the GitHub pending review flow it is supplied only from the Finish review modal at Submit.
@@ -89,7 +111,7 @@ The high-level scope, change, verification, and proposed-verdict portion of a cu
 _Avoid_: Analysis body, generated review draft
 
 **Conversation**:
-The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. Returned as a single unified payload by the GitHub adapter. The Conversation screen is read-only; all writes go through the GitHub pending review or GitHub directly. It loads eagerly when a review opens and reloads with each GitHub refresh.
+The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. The Conversation screen is read-only and reconciles while its represented revision remains current.
 _Avoid_: Published feedback, discussion tab, timeline
 
 **Conversation thread**:
@@ -105,7 +127,7 @@ An explicit maintainer action that changes a mapped Conversation thread between 
 _Avoid_: Draft action, batched action
 
 **Direct conversation comment**:
-An inline GitHub comment or reply that a maintainer explicitly submits from the diff. **Comment now** publishes immediately and only while no viewer pending review is confirmed; it never becomes part of the GitHub pending review.
+An inline GitHub comment or reply that a maintainer explicitly submits from the diff. **Comment now** publishes immediately only while no viewer pending review is confirmed; it never becomes part of that pending review.
 _Avoid_: Inline draft, queued reply
 
 **Partial conversation thread**:
