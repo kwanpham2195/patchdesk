@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { FolderOpen, Plus, X } from "lucide-react";
 import { requestJson, selectDirectory } from "../api-client";
+import { parseInsightProviderCatalog } from "../renderer-contracts";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
@@ -787,6 +788,18 @@ function ReviewPreferences({
   const [preference, setPreference] = useState(() => preferenceFor(profileId));
   const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
   const [catalogUnavailable, setCatalogUnavailable] = useState(false);
+  const [codexAvailable, setCodexAvailable] = useState<boolean | undefined>();
+  useEffect(() => {
+    let active = true;
+    void requestJson("/v1/insight-providers")
+      .then((value) => {
+        const catalog = parseInsightProviderCatalog(value);
+        if (!active) return;
+        setCodexAvailable(catalog?.providers.find((provider) => provider.id === "codex-cli-account")?.available ?? false);
+      })
+      .catch(() => { if (active) setCodexAvailable(false); });
+    return () => { active = false; };
+  }, [profileId]);
   useEffect(() => {
     const saved = preferenceFor(profileId);
     setPreference(saved);
@@ -835,6 +848,7 @@ function ReviewPreferences({
           Profile-scoped defaults for the next review run. They never start
           work.
         </CardDescription>
+        <p className="text-sm text-muted-foreground" data-testid="codex-provider-status">Codex CLI account: {codexAvailable === undefined ? "checking availability" : codexAvailable ? "available" : "unavailable; expose codex on the app launch PATH and log in externally"}</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <FieldGroup>

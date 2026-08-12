@@ -53,7 +53,7 @@ describe("InsightStore", () => {
     const store = new InsightStore(paths);
     const record: InsightRecord<unknown> = {
       ...createInsightRecord({ reviewId, type: "analysis", updatedAt: now }),
-      replacementFailure: { runId, reason: "failed", category: "rate_limited", model: "fixture-model", reasoning: "high", retryable: true, failedAt: now },
+      replacementFailure: { runId, reason: "failed", category: "rate_limited", provider: "pi", model: "fixture-model", reasoning: "high", retryable: true, failedAt: now },
     };
     expect(await store.save(profileId, record)).toMatchObject({ _tag: "ok" });
     expect(await store.load(profileId, reviewId, "analysis")).toMatchObject({ _tag: "ok", value: { replacementFailure: { category: "rate_limited", model: "fixture-model", reasoning: "high" } } });
@@ -82,10 +82,19 @@ describe("InsightStore", () => {
     expect(loaded).toMatchObject({ _tag: "ok", value: { activeRun: { id: runId }, replacementFailure: { runId, category: "unexpected_failure" } } });
   });
 
-  it("rejects malformed stored JSON", async () => {
+  it("normalizes a schema-v1 retained result to explicit unavailable provenance", async () => {
     const paths = PatchdeskPaths.forTest(await mkdtemp(join("/tmp", "patchdesk-insight-")));
     const store = new InsightStore(paths);
+    const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__000000000000";
     await mkdir(paths.insightDirectory(profileId, reviewId), { recursive: true });
+    await writeFile(paths.insightFile(profileId, reviewId, "analysis"), JSON.stringify({ schemaVersion: 1, reviewId, type: "analysis", nextToken: 2, retained: { runId, revision: { sessionId, headSha: "a".repeat(40), patchHash: "b".repeat(64) }, generatedAt: now, value: { summary: "legacy" } }, updatedAt: now }), "utf8");
+    await expect(store.load(profileId, reviewId, "analysis")).resolves.toMatchObject({ _tag: "ok", value: { schemaVersion: 2, retained: { provenance: { provider: "pi", configuration: "unavailable" } } } });
+  });
+
+  it("rejects malformed stored JSON", async () => {
+    const paths = PatchdeskPaths.forTest(await mkdtemp(join("/tmp", "patchdesk-insight-")));
+    await mkdir(paths.insightDirectory(profileId, reviewId), { recursive: true });
+    const store = new InsightStore(paths);
     await writeFile(paths.insightFile(profileId, reviewId, "analysis"), JSON.stringify({ schemaVersion: 1, reviewId, type: "analysis", nextToken: 0 }), "utf8");
     expect(await store.load(profileId, reviewId, "analysis")).toMatchObject({ _tag: "err", error: { reason: "invalid_stored_value" } });
   });

@@ -40,6 +40,7 @@ import { parseUnifiedPatch } from "../domain/patch";
 import { normalizeNarrativeWalkthrough, type NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { MergeReadiness } from "../domain/merge-readiness";
 import type { InsightFindingDismissal, InsightRecord, RetainedInsight } from "../domain/insight-record";
+import { parseInsightProvider, parseInsightReasoning, type RetainedInsightProvenance } from "../domain/insight-provider";
 import type { ReviewBatch } from "../domain/review-batch";
 import type { ReviewAttempt } from "../domain/review-attempt";
 import type { PendingReviewProjection } from "./pending-review-service";
@@ -780,9 +781,21 @@ function parseRetainedBase(input: unknown): Result<RetainedInsight<unknown>, und
   const headSha = parseGitSha(readObjectField(revision, "headSha"));
   const patchHash = parseContentHash(readObjectField(revision, "patchHash"));
   const generatedAt = parseIsoTimestamp(readObjectField(input, "generatedAt"));
-  if ([runId, sessionId, headSha, patchHash, generatedAt].some((value) => value._tag === "err")) return err(undefined);
-  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || generatedAt._tag === "err") return err(undefined);
-  return ok({ runId: runId.value, revision: { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value }, generatedAt: generatedAt.value, value: undefined });
+  const provenance = parseRetainedProvenance(readObjectField(input, "provenance"));
+  if ([runId, sessionId, headSha, patchHash, generatedAt, provenance].some((value) => value._tag === "err")) return err(undefined);
+  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || generatedAt._tag === "err" || provenance._tag === "err") return err(undefined);
+  return ok({ runId: runId.value, revision: { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value }, generatedAt: generatedAt.value, provenance: provenance.value, value: undefined });
+}
+
+function parseRetainedProvenance(input: unknown): Result<RetainedInsightProvenance, undefined> {
+  const provider = parseInsightProvider(readObjectField(input, "provider"));
+  const configuration = readObjectField(input, "configuration");
+  if (provider._tag === "ok" && provider.value === "pi" && configuration === "unavailable") return ok({ provider: "pi", configuration: "unavailable" });
+  const model = readObjectField(input, "model");
+  const reasoning = parseInsightReasoning(readObjectField(input, "reasoning"));
+  return typeof model === "string" && model.trim().length > 0 && model.length <= 200 && provider._tag === "ok" && reasoning._tag === "ok"
+    ? ok({ provider: provider.value, model, reasoning: reasoning.value })
+    : err(undefined);
 }
 
 function parseRetainedAnalysis(input: unknown): Result<RetainedInsight<ReviewResult>, undefined> {

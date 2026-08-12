@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseCommitDiffResponse,
+  parseInsightProviderCatalog,
   parseModelCatalog,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";
@@ -38,6 +39,11 @@ const reviewProjection = {
 };
 
 describe("commit diff response", () => {
+  it("parses provider catalogs and rejects paths or raw diagnostics", () => {
+    expect(parseInsightProviderCatalog({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Load models explicitly." }], models: [{ provider: "codex-cli-account", id: "fixture", label: "Fixture", reasoning: ["low"], defaultReasoning: "low" }] })).toBeDefined();
+    expect(parseInsightProviderCatalog({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "/Users/private" }], models: [] })).toBeUndefined();
+  });
+
   it("parses bounded data and rejects unknown fields", () => {
     const valid = parseCommitDiffResponse({
       commit: { sha: "1".repeat(40), message: "Commit", author: "Author", authoredAt: "2026-08-01T00:00:00.000Z", isHead: true },

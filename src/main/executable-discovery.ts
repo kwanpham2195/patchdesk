@@ -30,3 +30,16 @@ async function executableFile(path: string): Promise<boolean> {
     return false;
   }
 }
+
+/** Resolves a command only through the supplied inherited PATH. */
+export async function discoverPathOnlyExecutable(
+  executable: string,
+  pathValue = process.env.PATH,
+): Promise<string | undefined> {
+  if (isAbsolute(executable) || executable.includes("/")) return undefined;
+  for (const directory of new Set(pathValue?.split(delimiter).filter((value) => value.length > 0) ?? [])) {
+    const candidate = join(directory, executable);
+    if (await executableFile(candidate)) return candidate;
+  }
+  return undefined;
+}

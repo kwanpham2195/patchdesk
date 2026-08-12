@@ -24,6 +24,24 @@ adr: docs/adr/0016-use-the-local-codex-cli-account.md
 - Planned at: `9d93f47` on `fix/inline-conversation-freshness-repair`.
 - Research: [Plannotator Codex app-server research](../research/2026-08-11-plannotator-codex-app-server.md).
 
+## Review follow-ups
+
+The full ExecPlan review against baseline `9d93f47` found the following required corrections. These are implementation blockers, not optional cleanup:
+
+- **Approval executable confinement:** never approve a command merely because the basename of its executable is allowlisted. Reject `./cat`, `tools/git`, shell metacharacters, and repository-controlled executables; verify the executable identity and every path operand before approving a read-only request. Preserve the approved exception for read-only commands whose action and canonical scope are proven inside the represented worktree.
+- **Timeout termination:** a run timeout must settle the turn as `timed_out`, interrupt when possible, terminate the child, and always release the coordinator's active-run state even when Codex emits no completion event.
+- **Aggregate model-list bounds:** enforce the 50-page, 512-model, 4 MiB decoded-data, and 30-second aggregate limits in both explicit activation discovery and per-run revalidation. Do not only bound individual pages or rely on per-request timeouts.
+- **Failure classification:** inspect only bounded, structured app-server error metadata and map login-required, rate-limit/concurrency, timeout, cancellation, invalid-result, runtime, and execution failures to the existing safe categories. Do not collapse authentication or rate-limit failures into `execution_failed`.
+- **v1 normalization:** schema-v1 active, failure, and retained records must force historical Pi/unavailable provenance. A v1 payload must not inject or preserve `codex-cli-account` as its provider.
+- **Opaque worktree input:** make the adapter's worktree input an app-owned/branded path value produced after main-process verification; the adapter API must not represent an arbitrary renderer/original-checkout string as an accepted worktree.
+- **Preference timing:** persist the per-Insight provider/model/reasoning preference only after the run-start request is accepted successfully; failed or rejected starts must not overwrite the last good preference.
+- **Confirmation completeness:** final confirmation must visibly repeat provider, selected model, and reasoning effort, in addition to the prepared-artifact and Codex worktree disclosures.
+- **No legacy catalog fallback:** remove the renderer fallback to `GET /v1/reviews/models`. The new Insight flow must use the passive provider catalog and explicit Codex activation route; retain the old endpoint only for ordinary Pi Review settings.
+- **Composition deduplication:** construct the provider catalog once at the main-process composition boundary and share that instance between the API and coordinator to avoid resolver/factory drift.
+- **Fake-server proof:** add deterministic coverage for pagination limits, aggregate byte/deadline limits, timeout with no completion event, cancellation/interrupt/child cleanup, malformed RPC, child environment, executable/path approval confinement, authentication/rate-limit classification, and strict confirmation/preference behavior.
+
+The review also recorded a duplicated-provider-catalog construction smell in `src/main/electron-main.ts`; the composition correction above resolves it. Browser-gate failures remain a separate verification issue and must be documented with exact names and baseline evidence before this plan can be marked done.
+
 ## Purpose
 
 Patchdesk will let a maintainer choose **Pi** or **Codex CLI account** independently when starting Analysis or a Walkthrough. Codex reuses the local CLI login without Patchdesk reading, copying, storing, or showing credentials. The provider must leave the existing Insight lifecycle unchanged: one active run per Insight type, immutable revision inputs, strict result validation, current-result mapping, and no GitHub authority.
@@ -95,6 +113,7 @@ Keep `LocalPiRuntimeModelCatalog` as the Pi implementation; do not add Codex IDs
 Give the Codex resolver a strict-PATH mode or dedicated resolver. It must not use `macDesktopPaths`, accept an absolute path, consult shell configuration, or return a path to the renderer. Passive status may state only that Codex is available or unavailable and provide bounded setup guidance. It must not authenticate, list models, read a credential location, or execute Codex.
 
 Map live Codex models to bounded `{ id, label, reasoning[], defaultReasoning? }` entries only after complete pagination and validation. Bound discovery to 50 pages, 512 models, 4 MiB of decoded model data, and a 30-second aggregate deadline; fail closed on a repeated cursor, excess page/item/byte limit, or malformed page. A malformed, empty, timed-out, unavailable, or unauthenticated list is an activation failure with a structured category; it must never fall back to static models.
+Apply those limits to both the explicit activation process and the separate per-run revalidation process. Count decoded response bytes across all pages, enforce one aggregate deadline across the complete pagination loop, and test that a non-terminating cursor or app server cannot extend either operation indefinitely.
 
 Expose a new passive Insight-provider endpoint and a separate authenticated `POST` activation endpoint through `src/main/local-api.ts` and `src/main/desktop-bridge.ts`. Leave `GET /v1/reviews/models` intact for ordinary Review settings and Pi-only flows.
 

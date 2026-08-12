@@ -466,7 +466,7 @@ describe("ReviewWorkbenchProjectionService", () => {
       const patchHash = must(parseContentHash(createHash("sha256").update(patch).digest("hex")));
       const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
       expect((await new InsightStore(paths).save(profileId, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         reviewId: createReviewId(session.key),
         type: "analysis",
         nextToken: 2,
@@ -474,6 +474,7 @@ describe("ReviewWorkbenchProjectionService", () => {
           runId,
           revision: { sessionId: session.id, headSha, patchHash },
           generatedAt: now,
+          provenance: { provider: "pi", model: "fixture-model", reasoning: "medium" },
           value: {
             changeSummary: "Durable analysis",
             verdict: "comment",
@@ -507,21 +508,21 @@ describe("ReviewWorkbenchProjectionService", () => {
       const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
       const store = new InsightStore(paths);
       expect((await store.save(profileId, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         reviewId,
         type: "analysis",
         nextToken: 2,
-        activeRun: { id: runId, type: "analysis", revision: { sessionId: session.id, headSha, patchHash: must(parseContentHash("a".repeat(64))) }, token: 1, model: "fixture-model", reasoning: "medium", status: "queued", startedAt: now },
+        activeRun: { id: runId, type: "analysis", revision: { sessionId: session.id, headSha, patchHash: must(parseContentHash("a".repeat(64))) }, token: 1, provider: "pi", model: "fixture-model", reasoning: "medium", status: "queued", startedAt: now },
         updatedAt: now,
       }))._tag).toBe("ok");
       expect(await projection.loadLocal({ profileId, sessionId: session.id })).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "running", activeRun: { runId } } } } });
 
       expect((await store.save(profileId, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         reviewId,
         type: "analysis",
         nextToken: 2,
-        replacementFailure: { runId, reason: "failed", category: "unexpected_failure", model: "fixture-model", reasoning: "medium", retryable: true, failedAt: now },
+        replacementFailure: { runId, reason: "failed", category: "unexpected_failure", provider: "pi", model: "fixture-model", reasoning: "medium", retryable: true, failedAt: now },
         updatedAt: now,
       }))._tag).toBe("ok");
       expect(await projection.loadLocal({ profileId, sessionId: session.id })).toMatchObject({ _tag: "ok", value: { insights: { analysis: { status: "failed", replacementFailure: { runId, category: "unexpected_failure", model: "fixture-model" } } } } });
@@ -564,11 +565,11 @@ describe("ReviewWorkbenchProjectionService", () => {
       const normalized = normalizeNarrativeWalkthrough(raw, oldPatch, { profileId, sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash });
       if (normalized._tag === "err") throw new Error(`normalize failed: ${normalized.error.reason}`);
       expect((await new InsightStore(paths).save(profileId, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         reviewId: createReviewId(current.key),
         type: "walkthrough",
         nextToken: 2,
-        retained: { runId, revision: { sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash }, generatedAt: now, value: raw },
+        retained: { runId, revision: { sessionId: oldSession.id, headSha: oldHead, patchHash: oldHash }, generatedAt: now, provenance: { provider: "pi", model: "fixture-model", reasoning: "medium" }, value: raw },
         updatedAt: now,
       }))._tag).toBe("ok");
       const loaded = await projection.loadLocal({ profileId, sessionId: current.id });
@@ -603,7 +604,7 @@ describe("ReviewWorkbenchProjectionService", () => {
     const runId = must(parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-0c8c9a759258"));
     const findingId = must(parseFindingId("finding-1"));
     expect((await new InsightStore(paths).save(profileId, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       reviewId: createReviewId(session.key),
       type: "analysis",
       nextToken: 2,
@@ -611,6 +612,7 @@ describe("ReviewWorkbenchProjectionService", () => {
         runId,
         revision: { sessionId: session.id, headSha, patchHash },
         generatedAt: now,
+        provenance: { provider: "pi", model: "fixture-model", reasoning: "medium" },
         value: {
           changeSummary: "Durable analysis",
           verdict: "comment",

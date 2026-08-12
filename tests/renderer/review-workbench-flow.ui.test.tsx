@@ -348,12 +348,12 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("does not offer local draft or publication completion choices in the Analysis run dialog", async () => {
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/models")
+      if (input.path === "/v1/insight-providers")
         return {
           ok: true,
           body: {
-            models: [{ id: "fixture-model", label: "Fixture model" }],
-            defaultModel: "fixture-model",
+            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
           },
           correlationId: "models",
         };
@@ -401,7 +401,7 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("shows provider guidance and disables Insight runs for an intentional empty catalog", async () => {
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/models")
+      if (input.path === "/v1/insight-providers")
         return { ok: true, body: { models: [] }, correlationId: "models" };
       if (input.path === "/v1/reviews/detect-updates")
         return {
@@ -440,17 +440,19 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("keeps every universal model selectable when the catalog exceeds 64 entries", async () => {
     const models = Array.from({ length: 269 }, (_, index) => ({
+      provider: "pi" as const,
       id: `openai/universal-model-${index}`,
       label: `Universal model ${index}`,
+      reasoning: ["low", "medium", "high"] as const,
     }));
     const calls: Array<{ readonly path: string; readonly body?: unknown }> = [];
     const request = vi.fn(
       async (input: { readonly path: string; readonly body?: unknown }) => {
         calls.push(input);
-        if (input.path === "/v1/reviews/models")
+        if (input.path === "/v1/insight-providers")
           return {
             ok: true,
-            body: { models, defaultModel: models[0]?.id },
+            body: { providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }], models },
             correlationId: "models",
           };
         if (input.path === "/v1/reviews/detect-updates")
@@ -525,15 +527,15 @@ describe("ReviewWorkbenchFlow", () => {
     const request = vi.fn(
       async (input: { readonly path: string; readonly body?: unknown }) => {
         calls.push(input);
-        if (input.path === "/v1/reviews/models")
+        if (input.path === "/v1/insight-providers")
           return {
             ok: true,
             body: {
+              providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
               models: [
-                { id: "fast-model", label: "Fast model" },
-                { id: "deep-model", label: "Deep model" },
+                { provider: "pi", id: "fast-model", label: "Fast model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
+                { provider: "pi", id: "deep-model", label: "Deep model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
               ],
-              defaultModel: "fast-model",
             },
             correlationId: "models",
           };
@@ -628,12 +630,12 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("uses the same setup dialog for Walkthrough regeneration and Analysis retry", async () => {
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/models")
+      if (input.path === "/v1/insight-providers")
         return {
           ok: true,
           body: {
-            models: [{ id: "fixture-model", label: "Fixture model" }],
-            defaultModel: "fixture-model",
+            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
           },
           correlationId: "models",
         };
@@ -760,7 +762,7 @@ describe("ReviewWorkbenchFlow", () => {
 
   it("hydrates a persisted first-run Analysis and exposes Cancel instead of Regenerate", async () => {
     const request = vi.fn(async (input: { readonly path: string }) => {
-      if (input.path === "/v1/reviews/models")
+      if (input.path === "/v1/insight-providers")
         return {
           ok: true,
           body: { models: [{ id: "fixture-model", label: "Fixture model" }] },
@@ -1042,12 +1044,12 @@ describe("ReviewWorkbenchFlow", () => {
     const calls: Array<{ readonly path: string }> = [];
     const request = vi.fn(async (input: { readonly path: string }) => {
       calls.push(input);
-      if (input.path === "/v1/reviews/models")
+      if (input.path === "/v1/insight-providers")
         return {
           ok: true,
           body: {
-            models: [{ id: "fixture-model", label: "Fixture model" }],
-            defaultModel: "fixture-model",
+            providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+            models: [{ provider: "pi", id: "fixture-model", label: "Fixture model", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" }],
           },
           correlationId: "models",
         };
@@ -1080,7 +1082,8 @@ describe("ReviewWorkbenchFlow", () => {
         screen.getByRole("button", { name: "Focus section" }),
       ).toBeTruthy(),
     );
-    const callsBeforeFocus = calls.length;
+    await waitFor(() => expect(calls.some((call) => call.path === "/v1/reviews/detect-updates")).toBe(true));
+    const callsBeforeFocus = calls.filter((call) => !call.path.includes("/v1/insight-providers")).length;
     await user.click(screen.getByRole("button", { name: "Focus section" }));
 
     expect(
@@ -1099,7 +1102,7 @@ describe("ReviewWorkbenchFlow", () => {
       screen.queryByRole("region", { name: "Walkthrough chapters" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Next section" })).toBeTruthy();
-    expect(calls).toHaveLength(callsBeforeFocus);
+    expect(calls.filter((call) => !call.path.includes("/v1/insight-providers"))).toHaveLength(callsBeforeFocus);
 
     await user.click(screen.getByRole("button", { name: "Exit focus" }));
     expect(
@@ -1113,7 +1116,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByRole("region", { name: "Walkthrough chapters" }),
     ).toBeTruthy();
-    expect(calls).toHaveLength(callsBeforeFocus);
+    expect(calls.filter((call) => !call.path.includes("/v1/insight-providers"))).toHaveLength(callsBeforeFocus);
     expect(calls.some((call) => call.path.includes("/progress"))).toBe(false);
   });
 

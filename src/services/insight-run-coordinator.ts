@@ -6,7 +6,8 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import { parseContentHash, parseGitSha, parseInsightRunId, parseIsoTimestamp, parseReviewSessionId, parseWorkspaceProfileId, type ContentHash, type FindingId, type InsightRunId, type IsoTimestamp, type ReviewAttemptId, type ReviewId, type ReviewSessionId, type WorkspaceProfileId } from "../domain/ids";
 import type { ReviewScope } from "../domain/review-comparison";
-import { beginInsightRun, completeInsightRun, dismissInsightFinding, failInsightRun, requestInsightCancellation, updateWalkthroughProgress, type InsightFailureCategory, type InsightRecord, type InsightRevision, type InsightType, type WalkthroughProgress } from "../domain/insight-record";
+import { beginInsightRun, completeInsightRun, dismissInsightFinding, failInsightRun, provenanceFromRun, requestInsightCancellation, updateWalkthroughProgress, type InsightFailureCategory, type InsightRecord, type InsightRevision, type InsightType, type WalkthroughProgress } from "../domain/insight-record";
+import type { InsightProvider, InsightReasoning } from "../domain/insight-provider";
 import { createPublicationAuthorization, type AnalysisCompletionAction } from "../domain/publication-authorization";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { parseModelReviewResult, parseReviewResult } from "../domain/review-result";
@@ -15,17 +16,18 @@ import type { ReviewStore } from "../adapters/storage/review-store";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { canonicalModelId, type PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 
-export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly scope?: ReviewScope; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
+export type InsightInvocationInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly attemptId?: ReviewAttemptId; readonly runId: InsightRunId; readonly type: InsightType; readonly expectedHeadSha: GitSha; readonly contextPath: string; readonly reviewInputPath?: string; readonly patchPath: string; readonly worktreePath: string; readonly scope?: ReviewScope; readonly provider: InsightProvider; readonly model: string; readonly reasoning: InsightReasoning; readonly completion?: AnalysisCompletionAction };
 export type InsightInvoker = {
   invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }): Promise<Result<unknown, { readonly reason: string }>>;
 };
 export type InsightRunResponse = { readonly runId: InsightRunId; readonly type: InsightType; readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled"; readonly authorizationId?: string; readonly failureReason?: "cancelled" | "failed" | "invalid_result" | "superseded" };
-export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly model: string; readonly reasoning: "low" | "medium" | "high"; readonly completion?: AnalysisCompletionAction };
+export type InsightCoordinatorInput = { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly type: InsightType; readonly provider?: InsightProvider; readonly model: string; readonly reasoning: InsightReasoning; readonly completion?: AnalysisCompletionAction };
 export type InsightCoordinatorFailure = "invalid_request" | "not_found" | "ownership_mismatch" | "terminal_review" | "already_running" | "model_unavailable" | "catalog_unavailable" | "storage_unavailable" | "not_active" | "stale_request" | "not_available" | "draft_unavailable";
 export type InsightCompletionHandler = (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly sessionId: ReviewSessionId; readonly expectedHeadSha: GitSha; readonly expectedPatchHash: ContentHash; readonly analysisRunId: InsightRunId; readonly expectedDraftRevision: IsoTimestamp; readonly completion: AnalysisCompletionAction }) => Promise<void>;
 
@@ -50,6 +52,7 @@ export class InsightRunCoordinator {
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     private readonly publicationAuthorizations?: Pick<PublicationAuthorizationStore, "save" | "load">,
+    private readonly providerCatalog?: InsightProviderCatalog,
   ) {}
 
   async start(input: InsightCoordinatorInput): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
@@ -62,10 +65,20 @@ export class InsightRunCoordinator {
       return err("not_found");
     }
     if (review.value.status._tag === "Terminal") return err("terminal_review");
-    const models = await this.catalog.get();
-    if (models._tag === "err") return err("catalog_unavailable");
-    const model = models.value.providers === undefined ? input.model : canonicalModelId(input.model);
-    if (model === undefined || !models.value.models.some((candidate) => candidate.id === model)) return err("model_unavailable");
+    const provider = input.provider ?? "pi";
+    let model = input.model;
+    if (provider === "pi") {
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh") return err("model_unavailable");
+      const models = await this.catalog.get();
+      if (models._tag === "err") return err("catalog_unavailable");
+      const canonical = models.value.providers === undefined ? input.model : canonicalModelId(input.model);
+      if (canonical === undefined || !models.value.models.some((candidate) => candidate.id === canonical)) return err("model_unavailable");
+      model = canonical;
+    } else {
+      if (this.providerCatalog === undefined) return err("catalog_unavailable");
+      const validated = await this.providerCatalog.validate({ provider, model: input.model, reasoning: input.reasoning });
+      if (validated._tag === "err") return err(validated.error);
+    }
     const session = await this.sessions.load(input.profileId, review.value.currentSessionId);
     if (session._tag === "err") return err(session.error.reason === "not_found" ? "not_found" : "storage_unavailable");
     const hash = parseContentHash(await contentHash(session.value.patchPath));
@@ -88,7 +101,7 @@ export class InsightRunCoordinator {
     } else if (input.completion !== undefined && input.type !== "analysis") {
       return err("invalid_request");
     }
-    const started = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (current) => beginInsightRun(current, { id: runId.value, revision, model, reasoning: input.reasoning, startedAt: timestamp.value }) });
+    const started = await this.insights.mutate({ profileId: input.profileId, reviewId: input.reviewId, type: input.type, now: timestamp.value, operation: (current) => beginInsightRun(current, { id: runId.value, revision, provider, model, reasoning: input.reasoning, startedAt: timestamp.value }) });
     if (started._tag === "err") return started.error === "already_running" ? err("already_running") : err("storage_unavailable");
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
@@ -97,11 +110,14 @@ export class InsightRunCoordinator {
       reviewId: input.reviewId,
       sessionId: session.value.id,
       runId: runId.value,
+      type: input.type,
+      expectedHeadSha: session.value.key.headSha,
       contextPath: this.paths.preparedContextFile(input.profileId, session.value.id),
       reviewInputPath: this.paths.preparedReviewInputFile(input.profileId, session.value.id),
       patchPath: session.value.patchPath,
       worktreePath: session.value.worktree.path,
-      scope: session.value.scope,
+      ...(session.value.scope === undefined ? {} : { scope: session.value.scope }),
+      provider,
       model,
       reasoning: input.reasoning,
       ...(input.completion === undefined ? {} : { completion: input.completion }),
@@ -309,7 +325,7 @@ export class InsightRunCoordinator {
         if (active.revision.sessionId !== input.sessionId || active.revision.headSha !== latestSession.value.key.headSha || active.revision.patchHash !== latestHash.value) {
           return failInsightRun(record, runId, { runId, reason: "superseded", retryable: true, failedAt: timestamp.value }, timestamp.value);
         }
-        return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, value: validated.value }, timestamp.value);
+        return completeInsightRun(record, runId, { runId, revision: active.revision, generatedAt: timestamp.value, provenance: provenanceFromRun(active), value: validated.value }, timestamp.value);
       }, "completion");
       if (!retained || type !== "analysis" || input.completion === undefined || this.completionHandler === undefined) {
         releaseCompletion();

@@ -1,5 +1,6 @@
 import type { GitSha, InsightRunId, IsoTimestamp, ReviewSessionId } from "./ids";
 import type { InsightFailureCategory, WalkthroughProgress } from "./insight-record";
+import type { InsightReasoning } from "./insight-provider";
 export type InsightStatus =
   | "not_generated"
   | "running"
@@ -42,7 +43,7 @@ export type InsightProjection<T> = {
     readonly runId?: InsightRunId;
     readonly category?: InsightFailureCategory;
     readonly model?: string;
-    readonly reasoning?: "low" | "medium" | "high";
+    readonly reasoning?: InsightReasoning;
     readonly incidentId?: string;
     readonly retryable: boolean;
   };

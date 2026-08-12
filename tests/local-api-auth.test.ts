@@ -38,6 +38,25 @@ afterEach(async () => {
 });
 
 describe("local API capability boundary", () => {
+  it("keeps provider status passive and Codex model loading explicit", async () => {
+    let activated = 0;
+    const startup = await startLocalApiServer({ capability, allowedOrigin, insightProviders: {
+      async passive() { return ok({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Use external login." }], models: [] }); },
+      async activateCodex() { activated += 1; return ok({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Use external login." }], models: [{ provider: "codex-cli-account", id: "fixture", label: "Fixture", reasoning: ["low"], defaultReasoning: "low" }] }); },
+    } as never });
+    if (startup._tag !== "started") throw new Error("Expected local API startup");
+    localApi = startup.server;
+    const headers = { Origin: allowedOrigin, "X-Patchdesk-Capability": capability };
+    const passive = await fetch(new URL("v1/insight-providers", localApi.url), { headers });
+    expect(passive.status).toBe(200);
+    expect(await passive.json()).toMatchObject({ providers: [{ id: "codex-cli-account" }], models: [] });
+    expect(activated).toBe(0);
+    const active = await fetch(new URL("v1/insight-providers/codex/models", localApi.url), { method: "POST", headers });
+    expect(active.status).toBe(200);
+    expect(await active.json()).toMatchObject({ models: [{ id: "fixture" }] });
+    expect(activated).toBe(1);
+  });
+
   it("keeps review-run and merge endpoints behind the capability and origin boundary", async () => {
     const startup = await startLocalApiServer({
       capability,
@@ -208,7 +227,7 @@ describe("local API capability boundary", () => {
     localApi = startup.server;
     const invalid = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, model: "model", reasoning: "low", localPath: "/tmp/private" }) });
     expect(invalid.status).toBe(400);
-    const started = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, type: "analysis", model: "model", reasoning: "low" }) });
+    const started = await fetch(new URL("v1/reviews/insights/analysis/run", localApi.url), { method: "POST", headers, body: JSON.stringify({ profileId: "cfw", reviewId, type: "analysis", provider: "pi", model: "model", reasoning: "low" }) });
     expect(started.status).toBe(202);
     expect(await started.json()).toEqual({ runId, type: "analysis", status: "queued" });
     const observed = await fetch(new URL(`v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${encodeURIComponent(reviewId)}&type=analysis`, localApi.url), { headers });
@@ -816,7 +835,7 @@ function canonicalReviewRouteFixtures(): ReadonlyArray<CanonicalReviewRouteFixtu
   const draft = { profileId: "cfw", reviewId, sessionId, analysisRunId: insightRunId, expectedRevision: revision };
   const writeDraft = { ...draft, expectedHeadSha, expectedPatchHash };
   const update = { profileId: "cfw", reviewId };
-  const insight = { profileId: "cfw", reviewId, type: "analysis", model: "fixture-model", reasoning: "medium" };
+  const insight = { profileId: "cfw", reviewId, type: "analysis", provider: "pi", model: "fixture-model", reasoning: "medium" };
   const cancel = { profileId: "cfw", reviewId, type: "analysis", runId: insightRunId };
   const finding = { profileId: "cfw", reviewId, runId: insightRunId, reason: "Not applicable." };
   return [

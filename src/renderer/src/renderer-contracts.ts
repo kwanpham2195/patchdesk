@@ -379,7 +379,7 @@ const insightFields = {
     runId: v.optional(v.pipe(v.string(), v.minLength(1))),
     category: v.optional(v.picklist(["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result", "unexpected_failure"])),
     model: v.optional(v.pipe(v.string(), v.minLength(1))),
-    reasoning: v.optional(v.picklist(["low", "medium", "high"])),
+    reasoning: v.optional(v.picklist(["minimal", "low", "medium", "high", "xhigh"])),
     incidentId: v.optional(v.pipe(v.string(), v.minLength(1))),
     retryable: v.boolean(),
   })),
@@ -698,5 +698,31 @@ export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
 /** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
 export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
   const parsed = v.safeParse(modelCatalogSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const insightProviderModelSchema = v.strictObject({
+  provider: v.picklist(["pi", "codex-cli-account"]),
+  id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: v.pipe(v.array(v.picklist(["minimal", "low", "medium", "high", "xhigh"])), v.maxLength(8)),
+  defaultReasoning: v.optional(v.picklist(["minimal", "low", "medium", "high", "xhigh"])),
+});
+
+const insightProviderCatalogSchema = v.strictObject({
+  providers: v.array(v.strictObject({
+    id: v.picklist(["pi", "codex-cli-account"]),
+    label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+    available: v.boolean(),
+    guidance: v.pipe(v.string(), v.minLength(1), v.maxLength(240), v.check((value) => !/(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]/u.test(value), "unsafe provider guidance")),
+  })),
+  models: v.array(insightProviderModelSchema),
+});
+
+export type InsightProviderCatalog = v.InferOutput<typeof insightProviderCatalogSchema>;
+
+/** Rejects malformed passive or activated Insight provider catalogs. */
+export function parseInsightProviderCatalog(input: unknown): InsightProviderCatalog | undefined {
+  const parsed = v.safeParse(insightProviderCatalogSchema, input);
   return parsed.success ? parsed.output : undefined;
 }

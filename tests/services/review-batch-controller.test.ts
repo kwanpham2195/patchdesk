@@ -203,7 +203,7 @@ describe("ReviewBatchController", () => {
     const patchHash = await contentHash(value.session.patchPath);
     const updated = await controller(value.store, {
       reviews: { load: async () => ({ _tag: "ok", value: { currentSessionId: value.session.id, status: { _tag: "Open" } } }) as never },
-      insights: { loadTyped: async () => ({ _tag: "ok", value: { retained: { runId, sessionId: value.session.id, headSha: value.session.key.headSha, patchHash, value: { changeSummary: "Change", verdict: "comment", summary: "Review", findings: [{ id: "analysis-finding", severity: "P1", title: "Keep the guard", file: "src/prepared.ts", lineStart: 4, lineEnd: 4, diffSide: "new", explanation: "Keep it", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } } } }) as never },
+      insights: { loadTyped: async () => ({ _tag: "ok", value: { retained: { runId, revision: { sessionId: value.session.id, headSha: value.session.key.headSha, patchHash }, provenance: { provider: "pi", model: "fixture-model", reasoning: "medium" }, generatedAt: "2026-08-01T00:00:00.000Z", value: { changeSummary: "Change", verdict: "comment", summary: "Review", findings: [{ id: "analysis-finding", severity: "P1", title: "Keep the guard", file: "src/prepared.ts", lineStart: 4, lineEnd: 4, diffSide: "new", explanation: "Keep it", confidence: "high", mappingStatus: "mapped" }], validationPlan: [], assumptions: [] } } } }) as never },
     }).update(updateInput(value, {
       _tag: "AddFindingInlineComment",
       reviewId,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
+import type { InsightProvider, InsightReasoning } from "../../../domain/insight-provider";
 import { parseInsightRunResponse, parseWorkbenchResponse, type InsightRunResponse, type WorkbenchResponse } from "../renderer-contracts";
 
 export type InsightRunType = "analysis" | "walkthrough";
@@ -14,7 +15,7 @@ export type InsightRunController = {
   readonly error: boolean;
   readonly failureReason?: InsightRunResponse["failureReason"];
   readonly busy: boolean;
-  readonly run: (model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction) => void;
+  readonly run: (provider: InsightProvider, model: string, reasoning: InsightReasoning, completion?: InsightCompletionAction, onAccepted?: () => void) => void;
   readonly cancel: () => void;
 };
 
@@ -52,7 +53,7 @@ export function useInsightRun(input: {
     setFailureReason(undefined);
   }, [persistedRunId]);
 
-  const run = useCallback((model: string, reasoning: "low" | "medium" | "high", completion?: InsightCompletionAction): void => {
+  const run = useCallback((provider: InsightProvider, model: string, reasoning: InsightReasoning, completion?: InsightCompletionAction, onAccepted?: () => void): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
     startingRef.current = true;
     setStarting(true);
@@ -60,7 +61,7 @@ export function useInsightRun(input: {
     setFailureReason(undefined);
     void requestJson(`/v1/reviews/insights/${type}/run`, {
       method: "POST",
-      body: { profileId, reviewId, type, model, reasoning, ...(completion === undefined ? {} : { completion }) },
+      body: { profileId, reviewId, type, provider, model, reasoning, ...(completion === undefined ? {} : { completion }) },
     }).then((value) => {
       const parsed = parseInsightRunResponse(value);
       if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight run response");
@@ -69,6 +70,7 @@ export function useInsightRun(input: {
       setStarting(false);
       setRunId(parsed.runId);
       setStatus(parsed.status);
+      onAccepted?.();
     }).catch(() => {
       startingRef.current = false;
       setStarting(false);

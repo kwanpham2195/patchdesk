@@ -16,9 +16,7 @@ import {
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-  type ContentHash,
   type FindingId,
-  type GitSha,
   type InsightRunId,
   type ReviewId,
   type ReviewSessionId,
@@ -41,6 +39,8 @@ import {
 } from "../domain/review-session";
 import { fingerprintPatchAnchor } from "../domain/review-anchor";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+import { parseInsightProvider, parseInsightReasoning, type RetainedInsightProvenance } from "../domain/insight-provider";
+import type { RetainedInsight } from "../domain/insight-record";
 import { readObjectField } from "./read-object-field";
 import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
@@ -415,7 +415,7 @@ export class ReviewBatchController {
     const analysis = await this.authority.insights.loadTyped(profileId, command.reviewId, "analysis", parseStoredAnalysis);
     if (analysis._tag === "err" || analysis.value.retained === undefined) return err({ reason: "invalid_input" });
     const retained = analysis.value.retained;
-    if (retained.runId !== command.runId || retained.sessionId !== sessionId || retained.headSha !== session.key.headSha) return err({ reason: "invalid_input" });
+    if (retained.runId !== command.runId || retained.revision.sessionId !== sessionId || retained.revision.headSha !== session.key.headSha) return err({ reason: "invalid_input" });
     let patch: string;
     let patchHash: string;
     try {
@@ -424,7 +424,7 @@ export class ReviewBatchController {
     } catch {
       return err({ reason: "storage_failed" });
     }
-    if (patchHash !== retained.patchHash) return err({ reason: "invalid_input" });
+    if (patchHash !== retained.revision.patchHash) return err({ reason: "invalid_input" });
     const finding = retained.value.findings.find((candidate) => candidate.id === command.findingId);
     if (finding === undefined) return err({ reason: "invalid_input" });
     if (command._tag === "AddFindingGeneralComment") return ok(undefined);
@@ -435,13 +435,7 @@ export class ReviewBatchController {
 
 }
 
-type StoredAnalysis = {
-  readonly runId: InsightRunId;
-  readonly sessionId: ReviewSessionId;
-  readonly headSha: GitSha;
-  readonly patchHash: ContentHash;
-  readonly value: ReviewResult;
-};
+type StoredAnalysis = RetainedInsight<ReviewResult>;
 
 function parseStoredAnalysis(input: unknown): Result<StoredAnalysis, unknown> {
   const revision = readObjectField(input, "revision");
@@ -449,9 +443,20 @@ function parseStoredAnalysis(input: unknown): Result<StoredAnalysis, unknown> {
   const sessionId = parseReviewSessionId(readObjectField(revision, "sessionId"));
   const headSha = parseGitSha(readObjectField(revision, "headSha"));
   const patchHash = parseContentHash(readObjectField(revision, "patchHash"));
+  const generatedAt = parseIsoTimestamp(readObjectField(input, "generatedAt"));
   const value = parseReviewResult(readObjectField(input, "value"));
-  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || value._tag === "err") return err(undefined);
-  return ok({ runId: runId.value, sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value, value: value.value });
+  const provenanceInput = readObjectField(input, "provenance");
+  const provider = parseInsightProvider(readObjectField(provenanceInput, "provider"));
+  const configuration = readObjectField(provenanceInput, "configuration");
+  const model = readObjectField(provenanceInput, "model");
+  const reasoning = parseInsightReasoning(readObjectField(provenanceInput, "reasoning"));
+  const provenance: Result<RetainedInsightProvenance, undefined> = provider._tag === "ok" && provider.value === "pi" && configuration === "unavailable"
+    ? ok({ provider: "pi", configuration: "unavailable" })
+    : typeof model === "string" && model.trim().length > 0 && model.length <= 200 && provider._tag === "ok" && reasoning._tag === "ok"
+      ? ok({ provider: provider.value, model, reasoning: reasoning.value })
+      : err(undefined);
+  if (runId._tag === "err" || sessionId._tag === "err" || headSha._tag === "err" || patchHash._tag === "err" || generatedAt._tag === "err" || value._tag === "err" || provenance._tag === "err") return err(undefined);
+  return ok({ runId: runId.value, revision: { sessionId: sessionId.value, headSha: headSha.value, patchHash: patchHash.value }, generatedAt: generatedAt.value, provenance: provenance.value, value: value.value });
 }
 
 async function validateRepairAnchor(

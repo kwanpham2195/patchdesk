@@ -36,7 +36,7 @@ import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
-import { parseAbsolutePath } from "../domain/ids";
+import { parseAbsolutePath, parseGitSha } from "../domain/ids";
 import { err, ok } from "../domain/result";
 import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
 import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
@@ -48,6 +48,10 @@ import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
+import { discoverPathOnlyExecutable } from "./executable-discovery";
+import { CodexInsightInvoker } from "../services/codex-insight-invoker";
+import { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import { InsightRunCoordinator, type InsightInvocationInput } from "../services/insight-run-coordinator";
 
 const rendererOrigin = getRendererOrigin();
@@ -90,6 +94,7 @@ const diagnostics = new ReviewDiagnosticService(
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
+      const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
       const startup = await startLocalApiServer({
         allowedOrigin: rendererOrigin,
         // Never trust the development server origin from a packaged application.
@@ -104,7 +109,8 @@ const desktopLifecycle = createDesktopLifecycle({
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
         workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics, logs),
-        insights: await recoverInsights(runtimeModelCatalog),
+        insights: await recoverInsights(runtimeModelCatalog, insightProviders),
+        insightProviders,
         lifecycleGate,
         diagnostics,
         logs,
@@ -147,13 +153,30 @@ const desktopLifecycle = createDesktopLifecycle({
   },
 });
 
-function createInsightCoordinator(modelCatalog: LocalPiRuntimeModelCatalog): InsightRunCoordinator {
+function createInsightProviderCatalog(modelCatalog: LocalPiRuntimeModelCatalog): InsightProviderCatalog {
+  return new InsightProviderCatalog(modelCatalog, (executablePath) => new CodexAppServerClient(executablePath), (name) => discoverPathOnlyExecutable(name));
+}
+
+function createInsightCoordinator(modelCatalog: LocalPiRuntimeModelCatalog, providerCatalog: InsightProviderCatalog): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
   const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
   const reviewInvoker = new FlueCliReviewInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
   const walkthroughInvoker = new FlueCliWalkthroughInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
+  const readHead = async (worktreePath: string): Promise<string | undefined> => {
+    const output = await new CommandRunner().runText({ argv: ["git", "-C", worktreePath, "rev-parse", "HEAD"], cwd: worktreePath, timeoutMs: 10_000 });
+    if (output._tag === "err") return undefined;
+    const parsed = parseGitSha(output.value.trim());
+    return parsed._tag === "ok" ? parsed.value : undefined;
+  };
+  const codexInvoke = async (input: InsightInvocationInput, options: { readonly signal: AbortSignal }) => {
+    const executablePath = await discoverPathOnlyExecutable("codex");
+    if (executablePath === undefined) return err({ reason: "runtime_unavailable" as const });
+    return new CodexInsightInvoker(paths, (path) => new CodexAppServerClient(path), executablePath, readHead).invoke(input, options);
+  };
   const analysis = {
     async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
+      if (input.provider === "codex-cli-account") return codexInvoke(input, options);
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh") return err({ reason: "execution_failed" as const });
       if (input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" as const });
       const contextPath = parseAbsolutePath(input.contextPath);
       const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
@@ -165,14 +188,16 @@ function createInsightCoordinator(modelCatalog: LocalPiRuntimeModelCatalog): Ins
   };
   const walkthrough = {
     async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
+      if (input.provider === "codex-cli-account") return codexInvoke(input, options);
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh") return err({ reason: "execution_failed" as const });
       return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
     },
   };
-  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, modelCatalog, { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths));
+  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, modelCatalog, { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths), providerCatalog);
 }
 
-async function recoverInsights(modelCatalog: LocalPiRuntimeModelCatalog): Promise<InsightRunCoordinator> {
-  const coordinator = createInsightCoordinator(modelCatalog);
+async function recoverInsights(modelCatalog: LocalPiRuntimeModelCatalog, providerCatalog: InsightProviderCatalog): Promise<InsightRunCoordinator> {
+  const coordinator = createInsightCoordinator(modelCatalog, providerCatalog);
   await coordinator.recoverAll();
   return coordinator;
 }

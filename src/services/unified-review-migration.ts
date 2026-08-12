@@ -202,10 +202,10 @@ export class UnifiedReviewMigration {
     const currentAnalysis = await this.options.insights.load(profileId, reviewId, "analysis");
     if (currentAnalysis._tag === "err" && currentAnalysis.error.reason !== "not_found") return currentAnalysis;
     if (analysis !== undefined && (currentAnalysis._tag === "err" || currentAnalysis.value.retained === undefined)) {
-      const base = currentAnalysis._tag === "ok" ? currentAnalysis.value : { schemaVersion: 1 as const, reviewId, type: "analysis" as const, nextToken: 1, updatedAt: analysis.session.updatedAt };
+      const base = currentAnalysis._tag === "ok" ? currentAnalysis.value : { schemaVersion: 2 as const, reviewId, type: "analysis" as const, nextToken: 1, updatedAt: analysis.session.updatedAt };
       const saved = await this.options.insights.save(profileId, {
         ...base,
-        retained: { runId: analysis.runId, revision: { sessionId: analysis.session.id, headSha: analysis.session.key.headSha, patchHash: analysis.patchHash }, generatedAt: analysis.session.updatedAt, value: analysis.value },
+        retained: { runId: analysis.runId, revision: { sessionId: analysis.session.id, headSha: analysis.session.key.headSha, patchHash: analysis.patchHash }, generatedAt: analysis.session.updatedAt, provenance: { provider: "pi", configuration: "unavailable" }, value: analysis.value },
       });
       if (saved._tag === "err") return saved;
       if (this.options.afterStage !== undefined) await this.options.afterStage("analysis");
@@ -214,10 +214,10 @@ export class UnifiedReviewMigration {
     const currentWalkthrough = await this.options.insights.load(profileId, reviewId, "walkthrough");
     if (currentWalkthrough._tag === "err" && currentWalkthrough.error.reason !== "not_found") return currentWalkthrough;
     if (walkthrough !== undefined && (currentWalkthrough._tag === "err" || currentWalkthrough.value.retained === undefined)) {
-      const base = currentWalkthrough._tag === "ok" ? currentWalkthrough.value : { schemaVersion: 1 as const, reviewId, type: "walkthrough" as const, nextToken: 1, updatedAt: walkthrough.session.updatedAt };
+      const base = currentWalkthrough._tag === "ok" ? currentWalkthrough.value : { schemaVersion: 2 as const, reviewId, type: "walkthrough" as const, nextToken: 1, updatedAt: walkthrough.session.updatedAt };
       const saved = await this.options.insights.save(profileId, {
         ...base,
-        retained: { runId: walkthrough.runId, revision: { sessionId: walkthrough.session.id, headSha: walkthrough.session.key.headSha, patchHash: walkthrough.patchHash }, generatedAt: walkthrough.session.updatedAt, value: walkthrough.value },
+        retained: { runId: walkthrough.runId, revision: { sessionId: walkthrough.session.id, headSha: walkthrough.session.key.headSha, patchHash: walkthrough.patchHash }, generatedAt: walkthrough.session.updatedAt, provenance: { provider: "pi", configuration: "unavailable" }, value: walkthrough.value },
         ...(walkthrough.progress === undefined ? {} : { walkthroughProgress: walkthrough.progress }),
       });
       if (saved._tag === "err") return saved;

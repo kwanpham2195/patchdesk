@@ -15,9 +15,10 @@ const headSha = must(parseGitSha("a".repeat(40)));
 const patchHash = must(parseContentHash("b".repeat(64)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
+const provenance = { provider: "pi" as const, model: "fixture-model", reasoning: "medium" as const };
 
 function record(): InsightRecord<unknown> { return createInsightRecord({ reviewId, type: "analysis", updatedAt: now }); }
-function runInput(recordValue: InsightRecord<unknown>) { return { id: must(parseInsightRunId(`insight-analysis-${recordValue.nextToken}-${headSha.slice(0, 12)}-${reviewId}`)), revision: { sessionId, headSha, patchHash }, model: "fixture-model", reasoning: "medium" as const, startedAt: now }; }
+function runInput(recordValue: InsightRecord<unknown>) { return { id: must(parseInsightRunId(`insight-analysis-${recordValue.nextToken}-${headSha.slice(0, 12)}-${reviewId}`)), revision: { sessionId, headSha, patchHash }, provider: "pi" as const, model: "fixture-model", reasoning: "medium" as const, startedAt: now }; }
 
 describe("InsightRecord", () => {
   it("begins one run and rejects a concurrent run", () => {
@@ -29,7 +30,7 @@ describe("InsightRecord", () => {
   });
 
   it("preserves retained output while replacing, failing, or cancelling a run", () => {
-    const retained = { runId: "old", revision: { sessionId, headSha, patchHash }, generatedAt: now, value: { summary: "old" } };
+    const retained = { runId: "old" as never, revision: { sessionId, headSha, patchHash }, generatedAt: now, provenance, value: { summary: "old" } };
     const withRetained = { ...record(), retained };
     const started = beginInsightRun(withRetained, runInput(withRetained));
     if (started._tag === "err") throw new Error("expected run");
@@ -54,7 +55,7 @@ describe("InsightRecord", () => {
   it("trims valid dismissal reasons and rejects blank or oversized reasons", () => {
     const findingId = must(parseFindingId("finding-1"));
     const runId = must(parseInsightRunId(`insight-analysis-1-${headSha.slice(0, 12)}-${reviewId}`));
-    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, value: {} } };
+    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, provenance, value: {} } };
     const dismissed = dismissInsightFinding(withRetained, findingId, "  Not applicable.  ", later);
     expect(dismissed).toMatchObject({ _tag: "ok", value: { dismissals: [{ findingId, reason: "Not applicable." }] } });
     expect(dismissInsightFinding(withRetained, findingId, "   ", later)).toEqual({ _tag: "err", error: "invalid_reason" });
@@ -64,12 +65,12 @@ describe("InsightRecord", () => {
   it("starts a replacement with a fresh dismissal set on successful completion", () => {
     const findingId = must(parseFindingId("finding-1"));
     const runId = must(parseInsightRunId(`insight-analysis-1-${headSha.slice(0, 12)}-${reviewId}`));
-    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, value: {} } };
+    const withRetained: InsightRecord<unknown> = { ...record(), retained: { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, provenance, value: {} } };
     const dismissed = dismissInsightFinding(withRetained, findingId, "Not applicable.", now);
     if (dismissed._tag === "err") throw new Error("expected dismissal");
     const started = beginInsightRun(dismissed.value, runInput(dismissed.value));
     if (started._tag === "err" || started.value.activeRun === undefined) throw new Error("expected run");
-    const completed = completeInsightRun(started.value, started.value.activeRun.id, { runId: started.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: {} }, later);
+    const completed = completeInsightRun(started.value, started.value.activeRun.id, { runId: started.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, provenance, value: {} }, later);
     expect(completed).toMatchObject({ _tag: "ok", value: { retained: { value: {} } } });
     if (completed._tag === "ok") expect(completed.value.dismissals).toBeUndefined();
   });
@@ -77,9 +78,9 @@ describe("InsightRecord", () => {
   it("persists walkthrough progress and clears it for a replacement run", () => {
     const walkthrough = createInsightRecord({ reviewId, type: "walkthrough", updatedAt: now });
     const runId = must(parseInsightRunId(`insight-walkthrough-1-${headSha.slice(0, 12)}-${reviewId}`));
-    const started = beginInsightRun(walkthrough, { id: runId, revision: { sessionId, headSha, patchHash }, model: "fixture-model", reasoning: "medium", startedAt: now });
+    const started = beginInsightRun(walkthrough, { id: runId, revision: { sessionId, headSha, patchHash }, provider: "pi", model: "fixture-model", reasoning: "medium", startedAt: now });
     if (started._tag === "err") throw new Error("expected run");
-    const retained = completeInsightRun(started.value, runId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, value: {} }, now);
+    const retained = completeInsightRun(started.value, runId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: now, provenance, value: {} }, now);
     if (retained._tag === "err") throw new Error("expected retained walkthrough");
     const progress = updateWalkthroughProgress(retained.value, { reviewedSectionIds: ["section-a", "section-a"], supportReviewed: true, currentSectionId: "section-a" }, later);
     expect(progress).toMatchObject({ _tag: "ok", value: { walkthroughProgress: { reviewedSectionIds: ["section-a"], supportReviewed: true } } });
@@ -98,7 +99,7 @@ describe("InsightRecord", () => {
     const cancelled = requestInsightCancellation(retry.value, retry.value.activeRun.id, later);
     if (cancelled._tag === "err") throw new Error("expected cancellation");
     expect(cancelled.value.walkthroughProgress).toMatchObject({ reviewedSectionIds: ["section-a"], supportReviewed: true });
-    const completed = completeInsightRun(retry.value, retry.value.activeRun.id, { runId: retry.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: {} }, later);
+    const completed = completeInsightRun(retry.value, retry.value.activeRun.id, { runId: retry.value.activeRun.id, revision: { sessionId, headSha, patchHash }, generatedAt: later, provenance, value: {} }, later);
     if (completed._tag === "err") throw new Error("expected successful replacement");
     expect(completed.value.walkthroughProgress).toBeUndefined();
   });
@@ -110,8 +111,8 @@ describe("InsightRecord", () => {
     if (activeRun === undefined) throw new Error("expected active run");
     const runId = activeRun.id;
     const otherRunId = must(parseInsightRunId(`insight-analysis-2-${headSha.slice(0, 12)}-${reviewId}`));
-    expect(completeInsightRun(started.value, otherRunId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: { summary: "new" } }, later)).toEqual({ _tag: "err", error: "superseded" });
-    const completed = completeInsightRun(started.value, runId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: later, value: { summary: "new" } }, later);
+    expect(completeInsightRun(started.value, otherRunId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: later, provenance, value: { summary: "new" } }, later)).toEqual({ _tag: "err", error: "superseded" });
+    const completed = completeInsightRun(started.value, runId, { runId, revision: { sessionId, headSha, patchHash }, generatedAt: later, provenance, value: { summary: "new" } }, later);
     expect(completed._tag).toBe("ok");
     if (completed._tag === "ok") expect(completed.value.retained?.value).toEqual({ summary: "new" });
   });

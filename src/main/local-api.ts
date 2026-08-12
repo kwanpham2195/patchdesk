@@ -85,6 +85,7 @@ import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewWriteGate } from "../services/review-write-gate";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
+import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import {
@@ -131,7 +132,7 @@ const reviewUpdateSchema = strictObject({
   recentWrites: optional(array(recentReviewWriteSchema)),
 });
 const reviewCommitDiffSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), commitSha: pipe(string(), minLength(7)) });
-const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), model: pipe(string(), minLength(1)), reasoning: picklist(["low", "medium", "high"]) });
+const insightRunSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), provider: picklist(["pi", "codex-cli-account"]), model: pipe(string(), minLength(1), maxLength(200)), reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]) });
 const insightCancelSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), type: picklist(["analysis", "walkthrough"]), runId: pipe(string(), minLength(1)) });
 const insightFindingSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), runId: pipe(string(), minLength(1)), reason: optional(pipe(string(), minLength(1), maxLength(500))) });
 const publicationPreviewSchema = strictObject({ profileId: pipe(string(), minLength(1)), reviewId: pipe(string(), minLength(1)), sessionId: pipe(string(), minLength(1)), expectedHeadSha: optional(pipe(string(), minLength(40))), expectedPatchHash: optional(pipe(string(), minLength(64))), expectedRevision: pipe(string(), minLength(1)), event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) });
@@ -168,6 +169,8 @@ export type LocalApiConfiguration = {
   readonly supportedReviewModels?: ReadonlyArray<string>;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;
+  /** Main-process-only provider catalog; Codex activation is explicit and authenticated. */
+  readonly insightProviders?: Pick<InsightProviderCatalog, "passive" | "activateCodex">;
   /** Test-only adapter; production never accepts mutable run state over HTTP. */
   readonly runProjection?: (input: {
     readonly runId: string;
@@ -723,6 +726,14 @@ export async function startLocalApiServer(
         failed: reconciled.failed,
       },
     });
+  });
+  app.get("/v1/insight-providers", async (context) => {
+    if (configuration.insightProviders === undefined) return context.json({ error: "provider_unavailable" }, 503);
+    return response(context, await configuration.insightProviders.passive());
+  });
+  app.post("/v1/insight-providers/codex/models", async (context) => {
+    if (configuration.insightProviders === undefined) return context.json({ error: "provider_unavailable" }, 503);
+    return response(context, await configuration.insightProviders.activateCodex());
   });
   app.post("/v1/reviews/insights/analysis/run", async (context) => insightRunResponse(context, configuration.insights, "analysis", await jsonBody(context)));
   app.post("/v1/reviews/insights/walkthrough/run", async (context) => insightRunResponse(context, configuration.insights, "walkthrough", await jsonBody(context)));
@@ -1315,7 +1326,7 @@ async function insightRunResponse(context: Context, coordinator: LocalApiConfigu
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
   const reviewId = parseReviewId(parsed.output.reviewId);
   if (profileId._tag === "err" || reviewId._tag === "err") return context.json({ error: "invalid_input" }, 400);
-  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, model: parsed.output.model, reasoning: parsed.output.reasoning });
+  const result = await coordinator.start({ profileId: profileId.value, reviewId: reviewId.value, type, provider: parsed.output.provider, model: parsed.output.model, reasoning: parsed.output.reasoning });
   return insightResultResponse(context, result, 202);
 }
 

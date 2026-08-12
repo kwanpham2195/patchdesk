@@ -22,8 +22,9 @@ import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import {
   InsightRunDialog,
   type InsightRunDialogType,
-  type InsightReasoning,
 } from "../components/insight-run-dialog";
+import type { InsightProvider, InsightReasoning } from "../../../domain/insight-provider";
+import { loadInsightRunPreference, saveInsightRunPreference, type InsightRunPreference } from "../insight-run-preferences";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -54,7 +55,7 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   parseCommitDiffResponse,
   parseDirectSummaryReviewResponse,
-  parseModelCatalog,
+  parseInsightProviderCatalog,
   parsePendingReviewProjection,
   parsePublicationPreview,
   parseReviewBatchProjection,
@@ -1326,9 +1327,10 @@ function InsightsSlot({
   readonly onFinishWithAnalysisSummary: (summary: string) => void;
 }): React.JSX.Element {
   const navigateToFiles = useReviewWorkbenchNavigation();
-  const [models, setModels] = useState<
-    ReadonlyArray<{ readonly id: string; readonly label: string }>
-  >([]);
+  const [catalog, setCatalog] = useState<ReturnType<typeof parseInsightProviderCatalog>>();
+  const [provider, setProvider] = useState<InsightProvider>("pi");
+  const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string; readonly reasoning?: ReadonlyArray<InsightReasoning> }>>([]);
+  const [preferences, setPreferences] = useState<Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>>({});
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<InsightReasoning>("medium");
   const [runDialogType, setRunDialogType] =
@@ -1337,6 +1339,8 @@ function InsightsSlot({
     "run" | "retry" | "regenerate"
   >("run");
   const [catalogError, setCatalogError] = useState(false);
+  const [codexActivationPending, setCodexActivationPending] = useState(false);
+  const [codexActivationError, setCodexActivationError] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<
     "overview" | "analysis" | "walkthrough"
   >(initialDetail ?? "analysis");
@@ -1384,33 +1388,77 @@ function InsightsSlot({
 
   useEffect(() => {
     let active = true;
-    void requestJson("/v1/reviews/models")
+    const loadedPreferences: Partial<Record<"analysis" | "walkthrough", InsightRunPreference>> = {};
+    const analysisPreference = loadInsightRunPreference(profileId, "analysis");
+    const walkthroughPreference = loadInsightRunPreference(profileId, "walkthrough");
+    if (analysisPreference !== undefined) loadedPreferences.analysis = analysisPreference;
+    if (walkthroughPreference !== undefined) loadedPreferences.walkthrough = walkthroughPreference;
+    setPreferences(loadedPreferences);
+    const initialPreference = loadedPreferences[initialDetail ?? "analysis"];
+    if (initialPreference !== undefined) {
+      setProvider(initialPreference.provider);
+      setReasoning(initialPreference.reasoning);
+      setModel(initialPreference.model);
+    }
+    void requestJson("/v1/insight-providers")
       .then((value) => {
         if (!active) return;
-        const catalog = parseModelCatalog(value);
-        if (catalog === undefined) {
+        const parsed = parseInsightProviderCatalog(value);
+        if (parsed === undefined) {
+          setCatalog(undefined);
           setModels([]);
           setModel(null);
           setCatalogError(true);
           return;
         }
-        setModels(catalog.models);
-        setModel(catalog.defaultModel ?? catalog.models[0]?.id ?? null);
+        setCatalog(parsed);
+        const piModels = parsed.models.filter((candidate) => candidate.provider === "pi");
+        setModels(piModels);
+        const selectedModel = initialPreference?.provider === "pi" && piModels.some((candidate) => candidate.id === initialPreference.model)
+          ? initialPreference.model
+          : piModels[0]?.id ?? null;
+        setModel(selectedModel);
         setCatalogError(false);
       })
       .catch(() => {
         if (!active) return;
+        setCatalog(undefined);
         setModels([]);
         setModel(null);
         setCatalogError(true);
       });
-    return () => {
-      active = false;
-    };
-  }, [profileId]);
+    return () => { active = false; };
+  }, [profileId, initialDetail]);
 
-  const runEnabled =
-    !catalogError && model !== null && workbench.review.status === "open";
+  const providerAvailable = catalog?.providers.some((candidate) => candidate.id === provider && candidate.available) ?? false;
+  const runEnabled = !catalogError && providerAvailable && model !== null && workbench.review.status === "open";
+
+  const activePreferenceType = runDialogType ?? (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
+  const changeProvider = (nextProvider: InsightProvider): void => {
+    setProvider(nextProvider);
+    const nextModels = catalog?.models.filter((candidate) => candidate.provider === nextProvider) ?? [];
+    setModels(nextModels);
+    const preference = preferences[activePreferenceType];
+    setModel(preference?.provider === nextProvider && nextModels.some((candidate) => candidate.id === preference.model) ? preference.model : nextModels[0]?.id ?? null);
+    const first = nextModels[0];
+    setReasoning(preference?.provider === nextProvider ? preference.reasoning : first?.defaultReasoning ?? first?.reasoning[0] ?? "medium");
+  };
+  const activateCodex = (): void => {
+    setCodexActivationPending(true);
+    setCodexActivationError(false);
+    void requestJson("/v1/insight-providers/codex/models", { method: "POST", body: {} })
+      .then((value) => {
+        const parsed = parseInsightProviderCatalog(value);
+        if (parsed === undefined) throw new Error("Invalid Codex catalog");
+        setCatalog((current) => current === undefined ? parsed : { ...current, providers: [...current.providers.filter((candidate) => candidate.id !== "codex-cli-account"), ...parsed.providers], models: [...current.models.filter((candidate) => candidate.provider !== "codex-cli-account"), ...parsed.models] });
+        const codexModels = parsed.models.filter((candidate) => candidate.provider === "codex-cli-account");
+        setModels(codexModels);
+        setModel(codexModels[0]?.id ?? null);
+        setReasoning(codexModels[0]?.defaultReasoning ?? codexModels[0]?.reasoning[0] ?? "medium");
+      })
+      .catch(() => setCodexActivationError(true))
+      .finally(() => setCodexActivationPending(false));
+  };
   const walkthroughRunId = workbench.insights.walkthrough.retained?.runId;
   useEffect(() => {
     setProgressError(false);
@@ -1509,23 +1557,33 @@ function InsightsSlot({
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
     selectedProjection.retained === undefined;
-  const runSelected = (): void => {
+  const runSelected = (onAccepted?: () => void): void => {
     if (model === null || selectedInsight === "overview") return;
     if (selectedInsight === "analysis") {
-      analysisRun.run(model, reasoning);
+      analysisRun.run(provider, model, reasoning, undefined, onAccepted);
     } else {
-      walkthroughRun.run(model, reasoning);
+      walkthroughRun.run(provider, model, reasoning, undefined, onAccepted);
     }
   };
   const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
-    if (selectedInsight === "overview" || !runEnabled) return;
+    if (selectedInsight === "overview" || catalogError) return;
+    const preference = preferences[selectedInsight];
+    setProvider(preference?.provider ?? "pi");
+    setReasoning(preference?.reasoning ?? "medium");
+    const nextModels = catalog?.models.filter((candidate) => candidate.provider === (preference?.provider ?? "pi")) ?? [];
+    setModels(nextModels);
+    setModel(preference !== undefined && nextModels.some((candidate) => candidate.id === preference.model) ? preference.model : nextModels[0]?.id ?? null);
     setRunDialogType(selectedInsight);
     setRunDialogAction(action);
   };
   const closeRunDialog = (): void => setRunDialogType(null);
   const confirmRun = (): void => {
+    if (model === null || selectedInsight === "overview") return;
     closeRunDialog();
-    runSelected();
+    runSelected(() => {
+      saveInsightRunPreference(profileId, selectedInsight, { provider, model, reasoning });
+      setPreferences((current) => ({ ...current, [selectedInsight]: { provider, model, reasoning } }));
+    });
   };
   const retainedDescription =
     selectedInsight === "analysis"
@@ -1862,11 +1920,22 @@ function InsightsSlot({
           action={runDialogAction}
           models={models}
           model={model}
+          provider={provider}
+          codexActivationPending={codexActivationPending}
+          codexActivationError={codexActivationError}
           reasoning={reasoning}
           onOpenChange={(open) => {
             if (!open) closeRunDialog();
           }}
-          onModelChange={setModel}
+          onModelChange={(nextModel) => {
+            setModel(nextModel);
+            const selected = models.find((candidate) => candidate.id === nextModel);
+            if (selected !== undefined && selected.reasoning !== undefined && !selected.reasoning.includes(reasoning)) {
+              setReasoning(selected.reasoning[0] ?? "medium");
+            }
+          }}
+          onProviderChange={changeProvider}
+          onActivateCodex={activateCodex}
           onReasoningChange={setReasoning}
           onConfirm={confirmRun}
         />
