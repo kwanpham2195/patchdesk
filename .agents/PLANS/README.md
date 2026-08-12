@@ -1,18 +1,18 @@
 # Implementation Plans
 
-Updated 2026-08-11. The only active implementation plan is the Codex CLI account
-Insight-provider slice. It preserves the existing Insight lifecycle and authority
-boundaries; production styling continues using the existing Base UI/shadcn primitives
-and Tailwind utilities.
+Updated 2026-08-12. The active implementation plan separates safe PR-metadata
+reconciliation from explicit code-revision refresh, then corrects the file-tree theme
+and PR Overview merge controls. Production styling continues using the existing
+Base UI/shadcn primitives and Tailwind utilities.
 
 ## Current active plan
 
-- **2026-08-11 — Add the Codex CLI account Insight provider**
+- **2026-08-12 — Separate PR metadata reconciliation from revision refresh and polish the workbench**
   - Priority: P1
-  - Effort: L
+  - Effort: M
   - Status: TODO
-  - Plan: `.agents/PLANS/2026-08-11-codex-cli-account-provider.md`
-  - Depends on: ADR-0016 and deterministic fake-app-server coverage.
+  - Plan: `.agents/PLANS/2026-08-12-pr-metadata-reconciliation-and-workbench-polish.md`
+  - Depends on: ADR-0017 (to be written as Step 1).
 
 ## Historical and deferred plans
 
@@ -20,6 +20,13 @@ The entries below are retained context only. They are not active work unless a
 maintainer explicitly promotes one back into this section.
 
 ### Prior plan status
+
+- **2026-08-11 — Add the Codex CLI account Insight provider**
+  - Priority: P1
+  - Effort: L
+  - Status: DONE (`6d37a45`)
+  - Plan: `.agents/PLANS/2026-08-11-codex-cli-account-provider.md`
+  - Depends on: ADR-0016 and deterministic fake-app-server coverage.
 
 - **2026-08-10 — Improve review submission recovery and Walkthrough discussion context**
   - Priority: P1
