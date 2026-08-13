@@ -98,9 +98,19 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.queryByRole("navigation", { name: "Review surfaces" }),
     ).toBeNull();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
+    const conversation = screen.getByRole("button", {
+      name: "Conversation",
+    });
+    const diff = screen.getByRole("button", { name: "Diff" });
+    const insights = screen.getByRole("button", { name: "Insights" });
+    expect(conversation.getAttribute("aria-pressed")).toBe("true");
+    expect(diff.getAttribute("aria-pressed")).toBe("false");
+    expect(insights.getAttribute("aria-pressed")).toBe("false");
+    await userEvent.setup().click(diff);
+    expect(conversation.getAttribute("aria-pressed")).toBe("false");
+    expect(diff.getAttribute("aria-pressed")).toBe("true");
+    expect(insights.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
     expect(screen.queryByText("Review unavailable")).toBeNull();
   });
 
@@ -139,7 +149,7 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await user.click(screen.getByRole("button", { name: "Diff" }));
     expect(
       document.querySelector('[data-review-diff-layout="with-navigator"]'),
     ).toBeTruthy();
@@ -166,7 +176,7 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Diff" }));
     expect(
       screen.getByRole("tab", { name: "Browse", selected: true }),
     ).toBeTruthy();
@@ -342,7 +352,7 @@ describe("ReviewWorkbenchFlow", () => {
     );
     expect(screen.getByText("Published review body")).toBeTruthy();
     expect(screen.getByText("Published inline feedback")).toBeTruthy();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Diff" }));
     expect(screen.getByRole("button", { name: /Review draft/ })).toBeTruthy();
     expect(screen.getByText("0 included")).toBeTruthy();
   });
@@ -396,7 +406,7 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("button", { name: "Insights" }));
     await waitFor(() =>
       expect(
         (
@@ -462,7 +472,7 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("button", { name: "Insights" }));
     await waitFor(() =>
       expect(screen.getByText(/No Pi model is configured/)).toBeTruthy(),
     );
@@ -509,7 +519,7 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("button", { name: "Insights" }));
     await waitFor(() =>
       expect(screen.getByText(/No eligible model configured/)).toBeTruthy(),
     );
@@ -582,7 +592,7 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("button", { name: "Insights" }));
     await waitFor(() =>
       expect(
         (
@@ -876,7 +886,7 @@ describe("ReviewWorkbenchFlow", () => {
         onNavigate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("button", { name: "Insights" }));
     expect(
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
@@ -1159,8 +1169,8 @@ describe("ReviewWorkbenchFlow", () => {
       throw new Error("Expected the retained bottom docks");
     expect(feedbackDock.classList.contains("hidden")).toBe(true);
     expect(draftDock.classList.contains("hidden")).toBe(true);
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
-    expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Diff" }));
+    expect(screen.getByRole("button", { name: "Insights" })).toBeTruthy();
     expect(
       screen.getAllByLabelText("Review diff").length,
     ).toBeGreaterThanOrEqual(1);
@@ -1244,7 +1254,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByRole("region", { name: "Review workbench" }),
     ).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Insights" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Insights" })).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: "Walkthrough chapters" }),
     ).toBeNull();
@@ -1483,7 +1493,7 @@ describe("ReviewWorkbenchFlow", () => {
       />,
     );
 
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Diff" }));
     await userEvent.setup().click(screen.getByRole("tab", { name: "Commits" }));
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
@@ -1900,7 +1910,7 @@ describe("ReviewWorkbenchFlow", () => {
         />,
       );
       await vi.advanceTimersByTimeAsync(0);
-      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
       const authorButtons = screen.getAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
@@ -2021,7 +2031,7 @@ describe("ReviewWorkbenchFlow", () => {
       ).length;
     // The initial visible-Review detection is the only one so far.
     await waitFor(() => expect(detectCount()).toBe(1));
-    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await user.click(screen.getByRole("button", { name: "Diff" }));
     const authorButtons = screen.getAllByRole("button", {
       name: "Add comment on src/a.ts",
     });
@@ -2373,7 +2383,7 @@ it("keeps detection paused while two direct commands overlap and resumes only af
     await vi.advanceTimersByTimeAsync(0);
     expect(detectCount()).toBe(1);
     // Start two overlapping inline creates; both commands stay in flight.
-    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
     const authorButtons = screen.getAllByRole("button", {
       name: "Add comment on src/a.ts",
     });
@@ -2508,7 +2518,7 @@ it("treats a malformed create receipt as a bounded failure: no journal record an
       />,
     );
     await vi.advanceTimersByTimeAsync(0);
-    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
     const authorButtons = screen.getAllByRole("button", {
       name: "Add comment on src/a.ts",
     });
@@ -2776,7 +2786,7 @@ describe("ReviewWorkbenchFlow pending review", () => {
 
   async function openComposer(user: ReturnType<typeof userEvent.setup>) {
     void user;
-    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
     const authorButtons = screen.getAllByRole("button", {
       name: "Add comment on src/a.ts",
     });
@@ -3583,7 +3593,7 @@ describe("pending-review write journaling", () => {
           onNavigate={vi.fn()}
         />,
       );
-      await user.click(screen.getByRole("tab", { name: "Diff" }));
+      await user.click(screen.getByRole("button", { name: "Diff" }));
       const row = document.querySelector<HTMLElement>(
         '[data-line-type="change-addition"]',
       );

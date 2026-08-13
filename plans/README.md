@@ -14,7 +14,7 @@ its status row when done.
 | Plan | Title | Priority | Effort | Risk | Depends on | Status |
 |------|-------|----------|--------|------|------------|--------|
 | 001 | Prevent stale direct-summary observation from replacing Refresh | P1 | S | LOW | — | DONE |
-| 002 | Restore valid Review workbench navigation semantics | P1 | S | LOW | — | TODO |
+| 002 | Restore valid Review workbench navigation semantics | P1 | S | LOW | — | DONE |
 | 003 | Correct write-safety and development-runtime documentation | P1 | S | LOW | 001, 002 | TODO |
 | 004 | Make the packaged Flue runtime reproducible | P1 | M | MED | 001–003 | TODO |
 | 005 | Remove superseded Review systems and keep one current runtime | P1 | L | HIGH | 001–004 | TODO |
