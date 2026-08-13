@@ -21,7 +21,8 @@
     "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
-    "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs"
+    "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -67,6 +68,7 @@
     "jsdom": "^26.1.0",
     "playwright": "^1.54.2",
     "prettier": "^3.6.2",
+    "react-doctor": "^0.9.11",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.1.12",
     "typescript": "^5.9.3",
