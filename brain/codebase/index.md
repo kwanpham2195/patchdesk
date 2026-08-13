@@ -5,3 +5,4 @@
 - [[codebase/live-qa-operations]]
 - [[codebase/github-adapter-quirks]]
 - [[codebase/pierre-controlled-items]]
+- [[codebase/plan-portfolio-execution]]
