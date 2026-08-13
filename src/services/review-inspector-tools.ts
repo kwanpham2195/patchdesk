@@ -3,7 +3,7 @@ import * as v from "valibot";
 
 import type { ReviewInspector } from "./review-inspector";
 
-type InspectorTool = ToolDefinition<Record<string, unknown>, Record<string, unknown>>;
+type InspectorTool = ToolDefinition;
 
 /** Builds the entire model-facing inspection capability for one prepared review attempt. */
 export function createReviewInspectorTools(inspector: ReviewInspector): ReadonlyArray<InspectorTool> {

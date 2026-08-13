@@ -1,152 +1,44 @@
 import { defineAgent, defineWorkflow } from "@flue/runtime";
-import * as v from "valibot";
 
 import type { FlueHarness } from "../flue-runtime-types";
-import { insightOutputGuidance } from "../domain/insight-output-guidance";
-import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
-import { err, ok, type Result } from "../domain/result";
-import { readBoundedArtifact } from "../services/walkthrough-artifact-reader";
+import {
+  parseWalkthroughOutput,
+  prepareWalkthroughPrompt,
+  walkthroughInputSchema,
+  walkthroughOutputSchema,
+  type InvalidWalkthroughOutput,
+  type WalkthroughInput,
+  type WalkthroughOutput,
+} from "../services/walkthrough-operation";
 
-const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
-const MAX_CONTEXT_BYTES = 512 * 1024;
-const MAX_TITLE_LENGTH = 200;
-// Workflow output bounds: the model must emit genuinely short summaries. These
-// are tighter than the persisted domain/renderer schemas (4,000/2,000), which
-// stay unchanged so retained walkthroughs written before this bound remain
-// readable without silent truncation.
-const MAX_FOCUS_LENGTH = 320;
-const MAX_CHAPTERS = 12;
-const MAX_SECTIONS = 32;
-const MAX_SECTION_TITLE_LENGTH = 160;
-const MAX_CHAPTER_TITLE_LENGTH = 80;
-const MAX_PROSE_LENGTH = 320;
-const MAX_HUNKS_PER_SECTION = 32;
-const MAX_HUNK_ALIAS_LENGTH = 16;
-const MAX_TOTAL_SECTIONS = 32;
-const HUNK_ALIAS = /^h[1-9]\d*$/;
-
-const boundedIdentifier = (maxLength: number) =>
-  v.pipe(v.string(), v.minLength(1), v.maxLength(maxLength));
-const reasoningSchema = v.picklist(["low", "medium", "high"]);
-
-/** Strict main-process input for the finite walkthrough workflow. */
-export const walkthroughInputSchema = v.strictObject({
-  profileId: boundedIdentifier(128),
-  sessionId: boundedIdentifier(256),
-  contextPath: boundedIdentifier(4_096),
-  patchPath: boundedIdentifier(4_096),
-  model: boundedIdentifier(200),
-  reasoning: reasoningSchema,
-});
-
-const walkthroughSectionSchema = v.strictObject({
-  title: v.pipe(
-    v.string(),
-    v.minLength(1),
-    v.maxLength(MAX_SECTION_TITLE_LENGTH),
-  ),
-  prose: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_PROSE_LENGTH)),
-  hunkIds: v.pipe(
-    v.array(
-      v.pipe(
-        v.string(),
-        v.maxLength(MAX_HUNK_ALIAS_LENGTH),
-        v.regex(HUNK_ALIAS),
-      ),
-    ),
-    v.maxLength(MAX_HUNKS_PER_SECTION),
-  ),
-});
-
-const walkthroughChapterSchema = v.strictObject({
-  title: v.pipe(
-    v.string(),
-    v.minLength(1),
-    v.maxLength(MAX_CHAPTER_TITLE_LENGTH),
-  ),
-  sections: v.pipe(
-    v.array(walkthroughSectionSchema),
-    v.maxLength(MAX_SECTIONS),
-  ),
-});
-
-/** Raw structured output accepted from Flue before snapshot normalization. */
-export const walkthroughOutputSchema = v.pipe(
-  v.strictObject({
-    citationVersion: v.literal(2),
-    title: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_TITLE_LENGTH)),
-    focus: v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_FOCUS_LENGTH)),
-    chapters: v.pipe(
-      v.array(walkthroughChapterSchema),
-      v.maxLength(MAX_CHAPTERS),
-    ),
-  }),
-  v.check(
-    (output) => totalSectionCount(output) <= MAX_TOTAL_SECTIONS,
-    "Walkthrough output exceeds the aggregate section limit",
-  ),
-);
-
-export type WalkthroughInput = v.InferOutput<typeof walkthroughInputSchema>;
-export type WalkthroughOutput = v.InferOutput<typeof walkthroughOutputSchema>;
-export type InvalidWalkthroughOutput = {
-  readonly _tag: "InvalidWalkthroughOutput";
+export {
+  parseWalkthroughOutput,
+  walkthroughInputSchema,
+  walkthroughOutputSchema,
+  type InvalidWalkthroughOutput,
+  type WalkthroughInput,
+  type WalkthroughOutput,
 };
 
-/** Parses only the bounded, strict JSON shape emitted by the workflow. */
-export function parseWalkthroughOutput(
-  input: unknown,
-): Result<WalkthroughOutput, InvalidWalkthroughOutput> {
-  const parsed = v.safeParse(walkthroughOutputSchema, input);
-  if (!parsed.success) return err({ _tag: "InvalidWalkthroughOutput" });
-
-  return ok(parsed.output);
-}
-
 const walkthroughAgent = defineAgent(() => ({
-  instructions: [
-    "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result.",
-    "Write the top-level focus as one or two concise sentences, at most around 300 characters, summarizing the patch's overall behavior without enumerating hunk aliases or paths. Keep each section's prose to one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Explain behavior before consequences and validation, use hunk aliases exactly as supplied, and place mechanical or low-signal changes in Support by leaving them out of primary sections. Never invent a path, line number, hunk alias, or action.",
-  ].join(" "),
+  instructions: "Create a concise semantic explanation of one immutable pull-request patch. Return only the required structured result.",
   model: "opencode-go/deepseek-v4-flash",
   skills: [],
 }));
 
-/**
- * A finite, read-only Flue workflow. It reads only the two main-process-owned
- * artifacts supplied in its validated input and returns bounded structured data.
- */
-export async function runWalkthroughWorkflow({
-  harness,
-  input,
-}: {
-  readonly harness: FlueHarness;
-  readonly input: WalkthroughInput;
-}): Promise<WalkthroughOutput> {
-  const [context, patch] = await Promise.all([
-    readWorkflowArtifact(input.contextPath, MAX_CONTEXT_BYTES),
-    readWorkflowArtifact(input.patchPath, MAX_ARTIFACT_BYTES),
-  ]);
-  const manifest = narrativeHunkManifest(patch);
-  if (manifest._tag === "err")
-    throw new Error("Walkthrough patch could not be indexed");
-  const response = await harness.session().then((session) =>
-    session.prompt<WalkthroughOutput>(
-      composeWalkthroughPrompt({
-        input,
-        context,
-        patch,
-        manifest: manifest.value,
-      }),
-      {
-        result: walkthroughOutputSchema,
-        tools: [],
-        model: input.model,
-        thinkingLevel: input.reasoning,
-      },
-    ),
-  );
-  return response.data;
+/** Beta wrapper retained only until the Plan 006 production composition switch. */
+export async function runWalkthroughWorkflow({ harness, input }: { readonly harness: FlueHarness; readonly input: WalkthroughInput }): Promise<WalkthroughOutput> {
+  const prompt = await prepareWalkthroughPrompt(input);
+  const session = await harness.session();
+  const response = await session.prompt<WalkthroughOutput>(prompt, {
+    result: walkthroughOutputSchema,
+    tools: [],
+    model: input.model,
+    thinkingLevel: input.reasoning,
+  });
+  const parsed = parseWalkthroughOutput(response.data);
+  if (parsed._tag === "err") throw new Error("Invalid walkthrough result");
+  return parsed.value;
 }
 
 export default defineWorkflow({
@@ -155,62 +47,3 @@ export default defineWorkflow({
   output: walkthroughOutputSchema,
   run: runWalkthroughWorkflow,
 });
-
-async function readWorkflowArtifact(
-  path: string,
-  maxBytes: number,
-): Promise<string> {
-  const result = await readBoundedArtifact(path, maxBytes);
-  if (result._tag === "ok") return result.value;
-  if (result.error.reason === "input_too_large") {
-    throw new Error("Walkthrough artifact exceeds the bounded input size");
-  }
-  throw new Error("Walkthrough artifact could not be read");
-}
-
-function totalSectionCount(output: {
-  readonly chapters: ReadonlyArray<{
-    readonly sections: ReadonlyArray<unknown>;
-  }>;
-}): number {
-  return output.chapters.reduce(
-    (count, chapter) => count + chapter.sections.length,
-    0,
-  );
-}
-
-function composeWalkthroughPrompt(input: {
-  readonly input: WalkthroughInput;
-  readonly context: string;
-  readonly patch: string;
-  readonly manifest: ReadonlyArray<{
-    readonly id: string;
-    readonly path: string;
-    readonly header: string;
-  }>;
-}): string {
-  const hunkCount = countHunks(input.patch);
-  const targetSections = Math.min(12, Math.max(1, Math.ceil(hunkCount / 3)));
-  return [
-    "Generate a read-only walkthrough for the supplied immutable patch.",
-    insightOutputGuidance("walkthrough"),
-    "The persistent reader uses an ordered chapter rail and continuous reading surface; do not return a linear picker or wizard state.",
-    "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
-    "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
-    `Create at most ${targetSections} primary sections. Each chapter should cite the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
-    "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
-    `Profile ${input.input.profileId} and session ${input.input.sessionId} are provenance only; do not repeat them in prose.`,
-    "HUNK ALIAS MANIFEST:",
-    input.manifest
-      .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)
-      .join("\n"),
-    "CONTEXT ARTIFACT:",
-    input.context,
-    "PATCH ARTIFACT:",
-    input.patch,
-  ].join("\n\n");
-}
-
-function countHunks(patch: string): number {
-  return Math.max(1, (patch.match(/^@@ /gm) ?? []).length);
-}

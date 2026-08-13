@@ -13,6 +13,8 @@ export type CommandRequest = {
   readonly stdin?: string;
   /** Adapter-owned environment additions; renderer input never reaches this field. */
   readonly environment?: Readonly<Record<string, string>>;
+  /** Set false only for a child launched with a complete explicit environment. */
+  readonly inheritEnvironment?: boolean;
   /** Caller-owned cancellation; the adapter terminates only its own child process. */
   readonly signal?: AbortSignal;
 };
@@ -101,7 +103,11 @@ class NodeCommandExecutor implements CommandExecutor {
         ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
         shell: false,
         detached: process.platform !== "win32",
-        env: input.environment === undefined ? process.env : { ...process.env, ...input.environment },
+        env: input.inheritEnvironment === false
+          ? input.environment
+          : input.environment === undefined
+            ? process.env
+            : { ...process.env, ...input.environment },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";

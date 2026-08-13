@@ -24,6 +24,11 @@ export type ReviewModelSession = {
 
 export type WorkflowModelReviewResult = v.InferOutput<typeof modelReviewResultSchema>;
 
+export type PreparedModelReview = {
+  readonly prompt: string;
+  readonly inspector: ReviewInspector;
+};
+
 type RunModelReviewInput = {
   readonly session: ReviewModelSession;
   readonly worktreePath: string;
@@ -38,6 +43,22 @@ type RunModelReviewInput = {
 
 /** Runs one schema-backed model review using only prepared metadata and inspector tools. */
 export async function runModelReview(input: RunModelReviewInput): Promise<WorkflowModelReviewResult> {
+  const prepared = await prepareModelReview(input);
+  const response = await input.session.prompt(prepared.prompt, {
+    result: modelReviewResultSchema,
+    tools: createReviewInspectorTools(prepared.inspector),
+    ...(input.model === undefined ? {} : { model: input.model }),
+    ...(input.reasoning === undefined ? {} : { thinkingLevel: input.reasoning }),
+  });
+  const parsed = v.safeParse(modelReviewResultSchema, response.data);
+  if (!parsed.success) throw new Error("Invalid model review result");
+  return parsed.output;
+}
+
+/** Prepares one immutable Analysis prompt and its invocation-scoped inspector. */
+export async function prepareModelReview(
+  input: Omit<RunModelReviewInput, "session">,
+): Promise<PreparedModelReview> {
   const [context, reviewInput, fullPatch] = await Promise.all([
     readFile(input.contextPath, "utf8"),
     readFile(input.reviewInputPath, "utf8"),
@@ -54,19 +75,10 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
     allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
     gitShow: input.gitShow,
   });
-  const response = await input.session.prompt(composeReviewPrompt({
-    reviewInput,
-    context,
-    fullPatch,
-  }), {
-    result: modelReviewResultSchema,
-    tools: createReviewInspectorTools(inspector),
-    ...(input.model === undefined ? {} : { model: input.model }),
-    ...(input.reasoning === undefined ? {} : { thinkingLevel: input.reasoning }),
-  });
-  const parsed = v.safeParse(modelReviewResultSchema, response.data);
-  if (!parsed.success) throw new Error("Invalid model review result");
-  return parsed.output;
+  return {
+    prompt: composeReviewPrompt({ reviewInput, context, fullPatch }),
+    inspector,
+  };
 }
 
 async function snapshotChangedFiles(

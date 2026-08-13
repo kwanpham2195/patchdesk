@@ -1,0 +1,29 @@
+{
+  "name": "patchdesk-flue-runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest",
+    "deploy:verify": "pnpm install --frozen-lockfile --prod --offline --ignore-scripts"
+  },
+  "pnpm": {
+    "overrides": {
+      "@earendil-works/pi-agent-core": "0.84.1",
+      "@earendil-works/pi-ai": "0.84.1",
+      "valibot": "1.4.2"
+    }
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.84.1",
+    "@flue/runtime": "2.0.3",
+    "valibot": "1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.3",
+    "vitest": "3.2.4"
+  },
+  "packageManager": "pnpm@8.8.0+sha1.9922e8b650d393700209ccd81e0ebdbcbe43b0d3"
+}
