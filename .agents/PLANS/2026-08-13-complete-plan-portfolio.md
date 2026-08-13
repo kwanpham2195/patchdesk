@@ -66,7 +66,7 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 ## Ordered progress
 
 - [x] Setup: persistent goal, queue, tracker, memory, and live logs/dev process
-- [ ] Plan 001: prevent stale direct-summary observation
+- [x] Plan 001: prevent stale direct-summary observation
 - [ ] Plan 002: restore workbench navigation accessibility
 - [ ] Plan 003: correct safety/runtime docs
 - [ ] Plan 004: lock packaged Flue beta.9 runtime
@@ -143,3 +143,25 @@ live checks, changed files, residual risks, and any ADR added or updated.
 3. Confirm live Herdr log/dev panes and CDP 9233.
 4. Continue the first unchecked plan only.
 5. Never mark the goal complete from plan status alone; run the portfolio audit.
+
+### 2026-08-13 — Plan 001 complete
+
+- Production: receipt-driven observation now captures the shared generation
+  and represented snapshot key, rechecks both after awaiting, and builds all
+  branches from the post-await projection.
+- Regression evidence: temporary pre-guard run failed because stale
+  reconciliation replaced Refresh; final focused file passed 61 tests with one
+  existing skip.
+- Covered: confirmed receipt renders before deferred observation; exact receipt
+  ID; owned reconciliation; stale Reconciled, RevisionChanged, Unavailable,
+  and Terminal results after Refresh.
+- Parent gates: `pnpm lint`, `pnpm typecheck`, `pnpm build`, focused renderer
+  suite, and `git diff --check` passed.
+- Independent follow-up review: no blockers or fixes worth doing now.
+- Live read-only QA: normal-profile app on CDP 9233 showed a healthy Inbox and
+  no page errors. Receipt/Overview surface was unavailable without opening a
+  Review, so automated deterministic evidence remains the direct proof.
+- Changed source: `src/renderer/src/flows/review-workbench-flow.tsx` and
+  `tests/renderer/review-workbench-flow.ui.test.tsx`; pre-existing dirty hunks
+  were preserved.
+- ADR: none; this implements ADR-0017's existing Refresh ownership rule.
