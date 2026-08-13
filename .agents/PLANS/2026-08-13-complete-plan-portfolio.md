@@ -67,7 +67,7 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 
 - [x] Setup: persistent goal, queue, tracker, memory, and live logs/dev process
 - [x] Plan 001: prevent stale direct-summary observation
-- [ ] Plan 002: restore workbench navigation accessibility
+- [x] Plan 002: restore workbench navigation accessibility
 - [ ] Plan 003: correct safety/runtime docs
 - [ ] Plan 004: lock packaged Flue beta.9 runtime
 - [ ] Plan 005: remove superseded Review systems
@@ -165,3 +165,25 @@ live checks, changed files, residual risks, and any ADR added or updated.
   `tests/renderer/review-workbench-flow.ui.test.tsx`; pre-existing dirty hunks
   were preserved.
 - ADR: none; this implements ADR-0017's existing Refresh ownership rule.
+
+### 2026-08-13 — Plan 002 complete
+
+- Failing-before: targeted workbench Axe run reported critical
+  `aria-required-parent` for Conversation, Diff, and Insights.
+- Production: outer workbench controls are truthful native buttons with
+  `aria-pressed`; incomplete `role=tab` / `aria-selected` semantics are gone.
+- Approved scope correction: renderer behavior selectors were updated from
+  outer `tab` to `button`; nested Browse/Commits true-tab selectors remain.
+- Direct state coverage: Conversation is initially pressed; clicking Diff
+  transfers pressed state and preserves content behavior.
+- Parent gates: full renderer file 61 passed/1 existing skip, accessibility
+  Playwright 10/10, lint, typecheck, build, and `git diff --check` passed.
+- Independent review found one pressed-state test gap; the follow-up fixed it.
+- Live read-only QA on CDP 9233 opened an existing Review, confirmed ordinary
+  pressed buttons and real nested tabs, switched to Diff, and sent no Refresh
+  or GitHub write. Screenshot remains local because it contains real Review
+  details.
+- Changed source: `src/renderer/src/components/review-workbench.tsx` and
+  outer-role selectors/assertions in
+  `tests/renderer/review-workbench-flow.ui.test.tsx`.
+- ADR: none; semantic correction only.
