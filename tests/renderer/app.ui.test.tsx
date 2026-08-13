@@ -50,7 +50,7 @@ describe("App Review route loading", () => {
       return <>
         <button type="button" onClick={() => props.onNavigationStateChange("dirty_draft")}>Dirty</button>
         <button type="button" onClick={() => props.onNavigate("checks")}>Checks</button>
-        <button type="button" onClick={() => props.onUiStateChange({ activeTab: "insights", section: "files", selectedPath: "src/b.ts" })}>Save position</button>
+        <button type="button" onClick={() => props.onUiStateChange?.({ activeTab: "insights", section: "files", selectedPath: "src/b.ts" })}>Save position</button>
         <button type="button" onClick={() => props.onWorkbenchReplace(replacedProjection())}>Replace</button>
         <p>{props.workbench.pullRequest?.title}</p>
       </>;
