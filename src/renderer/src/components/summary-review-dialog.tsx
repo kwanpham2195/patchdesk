@@ -60,13 +60,17 @@ export function SummaryReviewDialog({
   useEffect(() => {
     if (open && effectiveState === "idle") window.setTimeout(() => bodyRef.current?.focus(), 0);
   }, [effectiveState, open]);
+  useEffect(() => {
+    if (state === "confirmed") setWriteAnother(false);
+  }, [receipt?.reviewId, state]);
 
   const submit = async (): Promise<void> => {
     if (locked || body.trim().length === 0 || (event === "APPROVE" && approvalCapability === "blocked_author")) return;
     setSubmitting(true);
     setLocalError(undefined);
     try {
-      await onSubmit(event, body.trim());
+      const result = await onSubmit(event, body.trim());
+      if (result.state === "confirmed") setWriteAnother(false);
     } catch {
       setLocalError(error ?? "Patchdesk could not confirm the review. Check GitHub again before trying again.");
     } finally {
@@ -94,10 +98,15 @@ export function SummaryReviewDialog({
       </DialogHeader> : null}
       {effectiveState === "confirmed" ? (
         <div className="space-y-4">
-          <p role="status" className="text-sm">Review summary {receipt?.reviewId === undefined ? "" : `#${receipt.reviewId} `}was published to GitHub. Refresh GitHub state to update this Review.</p>
+          <p role="status" className="text-sm">Review summary {receipt?.reviewId === undefined ? "" : `#${receipt.reviewId} `}was published to GitHub.</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-            <Button onClick={() => setWriteAnother(true)}>Write another review</Button>
+            <Button onClick={() => {
+              setBody("");
+              setEvent("COMMENT");
+              setLocalError(undefined);
+              setWriteAnother(true);
+            }}>Write another review</Button>
           </div>
         </div>
       ) : recovery !== undefined ? (
