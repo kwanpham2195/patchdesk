@@ -469,6 +469,55 @@ export function ReviewWorkbenchFlow({
     },
     [],
   );
+  const observeConfirmedDirectSummary = useCallback(
+    async (reviewId: string): Promise<void> => {
+      const current = workbenchRef.current;
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      const key = snapshotKey(current);
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/detect-updates", {
+          method: "POST",
+          body: {
+            profileId: current.session.key.profileId,
+            reviewId: current.review.id,
+            recentWrites: [{ _tag: "DirectSummaryReview", reviewId }],
+          },
+        }),
+      );
+      const latest = workbenchRef.current;
+      if (generationRef.current !== generation || snapshotKey(latest) !== key)
+        return;
+      const observation = isReviewObservation(value);
+      if (observation?._tag === "Reconciled") {
+        const next = parseWorkbenchResponse(observation.projection);
+        if (
+          next !== undefined &&
+          next.review.id === latest.review.id &&
+          next.session.id === latest.session.id &&
+          next.revision.reviewedHeadSha === latest.revision.reviewedHeadSha
+        ) {
+          replaceWorkbench(next);
+          setDetectedStaleFreshness(undefined);
+        }
+        return;
+      }
+      if (observation?._tag === "RevisionChanged") {
+        onWorkbenchPatchRef.current({
+          revision: { ...latest.revision, freshness: "updates_available" },
+        });
+      } else if (observation?._tag === "Unavailable") {
+        onWorkbenchPatchRef.current({
+          revision: { ...latest.revision, freshness: "unavailable" },
+        });
+      } else if (observation?._tag === "Terminal") {
+        onWorkbenchPatchRef.current({
+          review: { ...latest.review, status: observation.status },
+        });
+      }
+    },
+    [replaceWorkbench, runDirectCommand],
+  );
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
@@ -917,6 +966,18 @@ export function ReviewWorkbenchFlow({
   useEffect(() => {
     setDirectSummaryState(workbench.directSummary ?? { state: "idle" });
   }, [workbench.directSummary]);
+  const observedDirectSummaryRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (directSummaryState.state !== "confirmed") return;
+    const reviewId = directSummaryState.receipt.reviewId;
+    if (observedDirectSummaryRef.current === reviewId) return;
+    observedDirectSummaryRef.current = reviewId;
+    void observeConfirmedDirectSummary(reviewId).catch(() => {
+      // The confirmed receipt stays durable. The scheduled observer retains
+      // the receipt journal and retries metadata adoption without replaying
+      // the GitHub write.
+    });
+  }, [directSummaryState, observeConfirmedDirectSummary]);
   const submitDirectSummary = useCallback(
     async (
       event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
@@ -948,10 +1009,11 @@ export function ReviewWorkbenchFlow({
           throw new Error("Invalid direct summary review response");
         setDirectSummaryState(result);
         if (result.state === "confirmed") {
-          setRecentWrites((current) => [
-            ...current,
-            { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId },
-          ]);
+          const write = {
+            _tag: "DirectSummaryReview" as const,
+            reviewId: result.receipt.reviewId,
+          };
+          setRecentWrites((current) => [...current, write]);
         }
         setDirectSummaryError(undefined);
         return result;

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -2815,6 +2816,224 @@ describe("ReviewWorkbenchFlow pending review", () => {
       screen.queryByRole("button", { name: "Finish review · " }),
     ).toBeNull();
   });
+
+  it("keeps the confirmed approval receipt visible before reconciling metadata", async () => {
+    const user = userEvent.setup();
+    let resolveReceiptObservation!: (value: unknown) => void;
+    const receiptObservation = new Promise<unknown>((resolve) => {
+      resolveReceiptObservation = resolve;
+    });
+    const onWorkbenchReplace = vi.fn();
+    const approved = {
+      ...withPending({ state: "none" }, "b".repeat(64)),
+      pullRequest: {
+        ...projection().pullRequest,
+        reviewState: "approved" as const,
+      },
+      directSummary: {
+        state: "confirmed" as const,
+        receipt: { reviewId: "9002", event: "APPROVE" as const },
+      },
+    };
+    const request = vi.fn(
+      async (input: { readonly path: string; readonly body?: unknown }) => {
+        if (input.path === "/v1/reviews/direct-summary/submit")
+          return {
+            ok: true,
+            body: {
+              directSummary: {
+                state: "confirmed",
+                receipt: { reviewId: "9002", event: "APPROVE" },
+              },
+            },
+            correlationId: "submit",
+          };
+        if (input.path === "/v1/reviews/detect-updates") {
+          const recentWrites =
+            typeof input.body === "object" &&
+            input.body !== null &&
+            "recentWrites" in input.body
+              ? input.body.recentWrites
+              : undefined;
+          if (recentWrites === undefined)
+            return {
+              ok: true,
+              body: { updatesAvailable: false },
+              correlationId: "detect",
+            };
+          return await receiptObservation;
+        }
+        throw new Error(`unexpected ${input.path}`);
+      },
+    );
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withPending({ state: "none" }, "b".repeat(64))}
+        onWorkbenchReplace={onWorkbenchReplace}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/v1/reviews/detect-updates" }),
+      ),
+    );
+    request.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "Start a review" }));
+    await user.click(
+      screen.getByRole("button", { name: "Write review summary" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), {
+      target: { value: "Approved" },
+    });
+    await user.click(screen.getByRole("combobox", { name: "Review decision" }));
+    await user.click(await screen.findByRole("option", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Submit review" }));
+
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith({
+        path: "/v1/reviews/detect-updates",
+        method: "POST",
+        body: {
+          profileId: "profile",
+          reviewId: "review-42",
+          recentWrites: [{ _tag: "DirectSummaryReview", reviewId: "9002" }],
+        },
+      }),
+    );
+    expect(screen.getByRole("status").textContent).toBe(
+      "Review summary #9002 was published to GitHub.",
+    );
+    expect(onWorkbenchReplace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveReceiptObservation({
+        ok: true,
+        body: { _tag: "Reconciled", projection: approved },
+        correlationId: "observe",
+      });
+      await Promise.resolve();
+    });
+    expect(onWorkbenchReplace).toHaveBeenCalledWith(approved);
+  });
+
+  it.each([
+    [
+      "Reconciled",
+      (initial: WorkbenchResponse) => ({
+        _tag: "Reconciled" as const,
+        projection: {
+          ...initial,
+          pullRequest: {
+            ...initial.pullRequest,
+            reviewState: "approved" as const,
+          },
+        },
+      }),
+    ],
+    ["RevisionChanged", () => ({ _tag: "RevisionChanged" as const })],
+    ["Unavailable", () => ({ _tag: "Unavailable" as const })],
+    ["Terminal", () => ({ _tag: "Terminal" as const, status: "merged" as const })],
+  ])(
+    "ignores stale direct-summary %s observation after Refresh",
+    async (_name, staleObservationFactory) => {
+      const user = userEvent.setup();
+      let resolveReceiptObservation!: (value: unknown) => void;
+      const receiptObservation = new Promise<unknown>((resolve) => {
+        resolveReceiptObservation = resolve;
+      });
+      const initial = {
+        ...withPending({ state: "none" }, "b".repeat(64)),
+        directSummary: {
+          state: "confirmed" as const,
+          receipt: { reviewId: "9002", event: "APPROVE" as const },
+        },
+      };
+      const refreshed = {
+        ...initial,
+        session: { ...initial.session, id: "session-b" },
+        revision: {
+          ...initial.revision,
+          refreshedAt: "2026-08-02T00:00:00.000Z",
+        },
+      };
+      const request = vi.fn(
+        async (input: { readonly path: string; readonly body?: unknown }) => {
+          if (input.path === "/v1/reviews/detect-updates") {
+            const recentWrites =
+              typeof input.body === "object" &&
+              input.body !== null &&
+              "recentWrites" in input.body
+                ? input.body.recentWrites
+                : undefined;
+            if (recentWrites === undefined)
+              return {
+                ok: true,
+                body: { updatesAvailable: false },
+                correlationId: "detect",
+              };
+            return await receiptObservation;
+          }
+          if (input.path === "/v1/reviews/refresh")
+            return { ok: true, body: refreshed, correlationId: "refresh" };
+          throw new Error(`unexpected ${input.path}`);
+        },
+      );
+      Object.defineProperty(window, "patchdesk", {
+        configurable: true,
+        value: { request },
+      });
+      const replace = vi.fn();
+      const patch = vi.fn();
+      render(
+        <ReviewWorkbenchFlow
+          workbench={initial}
+          onWorkbenchReplace={replace}
+          onWorkbenchPatch={patch}
+          onNavigationStateChange={vi.fn()}
+          onNavigate={vi.fn()}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(request).toHaveBeenCalledWith({
+          path: "/v1/reviews/detect-updates",
+          method: "POST",
+          body: {
+            profileId: "profile",
+            reviewId: "review-42",
+            recentWrites: [{ _tag: "DirectSummaryReview", reviewId: "9002" }],
+          },
+        }),
+      );
+
+      await user.click(screen.getByRole("button", { name: "PR overview" }));
+      const dialog = screen.getByRole("dialog");
+      await user.click(
+        within(dialog).getByRole("button", { name: "Refresh GitHub state" }),
+      );
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
+      replace.mockClear();
+
+      await act(async () => {
+        resolveReceiptObservation({
+          ok: true,
+          body: staleObservationFactory(initial),
+          correlationId: "observe",
+        });
+        await Promise.resolve();
+      });
+      expect(replace).not.toHaveBeenCalled();
+      expect(patch).not.toHaveBeenCalled();
+    },
+  );
 
   it("reconciles an uncertain direct summary through the recovery endpoint before reopening submission", async () => {
     const user = userEvent.setup();
