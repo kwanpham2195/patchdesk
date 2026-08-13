@@ -10,7 +10,11 @@ import {
   openAllowedExternalUrl,
 } from "../src/main/external-navigation";
 import { clampWindowBounds } from "../src/main/window-state";
-import { resolveWalkthroughRuntimeRoot, resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "../src/main/workflow-runtime-root";
+import {
+  resolveWalkthroughRuntimeRoot,
+  resolveWorkflowCliPath,
+  resolveWorkflowRuntimeRoot,
+} from "../src/main/workflow-runtime-root";
 import type { WebContents } from "electron";
 
 describe("desktop hardening", () => {
@@ -181,9 +185,10 @@ describe("desktop hardening", () => {
       "/workspace/patchdesk/node_modules/@flue/cli/bin/flue.mjs",
       "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/flue.config.ts",
       "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1/node_modules/@flue/cli/bin/flue.mjs",
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
     ]);
-    const packagedRoot = "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
+    const packagedRoot =
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
     expect(
       resolveWorkflowRuntimeRoot(
         "/Applications/Patchdesk.app/Contents/Resources/app.asar",
@@ -195,9 +200,11 @@ describe("desktop hardening", () => {
       resolveWorkflowCliPath(
         packagedRoot,
         (path) => path.includes("/.pnpm/") && files.has(path),
-        () => ["@flue+cli@1"],
+        () => ["@flue+cli@1.0.0-beta.9"],
       ),
-    ).toBe(`${packagedRoot}/node_modules/.pnpm/@flue+cli@1/node_modules/@flue/cli/bin/flue.mjs`);
+    ).toBe(
+      `${packagedRoot}/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs`,
+    );
     expect(
       resolveWorkflowRuntimeRoot(
         "/Applications/Patchdesk.app/Contents/Resources/app.asar",
@@ -218,9 +225,10 @@ describe("desktop hardening", () => {
     const files = new Set([
       "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/walkthrough/flue.config.ts",
       "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1/node_modules/@flue/cli/bin/flue.mjs",
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
     ]);
-    const walkthroughRoot = "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/walkthrough";
+    const walkthroughRoot =
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/walkthrough";
     expect(
       resolveWalkthroughRuntimeRoot(
         "/Applications/Patchdesk.app/Contents/Resources/app.asar",
@@ -232,8 +240,10 @@ describe("desktop hardening", () => {
       resolveWorkflowCliPath(
         walkthroughRoot,
         (path) => files.has(path),
-        () => ["@flue+cli@1"],
+        () => ["@flue+cli@1.0.0-beta.9"],
       ),
-    ).toBe("/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1/node_modules/@flue/cli/bin/flue.mjs");
+    ).toBe(
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
+    );
   });
 });

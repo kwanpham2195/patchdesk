@@ -524,7 +524,9 @@ describe("dashboard renderer API flow", () => {
     expect(
       await screen.findByRole("heading", { name: "Stored review title" }),
     ).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Diff" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Diff", pressed: false }),
+    ).toBeTruthy();
     expect(
       fetch.mock.calls.some(
         ([input, init]) =>

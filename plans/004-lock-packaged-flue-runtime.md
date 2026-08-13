@@ -34,6 +34,7 @@
 - **Risk**: MED
 - **Depends on**: Plans 001-003
 - **Category**: security / dependencies / packaging
+- **Status**: DONE — 2026-08-13
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
 
 ## Why this matters
@@ -295,17 +296,17 @@ Do not make tests depend on a user's existing `release/` folder.
 
 ## Done criteria
 
-- [ ] `runtime/flue-beta9/package.json` and `pnpm-lock.yaml` are committed inputs.
-- [ ] Staging uses `--frozen-lockfile --prod --offline --ignore-scripts`.
-- [ ] No code copies dependencies from a prior package or `release/**`.
-- [ ] Incomplete locked dependencies fail staging visibly.
-- [ ] Staged manifest and lock match the committed inputs.
-- [ ] Current beta Analysis and Walkthrough discovery still resolve.
-- [ ] Package and existing package smoke pass.
-- [ ] Standard quality gates pass.
-- [ ] Audit output is reported without unsupported reachability claims.
-- [ ] `git diff --check` has no output.
-- [ ] `plans/README.md` marks Plan 004 DONE.
+- [x] `runtime/flue-beta9/package.json` and `pnpm-lock.yaml` are committed inputs.
+- [x] Staging uses `--frozen-lockfile --prod --offline --ignore-scripts`.
+- [x] No code copies dependencies from a prior package or `release/**`.
+- [x] Incomplete locked dependencies fail staging visibly.
+- [x] Staged manifest and lock match the committed inputs.
+- [x] Current beta Analysis and Walkthrough discovery still resolve.
+- [x] Package and existing package smoke pass.
+- [x] Standard quality gates pass.
+- [x] Audit output is reported without unsupported reachability claims.
+- [x] `git diff --check` has no output.
+- [x] `plans/README.md` marks Plan 004 DONE.
 
 ## STOP conditions
 

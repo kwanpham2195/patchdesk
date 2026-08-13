@@ -136,6 +136,30 @@ live checks, changed files, residual risks, and any ADR added or updated.
 - Raw `~/.local/share/patchdesk/logs/patchdesk.jsonl` tail is live.
 - No source implementation changed during setup.
 
+### 2026-08-13 — Plan 004 complete
+
+- Added a committed `runtime/flue-beta9` package with exact
+  `@flue/cli@1.0.0-beta.9` manifest and pnpm 8.8 lock.
+- Staging now clears old output, copies the committed inputs, installs with
+  `--frozen-lockfile --prod --offline --ignore-scripts`, verifies the CLI
+  version, and fails closed without reading a previous package.
+- Temp-directory tests cover copied inputs, fixed install flags, old-output
+  removal, exact CLI verification, and install failure.
+- Corrected two stale portfolio assertions found by the full gate: the outer
+  Diff control is a pressed button, and Walkthrough focus is checked for exact
+  progress writes rather than unrelated passive requests.
+- Parent gates: lint, typecheck, full Vitest (1,082 passed, one existing skip),
+  build, staging, macOS package, package smoke, packaged Resources inspection,
+  dedicated runtime audit, and `git diff --check` passed.
+- The packaged CLI reports `1.0.0-beta.9`; its CLI and Walkthrough symlinks are
+  relative and remain within `Contents/Resources/flue-runtime`.
+- The dedicated runtime production audit reports no known vulnerabilities.
+  The root production audit exits 1 with 27 findings, including high
+  transitive advisories on root Flue beta paths; no unsupported packaged
+  reachability claim was made, and Plan 006 owns the Flue migration.
+- Independent review found no technical blocker after the required status
+  update. ADR: none; this makes the current runtime boundary reproducible.
+
 ## Resume protocol
 
 1. Read this file and `plans/README.md`.

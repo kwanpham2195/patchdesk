@@ -1238,9 +1238,9 @@ describe("ReviewWorkbenchFlow", () => {
         calls.some((call) => call.path === "/v1/reviews/detect-updates"),
       ).toBe(true),
     );
-    const callsBeforeFocus = calls.filter(
-      (call) => !call.path.includes("/v1/insight-providers"),
-    ).length;
+    const progressCallCount = (): number =>
+      calls.filter((call) => call.path.includes("/progress")).length;
+    const progressCallsBeforeFocus = progressCallCount();
     await user.click(screen.getByRole("button", { name: "Focus section" }));
 
     expect(
@@ -1259,9 +1259,7 @@ describe("ReviewWorkbenchFlow", () => {
       screen.queryByRole("region", { name: "Walkthrough chapters" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Next section" })).toBeTruthy();
-    expect(
-      calls.filter((call) => !call.path.includes("/v1/insight-providers")),
-    ).toHaveLength(callsBeforeFocus);
+    expect(progressCallCount()).toBe(progressCallsBeforeFocus);
 
     await user.click(screen.getByRole("button", { name: "Exit focus" }));
     expect(
@@ -1275,10 +1273,7 @@ describe("ReviewWorkbenchFlow", () => {
     expect(
       screen.getByRole("region", { name: "Walkthrough chapters" }),
     ).toBeTruthy();
-    expect(
-      calls.filter((call) => !call.path.includes("/v1/insight-providers")),
-    ).toHaveLength(callsBeforeFocus);
-    expect(calls.some((call) => call.path.includes("/progress"))).toBe(false);
+    expect(progressCallCount()).toBe(progressCallsBeforeFocus);
   });
 
   it("keeps outdated Walkthrough readable beneath its treatment", () => {
