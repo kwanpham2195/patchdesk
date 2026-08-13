@@ -60,7 +60,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const createThreadReply = vi.fn();
     const getReviewThreadTarget = vi.fn(async () => ok({ found: false }));
-    const service = new InlineConversationService(gate, makeGateway({ createThreadReply, getReviewThreadTarget }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ createThreadReply, getReviewThreadTarget }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "Reply", threadId: "PRRT_foreign" }) });
     expect(result).toEqual({ _tag: "err", error: "not_found" });
     expect(createThreadReply).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const setReviewThreadState = vi.fn();
     const getReviewThreadTarget = vi.fn(async () => ok({ found: false }));
-    const service = new InlineConversationService(gate, makeGateway({ setReviewThreadState, getReviewThreadTarget }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ setReviewThreadState, getReviewThreadTarget }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "SetThreadState", threadId: "PRRT_foreign", state: "resolved" }) });
     expect(result).toEqual({ _tag: "err", error: "not_found" });
     expect(setReviewThreadState).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const createThreadReply = vi.fn();
     const getReviewThreadTarget = vi.fn(async () => ({ _tag: "err", error: { _tag: "GitHubReadFailed", operation: "get_thread_target" } }));
-    const service = new InlineConversationService(gate, makeGateway({ createThreadReply, getReviewThreadTarget }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ createThreadReply, getReviewThreadTarget }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "Reply", threadId: "PRRT_any" }) });
     expect(result).toEqual({ _tag: "err", error: "github_read_failed" });
     expect(createThreadReply).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const getPullRequestComments = vi.fn(async () => ok({ threads: [], complete: true }));
     const createThreadReply = vi.fn(async () => ok({ commentId: "PRRC_reply", reviewId: "PRR_1" }));
-    const service = new InlineConversationService(gate, makeGateway({ getPullRequestComments, createThreadReply }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ getPullRequestComments, createThreadReply }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "Reply", threadId: "PRRT_thread" }) });
     expect(result).toEqual({ _tag: "ok", value: { _tag: "ReplyCreated", commentId: "PRRC_reply", reviewId: "PRR_1" } });
     expect(getPullRequestComments).not.toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const updateThreadComment = vi.fn();
     const getReviewCommentTarget = vi.fn(async () => ok({ found: true, viewerDidAuthor: false }));
-    const service = new InlineConversationService(gate, makeGateway({ updateThreadComment, getReviewCommentTarget }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ updateThreadComment, getReviewCommentTarget }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "EditComment", commentId: "PRRC_other", body: "edit" }) });
     expect(result).toEqual({ _tag: "err", error: "permission_denied" });
     expect(updateThreadComment).not.toHaveBeenCalled();
@@ -110,7 +110,7 @@ describe("InlineConversationService", () => {
     const gate = makeGate();
     const updateThreadComment = vi.fn();
     const getReviewCommentTarget = vi.fn(async () => ok({ found: false }));
-    const service = new InlineConversationService(gate, makeGateway({ updateThreadComment, getReviewCommentTarget }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ updateThreadComment, getReviewCommentTarget }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "EditComment", commentId: "PRRC_foreign", body: "edit" }) });
     expect(result).toEqual({ _tag: "err", error: "not_found" });
     expect(updateThreadComment).not.toHaveBeenCalled();
@@ -143,7 +143,7 @@ describe("InlineConversationService", () => {
   it("performs exactly one mutation for a proven Reply", async () => {
     const gate = makeGate();
     const createThreadReply = vi.fn(async () => ok({ commentId: "PRRC_reply" }));
-    const service = new InlineConversationService(gate, makeGateway({ createThreadReply }) as never);
+    const service = new InlineConversationService(gate, makeGateway({ createThreadReply }) as never, new ReviewOperationCoordinator());
     const result = await service.execute({ profileId, reviewId, command: command({ _tag: "Reply", threadId: "PRRT_thread", body: "Proven" }) });
     expect(result).toEqual({ _tag: "ok", value: { _tag: "ReplyCreated", commentId: "PRRC_reply" } });
     expect(createThreadReply).toHaveBeenCalledOnce();
@@ -189,7 +189,7 @@ describe("FakeGitHubAdapter ownership parity", () => {
       threadTargets: [{ threadId, pr: foreignPr }],
     });
     const gate = makeGate();
-    const service = new InlineConversationService(gate, adapter);
+    const service = new InlineConversationService(gate, adapter, new ReviewOperationCoordinator());
     const result = await service.execute({
       profileId,
       reviewId,

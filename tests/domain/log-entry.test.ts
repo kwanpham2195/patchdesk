@@ -68,7 +68,7 @@ describe("log entry redaction", () => {
       process: "renderer",
       level: "warn",
       topic: "api",
-      message: "POST /v1/reviews/run failed",
+      message: "POST /v1/removed-review-command failed",
     });
     expect(parseLogEntry(JSON.parse(JSON.stringify(entry)))).toMatchObject({ seq: 2, process: "renderer" });
     expect(parseLogEntry({ seq: "not-a-number" })).toBeUndefined();

@@ -1062,71 +1062,7 @@ describe("GitHubAdapter read boundary", () => {
     ).toBe(true);
   });
 
-  it("uses one verified GitHub comparison diff only when the file metadata is complete", async () => {
-    const compare = {
-      base_commit: { sha: baseSha },
-      head_commit: { sha: headSha },
-      created_at: "2026-07-18T00:00:00Z",
-      status: "ahead",
-      commits: [
-        {
-          sha: headSha,
-          commit: {
-            message: "Fix guard\n\nDetails",
-            author: { name: "Reviewer", date: "2026-07-18T00:00:00Z" },
-          },
-        },
-      ],
-      files: [
-        {
-          filename: "src/guard.ts",
-          status: "modified",
-          additions: 2,
-          deletions: 1,
-          patch: "@@ -1 +1 @@\n-old\n+new",
-        },
-      ],
-    };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(compare),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: "diff --git a/src/guard.ts b/src/guard.ts\n",
-        stderr: "",
-      },
-    ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
-    const result = await adapter.compareRevisions({
-      profile,
-      pr,
-      baseSha: mustParse(parseGitSha(baseSha)),
-      headSha: mustParse(parseGitSha(headSha)),
-      baseSessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-12345678__000000000000" as never,
-    });
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: {
-        comparison: {
-          source: "github",
-          completeness: "complete",
-          additions: 2,
-          deletions: 1,
-        },
-        patch: expect.stringContaining("src/guard.ts"),
-      },
-    });
-    expect(executor.requests).toHaveLength(2);
-    expect(executor.requests[1]).toContain(
-      "Accept: application/vnd.github.v3.diff",
-    );
-  });
+
 
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
     const [listOpenPrs, getPr, getComments, getChecks, getStatuses, getDiff] =

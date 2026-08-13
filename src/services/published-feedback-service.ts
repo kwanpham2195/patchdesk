@@ -1,85 +1,253 @@
-import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
+import type {
+  GitHubReader,
+  GitHubReviewWriter,
+} from "../adapters/github/github-adapter";
 import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { FreshReview, ReviewWriteGate } from "./review-write-gate";
 import { err, ok, type Result } from "../domain/result";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { FreshReview, ReviewWriteGate } from "./review-write-gate";
 
-export type PublishedFeedbackFailure = "not_fresh" | "not_found" | "permission_denied" | "confirmation_required" | "github_read_failed" | "github_write_failed" | "refresh_required";
-type FeedbackReader = Pick<GitHubReader, "getPullRequest" | "getPullRequestComments" | "getPullRequestPublishedFeedback">;
-type FeedbackWriter = Pick<GitHubReviewWriter, "updateReviewComment" | "deleteReviewComment" | "dismissReview">;
+export type PublishedFeedbackFailure =
+  | "not_fresh"
+  | "not_found"
+  | "permission_denied"
+  | "confirmation_required"
+  | "github_read_failed"
+  | "github_write_failed"
+  | "refresh_required"
+  | "review_write_in_progress";
 
+type FeedbackReader = Pick<
+  GitHubReader,
+  | "getPullRequest"
+  | "getPullRequestComments"
+  | "getPullRequestPublishedFeedback"
+>;
+type FeedbackWriter = Pick<
+  GitHubReviewWriter,
+  "updateReviewComment" | "deleteReviewComment" | "dismissReview"
+>;
+
+/** Owns explicit edits to already-published GitHub feedback. */
 export class PublishedFeedbackService {
-  constructor(private readonly gate: Pick<ReviewWriteGate, "requireFresh">, private readonly github: FeedbackReader & FeedbackWriter, private readonly refresh?: (input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId }) => Promise<Result<unknown, unknown>>) {}
+  constructor(
+    private readonly gate: Pick<ReviewWriteGate, "requireFresh">,
+    private readonly github: FeedbackReader & FeedbackWriter,
+    private readonly coordinator: ReviewOperationCoordinator,
+    private readonly refresh?: (input: {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+    }) => Promise<Result<unknown, unknown>>,
+  ) {}
 
-  async editComment(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly commentId: string; readonly body: string }): Promise<Result<void, PublishedFeedbackFailure>> {
+  async editComment(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly commentId: string;
+    readonly body: string;
+  }): Promise<Result<void, PublishedFeedbackFailure>> {
     if (input.body.trim().length === 0) return err("github_write_failed");
-    const fresh = await this.fresh(input.profileId, input.reviewId);
-    if (fresh._tag === "err") return fresh;
-    const allowed = await this.authorizedComment(fresh.value.profile, fresh.value.session, input.commentId, "edit");
-    if (allowed._tag === "err") return allowed;
-    const latestHead = await this.verifyHead(fresh.value.profile, fresh.value.session);
-    if (latestHead._tag === "err") return latestHead;
-    const writer = this.github.updateReviewComment;
-    if (writer === undefined) return err("github_write_failed");
-    return this.afterWrite(await writer({ profile: fresh.value.profile, pr: sessionPr(fresh.value.session), commentId: input.commentId, body: input.body.trim() }), input);
+    return this.serialized(input, async () => {
+      const fresh = await this.fresh(input.profileId, input.reviewId);
+      if (fresh._tag === "err") return fresh;
+      const allowed = await this.authorizedComment(
+        fresh.value.profile,
+        fresh.value.session,
+        input.commentId,
+        "edit",
+      );
+      if (allowed._tag === "err") return allowed;
+      const latestHead = await this.verifyHead(
+        fresh.value.profile,
+        fresh.value.session,
+      );
+      if (latestHead._tag === "err") return latestHead;
+      const writer = this.github.updateReviewComment;
+      if (writer === undefined) return err("github_write_failed");
+      return this.afterWrite(
+        await writer({
+          profile: fresh.value.profile,
+          pr: sessionPr(fresh.value.session),
+          commentId: input.commentId,
+          body: input.body.trim(),
+        }),
+        input,
+      );
+    });
   }
 
-  async deleteComment(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly commentId: string; readonly confirmation: boolean }): Promise<Result<void, PublishedFeedbackFailure>> {
+  async deleteComment(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly commentId: string;
+    readonly confirmation: boolean;
+  }): Promise<Result<void, PublishedFeedbackFailure>> {
     if (!input.confirmation) return err("confirmation_required");
-    const fresh = await this.fresh(input.profileId, input.reviewId);
-    if (fresh._tag === "err") return fresh;
-    const allowed = await this.authorizedComment(fresh.value.profile, fresh.value.session, input.commentId, "delete");
-    if (allowed._tag === "err") return allowed;
-    const latestHead = await this.verifyHead(fresh.value.profile, fresh.value.session);
-    if (latestHead._tag === "err") return latestHead;
-    const writer = this.github.deleteReviewComment;
-    if (writer === undefined) return err("github_write_failed");
-    return this.afterWrite(await writer({ profile: fresh.value.profile, pr: sessionPr(fresh.value.session), commentId: input.commentId }), input);
+    return this.serialized(input, async () => {
+      const fresh = await this.fresh(input.profileId, input.reviewId);
+      if (fresh._tag === "err") return fresh;
+      const allowed = await this.authorizedComment(
+        fresh.value.profile,
+        fresh.value.session,
+        input.commentId,
+        "delete",
+      );
+      if (allowed._tag === "err") return allowed;
+      const latestHead = await this.verifyHead(
+        fresh.value.profile,
+        fresh.value.session,
+      );
+      if (latestHead._tag === "err") return latestHead;
+      const writer = this.github.deleteReviewComment;
+      if (writer === undefined) return err("github_write_failed");
+      return this.afterWrite(
+        await writer({
+          profile: fresh.value.profile,
+          pr: sessionPr(fresh.value.session),
+          commentId: input.commentId,
+        }),
+        input,
+      );
+    });
   }
 
-  async dismissReview(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId; readonly publishedReviewId: string; readonly message: string; readonly confirmation: boolean }): Promise<Result<void, PublishedFeedbackFailure>> {
-    if (!input.confirmation || input.message.trim().length === 0) return err(input.confirmation ? "github_write_failed" : "confirmation_required");
-    const fresh = await this.fresh(input.profileId, input.reviewId);
-    if (fresh._tag === "err") return fresh;
-    const allowed = await this.authorizedReview(fresh.value.profile, fresh.value.session, input.publishedReviewId);
-    if (allowed._tag === "err") return allowed;
-    const latestHead = await this.verifyHead(fresh.value.profile, fresh.value.session);
-    if (latestHead._tag === "err") return latestHead;
-    const writer = this.github.dismissReview;
-    if (writer === undefined) return err("github_write_failed");
-    return this.afterWrite(await writer({ profile: fresh.value.profile, pr: sessionPr(fresh.value.session), reviewId: input.publishedReviewId, message: input.message.trim() }), input);
+  async dismissReview(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly publishedReviewId: string;
+    readonly message: string;
+    readonly confirmation: boolean;
+  }): Promise<Result<void, PublishedFeedbackFailure>> {
+    if (!input.confirmation || input.message.trim().length === 0)
+      return err(
+        input.confirmation ? "github_write_failed" : "confirmation_required",
+      );
+    return this.serialized(input, async () => {
+      const fresh = await this.fresh(input.profileId, input.reviewId);
+      if (fresh._tag === "err") return fresh;
+      const allowed = await this.authorizedReview(
+        fresh.value.profile,
+        fresh.value.session,
+        input.publishedReviewId,
+      );
+      if (allowed._tag === "err") return allowed;
+      const latestHead = await this.verifyHead(
+        fresh.value.profile,
+        fresh.value.session,
+      );
+      if (latestHead._tag === "err") return latestHead;
+      const writer = this.github.dismissReview;
+      if (writer === undefined) return err("github_write_failed");
+      return this.afterWrite(
+        await writer({
+          profile: fresh.value.profile,
+          pr: sessionPr(fresh.value.session),
+          reviewId: input.publishedReviewId,
+          message: input.message.trim(),
+        }),
+        input,
+      );
+    });
   }
 
-  private async fresh(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<Result<FreshReview, PublishedFeedbackFailure>> {
+  private async serialized<T extends {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }>(
+    input: T,
+    operation: () => Promise<Result<void, PublishedFeedbackFailure>>,
+  ): Promise<Result<void, PublishedFeedbackFailure>> {
+    const key = `${input.profileId}:${input.reviewId}`;
+    if (!this.coordinator.acquire(key)) return err("review_write_in_progress");
+    try {
+      return await operation();
+    } finally {
+      this.coordinator.release(key);
+    }
+  }
+
+  private async fresh(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<FreshReview, PublishedFeedbackFailure>> {
     const fresh = await this.gate.requireFresh(profileId, reviewId);
-    if (fresh._tag === "err") return err(fresh.error.reason === "not_fresh" ? "not_fresh" : fresh.error.reason === "terminal" ? "permission_denied" : "not_found");
+    if (fresh._tag === "err")
+      return err(
+        fresh.error.reason === "not_fresh"
+          ? "not_fresh"
+          : fresh.error.reason === "terminal"
+            ? "permission_denied"
+            : "not_found",
+      );
     return fresh;
   }
 
-  private async verifyHead(profile: WorkspaceProfileConfig, session: Parameters<typeof sessionPr>[0]): Promise<Result<void, PublishedFeedbackFailure>> {
-    const current = await this.github.getPullRequest({ profile, pr: sessionPr(session) });
-    return current._tag === "ok" && current.value.headSha === session.key.headSha ? ok(undefined) : err(current._tag === "ok" ? "not_fresh" : "github_read_failed");
+  private async verifyHead(
+    profile: WorkspaceProfileConfig,
+    session: Parameters<typeof sessionPr>[0],
+  ): Promise<Result<void, PublishedFeedbackFailure>> {
+    const current = await this.github.getPullRequest({
+      profile,
+      pr: sessionPr(session),
+    });
+    return current._tag === "ok" && current.value.headSha === session.key.headSha
+      ? ok(undefined)
+      : err(current._tag === "ok" ? "not_fresh" : "github_read_failed");
   }
 
-  private async authorizedComment(profile: WorkspaceProfileConfig, session: Parameters<typeof sessionPr>[0], commentId: string, action: "edit" | "delete"): Promise<Result<void, PublishedFeedbackFailure>> {
-    if (this.github.getPullRequestPublishedFeedback === undefined) return err("permission_denied");
-    const feedback = await this.github.getPullRequestPublishedFeedback({ profile, pr: sessionPr(session) });
+  private async authorizedComment(
+    profile: WorkspaceProfileConfig,
+    session: Parameters<typeof sessionPr>[0],
+    commentId: string,
+    action: "edit" | "delete",
+  ): Promise<Result<void, PublishedFeedbackFailure>> {
+    if (this.github.getPullRequestPublishedFeedback === undefined)
+      return err("permission_denied");
+    const feedback = await this.github.getPullRequestPublishedFeedback({
+      profile,
+      pr: sessionPr(session),
+    });
     if (feedback._tag === "err") return err("github_read_failed");
-    const comment = feedback.value.comments.find((candidate) => candidate.id === commentId);
+    const comment = feedback.value.comments.find(
+      (candidate) => candidate.id === commentId,
+    );
     if (comment === undefined) return err("not_found");
-    return (action === "edit" ? comment.canEdit : comment.canDelete) ? ok(undefined) : err("permission_denied");
+    return (action === "edit" ? comment.canEdit : comment.canDelete)
+      ? ok(undefined)
+      : err("permission_denied");
   }
 
-  private async authorizedReview(profile: WorkspaceProfileConfig, session: Parameters<typeof sessionPr>[0], reviewId: string): Promise<Result<void, PublishedFeedbackFailure>> {
-    if (this.github.getPullRequestPublishedFeedback === undefined) return err("permission_denied");
-    const feedback = await this.github.getPullRequestPublishedFeedback({ profile, pr: sessionPr(session) });
+  private async authorizedReview(
+    profile: WorkspaceProfileConfig,
+    session: Parameters<typeof sessionPr>[0],
+    reviewId: string,
+  ): Promise<Result<void, PublishedFeedbackFailure>> {
+    if (this.github.getPullRequestPublishedFeedback === undefined)
+      return err("permission_denied");
+    const feedback = await this.github.getPullRequestPublishedFeedback({
+      profile,
+      pr: sessionPr(session),
+    });
     if (feedback._tag === "err") return err("github_read_failed");
-    const review = feedback.value.reviews.find((candidate) => candidate.id === reviewId);
-    return review === undefined ? err("not_found") : review.canDismiss ? ok(undefined) : err("permission_denied");
+    const review = feedback.value.reviews.find(
+      (candidate) => candidate.id === reviewId,
+    );
+    return review === undefined
+      ? err("not_found")
+      : review.canDismiss
+        ? ok(undefined)
+        : err("permission_denied");
   }
 
-  private async afterWrite(result: Result<void, unknown>, input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId }): Promise<Result<void, PublishedFeedbackFailure>> {
+  private async afterWrite(
+    result: Result<void, unknown>,
+    input: {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+    },
+  ): Promise<Result<void, PublishedFeedbackFailure>> {
     if (result._tag === "err") return err("github_write_failed");
     if (this.refresh === undefined) return ok(undefined);
     const refreshed = await this.refresh(input);
@@ -87,6 +255,19 @@ export class PublishedFeedbackService {
   }
 }
 
-function sessionPr(session: { readonly key: { readonly host: PullRequestRef["host"]; readonly owner: PullRequestRef["owner"]; readonly repo: PullRequestRef["repo"]; readonly prNumber: PullRequestRef["number"]; readonly headSha?: string } }): PullRequestRef {
-  return { host: session.key.host, owner: session.key.owner, repo: session.key.repo, number: session.key.prNumber };
+function sessionPr(session: {
+  readonly key: {
+    readonly host: PullRequestRef["host"];
+    readonly owner: PullRequestRef["owner"];
+    readonly repo: PullRequestRef["repo"];
+    readonly prNumber: PullRequestRef["number"];
+    readonly headSha?: string;
+  };
+}): PullRequestRef {
+  return {
+    host: session.key.host,
+    owner: session.key.owner,
+    repo: session.key.repo,
+    number: session.key.prNumber,
+  };
 }

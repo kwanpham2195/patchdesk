@@ -7,7 +7,7 @@ import {
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
-  parseReviewSessionId,
+  parseReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import type {
@@ -52,12 +52,10 @@ const checkSchema = v.strictObject({
 
 const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review"), label: v.literal("Run review") }),
-  v.strictObject({ kind: v.literal("review_updates"), label: v.literal("Review updates"), baseSessionId: v.string() }),
-  v.strictObject({ kind: v.literal("continue_review"), label: v.literal("View review progress"), sessionId: v.string() }),
-  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open Review"), sessionId: v.string() }),
+  v.strictObject({ kind: v.literal("open_saved_review"), label: v.literal("Open Review"), reviewId: v.string() }),
   v.strictObject({ kind: v.literal("inspect_checks"), label: v.literal("Inspect failing checks") }),
-  v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), sessionId: v.string() }),
-  v.strictObject({ kind: v.literal("open_discussion"), label: v.literal("Review author response"), sessionId: v.string() }),
+  v.strictObject({ kind: v.literal("open_merge_readiness"), label: v.literal("Open merge readiness"), reviewId: v.string() }),
+  v.strictObject({ kind: v.literal("open_discussion"), label: v.literal("Review author response"), reviewId: v.string() }),
 ]);
 
 const rowSchema = v.strictObject({
@@ -74,13 +72,12 @@ const rowSchema = v.strictObject({
   reviewState: v.picklist(["none", "review_pending", "approved", "changes_requested", "unknown"]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   latestReview: v.optional(v.strictObject({
-    sessionId: v.string(),
+    reviewId: v.string(),
     reviewedHeadSha: v.string(),
-    state: v.picklist(["starting", "running", "completed", "failed", "draft", "submitted", "merged"]),
     updatedAt: v.string(),
     matchesCurrentHead: v.boolean(),
   })),
-  categories: v.array(v.picklist(["needs_review", "updated_since_review", "waiting_for_author", "checks_failing", "checks_pending", "ready_to_merge", "draft", "authored", "running", "saved_review"])),
+  categories: v.array(v.picklist(["needs_review", "updated_since_review", "waiting_for_author", "checks_failing", "checks_pending", "ready_to_merge", "draft", "authored", "saved_review"])),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(["fresh", "cached"]),
 });
@@ -200,11 +197,11 @@ function parseRepositoryIdentity(input: { readonly host: string; readonly owner:
 }
 
 function parseLatestReview(input: NonNullable<v.InferOutput<typeof rowSchema>["latestReview"]>): Result<InboxReviewSummary, StorageFailure> {
-  const sessionId = parseReviewSessionId(input.sessionId);
+  const reviewId = parseReviewId(input.reviewId);
   const reviewedHeadSha = parseGitSha(input.reviewedHeadSha);
   const updatedAt = parseIsoTimestamp(input.updatedAt);
-  return sessionId._tag === "ok" && reviewedHeadSha._tag === "ok" && updatedAt._tag === "ok"
-    ? ok({ sessionId: sessionId.value, reviewedHeadSha: reviewedHeadSha.value, state: input.state, updatedAt: updatedAt.value, matchesCurrentHead: input.matchesCurrentHead })
+  return reviewId._tag === "ok" && reviewedHeadSha._tag === "ok" && updatedAt._tag === "ok"
+    ? ok({ reviewId: reviewId.value, reviewedHeadSha: reviewedHeadSha.value, updatedAt: updatedAt.value, matchesCurrentHead: input.matchesCurrentHead })
     : invalidCache();
 }
 
@@ -216,13 +213,9 @@ function parseAction(input: v.InferOutput<typeof actionSchema>): Result<InboxRec
     // shape. The cache is local, and the current policy always permits analysis.
     case "inspect_checks":
       return ok({ kind: "run_review", label: "Run review" });
-    case "review_updates": {
-      const baseSessionId = parseReviewSessionId(input.baseSessionId);
-      return baseSessionId._tag === "ok" ? ok({ ...input, baseSessionId: baseSessionId.value }) : invalidCache();
-    }
     default: {
-      const sessionId = parseReviewSessionId(input.sessionId);
-      return sessionId._tag === "ok" ? ok({ ...input, sessionId: sessionId.value }) : invalidCache();
+      const reviewId = parseReviewId(input.reviewId);
+      return reviewId._tag === "ok" ? ok({ ...input, reviewId: reviewId.value }) : invalidCache();
     }
   }
 }

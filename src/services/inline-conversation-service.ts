@@ -67,7 +67,7 @@ export class InlineConversationService {
   constructor(
     private readonly gate: Pick<ReviewWriteGate, "requireFresh">,
     private readonly github: Gateway,
-    private readonly writeCoordinator?: ReviewOperationCoordinator,
+    private readonly writeCoordinator: ReviewOperationCoordinator,
   ) {}
 
   async execute(input: {
@@ -78,12 +78,12 @@ export class InlineConversationService {
     const localValidation = validateLocalCommand(input.command);
     if (localValidation._tag === "err") return localValidation;
     const key = `${input.profileId}:${input.reviewId}`;
-    if (this.writeCoordinator !== undefined && !this.writeCoordinator.acquire(key))
+    if (!this.writeCoordinator.acquire(key))
       return err("review_write_in_progress");
     try {
       return await this.executeUnlocked(input);
     } finally {
-      this.writeCoordinator?.release(key);
+      this.writeCoordinator.release(key);
     }
   }
 

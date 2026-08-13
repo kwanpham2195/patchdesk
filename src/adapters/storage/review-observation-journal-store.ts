@@ -42,7 +42,7 @@ export type ReviewObservationJournal = {
   readonly nextReviewUpdatedAt: IsoTimestamp;
   readonly previousSnapshotHash: ContentHash;
   readonly nextSnapshotHash: ContentHash;
-  readonly nextPendingReview: PendingReviewState;
+  readonly nextPendingReview?: PendingReviewState;
   readonly nextFindingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
   readonly createdAt: IsoTimestamp;
 };
@@ -59,7 +59,7 @@ const journalSchema = v.strictObject({
   nextReviewUpdatedAt: v.string(),
   previousSnapshotHash: v.string(),
   nextSnapshotHash: v.string(),
-  nextPendingReview: v.unknown(),
+  nextPendingReview: v.optional(v.unknown()),
   nextFindingReviewReceipts: v.optional(v.unknown()),
   createdAt: v.string(),
 });
@@ -147,7 +147,9 @@ export function parseReviewObservationJournal(
   const nextReviewUpdatedAt = parseIsoTimestamp(raw.output.nextReviewUpdatedAt);
   const previousSnapshotHash = parseContentHash(raw.output.previousSnapshotHash);
   const nextSnapshotHash = parseContentHash(raw.output.nextSnapshotHash);
-  const pending = parsePendingReviewState(raw.output.nextPendingReview);
+  const pending = raw.output.nextPendingReview === undefined
+    ? ok(undefined)
+    : parsePendingReviewState(raw.output.nextPendingReview);
   if (sessionId._tag === "err" || sessionHeadSha._tag === "err" || pending._tag === "err") {
     return invalidRead();
   }
@@ -156,7 +158,7 @@ export function parseReviewObservationJournal(
     : parseFindingReviewReceipts(raw.output.nextFindingReviewReceipts, {
         id: sessionId.value,
         headSha: sessionHeadSha.value,
-        pendingReview: pending.value,
+        ...(pending.value === undefined ? {} : { pendingReview: pending.value }),
       });
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   if (
@@ -187,7 +189,7 @@ export function parseReviewObservationJournal(
     nextReviewUpdatedAt: nextReviewUpdatedAt.value,
     previousSnapshotHash: previousSnapshotHash.value,
     nextSnapshotHash: nextSnapshotHash.value,
-    nextPendingReview: pending.value,
+    ...(pending.value === undefined ? {} : { nextPendingReview: pending.value }),
     ...(receipts.value === undefined ? {} : { nextFindingReviewReceipts: receipts.value }),
     createdAt: createdAt.value,
   });

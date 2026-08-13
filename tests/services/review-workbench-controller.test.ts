@@ -1,172 +1,70 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createReviewId } from "../../src/domain/ids";
+import type { Review } from "../../src/domain/review";
+import { err, ok } from "../../src/domain/result";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
-import { createReview, markReviewTerminal, type Review } from "../../src/domain/review";
-import { createReviewId, createReviewSessionId, parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, parseIsoTimestamp, parsePullRequestNumber, parseWorkspaceProfileId } from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
 
-const must = <T>(result: Result<T, unknown>): T => {
-  if (result._tag === "ok") return result.value;
-  throw new Error("fixture");
-};
-const profileId = must(parseWorkspaceProfileId("cfw"));
-const identity = { profileId, host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), prNumber: must(parsePullRequestNumber(42)) };
-const firstSha = must(parseGitSha("1".repeat(40)));
-const secondSha = must(parseGitSha("2".repeat(40)));
-const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
-const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
-const firstSessionId = createReviewSessionId({ ...identity, headSha: firstSha });
-const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha });
-const representedRemote = { headSha: firstSha, pullRequestUpdatedAt: now, snapshotHash: "a".repeat(64) as never, refreshedAt: now };
-
-function projection(): never { return { state: "review" } as never; }
-function controller(options: { readonly existing?: Review; readonly preparedSessionId?: typeof firstSessionId; readonly preparedHead?: typeof firstSha; readonly prepareCalls?: ReturnType<typeof vi.fn>; readonly save?: ReturnType<typeof vi.fn>; readonly loadLocal?: ReturnType<typeof vi.fn>; readonly loadRepresented?: ReturnType<typeof vi.fn>; readonly load?: ReturnType<typeof vi.fn>; readonly commits?: unknown; readonly refresh?: { readonly refresh: ReturnType<typeof vi.fn> }; readonly journals?: { readonly load: ReturnType<typeof vi.fn> }; readonly observation?: { readonly recover: ReturnType<typeof vi.fn> }; readonly migration?: { migrateProfile: ReturnType<typeof vi.fn> }; readonly lifecycle?: boolean }) {
-  const prepareCalls = options.prepareCalls ?? vi.fn();
-  let storedReview = options.existing;
-  const save = options.save ?? vi.fn(async (value: Review) => { storedReview = value; return ok(undefined); });
-  const prep = { async prepare(input: unknown) { prepareCalls(input); return ok({ disposition: "resumed", session: { id: options.preparedSessionId ?? firstSessionId, key: { ...identity, headSha: options.preparedHead ?? firstSha }, updatedAt: later } } as never); } };
-  const reviews = { async load() { return storedReview === undefined ? ({ _tag: "err", error: { _tag: "StorageFailure", operation: "read", reason: "not_found" } } as never) : ok(storedReview); }, save };
-  const remote = { async load() { return ok({} as never); } };
-  const loadLocal = options.loadLocal ?? vi.fn(async () => ok(projection()));
-  const loadRepresented = options.loadRepresented ?? vi.fn(async () => ok(projection()));
-  const load = options.load ?? vi.fn(async () => ok(projection()));
-  const projectionService = { load, loadLocal, loadRepresented };
-  const value = new ReviewWorkbenchController(prep as never, projectionService as never, options.lifecycle === false ? undefined : { reviews, remote, refresh: options.refresh ?? {}, ...(options.journals === undefined ? {} : { journals: options.journals }), ...(options.observation === undefined ? {} : { observation: options.observation }), ...(options.commits === undefined ? {} : { commits: options.commits }), ...(options.migration === undefined ? {} : { migration: options.migration }) } as never);
-  return { value, prepareCalls, save };
+const profileId = "cfw" as never;
+const headSha = "a".repeat(40) as never;
+const at = "2026-08-09T11:35:00.000Z" as never;
+const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+const identity = { profileId, host: "github.com" as never, owner: "centraldigital" as never, repo: "patchdesk" as never, prNumber: 42 as never };
+const reviewId = createReviewId(identity);
+const snapshotHash = "b".repeat(64) as never;
+const review: Review = { schemaVersion: 2, id: reviewId, identity, currentSessionId: sessionId, currentHeadSha: headSha, representedRemote: { headSha, pullRequestUpdatedAt: at, snapshotHash, refreshedAt: at }, freshness: { _tag: "Fresh" }, status: { _tag: "Open" }, createdAt: at, updatedAt: at };
+const snapshot = { pullRequest: { title: "represented" } } as never;
+const projection = { state: "review", review: { id: reviewId, status: "open" }, session: { id: sessionId }, revision: { reviewedHeadSha: headSha, freshness: "fresh", refreshedAt: at }, commits: [], insights: {}, analysisReviewActions: {}, conversation: {}, checks: {}, mergeReadiness: {}, mergeReasons: [], directSummaryDecision: "unknown" } as never;
+function fixture(overrides: Record<string, unknown> = {}) {
+  const preparation = { prepare: vi.fn(async () => ok({ session: { id: sessionId, key: { headSha }, createdAt: at } })) };
+  const project = { loadRepresented: vi.fn(async () => ok(projection)) };
+  const lifecycle = { reviews: { load: vi.fn(async () => ok(review)), save: vi.fn(async () => ok(undefined)) }, remote: { load: vi.fn(async () => ok(snapshot)) }, journals: { load: vi.fn(async () => ok(undefined)) }, refresh: { refresh: vi.fn(async () => ok(projection)) }, observation: { recover: vi.fn(async () => ok(undefined)), observe: vi.fn(async () => ok(undefined)) }, coordinator: { withReviewLock: vi.fn(async (_profile, _review, action) => await action()) }, commits: { diff: vi.fn(async () => ok({})) }, ...overrides };
+  return { controller: new ReviewWorkbenchController(preparation as never, project as never, lifecycle as never), preparation, project, lifecycle };
 }
 
-function review(): Review {
-  return { ...createReview({ identity, currentSessionId: firstSessionId, headSha: firstSha, createdAt: now }), representedRemote };
-}
-
-describe("ReviewWorkbenchController stable open", () => {
-  it("runs migration before a direct open can prepare or project legacy state", async () => {
-    const order: string[] = [];
-    const migration = { migrateProfile: vi.fn(async () => { order.push("migration"); return ok(undefined); }) };
-    const prepareCalls = vi.fn(() => { order.push("prepare"); });
-    const { value } = controller({ migration, prepareCalls });
-    await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(migration.migrateProfile).toHaveBeenCalledWith(profileId);
-    expect(order).toEqual(["migration", "prepare"]);
+describe("ReviewWorkbenchController", () => {
+  it("loads only by reviewId and projects the durable represented snapshot", async () => {
+    const value = fixture();
+    await expect(value.controller.load({ profileId, reviewId })).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(value.lifecycle.reviews.load).toHaveBeenCalledWith(profileId, reviewId);
+    expect(value.lifecycle.remote.load).toHaveBeenCalledWith({ profileId, reviewId, snapshotHash });
+    expect(value.project.loadRepresented).toHaveBeenCalledWith(expect.objectContaining({ sessionId, snapshot, refreshedAt: at, freshness: review.freshness }));
+    expect(value.preparation.prepare).not.toHaveBeenCalled();
   });
 
-  it("runs migration before loading a Review by direct identity", async () => {
-    const order: string[] = [];
-    const migration = { migrateProfile: vi.fn(async () => { order.push("migration"); return ok(undefined); }) };
-    const load = vi.fn(async () => { order.push("load"); return ok(projection()); });
-    const { value } = controller({ migration, load });
-    await value.load({ profileId: "cfw", sessionId: firstSessionId });
-    expect(migration.migrateProfile).toHaveBeenCalledWith(profileId);
-    expect(order).toEqual(["migration", "load"]);
+  it("recovers an observation journal before projection", async () => {
+    const journals = { load: vi.fn().mockResolvedValueOnce(ok({ operation: "observe" })).mockResolvedValueOnce(ok(undefined)) };
+    const value = fixture({ journals });
+    await expect(value.controller.load({ profileId, reviewId })).resolves.toMatchObject({ _tag: "ok" });
+    expect(value.lifecycle.observation.recover).toHaveBeenCalledWith({ profileId, reviewId });
+    expect(value.project.loadRepresented).toHaveBeenCalledOnce();
   });
 
-  it("creates one stable Review on first open", async () => {
-    const { value, prepareCalls, save } = controller({});
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened._tag).toBe("ok");
-    expect(prepareCalls).toHaveBeenCalledOnce();
-    expect(save).toHaveBeenCalledOnce();
+  it("fails closed when an unreadable saved Review exists and never re-prepares", async () => {
+    const value = fixture({ reviews: { load: vi.fn(async () => err({ reason: "storage" })), save: vi.fn() } });
+    await expect(value.controller.open({ profileId, host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(value.preparation.prepare).not.toHaveBeenCalled();
   });
 
-  it("keeps the lifecycle-free first open on the session projection path", async () => {
-    const load = vi.fn(async () => ok(projection()));
-    const { value, prepareCalls } = controller({ lifecycle: false, load });
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened).toEqual({ _tag: "ok", value: { state: "review" } });
-    expect(prepareCalls).toHaveBeenCalledOnce();
-    expect(load).toHaveBeenCalledWith({ profileId, sessionId: firstSessionId });
+  it("opens an already represented Review without a GitHub preparation or refresh", async () => {
+    const value = fixture();
+    await expect(value.controller.open({ profileId, host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(value.preparation.prepare).not.toHaveBeenCalled();
+    expect(value.lifecycle.refresh.refresh).not.toHaveBeenCalled();
   });
 
-  it("fetches the initial GitHub snapshot when a Review is first opened", async () => {
-    const refresh = { refresh: vi.fn(async () => ok(undefined)) };
-    const { value } = controller({ refresh });
-
-    await expect(value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toMatchObject({ _tag: "ok" });
-    expect(refresh.refresh).toHaveBeenCalledWith({ profileId, reviewId: createReviewId(identity) });
+  it("delegates Refresh and observation by reviewId", async () => {
+    const value = fixture();
+    await expect(value.controller.refresh({ profileId, reviewId })).resolves.toEqual({ _tag: "ok", value: projection });
+    await expect(value.controller.detectUpdates({ profileId, reviewId })).resolves.toEqual({ _tag: "ok", value: undefined });
+    expect(value.lifecycle.refresh.refresh).toHaveBeenCalledWith({ profileId, reviewId });
+    expect(value.lifecycle.observation.observe).toHaveBeenCalledWith({ profileId, reviewId });
   });
 
-  it("fetches the initial snapshot for an existing Review that has never refreshed", async () => {
-    const refresh = { refresh: vi.fn(async () => ok(undefined)) };
-    const unrefreshed = createReview({ identity, currentSessionId: firstSessionId, headSha: firstSha, createdAt: now });
-    const { value } = controller({ existing: unrefreshed, refresh });
-
-    await expect(value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 })).resolves.toMatchObject({ _tag: "ok" });
-    expect(refresh.refresh).toHaveBeenCalledWith({ profileId, reviewId: unrefreshed.id });
-  });
-
-  it("resumes same-head open without advancing the stable Review", async () => {
-    const existing = review();
-    const { value, save } = controller({ existing });
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened._tag).toBe("ok");
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("keeps the represented revision when GitHub has advanced until explicit Refresh", async () => {
-    const existing = review();
-    const { value, prepareCalls, save } = controller({ existing, preparedSessionId: secondSessionId, preparedHead: secondSha });
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened._tag).toBe("ok");
-    expect(prepareCalls).not.toHaveBeenCalled();
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("uses local session data when the represented snapshot head mismatches the Review head", async () => {
-    const existing = { ...review(), representedRemote: { ...representedRemote, headSha: secondSha } };
-    const loadLocal = vi.fn(async () => ok(projection()));
-    const loadRepresented = vi.fn(async () => ok(projection()));
-    const { value } = controller({ existing, loadLocal, loadRepresented });
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened._tag).toBe("ok");
-    expect(loadLocal).toHaveBeenCalledOnce();
-    expect(loadRepresented).not.toHaveBeenCalled();
-  });
-
-  it("does not prepare or mutate a terminal Review", async () => {
-    const existing = markReviewTerminal(review(), "merged", later);
-    const { value, prepareCalls, save } = controller({ existing });
-    const opened = await value.open({ profileId: "cfw", host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 });
-    expect(opened._tag).toBe("ok");
-    expect(prepareCalls).not.toHaveBeenCalled();
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("loads a saved workbench by session identity", async () => {
-    const load = vi.fn(async () => ok(projection()));
-    const { value } = controller({ existing: review(), load });
-    const result = await value.load({ profileId: "cfw", sessionId: firstSessionId });
-    expect(result).toEqual({ _tag: "ok", value: { state: "review" } });
-    expect(load).toHaveBeenCalledWith({ profileId, sessionId: firstSessionId });
-  });
-
-  it("recovers an observation journal before projecting the Review", async () => {
-    let journalPresent = true;
-    const journals = { load: vi.fn(async () => ok(journalPresent ? { reviewId: review().id } : undefined)) };
-    const observation = { recover: vi.fn(async () => { journalPresent = false; return ok({ _tag: "Reconciled" }); }) };
-    const loadRepresented = vi.fn(async () => ok(projection()));
-    const { value } = controller({ existing: review(), journals, observation, loadRepresented });
-
-    await expect(value.load({ profileId: "cfw", reviewId: review().id })).resolves.toEqual({ _tag: "ok", value: { state: "review" } });
-    expect(observation.recover).toHaveBeenCalledWith({ profileId, reviewId: review().id });
-    expect(loadRepresented).toHaveBeenCalledOnce();
-  });
-
-  it("does not project a Review while an observation journal owns its transition", async () => {
-    const loadRepresented = vi.fn(async () => ok(projection()));
-    const journals = { load: vi.fn(async () => ok({ reviewId: review().id })) };
-    const { value } = controller({ existing: review(), journals, loadRepresented });
-
-    await expect(value.load({ profileId: "cfw", reviewId: review().id })).resolves.toEqual({ _tag: "err", error: { reason: "storage" } });
-    expect(loadRepresented).not.toHaveBeenCalled();
-  });
-
-  it("validates and delegates commit diff requests", async () => {
-    const diff = vi.fn(async () => ok({ commit: {}, position: 1, total: 1, patch: "diff", fileCount: 0, additions: 0, deletions: 0 }));
-    const { value } = controller({ commits: { diff } });
-    await expect(value.commitDiff({ profileId: "cfw", reviewId: "not-a-review", commitSha: "1".repeat(40) })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
-    const validReviewId = review().id;
-    const result = await value.commitDiff({ profileId: "cfw", reviewId: validReviewId, commitSha: "1".repeat(40) });
-    expect(result._tag).toBe("ok");
-    expect(diff).toHaveBeenCalledWith({ profileId, reviewId: validReviewId, commitSha: firstSha });
+  it("rejects malformed input before any lifecycle work", async () => {
+    const value = fixture();
+    await expect(value.controller.load({ profileId })).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+    await expect(value.controller.open({})).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
+    expect(value.lifecycle.reviews.load).not.toHaveBeenCalled();
   });
 });

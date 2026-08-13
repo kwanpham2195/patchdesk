@@ -42,9 +42,8 @@ export type InsightProjection<T> = {
     /** Run identity doubles as the safe, user-visible correlation ID. */
     readonly runId?: InsightRunId;
     readonly category?: InsightFailureCategory;
-    readonly model?: string;
-    readonly reasoning?: InsightReasoning;
-    readonly incidentId?: string;
+    readonly model: string;
+    readonly reasoning: InsightReasoning;
     readonly retryable: boolean;
   };
 };

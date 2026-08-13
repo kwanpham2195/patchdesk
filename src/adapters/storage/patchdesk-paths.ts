@@ -1,12 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type {
-  ReviewAttemptId,
-  ReviewId,
-  ReviewSessionId,
-  WorkspaceProfileId,
-} from "../../domain/ids";
+import type { ReviewId, ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
 
 export type PatchdeskPathRoots = {
@@ -115,19 +110,6 @@ export class PatchdeskPaths {
     return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
   }
 
-  publicationAuthorizationFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
-    return join(this.insightDirectory(profileId, reviewId), "publication.json");
-  }
-
-  /** Marker written last after legacy Review artifacts have been adopted. */
-  reviewMigrationMarkerFile(profileId: WorkspaceProfileId): string {
-    return join(this.dataDirectory(), "profiles", profileId, "review-migration-v1.json");
-  }
-
-  /** Marker written last after legacy local batch evidence is discarded. */
-  batchDiscardMarkerFile(profileId: WorkspaceProfileId): string {
-    return join(this.dataDirectory(), "profiles", profileId, "batch-discard-v1.json");
-  }
 
   sessionFile(
     profileId: WorkspaceProfileId,
@@ -147,7 +129,7 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "patch.diff");
   }
 
-  /** Immutable prepared inputs shared by every attempt for this exact PR head. */
+  /** Immutable prepared inputs shared by every Insight for this exact PR head. */
   preparedDirectory(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
@@ -176,33 +158,6 @@ export class PatchdeskPaths {
     return join(this.preparedDirectory(profileId, sessionId), "debug.json");
   }
 
-  comparisonPatchFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "comparison.diff");
-  }
-
-  comparisonMetadataFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "comparison.json");
-  }
-
-  previousFindingsFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "previous-findings.json");
-  }
-
-  findingLifecycleFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "finding-lifecycle.json");
-  }
 
   inboxCacheFile(profileId: WorkspaceProfileId): string {
     return join(this.cacheDirectory(), "profiles", profileId, "inbox-v1.json");
@@ -215,86 +170,6 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "worktree.json");
   }
 
-  debugTraceFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "debug.jsonl");
-  }
-
-  attemptDirectory(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.sessionDirectory(profileId, sessionId),
-      "attempts",
-      attemptId,
-    );
-  }
-
-  attemptsDirectory(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-  ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "attempts");
-  }
-
-  attemptFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.attemptDirectory(profileId, sessionId, attemptId),
-      "attempt.json",
-    );
-  }
-
-  attemptContextFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.attemptDirectory(profileId, sessionId, attemptId),
-      "context.json",
-    );
-  }
-
-  attemptReviewInputFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.attemptDirectory(profileId, sessionId, attemptId),
-      "review-input.md",
-    );
-  }
-
-  attemptResultFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.attemptDirectory(profileId, sessionId, attemptId),
-      "result.json",
-    );
-  }
-
-  attemptDebugFile(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    attemptId: ReviewAttemptId,
-  ): string {
-    return join(
-      this.attemptDirectory(profileId, sessionId, attemptId),
-      "debug.json",
-    );
-  }
 
   worktreeDirectory(
     profileId: WorkspaceProfileId,

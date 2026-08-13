@@ -34,8 +34,6 @@ import type {
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSessionPreparation } from "./review-session-preparation";
-import type { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
-import { revokePublicationAuthorization } from "../domain/publication-authorization";
 import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
@@ -98,6 +96,7 @@ export type ReviewRefreshDependencies = {
     | "getPullRequestComments"
     | "getPullRequestCommits"
     | "getPullRequestChecks"
+    | "loadConversation"
     | "getMergePolicy"
   > &
     Partial<
@@ -111,15 +110,11 @@ export type ReviewRefreshDependencies = {
     >;
   readonly preparation: Pick<ReviewSessionPreparation, "prepare">;
   readonly now: () => IsoTimestamp;
-  readonly publicationAuthorizations?: Pick<
-    PublicationAuthorizationStore,
-    "load" | "save"
-  >;
-  readonly pendingReview?: Pick<
+  readonly pendingReview: Pick<
     PendingReviewService,
     "reconcileWithinReviewLock"
   >;
-  readonly operationCoordinator?: ReviewOperationCoordinator;
+  readonly operationCoordinator: ReviewOperationCoordinator;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
     readonly sessionId: ReviewSessionId;
@@ -135,7 +130,6 @@ export type ReviewRefreshDependencies = {
 
 /** Separates cheap remote detection from the explicit, durable refresh command. */
 export class ReviewRefreshService {
-  private readonly locks = new Map<string, Promise<void>>();
 
   constructor(private readonly dependencies: ReviewRefreshDependencies) {}
 
@@ -219,6 +213,7 @@ export class ReviewRefreshService {
           comments: comments.value,
           commits: represented.value.commits,
           checks: checks.value,
+          conversation: represented.value.conversation,
           ...(publishedFeedbackAvailable
             ? { publishedFeedback: publishedFeedback.value }
             : {}),
@@ -357,7 +352,7 @@ export class ReviewRefreshService {
 
   /** Persist a complete remote revision proof without adopting its session. */
   private async markOrKeepRevisionChanged(
-    input: {
+    _input: {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
     },
@@ -386,21 +381,16 @@ export class ReviewRefreshService {
       review.updatedAt,
     );
     if (saved._tag === "err") return err({ reason: "storage" });
-    await this.revokeAuthorization(
-      input.profileId,
-      input.reviewId,
-      "updates_available",
-    );
     return ok({ updatesAvailable: true, detectedAt });
   }
 
   /**
    * Until the observation service installs canonical identity proof, this
-   * legacy detector fails closed rather than treating a head-only result as
-   * revision evidence. Its compatibility DTO still exposes the refresh affordance.
+   * same-revision detector fails closed rather than treating a head-only result as
+   * revision evidence. Its typed result preserves the refresh affordance.
    */
   private async markOrKeepUnavailable(
-    input: {
+    _input: {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
     },
@@ -427,11 +417,6 @@ export class ReviewRefreshService {
       review.updatedAt,
     );
     if (saved._tag === "err") return err({ reason: "storage" });
-    await this.revokeAuthorization(
-      input.profileId,
-      input.reviewId,
-      "updates_available",
-    );
     return ok({ updatesAvailable: true, detectedAt });
   }
 
@@ -448,11 +433,6 @@ export class ReviewRefreshService {
         const { review, profile } = loaded.value;
         if (review.status._tag === "Terminal")
           return err({ reason: "terminal" });
-        await this.revokeAuthorization(
-          input.profileId,
-          input.reviewId,
-          "refresh",
-        );
         const currentSession = await this.dependencies.sessions.load(
           input.profileId,
           review.currentSessionId,
@@ -485,6 +465,7 @@ export class ReviewRefreshService {
           comments,
           commits,
           checks,
+          conversation,
           mergePolicy,
           publishedFeedback,
           policyEvidence,
@@ -501,6 +482,10 @@ export class ReviewRefreshService {
             profile,
             pr: pullRequest,
             headSha: current.value.headSha,
+          }),
+          this.dependencies.github.loadConversation({
+            profile,
+            pr: pullRequest,
           }),
           this.dependencies.github.getMergePolicy({
             profile,
@@ -525,6 +510,7 @@ export class ReviewRefreshService {
           comments._tag === "err" ||
           commits._tag === "err" ||
           checks._tag === "err" ||
+          conversation._tag === "err" ||
           mergePolicy._tag === "err" ||
           publishedFeedback._tag === "err"
         )
@@ -542,6 +528,7 @@ export class ReviewRefreshService {
           comments: comments.value,
           commits: commits.value,
           checks: checks.value,
+          conversation: conversation.value,
           ...(publishedFeedback.value === undefined
             ? {}
             : { publishedFeedback: publishedFeedback.value }),
@@ -562,8 +549,6 @@ export class ReviewRefreshService {
           const prepared = await this.dependencies.preparation.prepare({
             profileId: input.profileId,
             pullRequest,
-            mode: { kind: "full" },
-            previousSessionId: review.currentSessionId,
           });
           if (prepared._tag === "err")
             return mapPreparationFailure(prepared.error._tag);
@@ -615,46 +600,29 @@ export class ReviewRefreshService {
         // Explicit refresh reconciles the viewer's pending review; a failed read
         // is unavailable in the projection, never a claim that none exists.
         const reconciled =
-          this.dependencies.pendingReview === undefined
-            ? undefined
-            : await this.dependencies.pendingReview.reconcileWithinReviewLock({
-                profileId: input.profileId,
-                reviewId: input.reviewId,
-              });
-        const pendingReview =
-          reconciled === undefined
-            ? undefined
-            : {
-                state:
-                  reconciled._tag === "ok"
-                    ? reconciled.value.state
-                    : ({ _tag: "None" } as PendingReviewState),
-                unavailable:
-                  reconciled._tag !== "ok" || reconciled.value.unavailable,
-              };
+          await this.dependencies.pendingReview.reconcileWithinReviewLock({
+            profileId: input.profileId,
+            reviewId: input.reviewId,
+          });
+        const pendingReview = {
+          state:
+            reconciled._tag === "ok"
+              ? reconciled.value.state
+              : (currentSession.value.pendingReview ??
+                ({ _tag: "None" } as PendingReviewState)),
+          unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
+        };
         const projected = await this.dependencies.project({
           profileId: input.profileId,
           sessionId,
           snapshot: candidate,
           freshness: authoritative.freshness,
           refreshedAt: representedRemote.refreshedAt,
-          ...(pendingReview === undefined ? {} : { pendingReview }),
+          pendingReview,
         });
         return projected._tag === "ok" ? projected : err({ reason: "storage" });
       },
     );
-  }
-
-  private async revokeAuthorization(
-    profileId: WorkspaceProfileId,
-    reviewId: ReviewId,
-    reason: "updates_available" | "refresh",
-  ): Promise<void> {
-    const store = this.dependencies.publicationAuthorizations;
-    if (store === undefined) return;
-    const loaded = await store.load(profileId, reviewId);
-    if (loaded._tag === "ok")
-      await store.save(revokePublicationAuthorization(loaded.value, reason));
   }
 
   private async authoritativeTerminalState(
@@ -702,26 +670,11 @@ export class ReviewRefreshService {
     reviewId: ReviewId,
     operation: () => Promise<Result<T, ReviewRefreshFailure>>,
   ): Promise<Result<T, ReviewRefreshFailure>> {
-    const coordinator = this.dependencies.operationCoordinator;
-    if (coordinator !== undefined) {
-      return coordinator.withReviewLock(profileId, reviewId, operation);
-    }
-    const key = `${profileId}:${reviewId}`;
-    // Unit-test fallback while production composes the shared coordinator.
-    const locks = this.locks;
-    const predecessor = locks.get(key);
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    locks.set(key, current);
-    if (predecessor !== undefined) await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (locks.get(key) === current) locks.delete(key);
-    }
+    return this.dependencies.operationCoordinator.withReviewLock(
+      profileId,
+      reviewId,
+      operation,
+    );
   }
 }
 
@@ -739,6 +692,7 @@ function fingerprintForDetection(
     // make detection flag a phantom update and block GitHub writes.
     pullRequest: omitVolatilePullRequestState(snapshot.pullRequest),
     comments: withoutViewerMetadata(snapshot.comments),
+    conversation: snapshot.conversation,
     commits: snapshot.commits,
     checks: snapshot.checks,
     ...(available.publishedFeedback && snapshot.publishedFeedback !== undefined
@@ -1002,7 +956,7 @@ function mapPreparationFailure(
     reason:
       tag === "HeadChanged"
         ? "head_changed"
-        : tag === "ProfileNotFound" || tag === "IncrementalBaseNotFound"
+        : tag === "ProfileNotFound"
           ? "not_found"
           : tag === "GitHubReadUnavailable"
             ? "github_read"

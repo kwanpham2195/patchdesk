@@ -31,12 +31,14 @@ export function CompactMergeCommand(props: {
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly initialMethod?: MergeMethod;
   readonly onMerge: (method: MergeMethod, warningCodes: ReadonlyArray<string>) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly onRecoverMerge?: () => Promise<void>;
 }): React.JSX.Element {
   const [method, setMethod] = useState<MergeMethod>(props.initialMethod ?? props.methods[0] ?? "squash");
   const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [merged, setMerged] = useState<string>();
+  const [recovering, setRecovering] = useState(false);
 
   const merge = async (): Promise<void> => {
     if (pending) return;
@@ -46,9 +48,21 @@ export function CompactMergeCommand(props: {
       const result = await props.onMerge(method, acknowledged ? props.readiness.warnings : []);
       setMerged(result.mergeCommitSha ?? "pull request");
     } catch {
-      setError("GitHub did not confirm the merge. Use the existing recovery action before retrying.");
+      setError("GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.");
     } finally {
       setPending(false);
+    }
+  };
+  const recover = async (): Promise<void> => {
+    if (recovering || pending || props.onRecoverMerge === undefined) return;
+    setRecovering(true);
+    setError(undefined);
+    try {
+      await props.onRecoverMerge();
+    } catch {
+      setError("GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.");
+    } finally {
+      setRecovering(false);
     }
   };
 
@@ -61,7 +75,7 @@ export function CompactMergeCommand(props: {
   const needsAcknowledgement = props.readiness._tag === "NeedsAcknowledgement";
   return <section aria-label="Merge command" className="flex flex-col gap-3 border-t pt-3">
     <p className="text-xs text-muted-foreground">{props.context.repo}#{props.context.prNumber} · {props.context.base} ← {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code></p>
-    {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+    {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription><p>{error}</p>{props.onRecoverMerge === undefined ? null : <Button className="mt-2" variant="outline" disabled={recovering || pending} onClick={() => void recover()}>{recovering ? "Checking GitHub…" : "Check GitHub status"}</Button>}</AlertDescription></Alert>}
     {needsAcknowledgement ? <div className="flex items-start gap-2"><Checkbox id="merge-ack" checked={acknowledged} onCheckedChange={(checked) => setAcknowledged(checked === true)} /><Label htmlFor="merge-ack" className="leading-5">I acknowledge: {props.readiness.warnings.map((warning) => warning.replaceAll("_", " ")).join(", ")}.</Label></div> : null}
     <div className="flex flex-wrap items-end gap-2">
       <label className="grid gap-1 text-sm font-medium" htmlFor="merge-method">Merge method<Select value={method} onValueChange={(value) => setMethod(value as MergeMethod)}><SelectTrigger id="merge-method"><SelectValue /></SelectTrigger><SelectContent>{props.methods.map((candidate) => <SelectItem key={candidate} value={candidate}>{candidate}</SelectItem>)}</SelectContent></Select></label>

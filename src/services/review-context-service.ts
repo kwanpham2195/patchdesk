@@ -21,7 +21,7 @@ const MAX_RULE_BYTES = 128 * 1024;
 const MAX_TOTAL_RULE_BYTES = 512 * 1024;
 type ContextInput = {
   readonly worktreePath: string;
-  readonly attemptDirectory: string;
+  readonly preparedDirectory: string;
   readonly pr: { readonly title: string; readonly headSha: string };
   readonly comments: unknown;
   readonly checks: unknown;
@@ -36,14 +36,14 @@ export class ReviewContextService {
     if (input.changedFiles.some((path) => path.startsWith("/") || path.split("/").includes(".."))) return err({ _tag: "ReviewContextFailed" });
     if (containsSensitiveData({ pr: input.pr, comments: input.comments, checks: input.checks, patch: input.patch })) return err({ _tag: "ReviewContextFailed" });
     try {
-      await mkdir(input.attemptDirectory, { recursive: true });
+      await mkdir(input.preparedDirectory, { recursive: true });
       const projectReviewCriteria = await this.loadProjectReviewCriteria(input.worktreePath, input.rulePaths);
       const packageSummary = await this.packageSummary(input.worktreePath);
       const context = { pr: input.pr, comments: input.comments, checks: input.checks, changedFiles: input.changedFiles, patch: input.patch, projectReviewCriteria: projectReviewCriteria.criteria, packageSummary };
       const rendered = JSON.stringify(context, null, 2);
-      const contextPath = join(input.attemptDirectory, "context.json");
-      const reviewInputPath = join(input.attemptDirectory, "review-input.md");
-      const debugPath = join(input.attemptDirectory, "debug.json");
+      const contextPath = join(input.preparedDirectory, "context.json");
+      const reviewInputPath = join(input.preparedDirectory, "review-input.md");
+      const debugPath = join(input.preparedDirectory, "debug.json");
       await writeFile(contextPath, rendered, "utf8");
       await writeFile(reviewInputPath, `# PR review input\n\nPR: ${input.pr.title}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`, "utf8");
       await writeFile(debugPath, JSON.stringify({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0, profileRuleLoadFailureCount: projectReviewCriteria.failureCount }, null, 2), "utf8").catch(() => undefined);

@@ -1,5 +1,5 @@
 import type { CheckSummary, PullRequestSummary } from "./github-context";
-import type { GitSha, IsoTimestamp, ReviewSessionId } from "./ids";
+import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
 export type InboxCategory =
@@ -11,21 +11,17 @@ export type InboxCategory =
   | "ready_to_merge"
   | "draft"
   | "authored"
-  | "running"
   | "saved_review";
 
 export type InboxRecommendedAction =
   | { readonly kind: "run_review"; readonly label: "Run review" }
-  | { readonly kind: "review_updates"; readonly label: "Review updates"; readonly baseSessionId: ReviewSessionId }
-  | { readonly kind: "continue_review"; readonly label: "View review progress"; readonly sessionId: ReviewSessionId }
-  | { readonly kind: "open_saved_review"; readonly label: "Open Review"; readonly sessionId: ReviewSessionId }
-  | { readonly kind: "open_merge_readiness"; readonly label: "Open merge readiness"; readonly sessionId: ReviewSessionId }
-  | { readonly kind: "open_discussion"; readonly label: "Review author response"; readonly sessionId: ReviewSessionId };
+  | { readonly kind: "open_saved_review"; readonly label: "Open Review"; readonly reviewId: ReviewId }
+  | { readonly kind: "open_merge_readiness"; readonly label: "Open merge readiness"; readonly reviewId: ReviewId }
+  | { readonly kind: "open_discussion"; readonly label: "Review author response"; readonly reviewId: ReviewId };
 
 export type InboxReviewSummary = {
-  readonly sessionId: ReviewSessionId;
+  readonly reviewId: ReviewId;
   readonly reviewedHeadSha: GitSha;
-  readonly state: "starting" | "running" | "completed" | "failed" | "draft" | "submitted" | "merged";
   readonly updatedAt: IsoTimestamp;
   readonly matchesCurrentHead: boolean;
 };
@@ -61,18 +57,16 @@ export function projectMaintainerInboxRow(input: {
   const review = input.latestReview;
   const requested = input.summary.requestedReviewers?.includes(input.activeAccount) === true;
   if (requested) categories.push("needs_review");
-  if (review !== undefined && !review.matchesCurrentHead && review.state === "completed") categories.push("updated_since_review");
-  if (review?.matchesCurrentHead && review.state === "submitted" && input.summary.reviewState === "changes_requested") categories.push("waiting_for_author");
+  if (review !== undefined && !review.matchesCurrentHead) categories.push("updated_since_review");
+  if (review?.matchesCurrentHead && input.summary.reviewState === "changes_requested") categories.push("waiting_for_author");
   if (input.checks.overall === "failing") categories.push("checks_failing");
   if (input.checks.overall === "pending") categories.push("checks_pending");
   if (input.summary.isDraft) categories.push("draft");
   if (input.summary.author === input.activeAccount) categories.push("authored");
-  if (review?.matchesCurrentHead && (review.state === "starting" || review.state === "running")) categories.push("running");
-  if (review?.matchesCurrentHead && review.state === "draft") categories.push("saved_review");
+  if (review?.matchesCurrentHead) categories.push("saved_review");
   if (
     input.dataFreshness === "fresh" &&
     review?.matchesCurrentHead &&
-    review.state === "completed" &&
     input.summary.mergeability === "mergeable" &&
     input.checks.overall === "passing"
   ) categories.push("ready_to_merge");
@@ -111,11 +105,10 @@ function recommendedActionFor(input: {
   readonly review?: InboxReviewSummary;
   readonly dataFreshness: "fresh" | "cached";
 }): InboxRecommendedAction {
-  if (input.review?.matchesCurrentHead && (input.review.state === "starting" || input.review.state === "running")) return { kind: "continue_review", label: "View review progress", sessionId: input.review.sessionId };
-  if (input.review?.matchesCurrentHead && input.review.state === "draft") return { kind: "open_saved_review", label: "Open Review", sessionId: input.review.sessionId };
-  if (input.categories.includes("updated_since_review") && input.review !== undefined) return { kind: "review_updates", label: "Review updates", baseSessionId: input.review.sessionId };
-  if (input.dataFreshness === "fresh" && input.categories.includes("ready_to_merge") && input.review !== undefined) return { kind: "open_merge_readiness", label: "Open merge readiness", sessionId: input.review.sessionId };
+  if (input.review !== undefined && input.categories.includes("updated_since_review")) return { kind: "open_saved_review", label: "Open Review", reviewId: input.review.reviewId };
+  if (input.review?.matchesCurrentHead) return { kind: "open_saved_review", label: "Open Review", reviewId: input.review.reviewId };
+  if (input.dataFreshness === "fresh" && input.categories.includes("ready_to_merge") && input.review !== undefined) return { kind: "open_merge_readiness", label: "Open merge readiness", reviewId: input.review.reviewId };
   if (input.categories.includes("needs_review")) return { kind: "run_review", label: "Run review" };
-  if (input.categories.includes("waiting_for_author") && input.review !== undefined) return { kind: "open_discussion", label: "Review author response", sessionId: input.review.sessionId };
+  if (input.categories.includes("waiting_for_author") && input.review !== undefined) return { kind: "open_discussion", label: "Review author response", reviewId: input.review.reviewId };
   return { kind: "run_review", label: "Run review" };
 }

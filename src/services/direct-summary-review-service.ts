@@ -34,13 +34,12 @@ type Gateway = GitHubDirectSummaryGateway & Pick<GitHubPendingReviewGateway, "ge
 
 /** Publishes exactly one non-pending GitHub review summary with durable recovery evidence. */
 export class DirectSummaryReviewService {
-  private readonly inFlight = new Set<string>();
   constructor(
     private readonly gate: Pick<ReviewWriteGate, "requireFresh" | "requireCurrentSession">,
     private readonly sessions: Pick<ReviewSessionStore, "load" | "save">,
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
-    private readonly writeCoordinator?: ReviewOperationCoordinator,
+    private readonly writeCoordinator: ReviewOperationCoordinator,
   ) {}
 
   async submit(input: {
@@ -53,12 +52,9 @@ export class DirectSummaryReviewService {
     const body = input.body.trim();
     if (body.length === 0) return err("invalid_input");
     const key = `${input.profileId}:${input.reviewId}`;
-    const acquired = this.writeCoordinator === undefined
-      ? !this.inFlight.has(key)
-      : this.writeCoordinator.acquire(key);
+    const acquired = this.writeCoordinator.acquire(key);
     if (!acquired) return err("review_write_in_progress");
-    if (this.writeCoordinator === undefined) this.inFlight.add(key);
-    try {
+        try {
       const fresh = await this.gate.requireFresh(input.profileId, input.reviewId, input.expected);
       if (fresh._tag === "err") return err(mapGateFailure(fresh.error.reason));
       const existing = fresh.value.session.directSummaryReview;
@@ -110,17 +106,15 @@ export class DirectSummaryReviewService {
       }
       return ok(confirmed);
     } finally {
-      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
-      else this.writeCoordinator.release(key);
+      this.writeCoordinator.release(key);
     }
   }
 
   async reconcile(input: { readonly profileId: WorkspaceProfileId; readonly reviewId: ReviewId }): Promise<Result<DirectSummaryReviewState | undefined, DirectSummaryReviewFailure>> {
     const key = `${input.profileId}:${input.reviewId}`;
-    const acquired = this.writeCoordinator === undefined ? !this.inFlight.has(key) : this.writeCoordinator.acquire(key);
+    const acquired = this.writeCoordinator.acquire(key);
     if (!acquired) return err("review_write_in_progress");
-    if (this.writeCoordinator === undefined) this.inFlight.add(key);
-    try {
+        try {
     const current = await this.gate.requireCurrentSession(input.profileId, input.reviewId);
     if (current._tag === "err") return err(mapGateFailure(current.error.reason));
     const stored = current.value.session.directSummaryReview;
@@ -160,8 +154,7 @@ export class DirectSummaryReviewService {
     if (!(await this.save(current.value.session, next))) return err("unavailable");
     return ok(next);
     } finally {
-      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
-      else this.writeCoordinator.release(key);
+      this.writeCoordinator.release(key);
     }
   }
 

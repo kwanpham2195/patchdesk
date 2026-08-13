@@ -109,7 +109,7 @@ export type MergePolicySnapshot = {
   readonly isOpen: boolean;
   readonly isDraft: boolean;
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
-  /** Optional for legacy/fake readers; adapter reads always include it. */
+  /** Optional for bounded readers that cannot provide aggregate merge state. */
   readonly mergeStateStatus?: GitHubMergeStateStatus;
   readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
   readonly checks: CheckSummary;
@@ -164,7 +164,7 @@ export type Conversation = {
     | "unavailable";
 };
 
-/** Legacy adapter type. Replaced by Conversation for the renderer contract; still used by optional adapter methods during migration. */
+/** Published inline feedback returned by GitHub for explicit edit and delete actions. */
 export type PublishedReviewComment = GitHubComment & {
   readonly reviewId?: string;
   readonly nodeId?: string;

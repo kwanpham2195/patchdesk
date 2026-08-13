@@ -16,7 +16,6 @@ import {
   record,
   string,
   strictObject,
-  union,
   unknown,
   variant,
 } from "valibot";
@@ -33,7 +32,6 @@ import { ReviewObservationJournalStore } from "../adapters/storage/review-observ
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
-import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import {
   StorageManagementService,
   type TrashMover,
@@ -50,9 +48,6 @@ import type {
 } from "../adapters/github/github-adapter";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
-import { ReviewWriteController } from "../services/review-write-controller";
-import { ReviewBatchController } from "../services/review-batch-controller";
-import { PublicationPreviewService } from "../services/publication-preview-service";
 import {
   PublishedFeedbackService,
   type PublishedFeedbackFailure,
@@ -77,8 +72,6 @@ import {
 } from "../services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
-import { UnifiedReviewMigration } from "../services/unified-review-migration";
-import { LegacyBatchDiscardMigration } from "../services/legacy-batch-discard-migration";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewObservationService } from "../services/review-observation-service";
@@ -87,10 +80,6 @@ import { ReviewWorkbenchProjectionService } from "../services/review-workbench-p
 import { ReviewCommitService } from "../services/review-commit-service";
 import { ReviewPreparationJournal } from "../services/review-preparation-journal";
 import { MergeWriteController } from "../services/merge-write-controller";
-import { ReviewCompletionService } from "../services/review-completion-service";
-import { projectSafeRun } from "../services/run-projection";
-import { ReviewRunRegistry } from "../services/review-run-registry";
-import { ReviewRunCoordinator } from "../services/review-run-coordinator";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
@@ -100,24 +89,12 @@ import {
   ReviewWorktreeService,
   type GitReadExecutor,
 } from "../services/review-worktree-service";
-import { ReviewComparisonService } from "../services/review-comparison-service";
-import {
-  ReviewExecutionService,
-  REVIEW_REASONING_LEVELS,
-} from "../services/review-execution-service";
-import { ReviewHeadVerifier } from "../services/review-head-verifier";
 import { ReviewWriteGate } from "../services/review-write-gate";
-import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
-import {
-  ReviewWorkflowStarter,
-  type ReviewWorkflowInvoker,
-} from "../services/review-workflow-starter";
 import { err, ok, type Result } from "../domain/result";
-import type { SafeRunProjection } from "../services/run-projection";
 import {
   parseContentHash,
   parseFindingId,
@@ -125,7 +102,6 @@ import {
   parseGitHubThreadId,
   parseGitSha,
   parseInsightRunId,
-  parseIsoTimestamp,
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
@@ -158,20 +134,11 @@ const reviewOpenSchema = strictObject({
   owner: pipe(string(), minLength(1)),
   repo: pipe(string(), minLength(1)),
   number: pipe(number(), integer(), minValue(1)),
-  mode: optional(picklist(["full", "incremental"])),
-  baseSessionId: optional(pipe(string(), minLength(1))),
-  previousSessionId: optional(pipe(string(), minLength(1))),
 });
-const reviewLoadSchema = union([
-  strictObject({
-    profileId: pipe(string(), minLength(1)),
-    reviewId: pipe(string(), minLength(1)),
-  }),
-  strictObject({
-    profileId: pipe(string(), minLength(1)),
-    sessionId: pipe(string(), minLength(1)),
-  }),
-]);
+const reviewLoadSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+});
 const recentReviewWriteSchema = variant("_tag", [
   strictObject({
     _tag: picklist(["Comment"] as const),
@@ -222,19 +189,6 @@ const insightFindingSchema = strictObject({
   runId: pipe(string(), minLength(1)),
   reason: optional(pipe(string(), minLength(1), maxLength(500))),
 });
-const publicationPreviewSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
-  sessionId: pipe(string(), minLength(1)),
-  expectedHeadSha: optional(pipe(string(), minLength(40))),
-  expectedPatchHash: optional(pipe(string(), minLength(64))),
-  expectedRevision: pipe(string(), minLength(1)),
-  event: picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
-});
-const publicationRecoverySchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
-});
 const publishedCommentEditSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
@@ -277,10 +231,6 @@ export type LocalApiConfiguration = {
   readonly mergeWriter?: GitHubMergeWriter;
   readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
-  /** Main-process-owned finite Flue invocation; renderer requests never provide workflow paths. */
-  readonly workflowInvoker?: ReviewWorkflowInvoker;
-  /** Models advertised by the active Flue/Pi runtime. Model identifiers stay main-process owned. */
-  readonly supportedReviewModels?: ReadonlyArray<string>;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;
   /** Main-process-only provider catalog; Codex activation is explicit and authenticated. */
@@ -288,18 +238,14 @@ export type LocalApiConfiguration = {
     InsightProviderCatalog,
     "passive" | "activateCodex"
   >;
-  /** Test-only adapter; production never accepts mutable run state over HTTP. */
-  readonly runProjection?: (input: {
-    readonly runId: string;
-    readonly sessionId: string;
-    readonly attemptId: string;
-  }) => SafeRunProjection;
   /** Main-process-owned Trash capability. Production wires shell.trashItem. */
   readonly trash?: TrashMover;
   /** Test-only read-only git seam used by storage cache clear. */
   readonly readOnlyGit?: GitReadExecutor;
   /** Composition-root lifecycle gate shared by every durable review mutation. */
   readonly lifecycleGate?: ReviewLifecycleGate;
+  /** Composition-root coordinator shared by all Review-scoped mutations. */
+  readonly reviewOperations?: ReviewOperationCoordinator;
   /** Composition-root diagnostic service shared by every failure boundary. */
   readonly diagnostics?: ReviewDiagnosticService;
   /** Composition-root local log stream; defaults to a fresh on-disk service. */
@@ -334,7 +280,6 @@ export async function startLocalApiServer(
   }
 
   const app = new Hono();
-  const runs = new ReviewRunRegistry();
   app.use("*", corsForRenderer(parsedConfiguration.output));
   app.use("*", requireLocalApiAccess(parsedConfiguration.output));
   const paths = configuration.paths ?? PatchdeskPaths.default();
@@ -376,7 +321,7 @@ export async function startLocalApiServer(
   };
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
-  const remoteReviews = new ReviewRemoteStore(paths, reviews);
+  const remoteReviews = new ReviewRemoteStore(paths);
   const observationJournals = new ReviewObservationJournalStore(paths);
   const reviewWriteGate = new ReviewWriteGate(
     profiles,
@@ -391,9 +336,13 @@ export async function startLocalApiServer(
   );
   const lifecycleGate =
     configuration.lifecycleGate ?? new ReviewLifecycleGate();
+  const insights = new InsightStore(paths);
   const storageManagement = new StorageManagementService({
     profiles,
     sessions,
+    reviews,
+    insights,
+    mergeOperations: new MergeOperationStore(paths),
     artifacts: storageArtifacts,
     paths,
     lifecycleGate,
@@ -411,34 +360,10 @@ export async function startLocalApiServer(
     lifecycleGate,
     diagnostics,
   );
-  const insights = new InsightStore(paths);
-  const migration = new UnifiedReviewMigration(sessions, reviews, {
-    paths,
-    remote: remoteReviews,
-    insights,
-  });
-  // Adopt legacy session-owned artifacts before publication recovery. The
-  // recovery gate intentionally requires stable Review ownership, so running
-  // recovery first would leave a Submitted legacy session unrecovered until a
-  // later request (and make first launch appear to lose its publication).
   const configuredProfiles = await profiles.list();
-  if (configuredProfiles._tag === "err") return { _tag: "migration-failed" };
-  for (const profile of configuredProfiles.value) {
-    const migrated = await migration.migrateProfile(profile.id);
-    if (migrated._tag === "err") return { _tag: "migration-failed" };
-  }
-  // The approved legacy-batch discard runs after Review adoption and before
-  // publication recovery: recovery must never reconcile, retry, or transform
-  // evidence the product owner chose to discard. The migration is local-only.
-  const batchDiscard = new LegacyBatchDiscardMigration(sessions, {
-    paths,
-    diagnostics,
-  });
-  for (const profile of configuredProfiles.value) {
-    const discarded = await batchDiscard.migrateProfile(profile.id);
-    if (discarded._tag === "err") return { _tag: "migration-failed" };
-  }
-  const reviewOperations = new ReviewOperationCoordinator();
+  if (configuredProfiles._tag === "err") return { _tag: "recovery-failed" };
+  const reviewOperations =
+    configuration.reviewOperations ?? new ReviewOperationCoordinator();
 
   const recovery = new ReviewRecoveryService(
     profiles,
@@ -449,8 +374,8 @@ export async function startLocalApiServer(
       artifacts: storageArtifacts,
       diagnostics,
       lifecycleGate,
-      reviewGate: reviewWriteGate,
       mergeOperations: new MergeOperationStore(paths),
+      reviews,
       operationCoordinator: reviewOperations,
       github,
     },
@@ -461,46 +386,6 @@ export async function startLocalApiServer(
     configuration.origins ?? new WorkspaceOriginFinder(commands),
     paths,
   );
-  const publicationAuthorizations = new PublicationAuthorizationStore(paths);
-  const writer =
-    configuration.reviewWriter ??
-    (isGitHubReviewWriter(github) ? github : undefined);
-  const reviewWrites =
-    writer === undefined
-      ? undefined
-      : new ReviewWriteController(
-          profiles,
-          sessions,
-          {
-            getPullRequest: github.getPullRequest.bind(github),
-            getPullRequestComments: github.getPullRequestComments.bind(github),
-            createPendingReview: writer.createPendingReview.bind(writer),
-            submitPendingReview: writer.submitPendingReview.bind(writer),
-            ...(writer.createThreadReply === undefined
-              ? {}
-              : { createThreadReply: writer.createThreadReply.bind(writer) }),
-            ...(writer.setReviewThreadState === undefined
-              ? {}
-              : {
-                  setReviewThreadState:
-                    writer.setReviewThreadState.bind(writer),
-                }),
-          },
-          () => new Date().toISOString() as never,
-          reviewWriteGate,
-          reviewOperations,
-        );
-  const reviewBatches = new ReviewBatchController(
-    sessions,
-    () => new Date().toISOString() as never,
-    { reviews, insights, publicationAuthorizations },
-  );
-  const publicationPreviews = new PublicationPreviewService(
-    profiles,
-    sessions,
-    github,
-    reviewWriteGate,
-  );
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
     sessions,
@@ -509,11 +394,6 @@ export async function startLocalApiServer(
     now: () => new Date().toISOString() as never,
     worktrees: new ReviewWorktreeService(paths, readOnlyGit),
     context: new ReviewContextService(),
-    comparisons: new ReviewComparisonService(
-      paths,
-      readOnlyGit,
-      () => new Date().toISOString() as never,
-    ),
     artifacts: new ReviewArtifactStorage(
       paths,
       () => new Date().toISOString() as never,
@@ -524,9 +404,6 @@ export async function startLocalApiServer(
   const reviewProjection = new ReviewWorkbenchProjectionService(
     profiles,
     sessions,
-    github,
-    () => new Date().toISOString() as never,
-    { paths, runs, preparation: ReviewPreparationJournal, diagnostics },
     reviews,
     insights,
   );
@@ -548,6 +425,8 @@ export async function startLocalApiServer(
           reviewOperations,
         )
       : undefined;
+  if (pendingReviewGateway === undefined || pendingReviews === undefined)
+    return { _tag: "recovery-failed" };
   const directSummaryReviews =
     isGitHubDirectSummaryGateway(github) && isGitHubPendingReviewGateway(github)
       ? new DirectSummaryReviewService(
@@ -568,9 +447,8 @@ export async function startLocalApiServer(
     github,
     preparation: reviewPreparation,
     now: () => new Date().toISOString() as never,
-    publicationAuthorizations,
     operationCoordinator: reviewOperations,
-    ...(pendingReviews === undefined ? {} : { pendingReview: pendingReviews }),
+    pendingReview: pendingReviews,
     project: ({
       profileId,
       sessionId,
@@ -588,47 +466,44 @@ export async function startLocalApiServer(
         ...(pendingReview === undefined ? {} : { pendingReview }),
       }),
   });
-  const reviewObservation =
-    pendingReviewGateway === undefined || pendingReviews === undefined
-      ? undefined
-      : new ReviewObservationService({
-          profiles,
-          reviews,
-          sessions,
-          remote: remoteReviews,
-          journals: observationJournals,
-          github: pendingReviewGateway,
-          pendingReview: pendingReviews,
-          coordinator: reviewOperations,
-          now: () => new Date().toISOString() as never,
-          project: ({
-            profileId,
-            sessionId,
-            snapshot,
-            refreshedAt,
-            freshness,
-            pendingReview,
-          }) =>
-            reviewProjection.loadRepresented({
-              profileId,
-              sessionId,
-              snapshot,
-              refreshedAt,
-              freshness,
-              pendingReview,
-            }),
-        });
+  const reviewObservation = new ReviewObservationService({
+    profiles,
+    reviews,
+    sessions,
+    remote: remoteReviews,
+    journals: observationJournals,
+    github: pendingReviewGateway,
+    pendingReview: pendingReviews,
+    coordinator: reviewOperations,
+    now: () => new Date().toISOString() as never,
+    project: ({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt,
+      freshness,
+      pendingReview,
+    }) =>
+      reviewProjection.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot,
+        refreshedAt,
+        freshness,
+        pendingReview,
+      }),
+  });
 
-  if (reviewObservation !== undefined) {
+  {
     for (const profile of configuredProfiles.value) {
       const journals = await observationJournals.listReviewIds(profile.id);
-      if (journals._tag === "err") return { _tag: "migration-failed" };
+      if (journals._tag === "err") return { _tag: "recovery-failed" };
       for (const reviewId of journals.value) {
         const recovered = await reviewObservation.recover({
           profileId: profile.id,
           reviewId,
         });
-        if (recovered._tag === "err") return { _tag: "migration-failed" };
+        if (recovered._tag === "err") return { _tag: "recovery-failed" };
       }
     }
   }
@@ -643,6 +518,7 @@ export async function startLocalApiServer(
   const publishedFeedback = new PublishedFeedbackService(
     reviewWriteGate,
     github,
+    reviewOperations,
     async ({ profileId, reviewId }) => {
       const refreshed = await reviewRefresh.refresh({ profileId, reviewId });
       return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
@@ -663,55 +539,10 @@ export async function startLocalApiServer(
       journals: observationJournals,
       coordinator: reviewOperations,
       refresh: reviewRefresh,
-      ...(reviewObservation === undefined
-        ? {}
-        : { observation: reviewObservation }),
+      observation: reviewObservation,
       commits: reviewCommits,
-      migration,
     },
   );
-  const reviewCompletion = new ReviewCompletionService(
-    paths,
-    () => new Date().toISOString() as never,
-    lifecycleGate,
-  );
-  const reviewDiffSources = new ReviewDiffSourceService(
-    profiles,
-    sessions,
-    readOnlyGit,
-  );
-  const workflowStarter =
-    configuration.workflowInvoker === undefined
-      ? undefined
-      : new ReviewWorkflowStarter(sessions, configuration.workflowInvoker);
-  const modelCatalog: PiRuntimeModelCatalog = configuration.modelCatalog ?? {
-    async get() {
-      const models = (configuration.supportedReviewModels ?? [])
-        .filter((id) => id.length > 0)
-        .map((id) => ({ id, label: id }));
-      return models.length === 0
-        ? err({ _tag: "PiRuntimeModelCatalogUnavailable" as const })
-        : ok({
-            models,
-            ...(models[0] === undefined ? {} : { defaultModel: models[0].id }),
-          });
-    },
-  };
-  const reviewExecution = new ReviewExecutionService(
-    sessions,
-    paths,
-    modelCatalog,
-    () => new Date().toISOString() as never,
-    new ReviewHeadVerifier(profiles, sessions, github, () =>
-      new Date().toISOString(),
-    ),
-    lifecycleGate,
-    { reviews },
-  );
-  const runCoordinator =
-    workflowStarter === undefined
-      ? undefined
-      : new ReviewRunCoordinator(workflowStarter, runs);
   const merger =
     configuration.mergeWriter ??
     (isGitHubMergeWriter(github) ? github : undefined);
@@ -719,8 +550,6 @@ export async function startLocalApiServer(
     merger === undefined
       ? undefined
       : new MergeWriteController(
-          profiles,
-          sessions,
           {
             getMergePolicy: github.getMergePolicy.bind(github),
             getPullRequest: github.getPullRequest.bind(github),
@@ -769,18 +598,6 @@ export async function startLocalApiServer(
   );
   app.patch("/v1/settings", async (context) =>
     response(context, await dashboard.updateSettings(await jsonBody(context))),
-  );
-  app.get("/v1/dashboard", async (context) => {
-    const result = await dashboard.dashboardForActiveProfile();
-    if (result._tag === "err")
-      await recordProfileReloadFailure("profile-reload-dashboard");
-    return response(context, result);
-  });
-  app.post("/v1/dashboard/refresh/repository", async (context) =>
-    response(
-      context,
-      await dashboard.refreshWatchlistRepo(await jsonBody(context)),
-    ),
   );
   app.get("/v1/inbox", async (context) => {
     const result = await dashboard.inboxForActiveProfile();
@@ -832,7 +649,6 @@ export async function startLocalApiServer(
             ? "authentication_required"
             : "unavailable",
       runtime: "bundled",
-      modelConfiguration: await modelConfigurationState(modelCatalog),
     });
   });
   app.post("/v1/direct-entry/preview", async (context) => {
@@ -841,111 +657,6 @@ export async function startLocalApiServer(
       ? context.json({ error: "invalid_input" }, 400)
       : response(context, await dashboard.previewDirectEntry(body));
   });
-  app.post("/v1/runs/review-pr", async (context) => {
-    if (
-      workflowStarter === undefined &&
-      configuration.runProjection === undefined
-    ) {
-      return context.json({ error: "workflow_unavailable" }, 503);
-    }
-    const body = await jsonBody(context);
-    const parsed = safeParse(
-      object({
-        profileId: pipe(string(), minLength(1)),
-        sessionId: pipe(string(), minLength(1)),
-        attemptId: pipe(string(), minLength(1)),
-      }),
-      body,
-    );
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const run =
-      runCoordinator?.start(parsed.output) ?? runs.create(parsed.output);
-    return context.json(run, 202);
-  });
-  app.post("/v1/runs/reconnect", async (context) => {
-    const body = await jsonBody(context);
-    const parsed = safeParse(
-      object({
-        profileId: pipe(string(), minLength(1)),
-        sessionId: pipe(string(), minLength(1)),
-      }),
-      body,
-    );
-    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    const sessionId = parseReviewSessionId(parsed.output.sessionId);
-    if (profileId._tag === "err" || sessionId._tag === "err")
-      return context.json({ error: "invalid_input" }, 400);
-    const session = await sessions.load(profileId.value, sessionId.value);
-    if (session._tag === "err")
-      return context.json({ error: "not_found" }, 404);
-    const attemptId = session.value.currentAttemptId;
-    if (attemptId === undefined)
-      return context.json({ error: "run_not_owned" }, 403);
-    const owned = runs.find({ sessionId: sessionId.value, attemptId });
-    if (owned === undefined)
-      return context.json({ error: "run_not_owned" }, 403);
-    return context.json({ runId: owned.runId, attemptId }, 202);
-  });
-  app.get("/v1/reviews/models", async (context) => {
-    const catalog = await modelCatalog.get();
-    if (catalog._tag === "err")
-      return context.json({ error: "catalog_unavailable" }, 503);
-    return context.json({
-      models: catalog.value.models,
-      providers: catalog.value.providers,
-      reasoning: REVIEW_REASONING_LEVELS,
-      defaultModel: catalog.value.defaultModel,
-      defaultReasoning: "medium",
-    });
-  });
-  app.post("/v1/reviews/run", async (context) => {
-    if (runCoordinator === undefined) {
-      return context.json({ error: "workflow_unavailable" }, 503);
-    }
-    const body = await jsonBody(context);
-    const started = await reviewExecution.start(body);
-    if (started._tag === "err") {
-      const status =
-        started.error.reason === "not_found" ||
-        started.error.reason === "profile_not_found"
-          ? 404
-          : started.error.reason === "head_changed"
-            ? 409
-            : started.error.reason === "github_read" ||
-                started.error.reason === "storage" ||
-                started.error.reason === "catalog_unavailable"
-              ? 503
-              : 400;
-      return context.json({ error: started.error.reason }, status);
-    }
-    const run = runCoordinator.start(started.value);
-    return context.json(
-      {
-        runId: run.runId,
-        attemptId: started.value.attemptId,
-        model: started.value.model,
-        reasoning: started.value.reasoning,
-      },
-      202,
-    );
-  });
-  app.post("/v1/reviews/apply-batch", async (context) =>
-    reviewWrites === undefined
-      ? context.json({ error: "review_write_unavailable" }, 503)
-      : response(
-          context,
-          await reviewWrites.applyBatch(await jsonBody(context)),
-        ),
-  );
-  app.post("/v1/reviews/publication/confirm", async (context) =>
-    reviewWrites === undefined
-      ? context.json({ error: "review_write_unavailable" }, 503)
-      : response(
-          context,
-          await reviewWrites.confirmPublication(await jsonBody(context)),
-        ),
-  );
   app.post("/v1/reviews/inline-conversations/command", async (context) =>
     inlineConversationResponse(
       context,
@@ -1006,43 +717,11 @@ export async function startLocalApiServer(
       await jsonBody(context),
     ),
   );
-  app.post("/v1/reviews/submit-batch", async (context) =>
-    reviewWrites === undefined
-      ? context.json({ error: "review_write_unavailable" }, 503)
-      : response(
-          context,
-          await reviewWrites.submitBatch(await jsonBody(context)),
-        ),
-  );
   app.post("/v1/reviews/open", async (context) => {
     const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
     return parsed.success
       ? response(context, await reviewWorkbench.open(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
-  });
-  app.get("/v1/reviews", async (context) => {
-    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
-    if (profileId._tag === "err")
-      return context.json({ error: "invalid_input" }, 400);
-    const adopted = await migration.migrateProfile(profileId.value);
-    if (adopted._tag === "err") return context.json({ error: "storage" }, 500);
-    const listed = await new ReviewSessionStore(paths).listSessions(
-      profileId.value,
-    );
-    if (listed._tag === "err") return context.json({ error: "storage" }, 500);
-    return context.json({
-      sessions: listed.value.map((session) => ({
-        id: session.id,
-        profileId: session.key.profileId,
-        owner: session.key.owner,
-        repo: session.key.repo,
-        prNumber: session.key.prNumber,
-        title: session.prContext?.title,
-        state: session.state._tag,
-        batchState: session.batchContent?.state._tag,
-        updatedAt: session.updatedAt,
-      })),
-    });
   });
   app.post("/v1/reviews/load", async (context) => {
     const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
@@ -1050,57 +729,20 @@ export async function startLocalApiServer(
       ? response(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
-  app.post("/v1/reviews/publication/preview", async (context) =>
-    publicationPreviewResponse(
-      context,
-      publicationPreviews,
-      await jsonBody(context),
-    ),
-  );
-  app.post("/v1/reviews/publication/recover", async (context) => {
-    const parsed = safeParse(
-      publicationRecoverySchema,
-      await jsonBody(context),
-    );
+  app.post("/v1/reviews/merge/recover", async (context) => {
+    const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
     if (profileId._tag === "err" || reviewId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
-
-    const observed =
-      reviewObservation === undefined
-        ? undefined
-        : await reviewObservation.recover({
-            profileId: profileId.value,
-            reviewId: reviewId.value,
-          });
-    if (observed?._tag === "err") return response(context, observed);
-
-    // Recovery only reconciles durable evidence and reprojects this Review. It
-    // deliberately has no publication writer and never retries a remote write.
-    const before = await reviewWorkbench.load({
-      profileId: profileId.value,
-      reviewId: reviewId.value,
-    });
-    if (before._tag === "err") return response(context, before);
     const reconciled = await recovery.reconcileReview(
       profileId.value,
       reviewId.value,
     );
-    const projected = await reviewWorkbench.load({
-      profileId: profileId.value,
-      reviewId: reviewId.value,
-    });
-    if (projected._tag === "err") return response(context, projected);
-    return context.json({
-      ...projected.value,
-      recovery: {
-        status: reconciled.failed === 0 ? "reconciled" : "needs_confirmation",
-        recovered: reconciled.recovered,
-        failed: reconciled.failed,
-      },
-    });
+    if (reconciled.failed > 0)
+      return context.json({ error: "outcome_unknown" }, 409);
+    return response(context, await reviewWorkbench.load(parsed.output));
   });
   app.get("/v1/insight-providers", async (context) => {
     if (configuration.insightProviders === undefined)
@@ -1251,21 +893,15 @@ export async function startLocalApiServer(
       ? response(context, await reviewWorkbench.commitDiff(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
-  app.post("/v1/reviews/diff-file", async (context) =>
-    response(context, await reviewDiffSources.load(await jsonBody(context))),
-  );
-  app.post("/v1/reviews/batch", async (context) =>
-    response(context, await reviewBatches.update(await jsonBody(context))),
-  );
-  app.post("/v1/reviews/complete", async (context) =>
-    response(context, await reviewCompletion.complete(await jsonBody(context))),
-  );
   app.post("/v1/reviews/merge", async (context) =>
     mergeWrites === undefined
       ? context.json({ error: "merge_unavailable" }, 503)
       : response(context, await mergeWrites.merge(await jsonBody(context))),
   );
-  app.post("/v1/storage/clear-local-data", async (context) => {
+  const storageCleanup = async (
+    context: Context,
+    action: "cache" | "local-data",
+  ): Promise<Response> => {
     const body = await jsonBody(context);
     const parsed = safeParse(
       object({ profileId: pipe(string(), minLength(1)) }),
@@ -1277,9 +913,17 @@ export async function startLocalApiServer(
       return context.json({ error: "invalid_input" }, 400);
     return storageResponse(
       context,
-      await storageManagement.clearCache(profileId.value),
+      action === "cache"
+        ? await storageManagement.clearCache(profileId.value)
+        : await storageManagement.clearLocalData(profileId.value),
     );
-  });
+  };
+  app.post("/v1/storage/cache/clear", async (context) =>
+    storageCleanup(context, "cache"),
+  );
+  app.post("/v1/storage/clear-local-data", async (context) =>
+    storageCleanup(context, "local-data"),
+  );
   app.get("/v1/logs", async (context) => {
     const rawAfter = context.req.query("after");
     const rawLimit = context.req.query("limit");
@@ -1360,36 +1004,6 @@ export async function startLocalApiServer(
     return bundle._tag === "ok"
       ? context.json(bundle.value)
       : context.json({ error: "diagnostics_unavailable" }, 503);
-  });
-  app.get("/v1/runs/:runId", (context) => {
-    const sessionId = context.req.query("sessionId");
-    const attemptId = context.req.query("attemptId");
-    if (sessionId === undefined)
-      return context.json({ error: "run_not_owned" }, 403);
-    const runId = context.req.param("runId");
-    const owner =
-      attemptId === undefined
-        ? runs.findByRunId(runId)
-        : { runId, sessionId, attemptId };
-    if (owner === undefined)
-      return context.json({ error: "run_not_owned" }, 403);
-    const observed = runCoordinator?.observe(owner);
-    const run =
-      "runId" in owner && "projection" in owner
-        ? ok(owner)
-        : runs.get(owner.runId, owner);
-    if (run._tag === "err" || observed?._tag === "err")
-      return context.json({ error: "run_not_owned" }, 403);
-    const projected = projectSafeRun(
-      configuration.runProjection?.({
-        runId: run.value.runId,
-        sessionId,
-        attemptId: run.value.attemptId,
-      }) ?? (observed?._tag === "ok" ? observed.value : run.value.projection),
-    );
-    return projected._tag === "ok"
-      ? context.json(projected.value)
-      : context.json({ error: "invalid_run" }, 500);
   });
 
   const { server, port } = await listenOnLoopback(app);
@@ -1498,23 +1112,6 @@ async function jsonBody(context: Context): Promise<unknown> {
   }
 }
 
-async function modelConfigurationState(
-  modelCatalog: PiRuntimeModelCatalog,
-): Promise<"configured" | "missing"> {
-  const catalog = await modelCatalog.get();
-  return catalog._tag === "ok" && catalog.value.configured
-    ? "configured"
-    : "missing";
-}
-
-function isGitHubReviewWriter(value: unknown): value is GitHubReviewWriter {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "createPendingReview" in value &&
-    "submitPendingReview" in value
-  );
-}
 function isGitHubDirectSummaryGateway(
   value: unknown,
 ): value is GitHubDirectSummaryGateway {
@@ -2148,51 +1745,6 @@ async function parsePublishedDismiss(
       });
 }
 
-async function publicationPreviewResponse(
-  context: Context,
-  service: PublicationPreviewService,
-  body: unknown,
-): Promise<Response> {
-  const parsed = safeParse(publicationPreviewSchema, body);
-  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-  const reviewId = parseReviewId(parsed.output.reviewId);
-  const sessionId = parseReviewSessionId(parsed.output.sessionId);
-  const expectedRevision = parseIsoTimestamp(parsed.output.expectedRevision);
-  if (
-    profileId._tag === "err" ||
-    reviewId._tag === "err" ||
-    sessionId._tag === "err" ||
-    expectedRevision._tag === "err"
-  )
-    return context.json({ error: "invalid_input" }, 400);
-  const result = await service.preview({
-    profileId: profileId.value,
-    reviewId: reviewId.value,
-    sessionId: sessionId.value,
-    ...(parsed.output.expectedHeadSha === undefined
-      ? {}
-      : { expectedHeadSha: parsed.output.expectedHeadSha }),
-    ...(parsed.output.expectedPatchHash === undefined
-      ? {}
-      : { expectedPatchHash: parsed.output.expectedPatchHash }),
-    expectedRevision: expectedRevision.value,
-    event: parsed.output.event,
-  });
-  if (result._tag === "ok") return context.json(result.value);
-  const status =
-    result.error === "profile_not_found" || result.error === "session_not_found"
-      ? 404
-      : result.error === "revision_conflict" ||
-          result.error === "stale_head" ||
-          result.error === "needs_attention"
-        ? 409
-        : result.error === "github_read_failed"
-          ? 503
-          : 400;
-  return context.json({ error: result.error }, status);
-}
-
 async function insightRunResponse(
   context: Context,
   coordinator: LocalApiConfiguration["insights"],
@@ -2397,6 +1949,7 @@ type StorageRouteFailure = {
     | "SessionRunning"
     | "SessionImmutable"
     | "SessionNotDiscardable"
+    | "SessionProtected"
     | "SessionNotFound"
     | "InvalidQuarantineEntryName"
     | "TrashUnavailable";
@@ -2417,7 +1970,8 @@ function storageResponse(
   if (
     tag === "SessionRunning" ||
     tag === "SessionImmutable" ||
-    tag === "SessionNotDiscardable"
+    tag === "SessionNotDiscardable" ||
+    tag === "SessionProtected"
   )
     return context.json({ error: tag }, 409);
   if (tag === "InvalidQuarantineEntryName")

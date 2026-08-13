@@ -13,10 +13,7 @@ export type PullRequestNumber = Brand<number, "PullRequestNumber">;
 export type GitSha = Brand<string, "GitSha">;
 export type ReviewId = Brand<string, "ReviewId">;
 export type ReviewSessionId = Brand<string, "ReviewSessionId">;
-export type ReviewAttemptId = Brand<string, "ReviewAttemptId">;
 export type FindingId = Brand<string, "FindingId">;
-/** A stable identifier for one local review batch action. */
-export type LocalReviewItemId = Brand<string, "LocalReviewItemId">;
 /** An opaque GitHub GraphQL review-thread node identifier. */
 export type GitHubThreadId = Brand<string, "GitHubThreadId">;
 /** GitHub REST pull-request review identifier (serialized integer). */
@@ -34,21 +31,15 @@ export type RepoRelativePath = Brand<string, "RepoRelativePath">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
 export type ContentHash = Brand<string, "ContentHash">;
 export type InsightRunId = Brand<string, "InsightRunId">;
-export type PublicationAuthorizationId = Brand<string, "PublicationAuthorizationId">;
 
 export type InvalidDomainValue = {
   readonly _tag: "InvalidDomainValue";
   readonly field: string;
 };
 
-export type AttemptSequenceExhausted = {
-  readonly _tag: "AttemptSequenceExhausted";
-};
-
 const safeSlug = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
-const attemptFolderSyntax = /^\d{3}$/;
 const reviewIdSyntax =
   /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__review-[a-f0-9]{12}$/;
 const sessionIdSyntax =
@@ -118,13 +109,6 @@ export function parseFindingId(
   return parseSafeSlug<"FindingId">(input, "findingId");
 }
 
-/** Parse the stable local identifier for one queued review batch item. */
-export function parseLocalReviewItemId(
-  input: unknown,
-): Result<LocalReviewItemId, InvalidDomainValue> {
-  return parseSafeSlug<"LocalReviewItemId">(input, "localReviewItemId");
-}
-
 /** Parse an opaque GitHub review-thread node identifier. */
 export function parseGitHubThreadId(
   input: unknown,
@@ -187,12 +171,6 @@ export function parseInsightRunId(input: unknown): Result<InsightRunId, InvalidD
   return ok(brand(input));
 }
 
-/** Parse the opaque identifier for one per-run publication authorization. */
-export function parsePublicationAuthorizationId(input: unknown): Result<PublicationAuthorizationId, InvalidDomainValue> {
-  if (typeof input !== "string" || !/^publication-[a-zA-Z0-9._-]+$/.test(input)) return err({ _tag: "InvalidDomainValue", field: "publicationAuthorizationId" });
-  return ok(brand(input));
-}
-
 /** Parse the path-safe deterministic Review identifier. */
 export function parseReviewId(input: unknown): Result<ReviewId, InvalidDomainValue> {
   if (typeof input !== "string" || !reviewIdSyntax.test(input)) {
@@ -228,21 +206,6 @@ export function parseReviewSessionId(
 ): Result<ReviewSessionId, InvalidDomainValue> {
   if (typeof input !== "string" || !sessionIdSyntax.test(input)) {
     return err({ _tag: "InvalidDomainValue", field: "reviewSessionId" });
-  }
-
-  return ok(brand(input));
-}
-
-/** Parse a zero-padded attempt folder identifier. */
-export function parseReviewAttemptId(
-  input: unknown,
-): Result<ReviewAttemptId, InvalidDomainValue> {
-  if (
-    typeof input !== "string" ||
-    !attemptFolderSyntax.test(input) ||
-    input === "000"
-  ) {
-    return err({ _tag: "InvalidDomainValue", field: "reviewAttemptId" });
   }
 
   return ok(brand(input));
@@ -322,26 +285,6 @@ export function createReviewSessionId(key: {
   ].join("\n");
 
   return brand(`${readable}__${fnv1a64(collisionInput).slice(0, 12)}`);
-}
-
-/** Allocate the next zero-padded attempt ID from existing attempt folder names. */
-export function allocateNextReviewAttemptId(
-  existingFolderNames: ReadonlyArray<string>,
-): Result<ReviewAttemptId, AttemptSequenceExhausted> {
-  let largest = 0;
-  for (const name of existingFolderNames) {
-    if (!attemptFolderSyntax.test(name)) {
-      continue;
-    }
-
-    largest = Math.max(largest, Number(name));
-  }
-
-  if (largest >= 999) {
-    return err({ _tag: "AttemptSequenceExhausted" });
-  }
-
-  return ok(brand(String(largest + 1).padStart(3, "0")));
 }
 
 function parseSafeSlug<Name extends string>(

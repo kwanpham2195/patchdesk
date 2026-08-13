@@ -2,12 +2,10 @@ import * as v from "valibot";
 
 import {
   parseFindingId,
-  parseContentHash,
   parseRepoRelativePath,
   type FindingId,
   type RepoRelativePath,
 } from "./ids";
-import type { ModelPriorFindingAssessment } from "./finding-lifecycle";
 import { err, ok, type Result } from "./result";
 
 export type ReviewVerdict = "approve" | "comment" | "request_changes";
@@ -20,7 +18,7 @@ export type FindingCategory =
   | "maintainability"
   | "docs";
 export type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
-export type FindingDisposition = "open" | "added" | "dismissed";
+export type FindingDisposition = "open" | "dismissed";
 export type ReviewConfidence = "high" | "medium" | "low";
 export type ReviewCalloutCategory =
   | "migration"
@@ -67,7 +65,6 @@ export type ModelReviewResult = {
   readonly overallConfidence?: ReviewConfidence;
   readonly unresolvedItems?: ReadonlyArray<string>;
   readonly callouts?: ReadonlyArray<ReviewCallout>;
-  readonly priorFindingAssessments?: ReadonlyArray<ModelPriorFindingAssessment>;
 };
 
 export type ReviewFinding = ModelReviewFinding & {
@@ -76,7 +73,7 @@ export type ReviewFinding = ModelReviewFinding & {
   readonly disposition?: FindingDisposition;
 };
 
-export type ReviewResult = Omit<ModelReviewResult, "findings" | "priorFindingAssessments"> & {
+export type ReviewResult = Omit<ModelReviewResult, "findings"> & {
   readonly findings: ReadonlyArray<ReviewFinding>;
 };
 
@@ -132,12 +129,6 @@ export const modelReviewResultSchema = v.strictObject({
   overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
   unresolvedItems: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))), v.maxLength(10))),
   callouts: v.optional(v.pipe(v.array(calloutSchema), v.maxLength(12))),
-  priorFindingAssessments: v.optional(v.array(v.strictObject({
-    priorFindingToken: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
-    disposition: v.picklist(["still_present", "resolved", "unverified"]),
-    explanation: v.pipe(v.string(), v.minLength(1)),
-    currentFindingId: v.optional(v.pipe(v.string(), v.minLength(1))),
-  }))),
 });
 
 /** Schema for Patchdesk's validated and location-mapped final review result. */
@@ -176,12 +167,6 @@ export function parseModelReviewResult(
   if (findings._tag === "err") {
     return err({ _tag: "InvalidModelReviewResult" });
   }
-  const assessments = parsed.output.priorFindingAssessments === undefined
-    ? undefined
-    : parsePriorFindingAssessments(parsed.output.priorFindingAssessments);
-  if (assessments !== undefined && assessments._tag === "err") {
-    return err({ _tag: "InvalidModelReviewResult" });
-  }
   const callouts = parsed.output.callouts === undefined
     ? undefined
     : parseCallouts(parsed.output.callouts);
@@ -200,30 +185,7 @@ export function parseModelReviewResult(
     ...(parsed.output.overallConfidence === undefined ? {} : { overallConfidence: parsed.output.overallConfidence }),
     ...(parsed.output.unresolvedItems === undefined ? {} : { unresolvedItems: parsed.output.unresolvedItems }),
     ...(callouts === undefined ? {} : { callouts: callouts.value }),
-    ...(assessments === undefined ? {} : { priorFindingAssessments: assessments.value }),
   });
-}
-
-function parsePriorFindingAssessments(
-  assessments: ReadonlyArray<NonNullable<v.InferOutput<typeof modelReviewResultSchema>["priorFindingAssessments"]>[number]>,
-): Result<ReadonlyArray<ModelPriorFindingAssessment>, InvalidModelReviewResult> {
-  const values: Array<ModelPriorFindingAssessment> = [];
-  for (const assessment of assessments) {
-    const token = parseContentHash(assessment.priorFindingToken);
-    const currentFindingId = assessment.currentFindingId === undefined
-      ? undefined
-      : parseFindingId(assessment.currentFindingId);
-    if (token._tag === "err" || (currentFindingId !== undefined && currentFindingId._tag === "err")) {
-      return err({ _tag: "InvalidModelReviewResult" });
-    }
-    values.push({
-      priorFindingToken: token.value,
-      disposition: assessment.disposition,
-      explanation: assessment.explanation,
-      ...(currentFindingId === undefined ? {} : { currentFindingId: currentFindingId.value }),
-    });
-  }
-  return ok(values);
 }
 
 /** Parse a final Patchdesk result whose mapping status was computed outside the model. */

@@ -40,7 +40,6 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
-  type ReviewSessionId,
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
@@ -53,11 +52,8 @@ import {
   type ViewerPendingReview,
 } from "../../domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
-import type {
-  GitHubReviewEvent,
-  GitHubWriteFailure,
-} from "../../domain/review-batch";
-import type { RevisionComparison } from "../../domain/review-comparison";
+import type { GitHubReviewEvent } from "../../domain/pending-review";
+import type { GitHubWriteFailure } from "../../domain/github-write";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
 
 const commandTimeoutMs = 15_000;
@@ -558,13 +554,6 @@ export interface GitHubReader {
     readonly sha: GitSha;
     readonly path: RepoRelativePath;
   }): Promise<Result<GitHubFileContents, GitHubReadFailure>>;
-  compareRevisions(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly baseSha: GitSha;
-    readonly headSha: GitSha;
-    readonly baseSessionId: ReviewSessionId;
-  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>>;
   resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
@@ -610,12 +599,6 @@ export type MaintainerPullRequestListing = {
   readonly pullRequests: ReadonlyArray<MaintainerPullRequest>;
   /** False means GitHub reported more than Patchdesk's deliberate 300-PR cap. */
   readonly complete: boolean;
-};
-
-/** GitHub comparison is usable only when both metadata and one complete unified diff are verified. */
-export type GitHubRevisionComparison = {
-  readonly comparison: RevisionComparison;
-  readonly patch?: string;
 };
 
 /** Safe projection for one source file; binary and oversized blobs never enter the renderer. */
@@ -1791,42 +1774,6 @@ export class GitHubAdapter
     }
     if (contents.includes(0)) return ok({ state: "binary" });
     return ok({ state: "available", contents: contents.toString("utf8") });
-  }
-
-  async compareRevisions(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly baseSha: GitSha;
-    readonly headSha: GitSha;
-    readonly baseSessionId: ReviewSessionId;
-  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>> {
-    const endpoint = `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.baseSha}...${input.headSha}`;
-    const metadata = await this.commands.runJson({
-      argv: ["gh", "api", "--hostname", input.profile.githubHost, endpoint],
-      timeoutMs: commandTimeoutMs,
-    });
-    if (metadata._tag === "err")
-      return commandFailure("compare_revisions", metadata.error);
-    const comparison = parseGitHubComparison(metadata.value, input);
-    if (comparison === undefined) return invalid("compare_revisions");
-    if (comparison.completeness === "incomplete") return ok({ comparison });
-    const patch = await this.commands.runText({
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "-H",
-        "Accept: application/vnd.github.v3.diff",
-        endpoint,
-      ],
-      timeoutMs: commandTimeoutMs,
-    });
-    if (patch._tag === "err")
-      return commandFailure("compare_revisions", patch.error);
-    return patch.value.length === 0
-      ? ok({ comparison: { ...comparison, completeness: "incomplete" } })
-      : ok({ comparison, patch: patch.value });
   }
 
   async resolveAuthenticatedAccount(
@@ -3145,19 +3092,6 @@ export class FakeGitHubAdapter
       : ok(this.values.fileContents);
   }
 
-  async compareRevisions(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly baseSha: GitSha;
-    readonly headSha: GitSha;
-    readonly baseSessionId: ReviewSessionId;
-  }): Promise<Result<GitHubRevisionComparison, GitHubReadFailure>> {
-    void input;
-    return this.values.comparison === undefined
-      ? missing("compare_revisions")
-      : ok(this.values.comparison);
-  }
-
   async resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
@@ -3197,13 +3131,13 @@ export class FakeGitHubAdapter
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
     void input;
-    return this.values.submittedReview === undefined
+    return this.values.pendingReviewSubmission === undefined
       ? err({
           _tag: "GitHubWriteFailure",
           category: "unavailable",
           message: "Missing submitted review fixture.",
         })
-      : ok(this.values.submittedReview);
+      : ok(this.values.pendingReviewSubmission);
   }
 
   async getViewerPendingReview(input: {
@@ -3359,13 +3293,12 @@ export type FakeGitHubAdapterValues = {
   readonly checks: CheckSummary;
   readonly diff: string;
   readonly fileContents: GitHubFileContents;
-  readonly comparison: GitHubRevisionComparison;
   readonly authenticatedAccount: AuthenticatedGitHubAccount;
   readonly pendingReview: {
     readonly reviewId: string;
     readonly state: "PENDING";
   };
-  readonly submittedReview: { readonly reviewId: string };
+  readonly pendingReviewSubmission: { readonly reviewId: string };
   /** Spike-proven pending-review gateway fixtures; an absent reader is unimplemented. */
   readonly viewerPendingReview?: {
     readonly account: GitHubLogin;
@@ -3489,133 +3422,6 @@ function parseMergeOutcome(
   });
 }
 
-function parseGitHubComparison(
-  input: unknown,
-  expected: {
-    readonly baseSessionId: ReviewSessionId;
-    readonly baseSha: GitSha;
-    readonly headSha: GitSha;
-  },
-): RevisionComparison | undefined {
-  if (!isObject(input)) return undefined;
-  const baseSha = readSha(input.base_commit);
-  const headSha = readSha(input.head_commit);
-  const createdAt =
-    typeof input.created_at === "string"
-      ? parseGitHubTimestamp(input.created_at)
-      : undefined;
-  if (
-    baseSha !== expected.baseSha ||
-    headSha !== expected.headSha ||
-    createdAt === undefined ||
-    createdAt._tag === "err" ||
-    !Array.isArray(input.files) ||
-    !Array.isArray(input.commits)
-  )
-    return undefined;
-  const files = input.files.map(parseComparedFile);
-  const commits = input.commits.map(parseComparedCommit);
-  if (
-    files.some((file) => file === undefined) ||
-    commits.some((commit) => commit === undefined)
-  )
-    return undefined;
-  const safeFiles = files.filter(
-    (file): file is NonNullable<typeof file> => file !== undefined,
-  );
-  const safeCommits = commits.filter(
-    (commit): commit is NonNullable<typeof commit> => commit !== undefined,
-  );
-  const additions = safeFiles.reduce(
-    (total, file) => total + file.additions,
-    0,
-  );
-  const deletions = safeFiles.reduce(
-    (total, file) => total + file.deletions,
-    0,
-  );
-  return {
-    schemaVersion: 1,
-    baseSessionId: expected.baseSessionId,
-    baseHeadSha: expected.baseSha,
-    headSha: expected.headSha,
-    ancestry: input.status === "ahead" ? "fast_forward" : "rewritten",
-    source: "github",
-    // GitHub's comparison file list is capped. Refuse to call a cap-sized list complete.
-    completeness: safeFiles.length >= 300 ? "incomplete" : "complete",
-    commits: safeCommits,
-    files: safeFiles,
-    additions,
-    deletions,
-    createdAt: createdAt.value,
-  };
-}
-
-function parseComparedFile(
-  input: unknown,
-): RevisionComparison["files"][number] | undefined {
-  if (
-    !isObject(input) ||
-    typeof input.filename !== "string" ||
-    typeof input.status !== "string" ||
-    !isNonNegativeInteger(input.additions) ||
-    !isNonNegativeInteger(input.deletions)
-  )
-    return undefined;
-  const status =
-    input.status === "added" ||
-    input.status === "modified" ||
-    input.status === "deleted" ||
-    input.status === "renamed" ||
-    input.status === "copied"
-      ? input.status
-      : "unknown";
-  const oldPath =
-    typeof input.previous_filename === "string"
-      ? input.previous_filename
-      : undefined;
-  const textPatchAvailable = typeof input.patch === "string";
-  return {
-    path: input.filename,
-    ...(oldPath === undefined ? {} : { oldPath }),
-    status,
-    additions: input.additions,
-    deletions: input.deletions,
-    binary: !textPatchAvailable,
-    textPatchAvailable,
-  };
-}
-
-function parseComparedCommit(
-  input: unknown,
-): RevisionComparison["commits"][number] | undefined {
-  if (
-    !isObject(input) ||
-    typeof input.sha !== "string" ||
-    !isObject(input.commit) ||
-    typeof input.commit.message !== "string" ||
-    !isObject(input.commit.author) ||
-    typeof input.commit.author.name !== "string" ||
-    typeof input.commit.author.date !== "string"
-  )
-    return undefined;
-  const sha = parseGitSha(input.sha);
-  const authoredAt = parseGitHubTimestamp(input.commit.author.date);
-  if (sha._tag === "err" || authoredAt._tag === "err") return undefined;
-  return {
-    sha: sha.value,
-    subject: input.commit.message.split("\n", 1)[0] ?? "",
-    author: input.commit.author.name,
-    authoredAt: authoredAt.value,
-  };
-}
-
-function readSha(input: unknown): GitSha | undefined {
-  if (!isObject(input)) return undefined;
-  const sha = parseGitSha(input.sha);
-  return sha._tag === "ok" ? sha.value : undefined;
-}
-
 function isObject(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null;
 }
@@ -3709,10 +3515,6 @@ function nestedNumber(
     value = value[key];
   }
   return typeof value === "number" ? value : undefined;
-}
-
-function isNonNegativeInteger(input: unknown): input is number {
-  return typeof input === "number" && Number.isSafeInteger(input) && input >= 0;
 }
 
 function mapReviewDecision(

@@ -8,7 +8,6 @@ import { parseGitHubHost, parseGitHubOwner, parseGitHubRepoName, parseGitSha, pa
 import { err, ok, type Result } from "../../domain/result";
 import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
-import type { ReviewStore } from "./review-store";
 
 export type ReviewRemoteSnapshot = {
   readonly schemaVersion: 1;
@@ -17,7 +16,7 @@ export type ReviewRemoteSnapshot = {
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly checks: CheckSummary;
   readonly publishedFeedback?: GitHubPublishedFeedback;
-  readonly conversation?: Conversation;
+  readonly conversation: Conversation;
   readonly mergePolicy?: MergePolicySnapshot;
   /** Separate typed aggregate evidence used for display; mergePolicy remains the write-gate input. */
   readonly mergeEvidence?: GitHubMergeEvidence;
@@ -122,13 +121,12 @@ const conversationSchema = v.strictObject({
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
 });
-const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), conversation: v.optional(conversationSchema), mergePolicy: v.optional(mergePolicySchema), mergeEvidence: v.optional(mergeEvidenceSchema) });
+const snapshotSchema = v.strictObject({ schemaVersion: v.literal(1), pullRequest: pullRequestSchema, comments: commentsSchema, commits: v.array(commitSchema), checks: checksSchema, publishedFeedback: v.optional(publishedFeedbackSchema), conversation: conversationSchema, mergePolicy: v.optional(mergePolicySchema), mergeEvidence: v.optional(mergeEvidenceSchema) });
 
 /** Content-addressed storage for the complete remote snapshot represented by a Review. */
 export class ReviewRemoteStore {
   constructor(
     private readonly paths: PatchdeskPaths,
-    private readonly reviews?: Pick<ReviewStore, "load">,
   ) {}
 
   async saveCandidate(input: {
@@ -146,15 +144,9 @@ export class ReviewRemoteStore {
   async load(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-    readonly snapshotHash?: ContentHash;
+    readonly snapshotHash: ContentHash;
   }): Promise<Result<ReviewRemoteSnapshot, ReviewRemoteStoreFailure>> {
-    let snapshotHash = input.snapshotHash;
-    if (snapshotHash === undefined) {
-      if (this.reviews === undefined) return invalidRead();
-      const review = await this.reviews.load(input.profileId, input.reviewId);
-      if (review._tag === "err" || review.value.representedRemote === undefined) return review._tag === "err" ? review : invalidRead();
-      snapshotHash = review.value.representedRemote.snapshotHash;
-    }
+    const snapshotHash = input.snapshotHash;
     const stored = await readJsonFile(remoteSnapshotPath(this.paths, input.profileId, input.reviewId, snapshotHash));
     if (stored._tag === "err") return stored;
     const parsed = parseSnapshot(stored.value);
@@ -174,9 +166,9 @@ export function parseReviewRemoteSnapshot(input: unknown): Result<ReviewRemoteSn
   const mergePolicy = parsed.output.mergePolicy === undefined ? ok(undefined) : parseMergePolicy(parsed.output.mergePolicy);
   const mergeEvidence = parsed.output.mergeEvidence === undefined ? ok(undefined) : parseMergeEvidence(parsed.output.mergeEvidence);
   const publishedFeedback = parsed.output.publishedFeedback === undefined ? ok(undefined) : parsePublishedFeedback(parsed.output.publishedFeedback);
-  const conversation = parsed.output.conversation === undefined ? ok(undefined) : parseConversation(parsed.output.conversation);
+  const conversation = parseConversation(parsed.output.conversation);
   if (pr._tag === "err" || comments._tag === "err" || commits._tag === "err" || checks._tag === "err" || publishedFeedback._tag === "err" || conversation._tag === "err" || mergePolicy._tag === "err" || mergeEvidence._tag === "err") return invalidRead();
-  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), ...(conversation.value === undefined ? {} : { conversation: conversation.value }), ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }), ...(mergeEvidence.value === undefined ? {} : { mergeEvidence: mergeEvidence.value }) });
+  return ok({ schemaVersion: 1, pullRequest: pr.value, comments: comments.value, commits: commits.value, checks: checks.value, ...(publishedFeedback.value === undefined ? {} : { publishedFeedback: publishedFeedback.value }), conversation: conversation.value, ...(mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value }), ...(mergeEvidence.value === undefined ? {} : { mergeEvidence: mergeEvidence.value }) });
 }
 
 export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {

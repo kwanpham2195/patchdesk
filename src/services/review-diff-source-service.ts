@@ -43,7 +43,7 @@ export type ReviewDiffSource =
   | {
       readonly state: "unavailable";
       readonly reason:
-        | "legacy_snapshot"
+        | "revision_unavailable"
         | "head_changed"
         | "patch_unavailable"
         | "path_unavailable"
@@ -108,7 +108,7 @@ export class ReviewDiffSourceService {
     }
 
     if (session.value.pr.baseSha === undefined) {
-      return ok({ state: "unavailable", reason: "legacy_snapshot" });
+      return ok({ state: "unavailable", reason: "revision_unavailable" });
     }
 
     const oldPath = parseRepoRelativePath(file.oldPath);

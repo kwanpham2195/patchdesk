@@ -11,20 +11,25 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 export class MergeOperationStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  async begin(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
+  async begin(operation: MergeOperation): Promise<Result<void, StorageFailure | { readonly _tag: "MergeOperationExists" }>> {
+    const existing = await this.load(operation.profileId, operation.sessionId);
+    if (existing._tag === "ok" && existing.value.state._tag !== "Rejected")
+      return err({ _tag: "MergeOperationExists" });
+    if (existing._tag === "err" && existing.error.reason !== "not_found")
+      return existing;
     return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
   }
 
   async markOutcomeUnknown(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return this.begin(operation);
+    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
   }
 
   async confirm(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return this.begin(operation);
+    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
   }
 
   async reject(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return this.begin(operation);
+    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
   }
 
   async load(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<Result<MergeOperation, StorageFailure>> {

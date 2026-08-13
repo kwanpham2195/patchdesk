@@ -78,7 +78,7 @@ describe("model review runner", () => {
 
       expect(result).toMatchObject({ verdict: "comment", findings: [] });
       expect(prompt).toContain("centraldigital/patchdesk#42");
-      expect(prompt).toContain("Prepared unified patch:");
+      expect(prompt).toContain("Review the complete represented pull request.");
       expect(prompt).toContain("export const review");
       expect(toolNames).toEqual(["list_changed_files", "search_files", "read_file_range", "git_show"]);
       expect(inspected).toEqual({ content: "export const review = true;" });
@@ -300,48 +300,5 @@ describe("model review runner", () => {
     }
   });
 
-  it("uses comparison evidence as the incremental-review prompt surface without duplicating the full patch", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-incremental-"));
-    try {
-      await mkdir(join(root, "src"));
-      await writeFile(join(root, "src", "changed.ts"), "export const changed = true;\n", "utf8");
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const fullPatchPath = join(root, "patch.diff");
-      const comparisonPatchPath = join(root, "comparison.diff");
-      const comparisonMetadataPath = join(root, "comparison.json");
-      const previousFindingsPath = join(root, "previous.json");
-      await writeFile(contextPath, JSON.stringify({ changedFiles: ["src/unrelated.ts"] }), "utf8");
-      await writeFile(reviewInputPath, "# Incremental input", "utf8");
-      await writeFile(fullPatchPath, "FULL-PR-PATCH-MUST-NOT-APPEAR", "utf8");
-      await writeFile(comparisonPatchPath, "diff --git a/src/changed.ts b/src/changed.ts\n+incremental change\n", "utf8");
-      await writeFile(comparisonMetadataPath, JSON.stringify({ schemaVersion: 1, baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000", baseHeadSha: "1".repeat(40), headSha: "2".repeat(40), ancestry: "fast_forward", source: "local_git", completeness: "complete", commits: [], files: [{ path: "src/changed.ts", status: "modified", additions: 1, deletions: 0, binary: false, textPatchAvailable: true }], additions: 1, deletions: 0, createdAt: "2026-07-18T00:00:00.000Z" }), "utf8");
-      await writeFile(previousFindingsPath, JSON.stringify([{ token: "a".repeat(64), findingId: "prior", severity: "P1", title: "Prior issue", explanation: "Prior evidence.", file: "src/changed.ts", wasSubmitted: false }]), "utf8");
-      let prompt = "";
-      const session: ReviewModelSession = {
-        async prompt(text) {
-          prompt = text;
-          return { data: { changeSummary: "Incremental complete.", verdict: "comment" as const, summary: "One update.", findings: [], validationPlan: [], assumptions: [], priorFindingAssessments: [{ priorFindingToken: "a".repeat(64), disposition: "unverified" as const, explanation: "Need more evidence." }] } };
-        },
-      };
 
-      await runModelReview({
-        session,
-        worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath: fullPatchPath,
-        debugPath: join(root, "debug.json"),
-        scope: { kind: "incremental", baseSessionId: "github.com__centraldigital__patchdesk__pr-42__sha-11111111__000000000000" as never, baseHeadSha: "1".repeat(40) as never, headSha: "2".repeat(40) as never, comparisonPatchPath: comparisonPatchPath as never, comparisonMetadataPath: comparisonMetadataPath as never, previousFindingsPath: previousFindingsPath as never, lifecyclePath: join(root, "lifecycle.json") as never },
-        gitShow: gitBlobReader({ [`${"2".repeat(40)}:src/changed.ts`]: "export const changed = true;\n" }),
-      });
-
-      expect(prompt).toContain("Prepared incremental patch:");
-      expect(prompt).toContain("incremental change");
-      expect(prompt).toContain("Prior finding evidence:");
-      expect(prompt).not.toContain("FULL-PR-PATCH-MUST-NOT-APPEAR");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
 });

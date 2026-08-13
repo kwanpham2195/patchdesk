@@ -128,8 +128,6 @@ type Gateway = GitHubPendingReviewGateway &
  * and lost responses become OutcomeUnknown and are never retried automatically.
  */
 export class PendingReviewService {
-  private readonly inFlight = new Set<string>();
-
   constructor(
     private readonly gate: Pick<
       ReviewWriteGate,
@@ -138,7 +136,7 @@ export class PendingReviewService {
     private readonly sessions: Pick<ReviewSessionStore, "load" | "save">,
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
-    private readonly writeCoordinator?: ReviewOperationCoordinator,
+    private readonly writeCoordinator: ReviewOperationCoordinator,
   ) {}
 
   /**
@@ -153,9 +151,16 @@ export class PendingReviewService {
     readonly comments: GitHubComments;
     readonly publishedFeedback?: GitHubPublishedFeedback;
   }): {
-    readonly pendingReview: PendingReviewState;
+    readonly pendingReview?: PendingReviewState;
     readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
   } {
+    if (
+      input.session.pendingReview === undefined &&
+      input.observed._tag === "Unavailable"
+    )
+      return input.session.findingReviewReceipts === undefined
+        ? {}
+        : { findingReviewReceipts: input.session.findingReviewReceipts };
     const current = input.session.pendingReview ?? { _tag: "None" as const };
     const pendingReview = adoptObservedPendingReview(current, input.observed);
     if (isPendingReviewLocked(current)) {
@@ -201,21 +206,11 @@ export class PendingReviewService {
       PendingReviewServiceFailure
     >
   > {
-    const key = `${input.profileId}:${input.reviewId}`;
-    if (this.writeCoordinator !== undefined) {
-      return this.writeCoordinator.withReviewLock(
-        input.profileId,
-        input.reviewId,
-        () => this.reconcileUnlocked(input),
-      );
-    }
-    if (this.inFlight.has(key)) return err("review_write_in_progress");
-    this.inFlight.add(key);
-    try {
-      return await this.reconcileUnlocked(input);
-    } finally {
-      this.inFlight.delete(key);
-    }
+    return this.writeCoordinator.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      () => this.reconcileUnlocked(input),
+    );
   }
 
   private async reconcileUnlocked(input: {
@@ -316,7 +311,13 @@ export class PendingReviewService {
             input.finding.headSha !== session.key.headSha)
         )
           return err("invalid_input");
-        const state = session.pendingReview ?? { _tag: "None" as const };
+        if (session.pendingReview === undefined) return err("unavailable");
+        if (
+          input.finding !== undefined &&
+          hasFindingReceipt(session.findingReviewReceipts, input.finding)
+        )
+          return err("pending_review_locked");
+        const state = session.pendingReview;
         const operation: PendingReviewOperation = {
           _tag: "Start",
           requestId: createPendingReviewRequestId(this.now()),
@@ -350,11 +351,13 @@ export class PendingReviewService {
             input.finding.headSha !== session.key.headSha)
         )
           return err("invalid_input");
-        const state = session.pendingReview ?? { _tag: "None" as const };
+        if (session.pendingReview === undefined) return err("unavailable");
+        const state = session.pendingReview;
         if (
           input.finding !== undefined &&
           state._tag === "Pending" &&
-          sameFindingSource(input.finding, state.unresolvedFinding)
+          (sameFindingSource(input.finding, state.unresolvedFinding) ||
+            hasFindingReceipt(session.findingReviewReceipts, input.finding))
         )
           return err("pending_review_locked");
         const operation: PendingReviewOperation = {
@@ -388,7 +391,8 @@ export class PendingReviewService {
       input.reviewId,
       input.expected,
       async (profile, session) => {
-        const state = session.pendingReview ?? { _tag: "None" as const };
+        if (session.pendingReview === undefined) return err("unavailable");
+        const state = session.pendingReview;
         if (state._tag !== "Pending") return err("no_pending_review");
         const operation: PendingReviewOperation = {
           _tag: "Submit",
@@ -421,7 +425,8 @@ export class PendingReviewService {
       input.reviewId,
       input.expected,
       async (profile, session) => {
-        const state = session.pendingReview ?? { _tag: "None" as const };
+        if (session.pendingReview === undefined) return err("unavailable");
+        const state = session.pendingReview;
         if (state._tag !== "Pending") return err("no_pending_review");
         const operation: PendingReviewOperation = {
           _tag: "Discard",
@@ -455,12 +460,8 @@ export class PendingReviewService {
     >,
   ): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     const key = `${profileId}:${reviewId}`;
-    const acquired =
-      this.writeCoordinator === undefined
-        ? !this.inFlight.has(key)
-        : this.writeCoordinator.acquire(key);
+    const acquired = this.writeCoordinator.acquire(key);
     if (!acquired) return err("review_write_in_progress");
-    if (this.writeCoordinator === undefined) this.inFlight.add(key);
     try {
       const fresh = await this.gate.requireFresh(profileId, reviewId, expected);
       if (fresh._tag === "err") return err(mapGateFailure(fresh.error.reason));
@@ -477,8 +478,7 @@ export class PendingReviewService {
         return err("stale_head");
       return operation(profile, session);
     } finally {
-      if (this.writeCoordinator === undefined) this.inFlight.delete(key);
-      else this.writeCoordinator.release(key);
+      this.writeCoordinator.release(key);
     }
   }
 
@@ -653,6 +653,20 @@ function sameFindingSource(
     left.sessionId === right.sessionId &&
     left.headSha === right.headSha &&
     left.patchHash === right.patchHash
+  );
+}
+
+function hasFindingReceipt(
+  receipts: ReadonlyArray<FindingReviewReceipt> | undefined,
+  finding: FindingReviewSource,
+): boolean {
+  return (receipts ?? []).some(
+    (receipt) =>
+      receipt.analysisRunId === finding.analysisRunId &&
+      receipt.findingId === finding.findingId &&
+      receipt.sessionId === finding.sessionId &&
+      receipt.headSha === finding.headSha &&
+      receipt.patchHash === finding.patchHash,
   );
 }
 

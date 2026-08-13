@@ -1,5 +1,5 @@
 # Choose an Analysis completion action per run
 
-Every Analysis run has an explicit completion action: save as a Review draft, open the publication preview, publish as Comment, publish as Approve, or publish as Request changes. **Open preview when complete** is the default.
+> **Status: Superseded.** ADR-0014 and the current Review lifecycle replace this decision.
 
-Choosing a publication action authorizes that GitHub write for the current run only. Patchdesk binds the authorization to the profile, pull request, head revision, and patch. It cancels automatic publication when the revision or detected remote state changes, when an existing draft would be overwritten, or when Analysis does not complete successfully.
+This historical decision described local Review-draft and publication completion actions. Patchdesk no longer supports those actions or per-run publication authorization. Analysis now persists an immutable retained result. A maintainer starts each current Finding review command and Finish-review submission explicitly.

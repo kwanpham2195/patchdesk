@@ -2,10 +2,13 @@ import type {
   GitHubMergeWriter,
   GitHubReader,
 } from "../adapters/github/github-adapter";
-import { evaluateMergeReadiness, type MergeReadiness } from "../domain/merge-readiness";
-import type { GitSha, IsoTimestamp } from "../domain/ids";
+import {
+  evaluateMergeReadiness,
+  type MergeReadiness,
+} from "../domain/merge-readiness";
+import type { GitSha } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
-import { markSessionMerged, type ReviewSession } from "../domain/review-session";
+import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
@@ -13,30 +16,45 @@ import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader"
 export type MergeMethod = "merge" | "squash" | "rebase";
 type MergeWarningCode = MergeReadiness["warnings"][number];
 
-type MergeGateway = Pick<GitHubReader, "getMergePolicy" | "getPullRequest" | "getPullRequestDiff"> &
+type MergeGateway = Pick<
+  GitHubReader,
+  "getMergePolicy" | "getPullRequest" | "getPullRequestDiff"
+> &
   GitHubMergeWriter;
 
 export type MergeFailure =
   | { readonly _tag: "MergeMethodUnsupported" }
   | { readonly _tag: "GitHubMergeReadFailed" }
   | { readonly _tag: "MergeBlocked"; readonly readiness: MergeReadiness }
-  | { readonly _tag: "MergeAcknowledgementRequired"; readonly readiness: MergeReadiness }
+  | {
+      readonly _tag: "MergeAcknowledgementRequired";
+      readonly readiness: MergeReadiness;
+    }
   | { readonly _tag: "StaleHeadBlocksMerge"; readonly currentHeadSha: GitSha }
   | { readonly _tag: "RevisionChangedBlocksMerge" }
   | { readonly _tag: "RevisionUnavailableBlocksMerge" }
-  | { readonly _tag: "GitHubMergeFailed" };
+  | { readonly _tag: "GitHubMergeRejected" }
+  | { readonly _tag: "GitHubMergeOutcomeUnknown" };
 
 /** Performs one explicit merge only after fresh PR evidence satisfies the selected readiness policy. */
 export async function mergePullRequest(input: {
   readonly profile: WorkspaceProfileConfig;
   readonly session: ReviewSession;
-  readonly result?: { readonly findings: ReadonlyArray<{ readonly severity: "P0" | "P1" | "P2" | "P3" }> };
+  readonly result?: {
+    readonly findings: ReadonlyArray<{
+      readonly severity: "P0" | "P1" | "P2" | "P3";
+    }>;
+  };
   readonly gateway: MergeGateway;
   readonly method: MergeMethod;
   readonly supportedMethods: ReadonlyArray<MergeMethod>;
   readonly acknowledgedWarningCodes: ReadonlyArray<MergeWarningCode>;
-  readonly now: IsoTimestamp;
-}): Promise<Result<{ readonly session: ReviewSession; readonly readiness: MergeReadiness }, MergeFailure>> {
+}): Promise<
+  Result<
+    { readonly readiness: MergeReadiness; readonly mergeCommitSha?: GitSha },
+    MergeFailure
+  >
+> {
   if (!input.supportedMethods.includes(input.method))
     return err({ _tag: "MergeMethodUnsupported" });
 
@@ -46,15 +64,24 @@ export async function mergePullRequest(input: {
     pr,
     session: input.session,
   });
-  if (revision._tag === "err" || revision.value._tag === "Unavailable") return err({ _tag: "RevisionUnavailableBlocksMerge" });
-  if (revision.value._tag === "Changed") return err({ _tag: "RevisionChangedBlocksMerge" });
+  if (revision._tag === "err" || revision.value._tag === "Unavailable")
+    return err({ _tag: "RevisionUnavailableBlocksMerge" });
+  if (revision.value._tag === "Changed")
+    return err({ _tag: "RevisionChangedBlocksMerge" });
 
   // This is the final remote read before the explicit merge request. It binds
   // current readiness to the same immutable head/base pair proved above.
-  const policy = await input.gateway.getMergePolicy({ profile: input.profile, pr, expectedHeadSha: input.session.key.headSha });
+  const policy = await input.gateway.getMergePolicy({
+    profile: input.profile,
+    pr,
+    expectedHeadSha: input.session.key.headSha,
+  });
   if (policy._tag === "err") return err({ _tag: "GitHubMergeReadFailed" });
   if (policy.value.headSha !== input.session.key.headSha)
-    return err({ _tag: "StaleHeadBlocksMerge", currentHeadSha: policy.value.headSha });
+    return err({
+      _tag: "StaleHeadBlocksMerge",
+      currentHeadSha: policy.value.headSha,
+    });
   if (policy.value.baseSha !== revision.value.identity.baseSha)
     return err({ _tag: "RevisionChangedBlocksMerge" });
 
@@ -64,7 +91,9 @@ export async function mergePullRequest(input: {
     isDraft: policy.value.isDraft,
     mergeability: policy.value.complete ? policy.value.mergeability : "unknown",
     checks: policy.value.checks,
-    hasGitHubReviewBlocker: policy.value.reviewDecision === "review_required" || policy.value.reviewDecision === "unknown",
+    hasGitHubReviewBlocker:
+      policy.value.reviewDecision === "review_required" ||
+      policy.value.reviewDecision === "unknown",
     hasRequestChanges: policy.value.reviewDecision === "changes_requested",
     hasHighSeverityFinding: (input.result?.findings ?? []).some(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
@@ -72,9 +101,12 @@ export async function mergePullRequest(input: {
     analysisFindingCount: (input.result?.findings ?? []).filter(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ).length,
-    ...(input.profile.analysisMergePolicy === undefined ? {} : { analysisMergePolicy: input.profile.analysisMergePolicy }),
+    ...(input.profile.analysisMergePolicy === undefined
+      ? {}
+      : { analysisMergePolicy: input.profile.analysisMergePolicy }),
   });
-  if (readiness._tag === "Blocked") return err({ _tag: "MergeBlocked", readiness });
+  if (readiness._tag === "Blocked")
+    return err({ _tag: "MergeBlocked", readiness });
   if (!sameWarningCodes(readiness.warnings, input.acknowledgedWarningCodes))
     return err({ _tag: "MergeAcknowledgementRequired", readiness });
 
@@ -85,20 +117,18 @@ export async function mergePullRequest(input: {
     headSha: input.session.key.headSha,
     method: input.method,
   });
-  if (merged._tag === "err") return err({ _tag: "GitHubMergeFailed" });
-  const updated = markSessionMerged(input.session, input.now);
-  if (updated._tag === "err") return err({ _tag: "GitHubMergeFailed" });
+  if (merged._tag === "err")
+    return err({
+      _tag:
+        merged.error.category === "unavailable"
+          ? "GitHubMergeOutcomeUnknown"
+          : "GitHubMergeRejected",
+    });
   return ok({
     readiness,
-    session: {
-      ...updated.value,
-      mergeDecision: {
-        mergedAt: input.now,
-        ...(merged.value.mergeCommitSha === undefined
-          ? {}
-          : { mergeCommitSha: merged.value.mergeCommitSha }),
-      },
-    },
+    ...(merged.value.mergeCommitSha === undefined
+      ? {}
+      : { mergeCommitSha: merged.value.mergeCommitSha }),
   });
 }
 
@@ -106,7 +136,10 @@ function sameWarningCodes(
   expected: ReadonlyArray<MergeWarningCode>,
   actual: ReadonlyArray<MergeWarningCode>,
 ): boolean {
-  return [...new Set(expected)].sort().join("\n") === [...new Set(actual)].sort().join("\n");
+  return (
+    [...new Set(expected)].sort().join("\n") ===
+    [...new Set(actual)].sort().join("\n")
+  );
 }
 
 function sessionPr(session: ReviewSession): PullRequestRef {

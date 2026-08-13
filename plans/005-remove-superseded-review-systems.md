@@ -35,6 +35,7 @@
 - **Risk**: HIGH
 - **Depends on**: Plans 001-004
 - **Category**: tech-debt / migration / architecture
+- **Status**: DONE — 2026-08-13
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
 
 ## Why this matters
@@ -1025,32 +1026,32 @@ tests/renderer/safe-run-panel.ui.test.tsx
 
 All must hold:
 
-- [ ] `pnpm lint` exits 0 with no warnings.
-- [ ] `pnpm typecheck` exits 0.
-- [ ] `pnpm test -- --run` exits 0.
-- [ ] `pnpm build` exits 0.
-- [ ] `pnpm exec playwright test` exits 0, or one known timing flake is reported
+- [x] `pnpm lint` exits 0 with no warnings.
+- [x] `pnpm typecheck` exits 0.
+- [x] `pnpm test -- --run` exits 0.
+- [x] `pnpm build` exits 0.
+- [x] `pnpm exec playwright test` exits 0, or one known timing flake is reported
       with an immediate isolated pass and no assertion weakening.
-- [ ] `git diff --check` has no output.
-- [ ] `ReviewSession` has one strict current persisted shape and no attempt,
+- [x] `git diff --check` has no output.
+- [x] `ReviewSession` has one strict current persisted shape and no attempt,
       batch, incremental, session-owned Insight, or merge-terminal authority.
-- [ ] `InsightStore` accepts schema 2 only and has no `incidentId` or historical
+- [x] `InsightStore` accepts schema 2 only and has no `incidentId` or historical
       provenance fallback.
-- [ ] No startup or request-time migration runs.
-- [ ] No local batch/publication, Review Attempt/run, or Review updates route is
+- [x] No startup or request-time migration runs.
+- [x] No local batch/publication, Review Attempt/run, or Review updates route is
       registered or allowed by the desktop bridge.
-- [ ] Current pending-review, direct-summary, inline feedback, published
+- [x] Current pending-review, direct-summary, inline feedback, published
       feedback, Refresh/observation, merge recovery, and Insight tests pass.
-- [ ] Every durable merge operation contains its exact `reviewId`; direct and
+- [x] Every durable merge operation contains its exact `reviewId`; direct and
       recovered merge paths delete it only after the terminal Review save.
-- [ ] Pi and Codex Analysis invocation tests prove no attempt, incremental
+- [x] Pi and Codex Analysis invocation tests prove no attempt, incremental
       scope, completion, or batch fields reach the provider boundary.
-- [ ] The Pi Analysis workflow still packages and builds.
-- [ ] The evidence-gated Git diff fallback tests pass.
-- [ ] The pre-existing uncommitted direct-summary changes remain present.
-- [ ] `AGENTS.md` no longer permits the unreachable automatic Analysis
+- [x] The Pi Analysis workflow still packages and builds.
+- [x] The evidence-gated Git diff fallback tests pass.
+- [x] The pre-existing uncommitted direct-summary changes remain present.
+- [x] `AGENTS.md` no longer permits the unreachable automatic Analysis
       publication exception; current explicit Finding commands remain covered.
-- [ ] `plans/README.md` marks Plan 005 DONE with exact verification results.
+- [x] `plans/README.md` marks Plan 005 DONE with exact verification results.
 
 Final inventory commands; each must return exit 1 with no output outside
 historical `.agents/archive/**`:
@@ -1061,6 +1062,22 @@ rg -n 'ReviewAttempt|ReviewAttemptId|currentAttemptId|ReviewCompleted|ReviewFail
 rg -n 'incremental|Review updates|review_updates|ReviewComparison|compareRevisions|priorFindingAssessments' src tests
 rg -n 'UnifiedReviewMigration|LegacyBatchDiscardMigration|reviewMigrationMarkerFile|batchDiscardMarkerFile|recordSchemaV1|parseLegacy' src tests
 ```
+
+## Completion evidence
+
+- Full current gate: `pnpm typecheck`, `pnpm lint`, `pnpm test -- --run`
+  (609 passed), `pnpm build`, `pnpm exec playwright test` (35 passed), and
+  `git diff --check` passed.
+- The four required removal inventories each exited 1 with no output.
+- Focused final blocker proof passed 20 tests across Finding receipt locking,
+  shared Insight coordination, and strict Insight storage.
+- The isolated performance browser test passed after the full browser run.
+- Read-only Electron QA after a main-process restart confirmed a represented
+  Review, exclusive Conversation/Diff/Insights pressed state, separate cache
+  and local-data cleanup controls, and empty fresh console and page-error
+  buffers on CDP 9233.
+- Independent follow-up review found no blocking issues and confirmed that all
+  three earlier findings were resolved.
 
 ## STOP conditions
 

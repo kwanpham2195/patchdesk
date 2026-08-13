@@ -6,9 +6,8 @@ import type {
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { PullRequestSummary } from "../domain/github-context";
-import type { IsoTimestamp } from "../domain/ids";
+import { createReviewId, type IsoTimestamp } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
-import type { ReviewAttempt } from "../domain/review-attempt";
 import {
   projectMaintainerInboxRow,
   type InboxReviewSummary,
@@ -37,7 +36,7 @@ export type MaintainerInbox = {
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
 
-type SessionReader = Pick<ReviewSessionStore, "listSessions" | "loadAttempt">;
+type SessionReader = Pick<ReviewSessionStore, "listSessions">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
 
 /** Reads watched repositories concurrently, enriches them with local review state, and falls back to parsed cache data. */
@@ -88,7 +87,7 @@ export class MaintainerInboxService {
     const listed = await this.github.listMaintainerPullRequests({ profile, repo: { host: repo.host, owner: repo.owner, repo: repo.repo, number: 1 as never } });
     if (listed._tag === "err") return { rows: [], repository: { repo, state: listed.error._tag === "GitHubAuthenticationFailed" ? "github_auth" : "github_read", complete: false } };
     const rows = await Promise.all(listed.value.pullRequests.map(async ({ summary, checks }) => {
-      const latestReview = await latestReviewFor(summary, sessions, this.sessions, profile.id);
+      const latestReview = latestReviewFor(summary, sessions);
       return projectMaintainerInboxRow({
         summary,
         checks,
@@ -121,32 +120,24 @@ export class MaintainerInboxService {
   }
 }
 
-async function latestReviewFor(
+function latestReviewFor(
   summary: PullRequestSummary,
   sessions: ReadonlyArray<ReviewSession>,
-  store: SessionReader,
-  profileId: WorkspaceProfileConfig["id"],
-): Promise<InboxReviewSummary | undefined> {
+): InboxReviewSummary | undefined {
   const session = sessions.find((candidate) => candidate.key.host === summary.ref.host && candidate.key.owner === summary.ref.owner && candidate.key.repo === summary.ref.repo && candidate.key.prNumber === summary.ref.number);
   if (session === undefined) return undefined;
-  const batch = session.batchContent?.state._tag;
-  const attempt = session.state._tag === "Running" && session.currentAttemptId !== undefined
-    ? await store.loadAttempt(profileId, session.id, session.currentAttemptId)
-    : undefined;
-  const state = reviewState(session, batch, attempt?._tag === "ok" ? attempt.value : undefined);
-  return { sessionId: session.id, reviewedHeadSha: session.key.headSha, state, updatedAt: session.updatedAt, matchesCurrentHead: session.key.headSha === summary.headSha };
-}
-
-function reviewState(
-  session: ReviewSession,
-  batch: "Local" | "Applying" | "PartialFailure" | "PendingReview" | "Submitted" | "Completed" | undefined,
-  attempt: ReviewAttempt | undefined,
-): InboxReviewSummary["state"] {
-  if (session.state._tag === "Running") return attempt?.state._tag === "Starting" ? "starting" : "running";
-  if (session.state._tag === "Merged") return "merged";
-  if (batch === "Local" || batch === "Applying" || batch === "PartialFailure" || batch === "PendingReview") return "draft";
-  if (batch === "Submitted") return "submitted";
-  return session.state._tag === "ReviewCompleted" ? "completed" : "failed";
+  return {
+    reviewId: createReviewId({
+      profileId: session.key.profileId,
+      host: session.key.host,
+      owner: session.key.owner,
+      repo: session.key.repo,
+      prNumber: session.key.prNumber,
+    }),
+    reviewedHeadSha: session.key.headSha,
+    updatedAt: session.updatedAt,
+    matchesCurrentHead: session.key.headSha === summary.headSha,
+  };
 }
 
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
@@ -158,7 +149,7 @@ function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
 }
 
 function compareRows(left: MaintainerInboxRow, right: MaintainerInboxRow): number {
-  const priority = (row: MaintainerInboxRow): number => row.categories.includes("running") || row.categories.includes("saved_review") ? 0 : row.categories.includes("updated_since_review") ? 1 : row.categories.includes("needs_review") ? 2 : row.categories.includes("waiting_for_author") ? 3 : row.categories.includes("checks_failing") ? 4 : row.categories.includes("ready_to_merge") ? 5 : 6;
+  const priority = (row: MaintainerInboxRow): number => row.categories.includes("saved_review") ? 0 : row.categories.includes("updated_since_review") ? 1 : row.categories.includes("needs_review") ? 2 : row.categories.includes("waiting_for_author") ? 3 : row.categories.includes("checks_failing") ? 4 : row.categories.includes("ready_to_merge") ? 5 : 6;
   return priority(left) - priority(right) || right.updatedAt.localeCompare(left.updatedAt) || left.title.localeCompare(right.title);
 }
 

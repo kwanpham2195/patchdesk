@@ -38,7 +38,7 @@ describe("local API log stream", () => {
       headers: await authHeaders(),
       body: JSON.stringify({
         entries: [
-          { level: "warn", topic: "api", message: "POST /v1/reviews/run failed with ghp_1234567890abcdef" },
+          { level: "warn", topic: "api", message: "POST /v1/removed-review-command failed with ghp_1234567890abcdef" },
           { process: "main", level: "error", topic: "api", message: "entry claiming a process is rejected" },
           { level: "debug", topic: "api", message: "ok" },
         ],
@@ -53,7 +53,7 @@ describe("local API log stream", () => {
     const renderer = body.entries.filter((entry) => entry.process === "renderer");
     expect(renderer).toHaveLength(2);
     expect(renderer[0]?.message).not.toContain("ghp_1234567890abcdef");
-    expect(renderer[0]?.message).toContain("POST /v1/reviews/run failed");
+    expect(renderer[0]?.message).toContain("POST /v1/removed-review-command failed");
     // The cursor is the last delivered sequence, so the next poll resumes
     // exactly after the entries this response delivered.
     expect(body.nextAfter).toBe(body.entries.length - 1);

@@ -26,12 +26,40 @@ export class CodexInsightInvoker implements InsightInvoker {
     if (candidatePath === undefined || ownedPath === undefined || candidatePath !== ownedPath) return err({ reason: "runtime_unavailable" as const });
     const head = await this.readHead(candidatePath);
     if (head === undefined || head !== input.expectedHeadSha) return err({ reason: "runtime_unavailable" as const });
-    const expectedReviewInputPath = this.paths.preparedReviewInputFile(input.profileId, input.sessionId);
-    const reviewInputPath = input.reviewInputPath === undefined ? undefined : await realpath(input.reviewInputPath).catch(() => undefined);
-    const ownedReviewInputPath = await realpath(expectedReviewInputPath).catch(() => undefined);
-    if (reviewInputPath === undefined || ownedReviewInputPath === undefined || reviewInputPath !== ownedReviewInputPath) return err({ reason: "runtime_unavailable" as const });
-    const reviewInput = await readFile(reviewInputPath, "utf8").catch(() => undefined);
-    if (reviewInput === undefined) return err({ reason: "runtime_unavailable" as const });
+    const ownedArtifacts = [
+      [
+        input.contextPath,
+        this.paths.preparedContextFile(input.profileId, input.sessionId),
+      ],
+      [
+        input.reviewInputPath,
+        this.paths.preparedReviewInputFile(input.profileId, input.sessionId),
+      ],
+      [input.patchPath, this.paths.patchFile(input.profileId, input.sessionId)],
+    ] as const;
+    const resolvedArtifacts = await Promise.all(
+      ownedArtifacts.map(async ([candidate, expected]) => {
+        if (candidate === undefined) return undefined;
+        const [resolvedCandidate, resolvedExpected] = await Promise.all([
+          realpath(candidate).catch(() => undefined),
+          realpath(expected).catch(() => undefined),
+        ]);
+        return resolvedCandidate !== undefined &&
+          resolvedCandidate === resolvedExpected
+          ? resolvedCandidate
+          : undefined;
+      }),
+    );
+    if (resolvedArtifacts.some((path) => path === undefined))
+      return err({ reason: "runtime_unavailable" as const });
+    const reviewInputPath = resolvedArtifacts[1];
+    if (reviewInputPath === undefined)
+      return err({ reason: "runtime_unavailable" as const });
+    const reviewInput = await readFile(reviewInputPath, "utf8").catch(
+      () => undefined,
+    );
+    if (reviewInput === undefined)
+      return err({ reason: "runtime_unavailable" as const });
     const prompt = buildCodexPrompt({ insightType: input.type, reviewInput, policy: "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions." });
     if (prompt._tag === "err") return err({ reason: "execution_failed" as const });
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.

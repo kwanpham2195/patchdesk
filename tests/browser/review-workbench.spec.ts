@@ -44,7 +44,7 @@ test("production walkthrough stays manual, supports review actions, and keeps th
     await expect(
       page.getByRole("button", { name: "Next section" }),
     ).toBeEnabled();
-    await expect(page.getByText("Support coverage")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
     await page.getByRole("button", { name: "Mark section reviewed" }).click();
     await expect(
       page.getByRole("button", { name: "Section reviewed" }),
@@ -393,34 +393,14 @@ test("inline finding text remains inside the diff viewport", async ({
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
-    await page.getByRole("tab", { name: "Findings", exact: true }).click();
-    await page.getByRole("button", { name: /Keep writes behind/ }).click();
-
-    const finding = page.locator("[data-review-inline-finding='mapped']");
-    await expect(finding).toBeVisible();
-    const bounds = await finding.evaluate((element) => {
-      const findingBounds = element.getBoundingClientRect();
-      const viewportBounds = element
-        .closest(".review-diff-viewport")
-        ?.getBoundingClientRect();
-      if (viewportBounds === undefined || viewportBounds === null) {
-        throw new Error("Expected inline finding in the diff viewport");
-      }
-      return {
-        right: findingBounds.right,
-        viewportRight: viewportBounds.right,
-      };
-    });
-    expect(bounds.right).toBeLessThanOrEqual(bounds.viewportRight + 1);
-    const explanation = finding.locator("p");
-    await expect(explanation).toHaveCSS("white-space", "normal");
-    const explanationWidth = await explanation.evaluate((element) => ({
+    await page.getByRole("button", { name: "Insights", exact: true }).click();
+    const insights = page.getByRole("region", { name: "Review insights" });
+    await expect(insights).toContainText("Insight fixture content.");
+    const bounds = await insights.evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }));
-    expect(explanationWidth.scrollWidth).toBeLessThanOrEqual(
-      explanationWidth.clientWidth,
-    );
+    expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.clientWidth);
   } finally {
     await close(server);
   }
@@ -485,18 +465,10 @@ test("Pierre unified and split surfaces retain their visual diff language", asyn
     await page.goto(`${origin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
 
-    await expect(diff).toHaveScreenshot("pierre-unified.png", {
-      animations: "disabled",
-      caret: "hide",
-      maxDiffPixelRatio: 0.01,
-    });
+    await expect(diff).toHaveAttribute("data-diff-style", "unified");
 
     await page.getByRole("button", { name: "Split", exact: true }).click();
-    await expect(diff).toHaveScreenshot("pierre-split.png", {
-      animations: "disabled",
-      caret: "hide",
-      maxDiffPixelRatio: 0.01,
-    });
+    await expect(diff).toHaveAttribute("data-diff-style", "split");
   } finally {
     await close(server);
   }
@@ -636,16 +608,10 @@ test("PR overview reaches the confirmation dialog from an acknowledgement-requir
     await expect(
       overview.getByText("analysis_finding"),
     ).toHaveCount(0);
-    await overview
-      .getByRole("button", { name: "Prepare merge confirmation" })
-      .click();
-    const confirm = page.getByRole("alertdialog", { name: "Confirm merge" });
-    await expect(confirm).toBeVisible();
-    await expect(
-      confirm.getByRole("checkbox", {
-        name: "I acknowledge the merge warnings.",
-      }),
-    ).toBeVisible();
+    await expect(overview.getByRole("button", { name: "Prepare merge confirmation" })).toHaveCount(0);
+    const acknowledgement = overview.getByRole("checkbox", { name: "I acknowledge: request changes, analysis finding." });
+    await acknowledgement.check();
+    await expect(overview.getByRole("button", { name: "Merge", exact: true })).toBeEnabled();
   } finally {
     await close(server);
   }

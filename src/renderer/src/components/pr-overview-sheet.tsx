@@ -9,21 +9,16 @@ import type {
 } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
-import type { ReviewBatch } from "../../../domain/review-batch";
-import type { ReviewFinding } from "../../../domain/review-result";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
 import { CompactMergeCommand, type MergeMethod } from "./compact-merge-command";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
-import { ReviewBatchPanel, ReviewBatchWriteActions, type ReviewBatchPanelActions } from "./review-batch-panel";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export type PullRequestOverviewMerge = {
@@ -43,12 +38,10 @@ export type PullRequestOverviewMerge = {
     method: MergeMethod,
     warningCodes: ReadonlyArray<string>,
   ) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly onRecoverMerge: () => Promise<void>;
 };
 
-export type PullRequestOverviewActions = {
-  readonly batch?: ReviewBatchPanelActions;
-  readonly merge?: PullRequestOverviewMerge;
-};
+export type PullRequestOverviewActions = { readonly merge?: PullRequestOverviewMerge; };
 
 export type ReviewInsightStatus =
   | "not_generated"
@@ -177,6 +170,7 @@ export function CanonicalReviewOverviewSheet({
                   context={merge.context}
                   methods={merge.methods}
                   onMerge={merge.onMerge}
+                  onRecoverMerge={merge.onRecoverMerge}
                 />
               </div>
             )}
@@ -297,12 +291,9 @@ export function PullRequestOverviewSheet({
   onOpenChange,
   focus,
   pullRequest,
-  patch,
   freshness,
   checks,
   comments,
-  batch,
-  selectedFinding,
   actions,
   noLocalReview = false,
 }: {
@@ -310,12 +301,9 @@ export function PullRequestOverviewSheet({
   readonly onOpenChange: (open: boolean) => void;
   readonly focus?: "checks";
   readonly pullRequest?: PullRequestSummary;
-  readonly patch?: string;
   readonly freshness: "fresh" | "stale" | "unavailable" | "not_refreshed";
   readonly checks: CheckSummary;
   readonly comments: GitHubComments;
-  readonly batch?: ReviewBatch;
-  readonly selectedFinding?: ReviewFinding;
   readonly actions: PullRequestOverviewActions;
   readonly noLocalReview?: boolean;
 }): React.JSX.Element {
@@ -351,21 +339,9 @@ export function PullRequestOverviewSheet({
           </div>
           <Separator />
           <OverviewRow title="Existing threads" trailing={threadCountLabel(comments)}>
-            <ReviewThreads comments={comments} {...(batch === undefined ? {} : { batch })} {...(actions.batch === undefined ? {} : { actions: actions.batch })} />
+            <ReviewThreads comments={comments} />
           </OverviewRow>
           <Separator />
-          <OverviewRow title="Your local review" trailing={batch === undefined ? "Unavailable" : `${batch.items.length} draft${batch.items.length === 1 ? "" : "s"}`}>
-            {actions.batch === undefined ? <p className="text-sm text-muted-foreground">Local review actions are unavailable for this snapshot.</p> : (
-              <ReviewBatchPanel
-                {...(batch === undefined ? {} : { batch })}
-                {...(patch === undefined ? {} : { patch })}
-                {...(selectedFinding === undefined ? {} : { selectedFinding })}
-                writeBlocked={freshness !== "fresh"}
-                actions={actions.batch}
-                showWriteActions={false}
-              />
-            )}
-          </OverviewRow>
         </div>
         <SheetFooter className="border-t px-5 py-4">
           {noLocalReview ? (
@@ -375,7 +351,6 @@ export function PullRequestOverviewSheet({
             </Alert>
           ) : null}
           <div className="flex flex-col gap-3">
-            {actions.batch === undefined ? null : <ReviewBatchWriteActions {...(batch === undefined ? {} : { batch })} writeBlocked={freshness !== "fresh"} actions={actions.batch} />}
             {actions.merge === undefined ? null : freshness !== "fresh" ? <p className="text-sm text-muted-foreground">Merge remains unavailable until GitHub confirms the current head.</p> : (
               <CompactMergeCommand
                 readiness={actions.merge.readiness}
@@ -384,6 +359,7 @@ export function PullRequestOverviewSheet({
                 context={actions.merge.context}
                 methods={actions.merge.methods}
                 onMerge={actions.merge.onMerge}
+                onRecoverMerge={actions.merge.onRecoverMerge}
               />
             )}
           </div>
@@ -430,23 +406,9 @@ function OverviewRow({
   );
 }
 
-function ReviewThreads({
-  comments,
-  batch,
-  actions,
-}: {
-  readonly comments: GitHubComments;
-  readonly batch?: ReviewBatch;
-  readonly actions?: ReviewBatchPanelActions;
-}): React.JSX.Element {
+function ReviewThreads({ comments }: { readonly comments: GitHubComments }): React.JSX.Element {
   if (comments.threads.length === 0) return <p className="text-sm text-muted-foreground">No existing review threads.</p>;
-  return <><IncompleteConversationNotice comments={comments} /><ul className="space-y-3">{comments.threads.map((thread) => (
-    <li key={thread.id} className="rounded-md border p-3">
-      {thread.state === "outdated" ? <div className="mb-2 flex items-center gap-2"><Badge variant="outline">Outdated</Badge></div> : null}
-      <div className="space-y-2">{thread.comments.map((comment) => <div key={comment.id}><p className="font-medium">{comment.author}</p><p className="text-muted-foreground">{comment.body}</p></div>)}</div>
-      {actions === undefined || batch?.state._tag !== "Local" ? null : <ThreadBatchActions threadId={thread.id} state={thread.state} actions={actions} />}
-    </li>
-  ))}</ul></>;
+  return <><IncompleteConversationNotice comments={comments} /><ul className="space-y-3">{comments.threads.map((thread) => <li key={thread.id} className="rounded-md border p-3"><div className="space-y-2">{thread.comments.map((comment) => <div key={comment.id}><p className="font-medium">{comment.author}</p><p className="text-muted-foreground">{comment.body}</p></div>)}</div></li>)}</ul></>;
 }
 
 function threadCountLabel(comments: GitHubComments): string {
@@ -458,23 +420,6 @@ function IncompleteConversationNotice({ comments }: { readonly comments: GitHubC
   return comments.complete === false ? <p className="mb-3 text-sm text-muted-foreground">Some conversation was not loaded.</p> : null;
 }
 
-function ThreadBatchActions({
-  threadId,
-  state,
-  actions,
-}: {
-  readonly threadId: string;
-  readonly state: "open" | "resolved" | "outdated" | "unknown";
-  readonly actions: ReviewBatchPanelActions;
-}): React.JSX.Element {
-  const [body, setBody] = useState("");
-  const saveReply = async (): Promise<void> => {
-    if (body.trim().length === 0) return;
-    await actions.addThreadReply(threadId, body);
-    setBody("");
-  };
-  return <div className="mt-3 border-t pt-3"><Textarea aria-label={`Reply to thread ${threadId}`} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Reply in the local review batch" /><div className="mt-2 flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={body.trim().length === 0} onClick={() => void saveReply()}>Add reply</Button><Button size="xs" variant="ghost" onClick={() => void actions.setThreadState(threadId, state === "resolved" ? "reopen" : "resolve")}>{state === "resolved" ? "Reopen thread" : "Resolve thread"}</Button></div></div>;
-}
 
 function reasonSourceLabel(source: MergeDisplayReason["source"]): string {
   switch (source) {

@@ -19,7 +19,6 @@ const diagnosticEventSchema = v.strictObject({
   phase: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
   profileId: v.pipe(v.string(), v.minLength(1), v.maxLength(160)),
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
-  attemptId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   retryable: v.boolean(),
   durationMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(86_400_000))),
   detail: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(512))),
@@ -51,7 +50,6 @@ export type ReviewDiagnosticInput = {
   readonly phase: string;
   readonly profileId: WorkspaceProfileId;
   readonly sessionId?: string;
-  readonly attemptId?: string;
   readonly retryable: boolean;
   readonly durationMs?: number;
   readonly detail?: string;
@@ -92,7 +90,6 @@ export function sanitizeReviewDiagnosticEvent(
       phase: sanitizeDiagnosticField(parsed.phase, 80),
       profileId: expectedProfileId,
       ...(parsed.sessionId === undefined ? {} : { sessionId: sanitizeDiagnosticIdentifier(parsed.sessionId, 180) }),
-      ...(parsed.attemptId === undefined ? {} : { attemptId: sanitizeDiagnosticIdentifier(parsed.attemptId, 180) }),
       retryable: parsed.retryable,
       ...(parsed.durationMs === undefined ? {} : { durationMs: parsed.durationMs }),
       ...(parsed.detail === undefined ? {} : { detail: parsed.detail }),
@@ -170,7 +167,6 @@ export function normalizeReviewDiagnostic(
     phase: sanitizeDiagnosticField(input.phase, 80),
     profileId: input.profileId.slice(0, 160),
     ...(input.sessionId === undefined ? {} : { sessionId: sanitizeDiagnosticIdentifier(input.sessionId, 180) }),
-    ...(input.attemptId === undefined ? {} : { attemptId: sanitizeDiagnosticIdentifier(input.attemptId, 180) }),
     retryable: input.retryable,
     ...(input.durationMs === undefined ? {} : { durationMs: Math.max(0, Math.min(input.durationMs, 86_400_000)) }),
     ...(detail === undefined ? {} : { detail }),

@@ -35,24 +35,28 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
-import { PublicationAuthorizationStore } from "../adapters/storage/publication-authorization-store";
 import { parseAbsolutePath, parseGitSha } from "../domain/ids";
-import { err, ok } from "../domain/result";
-import { FlueCliReviewInvoker, type FlueCliReviewFailure } from "../services/flue-cli-review-invoker";
+import { err } from "../domain/result";
+import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
 import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
-import { resolveWorkflowCliPath, resolveWorkflowRuntimeRoot } from "./workflow-runtime-root";
-import { ReviewCompletionService } from "../services/review-completion-service";
-import { ReviewFailureService } from "../services/review-failure-service";
+import {
+  resolveWorkflowCliPath,
+  resolveWorkflowRuntimeRoot,
+} from "./workflow-runtime-root";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
+import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
 import { discoverPathOnlyExecutable } from "./executable-discovery";
 import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
-import { InsightRunCoordinator, type InsightInvocationInput } from "../services/insight-run-coordinator";
+import {
+  InsightRunCoordinator,
+  type InsightInvocationInput,
+} from "../services/insight-run-coordinator";
 
 const rendererOrigin = getRendererOrigin();
 const runtimeModelCatalog = new LocalPiRuntimeModelCatalog();
@@ -64,8 +68,10 @@ let rendererNavigationState: DesktopNavigationState = "clear";
 let allowWindowClose = false;
 let closePromptOpen = false;
 const lifecycleGate = new ReviewLifecycleGate();
+const reviewOperations = new ReviewOperationCoordinator();
 const logs = new AppLogService(PatchdeskPaths.default(), {
-  stdoutMirror: !app.isPackaged || process.argv.includes("--patchdesk-tail-logs"),
+  stdoutMirror:
+    !app.isPackaged || process.argv.includes("--patchdesk-tail-logs"),
 });
 const diagnostics = new ReviewDiagnosticService(
   PatchdeskPaths.default(),
@@ -81,12 +87,17 @@ const diagnostics = new ReviewDiagnosticService(
         meta: {
           category: event.category,
           retryable: event.retryable,
-          ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+          ...(event.durationMs === undefined
+            ? {}
+            : { durationMs: event.durationMs }),
           incidentId: event.incidentId,
         },
-        ...(event.profileId === undefined ? {} : { profileId: event.profileId }),
-        ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
-        ...(event.attemptId === undefined ? {} : { attemptId: event.attemptId }),
+        ...(event.profileId === undefined
+          ? {}
+          : { profileId: event.profileId }),
+        ...(event.sessionId === undefined
+          ? {}
+          : { sessionId: event.sessionId }),
       });
     },
   },
@@ -94,7 +105,8 @@ const diagnostics = new ReviewDiagnosticService(
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
-      const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
+      const insightProviders =
+        createInsightProviderCatalog(runtimeModelCatalog);
       const startup = await startLocalApiServer({
         allowedOrigin: rendererOrigin,
         // Never trust the development server origin from a packaged application.
@@ -108,10 +120,14 @@ const desktopLifecycle = createDesktopLifecycle({
           architecture: process.arch,
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
-        workflowInvoker: createWorkflowInvoker(lifecycleGate, diagnostics, logs),
-        insights: await recoverInsights(runtimeModelCatalog, insightProviders),
+        insights: await recoverInsights(
+          runtimeModelCatalog,
+          insightProviders,
+          reviewOperations,
+        ),
         insightProviders,
         lifecycleGate,
+        reviewOperations,
         diagnostics,
         logs,
         modelCatalog: runtimeModelCatalog,
@@ -123,7 +139,11 @@ const desktopLifecycle = createDesktopLifecycle({
             } catch {
               return {
                 _tag: "err",
-                error: { _tag: "StorageFailure", operation: "write", reason: "io" },
+                error: {
+                  _tag: "StorageFailure",
+                  operation: "write",
+                  reason: "io",
+                },
               };
             }
           },
@@ -153,183 +173,149 @@ const desktopLifecycle = createDesktopLifecycle({
   },
 });
 
-function createInsightProviderCatalog(modelCatalog: LocalPiRuntimeModelCatalog): InsightProviderCatalog {
-  return new InsightProviderCatalog(modelCatalog, (executablePath) => new CodexAppServerClient(executablePath), (name) => discoverPathOnlyExecutable(name));
+function createInsightProviderCatalog(
+  modelCatalog: LocalPiRuntimeModelCatalog,
+): InsightProviderCatalog {
+  return new InsightProviderCatalog(
+    modelCatalog,
+    (executablePath) => new CodexAppServerClient(executablePath),
+    (name) => discoverPathOnlyExecutable(name),
+  );
 }
 
-function createInsightCoordinator(modelCatalog: LocalPiRuntimeModelCatalog, providerCatalog: InsightProviderCatalog): InsightRunCoordinator {
+function createInsightCoordinator(
+  modelCatalog: LocalPiRuntimeModelCatalog,
+  providerCatalog: InsightProviderCatalog,
+  operations: ReviewOperationCoordinator,
+): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
-  const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
-  const reviewInvoker = new FlueCliReviewInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
-  const walkthroughInvoker = new FlueCliWalkthroughInvoker(new CommandRunner(), workflowRoot, process.execPath, resolveWorkflowCliPath(workflowRoot));
-  const readHead = async (worktreePath: string): Promise<string | undefined> => {
-    const output = await new CommandRunner().runText({ argv: ["git", "-C", worktreePath, "rev-parse", "HEAD"], cwd: worktreePath, timeoutMs: 10_000 });
-    if (output._tag === "err") return undefined;
-    const parsed = parseGitSha(output.value.trim());
-    return parsed._tag === "ok" ? parsed.value : undefined;
-  };
-  const codexInvoke = async (input: InsightInvocationInput, options: { readonly signal: AbortSignal }) => {
-    const executablePath = await discoverPathOnlyExecutable("codex");
-    if (executablePath === undefined) return err({ reason: "runtime_unavailable" as const });
-    return new CodexInsightInvoker(paths, (path) => new CodexAppServerClient(path), executablePath, readHead).invoke(input, options);
-  };
-  const analysis = {
-    async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
-      if (input.provider === "codex-cli-account") return codexInvoke(input, options);
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh") return err({ reason: "execution_failed" as const });
-      if (input.reviewInputPath === undefined || input.scope === undefined) return err({ reason: "execution_failed" as const });
-      const contextPath = parseAbsolutePath(input.contextPath);
-      const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
-      const patchPath = parseAbsolutePath(input.patchPath);
-      const worktreePath = parseAbsolutePath(input.worktreePath);
-      if (contextPath._tag === "err" || reviewInputPath._tag === "err" || patchPath._tag === "err" || worktreePath._tag === "err") return err({ reason: "execution_failed" as const });
-      return reviewInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }), contextPath: contextPath.value, reviewInputPath: reviewInputPath.value, patchPath: patchPath.value, worktreePath: worktreePath.value, scope: input.scope, model: input.model, reasoning: input.reasoning }, options);
-    },
-  };
-  const walkthrough = {
-    async invoke(input: InsightInvocationInput, options: { readonly signal: AbortSignal }) {
-      if (input.provider === "codex-cli-account") return codexInvoke(input, options);
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh") return err({ reason: "execution_failed" as const });
-      return walkthroughInvoker.invoke({ profileId: input.profileId, sessionId: input.sessionId, contextPath: input.contextPath, patchPath: input.patchPath, model: input.model, reasoning: input.reasoning }, options);
-    },
-  };
-  return new InsightRunCoordinator(new ReviewStore(paths), new ReviewSessionStore(paths), new InsightStore(paths), paths, modelCatalog, { analysis, walkthrough }, undefined, diagnostics, new PublicationAuthorizationStore(paths), providerCatalog);
-}
-
-async function recoverInsights(modelCatalog: LocalPiRuntimeModelCatalog, providerCatalog: InsightProviderCatalog): Promise<InsightRunCoordinator> {
-  const coordinator = createInsightCoordinator(modelCatalog, providerCatalog);
-  await coordinator.recoverAll();
-  return coordinator;
-}
-
-function createWorkflowInvoker(
-  sharedLifecycleGate: ReviewLifecycleGate,
-  diagnostics: ReviewDiagnosticService,
-  logs: AppLogService,
-) {
-  const workflowRoot = resolveWorkflowRuntimeRoot(app.getAppPath(), process.cwd());
-  const completion = new ReviewCompletionService(
-    PatchdeskPaths.default(),
-    () => new Date().toISOString() as never,
-    sharedLifecycleGate,
+  const workflowRoot = resolveWorkflowRuntimeRoot(
+    app.getAppPath(),
+    process.cwd(),
   );
-  const failure = new ReviewFailureService(
-    PatchdeskPaths.default(),
-    () => new Date().toISOString() as never,
-    sharedLifecycleGate,
-    diagnostics,
-  );
-  const flue = new FlueCliReviewInvoker(
+  const reviewInvoker = new FlueCliReviewInvoker(
     new CommandRunner(),
     workflowRoot,
     process.execPath,
     resolveWorkflowCliPath(workflowRoot),
   );
-  return {
+  const walkthroughInvoker = new FlueCliWalkthroughInvoker(
+    new CommandRunner(),
+    workflowRoot,
+    process.execPath,
+    resolveWorkflowCliPath(workflowRoot),
+  );
+  const readHead = async (
+    worktreePath: string,
+  ): Promise<string | undefined> => {
+    const output = await new CommandRunner().runText({
+      argv: ["git", "-C", worktreePath, "rev-parse", "HEAD"],
+      cwd: worktreePath,
+      timeoutMs: 10_000,
+    });
+    if (output._tag === "err") return undefined;
+    const parsed = parseGitSha(output.value.trim());
+    return parsed._tag === "ok" ? parsed.value : undefined;
+  };
+  const codexInvoke = async (
+    input: InsightInvocationInput,
+    options: { readonly signal: AbortSignal },
+  ) => {
+    const executablePath = await discoverPathOnlyExecutable("codex");
+    if (executablePath === undefined)
+      return err({ reason: "runtime_unavailable" as const });
+    return new CodexInsightInvoker(
+      paths,
+      (path) => new CodexAppServerClient(path),
+      executablePath,
+      readHead,
+    ).invoke(input, options);
+  };
+  const analysis = {
     async invoke(
-      input: Parameters<FlueCliReviewInvoker["invoke"]>[0],
-      options?: Parameters<FlueCliReviewInvoker["invoke"]>[1],
+      input: InsightInvocationInput,
+      options: { readonly signal: AbortSignal },
     ) {
-      const startedAt = Date.now();
-      let diagnosticWrites = Promise.resolve();
-      const record = (
-        phase: string,
-        retryable: boolean,
-        detail?: string,
-        durationMs?: number,
-      ): void => {
-        logs.write({
-          process: "main",
-          level: phase === "workflow-completed" ? "info" : phase === "workflow-failed" || phase === "workflow-save-failed" ? "error" : "debug",
-          topic: "workflow",
-          message: phase,
-          meta: {
-            ...(detail === undefined ? {} : { detail }),
-            ...(durationMs === undefined ? {} : { durationMs }),
-          },
-          ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
-          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-          ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
-        });
-        diagnosticWrites = diagnosticWrites.then(async () => {
-          try {
-            await diagnostics.record({
-              profileId: input.profileId,
-              sessionId: input.sessionId,
-              ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
-              category: "run",
-              phase,
-              retryable,
-              ...(detail === undefined ? {} : { detail }),
-              ...(durationMs === undefined ? {} : { durationMs }),
-            });
-          } catch {
-            // Workflow completion must not depend on best-effort local activity.
-          }
-        });
-      };
-      record("workflow-started", true);
-      const result = await flue.invoke(input, {
-        onActivity: (step) => {
-          record(`workflow-${step}`, true);
-          options?.onActivity?.(step);
+      if (input.provider === "codex-cli-account")
+        return codexInvoke(input, options);
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
+        return err({ reason: "execution_failed" as const });
+      if (input.reviewInputPath === undefined)
+        return err({ reason: "execution_failed" as const });
+      const contextPath = parseAbsolutePath(input.contextPath);
+      const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
+      const patchPath = parseAbsolutePath(input.patchPath);
+      const worktreePath = parseAbsolutePath(input.worktreePath);
+      if (
+        contextPath._tag === "err" ||
+        reviewInputPath._tag === "err" ||
+        patchPath._tag === "err" ||
+        worktreePath._tag === "err"
+      )
+        return err({ reason: "execution_failed" as const });
+      return reviewInvoker.invoke(
+        {
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          contextPath: contextPath.value,
+          reviewInputPath: reviewInputPath.value,
+          patchPath: patchPath.value,
+          worktreePath: worktreePath.value,
+          model: input.model,
+          reasoning: input.reasoning,
         },
-      });
-      await diagnosticWrites;
-      if (result._tag === "err") {
-        const message = reviewFailureMessage(result.error.reason);
-        record("workflow-failed", true, `review_${result.error.reason}`, Date.now() - startedAt);
-        await diagnosticWrites;
-        // Best effort: if this write fails, startup reconciliation is the backstop.
-        await failure.fail({
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          attemptId: input.attemptId,
-          category: "flue",
-          message,
-        });
-        return err({ reason: "failed" as const });
-      }
-      options?.onActivity?.("drafting");
-      record("workflow-drafting", true);
-      await diagnosticWrites;
-      const persisted = await completion.complete({
-        profileId: input.profileId,
-        sessionId: input.sessionId,
-        attemptId: input.attemptId,
-        result: result.value,
-      });
-      if (persisted._tag === "err") {
-        record("workflow-save-failed", true, "review_result_storage_unavailable", Date.now() - startedAt);
-        await diagnosticWrites;
-        await failure.fail({
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          attemptId: input.attemptId,
-          category: "unknown",
-          message: "The review result could not be saved.",
-        });
-        return err({ reason: "failed" as const });
-      }
-      record("workflow-completed", false, undefined, Date.now() - startedAt);
-      await diagnosticWrites;
-      // The Flue CLI returns the completed structured result, not a durable
-      // provider run identifier. Do not fabricate one from Patchdesk IDs.
-      return ok({});
+        options,
+      );
     },
   };
+  const walkthrough = {
+    async invoke(
+      input: InsightInvocationInput,
+      options: { readonly signal: AbortSignal },
+    ) {
+      if (input.provider === "codex-cli-account")
+        return codexInvoke(input, options);
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
+        return err({ reason: "execution_failed" as const });
+      return walkthroughInvoker.invoke(
+        {
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          contextPath: input.contextPath,
+          patchPath: input.patchPath,
+          model: input.model,
+          reasoning: input.reasoning,
+        },
+        options,
+      );
+    },
+  };
+  return new InsightRunCoordinator(
+    new ReviewStore(paths),
+    new ReviewSessionStore(paths),
+    new InsightStore(paths),
+    paths,
+    modelCatalog,
+    { analysis, walkthrough },
+    operations,
+    undefined,
+    diagnostics,
+    providerCatalog,
+  );
 }
 
-function reviewFailureMessage(reason: FlueCliReviewFailure["reason"]): string {
-  switch (reason) {
-    case "cancelled": return "The review was cancelled.";
-    case "authentication_required": return "The selected review model needs sign-in before it can run.";
-    case "rate_limited": return "The selected review model is rate limited. Try again shortly or choose another model.";
-    case "runtime_unavailable": return "Patchdesk could not start its local review runtime. Repackage or reinstall the app, then try again.";
-    case "timed_out": return "The selected review model did not finish before the review timed out.";
-    case "invalid_result": return "The selected review model returned a result Patchdesk could not use.";
-    case "execution_failed": return "The selected review model stopped before it returned a review.";
-  }
+async function recoverInsights(
+  modelCatalog: LocalPiRuntimeModelCatalog,
+  providerCatalog: InsightProviderCatalog,
+  operations: ReviewOperationCoordinator,
+): Promise<InsightRunCoordinator> {
+  const coordinator = createInsightCoordinator(
+    modelCatalog,
+    providerCatalog,
+    operations,
+  );
+  await coordinator.recoverAll();
+  return coordinator;
 }
 
 app.setName("Patchdesk");
@@ -445,7 +431,8 @@ async function createWorkbenchWindow(
     webPreferences: {
       additionalArguments: [
         `--patchdesk-qa-scroll-diagnostics=${
-          !app.isPackaged || process.argv.includes("--patchdesk-qa-scroll-diagnostics")
+          !app.isPackaged ||
+          process.argv.includes("--patchdesk-qa-scroll-diagnostics")
             ? "1"
             : "0"
         }`,
@@ -490,9 +477,13 @@ async function createWorkbenchWindow(
         rendererNavigationState = state;
       },
       async openExternalHttps(url) {
-        return await openAllowedExternalUrl(url, allowedHosts, async (candidate) => {
-          await shell.openExternal(candidate);
-        });
+        return await openAllowedExternalUrl(
+          url,
+          allowedHosts,
+          async (candidate) => {
+            await shell.openExternal(candidate);
+          },
+        );
       },
       async selectDirectory(input) {
         const result = await dialog.showOpenDialog(window, {

@@ -16,15 +16,6 @@ export type InsightSelection = {
 /** A provider/model/reasoning value saved as run provenance. */
 export type InsightProvenance = InsightSelection;
 
-/** Provenance used only when loading a retained result written by schema v1. */
-export type HistoricalInsightProvenance = {
-  readonly provider: "pi";
-  readonly configuration: "unavailable";
-};
-
-/** A retained result's current or historical provenance. */
-export type RetainedInsightProvenance = InsightProvenance | HistoricalInsightProvenance;
-
 /** Parses a bounded provider identifier from a transport or storage boundary. */
 export function parseInsightProvider(input: unknown): Result<InsightProvider, "invalid_provider"> {
   if (input === "pi" || input === "codex-cli-account") return ok(input);

@@ -55,3 +55,21 @@ describe("compact merge command", () => {
     expect(await screen.findByText("Merged abcdef.")).toBeTruthy();
   });
 });
+
+  it("offers read-side recovery after a failed merge without issuing a second merge", async () => {
+    const user = userEvent.setup();
+    const merge = vi.fn(async () => { throw new Error("response lost"); });
+    const recover = vi.fn(async () => undefined);
+    render(<CompactMergeCommand
+      readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+      context={{ repo: "centraldigital/patchdesk", prNumber: 42, title: "Protect review writes", base: "sit", head: "feat/review", headSha: "abcdef1234567890" }}
+      methods={["squash"]}
+      onMerge={merge}
+      onRecoverMerge={recover}
+    />);
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+    const check = await screen.findByRole("button", { name: "Check GitHub status" });
+    await user.click(check);
+    expect(recover).toHaveBeenCalledTimes(1);
+    expect(merge).toHaveBeenCalledTimes(1);
+  });

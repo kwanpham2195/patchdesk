@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { requestJson } from "../api-client";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -7,8 +6,6 @@ import {
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
-import { ReviewBatchPanel } from "../components/review-batch-panel";
-import { SafeRunPanel } from "../components/safe-run-panel";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import { Button } from "../components/ui/button";
 import {
@@ -27,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { ReviewBatch } from "../../../domain/review-batch";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -58,12 +54,6 @@ export function AppFixtureContent({
           diffSide: "new",
         }}
       />
-    );
-  if (hash === "#run-fixture")
-    return (
-      <div className="p-6">
-        <RunFixturePanel />
-      </div>
     );
   if (hash === "#walkthrough-fixture")
     return (
@@ -160,13 +150,14 @@ export function AppFixtureContent({
                   headSha: workbenchFixtureData.pullRequest.headSha,
                 },
                 methods: ["squash", "merge", "rebase"] as const,
+                onRecoverMerge: async () => undefined,
                 onMerge: async () => ({}),
               },
             })}
       />
     );
   }
-  if (hash === "#submission-fixture") return <SubmissionFixture />;
+  if (hash === "#submission-fixture") return <p className="p-6 text-sm text-muted-foreground">Use the Review workbench to manage a GitHub pending review.</p>;
   if (hash === "#merge-fixture")
     return (
       <div className="mx-auto max-w-3xl p-6">
@@ -185,6 +176,7 @@ export function AppFixtureContent({
             headSha: "abcdef1234567890",
           }}
           methods={["squash", "merge"]}
+          onRecoverMerge={async () => undefined}
           onMerge={async () => ({ mergeCommitSha: "abcdef" })}
         />
       </div>
@@ -379,7 +371,6 @@ function CanonicalFixtureWorkbench({
             </p>
           </section>
         ),
-        draftDock: null,
         conversation: null,
         mergeAction: null,
       }}
@@ -451,39 +442,8 @@ export function createUnifiedReviewFixture(
   state: UnifiedReviewFixtureState = "files-default",
 ): WorkbenchResponse {
   const base = canonicalWorkbenchModel(workbenchFixtureData);
-  const baseDraft = base.draft;
-  if (baseDraft === undefined)
-    throw new Error("Fixture Review must include a draft");
-  const emptyDraft = { ...baseDraft, summaryBody: "", items: [] };
-  const retainedWalkthrough = fixtureWalkthroughRetention(
-    base.session.id,
-    base.revision.reviewedHeadSha,
-  );
-  const withFeedback =
-    state === "published-feedback-collapsed" ||
-    state === "published-feedback-expanded" ||
-    state === "pr-overview" ||
-    state === "merged" ||
-    state === "closed" ||
-    state === "publication-confirmed";
-  const draft =
-    state === "needs-attention"
-      ? {
-          ...baseDraft,
-          items: baseDraft.items.map((item) =>
-            item._tag === "InlineComment"
-              ? {
-                  ...item,
-                  postability: "needs_attention" as const,
-                  attention: {
-                    reason: "missing" as const,
-                    originalAnchor: item.anchor,
-                  },
-                }
-              : item,
-          ),
-        }
-      : emptyDraft;
+  const retainedWalkthrough = fixtureWalkthroughRetention(base.session.id, base.revision.reviewedHeadSha);
+  const withFeedback = state === "published-feedback-collapsed" || state === "published-feedback-expanded" || state === "pr-overview" || state === "merged" || state === "closed";
   const analysisFailure = {
     runId: "insight-analysis-1-aaaaaaaaaaaa-review",
     category: "unexpected_failure" as const,
@@ -525,7 +485,6 @@ export function createUnifiedReviewFixture(
                   ? {
                       replacementFailure: {
                         ...analysisFailure,
-                        incidentId: "fixture-incident",
                       },
                     }
                   : {}),
@@ -544,37 +503,6 @@ export function createUnifiedReviewFixture(
           progress: { reviewedSectionIds: [], supportReviewed: false },
         }
       : base.insights.walkthrough;
-  const publicationState =
-    state === "publication-publishing"
-      ? {
-          ...baseDraft,
-          state: {
-            _tag: "Applying" as const,
-            operation: {
-              _tag: "CreatePendingReview" as const,
-              itemIds: baseDraft.items.map((item) => item.id),
-            },
-          },
-        }
-      : state === "publication-confirmed"
-        ? emptyDraft
-        : state === "publication-needs-confirmation"
-          ? {
-              ...baseDraft,
-              state: {
-                _tag: "PartialFailure" as const,
-                operation: {
-                  _tag: "CreatePendingReview" as const,
-                  itemIds: baseDraft.items.map((item) => item.id),
-                },
-                failure: {
-                  _tag: "SafeWriteFailure" as const,
-                  category: "outcome_unknown" as const,
-                  message: "GitHub did not confirm the complete publication.",
-                },
-              },
-            }
-          : draft;
   return {
     ...base,
     review:
@@ -597,7 +525,6 @@ export function createUnifiedReviewFixture(
           }
         : base.revision,
     insights: { analysis, walkthrough },
-    draft: publicationState,
     conversation: withFeedback
       ? {
           prDescription: base.conversation.prDescription ?? "",
@@ -721,7 +648,6 @@ function canonicalWorkbenchModel(
       },
       walkthrough: { status: "not_generated" },
     },
-    draft: submissionFixtureData.batch as never,
     conversation: { prDescription: "", entries: [] },
     comments: data.comments,
     checks: data.checks,
@@ -864,70 +790,6 @@ function WalkthroughFixtureControls({
   );
 }
 
-export function SubmissionFixture({
-  defaultApplyOpen = false,
-}: {
-  readonly defaultApplyOpen?: boolean;
-} = {}): React.JSX.Element {
-  const [batch, setBatch] = useState<ReviewBatch>(
-    submissionFixtureData.batch as unknown as ReviewBatch,
-  );
-  return (
-    <div className="mx-auto max-w-3xl p-6">
-      <ReviewBatchPanel
-        batch={batch as never}
-        writeBlocked={false}
-        defaultApplyOpen={defaultApplyOpen}
-        actions={{
-          addInlineComment: async () => undefined,
-          removeItem: async () => undefined,
-          addThreadReply: async () => undefined,
-          setThreadState: async () => undefined,
-          apply: async () =>
-            setBatch((current) => ({
-              ...current,
-              state: { _tag: "PendingReview" as const, reviewId: "9001" },
-            })),
-          submit: async (event) =>
-            setBatch((current) => ({
-              ...current,
-              state: { _tag: "Submitted" as const, reviewId: "9001", event },
-              suggestedEvent: event,
-            })),
-        }}
-      />
-    </div>
-  );
-}
-
-function RunFixturePanel(): React.JSX.Element {
-  const [runId, setRunId] = useState<string>();
-  return (
-    <SafeRunPanel
-      profileId="fixture"
-      sessionId="fixture-session"
-      attemptId="001"
-      recoveryView={{
-        noticeKey: "ready_to_review",
-        tone: "positive",
-        actionKey: "run_review",
-      }}
-      {...(runId === undefined ? {} : { runId })}
-      onStart={async () => {
-        const value = await requestJson("/v1/runs/review-pr", {
-          method: "POST",
-          body: {
-            profileId: "fixture",
-            sessionId: "fixture-session",
-            attemptId: "001",
-          },
-        });
-        if (record(value) && typeof value.runId === "string")
-          setRunId(value.runId);
-      }}
-    />
-  );
-}
 
 const fixturePatch = buildFixturePatch();
 const walkthroughFixturePatch = `${fixturePatch}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+new\n`;
@@ -1034,32 +896,10 @@ export const workbenchFixtureData = {
       "pnpm test:e2e -- --grep completed-review",
     ],
     assumptions: [
-      "The head SHA remains current while this local draft is edited.",
+      "The head SHA remains current while this Review is inspected.",
     ],
   },
-  editableDraft: {
-    sessionId: "fixture-session",
-    attemptId: "001",
-    state: { _tag: "LocalDraft" },
-    summaryBody:
-      "One mapped finding and one finding that needs manual placement.",
-    suggestedEvent: "COMMENT",
-    comments: [
-      {
-        findingId: "mapped",
-        include: true,
-        originalSuggestedBody:
-          "Keep the stale-head check at the write boundary.",
-        body: "Keep the stale-head check at the write boundary.",
-        path: "src/b.ts",
-        line: 1,
-        diffSide: "new",
-        postability: "postable",
-      },
-    ],
-    createdAt: "2026-07-17T00:00:00.000Z",
-    updatedAt: "2026-07-17T00:00:00.000Z",
-  },
+
   commits: [
     {
       sha: "b".repeat(40),
@@ -1205,6 +1045,3 @@ export const submissionFixtureData = {
     updatedAt: "2026-07-18T10:00:00.000Z" as never,
   },
 };
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

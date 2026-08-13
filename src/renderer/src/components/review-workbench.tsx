@@ -18,8 +18,7 @@ import {
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
-import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
-import { parseReviewBatch } from "../../../domain/review-batch";
+import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -104,34 +103,6 @@ function pullRequestExternalRef(
   };
 }
 
-function draftInlineAnnotations(
-  draft: WorkbenchResponse["draft"],
-): ReadonlyArray<ReviewInlineAnnotation> {
-  if (draft === undefined) return [];
-  const parsed = parseReviewBatch(draft);
-  if (parsed._tag === "err") return [];
-  return parsed.value.items.flatMap((item) => {
-    if (
-      item._tag !== "InlineComment" ||
-      !item.include ||
-      item.postability !== "postable"
-    )
-      return [];
-    return [
-      {
-        id: `local-draft:${item.id}`,
-        path: item.anchor.path,
-        start: item.anchor.startLine,
-        end: item.anchor.line,
-        side: item.anchor.side,
-        severity: "info",
-        title: "Local comment",
-        explanation: item.body,
-        localComment: { body: item.body },
-      },
-    ];
-  });
-}
 
 function createCommitCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
@@ -260,7 +231,6 @@ export type ReviewWorkbenchActions = {
 
 export type ReviewWorkbenchSlots = {
   readonly insights: React.ReactNode;
-  readonly draftDock: React.ReactNode;
   readonly conversation: React.ReactNode;
   readonly mergeAction: React.ReactNode;
 };
@@ -352,7 +322,7 @@ export function ReviewWorkbench({
     "conversation" | "diff" | "insights"
   >(
     initialState?.activeTab ??
-      (initialState?.section === "insights" ? "insights" : "conversation"),
+      (initialState?.section === "insights" ? "insights" : "diff"),
   );
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     initialState?.selectedPath,
@@ -567,7 +537,6 @@ export function ReviewWorkbench({
             },
           ],
     ),
-    ...draftInlineAnnotations(model.draft),
     ...conversationAnnotations.filter(
       (annotation) =>
         !(
@@ -1005,8 +974,7 @@ export function ReviewWorkbench({
             className="hidden min-h-0 shrink-0"
             data-review-workbench-draft-dock
           >
-            {slots.draftDock}
-          </div>
+            </div>
 
           <CanonicalReviewOverviewSheet
             open={overviewOpen}
@@ -1086,6 +1054,7 @@ export function ReviewWorkbench({
                 : { pullRequest: actions.merge.pullRequest })}
               context={actions.merge.context}
               onMerge={actions.merge.onMerge}
+              onRecoverMerge={actions.merge.onRecoverMerge}
             />
           )}
         </section>

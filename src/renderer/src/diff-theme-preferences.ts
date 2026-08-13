@@ -19,16 +19,20 @@ export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
 };
 
 const storageKey = "patchdesk.diff-theme.v2";
-const legacyStorageKey = "patchdesk.diff-theme.v1";
+const v1StorageKey = "patchdesk.diff-theme.v1";
 
 function hasTheme(
   themes: ReadonlyArray<DiffThemeOption>,
   value: unknown,
 ): value is string {
-  return typeof value === "string" && themes.some((theme) => theme.id === value);
+  return (
+    typeof value === "string" && themes.some((theme) => theme.id === value)
+  );
 }
 
-export function parseDiffThemePreferences(value: unknown): DiffThemePreferences {
+export function parseDiffThemePreferences(
+  value: unknown,
+): DiffThemePreferences {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return DEFAULT_DIFF_THEME_PREFERENCES;
   }
@@ -52,23 +56,26 @@ export function loadDiffThemePreferences(): DiffThemePreferences {
     // pierre-dark} default pair to the GitHub defaults here, so profiles that
     // persisted the previous default adopt the improvement without clearing
     // storage; explicit custom pairs are returned unchanged.
-    if (serialized !== null) return parseDiffThemePreferences(JSON.parse(serialized));
+    if (serialized !== null)
+      return parseDiffThemePreferences(JSON.parse(serialized));
 
-    const legacy = parseLegacyDiffThemePreference(window.localStorage.getItem(legacyStorageKey));
-    return legacy ?? DEFAULT_DIFF_THEME_PREFERENCES;
+    const v1 = parseV1DiffThemePreference(
+      window.localStorage.getItem(v1StorageKey),
+    );
+    return v1 ?? DEFAULT_DIFF_THEME_PREFERENCES;
   } catch {
     return DEFAULT_DIFF_THEME_PREFERENCES;
   }
 }
 
-/** Removes legacy renderer preferences after config.json accepts the migration. */
+/** Removes renderer preference keys after config.json accepts the durable value. */
 export function clearDiffThemePreferences(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(storageKey);
-    window.localStorage.removeItem(legacyStorageKey);
+    window.localStorage.removeItem(v1StorageKey);
   } catch {
-    // Config is already durable; leave the legacy values for a later cleanup.
+    // Config is already durable; stale renderer values are safe to ignore.
   }
 }
 
@@ -87,20 +94,25 @@ export function diffThemeFor(
   return preferences;
 }
 
-function parseLegacyDiffThemePreference(value: string | null): DiffThemePreferences | undefined {
+function parseV1DiffThemePreference(
+  value: string | null,
+): DiffThemePreferences | undefined {
   if (value === null) return undefined;
   try {
     const parsed: unknown = JSON.parse(value);
-    if (parsed === "github") return { light: "pierre-light", dark: "pierre-dark" };
+    if (parsed === "github")
+      return { light: "pierre-light", dark: "pierre-dark" };
     if (parsed === "high_contrast") {
       return {
         light: "github-light-high-contrast",
         dark: "github-dark-high-contrast",
       };
     }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return undefined;
     const family = (parsed as Record<string, unknown>).family;
-    if (family === "github") return { light: "pierre-light", dark: "pierre-dark" };
+    if (family === "github")
+      return { light: "pierre-light", dark: "pierre-dark" };
     if (family === "high_contrast") {
       return {
         light: "github-light-high-contrast",

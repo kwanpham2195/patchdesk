@@ -10,8 +10,8 @@ export type LocalApiStartupResult<
 > =
   | { readonly _tag: "started"; readonly server: TServer }
   | { readonly _tag: "invalid-configuration" }
-  /** Startup stops before recovery when legacy state cannot be migrated safely. */
-  | { readonly _tag: "migration-failed" };
+  /** Startup stops when required current-state recovery cannot finish safely. */
+  | { readonly _tag: "recovery-failed" };
 
 /** Narrow server lifecycle dependency owned by the desktop composition root. */
 export type LocalApiLifecycle = {

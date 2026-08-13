@@ -46,7 +46,7 @@ const operationSchema = v.strictObject({
 });
 const stateSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("WriteInFlight"), operation: operationSchema }),
-  v.strictObject({ _tag: v.literal("OutcomeUnknown"), operation: operationSchema, resolution: v.optional(v.picklist(["check_required", "manual_resolution_required"])) }),
+  v.strictObject({ _tag: v.literal("OutcomeUnknown"), operation: operationSchema, resolution: v.picklist(["check_required", "manual_resolution_required"]) }),
   v.strictObject({
     _tag: v.literal("Confirmed"),
     receipt: v.strictObject({ reviewId: v.string(), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), headSha: v.string(), submittedAt: v.string() }),
@@ -67,7 +67,7 @@ export function parseDirectSummaryReviewState(input: unknown): Result<DirectSumm
   const operation = parseOperation(parsed.output.operation);
   if (operation._tag === "err") return invalid();
   return parsed.output._tag === "OutcomeUnknown"
-    ? ok({ _tag: "OutcomeUnknown", operation: operation.value, resolution: parsed.output.resolution ?? "check_required" })
+    ? ok({ _tag: "OutcomeUnknown", operation: operation.value, resolution: parsed.output.resolution })
     : ok({ _tag: "WriteInFlight", operation: operation.value });
 }
 

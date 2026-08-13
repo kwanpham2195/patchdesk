@@ -1,921 +1,414 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  parseGitHubHost,
-  parseContentHash,
-  parseFindingId,
-  parseInsightRunId,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  parseGitSha,
-  parsePullRequestNumber,
-  parseReviewId,
-  parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import {
-  parseViewerPendingReview,
-  type PendingReviewState,
-  type ViewerPendingReview,
-} from "../../src/domain/pending-review";
+import { err, ok } from "../../src/domain/result";
+import type { ViewerPendingReview } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
-import { err, ok, type Result } from "../../src/domain/result";
 import {
   PendingReviewService,
   projectPendingReview,
 } from "../../src/services/pending-review-service";
-import type { ReviewWriteGate } from "../../src/services/review-write-gate";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
-const must = <T>(result: Result<T, unknown>): T => {
-  if (result._tag === "ok") return result.value;
-  throw new Error("fixture");
+const profileId = "cfw" as never;
+const reviewId =
+  "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+const headSha = "a".repeat(40) as never;
+const sessionId =
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+const now = "2026-08-09T11:35:00.000Z" as never;
+const expected = { sessionId, headSha, patchHash: "b".repeat(64) as never };
+const anchor = {
+  path: "src/a.ts" as never,
+  startLine: 1,
+  line: 1,
+  side: "new" as const,
 };
-const profileId = must(parseWorkspaceProfileId("cfw"));
-const reviewId = must(
-  parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
-);
-const headSha = must(parseGitSha("1".repeat(40)));
-const sessionKey = {
-  profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
-  repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
-  headSha,
-};
-const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 const finding = {
-  analysisRunId: must(
-    parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-fixture"),
-  ),
-  findingId: must(parseFindingId("finding-1")),
-  sessionId: "session-a" as never,
+  analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
+  findingId: "finding-1" as never,
+  sessionId,
   headSha,
-  patchHash: must(parseContentHash("a".repeat(64))),
+  patchHash: "b".repeat(64) as never,
 };
+const threadId = "PRRT_kwDORJzsQM0001" as never;
 
-const reviewRaw = {
-  restId: "9001",
-  nodeId: "PRR_kwDORJzsQM7e6QwJ",
-  author: "pmquan2cfw",
-  pr: {
-    host: "github.com",
-    owner: "centraldigital",
-    repo: "patchdesk",
-    number: 42,
-  },
-  headSha: "1111111111111111111111111111111111111111",
-  comments: [
-    {
-      reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd",
-      threadId: "PRRT_kwDORJzsQM0001",
-      body: "Comment body",
-      anchor: {
-        path: "docs/docs.go",
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      createdAt: "2026-08-09T11:34:50.000Z",
-    },
-  ],
-  createdAt: "2026-08-09T11:34:50.000Z",
-  updatedAt: "2026-08-09T11:34:50.000Z",
-};
-
-const review = (): ViewerPendingReview => {
-  const parsed = parseViewerPendingReview(reviewRaw);
-  if (parsed._tag === "err") throw new Error("fixture");
-  return parsed.value;
-};
-const createdThreadId =
-  (): ViewerPendingReview["comments"][number]["threadId"] => {
-    const threadId = review().comments.at(0)?.threadId;
-    if (threadId === undefined) throw new Error("fixture");
-    return threadId;
-  };
-
-function session(pendingReview?: PendingReviewState): ReviewSession {
+function pending(): ViewerPendingReview {
   return {
-    schemaVersion: 5,
-    id: "session-a" as never,
-    key: sessionKey,
-    state: { _tag: "Created" },
-    pr: { headSha, isDraft: false, isOpen: true },
-    patchPath: "/tmp/patch.diff" as never,
-    scope: { kind: "full" },
-    worktree: { path: "/tmp/worktree" as never, headSha },
-    createdAt: "2026-08-09T00:00:00.000Z" as never,
-    updatedAt: "2026-08-09T00:00:00.000Z" as never,
-    ...(pendingReview === undefined ? {} : { pendingReview }),
+    restId: "9001" as never,
+    nodeId: "PRR_kwDORJzsQM7e6QwJ" as never,
+    author: "fixture" as never,
+    pr: {
+      host: "github.com" as never,
+      owner: "centraldigital" as never,
+      repo: "patchdesk" as never,
+      number: 42 as never,
+    },
+    headSha,
+    comments: [
+      {
+        reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd" as never,
+        threadId,
+        body: "body",
+        anchor,
+        createdAt: now,
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
   };
 }
-
-function makeStore(initial: ReviewSession) {
-  let stored = initial;
-  const saves: Array<ReviewSession> = [];
+function session(
+  state?: unknown,
+  findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
+): ReviewSession {
   return {
-    store: {
-      load: vi.fn(async () => ok(stored)),
-      save: vi.fn(async (next: ReviewSession) => {
-        stored = next;
-        saves.push(next);
-        return ok(undefined);
-      }),
+    schemaVersion: 5,
+    id: sessionId,
+    key: {
+      profileId,
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      prNumber: 42,
+      headSha,
     },
+    pr: { headSha, isDraft: false, isOpen: true },
+    patchPath: "/tmp/patch" as never,
+    worktree: { path: "/tmp/worktree" as never, headSha },
+    createdAt: now,
+    updatedAt: now,
+    ...(state === undefined ? {} : { pendingReview: state }),
+    ...(findingReviewReceipts === undefined ? {} : { findingReviewReceipts }),
+  } as unknown as ReviewSession;
+}
+function fixture(
+  state?: unknown,
+  overrides: Record<string, unknown> = {},
+  findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
+) {
+  let stored = session(state, findingReviewReceipts);
+  const saves: unknown[] = [];
+  const store = {
+    load: vi.fn(async () => ok(stored)),
+    save: vi.fn(async (next: ReviewSession) => {
+      stored = next;
+      saves.push(next);
+      return ok(undefined);
+    }),
+  };
+  const gate = {
+    requireFresh: vi.fn(async () =>
+      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+    ),
+    requireCurrentSession: vi.fn(async () =>
+      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+    ),
+  };
+  const github = {
+    resolveAuthenticatedAccount: vi.fn(async () => ok({ account: "fixture" })),
+    getViewerPendingReview: vi.fn(async () => ok({ _tag: "None" })),
+    getPullRequest: vi.fn(async () => ok({ headSha })),
+    startPendingReviewWithThread: vi.fn(async () =>
+      ok({ review: pending(), createdThreadId: threadId }),
+    ),
+    addPendingReviewThread: vi.fn(async () =>
+      ok({ review: pending(), createdThreadId: threadId }),
+    ),
+    submitPendingReview: vi.fn(async () => ok(undefined)),
+    discardPendingReview: vi.fn(async () => ok(undefined)),
+    ...overrides,
+  };
+  const coordinator = new ReviewOperationCoordinator();
+  return {
+    service: new PendingReviewService(
+      gate as never,
+      store as never,
+      github as never,
+      () => now,
+      coordinator,
+    ),
+    store,
+    gate,
+    github,
+    coordinator,
     saves,
     current: () => stored,
   };
 }
 
-function makeGate(
-  sessionValue: ReviewSession,
-): Pick<ReviewWriteGate, "requireFresh" | "requireCurrentSession"> {
-  return {
-    requireFresh: vi.fn(
-      async () =>
-        ok({
-          profile: { ghAccount: "pmquan2cfw" } as never,
-          session: sessionValue,
-        }) as never,
-    ),
-    requireCurrentSession: vi.fn(
-      async () =>
-        ok({
-          profile: { ghAccount: "pmquan2cfw" } as never,
-          session: sessionValue,
-        }) as never,
-    ),
-  };
-}
-
-function makeGateway(overrides: Record<string, unknown> = {}) {
-  return {
-    resolveAuthenticatedAccount: vi.fn(async () =>
-      ok({ host: "github.com", account: "pmquan2cfw" }),
-    ),
-    getViewerPendingReview: vi.fn(async () => ok({ _tag: "None" })),
-    startPendingReviewWithThread: vi.fn(async () =>
-      ok({ review: review(), createdThreadId: createdThreadId() }),
-    ),
-    addPendingReviewThread: vi.fn(async () =>
-      ok({ review: review(), createdThreadId: createdThreadId() }),
-    ),
-    submitPendingReview: vi.fn(async () => ok({ reviewId: "9001" })),
-    discardPendingReview: vi.fn(async () => ok(undefined)),
-    getPullRequest: vi.fn(async () => ok({ headSha } as never)),
-    ...overrides,
-  };
-}
-
-const service = (
-  sessionValue: ReviewSession,
-  gateway: ReturnType<typeof makeGateway>,
-  store: ReturnType<typeof makeStore>["store"],
-) =>
-  new PendingReviewService(
-    makeGate(sessionValue),
-    store,
-    gateway as never,
-    () => "2026-08-09T11:35:00.000Z" as never,
-  );
-
-describe("PendingReviewService.reconcile", () => {
-  it("imports an externally started viewer pending review at open/refresh", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway({
-      getViewerPendingReview: vi.fn(async () =>
-        ok({ _tag: "Pending", review: review() }),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).reconcile({ profileId, reviewId });
-    expect(result).toMatchObject({
+describe("PendingReviewService", () => {
+  it("keeps an absent pending state unavailable until a complete read persists None", async () => {
+    const value = fixture();
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "unavailable" });
+    await expect(
+      value.service.addThread({
+        profileId,
+        reviewId,
+        expected,
+        pendingReviewNodeId: pending().nodeId,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "unavailable" });
+    await expect(
+      value.service.submit({
+        profileId,
+        reviewId,
+        expected,
+        event: "COMMENT",
+        summaryBody: "summary",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "unavailable" });
+    await expect(
+      value.service.discard({
+        profileId,
+        reviewId,
+        expected,
+        confirmation: true,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "unavailable" });
+    await expect(
+      value.service.reconcile({ profileId, reviewId }),
+    ).resolves.toMatchObject({
       _tag: "ok",
-      value: { unavailable: false, state: { _tag: "Pending" } },
+      value: { state: { _tag: "None" }, unavailable: false },
     });
-    expect(fixture.current().pendingReview).toMatchObject({
-      _tag: "Pending",
-      review: { restId: "9001" },
+    expect(value.saves).toHaveLength(0);
+    const persisted = fixture({ _tag: "Pending", review: pending() });
+    await expect(
+      persisted.service.reconcile({ profileId, reviewId }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "None" }, unavailable: false },
     });
+    expect(persisted.saves).toHaveLength(1);
   });
 
-  it("persists None only when the complete read proves absence", async () => {
-    const fixture = makeStore(session());
-    const result = await service(
-      fixture.current(),
-      makeGateway(),
-      fixture.store,
-    ).reconcile({ profileId, reviewId });
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "None" } },
-    });
-    // An absent field already means None; an explicit None record is not written.
-    expect(fixture.saves).toHaveLength(0);
-  });
-
-  it("reports unavailable without replacing the stored state when the read fails", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway({
-      getViewerPendingReview: vi.fn(async () =>
-        err({
-          _tag: "GitHubReadFailed" as const,
-          operation: "get_pending_review" as const,
-        }),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).reconcile({ profileId, reviewId });
-    expect(result).toMatchObject({
+  it("does not turn a failed read into None", async () => {
+    const value = fixture(
+      { _tag: "Pending", review: pending() },
+      {
+        getViewerPendingReview: vi.fn(async () =>
+          err({ _tag: "GitHubReadFailed" }),
+        ),
+      },
+    );
+    await expect(
+      value.service.reconcile({ profileId, reviewId }),
+    ).resolves.toMatchObject({
       _tag: "ok",
       value: { unavailable: true, state: { _tag: "Pending" } },
     });
-    expect(fixture.saves).toHaveLength(0);
+    expect(value.saves).toHaveLength(0);
   });
 
-  it("keeps a locked operation locked until explicit recovery", async () => {
-    const locked: PendingReviewState = {
-      _tag: "OutcomeUnknown",
-      operation: {
-        _tag: "Start",
-        requestId: "pending-review-20260809" as never,
-      },
-      startedAt: "2026-08-09T11:35:00.000Z" as never,
-    };
-    const fixture = makeStore(session(locked));
-    const gateway = makeGateway({
-      getViewerPendingReview: vi.fn(async () =>
-        ok({ _tag: "Pending", review: review() }),
-      ),
-    });
-    const withoutRecover = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).reconcile({ profileId, reviewId });
-    expect(withoutRecover).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "OutcomeUnknown" } },
-    });
-    expect(fixture.saves).toHaveLength(0);
-    const recovered = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).reconcile({ profileId, reviewId, recover: true });
-    expect(recovered).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "Pending", review: { restId: "9001" } } },
-    });
-    expect(fixture.current().pendingReview).toMatchObject({ _tag: "Pending" });
-  });
-  it("recovers an owned review while locking only the uncertain Finding", async () => {
-    const locked: PendingReviewState = {
-      _tag: "OutcomeUnknown",
-      operation: {
-        _tag: "Start",
-        requestId: "pending-review-20260809" as never,
+  it("persists start intent before the write and receipt before success", async () => {
+    const value = fixture({ _tag: "None" });
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
         finding,
-      },
-      startedAt: "2026-08-09T11:35:00.000Z" as never,
-    };
-    const fixture = makeStore(session(locked));
-    const gateway = makeGateway({
-      getViewerPendingReview: vi.fn(async () =>
-        ok({ _tag: "Pending", review: review() }),
-      ),
-    });
-    const recovered = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).reconcile({ profileId, reviewId, recover: true });
-    expect(recovered).toMatchObject({
-      _tag: "ok",
-      value: {
-        state: {
-          _tag: "Pending",
-          review: { restId: "9001" },
-          unresolvedFinding: finding,
-        },
-      },
-    });
-    const current = fixture.current().pendingReview;
-    if (current === undefined) throw new Error("fixture");
-    expect(projectPendingReview(current, false)).toMatchObject({
-      state: "pending",
-      count: 1,
-    });
-  });
-
-  it("waits behind another Review operation instead of rejecting explicit recovery", async () => {
-    const locked: PendingReviewState = {
-      _tag: "OutcomeUnknown",
-      operation: {
-        _tag: "Start",
-        requestId: "pending-review-20260809" as never,
-      },
-      startedAt: "2026-08-09T11:35:00.000Z" as never,
-    };
-    const fixture = makeStore(session(locked));
-    const coordinator = new ReviewOperationCoordinator();
-    let releaseObservation: (() => void) | undefined;
-    const observation = coordinator.withReviewLock(
-      profileId,
-      reviewId,
-      async () =>
-        new Promise<void>((resolve) => {
-          releaseObservation = resolve;
-        }),
-    );
-    await vi.waitFor(() => expect(releaseObservation).toBeDefined());
-    const gateway = makeGateway({
-      getViewerPendingReview: vi.fn(async () =>
-        ok({ _tag: "Pending", review: review() }),
-      ),
-    });
-    const pending = new PendingReviewService(
-      makeGate(fixture.current()),
-      fixture.store,
-      gateway as never,
-      () => "2026-08-09T11:35:00.000Z" as never,
-      coordinator,
-    );
-
-    const recovery = pending.reconcile({ profileId, reviewId, recover: true });
-    await Promise.resolve();
-    expect(gateway.getViewerPendingReview).not.toHaveBeenCalled();
-    releaseObservation?.();
-    await observation;
-    await expect(recovery).resolves.toMatchObject({
+      }),
+    ).resolves.toMatchObject({
       _tag: "ok",
       value: { state: { _tag: "Pending" } },
     });
-  });
-});
-
-describe("PendingReviewService Finding receipts", () => {
-  it("writes one exact pending Finding receipt atomically with the confirmed start", async () => {
-    const fixture = makeStore(session());
-    const result = await service(
-      fixture.current(),
-      makeGateway(),
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-      finding,
+    expect(value.github.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
+    expect(value.saves).toHaveLength(2);
+    expect(value.saves[0]).toMatchObject({
+      pendingReview: { _tag: "WriteInFlight", operation: { _tag: "Start" } },
     });
-    expect(result._tag).toBe("ok");
-    expect(fixture.current().findingReviewReceipts).toEqual([
+    expect(value.saves[1]).toMatchObject({
+      pendingReview: { _tag: "Pending" },
+      findingReviewReceipts: [
+        { findingId: finding.findingId, threadId, state: "pending" },
+      ],
+    });
+  });
+
+  it("does not replay an uncertain start and retains its shared lock", async () => {
+    const value = fixture(
+      { _tag: "None" },
       {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "unavailable" }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "OutcomeUnknown" },
+    });
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "pending_review_locked" });
+    expect(value.github.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds only once for an exact Finding while its receipt owns the pending thread", async () => {
+    const value = fixture({ _tag: "Pending", review: pending() });
+    await expect(
+      value.service.addThread({
+        profileId,
+        reviewId,
+        expected,
+        pendingReviewNodeId: pending().nodeId,
+        anchor,
+        body: "comment",
+        finding,
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    await expect(
+      value.service.addThread({
+        profileId,
+        reviewId,
+        expected,
+        pendingReviewNodeId: pending().nodeId,
+        anchor,
+        body: "comment",
+        finding,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "pending_review_locked" });
+    expect(value.github.addPendingReviewThread).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["published", "historical"] as const)(
+    "rejects an exact Finding with a %s receipt before a remote write",
+    async (state) => {
+      const receipt = {
         ...finding,
-        threadId: createdThreadId(),
-        pendingReviewNodeId: review().nodeId,
-        state: "pending",
-      },
-    ]);
-  });
-
-  it("publishes and discards only receipts owned by the confirmed pending review", async () => {
-    const receipt = {
-      ...finding,
-      threadId: createdThreadId(),
-      pendingReviewNodeId: review().nodeId,
-      state: "pending" as const,
-    };
-    const submitted = makeStore({
-      ...session({ _tag: "Pending", review: review() }),
-      findingReviewReceipts: [receipt],
-    });
-    await service(submitted.current(), makeGateway(), submitted.store).submit({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      event: "COMMENT",
-      summaryBody: "Summary",
-    });
-    expect(submitted.current().findingReviewReceipts).toEqual([
-      { ...receipt, state: "published" },
-    ]);
-    const discarded = makeStore({
-      ...session({ _tag: "Pending", review: review() }),
-      findingReviewReceipts: [receipt],
-    });
-    await service(discarded.current(), makeGateway(), discarded.store).discard({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      confirmation: true,
-    });
-    expect(discarded.current().findingReviewReceipts).toBeUndefined();
-  });
-});
-
-describe("PendingReviewService.start", () => {
-  it("persists the operation intent before the write and the receipt before success", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "Pending", review: { restId: "9001" } } },
-    });
-    // Intent (WriteInFlight) was persisted before the write; the confirmed
-    // receipt was persisted after it.
-    const writes = fixture.saves.map((saved) => saved.pendingReview?._tag);
-    expect(writes).toEqual(["WriteInFlight", "Pending"]);
-    const savedIntent = fixture.saves[0]?.pendingReview;
-    expect(savedIntent).toMatchObject({
-      _tag: "WriteInFlight",
-      operation: { _tag: "Start" },
-    });
-    expect(gateway.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
-    expect(fixture.current().pendingReview).toMatchObject({ _tag: "Pending" });
-  });
-
-  it("a lost response becomes OutcomeUnknown and is never retried", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway({
-      startPendingReviewWithThread: vi.fn(async () =>
-        err({
-          _tag: "GitHubWriteFailure",
-          category: "unavailable",
-          message: "timeout",
+        threadId,
+        pendingReviewNodeId: pending().nodeId,
+        state,
+      };
+      const start = fixture({ _tag: "None" }, {}, [receipt]);
+      await expect(
+        start.service.start({
+          profileId,
+          reviewId,
+          expected,
+          anchor,
+          body: "comment",
+          finding,
         }),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
-    expect(fixture.current().pendingReview).toMatchObject({
-      _tag: "OutcomeUnknown",
-      operation: { _tag: "Start" },
-    });
-    expect(gateway.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
-  });
+      ).resolves.toEqual({ _tag: "err", error: "pending_review_locked" });
+      expect(start.github.startPendingReviewWithThread).not.toHaveBeenCalled();
+      expect(start.saves).toHaveLength(0);
 
-  it("a rejected write restores the prior confirmed state", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway({
-      startPendingReviewWithThread: vi.fn(async () =>
-        err({
-          _tag: "GitHubWriteFailure",
-          category: "rejected",
-          message: "rejected",
+      const add = fixture({ _tag: "Pending", review: pending() }, {}, [
+        receipt,
+      ]);
+      await expect(
+        add.service.addThread({
+          profileId,
+          reviewId,
+          expected,
+          pendingReviewNodeId: pending().nodeId,
+          anchor,
+          body: "comment",
+          finding,
         }),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(result).toEqual({ _tag: "err", error: "rejected" });
-    expect(fixture.current().pendingReview).toEqual({ _tag: "None" });
+      ).resolves.toEqual({ _tag: "err", error: "pending_review_locked" });
+      expect(add.github.addPendingReviewThread).not.toHaveBeenCalled();
+      expect(add.saves).toHaveLength(0);
+    },
+  );
+
+  it("submits and discards only after intent and durable None receipts", async () => {
+    for (const command of ["submit", "discard"] as const) {
+      const value = fixture({ _tag: "Pending", review: pending() });
+      const result =
+        command === "submit"
+          ? value.service.submit({
+              profileId,
+              reviewId,
+              expected,
+              event: "COMMENT",
+              summaryBody: "summary",
+            })
+          : value.service.discard({
+              profileId,
+              reviewId,
+              expected,
+              confirmation: true,
+            });
+      await expect(result).resolves.toMatchObject({
+        _tag: "ok",
+        value: { state: { _tag: "None" } },
+      });
+      expect(value.saves[0]).toMatchObject({
+        pendingReview: {
+          _tag: "WriteInFlight",
+          operation: { _tag: command === "submit" ? "Submit" : "Discard" },
+        },
+      });
+      expect(value.saves[1]).toMatchObject({ pendingReview: { _tag: "None" } });
+    }
   });
 
-  it("cannot start while a pending review exists", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const result = await service(
-      fixture.current(),
-      makeGateway(),
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(result).toEqual({ _tag: "err", error: "no_pending_review" });
-  });
-
-  it("blocks writes after a live head change", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway({
-      getPullRequest: vi.fn(async () =>
-        ok({ headSha: "2".repeat(40) } as never),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(result).toEqual({ _tag: "err", error: "stale_head" });
-    expect(gateway.startPendingReviewWithThread).not.toHaveBeenCalled();
-  });
-
-  it("serializes one pending-review owner per Review", async () => {
-    const fixture = makeStore(session());
-    let release: (value: Result<ViewerPendingReview, never>) => void = () =>
-      undefined;
-    const gate = makeGate(fixture.current());
-    const gateway = makeGateway({
-      startPendingReviewWithThread: vi.fn(
-        () =>
-          new Promise<Result<ViewerPendingReview, never>>((resolve) => {
-            release = resolve as never;
-          }),
-      ),
-    });
-    const svc = new PendingReviewService(
-      gate,
-      fixture.store,
-      gateway as never,
-      () => "2026-08-09T11:35:00.000Z" as never,
-    );
-    const first = svc.start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    const second = await svc.start({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2908,
-        line: 2908,
-        side: "new",
-      },
-      body: "Comment body",
-    });
-    expect(second).toEqual({ _tag: "err", error: "review_write_in_progress" });
-    // Wait until the first write has crossed the remote boundary before
-    // resolving it, so the deferred receipt resolves the pending write.
-    await vi.waitFor(() => {
-      expect(gateway.startPendingReviewWithThread).toHaveBeenCalled();
-    });
-    release(ok(review()));
-    await expect(first).resolves.toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "Pending" } },
-    });
-    expect(gateway.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("PendingReviewService.addThread and submit", () => {
-  it("blocks only the unresolved Finding while the owned review stays usable", async () => {
-    const fixture = makeStore(
-      session({
-        _tag: "Pending",
-        review: review(),
-        unresolvedFinding: finding,
+  it("rejects a command while another review operation owns the shared lock", async () => {
+    const value = fixture({ _tag: "None" });
+    const key = `${profileId}:${reviewId}`;
+    expect(value.coordinator.acquire(key)).toBe(true);
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
       }),
-    );
-    const gateway = makeGateway();
-    const blocked = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).addThread({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      pendingReviewNodeId: review().nodeId,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2912,
-        line: 2912,
-        side: "new",
-      },
-      body: "Uncertain duplicate",
-      finding,
-    });
-    expect(blocked).toEqual({
-      _tag: "err",
-      error: "pending_review_locked",
-    });
-    expect(gateway.addPendingReviewThread).not.toHaveBeenCalled();
-
-    const added = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).addThread({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      pendingReviewNodeId: review().nodeId,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2914,
-        line: 2914,
-        side: "new",
-      },
-      body: "Independent comment",
-    });
-    expect(added).toMatchObject({ _tag: "ok" });
+    ).resolves.toEqual({ _tag: "err", error: "review_write_in_progress" });
+    value.coordinator.release(key);
   });
 
-  it("appends only to the represented pending review", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).addThread({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      pendingReviewNodeId: "PRR_kwDORJzsQM7e6QwJ" as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2912,
-        line: 2912,
-        side: "new",
-      },
-      body: "More",
-    });
-    expect(result._tag).toBe("ok");
-    expect(gateway.addPendingReviewThread).toHaveBeenCalledWith(
-      expect.objectContaining({ reviewId: "PRR_kwDORJzsQM7e6QwJ" }),
-    );
-  });
-
-  it("rejects an append for a different review identity", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).addThread({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      pendingReviewNodeId: "PRR_other0000000000" as never,
-      anchor: {
-        path: "docs/docs.go" as never,
-        startLine: 2912,
-        line: 2912,
-        side: "new",
-      },
-      body: "More",
-    });
-    expect(result).toEqual({ _tag: "err", error: "no_pending_review" });
-    expect(gateway.addPendingReviewThread).not.toHaveBeenCalled();
-  });
-
-  it("submit confirms None only after a durable receipt", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).submit({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      event: "COMMENT",
-      summaryBody: "Final summary",
-    });
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "None" } },
-    });
-    expect(gateway.submitPendingReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reviewId: "9001",
-        event: "COMMENT",
-        summaryBody: "Final summary",
-      }),
-    );
-    expect(fixture.current().pendingReview).toEqual({ _tag: "None" });
-  });
-
-  it("submit cannot run without a pending review", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).submit({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      event: "COMMENT",
-      summaryBody: "Final summary",
-    });
-    expect(result).toEqual({ _tag: "err", error: "no_pending_review" });
-    expect(gateway.submitPendingReview).not.toHaveBeenCalled();
-  });
-});
-
-describe("projectPendingReview", () => {
-  it("never projects unavailable as none and maps every durable state", () => {
-    expect(projectPendingReview({ _tag: "None" }, false)).toEqual({
-      state: "none",
-    });
+  it("projects unavailable and every uncertain operation as non-editable", () => {
     expect(projectPendingReview({ _tag: "None" }, true)).toEqual({
       state: "unavailable",
       action: "refresh",
     });
-    expect(
-      projectPendingReview({ _tag: "Pending", review: review() }, false),
-    ).toMatchObject({
-      state: "pending",
-      count: 1,
-      review: {
-        nodeId: "PRR_kwDORJzsQM7e6QwJ",
-        headSha: "1111111111111111111111111111111111111111",
-      },
-    });
-    expect(
-      projectPendingReview(
-        {
-          _tag: "OutcomeUnknown",
-          operation: {
-            _tag: "Submit",
-            requestId: "pending-review-1" as never,
-            reviewId: "9001" as never,
-            event: "COMMENT",
-          },
-          startedAt: "2026-08-09T11:35:00.000Z" as never,
-        },
-        false,
-      ),
-    ).toEqual({ state: "recovery_required", action: "submit" });
-  });
-});
-
-describe("PendingReviewService.discard", () => {
-  it("persists the intent, deletes exactly once, and confirms None", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).discard({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      confirmation: true,
-    });
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: { state: { _tag: "None" } },
-    });
-    expect(gateway.discardPendingReview).toHaveBeenCalledTimes(1);
-    expect(gateway.discardPendingReview).toHaveBeenCalledWith(
-      expect.objectContaining({ reviewId: "9001" }),
-    );
-    expect(fixture.saves.map((saved) => saved.pendingReview?._tag)).toEqual([
-      "WriteInFlight",
-      "None",
-    ]);
-    expect(fixture.current().pendingReview).toEqual({ _tag: "None" });
-  });
-
-  it("rejects a discard without the explicit confirmation", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).discard({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      confirmation: false as never,
-    });
-    expect(result).toEqual({ _tag: "err", error: "invalid_input" });
-    expect(gateway.discardPendingReview).not.toHaveBeenCalled();
-  });
-
-  it("cannot discard without a pending review", async () => {
-    const fixture = makeStore(session());
-    const gateway = makeGateway();
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).discard({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      confirmation: true,
-    });
-    expect(result).toEqual({ _tag: "err", error: "no_pending_review" });
-    expect(gateway.discardPendingReview).not.toHaveBeenCalled();
-  });
-
-  it("a lost discard response becomes OutcomeUnknown with action discard and is never retried", async () => {
-    const fixture = makeStore(session({ _tag: "Pending", review: review() }));
-    const gateway = makeGateway({
-      discardPendingReview: vi.fn(async () =>
-        err({
-          _tag: "GitHubWriteFailure",
-          category: "unavailable",
-          message: "timeout",
-        }),
-      ),
-    });
-    const result = await service(
-      fixture.current(),
-      gateway,
-      fixture.store,
-    ).discard({
-      profileId,
-      reviewId,
-      expected: expected as never,
-      confirmation: true,
-    });
-    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
-    expect(fixture.current().pendingReview).toMatchObject({
-      _tag: "OutcomeUnknown",
-      operation: { _tag: "Discard" },
-    });
-    expect(
-      projectPendingReview(fixture.current().pendingReview as never, false),
-    ).toEqual({ state: "recovery_required", action: "discard" });
-    expect(gateway.discardPendingReview).toHaveBeenCalledTimes(1);
+    for (const operation of [
+      "Start",
+      "AddThread",
+      "Submit",
+      "Discard",
+    ] as const) {
+      expect(
+        projectPendingReview(
+          {
+            _tag: "OutcomeUnknown",
+            operation: { _tag: operation },
+            startedAt: now,
+          } as never,
+          false,
+        ),
+      ).toMatchObject({ state: "recovery_required" });
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewWriteGate } from "../../src/services/review-write-gate";
 import { ok } from "../../src/domain/result";
 
@@ -21,6 +22,7 @@ describe("PublishedFeedbackService", () => {
         async deleteReviewComment() { calls.push("delete"); return ok(undefined); },
         async dismissReview() { calls.push("dismiss"); return ok(undefined); },
       },
+      new ReviewOperationCoordinator(),
     );
     await expect(service.deleteComment({ profileId: "cfw" as never, reviewId: "review" as never, commentId: "comment-1", confirmation: false })).resolves.toEqual({ _tag: "err", error: "confirmation_required" });
     await expect(service.editComment({ profileId: "cfw" as never, reviewId: "review" as never, commentId: "comment-1", body: "new" })).resolves.toEqual({ _tag: "ok", value: undefined });
@@ -39,6 +41,7 @@ describe("PublishedFeedbackService", () => {
         async deleteReviewComment() { return writer(); },
         async dismissReview() { return writer(); },
       },
+      new ReviewOperationCoordinator(),
     );
     await expect(service.editComment({ profileId: "cfw" as never, reviewId: "review" as never, commentId: "comment-1", body: "new" })).resolves.toEqual({ _tag: "err", error: "permission_denied" });
     await expect(service.dismissReview({ profileId: "cfw" as never, reviewId: "review" as never, publishedReviewId: "forged", message: "reason", confirmation: true })).resolves.toEqual({ _tag: "err", error: "not_found" });
@@ -64,6 +67,7 @@ describe("PublishedFeedbackService", () => {
         async deleteReviewComment() { return writer(); },
         async dismissReview() { return writer(); },
       },
+      new ReviewOperationCoordinator(),
     );
     const result = action === "edit"
       ? await service.editComment({ profileId: "cfw" as never, reviewId: "review" as never, commentId: "comment-1", body: "new" })

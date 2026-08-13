@@ -2,28 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   RECOVERY_ACTION_KEYS,
-  RECOVERY_NOTICE_KEYS,
   cleanupCopy,
   recoveryActionLabel,
-  recoveryCopy,
 } from "../../src/renderer/src/review-copy";
 
 describe("review copy contract", () => {
-  it("maps every recovery notice to friendly copy and at most one action", () => {
-    for (const key of RECOVERY_NOTICE_KEYS) {
-      const copy = recoveryCopy(key);
-      expect(copy.notice).not.toMatch(/session|attempt|quarantine|worktree|runtime|storage|error/i);
-      expect(copy.reassurance).not.toMatch(/session|attempt|quarantine|worktree|runtime|storage|error/i);
-      if (copy.actionKey !== undefined) {
-        expect(copy.actionLabel).toBe(recoveryActionLabel(copy.actionKey));
-      }
-    }
-  });
-
-  it("keeps Prepare again in the amber warning treatment", () => {
-    expect(recoveryCopy("needs_preparation").tone).toBe("warning");
-  });
-
   it("keeps action labels stable regardless of persisted display labels", () => {
     expect(RECOVERY_ACTION_KEYS.map(recoveryActionLabel)).toEqual([
       "Run Analysis",

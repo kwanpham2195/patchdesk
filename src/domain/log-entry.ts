@@ -21,7 +21,6 @@ const logEntrySchema = v.strictObject({
   meta: v.optional(v.record(v.string(), v.unknown())),
   profileId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
-  attemptId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   correlationId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(120))),
 });
 
@@ -37,7 +36,6 @@ export type LogEntryInput = {
   readonly meta?: Readonly<Record<string, unknown>>;
   readonly profileId?: string;
   readonly sessionId?: string;
-  readonly attemptId?: string;
   readonly correlationId?: string;
 };
 
@@ -77,7 +75,6 @@ export function normalizeLogEntry(input: LogEntryInput & { readonly seq: number;
     ...(input.meta === undefined ? {} : { meta: sanitizeLogMeta(input.meta) }),
     ...(input.profileId === undefined ? {} : { profileId: sanitizeLogIdentifier(input.profileId) }),
     ...(input.sessionId === undefined ? {} : { sessionId: sanitizeLogIdentifier(input.sessionId) }),
-    ...(input.attemptId === undefined ? {} : { attemptId: sanitizeLogIdentifier(input.attemptId) }),
     ...(input.correlationId === undefined ? {} : { correlationId: sanitizeLogIdentifier(input.correlationId, LOG_MAX_CORRELATION_ID_LENGTH) }),
   };
 }
@@ -94,7 +91,6 @@ export function sanitizeLogEntry(input: LogEntry): LogEntry {
     ...(input.meta === undefined ? {} : { meta: input.meta }),
     ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-    ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
     ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
   });
 }

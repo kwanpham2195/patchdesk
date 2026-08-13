@@ -33,8 +33,7 @@ import { parseRepoRelativePath, type GitHubThreadId } from "../../../domain/ids"
 import { toDiffLineAnnotation } from "../review-diff-annotations";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { PatchdeskApiError } from "../api-client";
-import type { ReviewAnchorFingerprint } from "../../../domain/review-batch";
-import { fingerprintPatchAnchor } from "../../../domain/review-anchor";
+import { fingerprintPatchAnchor, type ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import {
   diffThemeFor,

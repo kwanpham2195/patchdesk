@@ -69,8 +69,8 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 - [x] Plan 001: prevent stale direct-summary observation
 - [x] Plan 002: restore workbench navigation accessibility
 - [x] Plan 003: correct safety/runtime docs
-- [ ] Plan 004: lock packaged Flue beta.9 runtime
-- [ ] Plan 005: remove superseded Review systems
+- [x] Plan 004: lock packaged Flue beta.9 runtime
+- [x] Plan 005: remove superseded Review systems
 - [ ] Plan 006: migrate Pi Insights to Flue 2.0.3
 - [ ] Plan 007: lazy-load the Review workbench
 - [ ] Plan 008: migrate quality tooling to Oxc
@@ -160,6 +160,33 @@ live checks, changed files, residual risks, and any ADR added or updated.
 - Independent review found no technical blocker after the required status
   update. ADR: none; this makes the current runtime boundary reproducible.
 
+### 2026-08-13 — Plan 005 complete
+
+- Deleted superseded local batch/publication, Review Attempt/run, incremental
+  comparison, migration, compatibility-parser, route, DTO, fixture, and
+  renderer systems while retaining one strict current Review runtime.
+- Preserved current pending-review ownership and recovery, exact Finding
+  receipts, direct-summary and inline writes, published-feedback mutations,
+  explicit Refresh and observation journals, merge recovery, preparation
+  journals, Insight supersession, and evidence-gated Git diff fallback.
+- `ReviewSession` now has one strict schema-5 shape. `InsightStore` accepts only
+  schema 2 and rejects duplicate Walkthrough progress IDs.
+- All Review mutations, including Insight lifecycle and terminal persistence,
+  use the shared `ReviewOperationCoordinator`; terminal Insight writes
+  revalidate the represented revision while holding that lock.
+- Merge intent is bound to `reviewId` and represented revision. Recovery never
+  retries an uncertain write and removes evidence only after terminal Review
+  persistence succeeds.
+- Full parent gate passed: typecheck, lint, 609 Vitest tests, build, 35
+  Playwright tests, `git diff --check`, and all four required clean removal
+  inventories. The isolated performance browser test also passed.
+- Final read-only Electron QA after restart passed on CDP 9233 with empty fresh
+  console and page-error buffers.
+- Independent review found three blockers. Focused corrections and 20 tests
+  closed all three; follow-up review found no blocking findings and approved
+  DONE. ADR: none; existing superseded decisions remain historical records.
+
+## Resume protocol
 ## Resume protocol
 
 1. Read this file and `plans/README.md`.

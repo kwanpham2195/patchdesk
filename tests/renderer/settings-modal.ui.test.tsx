@@ -235,11 +235,11 @@ describe("SettingsModal", () => {
   it("selects an enabled default review model and saves it for this profile", async () => {
     const request = installDesktopApi({
       models: {
+        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
         models: [
-          { id: "deepseek-flash", label: "DeepSeek Flash" },
-          { id: "openai-codex", label: "OpenAI Codex" },
+          { provider: "pi", id: "deepseek-flash", label: "DeepSeek Flash", reasoning: ["medium"], defaultReasoning: "medium" },
+          { provider: "pi", id: "openai-codex", label: "OpenAI Codex", reasoning: ["medium"], defaultReasoning: "medium" },
         ],
-        defaultModel: "deepseek-flash",
       },
     });
     const user = userEvent.setup();
@@ -254,17 +254,17 @@ describe("SettingsModal", () => {
     expect(
       window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
     ).toBe(JSON.stringify({ model: "openai-codex", reasoning: "medium" }));
-    expect(request).toHaveBeenCalledWith({ path: "/v1/reviews/models" });
+    expect(request).toHaveBeenCalledWith({ path: "/v1/insight-providers" });
   });
 
   it("searches a late default model by canonical ID and selects it with the keyboard", async () => {
     installDesktopApi({
       models: {
+        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
         models: Array.from({ length: 493 }, (_, index) => ({
-          id: `provider/model-${index}`,
-          label: `Model ${index}`,
+          provider: "pi", id: `provider/model-${index}`, label: `Model ${index}`,
+          reasoning: ["medium"], defaultReasoning: "medium",
         })),
-        defaultModel: "provider/model-0",
       },
     });
     const user = userEvent.setup();
@@ -286,8 +286,8 @@ describe("SettingsModal", () => {
   it("gives long select options room without overflowing the viewport", async () => {
     installDesktopApi({
       models: {
-        models: [{ id: "long-model", label: "A model with a deliberately long label" }],
-        defaultModel: "long-model",
+        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+        models: [{ provider: "pi", id: "long-model", label: "A model with a deliberately long label", reasoning: ["medium"], defaultReasoning: "medium" }],
       },
     });
     const user = userEvent.setup();
@@ -327,7 +327,7 @@ function installDesktopApi(options: {
   const request = vi.fn(async (input: { readonly path?: string; readonly method?: string; readonly body?: unknown; readonly operation?: string }) => {
     if (input.operation === "selectDirectory") return success({ path: "/picked/workspace" });
     if (input.path === "/v1/environment") return success({});
-    if (input.path === "/v1/reviews/models") return success(options.models ?? {});
+    if (input.path === "/v1/insight-providers") return success(options.models ?? {});
     if (input.path === "/v1/storage/clear-local-data" && options.clearLocalDataFails === true)
       return failure({ error: "storage_unavailable" });
     return success({});

@@ -62,12 +62,6 @@ to review** is one explicit action for one GitHub write; it never runs when
 Analysis completes. If Patchdesk cannot confirm a write outcome, it locks the
 write for explicit GitHub reconciliation and never retries it automatically.
 
-Legacy code still contains an inactive immutable, per-Analysis-run publication
-authorization that can describe a publication batch. Current local-API and
-renderer paths do not expose that action. It remains a documented exception
-until it is removed, so it does not support a universal claim that every GitHub
-write needs a separate confirmation.
-
 Pull-request descriptions and check links are rendered as untrusted content;
 only a user click may open an HTTPS link on the configured GitHub host through
 the main process.

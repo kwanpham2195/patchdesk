@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export type InsightRunDialogType = "analysis" | "walkthrough";
 export type InsightModelOption = { readonly id: string; readonly label: string; readonly reasoning?: ReadonlyArray<InsightReasoning> };
-export type InsightCompletionOption = { readonly value: string; readonly label: string };
 
 /** Collects the provider choice and final disclosure before one Insight starts. */
 export function InsightRunDialog({
@@ -19,14 +18,11 @@ export function InsightRunDialog({
   reasoning,
   codexActivationPending,
   codexActivationError,
-  completion,
-  completionOptions,
   onOpenChange,
   onProviderChange,
   onActivateCodex,
   onModelChange,
   onReasoningChange,
-  onCompletionChange,
   onConfirm,
 }: {
   readonly open: boolean;
@@ -38,14 +34,11 @@ export function InsightRunDialog({
   readonly reasoning: InsightReasoning;
   readonly codexActivationPending: boolean;
   readonly codexActivationError: boolean;
-  readonly completion?: string;
-  readonly completionOptions?: ReadonlyArray<InsightCompletionOption>;
   readonly onOpenChange: (open: boolean) => void;
   readonly onProviderChange: (provider: InsightProvider) => void;
   readonly onActivateCodex: () => void;
   readonly onModelChange: (model: string | null) => void;
   readonly onReasoningChange: (reasoning: InsightReasoning) => void;
-  readonly onCompletionChange?: (completion: string) => void;
   readonly onConfirm: () => void;
 }): React.JSX.Element {
   const noun = type === "analysis" ? "Analysis" : "Walkthrough";
@@ -84,14 +77,6 @@ export function InsightRunDialog({
               {reasoningOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </label>
-          {type === "analysis" && completion !== undefined && completionOptions !== undefined && onCompletionChange !== undefined ? (
-            <label className="grid gap-1.5 text-sm font-medium" htmlFor="insight-run-completion">
-              Completion
-              <select id="insight-run-completion" aria-label="Analysis completion" className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm" value={completion} onChange={(event) => onCompletionChange(event.target.value)}>
-                {completionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
-          ) : null}
           <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
             Confirmation: {provider === "pi" ? "Pi" : "Codex CLI account"} using {selectedModel?.label ?? model ?? "no model"} with {reasoning} reasoning will receive the prepared pull-request artifacts{provider === "codex-cli-account" ? " and may inspect the immutable represented-review worktree with read-only tools" : ""}. Patchdesk retains all validation, Finding, publication, and merge authority.
           </p>

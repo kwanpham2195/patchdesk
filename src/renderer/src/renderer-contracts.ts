@@ -28,29 +28,19 @@ const actionSchema = v.variant("kind", [
     label: v.literal("Run review"),
   }),
   v.strictObject({
-    kind: v.literal("review_updates"),
-    label: v.literal("Review updates"),
-    baseSessionId: v.pipe(v.string(), v.minLength(1)),
-  }),
-  v.strictObject({
-    kind: v.literal("continue_review"),
-    label: v.literal("View review progress"),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-  }),
-  v.strictObject({
     kind: v.literal("open_saved_review"),
     label: v.literal("Open Review"),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
+    reviewId: v.pipe(v.string(), v.minLength(1)),
   }),
   v.strictObject({
     kind: v.literal("open_merge_readiness"),
     label: v.literal("Open merge readiness"),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
+    reviewId: v.pipe(v.string(), v.minLength(1)),
   }),
   v.strictObject({
     kind: v.literal("open_discussion"),
     label: v.literal("Review author response"),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
+    reviewId: v.pipe(v.string(), v.minLength(1)),
   }),
 ]);
 
@@ -79,17 +69,8 @@ const inboxRowSchema = v.strictObject({
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   latestReview: v.optional(
     v.strictObject({
-      sessionId: v.pipe(v.string(), v.minLength(1)),
+      reviewId: v.pipe(v.string(), v.minLength(1)),
       reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
-      state: v.picklist([
-        "starting",
-        "running",
-        "completed",
-        "failed",
-        "draft",
-        "submitted",
-        "merged",
-      ]),
       updatedAt: v.pipe(v.string(), v.isoTimestamp()),
       matchesCurrentHead: v.boolean(),
     }),
@@ -194,26 +175,6 @@ const workbenchSessionSchema = v.strictObject({
   }),
 });
 
-const recoveryViewSchema = v.strictObject({
-  noticeKey: v.picklist([
-    "preparing",
-    "ready_to_review",
-    "review_in_progress",
-    "review_interrupted",
-    "review_failed",
-    "needs_preparation",
-  ]),
-  tone: v.picklist(["neutral", "positive", "warning", "destructive"]),
-  actionKey: v.optional(
-    v.picklist([
-      "run_review",
-      "reconnect",
-      "start_again",
-      "try_again",
-      "prepare_again",
-    ]),
-  ),
-});
 
 const repoRelativePathSchema = v.pipe(
   v.string(),
@@ -378,9 +339,8 @@ const insightFields = {
   replacementFailure: v.optional(v.strictObject({
     runId: v.optional(v.pipe(v.string(), v.minLength(1))),
     category: v.optional(v.picklist(["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result", "unexpected_failure"])),
-    model: v.optional(v.pipe(v.string(), v.minLength(1))),
-    reasoning: v.optional(v.picklist(["minimal", "low", "medium", "high", "xhigh"])),
-    incidentId: v.optional(v.pipe(v.string(), v.minLength(1))),
+    model: v.pipe(v.string(), v.minLength(1)),
+    reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
     retryable: v.boolean(),
   })),
   progress: v.optional(v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) })),
@@ -414,79 +374,6 @@ const walkthroughInsightSchema = v.strictObject({
     generatedAt: v.pipe(v.string(), v.isoTimestamp()),
     value: narrativeWalkthroughSchema,
   })),
-});
-
-const carriedFromSchema = v.strictObject({
-  sourceSessionId: v.pipe(v.string(), v.minLength(1)),
-  sourceHeadSha: v.pipe(v.string(), v.minLength(7)),
-});
-const provenanceSchema = v.variant("_tag", [
-  v.strictObject({ _tag: v.literal("human") }),
-  v.strictObject({ _tag: v.literal("model"), attemptId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ _tag: v.literal("insight"), runId: v.pipe(v.string(), v.minLength(1)) }),
-]);
-const anchorSchema = v.strictObject({
-  path: repoRelativePathSchema,
-  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  side: v.picklist(["new", "old"]),
-});
-const fingerprintSchema = v.strictObject({
-  path: repoRelativePathSchema,
-  side: v.picklist(["new", "old"]),
-  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  selectedLines: v.array(v.string()),
-  before: v.array(v.string()),
-  after: v.array(v.string()),
-});
-const attentionSchema = v.strictObject({
-  reason: v.picklist(["missing", "ambiguous", "fingerprint_missing"]),
-  originalAnchor: anchorSchema,
-  originalFingerprint: v.optional(fingerprintSchema),
-});
-const operationSchema = v.variant("_tag", [
-  v.strictObject({ _tag: v.literal("CreatePendingReview"), itemIds: v.array(v.pipe(v.string(), v.minLength(1))) }),
-  v.strictObject({ _tag: v.literal("SubmitPendingReview"), reviewId: v.pipe(v.string(), v.minLength(1)), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) }),
-  v.strictObject({ _tag: v.literal("Reply"), itemId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ _tag: v.literal("ThreadState"), itemId: v.pipe(v.string(), v.minLength(1)) }),
-]);
-const writeFailureSchema = v.strictObject({
-  _tag: v.literal("SafeWriteFailure"),
-  category: v.picklist(["auth", "rejected", "unavailable", "outcome_unknown"]),
-  message: v.pipe(v.string(), v.minLength(1)),
-});
-const batchStateSchema = v.variant("_tag", [
-  v.strictObject({ _tag: v.literal("Local") }),
-  v.strictObject({ _tag: v.literal("Applying"), operation: operationSchema }),
-  v.strictObject({ _tag: v.literal("PartialFailure"), operation: operationSchema, failure: writeFailureSchema }),
-  v.strictObject({ _tag: v.literal("PendingReview"), reviewId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ _tag: v.literal("Submitted"), reviewId: v.pipe(v.string(), v.minLength(1)), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]) }),
-  v.strictObject({ _tag: v.literal("Completed") }),
-]);
-const itemSchema = v.variant("_tag", [
-  v.strictObject({
-    _tag: v.literal("InlineComment"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), source: v.picklist(["finding", "manual"]), findingId: v.optional(v.pipe(v.string(), v.minLength(1))), anchor: anchorSchema, fingerprint: v.optional(fingerprintSchema), body: v.string(), include: v.boolean(), postability: v.picklist(["postable", "already_reported", "invalid_line", "stale_sha", "api_rejected", "needs_attention"]), attention: v.optional(attentionSchema), carriedFrom: v.optional(carriedFromSchema),
-  }),
-  v.strictObject({ _tag: v.literal("GeneralComment"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), source: v.picklist(["finding", "manual"]), findingId: v.optional(v.pipe(v.string(), v.minLength(1))), body: v.string(), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
-  v.strictObject({ _tag: v.literal("ThreadReply"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), threadId: v.pipe(v.string(), v.minLength(1)), body: v.string(), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
-  v.strictObject({ _tag: v.literal("ThreadState"), id: v.pipe(v.string(), v.minLength(1)), provenance: v.optional(provenanceSchema), threadId: v.pipe(v.string(), v.minLength(1)), action: v.picklist(["resolve", "reopen"]), include: v.boolean(), carriedFrom: v.optional(carriedFromSchema) }),
-]);
-const receiptSchema = v.variant("_tag", [
-  v.strictObject({ _tag: v.literal("PendingReviewCreated"), reviewId: v.pipe(v.string(), v.minLength(1)), itemIds: v.array(v.pipe(v.string(), v.minLength(1))) }),
-  v.strictObject({ _tag: v.literal("ReplyCreated"), itemId: v.pipe(v.string(), v.minLength(1)), commentId: v.pipe(v.string(), v.minLength(1)) }),
-  v.strictObject({ _tag: v.literal("ThreadStateChanged"), itemId: v.pipe(v.string(), v.minLength(1)), state: v.picklist(["resolved", "open"]) }),
-]);
-const reviewBatchSchema = v.strictObject({
-  sessionId: v.pipe(v.string(), v.minLength(1)),
-  attemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
-  state: batchStateSchema,
-  summaryBody: v.string(),
-  suggestedEvent: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
-  items: v.array(itemSchema),
-  receipts: v.array(receiptSchema),
-  createdAt: v.pipe(v.string(), v.isoTimestamp()),
-  updatedAt: v.pipe(v.string(), v.isoTimestamp()),
 });
 
 const publishedReviewSchema = v.strictObject({
@@ -598,7 +485,7 @@ const workbenchProjectionSchema = v.strictObject({
   fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
   insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
   analysisReviewActions: v.optional(analysisReviewActionsSchema),
-  draft: v.optional(reviewBatchSchema), pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), directSummaryDecision: v.optional(v.picklist(["allowed", "blocked_author", "unknown"])), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)), recoveryView: v.optional(recoveryViewSchema),
+pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), directSummaryDecision: v.optional(v.picklist(["allowed", "blocked_author", "unknown"])), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type PendingReviewProjection = v.InferOutput<typeof pendingReviewProjectionSchema>;
@@ -606,10 +493,7 @@ export function parsePendingReviewProjection(input: unknown): PendingReviewProje
   const parsed = v.safeParse(pendingReviewProjectionSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-export function parseReviewBatchProjection(input: unknown): WorkbenchResponse["draft"] | undefined {
-  const parsed = v.safeParse(reviewBatchSchema, input);
-  return parsed.success ? parsed.output : undefined;
-}
+
 
 const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),
@@ -644,27 +528,6 @@ export function parseCommitDiffResponse(input: unknown): CommitDiffResponse | un
   const parsed = v.safeParse(commitDiffResponseSchema, input);
   if (!parsed.success || parsed.output.position > parsed.output.total) return undefined;
   return parsed.output;
-}
-
-const publicationPreviewSchema = v.strictObject({
-  reviewId: v.pipe(v.string(), v.minLength(1)), sessionId: v.pipe(v.string(), v.minLength(1)), headSha: v.pipe(v.string(), v.minLength(7)), draftRevision: v.pipe(v.string(), v.isoTimestamp()), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), body: v.string(),
-  inlineComments: v.array(v.strictObject({ itemId: v.pipe(v.string(), v.minLength(1)), path: v.string(), startLine: v.number(), line: v.number(), side: v.picklist(["new", "old"]), body: v.string() })),
-  threadActions: v.array(v.strictObject({ itemId: v.pipe(v.string(), v.minLength(1)), action: v.picklist(["reply", "resolve", "reopen"]), body: v.optional(v.string()) })),
-  warnings: v.array(v.picklist(["no_inline_comments", "github_decision_changed"])),
-});
-export type PublicationPreviewResponse = v.InferOutput<typeof publicationPreviewSchema>;
-export function parsePublicationPreview(input: unknown): PublicationPreviewResponse | undefined {
-  const parsed = v.safeParse(publicationPreviewSchema, input);
-  return parsed.success ? parsed.output : undefined;
-}
-const remoteReviewContextSchema = v.strictObject({
-  pullRequest: v.optional(pullRequestSummarySchema), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "stale", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()), conversation: conversationSchema, checks: checkSchema, mergeReadiness: v.optional(mergeReadinessSchema), mergeReasons: v.optional(v.array(mergeReasonSchema)),
-});
-export type RemoteReviewContextResponse = v.InferOutput<typeof remoteReviewContextSchema>;
-/** Reject malformed current GitHub context before merging it into saved work. */
-export function parseRemoteReviewContext(input: unknown): RemoteReviewContextResponse | undefined {
-  const parsed = v.safeParse(remoteReviewContextSchema, input);
-  return parsed.success ? parsed.output : undefined;
 }
 
 const modelCatalogEntrySchema = v.strictObject({

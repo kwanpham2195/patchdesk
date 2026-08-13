@@ -215,7 +215,6 @@ describe("parseWorkbenchResponse", () => {
         },
         walkthrough: { status: "not_generated" },
       },
-      draft: legalDraft,
     })).toBeDefined();
   });
 });

@@ -18,7 +18,7 @@ describe("ReviewContextService", () => {
       await mkdir(join(root, "rules"), { recursive: true });
       await writeFile(configuredRulePath, "Prefer a regression test.", "utf8");
       const service = new ReviewContextService();
-      const result = await service.prepare({ worktreePath: worktree, attemptDirectory: attempt, pr: { title: "Fixture PR", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, changedFiles: ["src/a.ts"], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [configuredRulePath] });
+      const result = await service.prepare({ worktreePath: worktree, preparedDirectory: attempt, pr: { title: "Fixture PR", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing", checks: [] }, changedFiles: ["src/a.ts"], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [configuredRulePath] });
       expect(result).toMatchObject({ _tag: "ok", value: { contextPath: join(attempt, "context.json"), reviewInputPath: join(attempt, "review-input.md"), debugPath: join(attempt, "debug.json") } });
       const context = await readFile(join(attempt, "context.json"), "utf8");
       expect(context).toContain("AGENTS.md");
@@ -65,7 +65,7 @@ describe("ReviewContextService", () => {
 
       const result = await new ReviewContextService().prepare({
         worktreePath: worktree,
-        attemptDirectory: attempt,
+        preparedDirectory: attempt,
         pr: { title: "Fixture PR", headSha: "abcdef" },
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
@@ -99,7 +99,7 @@ describe("ReviewContextService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
     try {
       const attempt = join(root, "attempt");
-      const result = await new ReviewContextService().prepare({ worktreePath: root, attemptDirectory: attempt, pr: { title: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing" }, changedFiles: [], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [] });
+      const result = await new ReviewContextService().prepare({ worktreePath: root, preparedDirectory: attempt, pr: { title: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing" }, changedFiles: [], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [] });
       expect(result).toEqual({ _tag: "err", error: { _tag: "ReviewContextFailed" } });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -111,7 +111,7 @@ describe("ReviewContextService", () => {
       await mkdir(attempt, { recursive: true });
       await mkdir(join(attempt, "debug.json"));
 
-      const result = await new ReviewContextService().prepare({ worktreePath: root, attemptDirectory: attempt, pr: { title: "Fixture PR", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing" }, changedFiles: [], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [] });
+      const result = await new ReviewContextService().prepare({ worktreePath: root, preparedDirectory: attempt, pr: { title: "Fixture PR", headSha: "abcdef" }, comments: { threads: [] }, checks: { overall: "passing" }, changedFiles: [], patch: { path: "patch.diff", sha256: "a".repeat(64) }, rulePaths: [] });
 
       expect(result).toMatchObject({ _tag: "ok" });
       await expect(readFile(join(attempt, "context.json"), "utf8")).resolves.toContain("Fixture PR");

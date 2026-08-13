@@ -33,7 +33,7 @@ import {
 } from "./lib/screen-restore";
 import type { ReviewWorkbenchInitialState } from "./components/review-workbench";
 import type { SettingsSection } from "./flows/settings-flow";
-import { PatchdeskApiError, requestJson } from "./api-client";
+import { requestJson } from "./api-client";
 import { parseInboxResponse, type InboxResponse, type WorkbenchResponse } from "./renderer-contracts";
 import {
   InboxRefreshScheduler,
@@ -187,37 +187,27 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     }
     setState("loading");
     let profilePayload: unknown;
-    let dashboardPayload: unknown;
+    let inboxPayload: unknown;
     try {
       profilePayload = await api("/v1/profiles");
-      try {
-        dashboardPayload = await api("/v1/inbox");
-      } catch (error: unknown) {
-        if (!(error instanceof PatchdeskApiError) || error.status !== 404)
-          throw error;
-        dashboardPayload = await api("/v1/dashboard");
-      }
+      inboxPayload = await api("/v1/inbox");
     } catch {
       if (generation === workspaceGeneration.current) setState("error");
       return;
     }
     if (generation !== workspaceGeneration.current) return;
     if (Array.isArray(profilePayload)) setProfiles(profilePayload.filter(isProfile));
-    const loadedInbox = parseInboxResponse(dashboardPayload);
-    const compatibleDashboard = loadedInbox === undefined
-      ? isDashboard(dashboardPayload) ? dashboardPayload : undefined
-      : dashboardFromInbox(loadedInbox);
-    if (compatibleDashboard === undefined) {
+    const loadedInbox = parseInboxResponse(inboxPayload);
+    if (loadedInbox === undefined) {
       if (initialState === undefined) setState("empty");
       return;
     }
-    if (loadedInbox !== undefined) {
-      setInbox(loadedInbox);
-      setInboxRefreshFailed(false);
-    }
-    setDashboard(compatibleDashboard);
-    activeInboxProfileId.current = compatibleDashboard.profile.id;
-    setState(screenStateForDashboard(compatibleDashboard));
+    const currentDashboard = dashboardFromInbox(loadedInbox);
+    setInbox(loadedInbox);
+    setInboxRefreshFailed(false);
+    setDashboard(currentDashboard);
+    activeInboxProfileId.current = currentDashboard.profile.id;
+    setState(screenStateForDashboard(currentDashboard));
   }, [initialState]);
   const refreshInbox = useCallback(async (): Promise<"success" | "failure"> => {
     const profileId = activeInboxProfileId.current;
@@ -631,16 +621,6 @@ function isProfile(value: unknown): value is Profile {
     (value.rulePaths === undefined || stringArray(value.rulePaths))
   );
 }
-function isDashboard(value: unknown): value is Dashboard {
-  return (
-    record(value) &&
-    isProfile(value.profile) &&
-    record(value.dashboard) &&
-    Array.isArray(value.dashboard.rows) &&
-    Array.isArray(value.dashboard.repos)
-  );
-}
-
 function dashboardFromInbox(inbox: InboxResponse): Dashboard {
   return {
     profile: {

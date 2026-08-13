@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type ReviewInitialSection,
-  type ReviewStartMode,
 } from "../components/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
@@ -81,9 +80,7 @@ export function InboxFlow({
 
   const openPullRequest = async (
     pr: PrRef,
-    mode: ReviewStartMode = "full",
     initialSection?: ReviewInitialSection,
-    baseSessionId?: string,
     profileId = dashboard?.profile.id,
   ): Promise<void> => {
     setOpenedPr(undefined);
@@ -97,8 +94,6 @@ export function InboxFlow({
           owner: pr.owner,
           repo: pr.repo,
           number: pr.number,
-          mode,
-          ...(baseSessionId === undefined ? {} : { baseSessionId }),
         },
       });
       const parsed = parseWorkbenchResponse(value);
@@ -111,20 +106,22 @@ export function InboxFlow({
     }
   };
 
-  async function openStoredReviewById(profileId: string, reviewId: string, isActive: () => boolean = () => true): Promise<void> {
-    await openStoredReview(profileId, { reviewId }, isActive);
-  }
-
-  async function openStoredReviewBySessionId(profileId: string, sessionId: string): Promise<void> {
-    await openStoredReview(profileId, { sessionId });
-  }
-
-  async function openStoredReview(profileId: string, reference: { readonly reviewId: string } | { readonly sessionId: string }, isActive: () => boolean = () => true): Promise<void> {
+  async function openStoredReview(
+    profileId: string,
+    reference: { readonly reviewId: string },
+    isActive: () => boolean = () => true,
+  ): Promise<void> {
     try {
-      const value = await requestJson("/v1/reviews/load", { method: "POST", body: { profileId, ...reference } });
+      const value = await requestJson("/v1/reviews/load", {
+        method: "POST",
+        body: { profileId, ...reference },
+      });
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined) {
-        if (isActive()) setOpenError("Could not open the saved review. The review projection could not be validated; refresh the review and try again.");
+        if (isActive())
+          setOpenError(
+            "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
+          );
         return;
       }
       if (!isActive()) return;
@@ -134,6 +131,15 @@ export function InboxFlow({
       setOpenError(`Could not open the saved review. ${detail}`);
     }
   }
+
+  async function openStoredReviewById(
+    profileId: string,
+    reviewId: string,
+    isActive: () => boolean = () => true,
+  ): Promise<void> {
+    await openStoredReview(profileId, { reviewId }, isActive);
+  }
+
 
   return inbox !== undefined && dashboard !== undefined ? (
     <InboxScreen
@@ -145,8 +151,8 @@ export function InboxFlow({
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
       onSettings={onSettings}
-      onOpenReview={(row, mode, initialSection) => void openPullRequest(row.identity, mode, initialSection, row.recommendedAction.kind === "review_updates" ? row.recommendedAction.baseSessionId : undefined)}
-      onOpenSession={(sessionId) => void openStoredReviewBySessionId(dashboard.profile.id, sessionId)}
+      onOpenReview={(row, initialSection) => void openPullRequest(row.identity, initialSection)}
+      onOpenReviewId={(savedReviewId) => void openStoredReviewById(dashboard.profile.id, savedReviewId)}
     />
   ) : (
     <Pending
@@ -170,7 +176,7 @@ export function InboxScreen({
   refreshStatus,
   onSettings,
   onOpenReview,
-  onOpenSession,
+  onOpenReviewId,
   openedPr,
   openError,
 }: {
@@ -182,10 +188,9 @@ export function InboxScreen({
   readonly onSettings: () => void;
   readonly onOpenReview: (
     row: InboxResponse["inbox"]["rows"][number],
-    mode: ReviewStartMode,
     initialSection?: ReviewInitialSection,
   ) => void;
-  readonly onOpenSession: (sessionId: string) => void;
+  readonly onOpenReviewId: (reviewId: string) => void;
   readonly openedPr?: string;
   readonly openError?: string;
 }): React.JSX.Element {
@@ -222,7 +227,7 @@ export function InboxScreen({
           refreshStatus={refreshStatus}
           onRefresh={onRefresh}
           onOpenReview={onOpenReview}
-          onOpenSession={onOpenSession}
+          onOpenReviewId={onOpenReviewId}
         />
       </div>
     </div>
@@ -261,8 +266,8 @@ export function Pending({
             Maintainer inbox
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review requests, updates since your last review, checks, and local
-            draft state across the active watchlist.
+            Review requests, review freshness, checks, and current Review state across
+            the active watchlist.
           </p>
         </div>
         <Button
@@ -551,7 +556,7 @@ function Outcome({
             </AlertTitle>
             <AlertDescription>
               {outcome === "github_auth"
-                ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local drafts and history remain available."
+                ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local review records remain available."
                 : outcome === "github_read"
                   ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
                   : outcome}

@@ -6,7 +6,6 @@ import * as v from "valibot";
 import { CommandRunner } from "../adapters/github/command-runner";
 import patchdeskCodeReview from "../skills/patchdesk-code-review/SKILL.md" with { type: "skill" };
 import { modelReviewResultSchema } from "../domain/review-result";
-import { parseReviewScope, reviewScopeSchema } from "../domain/review-comparison";
 import { runModelReview, type ReviewModelSession } from "../services/model-review-runner";
 
 const reviewAgent = defineAgent(() => ({
@@ -20,12 +19,10 @@ const reviewAgent = defineAgent(() => ({
 const reviewPrFixtureInput = v.strictObject({
   profileId: v.pipe(v.string(), v.minLength(1)),
   sessionId: v.pipe(v.string(), v.minLength(1)),
-  attemptId: v.optional(v.pipe(v.string(), v.minLength(1))),
   contextPath: v.pipe(v.string(), v.minLength(1)),
   reviewInputPath: v.pipe(v.string(), v.minLength(1)),
   patchPath: v.pipe(v.string(), v.minLength(1)),
   worktreePath: v.pipe(v.string(), v.minLength(1)),
-  scope: v.optional(reviewScopeSchema),
   model: v.pipe(v.string(), v.minLength(1)),
   reasoning: v.picklist(["low", "medium", "high"]),
 });
@@ -41,10 +38,6 @@ export default defineWorkflow({
   async run({ harness, input }) {
     const commands = new CommandRunner();
     const session = await harness.session();
-    const scope = input.scope === undefined
-      ? { kind: "full" as const }
-      : parseReviewScope(input.scope);
-    if ("_tag" in scope && scope._tag === "err") throw new Error("Invalid review scope");
     return await runModelReview({
       session: session as ReviewModelSession,
       worktreePath: input.worktreePath,
@@ -52,7 +45,6 @@ export default defineWorkflow({
       reviewInputPath: input.reviewInputPath,
       patchPath: input.patchPath,
       debugPath: join(dirname(input.contextPath), "debug.json"),
-      scope: "_tag" in scope ? scope.value : scope,
       model: input.model,
       reasoning: input.reasoning,
       async gitShow(argv) {

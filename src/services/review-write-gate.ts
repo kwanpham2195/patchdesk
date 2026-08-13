@@ -6,7 +6,7 @@ import type { ReviewObservationJournalStore } from "../adapters/storage/review-o
 import type { Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ContentHash, IsoTimestamp, ReviewId, ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
+import type { ContentHash, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { contentHash } from "./review-artifact-hash";
 
@@ -31,25 +31,17 @@ export type ReviewWriteExpectation = {
   readonly sessionId: ReviewSession["id"];
   readonly headSha: ReviewSession["key"]["headSha"];
   readonly patchHash: ContentHash;
-  readonly draftRevision?: IsoTimestamp;
 };
 
 /** Shared precondition for every operation that can mutate GitHub or review state. */
 export class ReviewWriteGate {
   constructor(
     private readonly profiles: Pick<ProfileStore, "load">,
-    private readonly reviews: Pick<ReviewStore, "load"> & Partial<Pick<ReviewStore, "list">>,
+    private readonly reviews: Pick<ReviewStore, "load">,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly remote: Pick<ReviewRemoteStore, "load">,
-    private readonly observationJournals?: Pick<ReviewObservationJournalStore, "load">,
+    private readonly observationJournals: Pick<ReviewObservationJournalStore, "load">,
   ) {}
-
-  async hasReviewForSession(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<Result<boolean, ReviewWriteGateFailure>> {
-    if (this.reviews.list === undefined) return ok(false);
-    const reviews = await this.reviews.list(profileId);
-    if (reviews._tag === "err") return err({ reason: "storage" });
-    return ok(reviews.value.some((review) => review.currentSessionId === sessionId));
-  }
 
   /** Resolve the stable Review owner before recovery mutates session evidence. */
   async requireCurrentSession(
@@ -83,11 +75,9 @@ export class ReviewWriteGate {
     reviewId: ReviewId,
     expected?: ReviewWriteExpectation,
   ): Promise<Result<FreshReview, ReviewWriteGateFailure>> {
-    if (this.observationJournals !== undefined) {
-      const journal = await this.observationJournals.load(profileId, reviewId);
-      if (journal._tag === "err" || journal.value !== undefined) {
-        return err({ reason: "not_fresh" });
-      }
+    const journal = await this.observationJournals.load(profileId, reviewId);
+    if (journal._tag === "err" || journal.value !== undefined) {
+      return err({ reason: "not_fresh" });
     }
     const [profile, review] = await Promise.all([
       this.profiles.load(profileId),
@@ -129,7 +119,6 @@ export class ReviewWriteGate {
       if (expected.sessionId !== session.value.id || expected.headSha !== session.value.key.headSha) return err({ reason: "stale" });
       const patchHash = await contentHash(session.value.patchPath).catch(() => undefined);
       if (patchHash === undefined || patchHash !== expected.patchHash) return err({ reason: "stale" });
-      if (expected.draftRevision !== undefined && session.value.batchContent !== undefined && session.value.batchContent.updatedAt !== expected.draftRevision) return err({ reason: "stale" });
     }
     return ok({ profile: profile.value, review: value, session: session.value, snapshot: snapshot.value });
   }

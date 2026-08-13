@@ -1,14 +1,13 @@
 import { createHash } from "node:crypto";
+import type { GitHubReader } from "../adapters/github/github-adapter";
 import { readFile } from "node:fs/promises";
 
 import type { InsightStore } from "../adapters/storage/insight-store";
-import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewFreshness } from "../domain/review";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
@@ -55,10 +54,8 @@ import type {
 import {
   parseInsightProvider,
   parseInsightReasoning,
-  type RetainedInsightProvenance,
+  type InsightProvenance,
 } from "../domain/insight-provider";
-import type { ReviewBatch } from "../domain/review-batch";
-import type { ReviewAttempt } from "../domain/review-attempt";
 import type { PendingReviewProjection } from "./pending-review-service";
 import {
   projectDirectSummaryReview,
@@ -68,14 +65,6 @@ import { projectPendingReview } from "./pending-review-service";
 import type { PendingReviewState } from "../domain/pending-review";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
-import {
-  decideReviewRecovery,
-  projectReviewRecovery,
-  type ReviewRecoveryView,
-} from "../domain/review-recovery";
-import { ReviewPreparationJournal } from "./review-preparation-journal";
-import type { ReviewRunRegistry } from "./review-run-registry";
-import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 
@@ -125,7 +114,6 @@ export type ReviewWorkbenchProjection = {
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
   };
   readonly analysisReviewActions: AnalysisReviewActionsProjection;
-  readonly draft?: ReviewBatch;
   readonly pendingReview?: PendingReviewProjection;
   readonly directSummary?: DirectSummaryReviewProjection;
   /** Advisory only; the direct-summary service rechecks the account and PR author before writing. */
@@ -134,20 +122,6 @@ export type ReviewWorkbenchProjection = {
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
-  readonly recoveryView?: ReviewRecoveryView;
-};
-
-/** Current GitHub context is ephemeral and never replaces the saved local batch. */
-export type RemoteReviewContext = {
-  readonly pullRequest?: PullRequestSummary;
-  readonly currentHeadSha?: GitSha;
-  readonly freshness:
-    "fresh" | "updates_available" | "unavailable" | "not_refreshed";
-  readonly refreshedAt: IsoTimestamp;
-  readonly conversation: Conversation;
-  readonly checks: CheckSummary;
-  readonly mergeReadiness?: MergeReadiness;
-  readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
 };
 
 export type LoadWorkbenchInput = {
@@ -158,53 +132,21 @@ export type LoadWorkbenchInput = {
 export type WorkbenchProjectionFailure =
   | { readonly _tag: "ProfileNotFound" }
   | { readonly _tag: "SessionNotFound" }
+  | { readonly _tag: "ReviewNotFound" }
   | { readonly _tag: "SessionStorageUnavailable" };
 
 /**
- * Read-side owner of the renderer-safe Review model for one local session.
- * Stable Review persistence and explicit remote snapshots are introduced by
- * later tasks; this foundation derives the Review identity from the session
- * and deliberately projects empty commit and published-feedback collections.
+ * Read-side owner of the renderer-safe model for the exact snapshot held by
+ * the durable Review. It never performs live GitHub reads or session-only
+ * projection.
  */
 export class ReviewWorkbenchProjectionService {
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
-    private readonly github: Pick<
-      GitHubReader,
-      "getPullRequest" | "loadConversation" | "getPullRequestChecks"
-    >,
-    private readonly now: () => IsoTimestamp,
-    private readonly recovery?: {
-      readonly paths?: PatchdeskPaths;
-      readonly runs?: Pick<ReviewRunRegistry, "find">;
-      readonly preparation?: Pick<typeof ReviewPreparationJournal, "activeFor">;
-      readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
-    },
-    private readonly reviews?: Pick<ReviewStore, "load">,
-    private readonly insights?: Pick<InsightStore, "loadTyped"> &
-      Partial<Pick<InsightStore, "load">>,
+    private readonly reviews: Pick<ReviewStore, "load">,
+    private readonly insights: Pick<InsightStore, "loadTyped" | "load">,
   ) {}
-
-  async loadLocal(
-    input: LoadWorkbenchInput,
-    pendingReview?: {
-      readonly state: PendingReviewState;
-      readonly unavailable: boolean;
-    },
-  ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const session = await this.loadSession(input);
-    if (session._tag === "err") return session;
-    return this.project(
-      session.value.profile,
-      session.value.session,
-      undefined,
-      "local",
-      undefined,
-      undefined,
-      pendingReview,
-    );
-  }
 
   /** Projects the exact remote snapshot represented by the durable Review. */
   async loadRepresented(input: {
@@ -228,86 +170,17 @@ export class ReviewWorkbenchProjectionService {
       session.value.session,
       {
         current: { _tag: "ok", value: input.snapshot.pullRequest },
-        conversation: ok(
-          input.snapshot.conversation ??
-            conversationFromSnapshot(input.snapshot),
-        ),
+        conversation: ok(input.snapshot.conversation),
         commits: input.snapshot.commits,
         checks: { _tag: "ok", value: input.snapshot.checks },
         ...(input.snapshot.mergeEvidence === undefined
           ? {}
           : { mergeEvidence: input.snapshot.mergeEvidence }),
       },
-      "represented",
       input.refreshedAt,
       input.freshness,
       input.pendingReview,
     );
-  }
-
-  async load(
-    input: LoadWorkbenchInput,
-    pendingReview?: {
-      readonly state: PendingReviewState;
-      readonly unavailable: boolean;
-    },
-  ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const [profile, session] = await Promise.all([
-      this.profiles.load(input.profileId),
-      this.sessions.load(input.profileId, input.sessionId),
-    ]);
-    if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
-    if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    const pr = {
-      host: session.value.key.host,
-      owner: session.value.key.owner,
-      repo: session.value.key.repo,
-      number: session.value.key.prNumber,
-    };
-    const [current, conversationResult, checks] = await Promise.all([
-      this.github.getPullRequest({ profile: profile.value, pr }),
-      this.github.loadConversation({ profile: profile.value, pr }),
-      this.github.getPullRequestChecks({
-        profile: profile.value,
-        pr,
-        headSha: session.value.key.headSha,
-      }),
-    ]);
-    return this.project(
-      profile.value,
-      session.value,
-      {
-        current,
-        conversation: conversationResult,
-        checks,
-      },
-      "live",
-      undefined,
-      undefined,
-      pendingReview,
-    );
-  }
-
-  async refreshRemote(
-    input: LoadWorkbenchInput,
-  ): Promise<Result<RemoteReviewContext, WorkbenchProjectionFailure>> {
-    const projected = await this.load(input);
-    if (projected._tag === "err") return projected;
-    const value = projected.value;
-    return ok({
-      ...(value.pullRequest === undefined
-        ? {}
-        : { pullRequest: value.pullRequest }),
-      ...(value.revision.currentHeadSha === undefined
-        ? {}
-        : { currentHeadSha: value.revision.currentHeadSha }),
-      freshness: value.revision.freshness,
-      refreshedAt: value.revision.refreshedAt,
-      conversation: value.conversation,
-      checks: value.checks,
-      mergeReadiness: value.mergeReadiness,
-      mergeReasons: value.mergeReasons,
-    });
   }
 
   private async loadSession(input: LoadWorkbenchInput): Promise<
@@ -344,25 +217,16 @@ export class ReviewWorkbenchProjectionService {
           readonly mergeEvidence?: GitHubMergeEvidence;
         }
       | undefined,
-    source: "local" | "represented" | "live",
-    representedAt?: IsoTimestamp,
-    durableFreshness?: ReviewFreshness,
+    representedAt: IsoTimestamp,
+    durableFreshness: ReviewFreshness,
     pendingReview?: {
       readonly state: PendingReviewState;
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const [fullPatch, attempts] = await Promise.all([
-      readFile(session.patchPath, "utf8").catch(() => undefined),
-      this.sessions.listAttempts(session.key.profileId, session.id),
-    ]);
-    if (attempts._tag === "err")
-      return err({ _tag: "SessionStorageUnavailable" });
-    const storedInsights =
-      this.insights === undefined
-        ? undefined
-        : await this.loadStoredInsights(session);
-    if (storedInsights?._tag === "err") return storedInsights;
+    const fullPatch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    const storedInsights = await this.loadStoredInsights(session);
+    if (storedInsights._tag === "err") return storedInsights;
     const patchHash =
       fullPatch === undefined
         ? undefined
@@ -401,25 +265,12 @@ export class ReviewWorkbenchProjectionService {
         ? remote.conversation.value
         : { prDescription: "", entries: [] };
     const freshness =
-      durableFreshness === undefined
-        ? source === "local"
-          ? ("not_refreshed" as const)
-          : currentHeadSha === undefined
-            ? ("unavailable" as const)
-            : currentHeadSha === session.key.headSha
-              ? ("fresh" as const)
-              : ("updates_available" as const)
-        : durableFreshness._tag === "Fresh"
+      durableFreshness._tag === "Fresh"
           ? ("fresh" as const)
           : durableFreshness._tag === "RevisionChanged"
             ? ("updates_available" as const)
             : ("unavailable" as const);
-    const refreshedAt =
-      source === "live"
-        ? this.now()
-        : source === "represented"
-          ? (representedAt ?? session.updatedAt)
-          : session.updatedAt;
+    const refreshedAt = representedAt;
     const mergeReadiness =
       current?._tag === "ok" && remote?.checks?._tag === "ok"
         ? evaluateReadiness(current.value, remote.checks.value, session)
@@ -433,53 +284,41 @@ export class ReviewWorkbenchProjectionService {
       remote?.mergeEvidence,
       checks,
     );
-    const recoveryView = await this.recoveryView(session, attempts.value);
-    const analysis =
-      storedInsights === undefined
-        ? projectAnalysis(
-            session,
-            attempts.value,
-            currentHeadSha,
-            source !== "local",
-          )
-        : projectStoredInsight(
-            storedInsights.value.analysis,
-            session,
-            patchHash,
-            (value, record) => projectAnalysisFindings(value, record, session),
-            storedInsights.value.analysisScope,
-            storedInsights.value.analysisArtifactStatus,
-          );
-    const walkthrough =
-      storedInsights === undefined
-        ? { status: "not_generated" as const }
-        : projectStoredInsight(
-            storedInsights.value.walkthrough,
-            session,
-            patchHash,
-            undefined,
-            undefined,
-            storedInsights.value.walkthroughArtifactStatus,
-          );
-    const stableReview =
-      this.reviews === undefined
-        ? undefined
-        : await this.reviews.load(
-            session.key.profileId,
-            createReviewId(session.key),
-          );
-    const reviewStatus =
-      stableReview?._tag === "ok"
-        ? stableReview.value.status._tag === "Terminal"
-          ? stableReview.value.status.state
-          : ("open" as const)
-        : this.reviews !== undefined
-          ? ("open" as const)
-          : session.state._tag === "Merged"
-            ? ("merged" as const)
-            : session.pr.isOpen
-              ? ("open" as const)
-              : ("closed" as const);
+    const analysis = projectStoredInsight(
+      storedInsights.value.analysis,
+      session,
+      patchHash,
+      (value, record) => projectAnalysisFindings(value, record),
+      storedInsights.value.analysisScope,
+      storedInsights.value.analysisArtifactStatus,
+    );
+    const walkthrough = projectStoredInsight(
+      storedInsights.value.walkthrough,
+      session,
+      patchHash,
+      undefined,
+      undefined,
+      storedInsights.value.walkthroughArtifactStatus,
+    );
+    const reviewId = createReviewId(session.key);
+    const stableReview = await this.reviews.load(session.key.profileId, reviewId);
+    if (stableReview._tag === "err")
+      return stableReview.error.reason === "not_found"
+        ? err({ _tag: "ReviewNotFound" })
+        : err({ _tag: "SessionStorageUnavailable" });
+    if (
+      stableReview.value.id !== reviewId ||
+      stableReview.value.identity.profileId !== session.key.profileId ||
+      stableReview.value.identity.host !== session.key.host ||
+      stableReview.value.identity.owner !== session.key.owner ||
+      stableReview.value.identity.repo !== session.key.repo ||
+      stableReview.value.identity.prNumber !== session.key.prNumber ||
+      stableReview.value.currentSessionId !== session.id ||
+      stableReview.value.currentHeadSha !== session.key.headSha
+    ) return err({ _tag: "SessionStorageUnavailable" });
+    const reviewStatus = stableReview.value.status._tag === "Terminal"
+      ? stableReview.value.status.state
+      : ("open" as const);
 
     const analysisReviewActions = projectAnalysisReviewActions({
       analysis,
@@ -491,7 +330,7 @@ export class ReviewWorkbenchProjectionService {
 
     return ok({
       state: "review",
-      review: { id: createReviewId(session.key), status: reviewStatus },
+      review: { id: reviewId, status: reviewStatus },
       session: projectSession(session),
       revision: {
         reviewedHeadSha: session.key.headSha,
@@ -510,12 +349,9 @@ export class ReviewWorkbenchProjectionService {
         walkthrough,
       },
       analysisReviewActions,
-      ...(session.batchContent === undefined
-        ? {}
-        : { draft: session.batchContent }),
       pendingReview: projectPendingReview(
         pendingReview?.state ?? session.pendingReview ?? { _tag: "None" },
-        pendingReview?.unavailable ?? false,
+        pendingReview?.unavailable ?? session.pendingReview === undefined,
       ),
       directSummary: projectDirectSummaryReview(session.directSummaryReview),
       directSummaryDecision: directSummaryDecision(profile, pullRequest),
@@ -523,14 +359,12 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       mergeReasons,
-      ...(recoveryView === undefined ? {} : { recoveryView }),
     });
   }
 
   private async loadStoredInsights(
     session: ReviewSession,
   ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
-    if (this.insights === undefined) return ok({});
     const analysis = await this.insights.loadTyped(
       session.key.profileId,
       createReviewId(session.key),
@@ -540,10 +374,7 @@ export class ReviewWorkbenchProjectionService {
     // A retained Walkthrough belongs to the Session that produced it. Never
     // validate it against the currently represented Session's patch: Refresh
     // intentionally changes that artifact while old reading evidence remains.
-    const walkthrough =
-      this.insights.load === undefined
-        ? err({ reason: "not_found" as const })
-        : await this.loadWalkthroughRecord(session);
+    const walkthrough = await this.loadWalkthroughRecord(session);
     if (analysis._tag === "err" && analysis.error.reason !== "not_found")
       return err({ _tag: "SessionStorageUnavailable" });
     if (walkthrough._tag === "err" && walkthrough.error.reason !== "not_found")
@@ -620,7 +451,6 @@ export class ReviewWorkbenchProjectionService {
       { readonly reason: "not_found" | "storage" }
     >
   > {
-    if (this.insights?.load === undefined) return err({ reason: "storage" });
     const loaded = await this.insights.load(
       session.key.profileId,
       createReviewId(session.key),
@@ -681,57 +511,7 @@ export class ReviewWorkbenchProjectionService {
     });
   }
 
-  private async recoveryView(
-    session: ReviewSession,
-    attempts: ReadonlyArray<ReviewAttempt>,
-  ): Promise<ReviewRecoveryView | undefined> {
-    const activePreparation =
-      this.recovery?.paths === undefined
-        ? undefined
-        : await (
-            this.recovery.preparation?.activeFor ??
-            ReviewPreparationJournal.activeFor
-          )(
-            this.recovery.paths,
-            session.key.profileId,
-            session.id,
-            this.recovery.diagnostics,
-          );
-    if (activePreparation?._tag === "err") {
-      if (this.recovery?.diagnostics !== undefined) {
-        await this.recovery.diagnostics.record({
-          profileId: session.key.profileId,
-          sessionId: session.id,
-          category: "recovery",
-          phase: "preparation-journal-read",
-          retryable: true,
-          detail: "The preparation journal could not be read.",
-        });
-      }
-      return projectReviewRecovery({ _tag: "Preparing" });
-    }
-    const foundAttempt = attempts.find(
-      (attempt) => attempt.id === session.currentAttemptId,
-    );
-    const liveRun =
-      foundAttempt === undefined || this.recovery?.runs === undefined
-        ? undefined
-        : this.recovery.runs.find({
-            sessionId: session.id,
-            attemptId: foundAttempt.id,
-          }) !== undefined;
-    return projectReviewRecovery(
-      decideReviewRecovery({
-        session,
-        ...(foundAttempt === undefined ? {} : { latestAttempt: foundAttempt }),
-        ...(activePreparation?._tag === "ok" &&
-        activePreparation.value !== undefined
-          ? { activePreparation: true }
-          : {}),
-        ...(liveRun === undefined ? {} : { liveRun }),
-      }),
-    );
-  }
+
 }
 
 function projectAnalysisReviewActions(input: {
@@ -835,63 +615,6 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
   };
 }
 
-function conversationFromSnapshot(
-  snapshot: ReviewRemoteSnapshot,
-): Conversation {
-  const feedback = snapshot.publishedFeedback ?? { reviews: [], comments: [] };
-  const entries: Conversation["entries"][number][] = [];
-
-  for (const review of feedback.reviews) {
-    entries.push({ _tag: "ReviewSummary", review });
-  }
-  for (const comment of feedback.comments) {
-    entries.push({ _tag: "IssueComment", comment });
-  }
-  for (const thread of snapshot.comments.threads) {
-    if (thread.location === undefined) {
-      entries.push({ _tag: "GeneralThread", thread });
-    }
-  }
-
-  entries.sort((left, right) =>
-    conversationEntryTimestamp(left).localeCompare(
-      conversationEntryTimestamp(right),
-    ),
-  );
-
-  return {
-    prDescription: snapshot.pullRequest.description ?? "",
-    entries,
-    inline: {
-      threads: snapshot.comments.threads.filter(
-        (thread) => thread.location !== undefined,
-      ),
-      ...(snapshot.comments.complete === undefined
-        ? {}
-        : { complete: snapshot.comments.complete }),
-      ...(snapshot.comments.incompleteReason === undefined
-        ? {}
-        : { incompleteReason: snapshot.comments.incompleteReason }),
-    },
-    complete:
-      feedback.complete !== false && snapshot.comments.complete !== false,
-  };
-}
-
-function conversationEntryTimestamp(
-  entry: Conversation["entries"][number],
-): string {
-  switch (entry._tag) {
-    case "PrDescription":
-      return "";
-    case "ReviewSummary":
-      return entry.review.submittedAt;
-    case "IssueComment":
-      return entry.comment.createdAt;
-    case "GeneralThread":
-      return entry.thread.comments[0]?.createdAt ?? "";
-  }
-}
 
 function deriveMergeReasons(
   current: PullRequestSummary | undefined,
@@ -1019,13 +742,6 @@ function evaluateReadiness(
   const warnings: MergeReadiness["warnings"][number][] = [];
   if (current.reviewState === "changes_requested")
     warnings.push("request_changes");
-  if (
-    session.visibleResult?.findings.some(
-      (finding) => finding.severity === "P0" || finding.severity === "P1",
-    )
-  ) {
-    warnings.push("high_severity_finding");
-  }
   return {
     _tag:
       blockers.length > 0
@@ -1095,15 +811,8 @@ function projectStoredInsight<T>(
         ...(record.replacementFailure.category === undefined
           ? {}
           : { category: record.replacementFailure.category }),
-        ...(record.replacementFailure.model === undefined
-          ? {}
-          : { model: record.replacementFailure.model }),
-        ...(record.replacementFailure.reasoning === undefined
-          ? {}
-          : { reasoning: record.replacementFailure.reasoning }),
-        ...(record.replacementFailure.incidentId === undefined
-          ? {}
-          : { incidentId: record.replacementFailure.incidentId }),
+        model: record.replacementFailure.model,
+        reasoning: record.replacementFailure.reasoning,
         retryable: record.replacementFailure.retryable,
       },
     };
@@ -1133,32 +842,17 @@ function projectStoredInsight<T>(
 function projectAnalysisFindings(
   value: ReviewResult,
   record: InsightRecord<RetainedInsight<ReviewResult>>,
-  session: ReviewSession,
 ): ReviewResult {
   const dismissed = new Set(
     (record.dismissals ?? []).map(
       (entry: InsightFindingDismissal) => entry.findingId,
     ),
   );
-  const added = new Set(
-    (session.batchContent?.items ?? []).flatMap((item) =>
-      "findingId" in item &&
-      item.findingId !== undefined &&
-      item.provenance?._tag === "insight" &&
-      item.provenance.runId === record.retained?.runId
-        ? [item.findingId]
-        : [],
-    ),
-  );
   return {
     ...value,
     findings: value.findings.map((finding) => ({
       ...finding,
-      disposition: dismissed.has(finding.id)
-        ? "dismissed"
-        : added.has(finding.id)
-          ? "added"
-          : "open",
+      disposition: dismissed.has(finding.id) ? "dismissed" : "open",
     })),
   };
 }
@@ -1207,15 +901,8 @@ function parseRetainedBase(
 
 function parseRetainedProvenance(
   input: unknown,
-): Result<RetainedInsightProvenance, undefined> {
+): Result<InsightProvenance, undefined> {
   const provider = parseInsightProvider(readObjectField(input, "provider"));
-  const configuration = readObjectField(input, "configuration");
-  if (
-    provider._tag === "ok" &&
-    provider.value === "pi" &&
-    configuration === "unavailable"
-  )
-    return ok({ provider: "pi", configuration: "unavailable" });
   const model = readObjectField(input, "model");
   const reasoning = parseInsightReasoning(readObjectField(input, "reasoning"));
   return typeof model === "string" &&
@@ -1334,52 +1021,4 @@ function boundedArtifactText(
   return typeof value === "string" && value.trim().length > 0
     ? value.slice(0, maxLength)
     : fallback;
-}
-
-function projectAnalysis(
-  session: ReviewSession,
-  attempts: ReadonlyArray<ReviewAttempt>,
-  currentHeadSha: GitSha | undefined,
-  isRemote: boolean,
-): InsightProjection<ReviewResult> {
-  const retained =
-    session.visibleResult === undefined
-      ? undefined
-      : {
-          sessionId: session.id,
-          headSha: session.key.headSha,
-          generatedAt: session.updatedAt,
-          value: session.visibleResult,
-        };
-  const attempt = attempts.find(
-    (candidate) => candidate.id === session.currentAttemptId,
-  );
-  if (session.state._tag === "Running") {
-    return {
-      status: "running",
-      ...(retained === undefined ? {} : { retained }),
-      ...(attempt === undefined
-        ? {}
-        : {
-            activeRun: { sessionId: session.id, startedAt: attempt.startedAt },
-          }),
-    };
-  }
-  if (session.state._tag === "ReviewFailed") {
-    return {
-      status: "failed",
-      ...(retained === undefined ? {} : { retained }),
-      replacementFailure: { retryable: true },
-    };
-  }
-  if (retained === undefined) return { status: "not_generated" };
-  return {
-    status:
-      isRemote &&
-      currentHeadSha !== undefined &&
-      currentHeadSha !== session.key.headSha
-        ? "outdated"
-        : "current",
-    retained,
-  };
 }

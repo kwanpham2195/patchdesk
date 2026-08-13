@@ -94,7 +94,7 @@ async function fixture(
   await profiles.save(profile);
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
-  const remote = new ReviewRemoteStore(paths, reviews);
+  const remote = new ReviewRemoteStore(paths);
   const session = createReviewSession({
     key: { ...identity, headSha },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
@@ -130,7 +130,7 @@ async function fixture(
         }
       : session;
   await sessions.save(storedSession);
-  const oldSnapshot = snapshot({ title: "old", conversation: undefined });
+  const oldSnapshot = snapshot({ title: "old" });
   const oldCandidate = await remote.saveCandidate({
     profileId,
     reviewId: createReview({
@@ -281,9 +281,7 @@ function snapshot(input: {
     comments: { threads: [], complete: true },
     commits: [],
     checks: { overall: "passing", checks: [] },
-    ...(input.conversation === undefined
-      ? {}
-      : { conversation: input.conversation }),
+    conversation: input.conversation ?? { prDescription: "", entries: [] },
   };
 }
 

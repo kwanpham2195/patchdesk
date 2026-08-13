@@ -1,104 +1,18 @@
 import { describe, expect, it } from "vitest";
-
-import {
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  parseGitSha,
-  parseIsoTimestamp,
-  parsePullRequestNumber,
-  parseReviewSessionId,
-} from "../../src/domain/ids";
+import { parseGitSha } from "../../src/domain/ids";
 import { projectMaintainerInboxRow } from "../../src/domain/maintainer-inbox";
 
-function must<T, E>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err"; readonly error: E }): T {
-  if (result._tag === "err") throw new Error("Expected parsed fixture");
-  return result.value;
-}
-
-const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
-const sessionId = must(parseReviewSessionId("github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab"));
-const updatedAt = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
-const summary = {
-  ref: { host: must(parseGitHubHost("github.com")), owner: must(parseGitHubOwner("centraldigital")), repo: must(parseGitHubRepoName("patchdesk")), number: must(parsePullRequestNumber(42)) },
-  headSha: sha,
-  isDraft: false,
-  isOpen: true,
-  title: "Guard duplicate input",
-  author: "author",
-  headBranch: "feature/duplicate-guard",
-  baseBranch: "sit",
-  reviewState: "none" as const,
-  mergeability: "mergeable" as const,
-  labels: [],
-  requestedReviewers: ["maintainer"],
-  updatedAt,
-  changedFileCount: 1,
-  additions: 8,
-  deletions: 2,
+const sha = parseGitSha("a".repeat(40));
+if (sha._tag === "err") throw new Error("fixture SHA invalid");
+const reviewId = "review-123" as never;
+const input = {
+  summary: { ref: { host: "github.com" as never, owner: "owner" as never, repo: "repo" as never, number: 1 as never }, title: "PR", author: "other", baseBranch: "main", headBranch: "change", headSha: sha.value, isDraft: false, isOpen: true, updatedAt: "2026-08-13T00:00:00.000Z" as never, reviewState: "none" as const, mergeability: "unknown" as const, labels: [] },
+  checks: { overall: "unknown" as const, checks: [] }, activeAccount: "me", dataFreshness: "fresh" as const,
 };
-const passingChecks = { overall: "passing" as const, checks: [] };
-
 describe("maintainer inbox", () => {
-  it("offers a fresh run instead of progress for a failed current-head review", () => {
-    const row = projectMaintainerInboxRow({
-      summary,
-      checks: passingChecks,
-      activeAccount: "maintainer",
-      latestReview: { sessionId, reviewedHeadSha: sha, state: "failed", updatedAt, matchesCurrentHead: true },
-      dataFreshness: "fresh",
-    });
-    expect(row.categories).not.toContain("running");
-    expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
-  });
-
-  it("offers a review when checks fail for a PR that was not assigned to the active maintainer", () => {
-    const row = projectMaintainerInboxRow({
-      summary,
-      checks: { overall: "failing", checks: [] },
-      activeAccount: "someone-else",
-      dataFreshness: "fresh",
-    });
-
-    expect(row.categories).toContain("checks_failing");
-    expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
-  });
-
-
-  it("prioritizes a running current-head review above every remote category", () => {
-    const row = projectMaintainerInboxRow({
-      summary,
-      checks: passingChecks,
-      activeAccount: "maintainer",
-      latestReview: { sessionId, reviewedHeadSha: sha, state: "running", updatedAt, matchesCurrentHead: true },
-      dataFreshness: "fresh",
-    });
-    expect(row.categories).toContain("running");
-    expect(row.recommendedAction).toEqual({ kind: "continue_review", label: "View review progress", sessionId });
-  });
-
-  it("offers review updates for a completed prior head before an ordinary full review", () => {
-    const priorSha = must(parseGitSha("bbbbbb1234567890abcdef1234567890abcdef12"));
-    const row = projectMaintainerInboxRow({
-      summary,
-      checks: passingChecks,
-      activeAccount: "maintainer",
-      latestReview: { sessionId, reviewedHeadSha: priorSha, state: "completed", updatedAt, matchesCurrentHead: false },
-      dataFreshness: "fresh",
-    });
-    expect(row.categories).toEqual(expect.arrayContaining(["needs_review", "updated_since_review"]));
-    expect(row.recommendedAction).toEqual({ kind: "review_updates", label: "Review updates", baseSessionId: sessionId });
-  });
-
-  it("never exposes merge readiness as the primary action for cached metadata", () => {
-    const row = projectMaintainerInboxRow({
-      summary,
-      checks: passingChecks,
-      activeAccount: "someone-else",
-      latestReview: { sessionId, reviewedHeadSha: sha, state: "completed", updatedAt, matchesCurrentHead: true },
-      dataFreshness: "cached",
-    });
-    expect(row.categories).not.toContain("ready_to_merge");
-    expect(row.recommendedAction).toEqual({ kind: "run_review", label: "Run review" });
+  it("opens an existing changed Review without adopting its new revision", () => {
+    const row = projectMaintainerInboxRow({ ...input, latestReview: { reviewId, reviewedHeadSha: "b".repeat(40) as never, updatedAt: "2026-08-12T00:00:00.000Z" as never, matchesCurrentHead: false } });
+    expect(row.recommendedAction).toEqual({ kind: "open_saved_review", label: "Open Review", reviewId });
+    expect(row.categories).toContain("updated_since_review");
   });
 });

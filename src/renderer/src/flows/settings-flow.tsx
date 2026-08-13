@@ -43,7 +43,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { parseModelCatalog } from "../renderer-contracts";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -804,9 +803,9 @@ function ReviewPreferences({
     const saved = preferenceFor(profileId);
     setPreference(saved);
     let active = true;
-    void requestJson("/v1/reviews/models")
+    void requestJson("/v1/insight-providers")
       .then((value) => {
-        const catalog = parseModelCatalog(value);
+        const catalog = parseInsightProviderCatalog(value);
         if (!active || catalog === undefined) {
           if (active) {
             setModels([]);
@@ -814,10 +813,11 @@ function ReviewPreferences({
           }
           return;
         }
-        const model = selectedModel(catalog.models, catalog.defaultModel, saved.model);
-        setModels(catalog.models);
-        // Keep a saved choice visible in local preference storage even when its
-        // provider becomes unavailable; the server still rejects it as non-executable.
+        const piModels = catalog.models
+          .filter((candidate) => candidate.provider === "pi")
+          .map((candidate) => ({ id: candidate.id, label: candidate.label }));
+        const model = selectedModel(piModels, piModels[0]?.id, saved.model);
+        setModels(piModels);
         const next = { model: model ?? saved.model, reasoning: saved.reasoning };
         setPreference(next);
         setCatalogUnavailable(false);
@@ -845,7 +845,7 @@ function ReviewPreferences({
       <CardHeader>
         <CardTitle>Review preferences</CardTitle>
         <CardDescription>
-          Profile-scoped defaults for the next review run. They never start
+          Profile-scoped defaults for the next Analysis run. They never start
           work.
         </CardDescription>
         <p className="text-sm text-muted-foreground" data-testid="codex-provider-status">Codex CLI account: {codexAvailable === undefined ? "checking availability" : codexAvailable ? "available" : "unavailable; expose codex on the app launch PATH and log in externally"}</p>

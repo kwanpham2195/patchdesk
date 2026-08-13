@@ -1,4 +1,6 @@
 # Seed Review drafts from Analysis
+> **Status: Superseded.** ADR-0015 allows Analysis only to prefill Finish review after a Finding-backed GitHub pending review exists; it never seeds a local draft.
+
 
 An Analysis result produces a complete Review body plus safely mapped inline comments. When the active Review draft is empty, Patchdesk seeds it automatically from that result so the maintainer can edit and explicitly publish the same review package that GitHub will display.
 

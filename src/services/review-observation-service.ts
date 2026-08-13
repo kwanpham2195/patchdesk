@@ -361,7 +361,9 @@ export class ReviewObservationService {
       nextReviewUpdatedAt: nextReviewAt,
       previousSnapshotHash,
       nextSnapshotHash: savedCandidate.value.snapshotHash,
-      nextPendingReview: pending.pendingReview,
+      ...(pending.pendingReview === undefined
+        ? {}
+        : { nextPendingReview: pending.pendingReview }),
       ...(pending.findingReviewReceipts === undefined
         ? {}
         : { nextFindingReviewReceipts: pending.findingReviewReceipts }),
@@ -443,7 +445,7 @@ export class ReviewObservationService {
       refreshedAt:
         adoptedReview.value.representedRemote?.refreshedAt ?? nextReviewAt,
       pendingReview: {
-        state: pending.pendingReview,
+        state: pending.pendingReview ?? { _tag: "None" },
         unavailable: !observedPending.available,
       },
     });
@@ -807,7 +809,7 @@ function containsRecentWrites(
 
 function applySessionAdoption(
   session: ReviewSession,
-  pendingReview: PendingReviewState,
+  pendingReview: PendingReviewState | undefined,
   findingReviewReceipts: ReviewSession["findingReviewReceipts"] | undefined,
   updatedAt: IsoTimestamp,
 ): ReviewSession {
@@ -820,7 +822,7 @@ function applySessionAdoption(
   void _previousReceipts;
   return {
     ...rest,
-    pendingReview,
+    ...(pendingReview === undefined ? {} : { pendingReview }),
     ...(findingReviewReceipts === undefined ||
     findingReviewReceipts.length === 0
       ? {}
@@ -844,8 +846,9 @@ function sameSessionAdoption(
 
 function isResolvedPendingDescendant(
   current: PendingReviewState | undefined,
-  intended: PendingReviewState,
+  intended: PendingReviewState | undefined,
 ): boolean {
+  if (intended === undefined) return false;
   if (intended._tag !== "WriteInFlight" && intended._tag !== "OutcomeUnknown") {
     return false;
   }

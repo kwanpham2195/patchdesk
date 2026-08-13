@@ -1,17 +1,17 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createHash } from "node:crypto";
 
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import { createFetchedDiffRefs } from "../adapters/github/github-adapter";
+import {
+  createFetchedDiffRefs,
+  type GitHubReader,
+} from "../adapters/github/github-adapter";
+import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import {
   createReviewSessionId,
   parseAbsolutePath,
-  parseContentHash,
   type GitSha,
   type IsoTimestamp,
   type ReviewSessionId,
@@ -19,38 +19,23 @@ import {
 } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { createReviewSession, type ReviewSession } from "../domain/review-session";
-import { createEmptyReviewBatch } from "../domain/review-batch";
-import { carryForwardReviewBatch } from "../domain/review-anchor";
-import type { ReviewScope } from "../domain/review-comparison";
-import type { PriorFindingEvidence } from "../domain/finding-lifecycle";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
-import { preparedReviewArtifacts } from "./review-attempt-artifacts";
-import type { ReviewComparisonService } from "./review-comparison-service";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
-import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
-import {
-  ReviewPreparationJournal,
-  promoteStagedArtifact,
-} from "./review-preparation-journal";
+import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
+import { ReviewPreparationJournal } from "./review-preparation-journal";
 import type {
   ManagedWorktree,
   MetadataOnlyReview,
   ReviewWorktreeService,
 } from "./review-worktree-service";
 
-export type ReviewOpenMode =
-  | { readonly kind: "full" }
-  | { readonly kind: "incremental"; readonly baseSessionId: ReviewSessionId };
-
-/** A refined local application command; the workbench controller constructs it. */
+/** A refined command to prepare one complete immutable Review session. */
 export type PrepareReviewSessionInput = {
   readonly profileId: WorkspaceProfileId;
   readonly pullRequest: PullRequestRef;
-  readonly mode: ReviewOpenMode;
-  /** Optional predecessor whose local drafts may be carried to this head. */
-  readonly previousSessionId?: ReviewSessionId;
 };
 
 export type PreparedReviewSession = {
@@ -61,19 +46,13 @@ export type PreparedReviewSession = {
 export type PrepareReviewSessionFailure =
   | { readonly _tag: "ProfileNotFound" }
   | { readonly _tag: "ProfileUnavailable" }
-  | { readonly _tag: "InvalidIncrementalBase" }
-  | { readonly _tag: "IncrementalBaseNotFound" }
   | { readonly _tag: "GitHubReadUnavailable" }
   | { readonly _tag: "HeadChanged" }
   | { readonly _tag: "SessionStorageUnavailable" }
   | { readonly _tag: "PreparationUnavailable" }
   | { readonly _tag: "PreparationCleanupUnavailable" };
 
-/**
- * Canonical Review patch bytes. This is deliberately the identity function:
- * sessions have always stored GitHub's unified diff verbatim. Keeping the
- * normalizer explicit binds later remote identity proof to that same contract.
- */
+/** Sessions store GitHub's canonical complete unified patch unchanged. */
 export function normalizeReviewPatch(patch: string): string {
   return patch;
 }
@@ -83,30 +62,18 @@ type PreparationDependencies = {
   readonly sessions: ReviewSessionStore;
   readonly github: Pick<
     GitHubReader,
-    | "getPullRequest"
-    | "getPullRequestComments"
-    | "getPullRequestChecks"
-    | "getPullRequestDiff"
-    | "compareRevisions"
+    "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks" | "getPullRequestDiff"
   >;
   readonly paths: PatchdeskPaths;
   readonly now: () => IsoTimestamp;
   readonly worktrees: ReviewWorktreeService;
   readonly context: ReviewContextService;
-  readonly comparisons?: ReviewComparisonService;
   readonly artifacts: ReviewArtifactStorage;
   readonly lifecycleGate?: ReviewLifecycleGate;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 };
 
-/**
- * Owns the whole lifecycle that turns a refined selection into an existing or
- * newly prepared immutable, read-only Review Session: current PR reads, resume
- * eligibility, full versus incremental scope, keyed serialization, journalled
- * artifact staging, current-head rechecks, immutable artifact persistence, and
- * exhaustive cleanup. It never allocates or mutates a Review Attempt and never
- * invokes a workflow.
- */
+/** Prepares one full revision and never adopts prior local draft or comparison state. */
 export class ReviewSessionPreparation {
   private readonly locks = new Map<string, Promise<void>>();
 
@@ -115,12 +82,15 @@ export class ReviewSessionPreparation {
   async prepare(
     input: PrepareReviewSessionInput,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
-    const deps = this.dependencies;
-    const profile = await deps.profiles.load(input.profileId);
-    if (profile._tag === "err") {
-      return err({ _tag: profile.error.reason === "not_found" ? "ProfileNotFound" : "ProfileUnavailable" });
-    }
-    const current = await deps.github.getPullRequest({
+    const profile = await this.dependencies.profiles.load(input.profileId);
+    if (profile._tag === "err")
+      return err({
+        _tag:
+          profile.error.reason === "not_found"
+            ? "ProfileNotFound"
+            : "ProfileUnavailable",
+      });
+    const current = await this.dependencies.github.getPullRequest({
       profile: profile.value,
       pr: input.pullRequest,
     });
@@ -134,288 +104,102 @@ export class ReviewSessionPreparation {
       headSha: current.value.headSha,
     });
     const run = (): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> =>
-      this.serialized(input.profileId, sessionId, () =>
-        this.prepareSerialized(input, profile.value, current.value.headSha, sessionId),
+      this.serialized(input.profileId, sessionId, async () =>
+        await this.prepareCurrent(input, profile.value, current.value.headSha, sessionId),
       );
-    return deps.lifecycleGate === undefined
-      ? run()
-      : deps.lifecycleGate.withProfileLock(input.profileId, run);
+    return this.dependencies.lifecycleGate === undefined
+      ? await run()
+      : await this.dependencies.lifecycleGate.withProfileLock(input.profileId, run);
   }
 
-  private async prepareSerialized(
+  private async prepareCurrent(
     input: PrepareReviewSessionInput,
     profile: WorkspaceProfileConfig,
     headSha: GitSha,
     sessionId: ReviewSessionId,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
-    const deps = this.dependencies;
-    const stored = await deps.sessions.load(input.profileId, sessionId);
-    // Opening a PR creates or resumes its immutable, read-only session. Starting a
-    // model attempt is deliberately a separate explicit action. A saved result
-    // remains useful even if a previous local checkout or its patch has been
-    // cleaned up; opening it must never silently rerun preparation or the model.
-    if (stored._tag === "ok") {
-      const preparedPatch = await readFile(stored.value.patchPath, "utf8").catch(() => undefined);
-      if (preparedPatch !== undefined || stored.value.state._tag === "ReviewCompleted") {
-        // A deterministic target session can already exist when a refresh is
-        // retried. Do not let that empty target hide a predecessor draft.
-        const predecessor = input.previousSessionId === undefined
-          ? undefined
-          : await deps.sessions.load(input.profileId, input.previousSessionId);
-        if (predecessor?._tag === "err" && predecessor.error.reason !== "not_found") {
-          return err({ _tag: "SessionStorageUnavailable" });
-        }
-        const predecessorSession = predecessor?._tag === "ok" ? predecessor.value : undefined;
-        const previousBatch = predecessorSession?.batchContent === undefined || predecessorSession.batchContent.state._tag === "Completed" || predecessorSession.batchContent.state._tag === "Submitted"
-          ? undefined
-          : predecessorSession.batchContent;
-        const targetBatch = stored.value.batchContent;
-        const targetHasDraft = targetBatch !== undefined && (
-          targetBatch.items.length > 0 ||
-          targetBatch.summaryBody.length > 0 ||
-          targetBatch.state._tag !== "Local"
-        );
-        if (previousBatch !== undefined && !targetHasDraft) {
-          if (preparedPatch === undefined || predecessorSession === undefined) {
-            return err({ _tag: "SessionStorageUnavailable" });
-          }
-          const migratedBatch = carryForwardReviewBatch({
-            source: previousBatch,
-            sourceHeadSha: predecessorSession.key.headSha,
-            targetSessionId: stored.value.id,
-            currentPatch: preparedPatch,
-            now: deps.now(),
-          }).batch;
-          const migrated = await deps.sessions.save({
-            ...stored.value,
-            batch: { state: migratedBatch.state },
-            batchContent: migratedBatch,
-            updatedAt: migratedBatch.updatedAt,
-          });
-          if (migrated._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
-          return ok({ session: { ...stored.value, batch: { state: migratedBatch.state }, batchContent: migratedBatch, updatedAt: migratedBatch.updatedAt }, disposition: "resumed" });
-        }
-        return ok({ session: stored.value, disposition: "resumed" });
-      }
-    }
-    if (stored._tag === "err" && stored.error.reason !== "not_found") {
-      // An unreadable stored session is preserved by renaming it into the
-      // quarantine directories before preparing a fresh replacement. A
-      // persisted Running state must never be moved aside, so the rename only
-      // happens when the storage layer confirms the session is not live.
-      if (stored.error.reason === "invalid_stored_value") {
-        const running = await deps.sessions.isRecordedRunning(input.profileId, sessionId);
-        if (running._tag === "err" || running.value) {
-          return err({ _tag: "SessionStorageUnavailable" });
-        }
-        const quarantined = await deps.artifacts.quarantine(input.profileId, sessionId);
-        if (quarantined._tag === "err") {
-          return err({ _tag: "SessionStorageUnavailable" });
-        }
-      } else {
+    const stored = await this.dependencies.sessions.load(input.profileId, sessionId);
+    if (stored._tag === "ok") return ok({ session: stored.value, disposition: "resumed" });
+    if (stored.error.reason !== "not_found") {
+      if (stored.error.reason !== "invalid_stored_value")
         return err({ _tag: "SessionStorageUnavailable" });
-      }
-    }
-
-    const journal = await ReviewPreparationJournal.begin(deps.paths, input.profileId, sessionId);
-    if (journal._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
-    const pending = journal.value;
-
-    const scope = await this.resolveScope(input, profile, headSha, sessionId, pending);
-    if (scope._tag === "err") return scope;
-
-    const created = await this.commitSession(input, profile, headSha, sessionId, scope.value, pending);
-    if (created._tag === "err") return created;
-    return ok({ session: created.value, disposition: "prepared" });
-  }
-
-  /**
-   * Resolve the incremental scope into journal-owned staging and promote it
-   * only after the head is rechecked. An unavailable or incomplete comparison
-   * falls back to the truthful full-review behavior; it never produces a
-   * misleading partial incremental Session.
-   */
-  private async resolveScope(
-    input: PrepareReviewSessionInput,
-    profile: WorkspaceProfileConfig,
-    headSha: GitSha,
-    sessionId: ReviewSessionId,
-    journal: ReviewPreparationJournal,
-  ): Promise<Result<ReviewScope, PrepareReviewSessionFailure>> {
-    const deps = this.dependencies;
-    if (input.mode.kind === "full") return ok({ kind: "full" });
-    if (deps.comparisons === undefined) {
-      return this.abort(journal, { _tag: "InvalidIncrementalBase" });
-    }
-    const base = await deps.sessions.load(input.profileId, input.mode.baseSessionId);
-    if (
-      base._tag === "err" ||
-      base.value.key.host !== input.pullRequest.host ||
-      base.value.key.owner !== input.pullRequest.owner ||
-      base.value.key.repo !== input.pullRequest.repo ||
-      base.value.key.prNumber !== input.pullRequest.number ||
-      base.value.visibleResult === undefined
-    ) {
-      return this.abort(journal, { _tag: "IncrementalBaseNotFound" });
-    }
-    const matchingRepo = profile.repos.find(
-      (candidate) =>
-        candidate.host === input.pullRequest.host &&
-        candidate.owner === input.pullRequest.owner &&
-        candidate.repo === input.pullRequest.repo,
-    );
-    const prior = priorFindings(base.value);
-    const staged =
-      matchingRepo?.localPath === undefined
-        ? await this.prepareGitHubComparison({
-            profile,
-            pr: input.pullRequest,
-            profileId: input.profileId,
-            targetSessionId: sessionId,
-            baseSessionId: base.value.id,
-            baseHeadSha: base.value.key.headSha,
-            headSha,
-            previousFindings: prior,
-            stagingDirectory: journal.stagingRoot,
-          })
-        : await deps.comparisons.prepare({
-            profileId: input.profileId,
-            targetSessionId: sessionId,
-            baseSessionId: base.value.id,
-            baseHeadSha: base.value.key.headSha,
-            headSha,
-            previousFindings: prior,
-            localPath: matchingRepo.localPath,
-            stagingDirectory: journal.stagingRoot,
-          });
-    // A metadata-only comparison cannot prove all changed code was seen. Start the
-    // normal full review rather than create a misleading incremental session.
-    if (staged === undefined) return ok({ kind: "full" });
-    if (staged._tag === "err") {
-      return this.abort(
-        journal,
-        { _tag: staged.error.reason === "head_changed" ? "HeadChanged" : "SessionStorageUnavailable" },
+      const quarantined = await this.dependencies.artifacts.quarantine(
+        input.profileId,
+        sessionId,
       );
+      if (quarantined._tag === "err")
+        return err({ _tag: "SessionStorageUnavailable" });
     }
-    // The comparison can take long enough for the PR to update. Recheck immediately
-    // before a saved session would reference its artifacts.
-    const verified = await this.recheckHead(input, profile, headSha, journal);
-    if (verified._tag === "err") return verified;
-    const finals = {
-      comparisonPatchPath: deps.paths.comparisonPatchFile(input.profileId, sessionId),
-      comparisonMetadataPath: deps.paths.comparisonMetadataFile(input.profileId, sessionId),
-      previousFindingsPath: deps.paths.previousFindingsFile(input.profileId, sessionId),
-      lifecyclePath: deps.paths.findingLifecycleFile(input.profileId, sessionId),
-    };
-    const stagedPaths = {
-      comparisonPatchPath: staged.value.comparisonPatchPath,
-      comparisonMetadataPath: staged.value.comparisonMetadataPath,
-      previousFindingsPath: staged.value.previousFindingsPath,
-      lifecyclePath: staged.value.lifecyclePath,
-    };
-    for (const key of ["comparisonPatchPath", "comparisonMetadataPath", "previousFindingsPath", "lifecyclePath"] as const) {
-      const promoted = await promoteStagedArtifact(journal, stagedPaths[key], finals[key]);
-      if (promoted._tag === "err") {
-        return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-      }
-    }
-    const comparisonPatchPath = parseAbsolutePath(finals.comparisonPatchPath);
-    const comparisonMetadataPath = parseAbsolutePath(finals.comparisonMetadataPath);
-    const previousFindingsPath = parseAbsolutePath(finals.previousFindingsPath);
-    const lifecyclePath = parseAbsolutePath(finals.lifecyclePath);
-    if (
-      comparisonPatchPath._tag === "err" ||
-      comparisonMetadataPath._tag === "err" ||
-      previousFindingsPath._tag === "err" ||
-      lifecyclePath._tag === "err"
-    ) {
-      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    }
-    return ok({
-      kind: "incremental",
-      baseSessionId: base.value.id,
-      baseHeadSha: base.value.key.headSha,
-      headSha,
-      comparisonPatchPath: comparisonPatchPath.value,
-      comparisonMetadataPath: comparisonMetadataPath.value,
-      previousFindingsPath: previousFindingsPath.value,
-      lifecyclePath: lifecyclePath.value,
-    });
+    const started = await ReviewPreparationJournal.begin(
+      this.dependencies.paths,
+      input.profileId,
+      sessionId,
+    );
+    if (started._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    return await this.commit(input, profile, headSha, sessionId, started.value);
   }
 
-  /**
-   * Create the immutable Session artifacts (worktree, patch, context, review
-   * input, debug), recheck the head, then persist the Session and commit the
-   * journal. Any failure removes every journalled artifact.
-   */
-  private async commitSession(
+  private async commit(
     input: PrepareReviewSessionInput,
     profile: WorkspaceProfileConfig,
     headSha: GitSha,
     sessionId: ReviewSessionId,
-    scope: ReviewScope,
     journal: ReviewPreparationJournal,
-  ): Promise<Result<ReviewSession, PrepareReviewSessionFailure>> {
-    const deps = this.dependencies;
-    const current = await deps.github.getPullRequest({ profile, pr: input.pullRequest });
-    if (current._tag === "err") return this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    if (current.value.headSha !== headSha) return this.abort(journal, { _tag: "HeadChanged" });
-    if (current.value.baseSha === undefined) return this.abort(journal, { _tag: "PreparationUnavailable" }, "missing_base_sha");
-    const baseSha = current.value.baseSha;
+  ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
+    const current = await this.dependencies.github.getPullRequest({ profile, pr: input.pullRequest });
+    if (current._tag === "err") return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (current.value.headSha !== headSha) return await this.abort(journal, { _tag: "HeadChanged" });
+    if (current.value.baseSha === undefined)
+      return await this.abort(journal, { _tag: "PreparationUnavailable" });
     const matchingRepo = profile.repos.find(
       (candidate) =>
         candidate.host === input.pullRequest.host &&
         candidate.owner === input.pullRequest.owner &&
         candidate.repo === input.pullRequest.repo,
     );
-    const patchPath = deps.paths.patchFile(input.profileId, sessionId);
-    const worktreePath = deps.paths.worktreeDirectory(input.profileId, sessionId);
-
+    const worktreePath = this.dependencies.paths.worktreeDirectory(input.profileId, sessionId);
     if (matchingRepo?.localPath !== undefined) {
       const recorded = await journal.recordWorktree({
         path: worktreePath,
         repositoryPath: matchingRepo.localPath,
       });
-      if (recorded._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+      if (recorded._tag === "err")
+        return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     }
-    const prepared = await deps.worktrees.prepare({
+    const prepared = await this.dependencies.worktrees.prepare({
       profileId: input.profileId,
       host: input.pullRequest.host,
       owner: input.pullRequest.owner,
       repo: input.pullRequest.repo,
       number: input.pullRequest.number,
-      baseSha,
+      baseSha: current.value.baseSha,
       sha: headSha,
       sessionId,
       ...(matchingRepo?.localPath === undefined ? {} : { localPath: matchingRepo.localPath }),
     });
-    if (prepared._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" }, "worktree_prepare");
-
-    const artifacts = await this.writePatchAndContext(
+    if (prepared._tag === "err")
+      return await this.abort(journal, { _tag: "PreparationUnavailable" });
+    const artifacts = await this.writeArtifacts({
       input,
       profile,
       headSha,
-      baseSha,
+      baseSha: current.value.baseSha,
       sessionId,
-      patchPath,
       worktreePath,
-      prepared.value,
+      prepared: prepared.value,
       journal,
-    );
+    });
     if (artifacts._tag === "err") return artifacts;
-
-    // Persist the Session only after every final artifact exists and the head is
-    // still exact; the journal commits before the save so a crash can never make
-    // recovery delete artifacts a persisted Session references.
-    const verified = await this.recheckHead(input, profile, headSha, journal);
-    if (verified._tag === "err") return verified;
-    const committing = await journal.markCommitting();
-    if (committing._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const parsedPatchPath = parseAbsolutePath(patchPath);
+    const verified = await this.dependencies.github.getPullRequest({ profile, pr: input.pullRequest });
+    if (verified._tag === "err") return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (verified.value.headSha !== headSha) return await this.abort(journal, { _tag: "HeadChanged" });
+    const patchPath = parseAbsolutePath(this.dependencies.paths.patchFile(input.profileId, sessionId));
     const parsedWorktreePath = parseAbsolutePath(worktreePath);
-    if (parsedPatchPath._tag === "err" || parsedWorktreePath._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" }, "session_path_parse");
-    }
+    if (patchPath._tag === "err" || parsedWorktreePath._tag === "err")
+      return await this.abort(journal, { _tag: "PreparationUnavailable" });
+    const committing = await journal.markCommitting();
+    if (committing._tag === "err")
+      return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     const session = createReviewSession({
       key: {
         profileId: input.profileId,
@@ -427,7 +211,7 @@ export class ReviewSessionPreparation {
       },
       pr: {
         headSha,
-        baseSha,
+        baseSha: current.value.baseSha,
         isDraft: current.value.isDraft,
         isOpen: current.value.isOpen,
       },
@@ -438,154 +222,112 @@ export class ReviewSessionPreparation {
         headBranch: current.value.headBranch,
         baseBranch: current.value.baseBranch,
       },
-      patchPath: parsedPatchPath.value,
-      scope,
+      patchPath: patchPath.value,
       worktree: { path: parsedWorktreePath.value, headSha },
-      createdAt: deps.now(),
+      createdAt: this.dependencies.now(),
     });
-    const batch = createEmptyReviewBatch({
-      sessionId: session.id,
-      createdAt: session.createdAt,
-    });
-    const predecessor = input.previousSessionId === undefined
-      ? undefined
-      : await deps.sessions.load(input.profileId, input.previousSessionId);
-    if (predecessor?._tag === "err" && predecessor.error.reason !== "not_found") {
-      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    }
-    const predecessorSession = predecessor?._tag === "ok" ? predecessor.value : undefined;
-    const previousBatch = predecessorSession?.batchContent === undefined || predecessorSession.batchContent.state._tag === "Completed" || predecessorSession.batchContent.state._tag === "Submitted"
-      ? undefined
-      : predecessorSession.batchContent;
-    const currentPatch = previousBatch === undefined ? undefined : await readFile(patchPath, "utf8").catch(() => undefined);
-    const migratedBatch = previousBatch === undefined || currentPatch === undefined
-      ? batch
-      : carryForwardReviewBatch({
-          source: previousBatch,
-          sourceHeadSha: predecessorSession?.key.headSha ?? headSha,
-          targetSessionId: session.id,
-          currentPatch,
-          now: session.createdAt,
-        }).batch;
-    const preparedSession: ReviewSession = {
-      ...session,
-      batch: { state: migratedBatch.state },
-      batchContent: migratedBatch,
-    };
-    const saved = await deps.sessions.save(preparedSession);
-    if (saved._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    const saved = await this.dependencies.sessions.save(session);
+    if (saved._tag === "err")
+      return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     await journal.complete();
-    return ok(preparedSession);
+    return ok({ session, disposition: "prepared" });
   }
 
-  private async writePatchAndContext(
-    input: PrepareReviewSessionInput,
-    profile: WorkspaceProfileConfig,
-    headSha: GitSha,
-    baseSha: GitSha,
-    sessionId: ReviewSessionId,
-    patchPath: string,
-    worktreePath: string,
-    prepared: ManagedWorktree | MetadataOnlyReview,
-    journal: ReviewPreparationJournal,
-  ): Promise<Result<void, PrepareReviewSessionFailure>> {
-    const deps = this.dependencies;
-    const preparedPath = prepared.mode === "worktree" ? parseAbsolutePath(prepared.path) : undefined;
-    if (preparedPath !== undefined && preparedPath._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" }, "worktree_path_parse");
-    }
+  private async writeArtifacts(input: {
+    readonly input: PrepareReviewSessionInput;
+    readonly profile: WorkspaceProfileConfig;
+    readonly headSha: GitSha;
+    readonly baseSha: GitSha;
+    readonly sessionId: ReviewSessionId;
+    readonly worktreePath: string;
+    readonly prepared: ManagedWorktree | MetadataOnlyReview;
+    readonly journal: ReviewPreparationJournal;
+  }): Promise<Result<void, PrepareReviewSessionFailure>> {
+    const patchPath = this.dependencies.paths.patchFile(input.input.profileId, input.sessionId);
+    const preparedWorktreePath =
+      input.prepared.mode === "worktree"
+        ? parseAbsolutePath(input.prepared.path)
+        : undefined;
+    if (preparedWorktreePath?._tag === "err")
+      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
     const fetchedRefs =
-      prepared.mode !== "worktree" || preparedPath === undefined
+      input.prepared.mode !== "worktree" || preparedWorktreePath === undefined
         ? undefined
         : createFetchedDiffRefs({
-            repositoryPath: preparedPath.value,
-            baseRef: prepared.baseRef,
-            headRef: prepared.headRef,
-            baseSha,
-            headSha,
+            repositoryPath: preparedWorktreePath.value,
+            baseRef: input.prepared.baseRef,
+            headRef: input.prepared.headRef,
+            baseSha: input.baseSha,
+            headSha: input.headSha,
           });
-    if (fetchedRefs !== undefined && fetchedRefs._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" }, "fetched_diff_refs");
-    }
+    if (fetchedRefs?._tag === "err")
+      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
     const [comments, checks, diff] = await Promise.all([
-      deps.github.getPullRequestComments({ profile, pr: input.pullRequest }),
-      deps.github.getPullRequestChecks({ profile, pr: input.pullRequest, headSha }),
-      deps.github.getPullRequestDiff({
-        profile,
-        pr: input.pullRequest,
+      this.dependencies.github.getPullRequestComments({ profile: input.profile, pr: input.input.pullRequest }),
+      this.dependencies.github.getPullRequestChecks({ profile: input.profile, pr: input.input.pullRequest, headSha: input.headSha }),
+      this.dependencies.github.getPullRequestDiff({
+        profile: input.profile,
+        pr: input.input.pullRequest,
         ...(fetchedRefs === undefined
-          ? { snapshot: { baseSha, headSha } }
+          ? { snapshot: { baseSha: input.baseSha, headSha: input.headSha } }
           : { fetchedRefs: fetchedRefs.value }),
       }),
     ]);
-    if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err") {
-      return this.abort(journal, { _tag: "PreparationUnavailable" }, "remote_review_context");
-    }
-    const recordedPatch = await journal.record(patchPath);
-    if (recordedPatch._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err")
+      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+    if ((await input.journal.record(patchPath))._tag === "err")
+      return await this.abort(input.journal, { _tag: "SessionStorageUnavailable" });
+    const normalizedPatch = normalizeReviewPatch(diff.value);
     try {
       await mkdir(dirname(patchPath), { recursive: true });
-      await writeFile(patchPath, normalizeReviewPatch(diff.value), "utf8");
+      await writeFile(patchPath, normalizedPatch, "utf8");
     } catch {
-      return this.abort(journal, { _tag: "PreparationUnavailable" }, "patch_write");
+      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
     }
-    const artifacts = preparedReviewArtifacts(deps.paths, input.profileId, sessionId);
-    for (const artifactPath of [artifacts.contextPath, artifacts.reviewInputPath, artifacts.debugPath]) {
-      const recorded = await journal.record(artifactPath);
-      if (recorded._tag === "err") return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    const contextPath = this.dependencies.paths.preparedContextFile(input.input.profileId, input.sessionId);
+    const reviewInputPath = this.dependencies.paths.preparedReviewInputFile(input.input.profileId, input.sessionId);
+    const debugPath = this.dependencies.paths.preparedDebugFile(input.input.profileId, input.sessionId);
+    for (const path of [contextPath, reviewInputPath, debugPath]) {
+      if ((await input.journal.record(path))._tag === "err")
+        return await this.abort(input.journal, { _tag: "SessionStorageUnavailable" });
     }
-    const context = await deps.context.prepare({
-      worktreePath: prepared.mode === "worktree" ? prepared.path : worktreePath,
-      attemptDirectory: dirname(artifacts.contextPath),
+    const context = await this.dependencies.context.prepare({
+      worktreePath: input.prepared.mode === "worktree" ? input.prepared.path : input.worktreePath,
+      preparedDirectory: dirname(contextPath),
       pr: {
-        title: `${input.pullRequest.owner}/${input.pullRequest.repo}#${input.pullRequest.number}`,
-        headSha,
+        title: `${input.input.pullRequest.owner}/${input.input.pullRequest.repo}#${input.input.pullRequest.number}`,
+        headSha: input.headSha,
       },
       comments: comments.value,
       checks: checks.value,
-      changedFiles: parseChangedFiles(normalizeReviewPatch(diff.value)),
-      patch: { path: patchPath, sha256: "0".repeat(64) },
-      rulePaths: profile.rulePaths,
+      changedFiles: changedFiles(diff.value),
+      patch: { path: patchPath, sha256: hashReviewArtifactContent(normalizedPatch) },
+      rulePaths: input.profile.rulePaths,
     });
-    if (context._tag === "err") return this.abort(journal, { _tag: "PreparationUnavailable" }, "context_prepare");
-    return ok(undefined);
-  }
-
-  /** Recheck the exact head before a durable commit would reference prepared artifacts. */
-  private async recheckHead(
-    input: PrepareReviewSessionInput,
-    profile: WorkspaceProfileConfig,
-    headSha: GitSha,
-    journal: ReviewPreparationJournal,
-  ): Promise<Result<void, PrepareReviewSessionFailure>> {
-    const verified = await this.dependencies.github.getPullRequest({ profile, pr: input.pullRequest });
-    if (verified._tag === "err") return this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    return verified.value.headSha === headSha
+    return context._tag === "ok"
       ? ok(undefined)
-      : this.abort(journal, { _tag: "HeadChanged" });
+      : await this.abort(input.journal, { _tag: "PreparationUnavailable" });
   }
 
-  /** Remove every journalled artifact; report cleanup failure so recovery can retry. */
   private async abort(
     journal: ReviewPreparationJournal,
     failure: PrepareReviewSessionFailure,
-    diagnosticDetail: string = failure._tag,
   ): Promise<Result<never, PrepareReviewSessionFailure>> {
     const cleaned = await journal.cleanup(this.dependencies.worktrees);
-    if (this.dependencies.diagnostics !== undefined) {
+    if (this.dependencies.diagnostics !== undefined)
       await this.dependencies.diagnostics.record({
         profileId: journal.profileId,
         sessionId: journal.sessionId,
         category: "preparation",
         phase: cleaned._tag === "ok" ? "preparation-failure" : "preparation-cleanup",
         retryable: true,
-        detail: diagnosticDetail,
+        detail: failure._tag,
       });
-    }
-    return cleaned._tag === "ok" ? err(failure) : err({ _tag: "PreparationCleanupUnavailable" });
+    return cleaned._tag === "ok"
+      ? err(failure)
+      : err({ _tag: "PreparationCleanupUnavailable" });
   }
 
-  /** Serialize preparation per derived Session so concurrent opens prepare once. */
   private async serialized<T>(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
@@ -606,67 +348,10 @@ export class ReviewSessionPreparation {
       if (this.locks.get(key) === current) this.locks.delete(key);
     }
   }
-
-  private async prepareGitHubComparison(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly profileId: WorkspaceProfileId;
-    readonly targetSessionId: ReviewSessionId;
-    readonly baseSessionId: ReviewSessionId;
-    readonly baseHeadSha: GitSha;
-    readonly headSha: GitSha;
-    readonly previousFindings: ReadonlyArray<PriorFindingEvidence>;
-    readonly stagingDirectory: string;
-  }): Promise<Awaited<ReturnType<ReviewComparisonService["prepare"]>> | undefined> {
-    const deps = this.dependencies;
-    if (deps.comparisons === undefined) return undefined;
-    const remote = await deps.github.compareRevisions({
-      profile: input.profile,
-      pr: input.pr,
-      baseSha: input.baseHeadSha,
-      headSha: input.headSha,
-      baseSessionId: input.baseSessionId,
-    });
-    if (remote._tag === "err" || remote.value.comparison.completeness !== "complete" || remote.value.patch === undefined) {
-      return undefined;
-    }
-    return deps.comparisons.persist({
-      profileId: input.profileId,
-      targetSessionId: input.targetSessionId,
-      comparison: remote.value.comparison,
-      patch: remote.value.patch,
-      previousFindings: input.previousFindings,
-      stagingDirectory: input.stagingDirectory,
-    });
-  }
 }
 
-function priorFindings(session: ReviewSession): ReadonlyArray<PriorFindingEvidence> {
-  const result = session.visibleResult;
-  if (result === undefined) return [];
-  const resultHash = createHash("sha256").update(JSON.stringify(result)).digest("hex");
-  const evidence: Array<PriorFindingEvidence> = [];
-  for (const finding of result.findings) {
-    const token = parseContentHash(
-      createHash("sha256")
-        .update(`${session.id}\u0000${resultHash}\u0000${finding.id}`)
-        .digest("hex"),
-    );
-    if (token._tag === "err") continue;
-    evidence.push({
-      token: token.value,
-      findingId: finding.id,
-      severity: finding.severity,
-      ...(finding.category === undefined ? {} : { category: finding.category }),
-      title: finding.title,
-      explanation: finding.explanation,
-      ...(finding.file === undefined ? {} : { file: finding.file }),
-      wasSubmitted: session.submittedReview !== undefined,
-    });
-  }
-  return evidence;
-}
-
-function parseChangedFiles(diff: string): ReadonlyArray<string> {
-  return diff.split("\n").flatMap((line) => (line.startsWith("+++ b/") ? [line.slice(6)] : []));
+function changedFiles(diff: string): ReadonlyArray<string> {
+  return diff.split("\n").flatMap((line) =>
+    line.startsWith("+++ b/") ? [line.slice(6)] : [],
+  );
 }

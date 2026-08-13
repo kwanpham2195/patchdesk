@@ -1,6 +1,6 @@
 import type { ContentHash, FindingId, GitSha, InsightRunId, IsoTimestamp, ReviewId, ReviewSessionId } from "./ids";
 import { err, ok, type Result } from "./result";
-import type { InsightProvenance, InsightProvider, InsightReasoning, RetainedInsightProvenance } from "./insight-provider";
+import type { InsightProvenance, InsightProvider, InsightReasoning } from "./insight-provider";
 
 export type InsightType = "analysis" | "walkthrough";
 export type InsightRevision = { readonly sessionId: ReviewSessionId; readonly headSha: GitSha; readonly patchHash: ContentHash };
@@ -19,7 +19,7 @@ export type RetainedInsight<T> = {
   readonly runId: InsightRunId;
   readonly revision: InsightRevision;
   readonly generatedAt: IsoTimestamp;
-  readonly provenance: RetainedInsightProvenance;
+  readonly provenance: InsightProvenance;
   readonly value: T;
 };
 export type InsightFindingDismissal = { readonly findingId: FindingId; readonly reason: string; readonly dismissedAt: IsoTimestamp };
@@ -30,14 +30,16 @@ export type InsightFailure = {
   readonly runId: InsightRunId;
   readonly reason: "cancelled" | "failed" | "invalid_result" | "superseded";
   readonly category?: InsightFailureCategory;
-  readonly provider?: InsightProvider;
-  readonly model?: string;
-  readonly reasoning?: InsightReasoning;
-  /** Legacy only; new failures use runId as the correlation ID. */
-  readonly incidentId?: string;
+  readonly provider: InsightProvider;
+  readonly model: string;
+  readonly reasoning: InsightReasoning;
   readonly retryable: boolean;
   readonly failedAt: IsoTimestamp;
 };
+export type InsightFailureInput = Omit<
+  InsightFailure,
+  "provider" | "model" | "reasoning"
+> & Partial<Pick<InsightFailure, "provider" | "model" | "reasoning">>;
 export type InsightRecord<T> = {
   readonly schemaVersion: 2;
   readonly reviewId: ReviewId;
@@ -109,15 +111,15 @@ export function updateWalkthroughProgress(record: InsightRecord<unknown>, progre
 }
 
 /** Records a terminal failure while preserving the selected run provenance. */
-export function failInsightRun(record: InsightRecord<unknown>, runId: InsightRunId, failure: InsightFailure, at: IsoTimestamp): Result<InsightRecord<unknown>, "superseded"> {
+export function failInsightRun(record: InsightRecord<unknown>, runId: InsightRunId, failure: InsightFailureInput, at: IsoTimestamp): Result<InsightRecord<unknown>, "superseded"> {
   if (record.activeRun?.id !== runId) return err("superseded");
   const { activeRun: _activeRun, ...withoutActiveRun } = record;
   void _activeRun;
   const replacementFailure: InsightFailure = {
     ...failure,
-    ...(failure.provider === undefined ? { provider: record.activeRun.provider } : {}),
-    ...(failure.model === undefined ? { model: record.activeRun.model } : {}),
-    ...(failure.reasoning === undefined ? { reasoning: record.activeRun.reasoning } : {}),
+    provider: failure.provider ?? record.activeRun.provider,
+    model: failure.model ?? record.activeRun.model,
+    reasoning: failure.reasoning ?? record.activeRun.reasoning,
   };
   return ok({ ...withoutActiveRun, replacementFailure, updatedAt: at });
 }

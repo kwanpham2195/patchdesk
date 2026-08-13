@@ -290,10 +290,6 @@ export class ReviewPreparationJournal {
       this.paths.preparedContextFile(profileId.value, sessionId.value),
       this.paths.preparedReviewInputFile(profileId.value, sessionId.value),
       this.paths.preparedDebugFile(profileId.value, sessionId.value),
-      this.paths.comparisonPatchFile(profileId.value, sessionId.value),
-      this.paths.comparisonMetadataFile(profileId.value, sessionId.value),
-      this.paths.previousFindingsFile(profileId.value, sessionId.value),
-      this.paths.findingLifecycleFile(profileId.value, sessionId.value),
     ]);
     for (const target of this.content.targets) {
       if (!allowedTargets.has(target) || !(await isSafeOwnedPath(sessionDirectory, target))) return undefined;

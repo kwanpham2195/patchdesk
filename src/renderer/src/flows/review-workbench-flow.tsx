@@ -12,10 +12,6 @@ import {
 } from "../../../domain/ids";
 import type { RecentReviewWrite } from "../../../services/review-refresh-service";
 import { renderAnalysisReviewSummary } from "../../../services/analysis-review-body";
-import {
-  parseReviewBatch,
-  type ReviewAnchor,
-} from "../../../domain/review-batch";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
@@ -35,15 +31,12 @@ import {
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
-  usePublishedFeedbackNavigation,
   useReviewWorkbenchNavigation,
 } from "../components/review-workbench";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { PendingReviewComposerActions } from "../components/review-diff-view";
-import type { ReviewBatchPanelActions } from "../components/review-batch-panel";
-import { ReviewDraftDock } from "../components/review-draft-dock";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -55,27 +48,22 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
-import type { InsightFailureCategory } from "../../../domain/insight-record";
-import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   parseCommitDiffResponse,
   parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
   parsePendingReviewProjection,
-  parsePublicationPreview,
-  parseReviewBatchProjection,
   parseWorkbenchResponse,
   type CommitDiffResponse,
   type DirectSummaryReviewProjection,
   type PendingReviewProjection,
+  type WorkbenchResponse,
 } from "../renderer-contracts";
+import type { MergeReadiness } from "../../../domain/merge-readiness";
+import type { InsightFailureCategory } from "../../../domain/insight-record";
+import type { PullRequestRef } from "../../../domain/pull-request";
+
 import { useInsightRun } from "../hooks/use-insight-run";
-import {
-  openPullRequestExternalUrl,
-  pullRequestPageUrl,
-} from "../external-links";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 
 function boundedPendingReviewError(cause: unknown): string {
@@ -220,10 +208,6 @@ export function ReviewWorkbenchFlow({
   const FOCUS_DETECT_DEBOUNCE_MS = 1_500;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
-  const [autoOpenPublication, setAutoOpenPublication] = useState(false);
-  const [selectedRepairAnchor, setSelectedRepairAnchor] = useState<
-    ReviewAnchor | undefined
-  >();
   // Typed comment/thread-state writes made by this window since the last
   // projection replace. The detector excludes them so own writes never read as
   // remote updates; cleared once a refresh/reload re-baselines the snapshot.
@@ -451,12 +435,7 @@ export function ReviewWorkbenchFlow({
     }
   }, [requestRefresh]);
 
-  const refreshConfirmedPublication = useCallback(async (): Promise<void> => {
-    if (workbench.review.status !== "open") return;
-    // The shared helper invalidates in-flight detectors before its request;
-    // the caller keeps its own bounded error presentation.
-    await requestRefresh();
-  }, [requestRefresh, workbench.review.status]);
+
 
   const runDirectCommand = useCallback(
     async <T,>(operation: () => Promise<T>): Promise<T> => {
@@ -718,31 +697,6 @@ export function ReviewWorkbenchFlow({
     },
     [workbench, runDirectCommand],
   );
-  const parsedDraft =
-    workbench.draft === undefined
-      ? undefined
-      : parseReviewBatch(workbench.draft);
-  const localBatch =
-    parsedDraft?._tag === "ok" && parsedDraft.value.state._tag === "Local";
-  const canEditDraft = workbench.review.status === "open" && localBatch;
-  const hasNeedsAttention =
-    parsedDraft?._tag === "ok" &&
-    parsedDraft.value.items.some(
-      (item) =>
-        item._tag === "InlineComment" && item.postability === "needs_attention",
-    );
-  const hasActivePublication =
-    parsedDraft?._tag === "ok" &&
-    (parsedDraft.value.state._tag === "Applying" ||
-      parsedDraft.value.state._tag === "PendingReview" ||
-      parsedDraft.value.state._tag === "Submitted" ||
-      parsedDraft.value.state._tag === "PartialFailure");
-  const canWriteGitHub =
-    workbench.review.status === "open" &&
-    workbench.revision.freshness === "fresh" &&
-    localBatch &&
-    !hasNeedsAttention &&
-    !hasActivePublication;
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
@@ -1107,7 +1061,7 @@ export function ReviewWorkbenchFlow({
           onSelectionChange: (location) => {
             const path = parseRepoRelativePath(location.path);
             if (path._tag === "ok")
-              setSelectedRepairAnchor({ ...location, path: path.value });
+              void path;
           },
         }
       : undefined;
@@ -1135,6 +1089,19 @@ export function ReviewWorkbenchFlow({
             headSha: workbench.revision.reviewedHeadSha,
           },
           methods: ["squash", "merge", "rebase"] as const,
+          onRecoverMerge: async () => {
+            const recovered = await requestJson("/v1/reviews/merge/recover", {
+              method: "POST",
+              body: {
+                profileId: workbench.session.key.profileId,
+                reviewId: workbench.review.id,
+              },
+            });
+            const next = parseWorkbenchResponse(recovered);
+            if (next === undefined)
+              throw new Error("Invalid recovered Review projection");
+            replaceWorkbench(next);
+          },
           onMerge: async (
             method: "merge" | "squash" | "rebase",
             warningCodes: ReadonlyArray<string>,
@@ -1148,8 +1115,7 @@ export function ReviewWorkbenchFlow({
                 expectedHeadSha: workbench.revision.reviewedHeadSha,
                 expectedBaseSha: workbench.pullRequest?.baseSha ?? "",
                 expectedPatchHash: workbench.revision.patchHash,
-                expectedRevision:
-                  workbench.draft?.updatedAt ?? workbench.revision.refreshedAt,
+                expectedRevision: workbench.revision.refreshedAt,
                 method,
                 acknowledgedWarnings: {
                   revision: {
@@ -1415,26 +1381,6 @@ export function ReviewWorkbenchFlow({
           ),
           conversation: null,
           mergeAction: null,
-          draftDock: (
-            <DraftSlot
-              workbench={workbench}
-              onWorkbenchPatch={onWorkbenchPatch}
-              onWorkbenchReplace={replaceWorkbench}
-              onRefreshAfterPublication={refreshConfirmedPublication}
-              canEditDraft={canEditDraft}
-              canWriteGitHub={canWriteGitHub}
-              {...(selectedRepairAnchor === undefined
-                ? {}
-                : { selectedRepairAnchor })}
-              {...(initialUiState?.draftExpanded === undefined
-                ? {}
-                : { initialExpanded: initialUiState.draftExpanded })}
-              autoOpenPublication={autoOpenPublication}
-              onAutoOpenPublicationConsumed={() =>
-                setAutoOpenPublication(false)
-              }
-            />
-          ),
         }}
       />
       {refreshError ? (
@@ -1729,9 +1675,9 @@ function InsightsSlot({
   const runSelected = (onAccepted?: () => void): void => {
     if (model === null || selectedInsight === "overview") return;
     if (selectedInsight === "analysis") {
-      analysisRun.run(provider, model, reasoning, undefined, onAccepted);
+      analysisRun.run(provider, model, reasoning, onAccepted);
     } else {
-      walkthroughRun.run(provider, model, reasoning, undefined, onAccepted);
+      walkthroughRun.run(provider, model, reasoning, onAccepted);
     }
   };
   const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
@@ -2534,283 +2480,6 @@ function insightLiveStatus(analysis: string, walkthrough: string): string {
     : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
 }
 
-function DraftSlot({
-  workbench,
-  onWorkbenchPatch,
-  onWorkbenchReplace,
-  onRefreshAfterPublication,
-  canEditDraft,
-  canWriteGitHub,
-  selectedRepairAnchor,
-  initialExpanded,
-  autoOpenPublication,
-  onAutoOpenPublicationConsumed,
-}: {
-  readonly workbench: WorkbenchResponse;
-  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
-  readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
-  readonly onRefreshAfterPublication: () => Promise<void>;
-  readonly canEditDraft: boolean;
-  readonly canWriteGitHub: boolean;
-  readonly selectedRepairAnchor?: ReviewAnchor;
-  readonly initialExpanded?: boolean;
-  readonly autoOpenPublication: boolean;
-  readonly onAutoOpenPublicationConsumed: () => void;
-}): React.JSX.Element | null {
-  const focusPublishedFeedback = usePublishedFeedbackNavigation();
-  const draftProjection = workbench.draft ?? emptyDraftForWorkbench(workbench);
-  const batch = parseReviewBatch(draftProjection);
-  if (batch._tag === "err") return null;
-  const postCommand = async (command: unknown): Promise<void> => {
-    const value = await requestJson("/v1/reviews/batch", {
-      method: "POST",
-      body: {
-        profileId: workbench.session.key.profileId,
-        sessionId: workbench.session.id,
-        expectedRevision: draftProjection.updatedAt,
-        command,
-      },
-    });
-    const next = parseBatchResponse(value);
-    if (next === undefined) throw new Error("Invalid Review batch response");
-    onWorkbenchPatch({ draft: next });
-  };
-  const writeIdentity = {
-    reviewId: workbench.review.id,
-    expectedHeadSha: workbench.revision.reviewedHeadSha,
-    ...(workbench.revision.patchHash === undefined
-      ? {}
-      : { expectedPatchHash: workbench.revision.patchHash }),
-  };
-  const actions: ReviewBatchPanelActions = {
-    addInlineComment: async (input) =>
-      postCommand({
-        _tag: "AddInlineComment",
-        anchor: {
-          path: input.path,
-          startLine: input.startLine,
-          line: input.line,
-          side: input.side,
-        },
-        ...(input.fingerprint === undefined
-          ? {}
-          : { fingerprint: input.fingerprint }),
-        body: input.body,
-      }),
-    removeItem: async (itemId) => postCommand({ _tag: "RemoveItem", itemId }),
-    addThreadReply: async (threadId, body) =>
-      postCommand({ _tag: "AddThreadReply", threadId, body }),
-    setThreadState: async (threadId, action) =>
-      postCommand({ _tag: "SetThreadState", threadId, action }),
-    updateBody: async (body) => postCommand({ _tag: "UpdateBody", body }),
-    setSuggestedEvent: async (event) =>
-      postCommand({ _tag: "SetSuggestedEvent", event }),
-    setItemIncluded: async (itemId, include) =>
-      postCommand({ _tag: "SetItemIncluded", itemId, include }),
-    editItem: async (itemId, body) =>
-      postCommand({ _tag: "EditItem", itemId, body }),
-    repairInlineAnchor: async (itemId, anchor, fingerprint) =>
-      postCommand({ _tag: "RepairInlineAnchor", itemId, anchor, fingerprint }),
-    convertInlineToGeneral: async (itemId) =>
-      postCommand({ _tag: "ConvertInlineToGeneral", itemId }),
-    apply: async () => {
-      const value = await requestJson("/v1/reviews/apply-batch", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          sessionId: workbench.session.id,
-          ...writeIdentity,
-          expectedRevision: draftProjection.updatedAt,
-          acknowledgement: true,
-        },
-      });
-      const next = parseBatchResponse(value);
-      if (next !== undefined) onWorkbenchPatch({ draft: next });
-    },
-    submit: async (event) => {
-      const value = await requestJson("/v1/reviews/submit-batch", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          sessionId: workbench.session.id,
-          ...writeIdentity,
-          expectedRevision: draftProjection.updatedAt,
-          acknowledgement: true,
-          event,
-        },
-      });
-      const next = parseBatchResponse(value);
-      if (next !== undefined) onWorkbenchPatch({ draft: next });
-    },
-  };
-  const recoveryEvidence =
-    batch.value.state._tag === "Applying" ||
-    (batch.value.state._tag === "PartialFailure" &&
-      (batch.value.state.failure.category === "outcome_unknown" ||
-        batch.value.state.failure.category === "unavailable"))
-      ? {
-          confirmed: batch.value.receipts.map((receipt) =>
-            receipt._tag === "PendingReviewCreated"
-              ? `Pending review ${receipt.reviewId}`
-              : receipt._tag === "ReplyCreated"
-                ? `Reply ${receipt.itemId}`
-                : `Thread ${receipt.itemId} ${receipt.state}`,
-          ),
-          notConfirmed: [
-            `${batch.value.state.operation._tag.replaceAll(/([A-Z])/g, " $1").trim()} is held for reconciliation`,
-          ],
-          unableToVerify:
-            batch.value.state._tag === "Applying"
-              ? "GitHub must be checked before any further action."
-              : batch.value.state.failure.message,
-        }
-      : undefined;
-  const publication =
-    batch.value.state._tag === "Local" ||
-    batch.value.state._tag === "Applying" ||
-    batch.value.state._tag === "PartialFailure"
-      ? {
-          // Applying is durable evidence that the remote boundary may have been
-          // crossed. Keep recovery reachable after reload rather than presenting a
-          // permanently busy dialog with no safe action.
-          state:
-            batch.value.state._tag === "Applying" ||
-            (batch.value.state._tag === "PartialFailure" &&
-              (batch.value.state.failure.category === "outcome_unknown" ||
-                batch.value.state.failure.category === "unavailable"))
-              ? ("needs_confirmation" as const)
-              : ("ready" as const),
-          ...(recoveryEvidence === undefined ? {} : { recoveryEvidence }),
-          preview: async () => {
-            const value = await requestJson("/v1/reviews/publication/preview", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                ...writeIdentity,
-                sessionId: workbench.session.id,
-                expectedRevision: batch.value.updatedAt,
-                event: batch.value.suggestedEvent,
-              },
-            });
-            const parsed = parsePublicationPreview(value);
-            if (parsed === undefined)
-              throw new Error("Invalid publication preview response");
-            return parsed;
-          },
-          confirm: async () => {
-            const value = await requestJson("/v1/reviews/publication/confirm", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                ...writeIdentity,
-                sessionId: workbench.session.id,
-                expectedRevision: batch.value.updatedAt,
-                acknowledgement: true,
-                event: batch.value.suggestedEvent,
-              },
-            });
-            const next = parseBatchResponse(value);
-            if (next === undefined)
-              throw new Error("Invalid publication response");
-            // Confirmed publication changes GitHub-owned feedback. Refresh through
-            // the canonical read owner before loading the projection used by View
-            // feedback, so focus lands on the actual newly published records.
-            await onRefreshAfterPublication();
-            const projectedValue = await requestJson("/v1/reviews/load", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-              },
-            });
-            const projected = parseWorkbenchResponse(projectedValue);
-            if (projected === undefined)
-              throw new Error("Invalid publication projection");
-            onWorkbenchReplace(projected);
-          },
-          recover: async () => {
-            const value = await requestJson("/v1/reviews/publication/recover", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-              },
-            });
-            const next = parseWorkbenchResponse(value);
-            if (next !== undefined) onWorkbenchReplace(next);
-          },
-          openGitHub: async () => {
-            const host = parseGitHubHost(workbench.session.key.host);
-            const owner = parseGitHubOwner(workbench.session.key.owner);
-            const repo = parseGitHubRepoName(workbench.session.key.repo);
-            const number = parsePullRequestNumber(
-              workbench.session.key.prNumber,
-            );
-            if (
-              host._tag === "err" ||
-              owner._tag === "err" ||
-              repo._tag === "err" ||
-              number._tag === "err"
-            )
-              return;
-            const pr: PullRequestRef = {
-              host: host.value,
-              owner: owner.value,
-              repo: repo.value,
-              number: number.value,
-            };
-            await openPullRequestExternalUrl(
-              pullRequestPageUrl(pr).toString(),
-              pr,
-            );
-          },
-          viewFeedback: () => {
-            focusPublishedFeedback?.();
-          },
-        }
-      : undefined;
-  return (
-    <ReviewDraftDock
-      batch={batch.value}
-      {...(workbench.fullPatch === undefined
-        ? {}
-        : { patch: workbench.fullPatch })}
-      {...(selectedRepairAnchor === undefined ? {} : { selectedRepairAnchor })}
-      writeBlocked={!canWriteGitHub}
-      draftEditingBlocked={!canEditDraft}
-      {...(initialExpanded === undefined
-        ? {}
-        : { initialOpen: initialExpanded })}
-      actions={actions}
-      {...(publication === undefined ? {} : { publication })}
-      autoOpenPublication={autoOpenPublication}
-      onAutoOpenPublicationConsumed={onAutoOpenPublicationConsumed}
-    />
-  );
-}
-
-function emptyDraftForWorkbench(
-  workbench: WorkbenchResponse,
-): NonNullable<WorkbenchResponse["draft"]> {
-  const timestamp = workbench.revision.refreshedAt;
-  return {
-    sessionId: `${workbench.session.key.host}__${workbench.session.key.owner}__${workbench.session.key.repo}__pr-${workbench.session.key.prNumber}__sha-${workbench.session.key.headSha.slice(0, 8)}__${workbench.session.key.headSha.slice(0, 12)}`,
-    state: { _tag: "Local" },
-    summaryBody: "",
-    suggestedEvent: "COMMENT",
-    items: [],
-    receipts: [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-/**
- * Renderer-boundary codec for direct conversation receipts. The main process
- * is trusted to shape its own success envelope, but the renderer must not
- * treat an unknown or malformed success payload as a confirmed mutation: no
- * command callback casts raw JSON to a receipt anymore.
- */
 type DirectConversationReceipt =
   | {
       readonly _tag: "CommentCreated";
@@ -2867,14 +2536,6 @@ function parseDirectConversationReceipt(
     return { _tag: tag, commentId: record.commentId };
   }
   return undefined;
-}
-
-function parseBatchResponse(
-  value: unknown,
-): WorkbenchResponse["draft"] | undefined {
-  if (typeof value !== "object" || value === null || !("batch" in value))
-    return undefined;
-  return parseReviewBatchProjection(value.batch);
 }
 
 function insightStatusLabel(status: string): string {

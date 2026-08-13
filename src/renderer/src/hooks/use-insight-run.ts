@@ -5,8 +5,6 @@ import type { InsightProvider, InsightReasoning } from "../../../domain/insight-
 import { parseInsightRunResponse, parseWorkbenchResponse, type InsightRunResponse, type WorkbenchResponse } from "../renderer-contracts";
 
 export type InsightRunType = "analysis" | "walkthrough";
-export type InsightCompletionAction = { readonly _tag: "SaveAsReviewDraft" } | { readonly _tag: "OpenPreviewWhenComplete" } | { readonly _tag: "PublishWhenComplete"; readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES"; readonly authorizationId: string };
-
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
 
 export type InsightRunController = {
@@ -15,7 +13,7 @@ export type InsightRunController = {
   readonly error: boolean;
   readonly failureReason?: InsightRunResponse["failureReason"];
   readonly busy: boolean;
-  readonly run: (provider: InsightProvider, model: string, reasoning: InsightReasoning, completion?: InsightCompletionAction, onAccepted?: () => void) => void;
+  readonly run: (provider: InsightProvider, model: string, reasoning: InsightReasoning, onAccepted?: () => void) => void;
   readonly cancel: () => void;
 };
 
@@ -53,7 +51,7 @@ export function useInsightRun(input: {
     setFailureReason(undefined);
   }, [persistedRunId]);
 
-  const run = useCallback((provider: InsightProvider, model: string, reasoning: InsightReasoning, completion?: InsightCompletionAction, onAccepted?: () => void): void => {
+  const run = useCallback((provider: InsightProvider, model: string, reasoning: InsightReasoning, onAccepted?: () => void): void => {
     if (startingRef.current || activeRunRef.current !== undefined) return;
     startingRef.current = true;
     setStarting(true);
@@ -61,7 +59,7 @@ export function useInsightRun(input: {
     setFailureReason(undefined);
     void requestJson(`/v1/reviews/insights/${type}/run`, {
       method: "POST",
-      body: { profileId, reviewId, type, provider, model, reasoning, ...(completion === undefined ? {} : { completion }) },
+      body: { profileId, reviewId, type, provider, model, reasoning },
     }).then((value) => {
       const parsed = parseInsightRunResponse(value);
       if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight run response");

@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("file-backed renderer preferences", () => {
-  it("uses file-backed preferences ahead of legacy localStorage values", async () => {
+  it("uses file-backed preferences ahead of renderer localStorage values", async () => {
     window.localStorage.setItem("patchdesk.appearance.v1", "light");
     window.localStorage.setItem(
       "patchdesk.diff-theme.v2",
@@ -32,9 +32,19 @@ describe("file-backed renderer preferences", () => {
       appearance: "dark",
       diffTheme: { light: "pierre-light", dark: "tokyo-night" },
     });
-    const themeEvents: Array<{ readonly light: string; readonly dark: string }> = [];
+    const themeEvents: Array<{
+      readonly light: string;
+      readonly dark: string;
+    }> = [];
     const onTheme = (event: Event): void => {
-      themeEvents.push((event as CustomEvent<{ readonly light: string; readonly dark: string }>).detail);
+      themeEvents.push(
+        (
+          event as CustomEvent<{
+            readonly light: string;
+            readonly dark: string;
+          }>
+        ).detail,
+      );
     };
     window.addEventListener("patchdesk:diff-theme", onTheme);
 
@@ -50,10 +60,14 @@ describe("file-backed renderer preferences", () => {
       }),
     );
     window.removeEventListener("patchdesk:diff-theme", onTheme);
-    expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(false);
+    expect(
+      request.mock.calls.some(
+        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
+      ),
+    ).toBe(false);
   });
 
-  it("keeps legacy values until the missing settings write succeeds", async () => {
+  it("keeps renderer values until the missing settings write succeeds", async () => {
     window.localStorage.setItem("patchdesk.appearance.v1", "dark");
     window.localStorage.setItem(
       "patchdesk.diff-theme.v2",
@@ -64,13 +78,20 @@ describe("file-backed renderer preferences", () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(true),
+      expect(
+        request.mock.calls.some(
+          ([input]) =>
+            input.path === "/v1/settings" && input.method === "PATCH",
+        ),
+      ).toBe(true),
     );
     expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBe("dark");
-    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).not.toBeNull();
+    expect(
+      window.localStorage.getItem("patchdesk.diff-theme.v2"),
+    ).not.toBeNull();
   });
 
-  it("removes migrated legacy values after the missing settings write succeeds", async () => {
+  it("removes renderer values after the missing settings write succeeds", async () => {
     window.localStorage.setItem("patchdesk.appearance.v1", "dark");
     window.localStorage.setItem(
       "patchdesk.diff-theme.v2",
@@ -81,7 +102,12 @@ describe("file-backed renderer preferences", () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(request.mock.calls.some(([input]) => input.path === "/v1/settings" && input.method === "PATCH")).toBe(true),
+      expect(
+        request.mock.calls.some(
+          ([input]) =>
+            input.path === "/v1/settings" && input.method === "PATCH",
+        ),
+      ).toBe(true),
     );
     await waitFor(() =>
       expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBeNull(),
@@ -97,8 +123,8 @@ describe("file-backed renderer preferences", () => {
     render(<App />);
 
     await waitFor(() => {
-      const corrections = request.mock.calls.filter(([input]) =>
-        input.path === "/v1/settings" && input.method === "PATCH",
+      const corrections = request.mock.calls.filter(
+        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
       );
       expect(corrections).toHaveLength(1);
       expect(corrections[0]?.[0].body).toEqual({
@@ -112,9 +138,19 @@ describe("file-backed renderer preferences", () => {
     const request = installDesktopApi({
       diffTheme: { light: "pierre-light", dark: "pierre-dark" },
     });
-    const themeEvents: Array<{ readonly light: string; readonly dark: string }> = [];
+    const themeEvents: Array<{
+      readonly light: string;
+      readonly dark: string;
+    }> = [];
     const onTheme = (event: Event): void => {
-      themeEvents.push((event as CustomEvent<{ readonly light: string; readonly dark: string }>).detail);
+      themeEvents.push(
+        (
+          event as CustomEvent<{
+            readonly light: string;
+            readonly dark: string;
+          }>
+        ).detail,
+      );
     };
     window.addEventListener("patchdesk:diff-theme", onTheme);
 
@@ -127,13 +163,16 @@ describe("file-backed renderer preferences", () => {
       }),
     );
     await waitFor(() => {
-      const corrections = request.mock.calls.filter(([input]) =>
-        input.path === "/v1/settings" && input.method === "PATCH",
+      const corrections = request.mock.calls.filter(
+        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
       );
-      // The appearance migration sends one PATCH; the Pierre defaults must
+      // The appearance transfer sends one PATCH; the Pierre defaults must
       // not trigger a separate diff-theme correction.
       expect(
-        corrections.filter(([input]) => (input.body as Record<string, unknown>)?.diffTheme !== undefined),
+        corrections.filter(
+          ([input]) =>
+            (input.body as Record<string, unknown>)?.diffTheme !== undefined,
+        ),
       ).toHaveLength(0);
     });
     window.removeEventListener("patchdesk:diff-theme", onTheme);
@@ -144,28 +183,38 @@ function installDesktopApi(
   settings: Record<string, unknown>,
   options: { readonly patchSucceeds?: boolean } = {},
 ): ReturnType<typeof vi.fn> {
-  const request = vi.fn(async (input: {
-    readonly path?: string;
-    readonly method?: string;
-    readonly body?: unknown;
-    readonly operation?: string;
-  }) => {
-    if (input.operation === "setNavigationState")
-      return success({});
-    if (input.path === "/v1/settings" && input.method === "PATCH") {
-      if (options.patchSucceeds === false)
-        return { ok: false, status: 503, body: { error: "unavailable" }, correlationId: "test" };
-      return success({ ...settings, ...(input.body as Record<string, unknown>) });
-    }
-    if (input.path === "/v1/settings") return success(settings);
-    if (input.path === "/v1/profiles") return success([dashboard.profile]);
-    if (input.path === "/v1/inbox") return success({
-      profile: dashboard.profile,
-      inbox: { rows: [], repositories: [], snapshot: {} },
-    });
-    if (input.path === "/v1/environment") return success({});
-    return success(dashboard);
-  });
+  const request = vi.fn(
+    async (input: {
+      readonly path?: string;
+      readonly method?: string;
+      readonly body?: unknown;
+      readonly operation?: string;
+    }) => {
+      if (input.operation === "setNavigationState") return success({});
+      if (input.path === "/v1/settings" && input.method === "PATCH") {
+        if (options.patchSucceeds === false)
+          return {
+            ok: false,
+            status: 503,
+            body: { error: "unavailable" },
+            correlationId: "test",
+          };
+        return success({
+          ...settings,
+          ...(input.body as Record<string, unknown>),
+        });
+      }
+      if (input.path === "/v1/settings") return success(settings);
+      if (input.path === "/v1/profiles") return success([dashboard.profile]);
+      if (input.path === "/v1/inbox")
+        return success({
+          profile: dashboard.profile,
+          inbox: { rows: [], repositories: [], snapshot: {} },
+        });
+      if (input.path === "/v1/environment") return success({});
+      return success(dashboard);
+    },
+  );
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {

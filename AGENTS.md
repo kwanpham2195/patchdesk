@@ -40,7 +40,7 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 ## Architecture and Safety
 
 - Keep the renderer sandboxed: do not weaken Electron’s Node isolation or web security.
-- The loopback API requires its per-launch capability. GitHub writes require explicit UI confirmation, except the exact Review publication batch may use the immutable per-Analysis-run authorization defined by the approved product contract. Merge, Published feedback deletion or dismissal, and writes outside that authorized batch always require explicit confirmation.
+- The loopback API requires its per-launch capability. GitHub writes require an explicit current UI action. Merge and Published feedback deletion or dismissal also require explicit confirmation.
 - Do not persist credentials in profiles.
 - Provider support uses built-in environment API-key or ambient machine-credential providers, plus the Codex CLI account provider defined by ADR-0016; exclude all other OAuth-only providers and Cloudflare Workers bindings from selectable catalogs. Codex may use verified sandboxed read-only inspection tools only in Patchdesk's immutable represented-review worktree; deny writes, file changes, network/permission escalation, and unverified requests. Keep availability checks main-process-only and redacted; never probe providers, read a full environment, execute custom-provider configuration, or expose/persist credential values. Keep Flue beta.9 pinned; plan a Flue 2 migration separately.
 - Cleanup may remove only non-running review sessions.

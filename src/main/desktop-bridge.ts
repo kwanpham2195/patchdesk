@@ -38,8 +38,6 @@ const allowedRoutes = new Set([
   "POST /v1/profiles/select",
   "GET /v1/settings",
   "PATCH /v1/settings",
-  "GET /v1/dashboard",
-  "POST /v1/dashboard/refresh/repository",
   "GET /v1/inbox",
   "POST /v1/watchlist",
   "PATCH /v1/watchlist/path",
@@ -49,11 +47,6 @@ const allowedRoutes = new Set([
   "POST /v1/github/access",
   "GET /v1/environment",
   "POST /v1/direct-entry/preview",
-  "POST /v1/runs/review-pr",
-  "POST /v1/reviews/apply-batch",
-  "POST /v1/reviews/publication/preview",
-  "POST /v1/reviews/publication/confirm",
-  "POST /v1/reviews/publication/recover",
   "POST /v1/reviews/inline-conversations/command",
   "POST /v1/reviews/pending-review/command",
   "POST /v1/reviews/pending-review/recover",
@@ -62,13 +55,9 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/published-comments/edit",
   "POST /v1/reviews/published-comments/delete",
   "POST /v1/reviews/published-reviews/dismiss",
-  "POST /v1/reviews/submit-batch",
   "POST /v1/reviews/open",
-  "GET /v1/reviews/models",
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
-  "POST /v1/reviews/run",
-  "GET /v1/reviews",
   "POST /v1/reviews/load",
   "POST /v1/reviews/detect-updates",
   "POST /v1/reviews/insights/analysis/run",
@@ -77,11 +66,10 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/insights/walkthrough/cancel",
   "POST /v1/reviews/insights/walkthrough/progress",
   "POST /v1/reviews/diff-file",
-  "POST /v1/reviews/batch",
   "POST /v1/reviews/refresh",
   "POST /v1/reviews/commit-diff",
   "POST /v1/reviews/merge",
-  "POST /v1/runs/reconnect",
+  "POST /v1/reviews/merge/recover",
   "POST /v1/storage/cache/clear",
   "POST /v1/storage/clear-local-data",
   "GET /v1/diagnostics",
@@ -91,10 +79,8 @@ const allowedRoutes = new Set([
 ]);
 
 const allowedRoutePatterns = [
-  /^GET \/v1\/runs\/[^/]+$/,
   /^GET \/v1\/reviews\/insights\/runs\/[^/]+$/,
   /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/(?:add|dismiss)$/,
-  /^POST \/v1\/reviews\/draft\/findings\/[^/]+\/add$/,
 ];
 
 // The renderer projection can carry a large retained Walkthrough plus its full

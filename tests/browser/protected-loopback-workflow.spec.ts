@@ -75,13 +75,13 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("textbox", { name: "workspace root 1", exact: true }).fill("/workspace/enterprise");
   await page.getByRole("textbox", { name: "owner filter 1", exact: true }).fill("enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await page.getByLabel("Active profile").click();
+  await page.getByRole("combobox", { name: "Active profile" }).last().click();
   const enterpriseOption = page.getByRole("option", { name: "Enterprise" });
   await expect(enterpriseOption).toBeVisible();
   await enterpriseOption.click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page.getByLabel("Active profile")).toContainText("Enterprise updated");
+  await expect(page.getByRole("combobox", { name: "Active profile" }).last()).toContainText("Enterprise updated");
 
   const settingsRoute = page.url();
   await page.getByRole("tab", { name: "General" }).click();
@@ -102,16 +102,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
-  await page.getByRole("button", { name: "Add suggestion" }).click();
-  await page.getByRole("button", { name: "More actions for acme/discovered" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Archive" }),
-  ).toBeVisible();
-  await page.getByRole("menuitem", { name: "Archive" }).click();
-  await page.getByRole("button", { name: "More actions for acme/discovered" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Restore" }),
-  ).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "acme/discovered /workspace/discovered" })).not.toBeChecked();
 
   await page.getByRole("tab", { name: "Data & recovery" }).click();
   await page.getByRole("button", { name: "Clear cache" }).click();

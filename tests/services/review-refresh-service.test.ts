@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewRefreshService } from "../../src/services/review-refresh-service";
 import { hashSnapshot, type ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import { createReview, type Review } from "../../src/domain/review";
@@ -14,7 +15,7 @@ const identity = { profileId, host: must(parseGitHubHost("github.com")), owner: 
 const headSha = must(parseGitSha("1".repeat(40)));
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const sessionId = createReviewSessionId({ ...identity, headSha });
-const snapshot: ReviewRemoteSnapshot = { schemaVersion: 1, pullRequest: { ref: { host: identity.host, owner: identity.owner, repo: identity.repo, number: identity.prNumber }, headSha, isDraft: false, isOpen: true, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "sit", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: at }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "passing", checks: [] } };
+const snapshot: ReviewRemoteSnapshot = { schemaVersion: 1, pullRequest: { ref: { host: identity.host, owner: identity.owner, repo: identity.repo, number: identity.prNumber }, headSha, isDraft: false, isOpen: true, title: "Fixture", author: "fixture", headBranch: "main", baseBranch: "sit", reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: at }, comments: { threads: [], complete: true }, commits: [], checks: { overall: "passing", checks: [] }, conversation: { prDescription: "", entries: [] } };
 const review: Review = { ...createReview({ identity, currentSessionId: sessionId, headSha, createdAt: at }), representedRemote: { headSha, pullRequestUpdatedAt: at, snapshotHash: hashSnapshot(snapshot), refreshedAt: at } };
 
 describe("ReviewRefreshService", () => {
@@ -25,8 +26,10 @@ describe("ReviewRefreshService", () => {
       reviews: { async load() { return ok(review); }, async save() { return ok(undefined); } },
       sessions: { async load() { return { _tag: "err", error: { _tag: "StorageFailure", operation: "read", reason: "not_found" } } as never; }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(snapshot); }, saveCandidate },
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
       preparation: { async prepare() { return ok({} as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toEqual({ _tag: "err", error: { reason: "not_found" } });
@@ -41,8 +44,10 @@ describe("ReviewRefreshService", () => {
       reviews: { async load() { return ok(review); }, async save() { return ok(undefined); } },
       sessions: { async load() { return ok({ id: sessionId, key: { ...identity, headSha: mismatchedHead } } as never); }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(snapshot); }, saveCandidate },
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
       preparation: { async prepare() { return ok({} as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toEqual({ _tag: "err", error: { reason: "head_changed" } });
@@ -60,11 +65,13 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok({ ...snapshot.pullRequest, isOpen: false }); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
         async getMergeOutcome() { return ok({ state: "open" }); },
       },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toMatchObject({ _tag: "ok" });
@@ -84,10 +91,12 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok({ ...snapshot.pullRequest, headSha: nextHead }); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
       preparation: { async prepare() { return ok({ session: { key: { headSha: racedHead } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toEqual({ _tag: "err", error: { reason: "head_changed" } });
@@ -106,10 +115,12 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok({ ...snapshot.pullRequest, headSha: nextHead }); },
         async getPullRequestChecks() { return { _tag: "err", error: { _tag: "GitHubReadFailure" } } as never; },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
       preparation: { async prepare() { return ok({} as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: true, detectedAt: "2026-08-01T00:10:00.000Z" } });
@@ -127,11 +138,13 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({ pr: { host: identity.host, owner: identity.owner, repo: identity.repo, number: identity.prNumber }, headSha, isOpen: true, isDraft: false, mergeability: "blocked", mergeStateStatus: "blocked", reviewDecision: "review_required", checks: snapshot.checks, complete: true }); },
         async getMergePolicyEvidence() { return ok({ branchProtection: { state: "available", value: { requiredApprovingReviewCount: 1 } }, appliedRuleset: { state: "unavailable", reason: "forbidden" } }); },
       },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toMatchObject({ _tag: "ok" });
@@ -145,8 +158,10 @@ describe("ReviewRefreshService", () => {
       reviews: { async load() { return ok(review); }, async save() { return ok(undefined); } },
       sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(snapshot); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(snapshot) }); } },
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ok(projection),
     });
@@ -160,8 +175,10 @@ describe("ReviewRefreshService", () => {
       reviews: { async load() { return ok(review); }, async save() { return ok(undefined); } },
       sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(snapshot); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(snapshot) }); } },
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ({ _tag: "err", error: { _tag: "SessionStorageUnavailable" } }),
     });
@@ -179,11 +196,13 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok({ ...snapshot.pullRequest, isOpen: false }); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
         async getMergeOutcome() { return ok({ state: "merged", mergedAt: at }); },
       },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     const refreshed = await service.refresh({ profileId, reviewId: review.id });
@@ -201,8 +220,8 @@ describe("ReviewRefreshService", () => {
       sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(represented); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(represented) }); } },
       // No published-feedback reader is available in this profile.
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: publishedReview.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -215,8 +234,8 @@ describe("ReviewRefreshService", () => {
       reviews: { async load() { return ok(review); }, save },
       sessions: { async load() { return ok({ key: { ...identity, headSha }, id: sessionId } as never); }, async save() { return ok(undefined); } },
       remote: { async load() { return ok(snapshot); }, async saveCandidate() { return ok({ snapshotHash: hashSnapshot(snapshot) }); } },
-      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async getMergePolicy() { return ok({} as never); } },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      github: { async getPullRequest() { return ok(snapshot.pullRequest); }, async getPullRequestChecks() { return ok(snapshot.checks); }, async getPullRequestComments() { return ok(snapshot.comments); }, async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); }, async getMergePolicy() { return ok({} as never); } },
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -242,10 +261,10 @@ describe("ReviewRefreshService", () => {
         // The live reader now resolves viewerDidAuthor for the same comment the
         // stored snapshot captured without it under GitHub propagation lag.
         async getPullRequestComments() { return ok({ ...represented.comments, threads: represented.comments.threads.map((thread) => ({ ...thread, comments: thread.comments.map((comment) => ({ ...comment, viewerDidAuthor: true })) })) }); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: markedReview.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(saved).toHaveLength(0);
@@ -265,10 +284,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok({ ...represented.pullRequest, updatedAt: commentAt }); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(represented.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: healedReview.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -288,10 +307,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(changed.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: marked.id })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: true, detectedAt: "2026-08-01T00:07:00.000Z" } });
     expect(firstSave).not.toHaveBeenCalled();
@@ -315,10 +334,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(changed.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "Comment", commentId: ownComment.id }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -342,10 +361,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(changed.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "PendingThread", threadId: pendingThread }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -369,10 +388,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "PendingThread", threadId: pendingThread }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -400,10 +419,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(changed.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "PendingThread", threadId: ownThread }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: true, detectedAt: "2026-08-01T00:10:00.000Z" } });
   });
@@ -428,10 +447,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(changed.comments); },
         async getPullRequestPublishedFeedback() { return ok(changed.publishedFeedback as never); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "Comment", commentId: "PRRC_own", reviewId: "42" }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -453,10 +472,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(snapshot.comments); },
         async getPullRequestPublishedFeedback() { return ok(changed.publishedFeedback as never); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "DirectSummaryReview", reviewId: "42" }] })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: false, detectedAt: "2026-08-01T00:10:00.000Z" } });
     expect(save).not.toHaveBeenCalled();
@@ -482,10 +501,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(candidate.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "ThreadState", threadId, state: "resolved" }] as never })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: true, detectedAt: "2026-08-01T00:10:00.000Z" } });
   });
@@ -509,10 +528,10 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(snapshot.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(represented.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
-      preparation: { async prepare() { return ok({} as never); } }, now: () => "2026-08-01T00:10:00.000Z" as never,
+      preparation: { async prepare() { return ok({} as never); } }, pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } }, operationCoordinator: new ReviewOperationCoordinator(), now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.detect({ profileId, reviewId: review.id, recentWrites: [{ _tag: "ThreadState", threadId, state: "resolved" }] as never })).resolves.toEqual({ _tag: "ok", value: { updatesAvailable: true, detectedAt: "2026-08-01T00:10:00.000Z" } });
   });
@@ -531,10 +550,12 @@ describe("ReviewRefreshService", () => {
         async getPullRequest() { return ok(lagging.pullRequest); },
         async getPullRequestChecks() { return ok(snapshot.checks); },
         async getPullRequestComments() { return ok(withComment.comments); },
-        async getPullRequestCommits() { return ok([]); },
+        async getPullRequestCommits() { return ok([]); }, async loadConversation() { return ok(snapshot.conversation); },
         async getMergePolicy() { return ok({} as never); },
       },
       preparation: { async prepare() { return ok({ session: { id: sessionId, key: { headSha } } } as never); } },
+      pendingReview: { async reconcileWithinReviewLock() { return ok({ session: {} as never, state: { _tag: "None" } as const, unavailable: false }); } },
+      operationCoordinator: new ReviewOperationCoordinator(),
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(service.refresh({ profileId, reviewId: review.id })).resolves.toMatchObject({ _tag: "ok" });

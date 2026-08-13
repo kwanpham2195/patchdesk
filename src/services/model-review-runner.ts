@@ -5,8 +5,6 @@ import type { ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
 
 import { modelReviewResultSchema } from "../domain/review-result";
-import { parsePriorFindingEvidence, type PriorFindingEvidence } from "../domain/finding-lifecycle";
-import { parseRevisionComparison, type RevisionComparison, type ReviewScope } from "../domain/review-comparison";
 import { ReviewInspector } from "./review-inspector";
 import { createReviewInspectorTools } from "./review-inspector-tools";
 import { composeReviewPrompt } from "./review-rubric";
@@ -33,7 +31,6 @@ type RunModelReviewInput = {
   readonly reviewInputPath: string;
   readonly patchPath: string;
   readonly debugPath: string;
-  readonly scope?: ReviewScope;
   readonly model?: string;
   readonly reasoning?: "low" | "medium" | "high";
   readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
@@ -46,13 +43,8 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
     readFile(input.reviewInputPath, "utf8"),
     readFile(input.patchPath, "utf8"),
   ]);
-  const incremental = input.scope?.kind === "incremental"
-    ? await readIncrementalEvidence(input.scope)
-    : undefined;
-  const files = incremental === undefined
-    ? changedFiles(context)
-    : [...new Set([...incremental.comparison.files.map((file) => file.path), ...incremental.priorFindings.flatMap((finding) => finding.file === undefined ? [] : [finding.file])])];
-  const headSha = reviewHeadSha(context, input.scope);
+  const files = changedFiles(context);
+  const headSha = reviewHeadSha(context);
   const fileSnapshots = await snapshotChangedFiles(input.worktreePath, headSha, files, input.gitShow);
   const inspector = new ReviewInspector({
     worktreePath: input.worktreePath,
@@ -66,7 +58,6 @@ export async function runModelReview(input: RunModelReviewInput): Promise<Workfl
     reviewInput,
     context,
     fullPatch,
-    ...(incremental === undefined ? {} : { incremental }),
   }), {
     result: modelReviewResultSchema,
     tools: createReviewInspectorTools(inspector),
@@ -126,8 +117,7 @@ function parseBlobByteLength(raw: string): number | undefined {
   return Number.isSafeInteger(bytes) ? bytes : undefined;
 }
 
-function reviewHeadSha(context: string, scope: ReviewScope | undefined): string | undefined {
-  if (scope?.kind === "incremental") return GIT_SHA.test(scope.headSha) ? scope.headSha : undefined;
+function reviewHeadSha(context: string): string | undefined {
   try {
     const parsed: unknown = JSON.parse(context);
     if (typeof parsed !== "object" || parsed === null) return undefined;
@@ -148,30 +138,4 @@ function changedFiles(context: string): ReadonlyArray<string> {
   } catch {
     return [];
   }
-}
-
-async function readIncrementalEvidence(scope: Extract<ReviewScope, { readonly kind: "incremental" }>): Promise<{
-  readonly patch: string;
-  readonly comparison: RevisionComparison;
-  readonly priorFindings: ReadonlyArray<PriorFindingEvidence>;
-}> {
-  const [patch, rawComparison, rawPriorFindings] = await Promise.all([
-    readFile(scope.comparisonPatchPath, "utf8"),
-    readFile(scope.comparisonMetadataPath, "utf8"),
-    readFile(scope.previousFindingsPath, "utf8"),
-  ]);
-  let rawComparisonValue: unknown;
-  let rawPriorFindingValue: unknown;
-  try {
-    rawComparisonValue = JSON.parse(rawComparison);
-    rawPriorFindingValue = JSON.parse(rawPriorFindings);
-  } catch {
-    throw new Error("Invalid incremental review artifacts");
-  }
-  const comparison = parseRevisionComparison(rawComparisonValue);
-  const priorFindings = parsePriorFindingEvidence(rawPriorFindingValue);
-  if (comparison._tag === "err" || priorFindings._tag === "err" || comparison.value.headSha !== scope.headSha || comparison.value.baseHeadSha !== scope.baseHeadSha) {
-    throw new Error("Invalid incremental review artifacts");
-  }
-  return { patch, comparison: comparison.value, priorFindings: priorFindings.value };
 }

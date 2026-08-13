@@ -3,8 +3,16 @@ import { join } from "node:path";
 import type { CommandFailure, CommandRunner } from "../adapters/github/command-runner";
 import { parseModelReviewResult, type ModelReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
-import type { ReviewWorkflowInput } from "./review-workflow-starter";
-import type { ReviewActivityStep } from "./run-projection";
+export type AnalysisWorkflowInput = {
+  readonly profileId: string;
+  readonly sessionId: string;
+  readonly contextPath: string;
+  readonly reviewInputPath: string;
+  readonly patchPath: string;
+  readonly worktreePath: string;
+  readonly model: string;
+  readonly reasoning: "low" | "medium" | "high";
+};
 
 export type FlueCliReviewFailure = {
   readonly reason:
@@ -27,11 +35,10 @@ export class FlueCliReviewInvoker {
   ) {}
 
   async invoke(
-    input: ReviewWorkflowInput,
-    options?: { readonly signal?: AbortSignal; readonly onActivity?: (step: Exclude<ReviewActivityStep, "complete" | "failed">) => void },
+    input: AnalysisWorkflowInput,
+    options?: { readonly signal?: AbortSignal },
   ): Promise<Result<ModelReviewResult, FlueCliReviewFailure>> {
     if (options?.signal?.aborted) return err({ reason: "cancelled" });
-    options?.onActivity?.("inspecting");
     const output = await this.commands.runJson({
       argv: [this.runtimeExecutable, this.cliPath, "run", "workflow:review-pr", "--input", JSON.stringify(input)],
       cwd: this.projectRoot,
@@ -41,7 +48,6 @@ export class FlueCliReviewInvoker {
     });
     if (options?.signal?.aborted) return err({ reason: "cancelled" });
     if (output._tag === "err") return err({ reason: reviewFailureReason(output.error) });
-    options?.onActivity?.("validating");
     const parsed = parseModelReviewResult(output.value);
     return parsed._tag === "ok" ? ok(parsed.value) : err({ reason: "invalid_result" });
   }
