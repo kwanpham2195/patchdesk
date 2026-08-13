@@ -191,15 +191,15 @@ No product test is needed. Verification is claim-based:
 
 ## Done criteria
 
-- [ ] README no longer contains an inaccurate universal write-safety claim.
-- [ ] Explicit Finding commands and uncertain-write reconciliation are clear.
-- [ ] Current runtime and command ladder are documented without guessing future
+- [x] README no longer contains an inaccurate universal write-safety claim.
+- [x] Explicit Finding commands and uncertain-write reconciliation are clear.
+- [x] Current runtime and command ladder are documented without guessing future
       Flue 2 state.
-- [ ] All documented scripts exist.
-- [ ] `pnpm lint` passes.
-- [ ] `git diff --check -- README.md` has no output.
-- [ ] Only README and the plan status row changed for this plan.
-- [ ] `plans/README.md` marks Plan 003 DONE.
+- [x] All documented scripts exist.
+- [x] `pnpm lint` passes.
+- [x] `git diff --check -- README.md` has no output.
+- [x] Only README and the plan status row changed for this plan.
+- [x] `plans/README.md` marks Plan 003 DONE.
 
 ## STOP conditions
 

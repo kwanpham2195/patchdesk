@@ -2,7 +2,7 @@
 created_at: 2026-08-13
 repos:
   - patchdesk
-status: in_progress
+status: complete
 ---
 
 # Complete the Patchdesk implementation-plan portfolio
@@ -74,7 +74,7 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 - [x] Plan 006: migrate Pi Insights to Flue 2.0.3
 - [x] Plan 007: lazy-load the Review workbench
 - [x] Plan 008: migrate quality tooling to Oxc
-- [ ] Portfolio audit: prove every plan criterion against current state
+- [x] Portfolio audit: prove every plan criterion against current state
 
 ## ADR checkpoints
 
@@ -264,7 +264,20 @@ live checks, changed files, residual risks, and any ADR added or updated.
   formatter-only diff, then requested the explicit SVG policy and Oxlint docs
   correction. Both were applied. ADR: none.
 
-## Resume protocol
+### 2026-08-13 — Portfolio audit complete
+
+- Reconciled every done criterion in Plans 001–008 against the current tree;
+  all criteria and queue rows are DONE.
+- The final package gate found and corrected two Oxfmt-generation seams:
+  staging now reads either quoted or identifier catalog digest keys, and the
+  runtime manifest generator emits stable formatted JSON.
+- Final parent proof passed: Oxlint, Oxfmt, TypeScript, Vitest 597/597, build,
+  Playwright 35/35, bundle graph, exact staging, full macOS package, package
+  smoke, generated-catalog stability, and `git diff --check`.
+- Independent final review reran focused staging, isolated Flue 15/15, bundle,
+  lint, format, and type gates and accepted all eight plans with no blocker.
+- Known residual condition: one real-data read-side GitHub reconciliation can
+  return a rejection. It performs no write and is outside this portfolio.
 
 ## Resume protocol
 

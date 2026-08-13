@@ -204,15 +204,15 @@ Use deferred promises, not real timers or arbitrary sleeps, for response order.
 
 ## Done criteria
 
-- [ ] The callback captures and rechecks generation plus `snapshotKey()`.
-- [ ] No post-await branch uses the pre-request projection as write authority.
-- [ ] A deferred receipt observation cannot replace or patch a newer Refresh.
-- [ ] Confirmed receipts still render without waiting for observation.
-- [ ] The focused renderer test file passes.
-- [ ] `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
-- [ ] `git diff --check` has no output.
-- [ ] No file outside Scope changed for this plan.
-- [ ] `plans/README.md` marks Plan 001 DONE.
+- [x] The callback captures and rechecks generation plus `snapshotKey()`.
+- [x] No post-await branch uses the pre-request projection as write authority.
+- [x] A deferred receipt observation cannot replace or patch a newer Refresh.
+- [x] Confirmed receipts still render without waiting for observation.
+- [x] The focused renderer test file passes.
+- [x] `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
+- [x] `git diff --check` has no output.
+- [x] No file outside Scope changed for this plan.
+- [x] `plans/README.md` marks Plan 001 DONE.
 
 ## STOP conditions
 

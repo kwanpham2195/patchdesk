@@ -10,8 +10,7 @@ and tooling migration.
 - **2026-08-13 — Complete the Patchdesk implementation-plan portfolio**
   - Priority: P1
   - Effort: XL
-  - Status: IN PROGRESS — durable tracker/memory and live dev/log panes are
-    established; Plans 001-008 remain to execute in order.
+  - Status: DONE — Plans 001-008 and the combined current-state audit passed.
   - Plan: `.agents/PLANS/2026-08-13-complete-plan-portfolio.md`
   - Queue: `plans/README.md`
   - Depends on: preserve the current dirty feature work; add the Flue 2 ADR at

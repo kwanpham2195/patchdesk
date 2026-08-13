@@ -38,7 +38,11 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
   );
   await access(catalogSource);
   const catalogText = await readFile(catalogSource, "utf8");
-  const catalogDigest = /"digest":\s*"([a-f0-9]{64})"/.exec(catalogText)?.[1];
+  // Generated TypeScript uses an identifier key after Oxfmt, while older
+  // artifacts used a JSON-style quoted key. Accept both textual forms.
+  const catalogDigest = /(?:^|[,{}]\s*)"?digest"?\s*:\s*"([a-f0-9]{64})"/m.exec(
+    catalogText,
+  )?.[1];
   if (sourceRuntimeManifest.catalogDigest !== catalogDigest)
     throw new Error(
       "The generated Pi catalog does not match the runtime manifest.",

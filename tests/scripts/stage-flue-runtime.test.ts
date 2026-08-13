@@ -126,7 +126,7 @@ async function createFixture() {
     ),
     writeFile(
       join(projectRoot, "src", "adapters", "pi", "pi-ai-catalog.generated.ts"),
-      'export const generatedPiAiCatalog: unknown = {"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};\n',
+      'export const generatedPiAiCatalog: unknown = {\n  digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",\n};\n',
     ),
     writeFile(
       join(projectRoot, "src", "skills", "patchdesk-code-review", "SKILL.md"),

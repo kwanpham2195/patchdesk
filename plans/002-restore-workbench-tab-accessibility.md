@@ -183,14 +183,14 @@ critical product violations; the view-switch behavior tests still pass.
 
 ## Done criteria
 
-- [ ] No custom workbench view button has `role="tab"` or `aria-selected`.
-- [ ] The active control exposes `aria-pressed` without changing visuals.
-- [ ] The `#workbench-fixture` Axe test passes.
-- [ ] All accessibility cases pass without a new exclusion.
-- [ ] Existing view-switch behavior tests pass.
-- [ ] `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
-- [ ] `git diff --check` has no output.
-- [ ] `plans/README.md` marks Plan 002 DONE.
+- [x] No custom workbench view button has `role="tab"` or `aria-selected`.
+- [x] The active control exposes `aria-pressed` without changing visuals.
+- [x] The `#workbench-fixture` Axe test passes.
+- [x] All accessibility cases pass without a new exclusion.
+- [x] Existing view-switch behavior tests pass.
+- [x] `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
+- [x] `git diff --check` has no output.
+- [x] `plans/README.md` marks Plan 002 DONE.
 
 ## STOP conditions
 
