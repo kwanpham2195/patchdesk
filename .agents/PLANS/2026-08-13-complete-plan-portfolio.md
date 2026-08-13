@@ -68,7 +68,7 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 - [x] Setup: persistent goal, queue, tracker, memory, and live logs/dev process
 - [x] Plan 001: prevent stale direct-summary observation
 - [x] Plan 002: restore workbench navigation accessibility
-- [ ] Plan 003: correct safety/runtime docs
+- [x] Plan 003: correct safety/runtime docs
 - [ ] Plan 004: lock packaged Flue beta.9 runtime
 - [ ] Plan 005: remove superseded Review systems
 - [ ] Plan 006: migrate Pi Insights to Flue 2.0.3
@@ -187,3 +187,20 @@ live checks, changed files, residual risks, and any ADR added or updated.
   outer-role selectors/assertions in
   `tests/renderer/review-workbench-flow.ui.test.tsx`.
 - ADR: none; semantic correction only.
+
+### 2026-08-13 — Plan 003 complete
+
+- README now documents pnpm 8.8.0, verified Node 24.18.0, Electron 43.1.1,
+  the complete current command ladder, and the absence of an `engines`
+  contract before Flue 2.
+- Safety text now states that preload exposes IPC while the main process owns
+  and sends the per-launch local-API capability.
+- It documents explicit Finding Add-to-review writes, locked uncertain outcomes,
+  no automatic retry, and the inactive legacy per-Analysis authorization
+  without claiming its future removal is complete.
+- Independent review found and corrected capability ownership and removed a
+  non-durable internal plan reference from user-facing documentation.
+- Parent verification: runtime versions and every documented script exist;
+  `pnpm lint` and `git diff --check -- README.md` passed.
+- Changed source: `README.md` only.
+- ADR: none; documentation reflects current decisions and dormant code.
