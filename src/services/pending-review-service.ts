@@ -492,7 +492,10 @@ export class PendingReviewService {
         {
           readonly _tag: "GitHubWriteFailure";
           readonly category:
-            "auth" | "rejected" | "unavailable" | "pending_review";
+            | "auth"
+            | "rejected"
+            | "unavailable"
+            | "pending_review";
           readonly message: string;
         }
       >

@@ -19,8 +19,16 @@ async function makePaths(): Promise<PatchdeskPaths> {
   return PatchdeskPaths.forTest(root);
 }
 
-function entry(overrides: Partial<Parameters<AppLogService["write"]>[0]> = {}): Parameters<AppLogService["write"]>[0] {
-  return { process: "main", level: "info", topic: "test", message: "hello", ...overrides };
+function entry(
+  overrides: Partial<Parameters<AppLogService["write"]>[0]> = {},
+): Parameters<AppLogService["write"]>[0] {
+  return {
+    process: "main",
+    level: "info",
+    topic: "test",
+    message: "hello",
+    ...overrides,
+  };
 }
 
 describe("AppLogService", () => {
@@ -32,7 +40,11 @@ describe("AppLogService", () => {
     }
     await service.flush();
     const tailed = service.tail();
-    expect(tailed.entries.map((item) => item.message)).toEqual(["entry-2", "entry-3", "entry-4"]);
+    expect(tailed.entries.map((item) => item.message)).toEqual([
+      "entry-2",
+      "entry-3",
+      "entry-4",
+    ]);
     expect(tailed.entries[0]?.seq).toBe(2);
     expect(tailed.nextAfter).toBe(4);
   });
@@ -40,7 +52,8 @@ describe("AppLogService", () => {
   it("resumes from after seq", async () => {
     const paths = await makePaths();
     const service = new AppLogService(paths, { bufferSize: 10 });
-    for (let index = 0; index < 4; index += 1) service.write(entry({ message: `entry-${index}` }));
+    for (let index = 0; index < 4; index += 1)
+      service.write(entry({ message: `entry-${index}` }));
     const first = service.tail();
     service.write(entry({ message: "entry-4" }));
     const resumed = service.tail(first.entries[first.entries.length - 1]?.seq);
@@ -50,7 +63,8 @@ describe("AppLogService", () => {
   it("returns the last delivered sequence as the exclusive-resume cursor", async () => {
     const paths = await makePaths();
     const service = new AppLogService(paths, { bufferSize: 10 });
-    for (let index = 0; index < 3; index += 1) service.write(entry({ message: `entry-${index}` }));
+    for (let index = 0; index < 3; index += 1)
+      service.write(entry({ message: `entry-${index}` }));
     const tailed = service.tail();
     // Entries 0..2 were delivered; the next poll must resume after 2, not
     // after the next value to allocate (3), or entry 3 would be skipped.
@@ -68,14 +82,19 @@ describe("AppLogService", () => {
 
   it("persists every entry to the JSONL file and rotates on size", async () => {
     const paths = await makePaths();
-    const service = new AppLogService(paths, { maxFileBytes: 1_024, rotatedFilesToKeep: 2 });
+    const service = new AppLogService(paths, {
+      maxFileBytes: 1_024,
+      rotatedFilesToKeep: 2,
+    });
     for (let index = 0; index < 200; index += 1) {
       service.write(entry({ message: `entry-${index}`.padEnd(80, "x") }));
     }
     await service.flush();
     const file = await readFile(paths.logFile(), "utf8");
     expect(file.split("\n").filter(Boolean).length).toBeGreaterThan(0);
-    const rotated = (await readdir(paths.logsDirectory())).filter((name) => /^patchdesk-\d+\.jsonl$/.test(name));
+    const rotated = (await readdir(paths.logsDirectory())).filter((name) =>
+      /^patchdesk-\d+\.jsonl$/.test(name),
+    );
     expect(rotated.length).toBeGreaterThan(0);
     expect(rotated.length).toBeLessThanOrEqual(2);
 
@@ -86,7 +105,9 @@ describe("AppLogService", () => {
     // contiguous seq tail ending at the newest entry, with nothing lost mid-stream.
     const seqs = new Set(all.map((item) => item.seq));
     for (const name of rotated) {
-      for (const line of (await readFile(join(paths.logsDirectory(), name), "utf8")).split("\n")) {
+      for (const line of (
+        await readFile(join(paths.logsDirectory(), name), "utf8")
+      ).split("\n")) {
         if (line.trim().length === 0) continue;
         const parsed = JSON.parse(line) as { seq?: unknown };
         if (typeof parsed.seq === "number") seqs.add(parsed.seq);
@@ -108,8 +129,12 @@ describe("AppLogService", () => {
   });
 
   it("never throws when the file system is unavailable", async () => {
-    const service = new AppLogService(PatchdeskPaths.forTest("/nonexistent-root"));
-    expect(() => service.write(entry({ message: "boom".repeat(50) }))).not.toThrow();
+    const service = new AppLogService(
+      PatchdeskPaths.forTest("/nonexistent-root"),
+    );
+    expect(() =>
+      service.write(entry({ message: "boom".repeat(50) })),
+    ).not.toThrow();
     await service.flush();
     expect(service.tail().entries).toHaveLength(1);
   });

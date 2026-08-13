@@ -25,12 +25,12 @@ No tokens, PR URLs, account names, comment bodies, raw JSON, command output, or 
 
 ## Evidence rows
 
-| # | Operation | Result | Reader result | Identities | Note |
-|---|-----------|--------|---------------|------------|------|
-| 1 | Preflight (read-only) | confirmed | none (complete) | — | PR open; no viewer pending review; head recorded; anchor derived from the current diff (first added line of the first changed file) |
-| 2 | Create temporary PENDING review | confirmed | pending | rest present, node present, thread absent, comment absent | one clearly marked temporary review with one inline comment; response state PENDING |
-| 3 | DELETE the pending review (normal confirmed response) | confirmed | complete | — | DELETE endpoint accepted; one invocation, no retry |
-| 4 | Bounded read-back | confirmed | none (complete) | rest absent, node absent | no viewer pending review remains; thread count unchanged |
+| #   | Operation                                             | Result    | Reader result   | Identities                                                | Note                                                                                                                                |
+| --- | ----------------------------------------------------- | --------- | --------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Preflight (read-only)                                 | confirmed | none (complete) | —                                                         | PR open; no viewer pending review; head recorded; anchor derived from the current diff (first added line of the first changed file) |
+| 2   | Create temporary PENDING review                       | confirmed | pending         | rest present, node present, thread absent, comment absent | one clearly marked temporary review with one inline comment; response state PENDING                                                 |
+| 3   | DELETE the pending review (normal confirmed response) | confirmed | complete        | —                                                         | DELETE endpoint accepted; one invocation, no retry                                                                                  |
+| 4   | Bounded read-back                                     | confirmed | none (complete) | rest absent, node absent                                  | no viewer pending review remains; thread count unchanged                                                                            |
 
 ## Disposition
 

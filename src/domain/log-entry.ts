@@ -21,7 +21,9 @@ const logEntrySchema = v.strictObject({
   meta: v.optional(v.record(v.string(), v.unknown())),
   profileId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
-  correlationId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(120))),
+  correlationId: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
+  ),
 });
 
 export type LogLevel = v.InferOutput<typeof logLevelSchema>;
@@ -47,13 +49,27 @@ export const LOG_MAX_META_DEPTH = 3;
 export const LOG_MAX_META_STRING_LENGTH = 512;
 export const LOG_MAX_ENTRY_BYTES = 8_000;
 
-const SENSITIVE_META_KEY = /^(?:authorization|token|password|secret|credential|api[_-]?key|set-cookie|cookie)$/i;
+const SENSITIVE_META_KEY =
+  /^(?:authorization|token|password|secret|credential|api[_-]?key|set-cookie|cookie)$/i;
 
 /** Credential shapes are masked inline; everything else (paths, errors, stacks) survives in the local log. */
-const SECRET_PATTERNS: ReadonlyArray<{ readonly pattern: RegExp; readonly replacement: string }> = [
-  { pattern: /(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/g, replacement: "[redacted]" },
-  { pattern: /\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, replacement: "$1 [redacted]" },
-  { pattern: /\b(authorization|api[_-]?key|access[_-]?token|token|password|passwd|secret)\b(?:\s*[:=]\s*|\s+)\S+/gi, replacement: "$1 [redacted]" },
+const SECRET_PATTERNS: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly replacement: string;
+}> = [
+  {
+    pattern: /(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-)[A-Za-z0-9_-]+/g,
+    replacement: "[redacted]",
+  },
+  {
+    pattern: /\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi,
+    replacement: "$1 [redacted]",
+  },
+  {
+    pattern:
+      /\b(authorization|api[_-]?key|access[_-]?token|token|password|passwd|secret)\b(?:\s*[:=]\s*|\s+)\S+/gi,
+    replacement: "$1 [redacted]",
+  },
 ];
 
 /** Parse one persisted or renderer-supplied entry before it enters service state. */
@@ -63,7 +79,9 @@ export function parseLogEntry(input: unknown): LogEntry | undefined {
 }
 
 /** Build a redacted, truncated entry from a trusted service input. */
-export function normalizeLogEntry(input: LogEntryInput & { readonly seq: number; readonly at: string }): LogEntry {
+export function normalizeLogEntry(
+  input: LogEntryInput & { readonly seq: number; readonly at: string },
+): LogEntry {
   return {
     schemaVersion: 1,
     seq: input.seq,
@@ -73,9 +91,20 @@ export function normalizeLogEntry(input: LogEntryInput & { readonly seq: number;
     topic: sanitizeLogField(input.topic, LOG_MAX_TOPIC_LENGTH),
     message: sanitizeLogField(input.message, LOG_MAX_MESSAGE_LENGTH),
     ...(input.meta === undefined ? {} : { meta: sanitizeLogMeta(input.meta) }),
-    ...(input.profileId === undefined ? {} : { profileId: sanitizeLogIdentifier(input.profileId) }),
-    ...(input.sessionId === undefined ? {} : { sessionId: sanitizeLogIdentifier(input.sessionId) }),
-    ...(input.correlationId === undefined ? {} : { correlationId: sanitizeLogIdentifier(input.correlationId, LOG_MAX_CORRELATION_ID_LENGTH) }),
+    ...(input.profileId === undefined
+      ? {}
+      : { profileId: sanitizeLogIdentifier(input.profileId) }),
+    ...(input.sessionId === undefined
+      ? {}
+      : { sessionId: sanitizeLogIdentifier(input.sessionId) }),
+    ...(input.correlationId === undefined
+      ? {}
+      : {
+          correlationId: sanitizeLogIdentifier(
+            input.correlationId,
+            LOG_MAX_CORRELATION_ID_LENGTH,
+          ),
+        }),
   };
 }
 
@@ -91,7 +120,9 @@ export function sanitizeLogEntry(input: LogEntry): LogEntry {
     ...(input.meta === undefined ? {} : { meta: input.meta }),
     ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-    ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+    ...(input.correlationId === undefined
+      ? {}
+      : { correlationId: input.correlationId }),
   });
 }
 
@@ -108,19 +139,36 @@ function sanitizeLogField(input: string, maxLength: number): string {
   const collapsed = Array.from(input, (character) => {
     const code = character.codePointAt(0);
     return code !== undefined && (code < 32 || code === 127) ? " " : character;
-  }).join("").replace(/\s+/g, " ").trim();
+  })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
   const masked = maskLogSecrets(collapsed);
-  return masked.slice(0, Math.min(Math.max(1, maxLength), LOG_MAX_MESSAGE_LENGTH));
+  return masked.slice(
+    0,
+    Math.min(Math.max(1, maxLength), LOG_MAX_MESSAGE_LENGTH),
+  );
 }
 
-function sanitizeLogIdentifier(input: string, maxLength = LOG_MAX_IDENTIFIER_LENGTH): string {
+function sanitizeLogIdentifier(
+  input: string,
+  maxLength = LOG_MAX_IDENTIFIER_LENGTH,
+): string {
   const safe = maskLogSecrets(input).slice(0, maxLength);
   return safe.replace(/[^A-Za-z0-9._:-]/g, "_");
 }
 
 /** Recursively sanitize meta: drop sensitive keys, mask secrets, bound depth and string length. */
-export function sanitizeLogMeta(input: unknown, depth = 0): Record<string, unknown> | undefined {
-  if (typeof input !== "object" || input === null || Array.isArray(input) || depth > LOG_MAX_META_DEPTH) {
+export function sanitizeLogMeta(
+  input: unknown,
+  depth = 0,
+): Record<string, unknown> | undefined {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input) ||
+    depth > LOG_MAX_META_DEPTH
+  ) {
     return undefined;
   }
   const output: Record<string, unknown> = {};
@@ -145,11 +193,18 @@ function sanitizeMetaValue(value: unknown, depth: number): unknown {
       return {
         name: sanitizeMetaValue(value.name, depth + 1),
         message: sanitizeMetaValue(value.message, depth + 1),
-        ...(value.stack === undefined ? {} : { stack: sanitizeMetaValue(value.stack.slice(0, 1_000), depth + 1) }),
+        ...(value.stack === undefined
+          ? {}
+          : {
+              stack: sanitizeMetaValue(value.stack.slice(0, 1_000), depth + 1),
+            }),
       };
     }
     if (Array.isArray(value)) {
-      return value.slice(0, 20).map((item) => sanitizeMetaValue(item, depth + 1)).filter((item) => item !== undefined);
+      return value
+        .slice(0, 20)
+        .map((item) => sanitizeMetaValue(item, depth + 1))
+        .filter((item) => item !== undefined);
     }
     return sanitizeLogMeta(value, depth + 1);
   }

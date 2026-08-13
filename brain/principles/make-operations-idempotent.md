@@ -5,12 +5,14 @@ Design operations so they converge to the correct state regardless of how many t
 **Why:** Commands, lifecycle operations, and processing loops run in environments where crashes, restarts, and retries are normal. If an operation leaves partial state that causes a different outcome on re-execution, every restart becomes a debugging session.
 
 **The Pattern:**
+
 - Convergent startup: scan for existing state, clean stale artifacts, adopt live sessions
 - Content-based cleanup: compare by content equivalence, not creation order
 - Self-healing locks: use PID-based stale lock detection
 - Idempotent scheduling: failed work respawns cleanly, fresh input regenerated after each cycle
 
 **The Test:**
+
 1. What happens if this runs twice in a row?
 2. What happens if the previous run crashed at every possible point?
 3. Does re-execution converge to the same end state?

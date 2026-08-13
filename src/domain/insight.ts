@@ -1,5 +1,13 @@
-import type { GitSha, InsightRunId, IsoTimestamp, ReviewSessionId } from "./ids";
-import type { InsightFailureCategory, WalkthroughProgress } from "./insight-record";
+import type {
+  GitSha,
+  InsightRunId,
+  IsoTimestamp,
+  ReviewSessionId,
+} from "./ids";
+import type {
+  InsightFailureCategory,
+  WalkthroughProgress,
+} from "./insight-record";
 import type { InsightReasoning } from "./insight-provider";
 export type InsightStatus =
   | "not_generated"
@@ -18,7 +26,11 @@ export type InsightScopeProjection = {
   readonly fileCount: number;
   readonly additions: number;
   readonly deletions: number;
-  readonly changedFiles: ReadonlyArray<{ readonly path: string; readonly additions: number; readonly deletions: number }>;
+  readonly changedFiles: ReadonlyArray<{
+    readonly path: string;
+    readonly additions: number;
+    readonly deletions: number;
+  }>;
 };
 
 export type InsightProjection<T> = {

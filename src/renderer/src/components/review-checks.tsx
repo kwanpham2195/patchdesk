@@ -1,12 +1,30 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, CircleDashed, CircleX, ExternalLink, MinusCircle, type LucideIcon } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  CircleDashed,
+  CircleX,
+  ExternalLink,
+  MinusCircle,
+  type LucideIcon,
+} from "lucide-react";
 
-import type { CheckRunSummary, CheckSummary } from "../../../domain/github-context";
+import type {
+  CheckRunSummary,
+  CheckSummary,
+} from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
-import { openPullRequestExternalUrl, resolvePullRequestExternalUrl } from "@/external-links";
+import {
+  openPullRequestExternalUrl,
+  resolvePullRequestExternalUrl,
+} from "@/external-links";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 export type CheckResultKind = "passed" | "failed" | "pending" | "other";
@@ -42,15 +60,40 @@ export function presentCheckResult(
   const kind = classifyCheck(check);
   switch (kind) {
     case "passed":
-      return { kind, label: "Passed", Icon: CheckCircle2, treatment: "text-status-success" };
+      return {
+        kind,
+        label: "Passed",
+        Icon: CheckCircle2,
+        treatment: "text-status-success",
+      };
     case "failed":
-      return { kind, label: "Failed", Icon: CircleX, treatment: "text-destructive" };
+      return {
+        kind,
+        label: "Failed",
+        Icon: CircleX,
+        treatment: "text-destructive",
+      };
     case "pending":
-      return { kind, label: "In progress", Icon: CircleDashed, treatment: "text-status-warning" };
+      return {
+        kind,
+        label: "In progress",
+        Icon: CircleDashed,
+        treatment: "text-status-warning",
+      };
     default:
       return check.conclusion === "skipped" || check.conclusion === "neutral"
-        ? { kind, label: "Skipped", Icon: MinusCircle, treatment: "text-muted-foreground" }
-        : { kind, label: "Unknown", Icon: MinusCircle, treatment: "text-muted-foreground" };
+        ? {
+            kind,
+            label: "Skipped",
+            Icon: MinusCircle,
+            treatment: "text-muted-foreground",
+          }
+        : {
+            kind,
+            label: "Unknown",
+            Icon: MinusCircle,
+            treatment: "text-muted-foreground",
+          };
   }
 }
 
@@ -67,20 +110,55 @@ export function presentOverallCheckResult(
     | undefined,
 ): CheckResultPresentation {
   if (freshness === "not_refreshed")
-    return { kind: "other", label: "Not refreshed", Icon: MinusCircle, treatment: "text-muted-foreground" };
+    return {
+      kind: "other",
+      label: "Not refreshed",
+      Icon: MinusCircle,
+      treatment: "text-muted-foreground",
+    };
   if (freshness === "unavailable")
-    return { kind: "other", label: "Unavailable", Icon: MinusCircle, treatment: "text-muted-foreground" };
+    return {
+      kind: "other",
+      label: "Unavailable",
+      Icon: MinusCircle,
+      treatment: "text-muted-foreground",
+    };
   switch (overall) {
     case "passing":
-      return { kind: "passed", label: "Passing", Icon: CheckCircle2, treatment: "text-status-success" };
+      return {
+        kind: "passed",
+        label: "Passing",
+        Icon: CheckCircle2,
+        treatment: "text-status-success",
+      };
     case "failing":
-      return { kind: "failed", label: "Failing", Icon: CircleX, treatment: "text-destructive" };
+      return {
+        kind: "failed",
+        label: "Failing",
+        Icon: CircleX,
+        treatment: "text-destructive",
+      };
     case "pending":
-      return { kind: "pending", label: "In progress", Icon: CircleDashed, treatment: "text-status-warning" };
+      return {
+        kind: "pending",
+        label: "In progress",
+        Icon: CircleDashed,
+        treatment: "text-status-warning",
+      };
     case "skipped":
-      return { kind: "other", label: "Skipped", Icon: MinusCircle, treatment: "text-muted-foreground" };
+      return {
+        kind: "other",
+        label: "Skipped",
+        Icon: MinusCircle,
+        treatment: "text-muted-foreground",
+      };
     default:
-      return { kind: "other", label: "Unknown", Icon: MinusCircle, treatment: "text-muted-foreground" };
+      return {
+        kind: "other",
+        label: "Unknown",
+        Icon: MinusCircle,
+        treatment: "text-muted-foreground",
+      };
   }
 }
 
@@ -106,20 +184,42 @@ export function ReviewChecks({
   const content = (
     <>
       <p className="pb-2 text-xs text-muted-foreground">
-        {freshness === "fresh" ? "Read-only checks from the reviewed head." : "Checks may be incomplete until GitHub state is refreshed."}
+        {freshness === "fresh"
+          ? "Read-only checks from the reviewed head."
+          : "Checks may be incomplete until GitHub state is refreshed."}
       </p>
-      {grouped.length === 0 ? <p className="pb-3 text-sm text-muted-foreground">No check details are available.</p> : (
+      {grouped.length === 0 ? (
+        <p className="pb-3 text-sm text-muted-foreground">
+          No check details are available.
+        </p>
+      ) : (
         <ul className="border-t py-2" aria-label="Pull request checks">
-          {rows.map((check) => <CheckRow key={check.key} check={check} {...(pullRequest === undefined ? {} : { pullRequest })} />)}
+          {rows.map((check) => (
+            <CheckRow
+              key={check.key}
+              check={check}
+              {...(pullRequest === undefined ? {} : { pullRequest })}
+            />
+          ))}
         </ul>
       )}
       {!showPassing && passing.length > 0 ? (
-        <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(true)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2"
+          onClick={() => setShowPassing(true)}
+        >
           Show {passing.length} passing check{passing.length === 1 ? "" : "s"}
         </Button>
       ) : null}
       {showPassing && passing.length > 5 ? (
-        <Button variant="ghost" size="sm" className="mb-2" onClick={() => setShowPassing(false)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2"
+          onClick={() => setShowPassing(false)}
+        >
           Hide {passing.length} passing checks
         </Button>
       ) : null}
@@ -129,11 +229,26 @@ export function ReviewChecks({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b">
       <div className="flex items-center justify-between gap-3 py-2">
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" aria-label={`${open ? "Collapse" : "Expand"} checks`} />}>
+        <CollapsibleTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`${open ? "Collapse" : "Expand"} checks`}
+            />
+          }
+        >
           Checks
-          <ChevronDown data-icon="inline-end" className={open ? undefined : "-rotate-90"} aria-hidden="true" />
+          <ChevronDown
+            data-icon="inline-end"
+            className={open ? undefined : "-rotate-90"}
+            aria-hidden="true"
+          />
         </CollapsibleTrigger>
-        <span className="text-xs text-muted-foreground" aria-label={`Checks overall: ${overallLabel(checks.overall, freshness)}`}>
+        <span
+          className="text-xs text-muted-foreground"
+          aria-label={`Checks overall: ${overallLabel(checks.overall, freshness)}`}
+        >
           {overallLabel(checks.overall, freshness)}
         </span>
       </div>
@@ -142,19 +257,45 @@ export function ReviewChecks({
   );
 }
 
-type GroupedCheck = CheckRunSummary & { readonly key: string; readonly count: number };
+type GroupedCheck = CheckRunSummary & {
+  readonly key: string;
+  readonly count: number;
+};
 
-function groupChecks(checks: ReadonlyArray<CheckRunSummary>): ReadonlyArray<GroupedCheck> {
+function groupChecks(
+  checks: ReadonlyArray<CheckRunSummary>,
+): ReadonlyArray<GroupedCheck> {
   const grouped = new Map<string, GroupedCheck>();
   for (const check of checks) {
-    const key = [check.name, check.required, check.status, check.conclusion ?? "", check.url ?? ""].join("\u0000");
+    const key = [
+      check.name,
+      check.required,
+      check.status,
+      check.conclusion ?? "",
+      check.url ?? "",
+    ].join("\u0000");
     const current = grouped.get(key);
-    grouped.set(key, current === undefined ? { ...check, key, count: 1 } : { ...current, count: current.count + 1 });
+    grouped.set(
+      key,
+      current === undefined
+        ? { ...check, key, count: 1 }
+        : { ...current, count: current.count + 1 },
+    );
   }
-  return [...grouped.values()].sort((left, right) => checkPriority(left) - checkPriority(right) || left.name.localeCompare(right.name));
+  return [...grouped.values()].sort(
+    (left, right) =>
+      checkPriority(left) - checkPriority(right) ||
+      left.name.localeCompare(right.name),
+  );
 }
 
-function CheckRow({ check, pullRequest }: { readonly check: GroupedCheck; readonly pullRequest?: PullRequestRef }): React.JSX.Element {
+function CheckRow({
+  check,
+  pullRequest,
+}: {
+  readonly check: GroupedCheck;
+  readonly pullRequest?: PullRequestRef;
+}): React.JSX.Element {
   const result = presentCheckResult(check);
   const Icon = result.Icon;
   const externalUrl =
@@ -163,12 +304,30 @@ function CheckRow({ check, pullRequest }: { readonly check: GroupedCheck; readon
       : resolvePullRequestExternalUrl(check.url, pullRequest);
   return (
     <li className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
-      <Icon className={cn("size-4 shrink-0", result.treatment)} aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate" title={check.name}>{check.name}</span>
+      <Icon
+        className={cn("size-4 shrink-0", result.treatment)}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 truncate" title={check.name}>
+        {check.name}
+      </span>
       <span className="sr-only">{requirementLabel(check.required)}</span>
-      <span className={cn("shrink-0 text-sm", result.treatment)}>{result.label}</span>
+      <span className={cn("shrink-0 text-sm", result.treatment)}>
+        {result.label}
+      </span>
       {check.count > 1 ? <Badge variant="outline">×{check.count}</Badge> : null}
-      {externalUrl === undefined ? null : <Button variant="ghost" size="icon-xs" aria-label={`Open ${check.name} in GitHub`} onClick={() => void openPullRequestExternalUrl(externalUrl, pullRequest)}><ExternalLink /></Button>}
+      {externalUrl === undefined ? null : (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Open ${check.name} in GitHub`}
+          onClick={() =>
+            void openPullRequestExternalUrl(externalUrl, pullRequest)
+          }
+        >
+          <ExternalLink />
+        </Button>
+      )}
     </li>
   );
 }
@@ -183,7 +342,11 @@ function checkPriority(check: CheckRunSummary): number {
 }
 
 function requirementLabel(required: CheckRunSummary["required"]): string {
-  return required === true ? "Required" : required === false ? "Optional" : "No requirement metadata";
+  return required === true
+    ? "Required"
+    : required === false
+      ? "Optional"
+      : "No requirement metadata";
 }
 
 function overallLabel(

@@ -34,16 +34,18 @@ const pr = {
 const baseSha = must(parseGitSha("a".repeat(40)));
 const headSha = must(parseGitSha("b".repeat(40)));
 const otherSha = must(parseGitSha("c".repeat(40)));
-const profile = must(parseWorkspaceProfileConfig({
-  id: profileId,
-  label: "CFW",
-  githubHost: "github.com",
-  ghAccount: "fixture",
-  ownerFilters: [],
-  workspaceRoots: [],
-  rulePaths: [],
-  repos: [],
-}));
+const profile = must(
+  parseWorkspaceProfileConfig({
+    id: profileId,
+    label: "CFW",
+    githubHost: "github.com",
+    ghAccount: "fixture",
+    ownerFilters: [],
+    workspaceRoots: [],
+    rulePaths: [],
+    repos: [],
+  }),
+);
 const patch = [
   "diff --git a/src/a.ts b/src/a.ts",
   "index 1111111..2222222 100644",
@@ -57,7 +59,9 @@ const patch = [
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 describe("GitHubRevisionIdentityReader", () => {
@@ -65,7 +69,9 @@ describe("GitHubRevisionIdentityReader", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
     roots.push(root);
     const session = await makeSession(root, patch);
-    const reader = new GitHubRevisionIdentityReader(gateway({ headSha, baseSha, changedFileCount: 1 }, patch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, baseSha, changedFileCount: 1 }, patch),
+    );
 
     await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
       _tag: "ok",
@@ -78,7 +84,12 @@ describe("GitHubRevisionIdentityReader", () => {
     roots.push(root);
     const session = await makeSession(root, patch);
     const changedPatch = patch.replace("+after", "+different");
-    const reader = new GitHubRevisionIdentityReader(gateway({ headSha: otherSha, baseSha, changedFileCount: 1 }, changedPatch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway(
+        { headSha: otherSha, baseSha, changedFileCount: 1 },
+        changedPatch,
+      ),
+    );
 
     await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
       _tag: "ok",
@@ -90,7 +101,9 @@ describe("GitHubRevisionIdentityReader", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
     roots.push(root);
     const session = await makeSession(root, patch);
-    const reader = new GitHubRevisionIdentityReader(gateway({ headSha, baseSha, changedFileCount: 2 }, patch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, baseSha, changedFileCount: 2 }, patch),
+    );
 
     await expect(reader.read({ profile, pr, session })).resolves.toEqual({
       _tag: "ok",
@@ -102,7 +115,9 @@ describe("GitHubRevisionIdentityReader", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
     roots.push(root);
     const session = await makeSession(root, patch);
-    const reader = new GitHubRevisionIdentityReader(gateway({ headSha, changedFileCount: 1 }, patch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, changedFileCount: 1 }, patch),
+    );
 
     await expect(reader.read({ profile, pr, session })).resolves.toEqual({
       _tag: "ok",
@@ -115,7 +130,14 @@ async function makeSession(root: string, contents: string) {
   const patchPath = join(root, "review.patch");
   await writeFile(patchPath, contents, "utf8");
   return createReviewSession({
-    key: { profileId, host: pr.host, owner: pr.owner, repo: pr.repo, prNumber: pr.number, headSha },
+    key: {
+      profileId,
+      host: pr.host,
+      owner: pr.owner,
+      repo: pr.repo,
+      prNumber: pr.number,
+      headSha,
+    },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(parseAbsolutePath(patchPath)),
     worktree: { path: must(parseAbsolutePath(root)), headSha },
@@ -124,7 +146,11 @@ async function makeSession(root: string, contents: string) {
 }
 
 function gateway(
-  current: { readonly headSha: typeof headSha; readonly baseSha?: typeof baseSha; readonly changedFileCount: number },
+  current: {
+    readonly headSha: typeof headSha;
+    readonly baseSha?: typeof baseSha;
+    readonly changedFileCount: number;
+  },
   diff: string,
 ): Pick<GitHubReader, "getPullRequest" | "getPullRequestDiff"> {
   return {

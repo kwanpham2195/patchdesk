@@ -103,7 +103,10 @@ export type ReviewWorkbenchProjection = {
     readonly patchHash?: ContentHash;
     readonly currentHeadSha?: GitSha;
     readonly freshness:
-      "fresh" | "updates_available" | "unavailable" | "not_refreshed";
+      | "fresh"
+      | "updates_available"
+      | "unavailable"
+      | "not_refreshed";
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;
@@ -224,7 +227,9 @@ export class ReviewWorkbenchProjectionService {
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const fullPatch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    const fullPatch = await readFile(session.patchPath, "utf8").catch(
+      () => undefined,
+    );
     const storedInsights = await this.loadStoredInsights(session);
     if (storedInsights._tag === "err") return storedInsights;
     const patchHash =
@@ -266,10 +271,10 @@ export class ReviewWorkbenchProjectionService {
         : { prDescription: "", entries: [] };
     const freshness =
       durableFreshness._tag === "Fresh"
-          ? ("fresh" as const)
-          : durableFreshness._tag === "RevisionChanged"
-            ? ("updates_available" as const)
-            : ("unavailable" as const);
+        ? ("fresh" as const)
+        : durableFreshness._tag === "RevisionChanged"
+          ? ("updates_available" as const)
+          : ("unavailable" as const);
     const refreshedAt = representedAt;
     const mergeReadiness =
       current?._tag === "ok" && remote?.checks?._tag === "ok"
@@ -301,7 +306,10 @@ export class ReviewWorkbenchProjectionService {
       storedInsights.value.walkthroughArtifactStatus,
     );
     const reviewId = createReviewId(session.key);
-    const stableReview = await this.reviews.load(session.key.profileId, reviewId);
+    const stableReview = await this.reviews.load(
+      session.key.profileId,
+      reviewId,
+    );
     if (stableReview._tag === "err")
       return stableReview.error.reason === "not_found"
         ? err({ _tag: "ReviewNotFound" })
@@ -315,10 +323,12 @@ export class ReviewWorkbenchProjectionService {
       stableReview.value.identity.prNumber !== session.key.prNumber ||
       stableReview.value.currentSessionId !== session.id ||
       stableReview.value.currentHeadSha !== session.key.headSha
-    ) return err({ _tag: "SessionStorageUnavailable" });
-    const reviewStatus = stableReview.value.status._tag === "Terminal"
-      ? stableReview.value.status.state
-      : ("open" as const);
+    )
+      return err({ _tag: "SessionStorageUnavailable" });
+    const reviewStatus =
+      stableReview.value.status._tag === "Terminal"
+        ? stableReview.value.status.state
+        : ("open" as const);
 
     const analysisReviewActions = projectAnalysisReviewActions({
       analysis,
@@ -510,8 +520,6 @@ export class ReviewWorkbenchProjectionService {
       artifactStatus: "verified",
     });
   }
-
-
 }
 
 function projectAnalysisReviewActions(input: {
@@ -614,7 +622,6 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
     },
   };
 }
-
 
 function deriveMergeReasons(
   current: PullRequestSummary | undefined,

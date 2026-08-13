@@ -152,10 +152,12 @@ export class PublishedFeedbackService {
     });
   }
 
-  private async serialized<T extends {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-  }>(
+  private async serialized<
+    T extends {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+    },
+  >(
     input: T,
     operation: () => Promise<Result<void, PublishedFeedbackFailure>>,
   ): Promise<Result<void, PublishedFeedbackFailure>> {
@@ -192,7 +194,8 @@ export class PublishedFeedbackService {
       profile,
       pr: sessionPr(session),
     });
-    return current._tag === "ok" && current.value.headSha === session.key.headSha
+    return current._tag === "ok" &&
+      current.value.headSha === session.key.headSha
       ? ok(undefined)
       : err(current._tag === "ok" ? "not_fresh" : "github_read_failed");
   }

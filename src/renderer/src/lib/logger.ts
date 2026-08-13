@@ -18,16 +18,32 @@ let captureInstalled = false;
 
 /** Renderer-side log stream; forwarded in batches to the main-process log service. */
 export const appLog = {
-  debug(topic: string, message: string, meta?: Readonly<Record<string, unknown>>): void {
+  debug(
+    topic: string,
+    message: string,
+    meta?: Readonly<Record<string, unknown>>,
+  ): void {
     enqueue("debug", topic, message, meta);
   },
-  info(topic: string, message: string, meta?: Readonly<Record<string, unknown>>): void {
+  info(
+    topic: string,
+    message: string,
+    meta?: Readonly<Record<string, unknown>>,
+  ): void {
     enqueue("info", topic, message, meta);
   },
-  warn(topic: string, message: string, meta?: Readonly<Record<string, unknown>>): void {
+  warn(
+    topic: string,
+    message: string,
+    meta?: Readonly<Record<string, unknown>>,
+  ): void {
     enqueue("warn", topic, message, meta);
   },
-  error(topic: string, message: string, meta?: Readonly<Record<string, unknown>>): void {
+  error(
+    topic: string,
+    message: string,
+    meta?: Readonly<Record<string, unknown>>,
+  ): void {
     enqueue("error", topic, message, meta);
   },
 };

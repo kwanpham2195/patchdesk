@@ -45,7 +45,10 @@ export function parseQuarantineEntryName(
   if (sessionId === undefined || stamp === undefined) {
     return err({ _tag: "InvalidQuarantineEntryName" });
   }
-  if (parseReviewSessionId(sessionId)._tag === "err" && !sessionId.startsWith("invalid-")) {
+  if (
+    parseReviewSessionId(sessionId)._tag === "err" &&
+    !sessionId.startsWith("invalid-")
+  ) {
     return err({ _tag: "InvalidQuarantineEntryName" });
   }
   if (stampToIso(stamp) === undefined) {
@@ -84,23 +87,52 @@ export class ReviewArtifactStorage {
     const entryName = `${sessionId}.${toQuarantineStamp(this.clock())}`;
     const rootSession = this.paths.sessionDirectory(profileId, sessionId);
     const rootWorktree = this.paths.worktreeDirectory(profileId, sessionId);
-    const targetSession = this.paths.quarantinedSessionDirectory(profileId, entryName);
-    const targetWorktree = this.paths.quarantinedWorktreeDirectory(profileId, entryName);
+    const targetSession = this.paths.quarantinedSessionDirectory(
+      profileId,
+      entryName,
+    );
+    const targetWorktree = this.paths.quarantinedWorktreeDirectory(
+      profileId,
+      entryName,
+    );
 
-    if (!(await this.isUnderRoot(rootSession, this.paths.profileReviewsDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        rootSession,
+        this.paths.profileReviewsDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    if (!(await this.isUnderRoot(rootWorktree, this.paths.worktreeRootDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        rootWorktree,
+        this.paths.worktreeRootDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    if (!(await this.isUnderRoot(targetSession, this.paths.profileReviewsDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        targetSession,
+        this.paths.profileReviewsDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    if (!(await this.isUnderRoot(targetWorktree, this.paths.worktreeRootDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        targetWorktree,
+        this.paths.worktreeRootDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
 
-    const worktreeMoved = await this.renameIfPresent(rootWorktree, targetWorktree);
+    const worktreeMoved = await this.renameIfPresent(
+      rootWorktree,
+      targetWorktree,
+    );
     if (worktreeMoved._tag === "err") return worktreeMoved;
     try {
       await mkdir(dirname(targetSession), { recursive: true });
@@ -108,12 +140,23 @@ export class ReviewArtifactStorage {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
     return rename(rootSession, targetSession).then(
-      (): Result<{ readonly entryName: string }, QuarantineFailure> => ok({ entryName }),
-      (cause: unknown): Result<{ readonly entryName: string }, QuarantineFailure> => {
+      (): Result<{ readonly entryName: string }, QuarantineFailure> =>
+        ok({ entryName }),
+      (
+        cause: unknown,
+      ): Result<{ readonly entryName: string }, QuarantineFailure> => {
         if (isNotFound(cause)) {
-          return err({ _tag: "StorageFailure", operation: "write", reason: "not_found" });
+          return err({
+            _tag: "StorageFailure",
+            operation: "write",
+            reason: "not_found",
+          });
         }
-        return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        });
       },
     );
   }
@@ -123,15 +166,34 @@ export class ReviewArtifactStorage {
     profileId: WorkspaceProfileId,
     entryName: string,
   ): Promise<Result<{ readonly entryName: string }, QuarantineFailure>> {
-    if (!isSafeEntryName(entryName)) return err({ _tag: "InvalidQuarantineEntryName" });
-    const source = join(this.paths.profileReviewsDirectory(profileId), entryName);
-    const encoded = Buffer.from(entryName, "utf8").toString("base64url").slice(0, 32);
+    if (!isSafeEntryName(entryName))
+      return err({ _tag: "InvalidQuarantineEntryName" });
+    const source = join(
+      this.paths.profileReviewsDirectory(profileId),
+      entryName,
+    );
+    const encoded = Buffer.from(entryName, "utf8")
+      .toString("base64url")
+      .slice(0, 32);
     const targetName = `invalid-${encoded}.${toQuarantineStamp(this.clock())}`;
-    const target = this.paths.quarantinedSessionDirectory(profileId, targetName);
-    if (!(await this.isUnderRoot(source, this.paths.profileReviewsDirectory(profileId)))) {
+    const target = this.paths.quarantinedSessionDirectory(
+      profileId,
+      targetName,
+    );
+    if (
+      !(await this.isUnderRoot(
+        source,
+        this.paths.profileReviewsDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    if (!(await this.isUnderRoot(target, join(this.paths.profileReviewsDirectory(profileId), ".quarantine")))) {
+    if (
+      !(await this.isUnderRoot(
+        target,
+        join(this.paths.profileReviewsDirectory(profileId), ".quarantine"),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
     try {
@@ -149,13 +211,24 @@ export class ReviewArtifactStorage {
     sessionId: ReviewSessionId,
   ): Promise<Result<void, QuarantineFailure>> {
     const parsed = parseReviewSessionId(sessionId);
-    if (parsed._tag === "err") return err({ _tag: "InvalidQuarantineEntryName" });
+    if (parsed._tag === "err")
+      return err({ _tag: "InvalidQuarantineEntryName" });
     const sessionRoot = this.paths.sessionDirectory(profileId, parsed.value);
     const worktreeRoot = this.paths.worktreeDirectory(profileId, parsed.value);
-    if (!(await this.isUnderRoot(sessionRoot, this.paths.profileReviewsDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        sessionRoot,
+        this.paths.profileReviewsDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    if (!(await this.isUnderRoot(worktreeRoot, this.paths.worktreeRootDirectory(profileId)))) {
+    if (
+      !(await this.isUnderRoot(
+        worktreeRoot,
+        this.paths.worktreeRootDirectory(profileId),
+      ))
+    ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
     const removedSession = await removePath(sessionRoot);
@@ -171,10 +244,22 @@ export class ReviewArtifactStorage {
   ): Promise<Result<void, QuarantineFailure>> {
     const parsed = parseQuarantineEntryName(entryName);
     if (parsed._tag === "err") return parsed;
-    const sessionRoot = this.paths.quarantinedSessionDirectory(profileId, parsed.value);
-    const worktreeRoot = this.paths.quarantinedWorktreeDirectory(profileId, parsed.value);
-    const quarantineSessionRoot = join(this.paths.profileReviewsDirectory(profileId), ".quarantine");
-    const quarantineWorktreeRoot = join(this.paths.worktreeRootDirectory(profileId), ".quarantine");
+    const sessionRoot = this.paths.quarantinedSessionDirectory(
+      profileId,
+      parsed.value,
+    );
+    const worktreeRoot = this.paths.quarantinedWorktreeDirectory(
+      profileId,
+      parsed.value,
+    );
+    const quarantineSessionRoot = join(
+      this.paths.profileReviewsDirectory(profileId),
+      ".quarantine",
+    );
+    const quarantineWorktreeRoot = join(
+      this.paths.worktreeRootDirectory(profileId),
+      ".quarantine",
+    );
     if (!(await this.isUnderRoot(sessionRoot, quarantineSessionRoot))) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
@@ -190,15 +275,19 @@ export class ReviewArtifactStorage {
    * List every validated quarantine entry for the given profile, paired with
    * the timestamp extracted from its name. The list is sorted newest first.
    */
-  async listQuarantined(
-    profileId: WorkspaceProfileId,
-  ): Promise<
+  async listQuarantined(profileId: WorkspaceProfileId): Promise<
     Result<
-      ReadonlyArray<{ readonly entryName: string; readonly quarantinedAt: string }>,
+      ReadonlyArray<{
+        readonly entryName: string;
+        readonly quarantinedAt: string;
+      }>,
       QuarantineFailure
     >
   > {
-    const root = join(this.paths.profileReviewsDirectory(profileId), ".quarantine");
+    const root = join(
+      this.paths.profileReviewsDirectory(profileId),
+      ".quarantine",
+    );
     let entries: ReadonlyArray<string>;
     try {
       entries = await readdir(root);
@@ -206,7 +295,10 @@ export class ReviewArtifactStorage {
       if (isNotFound(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
-    const items: Array<{ readonly entryName: string; readonly quarantinedAt: string }> = [];
+    const items: Array<{
+      readonly entryName: string;
+      readonly quarantinedAt: string;
+    }> = [];
     for (const entry of entries) {
       const parsed = parseQuarantineEntryName(entry);
       if (parsed._tag === "err") continue;
@@ -217,7 +309,9 @@ export class ReviewArtifactStorage {
       if (iso === undefined) continue;
       items.push({ entryName: parsed.value, quarantinedAt: iso });
     }
-    items.sort((left, right) => right.quarantinedAt.localeCompare(left.quarantinedAt));
+    items.sort((left, right) =>
+      right.quarantinedAt.localeCompare(left.quarantinedAt),
+    );
     return ok(items);
   }
 
@@ -225,7 +319,9 @@ export class ReviewArtifactStorage {
    * Sum the bytes used by every direct child of the worktree cache root. The
    * result excludes any data the renderer is allowed to see.
    */
-  async cacheBytes(profileId: WorkspaceProfileId): Promise<Result<number, StorageFailure>> {
+  async cacheBytes(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<number, StorageFailure>> {
     const children = await this.cacheChildren(profileId);
     if (children._tag === "err") return children;
     const root = this.paths.worktreeRootDirectory(profileId);
@@ -317,7 +413,11 @@ export class ReviewArtifactStorage {
         await rm(target, { recursive: true, force: true });
       } catch (cause: unknown) {
         if (isNotFound(cause)) continue;
-        return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        });
       }
     }
     return ok(undefined);
@@ -383,7 +483,14 @@ async function renameIfPresentPath(
 }
 
 function isSafeEntryName(input: string): boolean {
-  return input.length > 0 && input !== "." && input !== ".." && !input.includes("/") && !input.includes("\\") && input[0] !== ".";
+  return (
+    input.length > 0 &&
+    input !== "." &&
+    input !== ".." &&
+    !input.includes("/") &&
+    !input.includes("\\") &&
+    input[0] !== "."
+  );
 }
 
 async function removePath(path: string): Promise<Result<void, StorageFailure>> {
@@ -431,7 +538,9 @@ function stampToIso(stamp: string): string | undefined {
   const hour = stamp.slice(9, 11);
   const minute = stamp.slice(11, 13);
   const second = stamp.slice(13, 15);
-  const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`);
+  const date = new Date(
+    `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`,
+  );
   if (Number.isNaN(date.getTime())) return undefined;
   if (
     date.getUTCFullYear() !== Number(year) ||
@@ -440,6 +549,7 @@ function stampToIso(stamp: string): string | undefined {
     date.getUTCHours() !== Number(hour) ||
     date.getUTCMinutes() !== Number(minute) ||
     date.getUTCSeconds() !== Number(second)
-  ) return undefined;
+  )
+    return undefined;
   return `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
 }

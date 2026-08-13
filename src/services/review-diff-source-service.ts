@@ -71,8 +71,12 @@ export class ReviewDiffSourceService {
     private readonly patchReader: PreparedPatchReader = filesystemPatchReader,
   ) {}
 
-  async load(input: unknown): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+  async load(
+    input: unknown,
+  ): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     const requestedPath = parseRepoRelativePath(readObjectField(input, "path"));
     if (
@@ -126,7 +130,8 @@ export class ReviewDiffSourceService {
         ? Promise.resolve(undefined)
         : this.readBlob(session.value, "head", newPath.value),
     ]);
-    const unavailable = unavailableReason(oldResult) ?? unavailableReason(newResult);
+    const unavailable =
+      unavailableReason(oldResult) ?? unavailableReason(newResult);
     if (unavailable !== undefined) return ok(unavailable);
     const oldContents = sourceContents(oldResult);
     const newContents = sourceContents(newResult);
@@ -144,25 +149,45 @@ export class ReviewDiffSourceService {
     });
   }
 
-  private async loadPatchIndex(profileId: string, session: ReviewSession): Promise<ReviewPatchIndex | undefined> {
-    const identity = await this.patchReader.stat(session.patchPath).catch(() => undefined);
+  private async loadPatchIndex(
+    profileId: string,
+    session: ReviewSession,
+  ): Promise<ReviewPatchIndex | undefined> {
+    const identity = await this.patchReader
+      .stat(session.patchPath)
+      .catch(() => undefined);
     if (identity === undefined) return undefined;
     const key = `${profileId}:${session.id}`;
     const cached = this.patches.get(key);
-    if (cached !== undefined && cached.size === identity.size && cached.modifiedAtMs === identity.mtimeMs) {
+    if (
+      cached !== undefined &&
+      cached.size === identity.size &&
+      cached.modifiedAtMs === identity.mtimeMs
+    ) {
       this.patches.delete(key);
       this.patches.set(key, cached);
       return cached.index;
     }
-    const source = await this.patchReader.read(session.patchPath).catch(() => undefined);
+    const source = await this.patchReader
+      .read(session.patchPath)
+      .catch(() => undefined);
     if (source === undefined) return undefined;
-    const next = { index: ReviewPatchIndex.create(source), size: identity.size, modifiedAtMs: identity.mtimeMs };
+    const next = {
+      index: ReviewPatchIndex.create(source),
+      size: identity.size,
+      modifiedAtMs: identity.mtimeMs,
+    };
     if (cached !== undefined) this.cachedPatchBytes -= cached.size;
     this.patches.delete(key);
     this.patches.set(key, next);
     this.cachedPatchBytes += next.size;
-    while (this.patches.size > maxCachedPatchSessions || this.cachedPatchBytes > maxCachedPatchBytes) {
-      const oldest = this.patches.entries().next().value as [string, CachedPatch] | undefined;
+    while (
+      this.patches.size > maxCachedPatchSessions ||
+      this.cachedPatchBytes > maxCachedPatchBytes
+    ) {
+      const oldest = this.patches.entries().next().value as
+        | [string, CachedPatch]
+        | undefined;
       if (oldest === undefined) break;
       this.patches.delete(oldest[0]);
       this.cachedPatchBytes -= oldest[1].size;
@@ -174,7 +199,13 @@ export class ReviewDiffSourceService {
     session: ReviewSession,
     side: "base" | "head",
     path: string,
-  ): Promise<Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }>> {
+  ): Promise<
+    Result<
+      | { readonly state: "available"; readonly contents: string }
+      | { readonly state: "binary" | "too_large" },
+      { readonly reason: "github_read" }
+    >
+  > {
     const ref = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/${side}`;
     const blob = await this.git.run([
       "git",
@@ -194,7 +225,13 @@ export class ReviewDiffSourceService {
 }
 
 function sourceContents(
-  result: Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }> | undefined,
+  result:
+    | Result<
+        | { readonly state: "available"; readonly contents: string }
+        | { readonly state: "binary" | "too_large" },
+        { readonly reason: "github_read" }
+      >
+    | undefined,
 ): string {
   if (
     result === undefined ||
@@ -207,7 +244,13 @@ function sourceContents(
 }
 
 function unavailableReason(
-  result: Result<{ readonly state: "available"; readonly contents: string } | { readonly state: "binary" | "too_large" }, { readonly reason: "github_read" }> | undefined,
+  result:
+    | Result<
+        | { readonly state: "available"; readonly contents: string }
+        | { readonly state: "binary" | "too_large" },
+        { readonly reason: "github_read" }
+      >
+    | undefined,
 ): Extract<ReviewDiffSource, { readonly state: "unavailable" }> | undefined {
   if (result === undefined) return undefined;
   if (result._tag === "err") {
@@ -248,7 +291,8 @@ function matchesPatch(
     if (!inHunk || rawLine.startsWith("\\ No newline at end of file")) continue;
     const content = rawLine.slice(1);
     if (rawLine.startsWith(" ")) {
-      if (oldLines[oldIndex] !== content || newLines[newIndex] !== content) return false;
+      if (oldLines[oldIndex] !== content || newLines[newIndex] !== content)
+        return false;
       oldIndex += 1;
       newIndex += 1;
     } else if (rawLine.startsWith("-")) {

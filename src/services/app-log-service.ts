@@ -1,4 +1,12 @@
-import { appendFile, mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  open,
+  readdir,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -39,22 +47,40 @@ export class AppLogService {
     private readonly paths: PatchdeskPaths,
     options: AppLogServiceOptions = {},
   ) {
-    this.bufferSize = Math.min(10_000, Math.max(1, options.bufferSize ?? APP_LOG_DEFAULT_BUFFER_SIZE));
-    this.maxFileBytes = Math.min(64 * 1024 * 1024, Math.max(1_024, options.maxFileBytes ?? APP_LOG_DEFAULT_MAX_FILE_BYTES));
-    this.rotatedFilesToKeep = Math.min(20, Math.max(1, options.rotatedFilesToKeep ?? APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP));
+    this.bufferSize = Math.min(
+      10_000,
+      Math.max(1, options.bufferSize ?? APP_LOG_DEFAULT_BUFFER_SIZE),
+    );
+    this.maxFileBytes = Math.min(
+      64 * 1024 * 1024,
+      Math.max(1_024, options.maxFileBytes ?? APP_LOG_DEFAULT_MAX_FILE_BYTES),
+    );
+    this.rotatedFilesToKeep = Math.min(
+      20,
+      Math.max(
+        1,
+        options.rotatedFilesToKeep ?? APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP,
+      ),
+    );
     this.stdoutMirror = options.stdoutMirror ?? false;
   }
 
   /** Record one entry; seq and timestamp are stamped here, never by callers. */
   write(input: LogEntryInput): void {
-    const entry = normalizeLogEntry({ ...input, seq: this.seq, at: new Date().toISOString() });
+    const entry = normalizeLogEntry({
+      ...input,
+      seq: this.seq,
+      at: new Date().toISOString(),
+    });
     this.seq += 1;
     this.entries.push(entry);
     if (this.entries.length > this.bufferSize) {
       this.entries.splice(0, this.entries.length - this.bufferSize);
     }
     this.mirrorStdout(entry);
-    this.writes = this.writes.then(() => this.persist(entry)).catch(() => undefined);
+    this.writes = this.writes
+      .then(() => this.persist(entry))
+      .catch(() => undefined);
   }
 
   /** Await the current append chain; used at shutdown so the last entries land on disk. */
@@ -70,7 +96,13 @@ export class AppLogService {
    * entry written after a poll. It is omitted when the request had no cursor
    * and the stream was empty.
    */
-  tail(after?: number, limit?: number): { readonly entries: ReadonlyArray<LogEntry>; readonly nextAfter?: number } {
+  tail(
+    after?: number,
+    limit?: number,
+  ): {
+    readonly entries: ReadonlyArray<LogEntry>;
+    readonly nextAfter?: number;
+  } {
     const safeLimit = Math.min(this.bufferSize, Math.max(1, limit ?? 500));
     let slice: LogEntry[];
     if (after === undefined) {
@@ -82,7 +114,11 @@ export class AppLogService {
     const lastSeq = slice.at(-1)?.seq;
     return {
       entries: slice,
-      ...(lastSeq === undefined ? (after === undefined ? {} : { nextAfter: after }) : { nextAfter: lastSeq }),
+      ...(lastSeq === undefined
+        ? after === undefined
+          ? {}
+          : { nextAfter: after }
+        : { nextAfter: lastSeq }),
     };
   }
 
@@ -94,7 +130,9 @@ export class AppLogService {
   private mirrorStdout(entry: LogEntry): void {
     if (this.stdoutMirror !== true) return;
     const time = entry.at.slice(11, 23);
-    process.stdout.write(`[${time}] ${entry.level.toUpperCase().padEnd(5)} ${entry.process.padEnd(8)} ${entry.topic} — ${entry.message}\n`);
+    process.stdout.write(
+      `[${time}] ${entry.level.toUpperCase().padEnd(5)} ${entry.process.padEnd(8)} ${entry.topic} — ${entry.message}\n`,
+    );
   }
 
   private async persist(entry: LogEntry): Promise<void> {
@@ -102,7 +140,10 @@ export class AppLogService {
     try {
       await mkdir(dirname(file), { recursive: true, mode: 0o700 });
       await this.rotateIfNeeded(file);
-      await appendFile(file, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
+      await appendFile(file, `${JSON.stringify(entry)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
     } catch {
       // Logging must never break app flows; the ring buffer still serves tailing.
     }
@@ -128,7 +169,9 @@ export class AppLogService {
   private async pruneRotated(directory: string): Promise<void> {
     try {
       const entries = await readdir(directory);
-      const rotated = entries.filter((name) => /^patchdesk-\d+\.jsonl$/.test(name)).sort();
+      const rotated = entries
+        .filter((name) => /^patchdesk-\d+\.jsonl$/.test(name))
+        .sort();
       const excess = rotated.length - this.rotatedFilesToKeep;
       if (excess <= 0) return;
       for (const name of rotated.slice(0, excess)) {
@@ -141,7 +184,9 @@ export class AppLogService {
 }
 
 /** Load every valid entry from a log file (used by tests and file recovery). */
-export async function readLogFile(paths: PatchdeskPaths): Promise<ReadonlyArray<LogEntry>> {
+export async function readLogFile(
+  paths: PatchdeskPaths,
+): Promise<ReadonlyArray<LogEntry>> {
   const file = paths.logFile();
   const contents = await readFileBounded(file);
   const entries: LogEntry[] = [];

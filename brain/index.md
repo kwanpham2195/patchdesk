@@ -1,12 +1,15 @@
 # Brain
 
 ## Codebase
+
 - [[codebase/index]]
 
 ## Plans
+
 - [[plans/index]]
 
 ## Principles
+
 - [[principles]]
 - [[principles/agent-orchestration]]
 - [[principles/boundary-discipline]]

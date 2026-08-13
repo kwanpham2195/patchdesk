@@ -12,7 +12,10 @@ import {
 } from "./ids";
 import type { PullRequestSnapshot } from "./github-context";
 import type { DirectSummaryReviewState } from "./direct-summary-review";
-import type { FindingReviewReceipt, PendingReviewState } from "./pending-review";
+import type {
+  FindingReviewReceipt,
+  PendingReviewState,
+} from "./pending-review";
 
 /** Immutable local artifacts and current durable GitHub-write evidence for one pinned revision. */
 export type ReviewSession = {

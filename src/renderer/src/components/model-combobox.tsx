@@ -25,7 +25,8 @@ export function ModelCombobox({
   readonly disabled?: boolean;
   readonly placeholder?: string;
 }): React.JSX.Element {
-  const selected = options.find((option) => option.id === value) ??
+  const selected =
+    options.find((option) => option.id === value) ??
     (value === null ? null : { id: value, label: value });
   const isDisabled = disabled || options.length === 0;
 
@@ -36,10 +37,16 @@ export function ModelCombobox({
       disabled={isDisabled}
       itemToStringLabel={(option: ModelComboboxOption) => option.label}
       itemToStringValue={(option: ModelComboboxOption) => option.id}
-      isItemEqualToValue={(left: ModelComboboxOption, right: ModelComboboxOption) => left.id === right.id}
+      isItemEqualToValue={(
+        left: ModelComboboxOption,
+        right: ModelComboboxOption,
+      ) => left.id === right.id}
       filter={(option: ModelComboboxOption, query: string) => {
         const normalized = query.toLowerCase();
-        return option.label.toLowerCase().includes(normalized) || option.id.toLowerCase().includes(normalized);
+        return (
+          option.label.toLowerCase().includes(normalized) ||
+          option.id.toLowerCase().includes(normalized)
+        );
       }}
       onValueChange={(next) => onValueChange(next?.id ?? null)}
     >
@@ -47,7 +54,11 @@ export function ModelCombobox({
         <Combobox.Input
           id={id}
           aria-label={ariaLabel}
-          placeholder={isDisabled && options.length === 0 ? "No enabled model available" : placeholder}
+          placeholder={
+            isDisabled && options.length === 0
+              ? "No enabled model available"
+              : placeholder
+          }
           className="h-full w-full min-w-0 rounded-lg border-0 bg-transparent px-2.5 py-1 pr-8 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50"
         />
         <Combobox.Trigger
@@ -59,7 +70,10 @@ export function ModelCombobox({
       </Combobox.InputGroup>
       <Combobox.Portal>
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
-          <Combobox.Popup data-slot="model-combobox-content" className="w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md">
+          <Combobox.Popup
+            data-slot="model-combobox-content"
+            className="w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
+          >
             <Combobox.Empty className="px-3 py-4 text-center text-sm text-muted-foreground">
               No models found.
             </Combobox.Empty>

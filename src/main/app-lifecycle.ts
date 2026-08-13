@@ -28,7 +28,8 @@ export type DesktopLifecycleDependencies = {
 
 /** Result from attempting to start the desktop workbench. */
 export type DesktopStartResult =
-  { readonly _tag: "started" } | { readonly _tag: "local-api-unavailable" };
+  | { readonly _tag: "started" }
+  | { readonly _tag: "local-api-unavailable" };
 
 /** Owns local API startup, health verification, workbench display, and shutdown ordering. */
 export function createDesktopLifecycle(

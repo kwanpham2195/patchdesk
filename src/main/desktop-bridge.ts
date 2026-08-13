@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { IpcMain } from "electron";
-import { literal, maxLength, minLength, optional, picklist, pipe, safeParse, strictObject, string, union, unknown } from "valibot";
+import {
+  literal,
+  maxLength,
+  minLength,
+  optional,
+  picklist,
+  pipe,
+  safeParse,
+  strictObject,
+  string,
+  union,
+  unknown,
+} from "valibot";
 
 import {
   APP_CAPABILITY_HEADER,
@@ -88,12 +100,17 @@ const allowedRoutePatterns = [
 // real review projections readable without unbounded renderer memory.
 const maxResponseBytes = 8 * 1024 * 1024;
 
-export function isAllowedDesktopRequest(input: LocalApiDesktopRequest): boolean {
+export function isAllowedDesktopRequest(
+  input: LocalApiDesktopRequest,
+): boolean {
   const method = input.method ?? "GET";
   const url = new URL(input.path, "http://patchdesk.invalid");
   if (url.origin !== "http://patchdesk.invalid") return false;
   const route = `${method} ${url.pathname}`;
-  return allowedRoutes.has(route) || allowedRoutePatterns.some((pattern) => pattern.test(route));
+  return (
+    allowedRoutes.has(route) ||
+    allowedRoutePatterns.some((pattern) => pattern.test(route))
+  );
 }
 
 export function installDesktopRequestBridge(
@@ -102,95 +119,156 @@ export function installDesktopRequestBridge(
   server: StartedLocalApi,
   rendererOrigin: string,
   operations: {
-    readonly selectDirectory: (input: { readonly defaultPath?: string }) => Promise<string | undefined>;
-    readonly setNavigationState: (state: "clear" | "dirty_draft" | "write_pending") => void;
+    readonly selectDirectory: (input: {
+      readonly defaultPath?: string;
+    }) => Promise<string | undefined>;
+    readonly setNavigationState: (
+      state: "clear" | "dirty_draft" | "write_pending",
+    ) => void;
     readonly openExternalHttps: (url: string) => Promise<boolean>;
   },
 ): void {
   ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
-  ipc.handle(DESKTOP_REQUEST_CHANNEL, async (event, input: unknown): Promise<DesktopResponse> => {
-    const correlationId = randomUUID();
-    const parsed = safeParse(requestSchema, input);
-    const request: DesktopRequest | undefined = !parsed.success
-      ? undefined
-      : "operation" in parsed.output
-        ? parsed.output.operation === "setNavigationState"
-          ? { operation: parsed.output.operation, state: parsed.output.state }
-          : parsed.output.operation === "openExternalHttps"
-            ? { operation: parsed.output.operation, url: parsed.output.url }
-            : {
-              operation: parsed.output.operation,
-              ...(parsed.output.defaultPath === undefined ? {} : { defaultPath: parsed.output.defaultPath }),
-            }
-        : {
-            path: parsed.output.path,
-            ...(parsed.output.method === undefined ? {} : { method: parsed.output.method }),
-            ...(parsed.output.body === undefined ? {} : { body: parsed.output.body }),
-          };
-    if (request === undefined || event.sender.id !== senderId) {
-      return { ok: false, status: 400, body: { error: "invalid_input" }, correlationId };
-    }
-
-    if ("operation" in request) {
-      if (request.operation === "setNavigationState") {
-        operations.setNavigationState(request.state);
-        return { ok: true, status: 200, body: {}, correlationId };
+  ipc.handle(
+    DESKTOP_REQUEST_CHANNEL,
+    async (event, input: unknown): Promise<DesktopResponse> => {
+      const correlationId = randomUUID();
+      const parsed = safeParse(requestSchema, input);
+      const request: DesktopRequest | undefined = !parsed.success
+        ? undefined
+        : "operation" in parsed.output
+          ? parsed.output.operation === "setNavigationState"
+            ? { operation: parsed.output.operation, state: parsed.output.state }
+            : parsed.output.operation === "openExternalHttps"
+              ? { operation: parsed.output.operation, url: parsed.output.url }
+              : {
+                  operation: parsed.output.operation,
+                  ...(parsed.output.defaultPath === undefined
+                    ? {}
+                    : { defaultPath: parsed.output.defaultPath }),
+                }
+          : {
+              path: parsed.output.path,
+              ...(parsed.output.method === undefined
+                ? {}
+                : { method: parsed.output.method }),
+              ...(parsed.output.body === undefined
+                ? {}
+                : { body: parsed.output.body }),
+            };
+      if (request === undefined || event.sender.id !== senderId) {
+        return {
+          ok: false,
+          status: 400,
+          body: { error: "invalid_input" },
+          correlationId,
+        };
       }
-      if (request.operation === "openExternalHttps") {
+
+      if ("operation" in request) {
+        if (request.operation === "setNavigationState") {
+          operations.setNavigationState(request.state);
+          return { ok: true, status: 200, body: {}, correlationId };
+        }
+        if (request.operation === "openExternalHttps") {
+          try {
+            const opened = await operations.openExternalHttps(request.url);
+            return { ok: true, status: 200, body: { opened }, correlationId };
+          } catch {
+            return {
+              ok: false,
+              status: 500,
+              body: { error: "external_open_failed" },
+              correlationId,
+            };
+          }
+        }
         try {
-          const opened = await operations.openExternalHttps(request.url);
-          return { ok: true, status: 200, body: { opened }, correlationId };
+          const path = await operations.selectDirectory(
+            request.defaultPath === undefined
+              ? {}
+              : { defaultPath: request.defaultPath },
+          );
+          return {
+            ok: true,
+            status: 200,
+            body: { path: path ?? null },
+            correlationId,
+          };
         } catch {
-          return { ok: false, status: 500, body: { error: "external_open_failed" }, correlationId };
+          return {
+            ok: false,
+            status: 500,
+            body: { error: "directory_picker_failed" },
+            correlationId,
+          };
         }
       }
+
+      if (!isAllowedDesktopRequest(request)) {
+        return {
+          ok: false,
+          status: 400,
+          body: { error: "invalid_input" },
+          correlationId,
+        };
+      }
+
+      const method = request.method ?? "GET";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
       try {
-        const path = await operations.selectDirectory(
-          request.defaultPath === undefined ? {} : { defaultPath: request.defaultPath },
+        const response = await fetch(
+          new URL(request.path.slice(1), server.url),
+          {
+            method,
+            headers: {
+              "Content-Type": "application/json",
+              Origin: rendererOrigin,
+              "X-Patchdesk-Correlation-Id": correlationId,
+              [APP_CAPABILITY_HEADER]: server.capability,
+            },
+            ...(request.body === undefined
+              ? {}
+              : { body: JSON.stringify(request.body) }),
+            signal: controller.signal,
+          },
         );
-        return { ok: true, status: 200, body: { path: path ?? null }, correlationId };
-      } catch {
-        return { ok: false, status: 500, body: { error: "directory_picker_failed" }, correlationId };
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > maxResponseBytes) {
+          return {
+            ok: false,
+            status: 502,
+            body: { error: "response_too_large" },
+            correlationId,
+          };
+        }
+        const text = new TextDecoder().decode(bytes);
+        const body = text.length === 0 ? undefined : parseJson(text);
+        return {
+          ok: response.ok,
+          status: response.status,
+          body,
+          correlationId,
+        };
+      } catch (cause: unknown) {
+        return {
+          ok: false,
+          status:
+            cause instanceof Error && cause.name === "AbortError" ? 504 : 503,
+          body: {
+            error:
+              cause instanceof Error && cause.name === "AbortError"
+                ? "timeout"
+                : "unavailable",
+          },
+          correlationId,
+        };
+      } finally {
+        clearTimeout(timeout);
       }
-    }
-
-    if (!isAllowedDesktopRequest(request)) {
-      return { ok: false, status: 400, body: { error: "invalid_input" }, correlationId };
-    }
-
-    const method = request.method ?? "GET";
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-    try {
-      const response = await fetch(new URL(request.path.slice(1), server.url), {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Origin: rendererOrigin,
-          "X-Patchdesk-Correlation-Id": correlationId,
-          [APP_CAPABILITY_HEADER]: server.capability,
-        },
-        ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
-        signal: controller.signal,
-      });
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > maxResponseBytes) {
-        return { ok: false, status: 502, body: { error: "response_too_large" }, correlationId };
-      }
-      const text = new TextDecoder().decode(bytes);
-      const body = text.length === 0 ? undefined : parseJson(text);
-      return { ok: response.ok, status: response.status, body, correlationId };
-    } catch (cause: unknown) {
-      return {
-        ok: false,
-        status: cause instanceof Error && cause.name === "AbortError" ? 504 : 503,
-        body: { error: cause instanceof Error && cause.name === "AbortError" ? "timeout" : "unavailable" },
-        correlationId,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  });
+    },
+  );
 }
 
 function parseJson(value: string): unknown {

@@ -311,11 +311,15 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
     });
   }
 
-  override async loadConfig(): Promise<Result<PatchdeskConfigFile, StorageFailure>> {
+  override async loadConfig(): Promise<
+    Result<PatchdeskConfigFile, StorageFailure>
+  > {
     return ok(this.config);
   }
 
-  override async saveConfig(config: unknown): Promise<Result<void, StorageFailure>> {
+  override async saveConfig(
+    config: unknown,
+  ): Promise<Result<void, StorageFailure>> {
     const parsed = parsePatchdeskConfig(config);
     if (parsed._tag === "err") {
       return err({

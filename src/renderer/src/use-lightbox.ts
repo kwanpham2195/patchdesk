@@ -17,7 +17,12 @@ export function useLightbox(): {
   }, []);
 
   const lightbox = useCallback(
-    () => createElement(MarkdownLightbox, { open: isOpen, onClose: close, children: content }),
+    () =>
+      createElement(MarkdownLightbox, {
+        open: isOpen,
+        onClose: close,
+        children: content,
+      }),
     [isOpen, close, content],
   );
 

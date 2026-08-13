@@ -2,46 +2,86 @@ import { readdir, rm } from "node:fs/promises";
 
 import type { WorkspaceProfileId, ReviewSessionId } from "../../domain/ids";
 import { parseReviewSessionId } from "../../domain/ids";
-import { parseMergeOperation, type MergeOperation } from "../../domain/merge-operation";
+import {
+  parseMergeOperation,
+  type MergeOperation,
+} from "../../domain/merge-operation";
 import { err, ok, type Result } from "../../domain/result";
-import { readJsonFile, writeAtomicJson, type StorageFailure } from "./json-file";
+import {
+  readJsonFile,
+  writeAtomicJson,
+  type StorageFailure,
+} from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /** Owns the one current, safe-to-reconcile merge operation for each review session. */
 export class MergeOperationStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  async begin(operation: MergeOperation): Promise<Result<void, StorageFailure | { readonly _tag: "MergeOperationExists" }>> {
+  async begin(
+    operation: MergeOperation,
+  ): Promise<
+    Result<void, StorageFailure | { readonly _tag: "MergeOperationExists" }>
+  > {
     const existing = await this.load(operation.profileId, operation.sessionId);
     if (existing._tag === "ok" && existing.value.state._tag !== "Rejected")
       return err({ _tag: "MergeOperationExists" });
     if (existing._tag === "err" && existing.error.reason !== "not_found")
       return existing;
-    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
+    return writeAtomicJson(
+      this.paths.mergeOperationFile(operation.profileId, operation.sessionId),
+      operation,
+    );
   }
 
-  async markOutcomeUnknown(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
+  async markOutcomeUnknown(
+    operation: MergeOperation,
+  ): Promise<Result<void, StorageFailure>> {
+    return writeAtomicJson(
+      this.paths.mergeOperationFile(operation.profileId, operation.sessionId),
+      operation,
+    );
   }
 
-  async confirm(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
+  async confirm(
+    operation: MergeOperation,
+  ): Promise<Result<void, StorageFailure>> {
+    return writeAtomicJson(
+      this.paths.mergeOperationFile(operation.profileId, operation.sessionId),
+      operation,
+    );
   }
 
-  async reject(operation: MergeOperation): Promise<Result<void, StorageFailure>> {
-    return writeAtomicJson(this.paths.mergeOperationFile(operation.profileId, operation.sessionId), operation);
+  async reject(
+    operation: MergeOperation,
+  ): Promise<Result<void, StorageFailure>> {
+    return writeAtomicJson(
+      this.paths.mergeOperationFile(operation.profileId, operation.sessionId),
+      operation,
+    );
   }
 
-  async load(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<Result<MergeOperation, StorageFailure>> {
-    const stored = await readJsonFile(this.paths.mergeOperationFile(profileId, sessionId));
+  async load(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<MergeOperation, StorageFailure>> {
+    const stored = await readJsonFile(
+      this.paths.mergeOperationFile(profileId, sessionId),
+    );
     if (stored._tag === "err") return stored;
     const operation = parseMergeOperation(stored.value);
     return operation._tag === "ok"
       ? operation
-      : err({ _tag: "StorageFailure", operation: "read", reason: "invalid_stored_value" });
+      : err({
+          _tag: "StorageFailure",
+          operation: "read",
+          reason: "invalid_stored_value",
+        });
   }
 
-  async listPending(profileId: WorkspaceProfileId): Promise<Result<ReadonlyArray<MergeOperation>, StorageFailure>> {
+  async listPending(
+    profileId: WorkspaceProfileId,
+  ): Promise<Result<ReadonlyArray<MergeOperation>, StorageFailure>> {
     let entries: ReadonlyArray<string>;
     try {
       entries = await readdir(this.paths.profileReviewsDirectory(profileId));
@@ -58,14 +98,24 @@ export class MergeOperationStore {
         if (operation.error.reason === "not_found") continue;
         return operation;
       }
-      if (operation.value.state._tag === "Requested" || operation.value.state._tag === "OutcomeUnknown" || operation.value.state._tag === "Confirmed") pending.push(operation.value);
+      if (
+        operation.value.state._tag === "Requested" ||
+        operation.value.state._tag === "OutcomeUnknown" ||
+        operation.value.state._tag === "Confirmed"
+      )
+        pending.push(operation.value);
     }
     return ok(pending);
   }
 
-  async removeAfterSessionReceipt(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): Promise<Result<void, StorageFailure>> {
+  async removeAfterSessionReceipt(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<void, StorageFailure>> {
     try {
-      await rm(this.paths.mergeOperationFile(profileId, sessionId), { force: true });
+      await rm(this.paths.mergeOperationFile(profileId, sessionId), {
+        force: true,
+      });
       return ok(undefined);
     } catch {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
@@ -74,5 +124,10 @@ export class MergeOperationStore {
 }
 
 function isNotFound(cause: unknown): boolean {
-  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === "ENOENT"
+  );
 }

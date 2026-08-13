@@ -19,7 +19,7 @@ Before starting any task, make sure the dev log tails are live in herdr:
 
 Verification commands:
 
-- `pnpm lint`: ESLint with no warnings.
+- `pnpm lint`: Oxlint with no warnings.
 - `pnpm typecheck`: TypeScript checks.
 - `pnpm test -- --run`: Vitest unit and integration suite.
 - `pnpm build`: builds the main process, preload, and renderer.
@@ -31,7 +31,7 @@ For live verification of the running app, use the `patchdesk-electron-tester` sk
 
 ## Code and Testing Conventions
 
-Write strict TypeScript. Avoid `any`, `// @ts-` suppressions, and string casts for domain IDs; use the parsers in `src/domain/ids.ts`. Use Prettier double quotes and trailing commas. Name React components PascalCase and hooks `use-*.ts`.
+Write strict TypeScript. Avoid `any`, `// @ts-` suppressions, and string casts for domain IDs; use the parsers in `src/domain/ids.ts`. Use Oxfmt with double quotes and trailing commas. Name React components PascalCase and hooks `use-*.ts`.
 
 The renderer uses shadcn/ui components on Base UI. Use `$shadcn` for UI component work. Reuse installed components and their variants before creating custom markup or styles.
 

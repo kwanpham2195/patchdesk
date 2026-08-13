@@ -182,8 +182,7 @@ architecturally misleading.
 
 ```ts
 type ReviewOpenMode =
-  | { kind: "full" }
-  | { kind: "incremental"; baseSessionId: ReviewSessionId };
+  { kind: "full" } | { kind: "incremental"; baseSessionId: ReviewSessionId };
 ```
 
 The inbox can recommend `review_updates`, opens a comparison confirmation

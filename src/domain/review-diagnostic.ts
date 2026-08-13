@@ -20,7 +20,9 @@ const diagnosticEventSchema = v.strictObject({
   profileId: v.pipe(v.string(), v.minLength(1), v.maxLength(160)),
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   retryable: v.boolean(),
-  durationMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(86_400_000))),
+  durationMs: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(86_400_000)),
+  ),
   detail: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(512))),
 });
 
@@ -28,11 +30,15 @@ const diagnosticMetadataSchema = v.strictObject({
   title: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(512))),
 });
 
-export type ReviewDiagnosticCategory = v.InferOutput<typeof diagnosticCategorySchema>;
+export type ReviewDiagnosticCategory = v.InferOutput<
+  typeof diagnosticCategorySchema
+>;
 
 export type ReviewDiagnosticEvent = v.InferOutput<typeof diagnosticEventSchema>;
 
-export type ReviewDiagnosticMetadata = v.InferOutput<typeof diagnosticMetadataSchema>;
+export type ReviewDiagnosticMetadata = v.InferOutput<
+  typeof diagnosticMetadataSchema
+>;
 
 export type ReviewSupportBundle = {
   readonly schemaVersion: 1;
@@ -81,7 +87,8 @@ export function sanitizeReviewDiagnosticEvent(
   const parsed = parseReviewDiagnosticEvent(input);
   if (parsed === undefined) return undefined;
   const parsedProfile = parseWorkspaceProfileId(parsed.profileId);
-  if (parsedProfile._tag === "err" || parsedProfile.value !== expectedProfileId) return undefined;
+  if (parsedProfile._tag === "err" || parsedProfile.value !== expectedProfileId)
+    return undefined;
   const normalized = normalizeReviewDiagnostic(
     {
       incidentId: sanitizeDiagnosticField(parsed.incidentId, 120),
@@ -89,9 +96,13 @@ export function sanitizeReviewDiagnosticEvent(
       category: parsed.category,
       phase: sanitizeDiagnosticField(parsed.phase, 80),
       profileId: expectedProfileId,
-      ...(parsed.sessionId === undefined ? {} : { sessionId: sanitizeDiagnosticIdentifier(parsed.sessionId, 180) }),
+      ...(parsed.sessionId === undefined
+        ? {}
+        : { sessionId: sanitizeDiagnosticIdentifier(parsed.sessionId, 180) }),
       retryable: parsed.retryable,
-      ...(parsed.durationMs === undefined ? {} : { durationMs: parsed.durationMs }),
+      ...(parsed.durationMs === undefined
+        ? {}
+        : { durationMs: parsed.durationMs }),
       ...(parsed.detail === undefined ? {} : { detail: parsed.detail }),
     },
     maxDetailLength,
@@ -118,7 +129,10 @@ export function redactDiagnosticDetail(
   const normalized = Array.from(input, (character) => {
     const code = character.codePointAt(0);
     return code !== undefined && (code < 32 || code === 127) ? " " : character;
-  }).join("").replace(/\s+/g, " ").trim();
+  })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
   if (normalized.length === 0) return undefined;
 
   // Detail is caller-controlled and may contain untrusted PR text, so reject
@@ -138,17 +152,25 @@ export function redactDiagnosticDetail(
     /(?:^|[\s"'():=,]|\[)at\s+[^\s]+(?:\s+|\()/im,
     /(?:raw\s+stack|stack\s+trace)/i,
   ];
-  if (unsafe.some((pattern) => pattern.test(normalized))) return REDACTED_DETAIL;
+  if (unsafe.some((pattern) => pattern.test(normalized)))
+    return REDACTED_DETAIL;
 
-  return normalized.slice(0, Math.min(Math.max(1, maxLength), REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH));
+  return normalized.slice(
+    0,
+    Math.min(Math.max(1, maxLength), REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH),
+  );
 }
 
 function sanitizeDiagnosticField(input: string, maxLength: number): string {
-  const safe = redactDiagnosticDetail(input, maxLength) ?? "[redacted diagnostic field]";
+  const safe =
+    redactDiagnosticDetail(input, maxLength) ?? "[redacted diagnostic field]";
   return safe.slice(0, maxLength);
 }
 
-function sanitizeDiagnosticIdentifier(input: string, maxLength: number): string {
+function sanitizeDiagnosticIdentifier(
+  input: string,
+  maxLength: number,
+): string {
   const safe = sanitizeDiagnosticField(input, maxLength);
   return safe.replace(/[^A-Za-z0-9._:-]/g, "_").slice(0, maxLength);
 }
@@ -158,7 +180,10 @@ export function normalizeReviewDiagnostic(
   input: ReviewDiagnosticInput,
   maxDetailLength = 512,
 ): ReviewDiagnosticEvent {
-  const detail = input.detail === undefined ? undefined : redactDiagnosticDetail(input.detail, maxDetailLength);
+  const detail =
+    input.detail === undefined
+      ? undefined
+      : redactDiagnosticDetail(input.detail, maxDetailLength);
   return {
     schemaVersion: 1,
     incidentId: sanitizeDiagnosticIdentifier(input.incidentId, 120),
@@ -166,9 +191,13 @@ export function normalizeReviewDiagnostic(
     category: input.category,
     phase: sanitizeDiagnosticField(input.phase, 80),
     profileId: input.profileId.slice(0, 160),
-    ...(input.sessionId === undefined ? {} : { sessionId: sanitizeDiagnosticIdentifier(input.sessionId, 180) }),
+    ...(input.sessionId === undefined
+      ? {}
+      : { sessionId: sanitizeDiagnosticIdentifier(input.sessionId, 180) }),
     retryable: input.retryable,
-    ...(input.durationMs === undefined ? {} : { durationMs: Math.max(0, Math.min(input.durationMs, 86_400_000)) }),
+    ...(input.durationMs === undefined
+      ? {}
+      : { durationMs: Math.max(0, Math.min(input.durationMs, 86_400_000)) }),
     ...(detail === undefined ? {} : { detail }),
   };
 }

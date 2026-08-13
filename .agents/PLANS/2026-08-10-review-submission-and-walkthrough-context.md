@@ -69,13 +69,13 @@ After this work, a maintainer can assess a current Analysis result without leavi
 
 ## Outcomes & Retrospective
 
-
 Follow-up UX cleanup, 2026-08-11: Findings are exclusively in Insights → Analysis; the redundant Diff navigator tab, focused-Finding action path, PR Overview CTA, fixture state, and persisted Finding-tab state are removed. Read-only Diff annotations remain. Validation passed: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,016 passed, 1 skipped), `pnpm build`, `git diff --check`, and read-only Electron QA (`/tmp/patchdesk-diff-without-findings.png`, `/tmp/patchdesk-walkthrough-section-tooltip.png`).
 Completed, 2026-08-11: direct summaries now preflight self-approval, preserve explicit repeat-submission semantics, and retain conservative recovery locks. Analysis Findings use exactly the existing GitHub pending-review lifecycle, with schema-5 receipt provenance and a shared Finish-review summary dialog; the obsolete Analysis batch/completion services and routes are gone. Current Walkthroughs receive only read-only, freshness-gated relevant Conversation annotations. Validation passed: `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,017 passed, 1 skipped), `pnpm build`, `git diff --check`, the scoped canonical-route Playwright case, and normal-profile read-only Electron QA on CDP 9233 (screenshots: `/tmp/patchdesk-insights-live.png`, `/tmp/patchdesk-walkthrough-live.png`; no console/page errors). The full `pnpm exec playwright test` remains unsuitable as a gate because it reported 24 unrelated browser/workbench/accessibility failures plus one borderline performance failure; the removed-route seam passed in isolation. No GitHub writes were made.
 
 Follow-up Walkthrough UX, 2026-08-11: each active section now shows its derived chapter in a compact title-backed eyebrow. The local Focus section control expands the unchanged reader/evidence surface, hides only Insights-local navigation and document metadata, and returns focus to its trigger on Escape. Validation passed: focused UI tests, `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run` (122 files, 1,019 passed, 1 skipped), `pnpm build`, and `git diff --check`. Read-only normal-profile CDP QA on port 9233 confirmed the long chapter label, focus entry/exit, retained hunk controls, and main Workbench tabs (`/tmp/patchdesk-walkthrough-focus.png`, `/tmp/patchdesk-walkthrough-focus-exit.png`); no GitHub write was made.
 
 ## Status
+
 ## Status
 
 - Priority: P1

@@ -25,6 +25,7 @@
 - **Priority**: P3
 - **Effort**: M
 - **Risk**: MED
+- **Status**: DONE
 - **Depends on**: Plans 001-007; start from a clean dedicated branch
 - **Category**: dx / tooling / migration
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
@@ -178,10 +179,7 @@ The final config must:
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/consistent-type-imports": "error",
-    "react/only-export-components": [
-      "warn",
-      { "allowConstantExport": true }
-    ]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
   }
   ```
 
@@ -315,6 +313,10 @@ Stop and ask for a decision if Oxfmt cannot format a production file type in
 this repository or if formatting a supported file changes its semantics. Do not
 silently exclude that file type to preserve Prettier.
 
+The repository owner chose an explicit policy exception for the unsupported
+production SVG asset. `.oxfmtrc.json` excludes only
+`resources/branding/**/*.svg`; Patchdesk has no active SVG formatting contract.
+
 ## Phase 3 — Verify the production surface
 
 Run the full standard quality gate after both migrations:
@@ -369,8 +371,9 @@ keep Oxfmt as the only formatter after its commit.
 - A checked parity inventory maps every active ESLint error/warning rule family
   to Oxlint or records the STOP decision.
 - `pnpm lint` runs with `--deny-warnings` after ESLint removal.
-- `pnpm format:check` covers all file types Prettier checked; no silent ignore
-  is added for an unsupported production file type.
+- `pnpm format:check` covers every supported production file type. The sole
+  unsupported SVG path is an explicit repository-owner policy exception in
+  `.oxfmtrc.json`, not a silent ignore.
 - Typecheck, full tests, build, Playwright, and live read-only smoke prove the
   tooling rewrite did not change behavior.
 
@@ -378,17 +381,17 @@ keep Oxfmt as the only formatter after its commit.
 
 All must hold:
 
-- [ ] Effective JS/TS/React Hooks/explicit rule parity is documented and
+- [x] Effective JS/TS/React Hooks/explicit rule parity is documented and
       reviewed.
-- [ ] No active ESLint error or warning was silently removed.
-- [ ] Oxlint 1.78.0 and Oxfmt 0.63.0 are pinned in the lockfile, or this plan
+- [x] No active ESLint error or warning was silently removed.
+- [x] Oxlint 1.78.0 and Oxfmt 0.63.0 are pinned in the lockfile, or this plan
       was refreshed for reviewed newer exact versions before execution.
-- [ ] Lint and format migrations are separate reviewable commits.
-- [ ] `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, full tests, build, and
+- [x] Lint and format migrations are separate reviewable commits.
+- [x] `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, full tests, build, and
       Playwright pass.
-- [ ] No direct ESLint, TypeScript-ESLint, or Prettier tooling remains.
-- [ ] `git diff --check` has no output.
-- [ ] `plans/README.md` marks Plan 008 DONE.
+- [x] No direct ESLint, TypeScript-ESLint, or Prettier tooling remains.
+- [x] `git diff --check` has no output.
+- [x] `plans/README.md` marks Plan 008 DONE.
 
 ## STOP conditions
 

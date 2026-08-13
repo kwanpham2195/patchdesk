@@ -30,11 +30,23 @@ export type DirectSummaryReviewReceipt = {
 
 /** Durable evidence for a one-shot, immediately published review summary. */
 export type DirectSummaryReviewState =
-  | { readonly _tag: "WriteInFlight"; readonly operation: DirectSummaryReviewOperation }
-  | { readonly _tag: "OutcomeUnknown"; readonly operation: DirectSummaryReviewOperation; readonly resolution: "check_required" | "manual_resolution_required" }
-  | { readonly _tag: "Confirmed"; readonly receipt: DirectSummaryReviewReceipt };
+  | {
+      readonly _tag: "WriteInFlight";
+      readonly operation: DirectSummaryReviewOperation;
+    }
+  | {
+      readonly _tag: "OutcomeUnknown";
+      readonly operation: DirectSummaryReviewOperation;
+      readonly resolution: "check_required" | "manual_resolution_required";
+    }
+  | {
+      readonly _tag: "Confirmed";
+      readonly receipt: DirectSummaryReviewReceipt;
+    };
 
-export type InvalidDirectSummaryReviewState = { readonly _tag: "InvalidDirectSummaryReviewState" };
+export type InvalidDirectSummaryReviewState = {
+  readonly _tag: "InvalidDirectSummaryReviewState";
+};
 
 const operationSchema = v.strictObject({
   requestId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
@@ -45,43 +57,82 @@ const operationSchema = v.strictObject({
   startedAt: v.string(),
 });
 const stateSchema = v.variant("_tag", [
-  v.strictObject({ _tag: v.literal("WriteInFlight"), operation: operationSchema }),
-  v.strictObject({ _tag: v.literal("OutcomeUnknown"), operation: operationSchema, resolution: v.picklist(["check_required", "manual_resolution_required"]) }),
+  v.strictObject({
+    _tag: v.literal("WriteInFlight"),
+    operation: operationSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("OutcomeUnknown"),
+    operation: operationSchema,
+    resolution: v.picklist(["check_required", "manual_resolution_required"]),
+  }),
   v.strictObject({
     _tag: v.literal("Confirmed"),
-    receipt: v.strictObject({ reviewId: v.string(), event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]), headSha: v.string(), submittedAt: v.string() }),
+    receipt: v.strictObject({
+      reviewId: v.string(),
+      event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+      headSha: v.string(),
+      submittedAt: v.string(),
+    }),
   }),
 ]);
 
-export function parseDirectSummaryReviewState(input: unknown): Result<DirectSummaryReviewState, InvalidDirectSummaryReviewState> {
+export function parseDirectSummaryReviewState(
+  input: unknown,
+): Result<DirectSummaryReviewState, InvalidDirectSummaryReviewState> {
   const parsed = v.safeParse(stateSchema, input);
   if (!parsed.success) return invalid();
   if (parsed.output._tag === "Confirmed") {
     const reviewId = parseGitHubReviewRestId(parsed.output.receipt.reviewId);
     const headSha = parseGitSha(parsed.output.receipt.headSha);
     const submittedAt = parseIsoTimestamp(parsed.output.receipt.submittedAt);
-    return reviewId._tag === "err" || headSha._tag === "err" || submittedAt._tag === "err"
+    return reviewId._tag === "err" ||
+      headSha._tag === "err" ||
+      submittedAt._tag === "err"
       ? invalid()
-      : ok({ _tag: "Confirmed", receipt: { reviewId: reviewId.value, event: parsed.output.receipt.event, headSha: headSha.value, submittedAt: submittedAt.value } });
+      : ok({
+          _tag: "Confirmed",
+          receipt: {
+            reviewId: reviewId.value,
+            event: parsed.output.receipt.event,
+            headSha: headSha.value,
+            submittedAt: submittedAt.value,
+          },
+        });
   }
   const operation = parseOperation(parsed.output.operation);
   if (operation._tag === "err") return invalid();
   return parsed.output._tag === "OutcomeUnknown"
-    ? ok({ _tag: "OutcomeUnknown", operation: operation.value, resolution: parsed.output.resolution })
+    ? ok({
+        _tag: "OutcomeUnknown",
+        operation: operation.value,
+        resolution: parsed.output.resolution,
+      })
     : ok({ _tag: "WriteInFlight", operation: operation.value });
 }
 
-function parseOperation(input: v.InferOutput<typeof operationSchema>): Result<DirectSummaryReviewOperation, InvalidDirectSummaryReviewState> {
+function parseOperation(
+  input: v.InferOutput<typeof operationSchema>,
+): Result<DirectSummaryReviewOperation, InvalidDirectSummaryReviewState> {
   const headSha = parseGitSha(input.headSha);
   const startedAt = parseIsoTimestamp(input.startedAt);
-  const baselineReviewIds = input.baselineReviewIds.map(parseGitHubReviewRestId);
+  const baselineReviewIds = input.baselineReviewIds.map(
+    parseGitHubReviewRestId,
+  );
   if (headSha._tag === "err" || startedAt._tag === "err") return invalid();
   const ids: GitHubReviewRestId[] = [];
   for (const id of baselineReviewIds) {
     if (id._tag === "err") return invalid();
     ids.push(id.value);
   }
-  return ok({ requestId: input.requestId, event: input.event, bodyDigest: input.bodyDigest, headSha: headSha.value, baselineReviewIds: ids, startedAt: startedAt.value });
+  return ok({
+    requestId: input.requestId,
+    event: input.event,
+    bodyDigest: input.bodyDigest,
+    headSha: headSha.value,
+    baselineReviewIds: ids,
+    startedAt: startedAt.value,
+  });
 }
 
 function invalid(): Result<never, InvalidDirectSummaryReviewState> {

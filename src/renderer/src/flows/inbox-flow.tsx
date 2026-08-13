@@ -70,13 +70,25 @@ export function InboxFlow({
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
   useEffect(() => {
-    if (destination !== "workbench" || dashboard === undefined || reviewId === undefined) return;
+    if (
+      destination !== "workbench" ||
+      dashboard === undefined ||
+      reviewId === undefined
+    )
+      return;
     let active = true;
     void openStoredReviewById(dashboard.profile.id, reviewId, () => active);
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [dashboard?.profile.id, destination, reviewId]);
 
-  type PrRef = { readonly host?: string; readonly owner: string; readonly repo: string; readonly number: number };
+  type PrRef = {
+    readonly host?: string;
+    readonly owner: string;
+    readonly repo: string;
+    readonly number: number;
+  };
 
   const openPullRequest = async (
     pr: PrRef,
@@ -102,7 +114,9 @@ export function InboxFlow({
       onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
     } catch (cause: unknown) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      setOpenError(`Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`);
+      setOpenError(
+        `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
+      );
     }
   };
 
@@ -140,7 +154,6 @@ export function InboxFlow({
     await openStoredReview(profileId, { reviewId }, isActive);
   }
 
-
   return inbox !== undefined && dashboard !== undefined ? (
     <InboxScreen
       state={state}
@@ -151,8 +164,12 @@ export function InboxFlow({
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
       onSettings={onSettings}
-      onOpenReview={(row, initialSection) => void openPullRequest(row.identity, initialSection)}
-      onOpenReviewId={(savedReviewId) => void openStoredReviewById(dashboard.profile.id, savedReviewId)}
+      onOpenReview={(row, initialSection) =>
+        void openPullRequest(row.identity, initialSection)
+      }
+      onOpenReviewId={(savedReviewId) =>
+        void openStoredReviewById(dashboard.profile.id, savedReviewId)
+      }
     />
   ) : (
     <Pending
@@ -219,7 +236,9 @@ export function InboxScreen({
           profileId={inbox.profile.id}
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
-          {...(inbox.profile.repos === undefined ? {} : { repos: inbox.profile.repos })}
+          {...(inbox.profile.repos === undefined
+            ? {}
+            : { repos: inbox.profile.repos })}
           freshness={inbox.inbox.dataFreshness}
           {...(inbox.inbox.snapshot === undefined
             ? {}
@@ -249,7 +268,12 @@ export function Pending({
   readonly inbox?: InboxResponse;
   readonly onRefresh: () => void;
   readonly onSettings: () => void;
-  readonly onOpenRow: (pr: { readonly host?: string; readonly owner: string; readonly repo: string; readonly number: number }) => void;
+  readonly onOpenRow: (pr: {
+    readonly host?: string;
+    readonly owner: string;
+    readonly repo: string;
+    readonly number: number;
+  }) => void;
   readonly openedPr?: string;
   readonly openError?: string;
 }): React.JSX.Element {
@@ -266,8 +290,8 @@ export function Pending({
             Maintainer inbox
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review requests, review freshness, checks, and current Review state across
-            the active watchlist.
+            Review requests, review freshness, checks, and current Review state
+            across the active watchlist.
           </p>
         </div>
         <Button

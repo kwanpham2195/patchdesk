@@ -35,6 +35,7 @@ For every result, the direct response receipt appeared exactly once in the bound
 After this partial spike, the product owner explicitly waived the remaining live validation gates and instructed implementation to proceed on the documented conservative assumptions. This does not turn the unproven rows into evidence.
 
 ## Remaining gates
+
 ## Remaining gates
 
 This evidence proves the narrow direct REST operation and basic bounded published-review read-back. It does not prove the rest of the implementation plan:

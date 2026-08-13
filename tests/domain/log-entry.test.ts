@@ -10,14 +10,20 @@ import {
 
 describe("log entry redaction", () => {
   it("masks credential shapes inline while keeping the rest of the line", () => {
-    expect(maskLogSecrets("auth with ghp_1234567890abcdef for repo")).toBe("auth with [redacted] for repo");
-    expect(maskLogSecrets("Bearer eyJhbGciOiJIUzI1NiJ9 payload")).toBe("Bearer [redacted] payload");
+    expect(maskLogSecrets("auth with ghp_1234567890abcdef for repo")).toBe(
+      "auth with [redacted] for repo",
+    );
+    expect(maskLogSecrets("Bearer eyJhbGciOiJIUzI1NiJ9 payload")).toBe(
+      "Bearer [redacted] payload",
+    );
     expect(maskLogSecrets("token=supersecret123 rest")).toContain("[redacted]");
     expect(maskLogSecrets("token=supersecret123 rest")).toContain("rest");
   });
 
   it("keeps paths and error text intact (local debug log)", () => {
-    const masked = maskLogSecrets("failed at /Users/matthew/.local/share/patchdesk: ENOENT");
+    const masked = maskLogSecrets(
+      "failed at /Users/matthew/.local/share/patchdesk: ENOENT",
+    );
     expect(masked).toContain("/Users/matthew");
     expect(masked).toContain("ENOENT");
   });
@@ -70,7 +76,10 @@ describe("log entry redaction", () => {
       topic: "api",
       message: "POST /v1/removed-review-command failed",
     });
-    expect(parseLogEntry(JSON.parse(JSON.stringify(entry)))).toMatchObject({ seq: 2, process: "renderer" });
+    expect(parseLogEntry(JSON.parse(JSON.stringify(entry)))).toMatchObject({
+      seq: 2,
+      process: "renderer",
+    });
     expect(parseLogEntry({ seq: "not-a-number" })).toBeUndefined();
     expect(parseLogEntry({ ...entry, level: "verbose" })).toBeUndefined();
   });

@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
-import {
-  DEFAULT_REVIEW_VIEW_PREFERENCES,
-} from "@/review-view-preferences";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import {
@@ -12,7 +10,10 @@ import {
 } from "./review-diff-view";
 import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
 import { parseGitHubThreadId } from "../../../domain/ids";
-import { citedHunkRelation, type ReadOnlyConversationAnnotation } from "../inline-conversation-mapping";
+import {
+  citedHunkRelation,
+  type ReadOnlyConversationAnnotation,
+} from "../inline-conversation-mapping";
 
 export type NarrativeHunk = {
   readonly id: string;
@@ -33,13 +34,19 @@ function fallbackFilePrefix(hunk: NarrativeHunk): string {
   return `diff --git a/${path} b/${path}\n--- ${oldPath}\n+++ ${newPath}`;
 }
 
-function orderedHunks(hunks: ReadonlyArray<NarrativeHunk>): ReadonlyArray<NarrativeHunk> {
-  return [...hunks].sort((left, right) => Number(left.id.slice(1)) - Number(right.id.slice(1)));
+function orderedHunks(
+  hunks: ReadonlyArray<NarrativeHunk>,
+): ReadonlyArray<NarrativeHunk> {
+  return [...hunks].sort(
+    (left, right) => Number(left.id.slice(1)) - Number(right.id.slice(1)),
+  );
 }
 
 function buildFallbackPatch(hunks: ReadonlyArray<NarrativeHunk>): string {
   return orderedHunks(hunks)
-    .map((hunk) => `${hunk.filePrefix ?? fallbackFilePrefix(hunk)}\n${hunk.raw}`)
+    .map(
+      (hunk) => `${hunk.filePrefix ?? fallbackFilePrefix(hunk)}\n${hunk.raw}`,
+    )
     .join("\n");
 }
 
@@ -69,46 +76,61 @@ export function NarrativeWalkthroughDiff({
   );
   const fallbackHunks = allHunks ?? hunks;
   const filteredPatch = useMemo(() => {
-    const requestedIds = patch === undefined
-      ? hunkIds.flatMap((id) => {
-          const index = orderedHunks(fallbackHunks).findIndex((hunk) => hunk.id === id);
-          return index < 0 ? [] : [`h${index + 1}`];
-        })
-      : hunkIds;
+    const requestedIds =
+      patch === undefined
+        ? hunkIds.flatMap((id) => {
+            const index = orderedHunks(fallbackHunks).findIndex(
+              (hunk) => hunk.id === id,
+            );
+            return index < 0 ? [] : [`h${index + 1}`];
+          })
+        : hunkIds;
     return filterNarrativePatchToHunks(sourcePatch, requestedIds);
   }, [fallbackHunks, hunkIds, patch, sourcePatch]);
-  const parsedDiff = useMemo(() => parseReviewDiff(filteredPatch), [filteredPatch]);
-  const [localPreferences, setLocalPreferences] = useState<ReviewViewPreferences>(
-    () => preferences ?? DEFAULT_REVIEW_VIEW_PREFERENCES,
+  const parsedDiff = useMemo(
+    () => parseReviewDiff(filteredPatch),
+    [filteredPatch],
   );
+  const [localPreferences, setLocalPreferences] =
+    useState<ReviewViewPreferences>(
+      () => preferences ?? DEFAULT_REVIEW_VIEW_PREFERENCES,
+    );
   const visibleConversation = useMemo(
-    () => annotations.flatMap((annotation) => {
-      const relation = hunks.flatMap((hunk) => citedHunkRelation(annotation, hunk) ?? []).at(0);
-      return relation === undefined ? [] : [{ annotation, relation }];
-    }),
+    () =>
+      annotations.flatMap((annotation) => {
+        const relation = hunks
+          .flatMap((hunk) => citedHunkRelation(annotation, hunk) ?? [])
+          .at(0);
+        return relation === undefined ? [] : [{ annotation, relation }];
+      }),
     [annotations, hunks],
   );
   const visibleAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
-    () => visibleConversation.flatMap(({ annotation }) => {
-      const threadId = parseGitHubThreadId(annotation.id);
-      if (threadId._tag === "err") return [];
-      return [{
-        id: `walkthrough-conversation:${annotation.id}`,
-        path: annotation.path,
-        start: annotation.start,
-        end: annotation.end,
-        side: annotation.side,
-        severity: "conversation" as const,
-        title: "Conversation",
-        explanation: "",
-        conversationThread: {
-          target: { _tag: "thread" as const, id: threadId.value },
-          state: annotation.state,
-          ...(annotation.complete === undefined ? {} : { complete: annotation.complete }),
-          comments: annotation.comments,
-        },
-      }];
-    }),
+    () =>
+      visibleConversation.flatMap(({ annotation }) => {
+        const threadId = parseGitHubThreadId(annotation.id);
+        if (threadId._tag === "err") return [];
+        return [
+          {
+            id: `walkthrough-conversation:${annotation.id}`,
+            path: annotation.path,
+            start: annotation.start,
+            end: annotation.end,
+            side: annotation.side,
+            severity: "conversation" as const,
+            title: "Conversation",
+            explanation: "",
+            conversationThread: {
+              target: { _tag: "thread" as const, id: threadId.value },
+              state: annotation.state,
+              ...(annotation.complete === undefined
+                ? {}
+                : { complete: annotation.complete }),
+              comments: annotation.comments,
+            },
+          },
+        ];
+      }),
     [visibleConversation],
   );
   const selectedPath = hunks[0]?.path;
@@ -124,15 +146,31 @@ export function NarrativeWalkthroughDiff({
     >
       <div className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1.5 text-xs">
         <span className="truncate font-mono">
-          {hunks.map((hunk) => hunk.path).filter((path, index, paths) => paths.indexOf(path) === index).join(", ")}
+          {hunks
+            .map((hunk) => hunk.path)
+            .filter((path, index, paths) => paths.indexOf(path) === index)
+            .join(", ")}
         </span>
-        <span className="shrink-0 text-muted-foreground">{hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk{hunks.length === 1 ? "" : "s"}</span>
+        <span className="shrink-0 text-muted-foreground">
+          {hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk
+          {hunks.length === 1 ? "" : "s"}
+        </span>
       </div>
-      {visibleConversation.some(({ relation }) => relation === "partial") ? <p className="border-b px-2 py-1.5 text-xs text-muted-foreground">A conversation thread overlaps this cited range; its GitHub anchor is shown without clipping.</p> : null}
+      {visibleConversation.some(({ relation }) => relation === "partial") ? (
+        <p className="border-b px-2 py-1.5 text-xs text-muted-foreground">
+          A conversation thread overlaps this cited range; its GitHub anchor is
+          shown without clipping.
+        </p>
+      ) : null}
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
-        <p className="p-3 text-sm text-muted-foreground">Stored patch unavailable for this section.</p>
+        <p className="p-3 text-sm text-muted-foreground">
+          Stored patch unavailable for this section.
+        </p>
       ) : (
-        <div data-walkthrough-diff-viewport className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+        <div
+          data-walkthrough-diff-viewport
+          className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+        >
           <ReviewDiffView
             patch={filteredPatch}
             parsedFiles={parsedDiff.files}
@@ -141,7 +179,9 @@ export function NarrativeWalkthroughDiff({
             annotations={visibleAnnotations}
             preferences={localPreferences}
             collapsedPaths={new Set()}
-            onPreferencesChange={(update) => setLocalPreferences((current) => ({ ...current, ...update }))}
+            onPreferencesChange={(update) =>
+              setLocalPreferences((current) => ({ ...current, ...update }))
+            }
             onCollapsedPathsChange={() => undefined}
             {...(sourceSession === undefined ? {} : { sourceSession })}
             virtualized={false}

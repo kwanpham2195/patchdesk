@@ -12,7 +12,14 @@ const checkRunSchema = v.strictObject({
   required: v.union([v.boolean(), v.literal("unknown")]),
   status: v.picklist(["queued", "in_progress", "completed", "unknown"]),
   conclusion: v.optional(
-    v.picklist(["success", "failure", "cancelled", "timed_out", "skipped", "neutral"]),
+    v.picklist([
+      "success",
+      "failure",
+      "cancelled",
+      "timed_out",
+      "skipped",
+      "neutral",
+    ]),
   ),
   url: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
@@ -114,11 +121,15 @@ const inboxResponseSchema = v.strictObject({
     workspaceRoots: v.optional(v.array(v.string())),
     ownerFilters: v.optional(v.array(v.string())),
     rulePaths: v.optional(v.array(v.string())),
-    repos: v.optional(v.array(v.object({
-      host: v.pipe(v.string(), v.minLength(1)),
-      owner: v.pipe(v.string(), v.minLength(1)),
-      repo: v.pipe(v.string(), v.minLength(1)),
-    }))),
+    repos: v.optional(
+      v.array(
+        v.object({
+          host: v.pipe(v.string(), v.minLength(1)),
+          owner: v.pipe(v.string(), v.minLength(1)),
+          repo: v.pipe(v.string(), v.minLength(1)),
+        }),
+      ),
+    ),
   }),
   inbox: v.object({
     rows: v.array(inboxRowSchema),
@@ -175,14 +186,16 @@ const workbenchSessionSchema = v.strictObject({
   }),
 });
 
-
 const repoRelativePathSchema = v.pipe(
   v.string(),
   v.minLength(1),
   v.maxLength(1_024),
   v.regex(/^[^\\/]/, "Path must be repository-relative"),
   v.regex(/^(?!\\.\\.?([\\/]|$))/, "Path must not traverse parent directories"),
-  v.regex(/^(?!.*[\\/]\\.\\.?([\\/]|$))/, "Path must not traverse parent directories"),
+  v.regex(
+    /^(?!.*[\\/]\\.\\.?([\\/]|$))/,
+    "Path must not traverse parent directories",
+  ),
   v.regex(/^(?![A-Za-z]:[\\/])/, "Path must not be absolute"),
 );
 
@@ -232,7 +245,13 @@ const pullRequestSummarySchema = v.strictObject({
   baseSha: v.optional(v.pipe(v.string(), v.minLength(7))),
   isDraft: v.boolean(),
   isOpen: v.boolean(),
-  reviewState: v.picklist(["none", "review_pending", "approved", "changes_requested", "unknown"]),
+  reviewState: v.picklist([
+    "none",
+    "review_pending",
+    "approved",
+    "changes_requested",
+    "unknown",
+  ]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   labels: v.array(v.string()),
   requestedReviewers: v.optional(v.array(v.string())),
@@ -256,35 +275,59 @@ const reviewResultSchema = v.strictObject({
   changeSummary: v.pipe(v.string(), v.minLength(1)),
   verdict: v.picklist(["approve", "comment", "request_changes"]),
   summary: v.pipe(v.string(), v.minLength(1)),
-  findings: v.array(v.strictObject({
-    id: v.pipe(v.string(), v.minLength(1)),
-    severity: v.picklist(["P0", "P1", "P2", "P3"]),
-    title: v.pipe(v.string(), v.minLength(1)),
-    file: v.optional(repoRelativePathSchema),
-    lineStart: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-    lineEnd: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-    diffSide: v.optional(v.picklist(["new", "old"])),
-    explanation: v.pipe(v.string(), v.minLength(1)),
-    suggestedComment: v.optional(v.pipe(v.string(), v.minLength(1))),
-    confidence: v.picklist(["high", "medium", "low"]),
-    category: v.optional(v.picklist(["bug", "security", "test", "performance", "maintainability", "docs"])),
-    affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1))),
-    whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1))),
-    suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1))),
-    mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
-    disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
-  })),
+  findings: v.array(
+    v.strictObject({
+      id: v.pipe(v.string(), v.minLength(1)),
+      severity: v.picklist(["P0", "P1", "P2", "P3"]),
+      title: v.pipe(v.string(), v.minLength(1)),
+      file: v.optional(repoRelativePathSchema),
+      lineStart: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+      lineEnd: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+      diffSide: v.optional(v.picklist(["new", "old"])),
+      explanation: v.pipe(v.string(), v.minLength(1)),
+      suggestedComment: v.optional(v.pipe(v.string(), v.minLength(1))),
+      confidence: v.picklist(["high", "medium", "low"]),
+      category: v.optional(
+        v.picklist([
+          "bug",
+          "security",
+          "test",
+          "performance",
+          "maintainability",
+          "docs",
+        ]),
+      ),
+      affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1))),
+      whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1))),
+      suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1))),
+      mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
+      disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
+    }),
+  ),
   validationPlan: v.array(v.string()),
   assumptions: v.array(v.string()),
   coverage: v.optional(v.picklist(["high", "medium", "low"])),
   overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
   unresolvedItems: v.optional(v.array(v.string())),
-  callouts: v.optional(v.array(v.strictObject({
-    category: v.picklist(["migration", "dependency", "dependency_change", "authentication", "compatibility", "destructive_operation", "feature_flag", "configuration"]),
-    title: v.pipe(v.string(), v.minLength(1)),
-    detail: v.pipe(v.string(), v.minLength(1)),
-    path: v.optional(repoRelativePathSchema),
-  }))),
+  callouts: v.optional(
+    v.array(
+      v.strictObject({
+        category: v.picklist([
+          "migration",
+          "dependency",
+          "dependency_change",
+          "authentication",
+          "compatibility",
+          "destructive_operation",
+          "feature_flag",
+          "configuration",
+        ]),
+        title: v.pipe(v.string(), v.minLength(1)),
+        detail: v.pipe(v.string(), v.minLength(1)),
+        path: v.optional(repoRelativePathSchema),
+      }),
+    ),
+  ),
 });
 
 const narrativeHunkSchema = v.strictObject({
@@ -309,17 +352,21 @@ const narrativeWalkthroughSchema = v.strictObject({
   citationStatus: v.picklist(["verified", "partially_verified", "unverified"]),
   title: v.pipe(v.string(), v.minLength(1)),
   focus: v.pipe(v.string(), v.minLength(1)),
-  chapters: v.array(v.strictObject({
-    id: v.pipe(v.string(), v.minLength(1)),
-    title: v.pipe(v.string(), v.minLength(1)),
-    sections: v.array(v.strictObject({
+  chapters: v.array(
+    v.strictObject({
       id: v.pipe(v.string(), v.minLength(1)),
       title: v.pipe(v.string(), v.minLength(1)),
-      prose: v.pipe(v.string(), v.minLength(1)),
-      hunkIds: v.array(v.pipe(v.string(), v.minLength(1))),
-      hunks: v.array(narrativeHunkSchema),
-    })),
-  })),
+      sections: v.array(
+        v.strictObject({
+          id: v.pipe(v.string(), v.minLength(1)),
+          title: v.pipe(v.string(), v.minLength(1)),
+          prose: v.pipe(v.string(), v.minLength(1)),
+          hunkIds: v.array(v.pipe(v.string(), v.minLength(1))),
+          hunks: v.array(narrativeHunkSchema),
+        }),
+      ),
+    }),
+  ),
   support: v.strictObject({
     id: v.literal("support"),
     title: v.literal("Support"),
@@ -329,21 +376,47 @@ const narrativeWalkthroughSchema = v.strictObject({
 });
 
 const insightFields = {
-  status: v.picklist(["not_generated", "running", "current", "outdated", "failed"]),
+  status: v.picklist([
+    "not_generated",
+    "running",
+    "current",
+    "outdated",
+    "failed",
+  ]),
   artifactStatus: v.optional(v.picklist(["verified", "mismatch"])),
-  activeRun: v.optional(v.strictObject({
-    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-    startedAt: v.pipe(v.string(), v.isoTimestamp()),
-  })),
-  replacementFailure: v.optional(v.strictObject({
-    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    category: v.optional(v.picklist(["authentication_required", "rate_limited", "runtime_unavailable", "timed_out", "execution_failed", "invalid_result", "unexpected_failure"])),
-    model: v.pipe(v.string(), v.minLength(1)),
-    reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
-    retryable: v.boolean(),
-  })),
-  progress: v.optional(v.strictObject({ reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))), supportReviewed: v.boolean(), currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))) })),
+  activeRun: v.optional(
+    v.strictObject({
+      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+      sessionId: v.pipe(v.string(), v.minLength(1)),
+      startedAt: v.pipe(v.string(), v.isoTimestamp()),
+    }),
+  ),
+  replacementFailure: v.optional(
+    v.strictObject({
+      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+      category: v.optional(
+        v.picklist([
+          "authentication_required",
+          "rate_limited",
+          "runtime_unavailable",
+          "timed_out",
+          "execution_failed",
+          "invalid_result",
+          "unexpected_failure",
+        ]),
+      ),
+      model: v.pipe(v.string(), v.minLength(1)),
+      reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+      retryable: v.boolean(),
+    }),
+  ),
+  progress: v.optional(
+    v.strictObject({
+      reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))),
+      supportReviewed: v.boolean(),
+      currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
+    }),
+  ),
 } as const;
 const insightScopeSchema = v.strictObject({
   baseShort: v.string(),
@@ -352,28 +425,38 @@ const insightScopeSchema = v.strictObject({
   fileCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
   additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
   deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  changedFiles: v.array(v.strictObject({ path: repoRelativePathSchema, additions: v.pipe(v.number(), v.integer(), v.minValue(0)), deletions: v.pipe(v.number(), v.integer(), v.minValue(0)) })),
+  changedFiles: v.array(
+    v.strictObject({
+      path: repoRelativePathSchema,
+      additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    }),
+  ),
 });
 const analysisInsightSchema = v.strictObject({
   ...insightFields,
-  retained: v.optional(v.strictObject({
-    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-    headSha: v.pipe(v.string(), v.minLength(7)),
-    generatedAt: v.pipe(v.string(), v.isoTimestamp()),
-    value: reviewResultSchema,
-    scope: v.optional(insightScopeSchema),
-  })),
+  retained: v.optional(
+    v.strictObject({
+      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+      sessionId: v.pipe(v.string(), v.minLength(1)),
+      headSha: v.pipe(v.string(), v.minLength(7)),
+      generatedAt: v.pipe(v.string(), v.isoTimestamp()),
+      value: reviewResultSchema,
+      scope: v.optional(insightScopeSchema),
+    }),
+  ),
 });
 const walkthroughInsightSchema = v.strictObject({
   ...insightFields,
-  retained: v.optional(v.strictObject({
-    runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-    headSha: v.pipe(v.string(), v.minLength(7)),
-    generatedAt: v.pipe(v.string(), v.isoTimestamp()),
-    value: narrativeWalkthroughSchema,
-  })),
+  retained: v.optional(
+    v.strictObject({
+      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+      sessionId: v.pipe(v.string(), v.minLength(1)),
+      headSha: v.pipe(v.string(), v.minLength(7)),
+      generatedAt: v.pipe(v.string(), v.isoTimestamp()),
+      value: narrativeWalkthroughSchema,
+    }),
+  ),
 });
 
 const publishedReviewSchema = v.strictObject({
@@ -381,28 +464,48 @@ const publishedReviewSchema = v.strictObject({
   nodeId: v.optional(v.string()),
   author: v.pipe(v.string(), v.minLength(1)),
   body: v.string(),
-  event: v.picklist(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED"]),
+  event: v.picklist([
+    "APPROVED",
+    "COMMENTED",
+    "CHANGES_REQUESTED",
+    "DISMISSED",
+  ]),
   submittedAt: v.pipe(v.string(), v.isoTimestamp()),
   canDismiss: v.boolean(),
 });
 
 const conversationEntrySchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
-  v.strictObject({ _tag: v.literal("IssueComment"), comment: conversationIssueCommentSchema }),
-  v.strictObject({ _tag: v.literal("ReviewSummary"), review: publishedReviewSchema }),
-  v.strictObject({ _tag: v.literal("GeneralThread"), thread: githubThreadSchema }),
+  v.strictObject({
+    _tag: v.literal("IssueComment"),
+    comment: conversationIssueCommentSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("ReviewSummary"),
+    review: publishedReviewSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("GeneralThread"),
+    thread: githubThreadSchema,
+  }),
 ]);
 
 const conversationSchema = v.strictObject({
   prDescription: v.string(),
   entries: v.array(conversationEntrySchema),
-  inline: v.optional(v.strictObject({
-    threads: v.array(githubThreadSchema),
-    complete: v.optional(v.boolean()),
-    incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
-  })),
+  inline: v.optional(
+    v.strictObject({
+      threads: v.array(githubThreadSchema),
+      complete: v.optional(v.boolean()),
+      incompleteReason: v.optional(
+        v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"]),
+      ),
+    }),
+  ),
   complete: v.optional(v.boolean()),
-  incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+  incompleteReason: v.optional(
+    v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"]),
+  ),
 });
 const mergeReadinessSchema = v.strictObject({
   _tag: v.picklist(["Ready", "Blocked", "NeedsAcknowledgement"]),
@@ -410,9 +513,21 @@ const mergeReadinessSchema = v.strictObject({
   warnings: v.array(v.string()),
 });
 const mergeReasonSchema = v.strictObject({
-  code: v.picklist(["review_required", "changes_requested", "behind", "conflicts", "checks", "blocked"]),
+  code: v.picklist([
+    "review_required",
+    "changes_requested",
+    "behind",
+    "conflicts",
+    "checks",
+    "blocked",
+  ]),
   message: v.string(),
-  source: v.picklist(["github_pr_state", "branch_protection", "ruleset_configuration", "checks"]),
+  source: v.picklist([
+    "github_pr_state",
+    "branch_protection",
+    "ruleset_configuration",
+    "checks",
+  ]),
   availability: v.picklist(["available", "partial", "unavailable"]),
   openOnGitHub: v.boolean(),
 });
@@ -453,13 +568,20 @@ const directSummaryReviewProjectionSchema = v.variant("state", [
       event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
     }),
   }),
-  v.strictObject({ state: v.literal("recovery_required"), resolution: v.picklist(["check_required", "manual_resolution_required"]) }),
+  v.strictObject({
+    state: v.literal("recovery_required"),
+    resolution: v.picklist(["check_required", "manual_resolution_required"]),
+  }),
 ]);
 const directSummaryReviewResponseSchema = v.strictObject({
   directSummary: directSummaryReviewProjectionSchema,
 });
-export type DirectSummaryReviewProjection = v.InferOutput<typeof directSummaryReviewProjectionSchema>;
-export function parseDirectSummaryReviewResponse(input: unknown): DirectSummaryReviewProjection | undefined {
+export type DirectSummaryReviewProjection = v.InferOutput<
+  typeof directSummaryReviewProjectionSchema
+>;
+export function parseDirectSummaryReviewResponse(
+  input: unknown,
+): DirectSummaryReviewProjection | undefined {
   const parsed = v.safeParse(directSummaryReviewResponseSchema, input);
   return parsed.success ? parsed.output.directSummary : undefined;
 }
@@ -477,38 +599,79 @@ const analysisReviewActionsSchema = v.strictObject({
 
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
-  review: v.strictObject({ id: v.pipe(v.string(), v.minLength(1)), status: v.picklist(["open", "merged", "closed"]) }),
+  review: v.strictObject({
+    id: v.pipe(v.string(), v.minLength(1)),
+    status: v.picklist(["open", "merged", "closed"]),
+  }),
   session: workbenchSessionSchema,
   revision: v.strictObject({
-    reviewedHeadSha: v.pipe(v.string(), v.minLength(7)), patchHash: v.optional(v.pipe(v.string(), v.minLength(64))), currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))), freshness: v.picklist(["fresh", "updates_available", "unavailable", "not_refreshed"]), refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
+    reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
+    patchHash: v.optional(v.pipe(v.string(), v.minLength(64))),
+    currentHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
+    freshness: v.picklist([
+      "fresh",
+      "updates_available",
+      "unavailable",
+      "not_refreshed",
+    ]),
+    refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
   }),
-  fullPatch: v.optional(v.string()), pullRequest: v.optional(pullRequestSummarySchema), commits: v.array(commitSchema),
-  insights: v.strictObject({ analysis: analysisInsightSchema, walkthrough: walkthroughInsightSchema }),
+  fullPatch: v.optional(v.string()),
+  pullRequest: v.optional(pullRequestSummarySchema),
+  commits: v.array(commitSchema),
+  insights: v.strictObject({
+    analysis: analysisInsightSchema,
+    walkthrough: walkthroughInsightSchema,
+  }),
   analysisReviewActions: v.optional(analysisReviewActionsSchema),
-pendingReview: v.optional(pendingReviewProjectionSchema), directSummary: v.optional(directSummaryReviewProjectionSchema), directSummaryDecision: v.optional(v.picklist(["allowed", "blocked_author", "unknown"])), conversation: conversationSchema, checks: checkSchema, mergeReadiness: mergeReadinessSchema, mergeReasons: v.optional(v.array(mergeReasonSchema)),
+  pendingReview: v.optional(pendingReviewProjectionSchema),
+  directSummary: v.optional(directSummaryReviewProjectionSchema),
+  directSummaryDecision: v.optional(
+    v.picklist(["allowed", "blocked_author", "unknown"]),
+  ),
+  conversation: conversationSchema,
+  checks: checkSchema,
+  mergeReadiness: mergeReadinessSchema,
+  mergeReasons: v.optional(v.array(mergeReasonSchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
-export type PendingReviewProjection = v.InferOutput<typeof pendingReviewProjectionSchema>;
-export function parsePendingReviewProjection(input: unknown): PendingReviewProjection | undefined {
+export type PendingReviewProjection = v.InferOutput<
+  typeof pendingReviewProjectionSchema
+>;
+export function parsePendingReviewProjection(
+  input: unknown,
+): PendingReviewProjection | undefined {
   const parsed = v.safeParse(pendingReviewProjectionSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 
-
 const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),
   type: v.picklist(["analysis", "walkthrough"]),
-  status: v.picklist(["queued", "running", "cancelling", "completed", "failed", "cancelled"]),
-  failureReason: v.optional(v.picklist(["cancelled", "failed", "invalid_result", "superseded"])),
+  status: v.picklist([
+    "queued",
+    "running",
+    "cancelling",
+    "completed",
+    "failed",
+    "cancelled",
+  ]),
+  failureReason: v.optional(
+    v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
+  ),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
-export function parseInsightRunResponse(input: unknown): InsightRunResponse | undefined {
+export function parseInsightRunResponse(
+  input: unknown,
+): InsightRunResponse | undefined {
   const parsed = v.safeParse(insightRunResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 
 /** Reject malformed local API review projections before they influence renderer state. */
-export function parseWorkbenchResponse(input: unknown): WorkbenchResponse | undefined {
+export function parseWorkbenchResponse(
+  input: unknown,
+): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
@@ -524,9 +687,12 @@ const commitDiffResponseSchema = v.strictObject({
 });
 export type CommitDiffResponse = v.InferOutput<typeof commitDiffResponseSchema>;
 
-export function parseCommitDiffResponse(input: unknown): CommitDiffResponse | undefined {
+export function parseCommitDiffResponse(
+  input: unknown,
+): CommitDiffResponse | undefined {
   const parsed = v.safeParse(commitDiffResponseSchema, input);
-  if (!parsed.success || parsed.output.position > parsed.output.total) return undefined;
+  if (!parsed.success || parsed.output.position > parsed.output.total)
+    return undefined;
   return parsed.output;
 }
 
@@ -568,24 +734,43 @@ const insightProviderModelSchema = v.strictObject({
   provider: v.picklist(["pi", "codex-cli-account"]),
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  reasoning: v.pipe(v.array(v.picklist(["minimal", "low", "medium", "high", "xhigh"])), v.maxLength(8)),
-  defaultReasoning: v.optional(v.picklist(["minimal", "low", "medium", "high", "xhigh"])),
+  reasoning: v.pipe(
+    v.array(v.picklist(["minimal", "low", "medium", "high", "xhigh"])),
+    v.maxLength(8),
+  ),
+  defaultReasoning: v.optional(
+    v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+  ),
 });
 
 const insightProviderCatalogSchema = v.strictObject({
-  providers: v.array(v.strictObject({
-    id: v.picklist(["pi", "codex-cli-account"]),
-    label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
-    available: v.boolean(),
-    guidance: v.pipe(v.string(), v.minLength(1), v.maxLength(240), v.check((value) => !/(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]/u.test(value), "unsafe provider guidance")),
-  })),
+  providers: v.array(
+    v.strictObject({
+      id: v.picklist(["pi", "codex-cli-account"]),
+      label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+      available: v.boolean(),
+      guidance: v.pipe(
+        v.string(),
+        v.minLength(1),
+        v.maxLength(240),
+        v.check(
+          (value) => !/(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]/u.test(value),
+          "unsafe provider guidance",
+        ),
+      ),
+    }),
+  ),
   models: v.array(insightProviderModelSchema),
 });
 
-export type InsightProviderCatalog = v.InferOutput<typeof insightProviderCatalogSchema>;
+export type InsightProviderCatalog = v.InferOutput<
+  typeof insightProviderCatalogSchema
+>;
 
 /** Rejects malformed passive or activated Insight provider catalogs. */
-export function parseInsightProviderCatalog(input: unknown): InsightProviderCatalog | undefined {
+export function parseInsightProviderCatalog(
+  input: unknown,
+): InsightProviderCatalog | undefined {
   const parsed = v.safeParse(insightProviderCatalogSchema, input);
   return parsed.success ? parsed.output : undefined;
 }

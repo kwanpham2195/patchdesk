@@ -11,13 +11,13 @@ export function reviewDiffItemVersion(input: {
 }): number {
   const sourceVersion = (input.collapsed ? 1 : 0) + (input.hydrated ? 2 : 0);
   if (input.annotationKey === undefined) return sourceVersion;
-  return sourceVersion + (stableAnnotationVersion(input.annotationKey) * 4);
+  return sourceVersion + stableAnnotationVersion(input.annotationKey) * 4;
 }
 
 function stableAnnotationVersion(value: string): number {
   let hash = 0;
   for (const character of value) {
-    hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return hash + 1;
 }

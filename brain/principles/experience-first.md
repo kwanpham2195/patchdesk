@@ -8,4 +8,4 @@ The user experience is the product. Every technical decision either serves or hi
 - Sweat the details (transitions, alignment, spacing, feedback, error states)
 - Tighten the core loop (every feature should serve the central workflow or get out of the way)
 
-Foundations should serve the experience, not the other way around. Foundational thinking governs the *sequence* of work; this principle governs the *target*.
+Foundations should serve the experience, not the other way around. Foundational thinking governs the _sequence_ of work; this principle governs the _target_.

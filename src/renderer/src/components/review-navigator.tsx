@@ -43,7 +43,11 @@ export function ReviewNavigator({
     const diff = parseReviewDiff(patch);
     const items: ReadonlyArray<PierreFileTreeItem> = files.map((file) => ({
       path: file.newPath,
-      stats: diff.statsByPath.get(file.newPath) ?? { path: file.newPath, additions: 0, deletions: 0 },
+      stats: diff.statsByPath.get(file.newPath) ?? {
+        path: file.newPath,
+        additions: 0,
+        deletions: 0,
+      },
       gitStatus: diff.gitStatusByPath.get(file.newPath),
     }));
     return { files: items, firstPath: items[0]?.path };
@@ -51,17 +55,37 @@ export function ReviewNavigator({
 
   const fileTreeActivePath = activePath ?? selectedPath ?? parsed.firstPath;
   return (
-    <aside aria-label="Review navigation" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
-      <Tabs value={section} onValueChange={(value) => onSectionChange(value as ReviewNavigatorSection)} className="flex min-h-0 flex-1 flex-col">
+    <aside
+      aria-label="Review navigation"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card"
+    >
+      <Tabs
+        value={section}
+        onValueChange={(value) =>
+          onSectionChange(value as ReviewNavigatorSection)
+        }
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
-          <TabsList variant="line" aria-label="Review navigator" className="min-w-0 shrink-0">
+          <TabsList
+            variant="line"
+            aria-label="Review navigator"
+            className="min-w-0 shrink-0"
+          >
             <TabsTrigger value="files">Browse</TabsTrigger>
             <TabsTrigger value="commits">Commits</TabsTrigger>
           </TabsList>
           {onCollapse === undefined ? null : (
             <Tooltip>
               <TooltipTrigger
-                render={<Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Hide review navigator" />}
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={onCollapse}
+                    aria-label="Hide review navigator"
+                  />
+                }
               >
                 <PanelLeftClose />
               </TooltipTrigger>
@@ -69,21 +93,60 @@ export function ReviewNavigator({
             </Tooltip>
           )}
         </div>
-        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden p-3" keepMounted>
+        <TabsContent
+          value="files"
+          className="min-h-0 flex-1 overflow-hidden p-3"
+          keepMounted
+        >
           {parsed.files.length === 0 ? (
-            <p className="p-2 text-sm text-muted-foreground">No changed files.</p>
+            <p className="p-2 text-sm text-muted-foreground">
+              No changed files.
+            </p>
           ) : (
-            <PierreFileTree files={parsed.files} {...(selectedPath === undefined ? {} : { selectedPath })} {...(fileTreeActivePath === undefined ? {} : { activePath: fileTreeActivePath })} onSelect={onFileSelect} />
+            <PierreFileTree
+              files={parsed.files}
+              {...(selectedPath === undefined ? {} : { selectedPath })}
+              {...(fileTreeActivePath === undefined
+                ? {}
+                : { activePath: fileTreeActivePath })}
+              onSelect={onFileSelect}
+            />
           )}
         </TabsContent>
-        <TabsContent value="commits" className="min-h-0 flex-1 overflow-auto p-3" keepMounted>
+        <TabsContent
+          value="commits"
+          className="min-h-0 flex-1 overflow-auto p-3"
+          keepMounted
+        >
           <div className="flex flex-col gap-1" aria-label="Review commits">
-            {commits.length === 0 ? <p className="p-2 text-sm text-muted-foreground">No commits recorded.</p> : commits.map((commit) => (
-              <button key={commit.sha} type="button" aria-pressed={selectedCommitSha === commit.sha} className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent" onClick={() => onCommitSelect(commit.sha)}>
-                <span className="flex w-full items-center gap-2"><span className="truncate font-medium">{commit.message.split("\n", 1)[0]}</span>{commit.isHead ? <Badge variant="secondary">HEAD</Badge> : null}</span>
-                <span className="text-xs text-muted-foreground">{commit.author} · {commit.sha.slice(0, 8)} · {formatCommitDate(commit.authoredAt)}</span>
-              </button>
-            ))}
+            {commits.length === 0 ? (
+              <p className="p-2 text-sm text-muted-foreground">
+                No commits recorded.
+              </p>
+            ) : (
+              commits.map((commit) => (
+                <button
+                  key={commit.sha}
+                  type="button"
+                  aria-pressed={selectedCommitSha === commit.sha}
+                  className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
+                  onClick={() => onCommitSelect(commit.sha)}
+                >
+                  <span className="flex w-full items-center gap-2">
+                    <span className="truncate font-medium">
+                      {commit.message.split("\n", 1)[0]}
+                    </span>
+                    {commit.isHead ? (
+                      <Badge variant="secondary">HEAD</Badge>
+                    ) : null}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {commit.author} · {commit.sha.slice(0, 8)} ·{" "}
+                    {formatCommitDate(commit.authoredAt)}
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -95,8 +158,16 @@ function formatCommitDate(value: string): string {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return value;
   const seconds = Math.round((timestamp - Date.now()) / 1_000);
-  const units: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3_600], ["minute", 60]];
+  const units: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 31_536_000],
+    ["month", 2_592_000],
+    ["day", 86_400],
+    ["hour", 3_600],
+    ["minute", 60],
+  ];
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  for (const [unit, divisor] of units) if (Math.abs(seconds) >= divisor) return formatter.format(Math.round(seconds / divisor), unit);
+  for (const [unit, divisor] of units)
+    if (Math.abs(seconds) >= divisor)
+      return formatter.format(Math.round(seconds / divisor), unit);
   return formatter.format(seconds, "second");
 }

@@ -1,7 +1,11 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { ReviewId, ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
+import type {
+  ReviewId,
+  ReviewSessionId,
+  WorkspaceProfileId,
+} from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
 
 export type PatchdeskPathRoots = {
@@ -95,7 +99,10 @@ export class PatchdeskPaths {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): string {
-    return join(this.reviewDirectory(profileId, reviewId), "observation-journal.json");
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "observation-journal.json",
+    );
   }
 
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
@@ -106,10 +113,13 @@ export class PatchdeskPaths {
     return join(this.reviewDirectory(profileId, reviewId), "insights");
   }
 
-  insightFile(profileId: WorkspaceProfileId, reviewId: ReviewId, type: InsightType): string {
+  insightFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): string {
     return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
   }
-
 
   sessionFile(
     profileId: WorkspaceProfileId,
@@ -122,7 +132,10 @@ export class PatchdeskPaths {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
   ): string {
-    return join(this.sessionDirectory(profileId, sessionId), "merge-operation.json");
+    return join(
+      this.sessionDirectory(profileId, sessionId),
+      "merge-operation.json",
+    );
   }
 
   patchFile(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): string {
@@ -148,7 +161,10 @@ export class PatchdeskPaths {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
   ): string {
-    return join(this.preparedDirectory(profileId, sessionId), "review-input.md");
+    return join(
+      this.preparedDirectory(profileId, sessionId),
+      "review-input.md",
+    );
   }
 
   preparedDebugFile(
@@ -157,7 +173,6 @@ export class PatchdeskPaths {
   ): string {
     return join(this.preparedDirectory(profileId, sessionId), "debug.json");
   }
-
 
   inboxCacheFile(profileId: WorkspaceProfileId): string {
     return join(this.cacheDirectory(), "profiles", profileId, "inbox-v1.json");
@@ -169,7 +184,6 @@ export class PatchdeskPaths {
   ): string {
     return join(this.sessionDirectory(profileId, sessionId), "worktree.json");
   }
-
 
   worktreeDirectory(
     profileId: WorkspaceProfileId,
@@ -215,6 +229,11 @@ export class PatchdeskPaths {
   }
 
   worktreeRootDirectory(profileId: WorkspaceProfileId): string {
-    return join(this.cacheDirectory(), "profiles", profileId, "review-worktrees");
+    return join(
+      this.cacheDirectory(),
+      "profiles",
+      profileId,
+      "review-worktrees",
+    );
   }
 }

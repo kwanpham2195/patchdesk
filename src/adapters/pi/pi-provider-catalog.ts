@@ -18,7 +18,9 @@ export type PiProviderCatalog = {
   readonly configured: boolean;
 };
 
-export type PiProviderCatalogFailure = { readonly _tag: "PiProviderCatalogUnavailable" };
+export type PiProviderCatalogFailure = {
+  readonly _tag: "PiProviderCatalogUnavailable";
+};
 
 export type PiProviderCatalogOptions = {
   readonly environment?: (name: string) => string | undefined;
@@ -43,15 +45,22 @@ const PROVIDERS: ReadonlyArray<ProviderDefinition> = [
   provider("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
   provider("azure-openai-responses", "Azure OpenAI", "AZURE_OPENAI_API_KEY"),
   provider("cerebras", "Cerebras", "CEREBRAS_API_KEY"),
-  provider("cloudflare-ai-gateway", "Cloudflare AI Gateway", "CLOUDFLARE_API_KEY", [
+  provider(
+    "cloudflare-ai-gateway",
+    "Cloudflare AI Gateway",
     "CLOUDFLARE_API_KEY",
-    "CLOUDFLARE_ACCOUNT_ID",
-    "CLOUDFLARE_GATEWAY_ID",
-  ]),
+    ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"],
+  ),
   provider("deepseek", "DeepSeek", "DEEPSEEK_API_KEY"),
   provider("fireworks", "Fireworks", "FIREWORKS_API_KEY"),
   provider("google", "Google", "GEMINI_API_KEY"),
-  provider("google-vertex", "Google Vertex", "vertex", undefined, "GOOGLE_CLOUD_API_KEY"),
+  provider(
+    "google-vertex",
+    "Google Vertex",
+    "vertex",
+    undefined,
+    "GOOGLE_CLOUD_API_KEY",
+  ),
   provider("groq", "Groq", "GROQ_API_KEY"),
   provider("huggingface", "Hugging Face", "HF_TOKEN"),
   provider("kimi-coding", "Kimi Coding", "KIMI_API_KEY"),
@@ -69,9 +78,21 @@ const PROVIDERS: ReadonlyArray<ProviderDefinition> = [
   provider("vercel-ai-gateway", "Vercel AI Gateway", "AI_GATEWAY_API_KEY"),
   provider("xai", "xAI", "XAI_API_KEY"),
   provider("xiaomi", "Xiaomi", "XIAOMI_API_KEY"),
-  provider("xiaomi-token-plan-ams", "Xiaomi Token Plan (AMS)", "XIAOMI_TOKEN_PLAN_AMS_API_KEY"),
-  provider("xiaomi-token-plan-cn", "Xiaomi Token Plan (China)", "XIAOMI_TOKEN_PLAN_CN_API_KEY"),
-  provider("xiaomi-token-plan-sgp", "Xiaomi Token Plan (Singapore)", "XIAOMI_TOKEN_PLAN_SGP_API_KEY"),
+  provider(
+    "xiaomi-token-plan-ams",
+    "Xiaomi Token Plan (AMS)",
+    "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+  ),
+  provider(
+    "xiaomi-token-plan-cn",
+    "Xiaomi Token Plan (China)",
+    "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+  ),
+  provider(
+    "xiaomi-token-plan-sgp",
+    "Xiaomi Token Plan (Singapore)",
+    "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+  ),
   provider("zai", "ZAI", "ZAI_API_KEY"),
   provider("zai-coding-cn", "ZAI Coding China", "ZAI_CODING_CN_API_KEY"),
 ];
@@ -89,7 +110,10 @@ function provider(
       label,
       ...(ambientApiKey === undefined ? {} : { keys: [ambientApiKey] }),
       ambient: source,
-      guidance: source === "vertex" ? "Set a Vertex API key or configure Google ADC with a project and location." : "Configure AWS credentials or a named AWS profile in the Electron process.",
+      guidance:
+        source === "vertex"
+          ? "Set a Vertex API key or configure Google ADC with a project and location."
+          : "Configure AWS credentials or a named AWS profile in the Electron process.",
     };
   }
   return {
@@ -101,22 +125,42 @@ function provider(
   };
 }
 
-const PROVIDER_BY_ID = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
+const PROVIDER_BY_ID = new Map(
+  PROVIDERS.map((provider) => [provider.id, provider]),
+);
 
-const AMBIENT_ENVIRONMENT: Readonly<Record<NonNullable<ProviderDefinition["ambient"]>, ReadonlyArray<string>>> = {
+const AMBIENT_ENVIRONMENT: Readonly<
+  Record<NonNullable<ProviderDefinition["ambient"]>, ReadonlyArray<string>>
+> = {
   bedrock: [
-    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-    "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_SDK_LOAD_CONFIG",
-    "AWS_BEARER_TOKEN_BEDROCK", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-    "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN",
-    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "AWS_WEB_IDENTITY_TOKEN_FILE",
-    "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_SHARED_CREDENTIALS_FILE",
-    "AWS_CONFIG_FILE", "AWS_EC2_METADATA_DISABLED", "AWS_EC2_METADATA_SERVICE_ENDPOINT",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_SDK_LOAD_CONFIG",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_ROLE_ARN",
+    "AWS_ROLE_SESSION_NAME",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_CONFIG_FILE",
+    "AWS_EC2_METADATA_DISABLED",
+    "AWS_EC2_METADATA_SERVICE_ENDPOINT",
     "AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE",
   ],
   vertex: [
-    "GOOGLE_CLOUD_API_KEY", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT",
-    "GOOGLE_CLOUD_LOCATION", "GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CONFIG",
+    "GOOGLE_CLOUD_API_KEY",
+    "GOOGLE_CLOUD_PROJECT",
+    "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "CLOUDSDK_CONFIG",
     "GOOGLE_GENAI_USE_VERTEXAI",
   ],
 };
@@ -128,28 +172,55 @@ export class LocalPiProviderCatalog {
 
   constructor(options: PiProviderCatalogOptions = {}) {
     this.environment = options.environment ?? ((name) => process.env[name]);
-    this.fileExists = options.fileExists ?? (async (path) => access(path).then(() => true).catch(() => false));
+    this.fileExists =
+      options.fileExists ??
+      (async (path) =>
+        access(path)
+          .then(() => true)
+          .catch(() => false));
     this.homeDirectory = options.homeDirectory ?? homedir();
   }
 
   async get(): Promise<Result<PiProviderCatalog, PiProviderCatalogFailure>> {
-    const statuses = await Promise.all(PROVIDERS.map(async (provider) => this.status(provider)));
-    return ok({ providers: statuses, configured: statuses.some((provider) => provider.configured) });
+    const statuses = await Promise.all(
+      PROVIDERS.map(async (provider) => this.status(provider)),
+    );
+    return ok({
+      providers: statuses,
+      configured: statuses.some((provider) => provider.configured),
+    });
   }
 
-  private async status(provider: ProviderDefinition): Promise<PiProviderStatus> {
+  private async status(
+    provider: ProviderDefinition,
+  ): Promise<PiProviderStatus> {
     if (provider.ambient === "bedrock") {
       const source = await this.bedrockSource();
-      return { id: provider.id, label: provider.label, configured: source !== undefined, ...(source === undefined ? {} : { source }), guidance: provider.guidance };
+      return {
+        id: provider.id,
+        label: provider.label,
+        configured: source !== undefined,
+        ...(source === undefined ? {} : { source }),
+        guidance: provider.guidance,
+      };
     }
     if (provider.ambient === "vertex") {
       const source = await this.vertexSource(provider);
-      return { id: provider.id, label: provider.label, configured: source !== undefined, ...(source === undefined ? {} : { source }), guidance: provider.guidance };
+      return {
+        id: provider.id,
+        label: provider.label,
+        configured: source !== undefined,
+        ...(source === undefined ? {} : { source }),
+        guidance: provider.guidance,
+      };
     }
     const key = provider.keys?.find((name) => hasValue(this.environment(name)));
-    const configured = provider.requiredKeys === undefined
-      ? key !== undefined
-      : provider.requiredKeys.every((name) => hasValue(this.environment(name)));
+    const configured =
+      provider.requiredKeys === undefined
+        ? key !== undefined
+        : provider.requiredKeys.every((name) =>
+            hasValue(this.environment(name)),
+          );
     return {
       id: provider.id,
       label: provider.label,
@@ -161,46 +232,85 @@ export class LocalPiProviderCatalog {
 
   private async bedrockSource(): Promise<string | undefined> {
     if (hasValue(this.environment("AWS_PROFILE"))) return "AWS profile";
-    if (hasValue(this.environment("AWS_ACCESS_KEY_ID")) && hasValue(this.environment("AWS_SECRET_ACCESS_KEY"))) return "AWS credentials";
-    if (hasValue(this.environment("AWS_BEARER_TOKEN_BEDROCK"))) return "AWS Bedrock bearer token";
-    if (hasValue(this.environment("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")) || hasValue(this.environment("AWS_CONTAINER_CREDENTIALS_FULL_URI"))) return "AWS container credentials";
-    if (hasValue(this.environment("AWS_WEB_IDENTITY_TOKEN_FILE"))) return "AWS web identity";
-    if (await this.fileExists(join(this.homeDirectory, ".aws", "credentials")) || await this.fileExists(join(this.homeDirectory, ".aws", "config"))) return "AWS profile";
+    if (
+      hasValue(this.environment("AWS_ACCESS_KEY_ID")) &&
+      hasValue(this.environment("AWS_SECRET_ACCESS_KEY"))
+    )
+      return "AWS credentials";
+    if (hasValue(this.environment("AWS_BEARER_TOKEN_BEDROCK")))
+      return "AWS Bedrock bearer token";
+    if (
+      hasValue(this.environment("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")) ||
+      hasValue(this.environment("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
+    )
+      return "AWS container credentials";
+    if (hasValue(this.environment("AWS_WEB_IDENTITY_TOKEN_FILE")))
+      return "AWS web identity";
+    if (
+      (await this.fileExists(
+        join(this.homeDirectory, ".aws", "credentials"),
+      )) ||
+      (await this.fileExists(join(this.homeDirectory, ".aws", "config")))
+    )
+      return "AWS profile";
     return undefined;
   }
 
-  private async vertexSource(provider: ProviderDefinition): Promise<string | undefined> {
-    const apiKey = provider.keys?.find((name) => hasValue(this.environment(name)));
+  private async vertexSource(
+    provider: ProviderDefinition,
+  ): Promise<string | undefined> {
+    const apiKey = provider.keys?.find((name) =>
+      hasValue(this.environment(name)),
+    );
     if (apiKey !== undefined) return apiKey;
-    const project = hasValue(this.environment("GOOGLE_CLOUD_PROJECT")) || hasValue(this.environment("GCLOUD_PROJECT"));
+    const project =
+      hasValue(this.environment("GOOGLE_CLOUD_PROJECT")) ||
+      hasValue(this.environment("GCLOUD_PROJECT"));
     const location = hasValue(this.environment("GOOGLE_CLOUD_LOCATION"));
     if (!project || !location) return undefined;
     const explicit = this.environment("GOOGLE_APPLICATION_CREDENTIALS");
-    const credentials = explicit === undefined
-      ? join(this.homeDirectory, ".config", "gcloud", "application_default_credentials.json")
-      : explicit;
-    return await this.fileExists(credentials) ? "Google ADC" : undefined;
+    const credentials =
+      explicit === undefined
+        ? join(
+            this.homeDirectory,
+            ".config",
+            "gcloud",
+            "application_default_credentials.json",
+          )
+        : explicit;
+    return (await this.fileExists(credentials)) ? "Google ADC" : undefined;
   }
 }
 
-export function providerCatalog(): ReadonlyArray<ProviderDefinition> { return PROVIDERS; }
-export function providerDefinition(id: string): ProviderDefinition | undefined { return PROVIDER_BY_ID.get(id); }
+export function providerCatalog(): ReadonlyArray<ProviderDefinition> {
+  return PROVIDERS;
+}
+export function providerDefinition(id: string): ProviderDefinition | undefined {
+  return PROVIDER_BY_ID.get(id);
+}
 
 /** Environment names needed by one selected built-in provider; values never cross this boundary. */
 export function providerEnvironmentNames(id: string): ReadonlyArray<string> {
   const definition = PROVIDER_BY_ID.get(id);
   if (definition === undefined) return [];
-  return [...new Set([
-    ...(definition.keys ?? []),
-    ...(definition.requiredKeys ?? []),
-    ...(definition.ambient === undefined ? [] : AMBIENT_ENVIRONMENT[definition.ambient]),
-  ])];
+  return [
+    ...new Set([
+      ...(definition.keys ?? []),
+      ...(definition.requiredKeys ?? []),
+      ...(definition.ambient === undefined
+        ? []
+        : AMBIENT_ENVIRONMENT[definition.ambient]),
+    ]),
+  ];
 }
 
 function hasValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
 }
 
-export function unavailableProviderCatalog(): Result<never, PiProviderCatalogFailure> {
+export function unavailableProviderCatalog(): Result<
+  never,
+  PiProviderCatalogFailure
+> {
   return err({ _tag: "PiProviderCatalogUnavailable" });
 }

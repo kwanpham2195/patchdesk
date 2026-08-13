@@ -65,7 +65,6 @@ export const patchdeskConfigSchema = v.strictObject({
   ),
 });
 
-
 /** Valibot schema for the mutable, file-backed settings exposed by the desktop API. */
 export const patchdeskSettingsPatchSchema = v.strictObject({
   appearance: v.optional(v.picklist(["system", "light", "dark"])),
@@ -97,9 +96,13 @@ export const startReviewRequestSchema = v.strictObject({
 });
 
 /** Parse the global config boundary into profile IDs that core code can trust. */
-export function parsePatchdeskConfig(input: unknown): Result<PatchdeskConfigFile, InvalidDomainContract> {
+export function parsePatchdeskConfig(
+  input: unknown,
+): Result<PatchdeskConfigFile, InvalidDomainContract> {
   const parsed = v.safeParse(patchdeskConfigSchema, input);
-  return parsed.success ? parsePatchdeskConfigFields(parsed.output) : invalid("config");
+  return parsed.success
+    ? parsePatchdeskConfigFields(parsed.output)
+    : invalid("config");
 }
 
 /** Parses a complete settings patch and rejects empty or unknown command fields. */
@@ -109,14 +112,19 @@ export function parsePatchdeskSettingsPatch(
   const parsed = v.safeParse(patchdeskSettingsPatchSchema, input);
   if (
     !parsed.success ||
-    (parsed.output.appearance === undefined && parsed.output.diffTheme === undefined)
+    (parsed.output.appearance === undefined &&
+      parsed.output.diffTheme === undefined)
   ) {
     return invalid("config");
   }
 
   return ok({
-    ...(parsed.output.appearance === undefined ? {} : { appearance: parsed.output.appearance }),
-    ...(parsed.output.diffTheme === undefined ? {} : { diffTheme: parsed.output.diffTheme }),
+    ...(parsed.output.appearance === undefined
+      ? {}
+      : { appearance: parsed.output.appearance }),
+    ...(parsed.output.diffTheme === undefined
+      ? {}
+      : { diffTheme: parsed.output.diffTheme }),
   });
 }
 
@@ -127,7 +135,9 @@ function parsePatchdeskConfigFields(input: {
 }): Result<PatchdeskConfigFile, InvalidDomainContract> {
   if (input.lastSelectedProfileId === undefined) {
     return ok({
-      ...(input.appearance === undefined ? {} : { appearance: input.appearance }),
+      ...(input.appearance === undefined
+        ? {}
+        : { appearance: input.appearance }),
       ...(input.diffTheme === undefined ? {} : { diffTheme: input.diffTheme }),
     });
   }

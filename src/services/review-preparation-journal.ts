@@ -1,5 +1,23 @@
-import { access, lstat, mkdir, readdir, realpath, rename, rm, rmdir, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  access,
+  lstat,
+  mkdir,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  stat,
+} from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
@@ -15,8 +33,12 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
-export type PreparationJournalFailure = { readonly _tag: "PreparationJournalFailed" };
-export type PreparationCleanupFailure = { readonly _tag: "PreparationCleanupFailed" };
+export type PreparationJournalFailure = {
+  readonly _tag: "PreparationJournalFailed";
+};
+export type PreparationCleanupFailure = {
+  readonly _tag: "PreparationCleanupFailed";
+};
 
 export type ReviewPreparationOperation = {
   readonly profileId: WorkspaceProfileId;
@@ -24,7 +46,10 @@ export type ReviewPreparationOperation = {
   readonly phase: "preparing" | "committing";
 };
 
-type JournalWorktree = { readonly path: string; readonly repositoryPath: string };
+type JournalWorktree = {
+  readonly path: string;
+  readonly repositoryPath: string;
+};
 
 type ValidatedDeletionSet = {
   readonly profileId: WorkspaceProfileId;
@@ -72,14 +97,18 @@ export class ReviewPreparationJournal {
   ): Promise<Result<ReviewPreparationJournal, PreparationJournalFailure>> {
     const sessionDirectory = paths.sessionDirectory(profileId, sessionId);
     const stagingRoot = join(sessionDirectory, ".staging");
-    const journal = new ReviewPreparationJournal(paths, journalFile(paths, profileId, sessionId), {
-      schemaVersion: 1,
-      profileId,
-      sessionId,
-      state: "preparing",
-      stagingRoot,
-      targets: [],
-    });
+    const journal = new ReviewPreparationJournal(
+      paths,
+      journalFile(paths, profileId, sessionId),
+      {
+        schemaVersion: 1,
+        profileId,
+        sessionId,
+        state: "preparing",
+        stagingRoot,
+        targets: [],
+      },
+    );
     const written = await journal.write();
     return written._tag === "ok" ? ok(journal) : written;
   }
@@ -102,11 +131,18 @@ export class ReviewPreparationJournal {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
     diagnostics?: Pick<ReviewDiagnosticService, "record">,
-  ): Promise<Result<ReviewPreparationOperation | undefined, PreparationJournalFailure>> {
+  ): Promise<
+    Result<ReviewPreparationOperation | undefined, PreparationJournalFailure>
+  > {
     const stored = await readJsonFile(journalFile(paths, profileId, sessionId));
     if (stored._tag === "err") {
       if (stored.error.reason !== "not_found") {
-        await recordJournalDiagnostic(diagnostics, profileId, sessionId, "journal-read");
+        await recordJournalDiagnostic(
+          diagnostics,
+          profileId,
+          sessionId,
+          "journal-read",
+        );
       }
       return stored.error.reason === "not_found"
         ? ok(undefined)
@@ -114,7 +150,12 @@ export class ReviewPreparationJournal {
     }
     const content = parseJournal(stored.value);
     if (content === undefined) {
-      await recordJournalDiagnostic(diagnostics, profileId, sessionId, "journal-parse");
+      await recordJournalDiagnostic(
+        diagnostics,
+        profileId,
+        sessionId,
+        "journal-parse",
+      );
       return err({ _tag: "PreparationJournalFailed" });
     }
     const parsedProfile = parseWorkspaceProfileId(content.profileId);
@@ -122,7 +163,10 @@ export class ReviewPreparationJournal {
     if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
       return err({ _tag: "PreparationJournalFailed" });
     }
-    if (parsedProfile.value !== profileId || parsedSession.value !== sessionId) {
+    if (
+      parsedProfile.value !== profileId ||
+      parsedSession.value !== sessionId
+    ) {
       return err({ _tag: "PreparationJournalFailed" });
     }
     return ok({
@@ -133,13 +177,20 @@ export class ReviewPreparationJournal {
   }
 
   /** Append a created final artifact path before the next preparation effect. */
-  async record(target: string): Promise<Result<void, PreparationJournalFailure>> {
-    this.content = { ...this.content, targets: [...this.content.targets, target] };
+  async record(
+    target: string,
+  ): Promise<Result<void, PreparationJournalFailure>> {
+    this.content = {
+      ...this.content,
+      targets: [...this.content.targets, target],
+    };
     return this.write();
   }
 
   /** Record the managed worktree so cleanup can remove it through git safety checks. */
-  async recordWorktree(worktree: JournalWorktree): Promise<Result<void, PreparationJournalFailure>> {
+  async recordWorktree(
+    worktree: JournalWorktree,
+  ): Promise<Result<void, PreparationJournalFailure>> {
     this.content = { ...this.content, worktree };
     return this.write();
   }
@@ -157,7 +208,9 @@ export class ReviewPreparationJournal {
   async complete(): Promise<void> {
     const deletion = await this.validatedDeletionSet();
     if (deletion === undefined) return;
-    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
     await rm(deletion.journalFile, { force: true }).catch(() => undefined);
   }
 
@@ -170,17 +223,23 @@ export class ReviewPreparationJournal {
     worktrees: ReviewWorktreeService,
   ): Promise<Result<void, PreparationCleanupFailure>> {
     const deletion = await this.validatedDeletionSet();
-    if (deletion === undefined) return err({ _tag: "PreparationCleanupFailed" });
+    if (deletion === undefined)
+      return err({ _tag: "PreparationCleanupFailed" });
     let failed = false;
     for (const target of [...deletion.targets].reverse()) {
       await rm(target, { recursive: true, force: true }).catch(() => {
         failed = true;
       });
     }
-    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(() => {
-      failed = true;
-    });
-    if (deletion.worktree !== undefined && await exists(deletion.worktree.path)) {
+    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(
+      () => {
+        failed = true;
+      },
+    );
+    if (
+      deletion.worktree !== undefined &&
+      (await exists(deletion.worktree.path))
+    ) {
       const removed = await worktrees.cleanup({
         profileId: deletion.profileId,
         sessionId: deletion.sessionId,
@@ -214,13 +273,21 @@ export class ReviewPreparationJournal {
       const stored = await readJsonFile(filePath);
       if (stored._tag === "err") {
         failed += 1;
-        await recordRecoveredJournalDiagnostic(diagnostics, filePath, "journal-read");
+        await recordRecoveredJournalDiagnostic(
+          diagnostics,
+          filePath,
+          "journal-read",
+        );
         continue;
       }
       const content = parseJournal(stored.value);
       if (content === undefined) {
         failed += 1;
-        await recordRecoveredJournalDiagnostic(diagnostics, filePath, "journal-parse");
+        await recordRecoveredJournalDiagnostic(
+          diagnostics,
+          filePath,
+          "journal-parse",
+        );
         continue;
       }
       const journal = new ReviewPreparationJournal(paths, filePath, content);
@@ -229,23 +296,34 @@ export class ReviewPreparationJournal {
         if (deletion === undefined) return false;
         if (content.state === "committing") {
           if (sessions === undefined) return false;
-          const session = await sessions.load(deletion.profileId, deletion.sessionId);
-          if (session._tag !== "ok" || session.value.id !== deletion.sessionId) return false;
-          return await rm(deletion.journalFile, { force: true }).then(() => true).catch(() => false);
+          const session = await sessions.load(
+            deletion.profileId,
+            deletion.sessionId,
+          );
+          if (session._tag !== "ok" || session.value.id !== deletion.sessionId)
+            return false;
+          return await rm(deletion.journalFile, { force: true })
+            .then(() => true)
+            .catch(() => false);
         }
         const cleaned = await journal.cleanup(worktrees);
         return cleaned._tag === "ok";
       };
       const profileId = parseWorkspaceProfileId(content.profileId);
-      const success = lifecycleGate !== undefined && profileId._tag === "ok"
-        ? await lifecycleGate.withProfileLock(profileId.value, process)
-        : await process();
+      const success =
+        lifecycleGate !== undefined && profileId._tag === "ok"
+          ? await lifecycleGate.withProfileLock(profileId.value, process)
+          : await process();
       if (success) {
         recovered += 1;
       } else {
         failed += 1;
         const parsedSessionId = parseReviewSessionId(content.sessionId);
-        if (diagnostics !== undefined && profileId._tag === "ok" && parsedSessionId._tag === "ok") {
+        if (
+          diagnostics !== undefined &&
+          profileId._tag === "ok" &&
+          parsedSessionId._tag === "ok"
+        ) {
           await diagnostics.record({
             profileId: profileId.value,
             sessionId: parsedSessionId.value,
@@ -267,23 +345,47 @@ export class ReviewPreparationJournal {
       return err({ _tag: "PreparationJournalFailed" });
     }
     const written = await writeAtomicJson(this.filePath, this.content);
-    return written._tag === "ok" ? ok(undefined) : err({ _tag: "PreparationJournalFailed" });
+    return written._tag === "ok"
+      ? ok(undefined)
+      : err({ _tag: "PreparationJournalFailed" });
   }
 
   /** Verify every persisted deletion target before the first filesystem removal. */
-  private async validatedDeletionSet(): Promise<ValidatedDeletionSet | undefined> {
+  private async validatedDeletionSet(): Promise<
+    ValidatedDeletionSet | undefined
+  > {
     const profileId = parseWorkspaceProfileId(this.content.profileId);
     const sessionId = parseReviewSessionId(this.content.sessionId);
     if (profileId._tag === "err" || sessionId._tag === "err") return undefined;
 
-    const sessionDirectory = this.paths.sessionDirectory(profileId.value, sessionId.value);
-    const expectedJournalFile = journalFile(this.paths, profileId.value, sessionId.value);
+    const sessionDirectory = this.paths.sessionDirectory(
+      profileId.value,
+      sessionId.value,
+    );
+    const expectedJournalFile = journalFile(
+      this.paths,
+      profileId.value,
+      sessionId.value,
+    );
     const expectedStagingRoot = join(sessionDirectory, ".staging");
-    if (this.filePath !== expectedJournalFile || this.content.stagingRoot !== expectedStagingRoot) return undefined;
+    if (
+      this.filePath !== expectedJournalFile ||
+      this.content.stagingRoot !== expectedStagingRoot
+    )
+      return undefined;
 
-    if (!(await isSafeOwnedPath(this.paths.dataDirectory(), sessionDirectory, true))) return undefined;
-    if (!(await isSafeOwnedPath(sessionDirectory, expectedJournalFile, true))) return undefined;
-    if (!(await isSafeOwnedPath(sessionDirectory, expectedStagingRoot))) return undefined;
+    if (
+      !(await isSafeOwnedPath(
+        this.paths.dataDirectory(),
+        sessionDirectory,
+        true,
+      ))
+    )
+      return undefined;
+    if (!(await isSafeOwnedPath(sessionDirectory, expectedJournalFile, true)))
+      return undefined;
+    if (!(await isSafeOwnedPath(sessionDirectory, expectedStagingRoot)))
+      return undefined;
 
     const allowedTargets = new Set([
       this.paths.patchFile(profileId.value, sessionId.value),
@@ -292,15 +394,21 @@ export class ReviewPreparationJournal {
       this.paths.preparedDebugFile(profileId.value, sessionId.value),
     ]);
     for (const target of this.content.targets) {
-      if (!allowedTargets.has(target) || !(await isSafeOwnedPath(sessionDirectory, target))) return undefined;
+      if (
+        !allowedTargets.has(target) ||
+        !(await isSafeOwnedPath(sessionDirectory, target))
+      )
+        return undefined;
     }
 
     if (
       this.content.worktree !== undefined &&
-      (
-        this.content.worktree.path !== this.paths.worktreeDirectory(profileId.value, sessionId.value) ||
-        !(await isSafeOwnedPath(this.paths.cacheDirectory(), this.content.worktree.path))
-      )
+      (this.content.worktree.path !==
+        this.paths.worktreeDirectory(profileId.value, sessionId.value) ||
+        !(await isSafeOwnedPath(
+          this.paths.cacheDirectory(),
+          this.content.worktree.path,
+        )))
     ) {
       return undefined;
     }
@@ -310,7 +418,9 @@ export class ReviewPreparationJournal {
       journalFile: expectedJournalFile,
       stagingRoot: expectedStagingRoot,
       targets: this.content.targets,
-      ...(this.content.worktree === undefined ? {} : { worktree: this.content.worktree }),
+      ...(this.content.worktree === undefined
+        ? {}
+        : { worktree: this.content.worktree }),
     };
   }
 }
@@ -320,7 +430,10 @@ function journalFile(
   profileId: WorkspaceProfileId,
   sessionId: ReviewSessionId,
 ): string {
-  return join(paths.sessionDirectory(profileId, sessionId), "preparation.journal.json");
+  return join(
+    paths.sessionDirectory(profileId, sessionId),
+    "preparation.journal.json",
+  );
 }
 
 async function recordJournalDiagnostic(
@@ -347,7 +460,9 @@ async function recordRecoveredJournalDiagnostic(
 ): Promise<void> {
   if (diagnostics === undefined) return;
   const sessionId = parseReviewSessionId(basename(dirname(filePath)));
-  const profileId = parseWorkspaceProfileId(basename(dirname(dirname(dirname(filePath)))));
+  const profileId = parseWorkspaceProfileId(
+    basename(dirname(dirname(dirname(filePath)))),
+  );
   if (sessionId._tag === "err" || profileId._tag === "err") return;
   await diagnostics.record({
     profileId: profileId.value,
@@ -359,7 +474,9 @@ async function recordRecoveredJournalDiagnostic(
   });
 }
 
-async function findJournals(paths: PatchdeskPaths): Promise<ReadonlyArray<string>> {
+async function findJournals(
+  paths: PatchdeskPaths,
+): Promise<ReadonlyArray<string>> {
   const found: string[] = [];
   const profilesRoot = join(paths.dataDirectory(), "profiles");
   let profileEntries: ReadonlyArray<string>;
@@ -377,7 +494,11 @@ async function findJournals(paths: PatchdeskPaths): Promise<ReadonlyArray<string
       continue;
     }
     for (const sessionEntry of sessionEntries) {
-      const candidate = join(reviewsRoot, sessionEntry, "preparation.journal.json");
+      const candidate = join(
+        reviewsRoot,
+        sessionEntry,
+        "preparation.journal.json",
+      );
       try {
         await stat(candidate);
         found.push(candidate);
@@ -425,16 +546,27 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function isSafeOwnedPath(root: string, path: string, requirePath: boolean = false): Promise<boolean> {
+async function isSafeOwnedPath(
+  root: string,
+  path: string,
+  requirePath: boolean = false,
+): Promise<boolean> {
   if (!isContainedPath(root, path)) return false;
   const entry = await lstat(path).catch(() => undefined);
-  if (entry?.isSymbolicLink() || (requirePath && entry === undefined)) return false;
+  if (entry?.isSymbolicLink() || (requirePath && entry === undefined))
+    return false;
   const canonicalRoot = await realpath(root).catch(() => undefined);
   const canonicalParent = await realpathNearestExistingParent(dirname(path));
-  return canonicalRoot !== undefined && canonicalParent !== undefined && isContainedPath(canonicalRoot, canonicalParent);
+  return (
+    canonicalRoot !== undefined &&
+    canonicalParent !== undefined &&
+    isContainedPath(canonicalRoot, canonicalParent)
+  );
 }
 
-async function realpathNearestExistingParent(path: string): Promise<string | undefined> {
+async function realpathNearestExistingParent(
+  path: string,
+): Promise<string | undefined> {
   let candidate = path;
   while (true) {
     const canonical = await realpath(candidate).catch(() => undefined);
@@ -447,7 +579,12 @@ async function realpathNearestExistingParent(path: string): Promise<string | und
 
 function isContainedPath(root: string, path: string): boolean {
   const relation = relative(resolve(root), resolve(path));
-  return relation === "" || (relation !== ".." && !relation.startsWith(`..${sep}`) && !isAbsolute(relation));
+  return (
+    relation === "" ||
+    (relation !== ".." &&
+      !relation.startsWith(`..${sep}`) &&
+      !isAbsolute(relation))
+  );
 }
 
 function parseJournalWorktree(input: unknown): JournalWorktree | undefined {

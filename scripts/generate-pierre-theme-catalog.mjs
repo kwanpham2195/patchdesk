@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { themes } from "@pierre/theming/themes";
@@ -6,7 +7,7 @@ const outputPath = resolve(
   process.cwd(),
   "src/renderer/src/pierre-theme-catalog.generated.ts",
 );
-const generated = renderCatalog();
+const generated = await formatCatalog(renderCatalog());
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
@@ -32,4 +33,32 @@ function optionsFor(colorScheme) {
     id: theme.name,
     label: theme.displayName ?? theme.name.replaceAll("-", " "),
   }));
+}
+
+async function formatCatalog(source) {
+  const oxfmtPath = resolve(process.cwd(), "node_modules/.bin/oxfmt");
+  return await new Promise((resolveFormat, rejectFormat) => {
+    const child = spawn(oxfmtPath, ["--stdin-filepath", outputPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", rejectFormat);
+    child.on("close", (code) => {
+      if (code === 0) resolveFormat(stdout);
+      else
+        rejectFormat(
+          new Error(`Oxfmt failed for the Pierre catalog: ${stderr.trim()}`),
+        );
+    });
+    child.stdin.end(source);
+  });
 }

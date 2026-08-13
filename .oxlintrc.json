@@ -1,9 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "react"
-  ],
+  "plugins": ["typescript", "react"],
   "categories": {
     "correctness": "off"
   },
@@ -100,12 +97,7 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/*.ts",
-        "**/*.tsx",
-        "**/*.mts",
-        "**/*.cts"
-      ],
+      "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
       "rules": {
         "constructor-super": "off",
         "getter-return": "off",
@@ -131,18 +123,13 @@
       }
     },
     {
-      "files": [
-        "scripts/**/*.mjs",
-        "runtime/flue/scripts/**/*.mjs"
-      ],
+      "files": ["scripts/**/*.mjs", "runtime/flue/scripts/**/*.mjs"],
       "env": {
         "node": true
       }
     },
     {
-      "files": [
-        "**/*.{ts,tsx}"
-      ],
+      "files": ["**/*.{ts,tsx}"],
       "rules": {
         "react/only-export-components": [
           "warn",
@@ -159,9 +146,7 @@
       }
     },
     {
-      "files": [
-        "src/renderer/src/components/ui/**/*.tsx"
-      ],
+      "files": ["src/renderer/src/components/ui/**/*.tsx"],
       "rules": {
         "react/only-export-components": "off",
         "no-undef": "off"

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import { Minus, Plus, Maximize2, X } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -49,23 +55,31 @@ export function MarkdownLightbox({
     setScale(1);
     setFitToScreen(true);
   }, []);
-  const startPan = useCallback((event: PointerEvent<HTMLDivElement>): void => {
-    if (fitToScreen || scale <= 1) return;
-    const viewport = viewportRef.current;
-    if (viewport === null) return;
-    panStartRef.current = {
-      pointerId: event.pointerId,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
-    };
-    viewport.setPointerCapture?.(event.pointerId);
-  }, [fitToScreen, scale]);
+  const startPan = useCallback(
+    (event: PointerEvent<HTMLDivElement>): void => {
+      if (fitToScreen || scale <= 1) return;
+      const viewport = viewportRef.current;
+      if (viewport === null) return;
+      panStartRef.current = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      };
+      viewport.setPointerCapture?.(event.pointerId);
+    },
+    [fitToScreen, scale],
+  );
   const pan = useCallback((event: PointerEvent<HTMLDivElement>): void => {
     const start = panStartRef.current;
     const viewport = viewportRef.current;
-    if (start === undefined || viewport === null || start.pointerId !== event.pointerId) return;
+    if (
+      start === undefined ||
+      viewport === null ||
+      start.pointerId !== event.pointerId
+    )
+      return;
     viewport.scrollLeft = start.scrollLeft - (event.clientX - start.clientX);
     viewport.scrollTop = start.scrollTop - (event.clientY - start.clientY);
   }, []);
@@ -172,7 +186,10 @@ export function MarkdownLightbox({
         onPointerUp={stopPan}
         onPointerCancel={stopPan}
       >
-        <div className={fitToScreen ? undefined : "w-max"} style={fitToScreen ? undefined : { zoom: scale }}>
+        <div
+          className={fitToScreen ? undefined : "w-max"}
+          style={fitToScreen ? undefined : { zoom: scale }}
+        >
           {children}
         </div>
       </div>

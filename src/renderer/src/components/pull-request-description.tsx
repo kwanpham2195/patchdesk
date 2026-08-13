@@ -371,13 +371,7 @@ function renderMarkdownImage(
   }
   const src = resolvePullRequestExternalUrl(token.href, pullRequest);
   if (src === undefined) return <span key={key}>[Image: {token.text}]</span>;
-  return (
-    <ClickableImage
-      key={key}
-      src={src}
-      alt={token.text}
-    />
-  );
+  return <ClickableImage key={key} src={src} alt={token.text} />;
 }
 
 function HtmlContent({
@@ -532,16 +526,12 @@ function renderHtmlNode(
     case "img": {
       const src = node.getAttribute("src");
       const alt = node.getAttribute("alt") ?? "";
-      const resolved = src === null ? undefined : resolvePullRequestExternalUrl(src, pullRequest);
-      if (resolved === undefined)
-        return <span key={key}>[Image: {alt}]</span>;
-      return (
-        <ClickableImage
-          key={key}
-          src={resolved}
-          alt={alt}
-        />
-      );
+      const resolved =
+        src === null
+          ? undefined
+          : resolvePullRequestExternalUrl(src, pullRequest);
+      if (resolved === undefined) return <span key={key}>[Image: {alt}]</span>;
+      return <ClickableImage key={key} src={resolved} alt={alt} />;
     }
     case "table":
       return (

@@ -17,7 +17,12 @@ import {
   type DiffLineAnnotation,
   type FileDiffMetadata,
 } from "@pierre/diffs";
-import { CodeView, FileDiff, PatchDiff, type CodeViewHandle } from "@pierre/diffs/react";
+import {
+  CodeView,
+  FileDiff,
+  PatchDiff,
+  type CodeViewHandle,
+} from "@pierre/diffs/react";
 import {
   ChevronsUpDown,
   Columns2,
@@ -29,11 +34,17 @@ import {
 } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
-import { parseRepoRelativePath, type GitHubThreadId } from "../../../domain/ids";
+import {
+  parseRepoRelativePath,
+  type GitHubThreadId,
+} from "../../../domain/ids";
 import { toDiffLineAnnotation } from "../review-diff-annotations";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { PatchdeskApiError } from "../api-client";
-import { fingerprintPatchAnchor, type ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
+import {
+  fingerprintPatchAnchor,
+  type ReviewAnchorFingerprint,
+} from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import {
   diffThemeFor,
@@ -45,9 +56,7 @@ import type { FileChangeStats } from "@/review-diff-data";
 import { activeFilePathAtScrollTop } from "@/review-diff-active-file";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
-import {
-  reviewContextControl,
-} from "@/review-context-control";
+import { reviewContextControl } from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import {
   selectPatch,
@@ -72,7 +81,8 @@ registerPierreThemeLoaders();
 const DIFF_CODE_METRICS = {
   fontSize: "13px",
   lineHeight: "20px",
-  fontFamily: '"Berkeley Mono", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontFamily:
+    '"Berkeley Mono", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
 } as CSSProperties;
 // Pierre derives diff chrome colors from the selected Shiki theme. Some themes
 // use saturated terminal red/green values that produce poor contrast in the
@@ -153,13 +163,8 @@ export type ReviewInlineAnnotation = {
       threadId: string,
       body: string,
     ) => Promise<string | void>;
-    readonly onEditComment?: (
-      commentId: string,
-      body: string,
-    ) => Promise<void>;
-    readonly onDeleteComment?: (
-      commentId: string,
-    ) => Promise<void>;
+    readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
+    readonly onDeleteComment?: (commentId: string) => Promise<void>;
     readonly comments: ReadonlyArray<{
       readonly id: string;
       readonly author: string;
@@ -218,7 +223,6 @@ export type LocalCommentAuthoring = {
   }) => Promise<{ readonly commentId: string } | void>;
 };
 
-
 function FileChangeCounts({
   stats,
 }: {
@@ -232,8 +236,12 @@ function FileChangeCounts({
       data-deletions={stats.deletions}
       aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
     >
-      <span className="text-emerald-700 dark:text-emerald-400">+{stats.additions}</span>
-      <span className="text-rose-700 dark:text-rose-400">-{stats.deletions}</span>
+      <span className="text-emerald-700 dark:text-emerald-400">
+        +{stats.additions}
+      </span>
+      <span className="text-rose-700 dark:text-rose-400">
+        -{stats.deletions}
+      </span>
     </span>
   );
 }
@@ -243,7 +251,10 @@ export type ReviewConversationActions = {
     threadId: string,
     state: "open" | "resolved",
   ) => Promise<void>;
-  readonly replyToThread?: (threadId: string, body: string) => Promise<string | void>;
+  readonly replyToThread?: (
+    threadId: string,
+    body: string,
+  ) => Promise<string | void>;
   readonly editComment?: (commentId: string, body: string) => Promise<void>;
   readonly deleteComment?: (commentId: string) => Promise<void>;
 };
@@ -292,15 +303,20 @@ function ReviewDiffSurface({
   conversationActions,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
-  const [appearance, setAppearance] = useState<ResolvedAppearance>(() => document.documentElement.dataset.appearance === "light" ? "light" : "dark");
-  const [themePreferences, setThemePreferences] = useState<DiffThemePreferences>(() =>
-    loadDiffThemePreferences(),
+  const [appearance, setAppearance] = useState<ResolvedAppearance>(() =>
+    document.documentElement.dataset.appearance === "light" ? "light" : "dark",
   );
-  const viewer = useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
+  const [themePreferences, setThemePreferences] =
+    useState<DiffThemePreferences>(() => loadDiffThemePreferences());
+  const viewer =
+    useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
   const activePathRef = useRef<string | undefined>(undefined);
   const viewerContainer = useRef<HTMLDivElement>(null);
-  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(null);
-  const [authoringSelection, setAuthoringSelection] = useState<CodeViewLineSelection | null>(null);
+  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [authoringSelection, setAuthoringSelection] =
+    useState<CodeViewLineSelection | null>(null);
   /** Local-only create overlays; `published` carries the real GitHub comment id, `sending`/`failed` carry none. */
   type CreatedThreadOverlay =
     | {
@@ -357,12 +373,22 @@ function ReviewDiffSurface({
         readonly body: string;
         readonly message: string;
       };
-  const [createdThreads, setCreatedThreads] = useState<ReadonlyArray<CreatedThreadOverlay>>([]);
-  const [pendingWriteOverlays, setPendingWriteOverlays] = useState<ReadonlyArray<PendingReviewWriteOverlay>>([]);
+  const [createdThreads, setCreatedThreads] = useState<
+    ReadonlyArray<CreatedThreadOverlay>
+  >([]);
+  const [pendingWriteOverlays, setPendingWriteOverlays] = useState<
+    ReadonlyArray<PendingReviewWriteOverlay>
+  >([]);
   const localIdCounter = useRef(0);
-  const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(() => new Map());
-  const [deletedCommentIds, setDeletedCommentIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [resolvedThreads, setResolvedThreads] = useState<ReadonlyMap<string, "open" | "resolved">>(() => new Map());
+  const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const [deletedCommentIds, setDeletedCommentIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [resolvedThreads, setResolvedThreads] = useState<
+    ReadonlyMap<string, "open" | "resolved">
+  >(() => new Map());
   // Published writes are authoritative (the receipt is GitHub's 200) and the
   // projection only changes on an explicit refresh or reload. Local mutation
   // overrides keep the cards truthful until the projection catches up; each is
@@ -426,10 +452,13 @@ function ReviewDiffSurface({
       return changed ? next : current;
     });
   }, [annotations]);
-  const setViewerContainer = useCallback((node: HTMLDivElement | null): void => {
-    viewerContainer.current = node;
-    setViewerElement(node);
-  }, []);
+  const setViewerContainer = useCallback(
+    (node: HTMLDivElement | null): void => {
+      viewerContainer.current = node;
+      setViewerElement(node);
+    },
+    [],
+  );
   // Walkthrough cards render one filtered hunk with virtualized={false}. Full
   // source hydration would pair that partial patch with the entire file and
   // make Pierre calculate impossible trailing context.
@@ -443,7 +472,9 @@ function ReviewDiffSurface({
   } = useReviewDiffHydration({
     patch,
     ...(selectedPath === undefined ? {} : { selectedPath }),
-    ...(hydrationSourceSession === undefined ? {} : { sourceSession: hydrationSourceSession }),
+    ...(hydrationSourceSession === undefined
+      ? {}
+      : { sourceSession: hydrationSourceSession }),
   });
   useEffect(() => {
     const onAppearance = (event: Event): void => {
@@ -451,15 +482,14 @@ function ReviewDiffSurface({
       if (value === "light" || value === "dark") setAppearance(value);
     };
     window.addEventListener("patchdesk:appearance", onAppearance);
-    return () => window.removeEventListener("patchdesk:appearance", onAppearance);
+    return () =>
+      window.removeEventListener("patchdesk:appearance", onAppearance);
   }, []);
   useReviewDiffQaScrollDiagnostics(viewerElement, viewer);
   useEffect(() => {
     const onTheme = (event: Event): void => {
       setThemePreferences(
-        parseDiffThemePreferences(
-          (event as CustomEvent<unknown>).detail,
-        ),
+        parseDiffThemePreferences((event as CustomEvent<unknown>).detail),
       );
     };
     window.addEventListener("patchdesk:diff-theme", onTheme);
@@ -487,110 +517,196 @@ function ReviewDiffSurface({
     [files, preferences.fileMode, selectedPath],
   );
   const selectedFile = useMemo(
-    () => selectedPath === undefined ? undefined : files.find((file) => file.name === selectedPath),
+    () =>
+      selectedPath === undefined
+        ? undefined
+        : files.find((file) => file.name === selectedPath),
     [files, selectedPath],
   );
   const clearAuthoring = useCallback((): void => {
     setAuthoringSelection(null);
     viewer.current?.clearSelectedLines();
   }, []);
-  const beginAccessibleAuthoring = useCallback((path: string, line: number, side: "additions" | "deletions"): void => {
-    if (localCommentAuthoring?.enabled !== true) return;
-    const location: LocalCommentLocation = {
-      path,
-      startLine: line,
-      line,
-      side: side === "additions" ? "new" : "old",
-    };
-    if (localCommentAuthoring.canAuthor?.(location) === false) return;
-    localCommentAuthoring.onSelectionChange?.(location);
-    setAuthoringSelection({ id: path, range: { start: line, end: line, side } });
-  }, [localCommentAuthoring]);
-  const saveAuthoring = useCallback(async (body: string): Promise<void> => {
-    if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return;
-    const side: "new" | "old" = authoringSelection.range.side === "additions" ? "new" : "old";
-    const parsedPath = parseRepoRelativePath(authoringSelection.id);
-    const anchor = parsedPath._tag === "ok"
-      ? { path: parsedPath.value, startLine: authoringSelection.range.start, line: authoringSelection.range.end, side }
-      : undefined;
-    if (anchor === undefined) return;
-    const fingerprint = fingerprintPatchAnchor(patch, anchor);
-    // A temporary local id never reaches a write command: the card is visible
-    // immediately as pending, then reconciled from a real receipt or the next
-    // represented snapshot. It is never a GitHub thread id.
-    const localId = `local-${Date.now().toString(36)}-${localIdCounter.current}`;
-    localIdCounter.current += 1;
-    setCreatedThreads((current) => [
-      ...current,
-      { _tag: "sending", localId, path: anchor.path, start: anchor.startLine, end: anchor.line, side: anchor.side, body },
-    ]);
-    clearAuthoring();
-    try {
-      const receipt = await localCommentAuthoring.onSave({
-        path: authoringSelection.id,
-        startLine: anchor.startLine,
-        line: anchor.line,
-        side,
-        ...(fingerprint === undefined ? {} : { fingerprint }),
-        body,
+  const beginAccessibleAuthoring = useCallback(
+    (path: string, line: number, side: "additions" | "deletions"): void => {
+      if (localCommentAuthoring?.enabled !== true) return;
+      const location: LocalCommentLocation = {
+        path,
+        startLine: line,
+        line,
+        side: side === "additions" ? "new" : "old",
+      };
+      if (localCommentAuthoring.canAuthor?.(location) === false) return;
+      localCommentAuthoring.onSelectionChange?.(location);
+      setAuthoringSelection({
+        id: path,
+        range: { start: line, end: line, side },
       });
-      setCreatedThreads((current) =>
-        current.map((entry) =>
-          entry.localId === localId
-            ? receipt !== undefined && receipt.commentId !== undefined
-              ? { _tag: "published" as const, localId: entry.localId, path: entry.path, start: entry.start, end: entry.end, side: entry.side, body: entry.body, commentId: receipt.commentId }
-              : { _tag: "failed" as const, localId: entry.localId, path: entry.path, start: entry.start, end: entry.end, side: entry.side, body: entry.body }
-            : entry,
-        ),
-      );
-    } catch {
-      // A timeout or transport failure may have created the comment; the card
-      // must not offer a retry that could duplicate it. Refresh re-baselines.
-      setCreatedThreads((current) =>
-        current.map((entry) => (entry.localId === localId ? { _tag: "failed" as const, localId: entry.localId, path: entry.path, start: entry.start, end: entry.end, side: entry.side, body: entry.body } : entry)),
-      );
-    }
-  }, [authoringSelection, clearAuthoring, localCommentAuthoring, patch]);
-  const submitPendingWrite = useCallback(async (
-    action: "start" | "add",
-    anchor: LocalCommentLocation,
-    body: string,
-    run: (anchor: LocalCommentLocation, body: string) => Promise<void>,
-  ): Promise<void> => {
-    const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
-    localIdCounter.current += 1;
-    setPendingWriteOverlays((current) => [
-      ...current,
-      { _tag: "sending", localId, action, path: anchor.path, start: anchor.startLine, end: anchor.line, side: anchor.side, body },
-    ]);
-    // The composer closes immediately on submit, before the remote command
-    // resolves; only the transient card represents the write now. onCancel is
-    // not used because it may prompt about discarding text.
-    clearAuthoring();
-    try {
-      await run(anchor, body);
-      // The flow applied the confirmed pending projection on success; the
-      // authoritative pending card replaces this transient at the same anchor.
-      setPendingWriteOverlays((current) => current.filter((entry) => entry.localId !== localId));
-    } catch (cause) {
-      // An unknown outcome must not leave a card that claims anything was
-      // written: the unavailable/recovery state and Check GitHub again own
-      // reconciliation. A confirmed rejection keeps bounded failed feedback.
-      if (cause instanceof PatchdeskApiError && cause.kind === "outcome_unknown") {
-        setPendingWriteOverlays((current) => current.filter((entry) => entry.localId !== localId));
+    },
+    [localCommentAuthoring],
+  );
+  const saveAuthoring = useCallback(
+    async (body: string): Promise<void> => {
+      if (
+        authoringSelection === null ||
+        localCommentAuthoring?.enabled !== true
+      )
         return;
+      const side: "new" | "old" =
+        authoringSelection.range.side === "additions" ? "new" : "old";
+      const parsedPath = parseRepoRelativePath(authoringSelection.id);
+      const anchor =
+        parsedPath._tag === "ok"
+          ? {
+              path: parsedPath.value,
+              startLine: authoringSelection.range.start,
+              line: authoringSelection.range.end,
+              side,
+            }
+          : undefined;
+      if (anchor === undefined) return;
+      const fingerprint = fingerprintPatchAnchor(patch, anchor);
+      // A temporary local id never reaches a write command: the card is visible
+      // immediately as pending, then reconciled from a real receipt or the next
+      // represented snapshot. It is never a GitHub thread id.
+      const localId = `local-${Date.now().toString(36)}-${localIdCounter.current}`;
+      localIdCounter.current += 1;
+      setCreatedThreads((current) => [
+        ...current,
+        {
+          _tag: "sending",
+          localId,
+          path: anchor.path,
+          start: anchor.startLine,
+          end: anchor.line,
+          side: anchor.side,
+          body,
+        },
+      ]);
+      clearAuthoring();
+      try {
+        const receipt = await localCommentAuthoring.onSave({
+          path: authoringSelection.id,
+          startLine: anchor.startLine,
+          line: anchor.line,
+          side,
+          ...(fingerprint === undefined ? {} : { fingerprint }),
+          body,
+        });
+        setCreatedThreads((current) =>
+          current.map((entry) =>
+            entry.localId === localId
+              ? receipt !== undefined && receipt.commentId !== undefined
+                ? {
+                    _tag: "published" as const,
+                    localId: entry.localId,
+                    path: entry.path,
+                    start: entry.start,
+                    end: entry.end,
+                    side: entry.side,
+                    body: entry.body,
+                    commentId: receipt.commentId,
+                  }
+                : {
+                    _tag: "failed" as const,
+                    localId: entry.localId,
+                    path: entry.path,
+                    start: entry.start,
+                    end: entry.end,
+                    side: entry.side,
+                    body: entry.body,
+                  }
+              : entry,
+          ),
+        );
+      } catch {
+        // A timeout or transport failure may have created the comment; the card
+        // must not offer a retry that could duplicate it. Refresh re-baselines.
+        setCreatedThreads((current) =>
+          current.map((entry) =>
+            entry.localId === localId
+              ? {
+                  _tag: "failed" as const,
+                  localId: entry.localId,
+                  path: entry.path,
+                  start: entry.start,
+                  end: entry.end,
+                  side: entry.side,
+                  body: entry.body,
+                }
+              : entry,
+          ),
+        );
       }
-      setPendingWriteOverlays((current) =>
-        current.map((entry) =>
-          entry.localId === localId
-            ? { ...entry, _tag: "failed" as const, message: composerErrorMessage(cause) }
-            : entry,
-        ),
-      );
-    }
-  }, [clearAuthoring]);
-  const localComposerAnnotation = useMemo<ReviewInlineAnnotation | undefined>(() => {
-    if (authoringSelection === null || localCommentAuthoring?.enabled !== true) return undefined;
+    },
+    [authoringSelection, clearAuthoring, localCommentAuthoring, patch],
+  );
+  const submitPendingWrite = useCallback(
+    async (
+      action: "start" | "add",
+      anchor: LocalCommentLocation,
+      body: string,
+      run: (anchor: LocalCommentLocation, body: string) => Promise<void>,
+    ): Promise<void> => {
+      const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
+      localIdCounter.current += 1;
+      setPendingWriteOverlays((current) => [
+        ...current,
+        {
+          _tag: "sending",
+          localId,
+          action,
+          path: anchor.path,
+          start: anchor.startLine,
+          end: anchor.line,
+          side: anchor.side,
+          body,
+        },
+      ]);
+      // The composer closes immediately on submit, before the remote command
+      // resolves; only the transient card represents the write now. onCancel is
+      // not used because it may prompt about discarding text.
+      clearAuthoring();
+      try {
+        await run(anchor, body);
+        // The flow applied the confirmed pending projection on success; the
+        // authoritative pending card replaces this transient at the same anchor.
+        setPendingWriteOverlays((current) =>
+          current.filter((entry) => entry.localId !== localId),
+        );
+      } catch (cause) {
+        // An unknown outcome must not leave a card that claims anything was
+        // written: the unavailable/recovery state and Check GitHub again own
+        // reconciliation. A confirmed rejection keeps bounded failed feedback.
+        if (
+          cause instanceof PatchdeskApiError &&
+          cause.kind === "outcome_unknown"
+        ) {
+          setPendingWriteOverlays((current) =>
+            current.filter((entry) => entry.localId !== localId),
+          );
+          return;
+        }
+        setPendingWriteOverlays((current) =>
+          current.map((entry) =>
+            entry.localId === localId
+              ? {
+                  ...entry,
+                  _tag: "failed" as const,
+                  message: composerErrorMessage(cause),
+                }
+              : entry,
+          ),
+        );
+      }
+    },
+    [clearAuthoring],
+  );
+  const localComposerAnnotation = useMemo<
+    ReviewInlineAnnotation | undefined
+  >(() => {
+    if (authoringSelection === null || localCommentAuthoring?.enabled !== true)
+      return undefined;
     // The pending actions are wrapped so a Start/Add submit gets the direct
     // comment lifecycle: a transient renderer-only card and an unconditional
     // composer close, both before the remote command is awaited.
@@ -600,9 +716,16 @@ function ReviewDiffSurface({
         : {
             ...pendingReviewComposer,
             onStartReview: (anchor, body) =>
-              submitPendingWrite("start", anchor, body, pendingReviewComposer.onStartReview),
+              submitPendingWrite(
+                "start",
+                anchor,
+                body,
+                pendingReviewComposer.onStartReview,
+              ),
             onAddReviewComment: (nodeId, anchor, body) =>
-              submitPendingWrite("add", anchor, body, (a, b) => pendingReviewComposer.onAddReviewComment(nodeId, a, b)),
+              submitPendingWrite("add", anchor, body, (a, b) =>
+                pendingReviewComposer.onAddReviewComment(nodeId, a, b),
+              ),
           };
     return {
       id: `local-comment:${authoringSelection.id}:${authoringSelection.range.start}:${authoringSelection.range.end}:${authoringSelection.range.side}`,
@@ -625,7 +748,14 @@ function ReviewDiffSurface({
           : { pendingReview: wrappedPendingReview }),
       },
     };
-  }, [authoringSelection, clearAuthoring, localCommentAuthoring?.enabled, saveAuthoring, pendingReviewComposer, submitPendingWrite]);
+  }, [
+    authoringSelection,
+    clearAuthoring,
+    localCommentAuthoring?.enabled,
+    saveAuthoring,
+    pendingReviewComposer,
+    submitPendingWrite,
+  ]);
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
     () => [
       ...createdThreads.map((entry: CreatedThreadOverlay) => {
@@ -668,7 +798,10 @@ function ReviewDiffSurface({
             // after a REST create, so Reply and Resolve are structurally
             // impossible here. Edit and Delete are reachable through the real
             // viewer-authored comment id (never through a synthetic thread id).
-            target: { _tag: "comment_only" as const, commentId: entry.commentId },
+            target: {
+              _tag: "comment_only" as const,
+              commentId: entry.commentId,
+            },
             state: "open" as const,
             complete: true,
             comments: [
@@ -714,9 +847,10 @@ function ReviewDiffSurface({
     [conversationActions, createdThreads, pendingWriteOverlays],
   );
   const renderedAnnotations = useMemo(
-    () => localComposerAnnotation === undefined
-      ? [...annotations, ...optimisticAnnotations]
-      : [...annotations, ...optimisticAnnotations, localComposerAnnotation],
+    () =>
+      localComposerAnnotation === undefined
+        ? [...annotations, ...optimisticAnnotations]
+        : [...annotations, ...optimisticAnnotations, localComposerAnnotation],
     [annotations, localComposerAnnotation, optimisticAnnotations],
   );
   // Published mutations are applied on top of the projection until an explicit
@@ -730,8 +864,10 @@ function ReviewDiffSurface({
     for (const annotation of annotations) {
       const thread = annotation.conversationThread;
       if (thread === undefined) continue;
-      if (thread.target._tag === "thread") projectionThreadIds.add(thread.target.id);
-      for (const comment of thread.comments) projectionCommentIds.add(comment.id);
+      if (thread.target._tag === "thread")
+        projectionThreadIds.add(thread.target.id);
+      for (const comment of thread.comments)
+        projectionCommentIds.add(comment.id);
     }
     return renderedAnnotations
       .filter((annotation) => {
@@ -739,19 +875,28 @@ function ReviewDiffSurface({
         if (thread === undefined) return true;
         // A created card is superseded by the authoritative thread with the
         // same thread or comment id; the projection now owns it.
-        if (annotations.some((projection) => projection === annotation)) return true;
-        const targetThreadId = thread.target._tag === "thread" ? thread.target.id : undefined;
-        if (targetThreadId !== undefined && projectionThreadIds.has(targetThreadId)) return false;
-        if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) return false;
+        if (annotations.some((projection) => projection === annotation))
+          return true;
+        const targetThreadId =
+          thread.target._tag === "thread" ? thread.target.id : undefined;
+        if (
+          targetThreadId !== undefined &&
+          projectionThreadIds.has(targetThreadId)
+        )
+          return false;
+        if (projectionCommentIds.has(thread.comments[0]?.id ?? ""))
+          return false;
         return true;
       })
       .map((annotation) => {
         const thread = annotation.conversationThread;
         if (thread === undefined) return annotation;
-        const targetThreadId = thread.target._tag === "thread" ? thread.target.id : undefined;
-        const state = targetThreadId === undefined
-          ? thread.state
-          : (resolvedThreads.get(targetThreadId) ?? thread.state);
+        const targetThreadId =
+          thread.target._tag === "thread" ? thread.target.id : undefined;
+        const state =
+          targetThreadId === undefined
+            ? thread.state
+            : (resolvedThreads.get(targetThreadId) ?? thread.state);
         const comments = thread.comments
           .filter((comment) => !deletedCommentIds.has(comment.id))
           .map((comment) => {
@@ -759,92 +904,121 @@ function ReviewDiffSurface({
             return body === undefined ? comment : { ...comment, body };
           });
         if (comments.length === 0) return undefined;
-        return { ...annotation, conversationThread: { ...thread, state, comments } };
+        return {
+          ...annotation,
+          conversationThread: { ...thread, state, comments },
+        };
       })
-      .filter((annotation): annotation is ReviewInlineAnnotation => annotation !== undefined);
-  }, [annotations, deletedCommentIds, editedBodies, renderedAnnotations, resolvedThreads]);
+      .filter(
+        (annotation): annotation is ReviewInlineAnnotation =>
+          annotation !== undefined,
+      );
+  }, [
+    annotations,
+    deletedCommentIds,
+    editedBodies,
+    renderedAnnotations,
+    resolvedThreads,
+  ]);
   const selectedAnnotations = useMemo(
-    () => displayedAnnotations
-      .filter((annotation) => selectedPath === undefined || annotation.path === selectedPath)
-      .map(toDiffLineAnnotation),
+    () =>
+      displayedAnnotations
+        .filter(
+          (annotation) =>
+            selectedPath === undefined || annotation.path === selectedPath,
+        )
+        .map(toDiffLineAnnotation),
     [displayedAnnotations, selectedPath],
   );
   const annotationKey = useMemo(
-    () => displayedAnnotations
-      .map((annotation) => [
-        annotation.id,
-        annotation.path,
-        annotation.start,
-        annotation.end,
-        annotation.side,
-        annotation.title,
-        annotation.explanation,
-        annotation.localComposer?.path ?? "",
-        annotation.localComposer?.startLine ?? "",
-        annotation.localComposer?.line ?? "",
-        // The composer's effective pending state and owner node must bump the
-        // controlled item version so a stale portal re-renders when none
-        // becomes pending, the owner review changes, or a command goes busy.
-        annotation.localComposer?.pendingReview === undefined
-          ? ""
-          : JSON.stringify([
-              annotation.localComposer.pendingReview.state.state,
-              annotation.localComposer.pendingReview.state.state === "pending"
-                ? annotation.localComposer.pendingReview.state.nodeId
-                : "",
-              annotation.localComposer.pendingReview.busy,
-            ]),
-        // Pending create cards are controlled items: their status and body must
-        // bump the version so the replacement slot re-renders.
-        annotation.pendingConversation === undefined
-          ? ""
-          : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}`,
-        // Pending-review write cards are controlled items too: status, action,
-        // body, and the bounded failure message all bump the version.
-        annotation.pendingReviewWrite === undefined
-          ? ""
-          : `${annotation.pendingReviewWrite.status}\u0000${annotation.pendingReviewWrite.action}\u0000${annotation.pendingReviewWrite.body}\u0000${annotation.pendingReviewWrite.message ?? ""}`,
-        // Confirmed pending threads are controlled items: the owner node,
-        // thread id, and body must bump the version when the projection moves.
-        annotation.pendingReviewThread === undefined
-          ? ""
-          : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
-        // Thread cards are controlled items too: resolve state, reconciled
-        // comments, and local mutation overrides must bump the version.
-        annotation.conversationThread === undefined
-          ? ""
-          : JSON.stringify([
-              annotation.conversationThread.state,
-              ...annotation.conversationThread.comments.map(
-                (comment) => `${comment.id}\u0000${comment.author}\u0000${comment.body}`,
-              ),
-            ]),
-      ].join("\u0000"))
-      .join("\u0001"),
+    () =>
+      displayedAnnotations
+        .map((annotation) =>
+          [
+            annotation.id,
+            annotation.path,
+            annotation.start,
+            annotation.end,
+            annotation.side,
+            annotation.title,
+            annotation.explanation,
+            annotation.localComposer?.path ?? "",
+            annotation.localComposer?.startLine ?? "",
+            annotation.localComposer?.line ?? "",
+            // The composer's effective pending state and owner node must bump the
+            // controlled item version so a stale portal re-renders when none
+            // becomes pending, the owner review changes, or a command goes busy.
+            annotation.localComposer?.pendingReview === undefined
+              ? ""
+              : JSON.stringify([
+                  annotation.localComposer.pendingReview.state.state,
+                  annotation.localComposer.pendingReview.state.state ===
+                  "pending"
+                    ? annotation.localComposer.pendingReview.state.nodeId
+                    : "",
+                  annotation.localComposer.pendingReview.busy,
+                ]),
+            // Pending create cards are controlled items: their status and body must
+            // bump the version so the replacement slot re-renders.
+            annotation.pendingConversation === undefined
+              ? ""
+              : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}`,
+            // Pending-review write cards are controlled items too: status, action,
+            // body, and the bounded failure message all bump the version.
+            annotation.pendingReviewWrite === undefined
+              ? ""
+              : `${annotation.pendingReviewWrite.status}\u0000${annotation.pendingReviewWrite.action}\u0000${annotation.pendingReviewWrite.body}\u0000${annotation.pendingReviewWrite.message ?? ""}`,
+            // Confirmed pending threads are controlled items: the owner node,
+            // thread id, and body must bump the version when the projection moves.
+            annotation.pendingReviewThread === undefined
+              ? ""
+              : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
+            // Thread cards are controlled items too: resolve state, reconciled
+            // comments, and local mutation overrides must bump the version.
+            annotation.conversationThread === undefined
+              ? ""
+              : JSON.stringify([
+                  annotation.conversationThread.state,
+                  ...annotation.conversationThread.comments.map(
+                    (comment) =>
+                      `${comment.id}\u0000${comment.author}\u0000${comment.body}`,
+                  ),
+                ]),
+          ].join("\u0000"),
+        )
+        .join("\u0001"),
     [displayedAnnotations],
   );
   const items = useMemo(
     () =>
-      visibleFiles.map<CodeViewDiffItem<ReviewInlineAnnotation | undefined>>((file) => ({
-        id: file.name,
-        type: "diff",
-        fileDiff: file,
-        annotations: displayedAnnotations
-          .filter((annotation) => annotation.path === file.name)
-          .map(toDiffLineAnnotation),
-        collapsed: collapsedPaths.has(file.name),
-        // Pierre deliberately reuses a controlled item with the same ID and
-        // version. Hydration swaps partial raw-patch metadata for exact
-        // base/head metadata, and local annotations change rendered slots, so
-        // bump its version to let native hunk controls and annotation portals
-        // see the replacement.
-        version: reviewDiffItemVersion({
+      visibleFiles.map<CodeViewDiffItem<ReviewInlineAnnotation | undefined>>(
+        (file) => ({
+          id: file.name,
+          type: "diff",
+          fileDiff: file,
+          annotations: displayedAnnotations
+            .filter((annotation) => annotation.path === file.name)
+            .map(toDiffLineAnnotation),
           collapsed: collapsedPaths.has(file.name),
-          hydrated: hydratedFiles.has(file.name),
-          annotationKey,
+          // Pierre deliberately reuses a controlled item with the same ID and
+          // version. Hydration swaps partial raw-patch metadata for exact
+          // base/head metadata, and local annotations change rendered slots, so
+          // bump its version to let native hunk controls and annotation portals
+          // see the replacement.
+          version: reviewDiffItemVersion({
+            collapsed: collapsedPaths.has(file.name),
+            hydrated: hydratedFiles.has(file.name),
+            annotationKey,
+          }),
         }),
-      })),
-    [annotationKey, collapsedPaths, hydratedFiles, displayedAnnotations, visibleFiles],
+      ),
+    [
+      annotationKey,
+      collapsedPaths,
+      hydratedFiles,
+      displayedAnnotations,
+      visibleFiles,
+    ],
   );
   const selectedLines = useMemo(
     () =>
@@ -881,8 +1055,7 @@ function ReviewDiffSurface({
         parsedFiles
           .map((file) => getFiletypeFromFileName(file.name))
           .filter(
-            (lang): lang is string =>
-              lang !== undefined && lang !== "text",
+            (lang): lang is string => lang !== undefined && lang !== "text",
           ),
       ),
     );
@@ -895,17 +1068,13 @@ function ReviewDiffSurface({
   const viewerKey = preferences.fileMode;
   const sourceProfileId = hydrationSourceSession?.profileId;
   const sourceSessionId = hydrationSourceSession?.sessionId;
-  const {
-    loadedCount,
-    nextItemIndex,
-    appendItemsThrough,
-    handleViewerScroll,
-  } = useProgressiveReviewDiffStream<ReviewInlineAnnotation | undefined>({
-    items,
-    fileMode: preferences.fileMode,
-    hydrateFiles,
-    viewerContainer,
-  });
+  const { loadedCount, nextItemIndex, appendItemsThrough, handleViewerScroll } =
+    useProgressiveReviewDiffStream<ReviewInlineAnnotation | undefined>({
+      items,
+      fileMode: preferences.fileMode,
+      hydrateFiles,
+      viewerContainer,
+    });
 
   useEffect(() => {
     activePathRef.current = undefined;
@@ -971,7 +1140,10 @@ function ReviewDiffSurface({
     const scrollToSelection = (): void => {
       const targetIndex = items.findIndex((item) => item.id === selectedPath);
       if (targetIndex === -1) return;
-      if (!selectionChanged && viewer.current?.getItem(selectedPath) !== undefined)
+      if (
+        !selectionChanged &&
+        viewer.current?.getItem(selectedPath) !== undefined
+      )
         return;
       // DiffWorkbench promotes exceptionally deep direct selections to its
       // explicit selected-file mode. Do not spend a frame materializing a
@@ -982,9 +1154,7 @@ function ReviewDiffSurface({
         // Keep direct navigation responsive for large all-files patches. The
         // selected path is committed before this progressive CodeView work,
         // then files are materialized in small animation-frame batches.
-        appendItemsThrough(
-          Math.min(targetIndex, nextItemIndex.current + 127),
-        );
+        appendItemsThrough(Math.min(targetIndex, nextItemIndex.current + 127));
         continuationFrame = requestAnimationFrame(scrollToSelection);
         return;
       }
@@ -1012,7 +1182,8 @@ function ReviewDiffSurface({
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
-      if (continuationFrame !== undefined) cancelAnimationFrame(continuationFrame);
+      if (continuationFrame !== undefined)
+        cancelAnimationFrame(continuationFrame);
     };
   }, [
     appendItemsThrough,
@@ -1055,17 +1226,23 @@ function ReviewDiffSurface({
       enableLineSelection: localCommentAuthoring?.enabled === true,
       enableGutterUtility: localCommentAuthoring?.enabled === true,
     }),
-    [appearance, expandSelectedRange, expandUnchanged, localCommentAuthoring?.enabled, preferences.diffStyle, preferences.overflow, themePreferences],
+    [
+      appearance,
+      expandSelectedRange,
+      expandUnchanged,
+      localCommentAuthoring?.enabled,
+      preferences.diffStyle,
+      preferences.overflow,
+      themePreferences,
+    ],
   );
   const hasExpandableRenderedFile = useMemo(
     () =>
-      items
-        .slice(0, loadedCount)
-        .some((item) => {
-          if (item.type !== "diff") return false;
-          const hydrated = hydratedFiles.get(item.id);
-          return hydrated !== undefined && !hydrated.isPartial;
-        }),
+      items.slice(0, loadedCount).some((item) => {
+        if (item.type !== "diff") return false;
+        const hydrated = hydratedFiles.get(item.id);
+        return hydrated !== undefined && !hydrated.isPartial;
+      }),
     [hydratedFiles, items, loadedCount],
   );
   const contextControl = reviewContextControl({
@@ -1099,7 +1276,11 @@ function ReviewDiffSurface({
             type="button"
             role="checkbox"
             aria-checked={collapsedPaths.has(path)}
-            aria-label={collapsedPaths.has(path) ? `Show file ${path}` : `Mark file ${path} as viewed`}
+            aria-label={
+              collapsedPaths.has(path)
+                ? `Show file ${path}`
+                : `Mark file ${path} as viewed`
+            }
             className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/60 bg-background text-[10px] leading-none hover:border-primary focus-visible:outline"
             onClick={() => toggleFile(path)}
           >
@@ -1137,13 +1318,14 @@ function ReviewDiffSurface({
         // GitHub thread target; a comment-only card cannot inherit them.
         const hasThreadTarget = thread.target._tag === "thread";
         const setState = hasThreadTarget
-          ? thread.onSetState ?? conversationActions?.setThreadState
+          ? (thread.onSetState ?? conversationActions?.setThreadState)
           : undefined;
         const reply = hasThreadTarget
-          ? thread.onReply ?? conversationActions?.replyToThread
+          ? (thread.onReply ?? conversationActions?.replyToThread)
           : undefined;
         const edit = thread.onEditComment ?? conversationActions?.editComment;
-        const remove = thread.onDeleteComment ?? conversationActions?.deleteComment;
+        const remove =
+          thread.onDeleteComment ?? conversationActions?.deleteComment;
         return (
           <ConversationThreadCard
             thread={{
@@ -1184,8 +1366,16 @@ function ReviewDiffSurface({
                         return next;
                       });
                       setCreatedThreads((current) =>
-                        current.some((entry) => entry._tag === "published" && entry.commentId === commentId)
-                          ? current.filter((entry) => entry._tag !== "published" || entry.commentId !== commentId)
+                        current.some(
+                          (entry) =>
+                            entry._tag === "published" &&
+                            entry.commentId === commentId,
+                        )
+                          ? current.filter(
+                              (entry) =>
+                                entry._tag !== "published" ||
+                                entry.commentId !== commentId,
+                            )
                           : current,
                       );
                     },
@@ -1211,10 +1401,14 @@ function ReviewDiffSurface({
           aria-label={`${finding.severity} finding: ${finding.title}`}
         >
           <div className="flex min-w-0 items-baseline gap-2">
-            <span className="text-xs font-semibold text-primary">{finding.severity}</span>
+            <span className="text-xs font-semibold text-primary">
+              {finding.severity}
+            </span>
             <h3 className="min-w-0 break-words font-medium">{finding.title}</h3>
           </div>
-          <p className="mt-1 break-words text-muted-foreground">{finding.explanation}</p>
+          <p className="mt-1 break-words text-muted-foreground">
+            {finding.explanation}
+          </p>
         </article>
       );
     },
@@ -1232,34 +1426,89 @@ function ReviewDiffSurface({
     ),
     [renderFileChangeCounts],
   );
-  const beginAuthoring = useCallback((selection: CodeViewLineSelection | null): void => {
-    if (localCommentAuthoring?.enabled !== true || selection === null) return;
-    const range = selection.range;
-    if ((range.side !== "additions" && range.side !== "deletions") || (range.endSide !== undefined && range.endSide !== range.side)) return;
-    const location: LocalCommentLocation = { path: selection.id, startLine: range.start, line: range.end, side: range.side === "additions" ? "new" : "old" };
-    if (localCommentAuthoring.canAuthor?.(location) === false) return;
-    localCommentAuthoring.onSelectionChange?.(location);
-    setAuthoringSelection(selection);
-  }, [localCommentAuthoring]);
-  const renderGutterUtility = useCallback((getHoveredLine: () => { readonly lineNumber: number; readonly side: "additions" | "deletions" } | undefined, item: { readonly id: string; readonly type: "diff" | "file" }) => {
-    if (localCommentAuthoring?.enabled !== true || item.type !== "diff") return null;
-    const baseTitle = `Add comment on ${item.id}`;
-    return <button type="button" className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={baseTitle} title={baseTitle} onPointerEnter={(event) => {
-      const hovered = getHoveredLine();
-      if (hovered === undefined) return;
-      event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
-      event.currentTarget.dataset.lineSide = hovered.side;
-      event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
-      event.currentTarget.setAttribute("aria-label", `${baseTitle} line ${hovered.lineNumber}`);
-    }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
-      const lineNumber = Number(event.currentTarget.dataset.lineNumber);
-      const side = event.currentTarget.dataset.lineSide;
-      if (!Number.isInteger(lineNumber) || lineNumber < 1 || (side !== "additions" && side !== "deletions")) return;
-      const locationSide = side === "additions" ? "new" : "old";
-      if (localCommentAuthoring.canAuthor?.({ path: item.id, startLine: lineNumber, line: lineNumber, side: locationSide }) === false) return;
-      beginAuthoring({ id: item.id, range: { start: lineNumber, end: lineNumber, side } });
-    }}>+</button>;
-  }, [beginAuthoring, localCommentAuthoring]);
+  const beginAuthoring = useCallback(
+    (selection: CodeViewLineSelection | null): void => {
+      if (localCommentAuthoring?.enabled !== true || selection === null) return;
+      const range = selection.range;
+      if (
+        (range.side !== "additions" && range.side !== "deletions") ||
+        (range.endSide !== undefined && range.endSide !== range.side)
+      )
+        return;
+      const location: LocalCommentLocation = {
+        path: selection.id,
+        startLine: range.start,
+        line: range.end,
+        side: range.side === "additions" ? "new" : "old",
+      };
+      if (localCommentAuthoring.canAuthor?.(location) === false) return;
+      localCommentAuthoring.onSelectionChange?.(location);
+      setAuthoringSelection(selection);
+    },
+    [localCommentAuthoring],
+  );
+  const renderGutterUtility = useCallback(
+    (
+      getHoveredLine: () =>
+        | {
+            readonly lineNumber: number;
+            readonly side: "additions" | "deletions";
+          }
+        | undefined,
+      item: { readonly id: string; readonly type: "diff" | "file" },
+    ) => {
+      if (localCommentAuthoring?.enabled !== true || item.type !== "diff")
+        return null;
+      const baseTitle = `Add comment on ${item.id}`;
+      return (
+        <button
+          type="button"
+          className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={baseTitle}
+          title={baseTitle}
+          onPointerEnter={(event) => {
+            const hovered = getHoveredLine();
+            if (hovered === undefined) return;
+            event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
+            event.currentTarget.dataset.lineSide = hovered.side;
+            event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
+            event.currentTarget.setAttribute(
+              "aria-label",
+              `${baseTitle} line ${hovered.lineNumber}`,
+            );
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            const lineNumber = Number(event.currentTarget.dataset.lineNumber);
+            const side = event.currentTarget.dataset.lineSide;
+            if (
+              !Number.isInteger(lineNumber) ||
+              lineNumber < 1 ||
+              (side !== "additions" && side !== "deletions")
+            )
+              return;
+            const locationSide = side === "additions" ? "new" : "old";
+            if (
+              localCommentAuthoring.canAuthor?.({
+                path: item.id,
+                startLine: lineNumber,
+                line: lineNumber,
+                side: locationSide,
+              }) === false
+            )
+              return;
+            beginAuthoring({
+              id: item.id,
+              range: { start: lineNumber, end: lineNumber, side },
+            });
+          }}
+        >
+          +
+        </button>
+      );
+    },
+    [beginAuthoring, localCommentAuthoring],
+  );
 
   return (
     <>
@@ -1279,7 +1528,9 @@ function ReviewDiffSurface({
             <Files /> All files
           </Button>
           <Button
-            variant={preferences.fileMode === "selected" ? "secondary" : "ghost"}
+            variant={
+              preferences.fileMode === "selected" ? "secondary" : "ghost"
+            }
             size="xs"
             aria-pressed={preferences.fileMode === "selected"}
             disabled={selectedPath === undefined}
@@ -1291,7 +1542,9 @@ function ReviewDiffSurface({
         <div className="flex flex-wrap items-center justify-end gap-1">
           <ButtonGroup>
             <Button
-              variant={preferences.diffStyle === "unified" ? "secondary" : "ghost"}
+              variant={
+                preferences.diffStyle === "unified" ? "secondary" : "ghost"
+              }
               size="xs"
               aria-pressed={preferences.diffStyle === "unified"}
               onClick={() => onPreferencesChange({ diffStyle: "unified" })}
@@ -1299,7 +1552,9 @@ function ReviewDiffSurface({
               <Rows3 /> Unified
             </Button>
             <Button
-              variant={preferences.diffStyle === "split" ? "secondary" : "ghost"}
+              variant={
+                preferences.diffStyle === "split" ? "secondary" : "ghost"
+              }
               size="xs"
               aria-pressed={preferences.diffStyle === "split"}
               onClick={() => onPreferencesChange({ diffStyle: "split" })}
@@ -1339,14 +1594,23 @@ function ReviewDiffSurface({
             className={virtualized ? undefined : "hidden"}
             variant="ghost"
             size="xs"
-            aria-pressed={collapsedPaths.size === files.length && files.length > 0}
-            onClick={() => setAllCollapsed(!(collapsedPaths.size === files.length && files.length > 0))}
+            aria-pressed={
+              collapsedPaths.size === files.length && files.length > 0
+            }
+            onClick={() =>
+              setAllCollapsed(
+                !(collapsedPaths.size === files.length && files.length > 0),
+              )
+            }
           >
-            {collapsedPaths.size === files.length && files.length > 0 ? "Show all" : "Mark all viewed"}
+            {collapsedPaths.size === files.length && files.length > 0
+              ? "Show all"
+              : "Mark all viewed"}
           </Button>
         </div>
       </div>
-      {!browserSupportsPierre && localComposerAnnotation?.localComposer !== undefined ? (
+      {!browserSupportsPierre &&
+      localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
       ) : null}
       {contextStatus === "loading" ? (
@@ -1363,7 +1627,12 @@ function ReviewDiffSurface({
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
           virtualized={virtualized}
           {...(selectedRange === undefined ? {} : { selectedRange })}
-          {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring, onAuthorLine: beginAccessibleAuthoring })}
+          {...(localCommentAuthoring === undefined
+            ? {}
+            : {
+                localCommentAuthoring,
+                onAuthorLine: beginAccessibleAuthoring,
+              })}
         />
       ) : !virtualized ? (
         selectedFile === undefined ? (
@@ -1431,7 +1700,10 @@ function ReviewDiffSurface({
         )
       ) : (
         <div className="relative min-h-0 flex-1">
-          <span className="hidden" data-review-diff-loaded-file-count={loadedCount} />
+          <span
+            className="hidden"
+            data-review-diff-loaded-file-count={loadedCount}
+          />
           <CodeView<ReviewInlineAnnotation | undefined>
             key={`${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`}
             ref={viewer}
@@ -1453,7 +1725,9 @@ function ReviewDiffSurface({
   );
 }
 
-type ConversationComment = NonNullable<ReviewInlineAnnotation["conversationThread"]>["comments"][number];
+type ConversationComment = NonNullable<
+  ReviewInlineAnnotation["conversationThread"]
+>["comments"][number];
 
 /**
  * Local-only card for an inline create while the GitHub write is pending or
@@ -1466,7 +1740,9 @@ function PendingConversationCard({
   status,
   body,
   onDismiss,
-}: NonNullable<ReviewInlineAnnotation["pendingConversation"]>): React.JSX.Element {
+}: NonNullable<
+  ReviewInlineAnnotation["pendingConversation"]
+>): React.JSX.Element {
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
@@ -1474,7 +1750,9 @@ function PendingConversationCard({
       aria-label={`${status === "sending" ? "Publishing" : "Comment failed"} conversation`}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{status === "sending" ? "Publishing…" : "Not published"}</span>
+        <span className="font-medium text-foreground">
+          {status === "sending" ? "Publishing…" : "Not published"}
+        </span>
         {status === "sending" ? <span>Waiting for GitHub</span> : null}
       </div>
       <div className="mt-2">
@@ -1487,7 +1765,12 @@ function PendingConversationCard({
             Patchdesk could not publish this comment. Refresh GitHub state
             before composing it again.
           </p>
-          <Button size="sm" variant="outline" className="mt-2" onClick={() => onDismiss(localId)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => onDismiss(localId)}
+          >
             Dismiss
           </Button>
         </div>
@@ -1509,8 +1792,11 @@ function PendingReviewWriteCard({
   body,
   message,
   onDismiss,
-}: NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]>): React.JSX.Element {
-  const label = action === "start" ? "Starting review…" : "Adding to pending review…";
+}: NonNullable<
+  ReviewInlineAnnotation["pendingReviewWrite"]
+>): React.JSX.Element {
+  const label =
+    action === "start" ? "Starting review…" : "Adding to pending review…";
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
@@ -1518,7 +1804,9 @@ function PendingReviewWriteCard({
       aria-label={`${status === "sending" ? label : "Pending review write failed"}`}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{status === "sending" ? label : "Pending review write failed"}</span>
+        <span className="font-medium text-foreground">
+          {status === "sending" ? label : "Pending review write failed"}
+        </span>
         {status === "sending" ? <span>Waiting for GitHub</span> : null}
       </div>
       <div className="mt-2">
@@ -1527,8 +1815,15 @@ function PendingReviewWriteCard({
       </div>
       {status === "failed" ? (
         <div className="mt-2">
-          <p role="alert" className="text-sm text-destructive">{message}</p>
-          <Button size="sm" variant="outline" className="mt-2" onClick={() => onDismiss(localId)}>
+          <p role="alert" className="text-sm text-destructive">
+            {message}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => onDismiss(localId)}
+          >
             Dismiss
           </Button>
         </div>
@@ -1546,7 +1841,9 @@ function PendingReviewWriteCard({
 function PendingReviewThreadCard({
   threadId,
   body,
-}: NonNullable<ReviewInlineAnnotation["pendingReviewThread"]>): React.JSX.Element {
+}: NonNullable<
+  ReviewInlineAnnotation["pendingReviewThread"]
+>): React.JSX.Element {
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
@@ -1554,7 +1851,9 @@ function PendingReviewThreadCard({
       aria-label="Pending review comment"
     >
       <div className="flex items-center gap-2 text-xs">
-        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 font-medium text-amber-200">Pending review</span>
+        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 font-medium text-amber-200">
+          Pending review
+        </span>
         <span className="text-muted-foreground">Not yet submitted</span>
       </div>
       <div className="mt-2">
@@ -1584,22 +1883,52 @@ function ConversationCommentRow({
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const editable = comment.viewerDidAuthor === true && (onEdit !== undefined || onDelete !== undefined);
+  const editable =
+    comment.viewerDidAuthor === true &&
+    (onEdit !== undefined || onDelete !== undefined);
   return (
     <div>
       <p className="font-semibold">{comment.author}</p>
       {editing ? (
         <div className="mt-1">
-          <Textarea aria-label="Edit comment" value={editBody} onChange={(event) => setEditBody(event.target.value)} />
+          <Textarea
+            aria-label="Edit comment"
+            value={editBody}
+            onChange={(event) => setEditBody(event.target.value)}
+          />
           <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={async () => {
-              if (editBody.trim().length === 0 || saving || onEdit === undefined) return;
-              setSaving(true); setError(undefined);
-              try { await onEdit(comment.id, editBody); setEditing(false); }
-              catch { setError("Patchdesk could not edit this comment."); }
-              finally { setSaving(false); }
-            }} disabled={editBody.trim().length === 0 || saving}>{saving ? "Saving…" : "Save"}</Button>
-            <Button size="sm" variant="outline" onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (
+                  editBody.trim().length === 0 ||
+                  saving ||
+                  onEdit === undefined
+                )
+                  return;
+                setSaving(true);
+                setError(undefined);
+                try {
+                  await onEdit(comment.id, editBody);
+                  setEditing(false);
+                } catch {
+                  setError("Patchdesk could not edit this comment.");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              disabled={editBody.trim().length === 0 || saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       ) : (
@@ -1607,15 +1936,36 @@ function ConversationCommentRow({
       )}
       {editable && !editing ? (
         <div className="mt-1 flex gap-3">
-          <button type="button" className="text-xs font-medium text-sky-400 hover:underline" onClick={() => { setEditing(true); setEditBody(comment.body); }}>Edit</button>
-          <button type="button" className="text-xs font-medium text-destructive hover:underline" onClick={() => {
-            if (!window.confirm("Delete this published comment?")) return;
-            if (onDelete === undefined) return;
-            void onDelete(comment.id).catch(() => setError("Patchdesk could not delete this comment."));
-          }}>Delete</button>
+          <button
+            type="button"
+            className="text-xs font-medium text-sky-400 hover:underline"
+            onClick={() => {
+              setEditing(true);
+              setEditBody(comment.body);
+            }}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="text-xs font-medium text-destructive hover:underline"
+            onClick={() => {
+              if (!window.confirm("Delete this published comment?")) return;
+              if (onDelete === undefined) return;
+              void onDelete(comment.id).catch(() =>
+                setError("Patchdesk could not delete this comment."),
+              );
+            }}
+          >
+            Delete
+          </button>
         </div>
       ) : null}
-      {error === undefined ? null : <p role="alert" className="mt-1 text-sm text-destructive">{error}</p>}
+      {error === undefined ? null : (
+        <p role="alert" className="mt-1 text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -1631,12 +1981,18 @@ export function ConversationThreadCard({
   const [replying, setReplying] = useState(false);
   const [error, setError] = useState<string>();
   const [optimisticReplies, setOptimisticReplies] = useState<
-    ReadonlyArray<{ readonly id: string; readonly body: string; readonly createdAt: string }>
+    ReadonlyArray<{
+      readonly id: string;
+      readonly body: string;
+      readonly createdAt: string;
+    }>
   >([]);
   // A published reply is authoritative (GitHub returned 200); drop its local
   // row once an explicit refresh or reload brings the authoritative thread.
   useEffect(() => {
-    const realCommentIds = new Set(thread.comments.map((comment) => comment.id));
+    const realCommentIds = new Set(
+      thread.comments.map((comment) => comment.id),
+    );
     setOptimisticReplies((current) =>
       current.some((reply) => realCommentIds.has(reply.id))
         ? current.filter((reply) => !realCommentIds.has(reply.id))
@@ -1647,82 +2003,179 @@ export function ConversationThreadCard({
   const latest = thread.comments.at(-1);
   // Only a canonical thread target carries a GitHub thread id; comment-only
   // cards (fresh REST creates) have none, and their callbacks never exist.
-  const threadId = thread.target._tag === "thread" ? thread.target.id : undefined;
-  const hiddenReplyCount = Math.max(0, thread.comments.length - (opening === latest ? 1 : 2));
-  const middleReplies = expanded && hiddenReplyCount > 0
-    ? thread.comments.slice(1, thread.comments.length - (opening === latest ? 0 : 1))
-    : [];
+  const threadId =
+    thread.target._tag === "thread" ? thread.target.id : undefined;
+  const hiddenReplyCount = Math.max(
+    0,
+    thread.comments.length - (opening === latest ? 1 : 2),
+  );
+  const middleReplies =
+    expanded && hiddenReplyCount > 0
+      ? thread.comments.slice(
+          1,
+          thread.comments.length - (opening === latest ? 0 : 1),
+        )
+      : [];
   const rowEdit = thread.onEditComment;
   const rowDelete = thread.onDeleteComment;
-  if (opening === undefined) return <p role="status" className="mx-2 my-2 text-sm text-muted-foreground">This conversation has no readable comments.</p>;
+  if (opening === undefined)
+    return (
+      <p role="status" className="mx-2 my-2 text-sm text-muted-foreground">
+        This conversation has no readable comments.
+      </p>
+    );
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
       aria-label={`${thread.state} conversation thread`}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{thread.state === "resolved" ? "Resolved" : "Open"}</span>
-        {thread.complete === false ? <span>Some replies unavailable</span> : null}
+        <span className="font-medium text-foreground">
+          {thread.state === "resolved" ? "Resolved" : "Open"}
+        </span>
+        {thread.complete === false ? (
+          <span>Some replies unavailable</span>
+        ) : null}
       </div>
       <div className="mt-2">
-        <ConversationCommentRow comment={opening} {...(rowEdit === undefined ? {} : { onEdit: rowEdit })} {...(rowDelete === undefined ? {} : { onDelete: rowDelete })} />
+        <ConversationCommentRow
+          comment={opening}
+          {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
+          {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
+        />
       </div>
-      {middleReplies.length > 0 ? middleReplies.map((comment) => (
-        <div key={comment.id} className="mt-4 border-l-2 border-border/70 pl-4">
-          <ConversationCommentRow comment={comment} {...(rowEdit === undefined ? {} : { onEdit: rowEdit })} {...(rowDelete === undefined ? {} : { onDelete: rowDelete })} />
-        </div>
-      )) : null}
+      {middleReplies.length > 0
+        ? middleReplies.map((comment) => (
+            <div
+              key={comment.id}
+              className="mt-4 border-l-2 border-border/70 pl-4"
+            >
+              <ConversationCommentRow
+                comment={comment}
+                {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
+                {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
+              />
+            </div>
+          ))
+        : null}
       {latest !== undefined && latest !== opening ? (
         <div className="mt-4 border-l-2 border-border/70 pl-4">
-          <ConversationCommentRow comment={latest} {...(rowEdit === undefined ? {} : { onEdit: rowEdit })} {...(rowDelete === undefined ? {} : { onDelete: rowDelete })} />
+          <ConversationCommentRow
+            comment={latest}
+            {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
+            {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
+          />
         </div>
       ) : null}
       {optimisticReplies.map((reply) => (
         <div key={reply.id} className="mt-4 border-l-2 border-border/70 pl-4">
           <ConversationCommentRow
             comment={{ ...reply, author: "You", viewerDidAuthor: true }}
-            {...(rowEdit === undefined ? {} : { onEdit: async (commentId, body) => {
-              await rowEdit(commentId, body);
-              setOptimisticReplies((current) =>
-                current.map((entry) => entry.id === commentId ? { ...entry, body } : entry),
-              );
-            } })}
-            {...(rowDelete === undefined ? {} : { onDelete: async (commentId) => {
-              await rowDelete(commentId);
-              setOptimisticReplies((current) => current.filter((entry) => entry.id !== commentId));
-            } })}
+            {...(rowEdit === undefined
+              ? {}
+              : {
+                  onEdit: async (commentId, body) => {
+                    await rowEdit(commentId, body);
+                    setOptimisticReplies((current) =>
+                      current.map((entry) =>
+                        entry.id === commentId ? { ...entry, body } : entry,
+                      ),
+                    );
+                  },
+                })}
+            {...(rowDelete === undefined
+              ? {}
+              : {
+                  onDelete: async (commentId) => {
+                    await rowDelete(commentId);
+                    setOptimisticReplies((current) =>
+                      current.filter((entry) => entry.id !== commentId),
+                    );
+                  },
+                })}
           />
         </div>
       ))}
-      {hiddenReplyCount > 0 ? <button type="button" className="mt-3 text-xs font-medium text-sky-400 hover:underline" onClick={() => setExpanded((current) => !current)}>{expanded ? `Hide ${hiddenReplyCount} replies` : `Show ${hiddenReplyCount} replies`}</button> : null}
-      {thread.onSetState === undefined ? null : <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => {
-        setPending(true); setError(undefined);
-        const action = thread.onSetState;
-        if (action === undefined || threadId === undefined) return;
-        void action(threadId, thread.state === "resolved" ? "open" : "resolved").catch(() => setError("Patchdesk could not update this thread.")).finally(() => setPending(false));
-      }}>{pending ? "Updating…" : thread.state === "resolved" ? "Unresolve" : "Resolve"}</Button>}
-      {error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
+      {hiddenReplyCount > 0 ? (
+        <button
+          type="button"
+          className="mt-3 text-xs font-medium text-sky-400 hover:underline"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded
+            ? `Hide ${hiddenReplyCount} replies`
+            : `Show ${hiddenReplyCount} replies`}
+        </button>
+      ) : null}
+      {thread.onSetState === undefined ? null : (
+        <Button
+          className="mt-3"
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            setPending(true);
+            setError(undefined);
+            const action = thread.onSetState;
+            if (action === undefined || threadId === undefined) return;
+            void action(
+              threadId,
+              thread.state === "resolved" ? "open" : "resolved",
+            )
+              .catch(() => setError("Patchdesk could not update this thread."))
+              .finally(() => setPending(false));
+          }}
+        >
+          {pending
+            ? "Updating…"
+            : thread.state === "resolved"
+              ? "Unresolve"
+              : "Resolve"}
+        </Button>
+      )}
+      {error === undefined ? null : (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
       {thread.onReply === undefined ? null : (
         <div className="mt-4 border-t pt-3">
-          <Textarea aria-label="Reply" value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder="Write a reply…" />
+          <Textarea
+            aria-label="Reply"
+            value={replyBody}
+            onChange={(event) => setReplyBody(event.target.value)}
+            placeholder="Write a reply…"
+          />
           <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={async () => {
-              if (replyBody.trim().length === 0 || replying) return;
-              setReplying(true); setError(undefined);
-              try {
-                const action = thread.onReply;
-                if (action === undefined || threadId === undefined) return;
-                const commentId = await action(threadId, replyBody);
-                setReplyBody("");
-                if (typeof commentId === "string") {
-                  setOptimisticReplies((current) => [
-                    ...current,
-                    { id: commentId, body: replyBody, createdAt: new Date().toISOString() },
-                  ]);
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (replyBody.trim().length === 0 || replying) return;
+                setReplying(true);
+                setError(undefined);
+                try {
+                  const action = thread.onReply;
+                  if (action === undefined || threadId === undefined) return;
+                  const commentId = await action(threadId, replyBody);
+                  setReplyBody("");
+                  if (typeof commentId === "string") {
+                    setOptimisticReplies((current) => [
+                      ...current,
+                      {
+                        id: commentId,
+                        body: replyBody,
+                        createdAt: new Date().toISOString(),
+                      },
+                    ]);
+                  }
+                } catch {
+                  setError("Patchdesk could not publish this reply.");
+                } finally {
+                  setReplying(false);
                 }
-              } catch { setError("Patchdesk could not publish this reply."); }
-              finally { setReplying(false); }
-            }} disabled={replyBody.trim().length === 0 || replying}>
+              }}
+              disabled={replyBody.trim().length === 0 || replying}
+            >
               {replying ? "Replying…" : "Reply"}
             </Button>
           </div>
@@ -1760,7 +2213,9 @@ function LocalCommentThread({
               Local draft
             </span>
           </div>
-          <p className="mt-2 whitespace-pre-wrap break-words text-foreground">{body}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-foreground">
+            {body}
+          </p>
 
           <div className="mt-4 border-l-2 border-border/70 pl-4">
             <div className="flex min-w-0 gap-3">
@@ -1832,14 +2287,24 @@ function MockCommentAvatar({
 /** Bounded copy for a failed inline write; shared by the composer and the transient pending-write card. */
 function composerErrorMessage(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "stale_head") return "This pull request has changed. Refresh and try again.";
-    if (cause.kind === "github_rejected" || cause.kind === "rejected") return "GitHub rejected this comment.";
-    if (cause.kind === "revision_conflict") return "This comment cannot be published against the current diff.";
-    if (cause.kind === "outcome_unknown") return "GitHub could not confirm this write. Check GitHub again before trying again.";
-    if (cause.kind === "no_pending_review" || cause.kind === "pending_review_locked") return "The pending review changed. Refresh to see its current state.";
+    if (cause.kind === "stale_head")
+      return "This pull request has changed. Refresh and try again.";
+    if (cause.kind === "github_rejected" || cause.kind === "rejected")
+      return "GitHub rejected this comment.";
+    if (cause.kind === "revision_conflict")
+      return "This comment cannot be published against the current diff.";
+    if (cause.kind === "outcome_unknown")
+      return "GitHub could not confirm this write. Check GitHub again before trying again.";
+    if (
+      cause.kind === "no_pending_review" ||
+      cause.kind === "pending_review_locked"
+    )
+      return "The pending review changed. Refresh to see its current state.";
     return `Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`;
   }
-  return cause instanceof Error ? cause.message : "Patchdesk could not publish this comment.";
+  return cause instanceof Error
+    ? cause.message
+    : "Patchdesk could not publish this comment.";
 }
 
 function InlineCommentComposer({
@@ -1863,32 +2328,137 @@ function InlineCommentComposer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const pendingState = pendingReview?.state.state;
-  const writeDisabled = pendingState === "unavailable" || pendingState === "recovery_required";
+  const writeDisabled =
+    pendingState === "unavailable" || pendingState === "recovery_required";
   const run = async (action: () => Promise<void>): Promise<void> => {
-    if (body.trim().length === 0 || saving || pendingReview?.busy === true) return;
-    setSaving(true); setError(undefined);
-    try { await action(); }
-    catch (cause: unknown) {
+    if (body.trim().length === 0 || saving || pendingReview?.busy === true)
+      return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await action();
+    } catch (cause: unknown) {
       if (cause instanceof PatchdeskApiError) {
-        console.error("Inline review comment failed", { kind: cause.kind, status: cause.status, correlationId: cause.correlationId });
+        console.error("Inline review comment failed", {
+          kind: cause.kind,
+          status: cause.status,
+          correlationId: cause.correlationId,
+        });
       }
       setError(composerErrorMessage(cause));
+    } finally {
+      setSaving(false);
     }
-    finally { setSaving(false); }
   };
   const anchor = { path, startLine, line, side };
   const startOrAdd = (): Promise<void> => {
     if (pendingReview === undefined) return onSave(body);
     const state = pendingReview.state;
-    if (state.state === "pending") return pendingReview.onAddReviewComment(state.nodeId, anchor, body);
+    if (state.state === "pending")
+      return pendingReview.onAddReviewComment(state.nodeId, anchor, body);
     return pendingReview.onStartReview(anchor, body);
   };
   const cancel = (): void => {
-    if (body.trim().length > 0 && !window.confirm("Discard this unsent comment?")) return;
+    if (
+      body.trim().length > 0 &&
+      !window.confirm("Discard this unsent comment?")
+    )
+      return;
     onCancel();
   };
   const busy = saving || pendingReview?.busy === true;
-  return <section className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm" aria-label="Inline comment composer"><p className="text-xs text-muted-foreground">{path}:{startLine}{line === startLine ? "" : `–${line}`} · {pendingState === "pending" ? "joins your pending review on GitHub" : pendingState === "none" ? "publishes to GitHub" : "GitHub write is paused"}</p><Textarea className="mt-2" autoFocus aria-label="Inline comment" value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancel(); } if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !writeDisabled) { event.preventDefault(); void run(startOrAdd); } }} placeholder="Write an inline comment" disabled={writeDisabled} /><div className="mt-2 flex gap-2">{pendingReview === undefined ? <Button size="sm" onClick={() => void run(() => onSave(body))} disabled={body.trim().length === 0 || busy}>Comment</Button> : writeDisabled ? <p className="text-sm text-amber-600 dark:text-amber-400">Pending review state is unavailable. Check GitHub again or refresh before commenting.</p> : pendingState === "pending" ? <Button size="sm" onClick={() => void run(startOrAdd)} disabled={body.trim().length === 0 || busy}>Add review comment</Button> : <><Button size="sm" onClick={() => void run(startOrAdd)} disabled={body.trim().length === 0 || busy}>Start a review</Button><Button size="sm" variant="outline" onClick={() => void run(() => onSave(body))} disabled={body.trim().length === 0 || busy}>Comment now</Button></>}<Button size="sm" variant="outline" onClick={cancel} disabled={busy}>Cancel</Button></div>{error === undefined ? null : <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}<p className="mt-2 text-xs text-muted-foreground">Press ⌘/Ctrl+Enter to comment. Escape cancels.</p></section>;
+  return (
+    <section
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm"
+      aria-label="Inline comment composer"
+    >
+      <p className="text-xs text-muted-foreground">
+        {path}:{startLine}
+        {line === startLine ? "" : `–${line}`} ·{" "}
+        {pendingState === "pending"
+          ? "joins your pending review on GitHub"
+          : pendingState === "none"
+            ? "publishes to GitHub"
+            : "GitHub write is paused"}
+      </p>
+      <Textarea
+        className="mt-2"
+        autoFocus
+        aria-label="Inline comment"
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+          }
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key === "Enter" &&
+            !writeDisabled
+          ) {
+            event.preventDefault();
+            void run(startOrAdd);
+          }
+        }}
+        placeholder="Write an inline comment"
+        disabled={writeDisabled}
+      />
+      <div className="mt-2 flex gap-2">
+        {pendingReview === undefined ? (
+          <Button
+            size="sm"
+            onClick={() => void run(() => onSave(body))}
+            disabled={body.trim().length === 0 || busy}
+          >
+            Comment
+          </Button>
+        ) : writeDisabled ? (
+          <p className="text-sm text-amber-600 dark:text-amber-400">
+            Pending review state is unavailable. Check GitHub again or refresh
+            before commenting.
+          </p>
+        ) : pendingState === "pending" ? (
+          <Button
+            size="sm"
+            onClick={() => void run(startOrAdd)}
+            disabled={body.trim().length === 0 || busy}
+          >
+            Add review comment
+          </Button>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              onClick={() => void run(startOrAdd)}
+              disabled={body.trim().length === 0 || busy}
+            >
+              Start a review
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void run(() => onSave(body))}
+              disabled={body.trim().length === 0 || busy}
+            >
+              Comment now
+            </Button>
+          </>
+        )}
+        <Button size="sm" variant="outline" onClick={cancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+      {error === undefined ? null : (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">
+        Press ⌘/Ctrl+Enter to comment. Escape cancels.
+      </p>
+    </section>
+  );
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
@@ -1910,7 +2480,10 @@ export function ReviewDiffView(props: ReviewDiffViewProps): React.JSX.Element {
       data-file-mode={props.preferences.fileMode}
       className="relative flex min-h-0 flex-1 flex-col"
     >
-      <MemoizedReviewDiffSurface {...props} selectedPath={deferredSelectedPath} />
+      <MemoizedReviewDiffSurface
+        {...props}
+        selectedPath={deferredSelectedPath}
+      />
     </section>
   );
 }
@@ -1950,7 +2523,11 @@ function AccessiblePatch({
   readonly selectedRange?: SelectedDiffRange;
   readonly virtualized: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
-  readonly onAuthorLine?: (path: string, line: number, side: "additions" | "deletions") => void;
+  readonly onAuthorLine?: (
+    path: string,
+    line: number,
+    side: "additions" | "deletions",
+  ) => void;
 }): React.JSX.Element {
   const lines = useMemo(() => parseAccessibleLines(patch), [patch]);
   const selectedRef = useRef<HTMLLIElement | null>(null);
@@ -1960,9 +2537,11 @@ function AccessiblePatch({
   }, [patch, selectedRange]);
   return (
     <div
-      className={virtualized
-        ? "max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
-        : "min-h-0 overflow-x-auto p-3 font-mono text-[13px] leading-5"}
+      className={
+        virtualized
+          ? "max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
+          : "min-h-0 overflow-x-auto p-3 font-mono text-[13px] leading-5"
+      }
       style={{
         fontFamily:
           '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -1987,7 +2566,13 @@ function AccessiblePatch({
               ref={firstSelected ? selectedRef : undefined}
               className={`grid grid-cols-[3.5rem_3.5rem_1fr] gap-2 rounded-sm px-1 ${selected ? "bg-primary/20 ring-1 ring-inset ring-primary/50" : ""}`}
               data-selected-line={selected ? "true" : undefined}
-              data-line-type={line.kind === "Added" ? "change-addition" : line.kind === "Deleted" ? "change-deletion" : undefined}
+              data-line-type={
+                line.kind === "Added"
+                  ? "change-addition"
+                  : line.kind === "Deleted"
+                    ? "change-deletion"
+                    : undefined
+              }
               data-line-number={lineNumber}
               data-diff-side={selectedRange?.side}
               tabIndex={firstSelected ? -1 : undefined}
@@ -2006,13 +2591,40 @@ function AccessiblePatch({
                   : `${line.oldLine ?? ""}${line.oldLine !== undefined && line.newLine !== undefined ? "/" : ""}${line.newLine ?? ""}`}
               </span>
               <code className="whitespace-pre">{line.content || " "}</code>
-              {localCommentAuthoring?.enabled === true && line.path !== undefined && (line.kind === "Added" || line.kind === "Deleted") ? (() => {
-                const path = line.path;
-                const side = line.kind === "Added" ? "additions" as const : "deletions" as const;
-                const lineNumber = side === "additions" ? line.newLine : line.oldLine;
-                if (lineNumber === undefined || localCommentAuthoring.canAuthor?.({ path, startLine: lineNumber, line: lineNumber, side: side === "additions" ? "new" : "old" }) === false) return null;
-                return <button type="button" className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Add comment on ${path}`} title={`Add comment on ${path} line ${lineNumber}`} onClick={() => onAuthorLine?.(path, lineNumber, side)}>+</button>;
-              })() : null}
+              {localCommentAuthoring?.enabled === true &&
+              line.path !== undefined &&
+              (line.kind === "Added" || line.kind === "Deleted")
+                ? (() => {
+                    const path = line.path;
+                    const side =
+                      line.kind === "Added"
+                        ? ("additions" as const)
+                        : ("deletions" as const);
+                    const lineNumber =
+                      side === "additions" ? line.newLine : line.oldLine;
+                    if (
+                      lineNumber === undefined ||
+                      localCommentAuthoring.canAuthor?.({
+                        path,
+                        startLine: lineNumber,
+                        line: lineNumber,
+                        side: side === "additions" ? "new" : "old",
+                      }) === false
+                    )
+                      return null;
+                    return (
+                      <button
+                        type="button"
+                        className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Add comment on ${path}`}
+                        title={`Add comment on ${path} line ${lineNumber}`}
+                        onClick={() => onAuthorLine?.(path, lineNumber, side)}
+                      >
+                        +
+                      </button>
+                    );
+                  })()
+                : null}
             </li>
           );
         })}
@@ -2031,7 +2643,11 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
       path = file[2];
       oldLine = undefined;
       newLine = undefined;
-      return { content, kind: "Context", ...(path === undefined ? {} : { path }) };
+      return {
+        content,
+        kind: "Context",
+        ...(path === undefined ? {} : { path }),
+      };
     }
     const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(content);
     if (hunk !== null) {
@@ -2047,16 +2663,32 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
       return { content, kind: "Context" };
     }
     if (content.startsWith("+") && !content.startsWith("+++")) {
-      const line = { content, kind: "Added" as const, ...(path === undefined ? {} : { path }), newLine };
+      const line = {
+        content,
+        kind: "Added" as const,
+        ...(path === undefined ? {} : { path }),
+        newLine,
+      };
       newLine += 1;
       return line;
     }
     if (content.startsWith("-") && !content.startsWith("---")) {
-      const line = { content, kind: "Deleted" as const, ...(path === undefined ? {} : { path }), oldLine };
+      const line = {
+        content,
+        kind: "Deleted" as const,
+        ...(path === undefined ? {} : { path }),
+        oldLine,
+      };
       oldLine += 1;
       return line;
     }
-    const line = { content, kind: "Context" as const, ...(path === undefined ? {} : { path }), oldLine, newLine };
+    const line = {
+      content,
+      kind: "Context" as const,
+      ...(path === undefined ? {} : { path }),
+      oldLine,
+      newLine,
+    };
     oldLine += 1;
     newLine += 1;
     return line;

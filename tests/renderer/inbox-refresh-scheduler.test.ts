@@ -47,7 +47,13 @@ describe("inbox refresh scheduler", () => {
   it("uses capped exponential backoff while manual refresh bypasses the delay", async () => {
     vi.useFakeTimers();
     const reasons: Array<InboxRefreshReason> = [];
-    const outcomes: Array<"success" | "failure"> = ["failure", "failure", "failure", "failure", "success"];
+    const outcomes: Array<"success" | "failure"> = [
+      "failure",
+      "failure",
+      "failure",
+      "failure",
+      "success",
+    ];
     const scheduler = new InboxRefreshScheduler(async (reason) => {
       reasons.push(reason);
       return outcomes.shift() ?? "success";
@@ -70,7 +76,10 @@ describe("inbox refresh scheduler", () => {
     vi.useFakeTimers();
     let resolve: ((outcome: "success") => void) | undefined;
     const refresh = vi.fn(
-      () => new Promise<"success">((next) => { resolve = next; }),
+      () =>
+        new Promise<"success">((next) => {
+          resolve = next;
+        }),
     );
     const scheduler = new InboxRefreshScheduler(refresh);
 

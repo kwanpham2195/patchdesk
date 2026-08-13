@@ -17,25 +17,54 @@ export type InsightSelection = {
 export type InsightProvenance = InsightSelection;
 
 /** Parses a bounded provider identifier from a transport or storage boundary. */
-export function parseInsightProvider(input: unknown): Result<InsightProvider, "invalid_provider"> {
+export function parseInsightProvider(
+  input: unknown,
+): Result<InsightProvider, "invalid_provider"> {
   if (input === "pi" || input === "codex-cli-account") return ok(input);
   return err("invalid_provider");
 }
 
 /** Parses a bounded reasoning identifier from a transport or storage boundary. */
-export function parseInsightReasoning(input: unknown): Result<InsightReasoning, "invalid_reasoning"> {
-  if (input === "minimal" || input === "low" || input === "medium" || input === "high" || input === "xhigh") return ok(input);
+export function parseInsightReasoning(
+  input: unknown,
+): Result<InsightReasoning, "invalid_reasoning"> {
+  if (
+    input === "minimal" ||
+    input === "low" ||
+    input === "medium" ||
+    input === "high" ||
+    input === "xhigh"
+  )
+    return ok(input);
   return err("invalid_reasoning");
 }
 
 /** Parses a provider/model/reasoning selection without accepting unknown fields. */
-export function parseInsightSelection(input: unknown): Result<InsightSelection, "invalid_selection"> {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) return err("invalid_selection");
-  const value = input as { readonly provider?: unknown; readonly model?: unknown; readonly reasoning?: unknown };
+export function parseInsightSelection(
+  input: unknown,
+): Result<InsightSelection, "invalid_selection"> {
+  if (typeof input !== "object" || input === null || Array.isArray(input))
+    return err("invalid_selection");
+  const value = input as {
+    readonly provider?: unknown;
+    readonly model?: unknown;
+    readonly reasoning?: unknown;
+  };
   const provider = parseInsightProvider(value.provider);
   const reasoning = parseInsightReasoning(value.reasoning);
-  if (provider._tag === "err" || reasoning._tag === "err" || typeof value.model !== "string" || value.model.trim().length < 1 || value.model.length > 200) return err("invalid_selection");
-  return ok({ provider: provider.value, model: value.model, reasoning: reasoning.value });
+  if (
+    provider._tag === "err" ||
+    reasoning._tag === "err" ||
+    typeof value.model !== "string" ||
+    value.model.trim().length < 1 ||
+    value.model.length > 200
+  )
+    return err("invalid_selection");
+  return ok({
+    provider: provider.value,
+    model: value.model,
+    reasoning: reasoning.value,
+  });
 }
 
 /** Returns whether the provider is available for the requested Insight type. */

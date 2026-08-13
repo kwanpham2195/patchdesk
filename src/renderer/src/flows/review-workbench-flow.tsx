@@ -435,8 +435,6 @@ export function ReviewWorkbenchFlow({
     }
   }, [requestRefresh]);
 
-
-
   const runDirectCommand = useCallback(
     async <T,>(operation: () => Promise<T>): Promise<T> => {
       commandInFlightCountRef.current += 1;
@@ -1038,7 +1036,9 @@ export function ReviewWorkbenchFlow({
                 }
               : {
                   state: workbench.pendingReview.state as
-                    "none" | "unavailable" | "recovery_required",
+                    | "none"
+                    | "unavailable"
+                    | "recovery_required",
                 },
           busy: pendingReviewBusy,
           onStartReview: async (anchor, body) => {
@@ -1060,8 +1060,7 @@ export function ReviewWorkbenchFlow({
           onSave: saveInlineComment,
           onSelectionChange: (location) => {
             const path = parseRepoRelativePath(location.path);
-            if (path._tag === "ok")
-              void path;
+            if (path._tag === "ok") void path;
           },
         }
       : undefined;
@@ -2349,7 +2348,10 @@ function InsightCard({
   readonly projection: InsightProjection;
   readonly runStatus: string;
   readonly failureReason?:
-    "cancelled" | "failed" | "invalid_result" | "superseded";
+    | "cancelled"
+    | "failed"
+    | "invalid_result"
+    | "superseded";
   readonly busy: boolean;
   readonly onRun: () => void;
   readonly onCancel: () => void;

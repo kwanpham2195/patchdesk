@@ -103,7 +103,6 @@ function pullRequestExternalRef(
   };
 }
 
-
 function createCommitCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
   fullPatch: string,
@@ -973,8 +972,7 @@ export function ReviewWorkbench({
           <div
             className="hidden min-h-0 shrink-0"
             data-review-workbench-draft-dock
-          >
-            </div>
+          ></div>
 
           <CanonicalReviewOverviewSheet
             open={overviewOpen}

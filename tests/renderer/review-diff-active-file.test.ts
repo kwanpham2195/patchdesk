@@ -11,9 +11,9 @@ describe("activeFilePathAtScrollTop", () => {
       ["third", 520],
     ]);
 
-    expect(
-      activeFilePathAtScrollTop(items, 239, (id) => tops.get(id)),
-    ).toBe("first");
+    expect(activeFilePathAtScrollTop(items, 239, (id) => tops.get(id))).toBe(
+      "first",
+    );
   });
 
   it("switches to the next file exactly at its top", () => {
@@ -24,20 +24,18 @@ describe("activeFilePathAtScrollTop", () => {
       ["third", 520],
     ]);
 
-    expect(
-      activeFilePathAtScrollTop(items, 240, (id) => tops.get(id)),
-    ).toBe("second");
+    expect(activeFilePathAtScrollTop(items, 240, (id) => tops.get(id))).toBe(
+      "second",
+    );
   });
 
   it("skips files without usable metrics", () => {
     const items = [{ id: "first" }, { id: "second" }, { id: "third" }];
-    const tops = new Map([
-      ["second", 180],
-    ]);
+    const tops = new Map([["second", 180]]);
 
-    expect(
-      activeFilePathAtScrollTop(items, 200, (id) => tops.get(id)),
-    ).toBe("second");
+    expect(activeFilePathAtScrollTop(items, 200, (id) => tops.get(id))).toBe(
+      "second",
+    );
   });
 
   it("returns undefined for empty items", () => {

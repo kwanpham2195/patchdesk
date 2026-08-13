@@ -72,8 +72,8 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 - [x] Plan 004: lock packaged Flue beta.9 runtime
 - [x] Plan 005: remove superseded Review systems
 - [x] Plan 006: migrate Pi Insights to Flue 2.0.3
-- [ ] Plan 007: lazy-load the Review workbench
-- [ ] Plan 008: migrate quality tooling to Oxc
+- [x] Plan 007: lazy-load the Review workbench
+- [x] Plan 008: migrate quality tooling to Oxc
 - [ ] Portfolio audit: prove every plan criterion against current state
 
 ## ADR checkpoints
@@ -239,6 +239,32 @@ live checks, changed files, residual risks, and any ADR added or updated.
   restored Insights state, and return to Inbox. No page errors were reported.
 - Independent review's paint-boundary, catalog-gate, and callback-test findings
   were corrected.
+
+### 2026-08-13 — Plan 008 complete
+
+- Replaced direct ESLint, TypeScript-ESLint, React Refresh lint, globals, and
+  Prettier tooling with exact Oxlint 1.78.0 and Oxfmt 0.63.0 dependencies.
+- Captured effective ESLint policy for TS, TSX, and scripts. Native Oxlint rules
+  preserve the active JS recommended, TypeScript recommended, explicit
+  TypeScript, and React Refresh policy. No React Hooks rules were active.
+- `no-undef` remains active for JavaScript and disabled for TypeScript;
+  strict-mode parser failures preserve `no-dupe-args` and `no-octal` behavior.
+- Oxfmt preserves double quotes, trailing commas, 80-column width, and package
+  key order. The repository owner explicitly excluded the unsupported
+  `resources/branding/**/*.svg` path from the formatting contract.
+- Both generated catalogs now emit Oxfmt-stable TypeScript. Repeated generation
+  followed by `pnpm format:check` passes without data changes.
+- Full parent gate passed: lint, format check, typecheck, Vitest 597/597, build,
+  Playwright 35/35, bundle graph, generated-catalog parity, version/dependency
+  checks, and `git diff --check`.
+- Live read-only QA passed Inbox, Settings, Review opening, and return to Inbox.
+  One existing read-side GitHub reconciliation returned a rejection; no write
+  occurred and the formatter migration did not change that path.
+- Independent review confirmed rule parity, generated-data stability, and the
+  formatter-only diff, then requested the explicit SVG policy and Oxlint docs
+  correction. Both were applied. ADR: none.
+
+## Resume protocol
 
 ## Resume protocol
 

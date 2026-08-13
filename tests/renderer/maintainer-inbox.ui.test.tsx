@@ -3,5 +3,49 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
 import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
-const row: InboxRow = { identity: { host: "github.com", owner: "owner", repo: "repo", number: 1 }, title: "PR", author: "author", baseBranch: "main", headBranch: "change", currentHeadSha: "a".repeat(40), isDraft: false, updatedAt: "2026-08-13T00:00:00.000Z", changeStats: {}, checks: { overall: "unknown" as const, checks: [] }, reviewState: "none" as const, mergeability: "unknown" as const, latestReview: { reviewId: "review-1", reviewedHeadSha: "a".repeat(40), updatedAt: "2026-08-13T00:00:00.000Z", matchesCurrentHead: true }, categories: ["saved_review"], recommendedAction: { kind: "open_saved_review" as const, label: "Open Review" as const, reviewId: "review-1" }, dataFreshness: "fresh" as const };
-describe("MaintainerInbox", () => { it("opens a saved Review by review id", () => { const open = vi.fn(); render(<MaintainerInbox profileId="p" profileLabel="P" rows={[row]} freshness="fresh" refreshStatus="Current" onRefresh={vi.fn()} onOpenReview={vi.fn()} onOpenReviewId={open} />); fireEvent.click(screen.getByRole("option")); expect(open).toHaveBeenCalledWith("review-1"); }); });
+const row: InboxRow = {
+  identity: { host: "github.com", owner: "owner", repo: "repo", number: 1 },
+  title: "PR",
+  author: "author",
+  baseBranch: "main",
+  headBranch: "change",
+  currentHeadSha: "a".repeat(40),
+  isDraft: false,
+  updatedAt: "2026-08-13T00:00:00.000Z",
+  changeStats: {},
+  checks: { overall: "unknown" as const, checks: [] },
+  reviewState: "none" as const,
+  mergeability: "unknown" as const,
+  latestReview: {
+    reviewId: "review-1",
+    reviewedHeadSha: "a".repeat(40),
+    updatedAt: "2026-08-13T00:00:00.000Z",
+    matchesCurrentHead: true,
+  },
+  categories: ["saved_review"],
+  recommendedAction: {
+    kind: "open_saved_review" as const,
+    label: "Open Review" as const,
+    reviewId: "review-1",
+  },
+  dataFreshness: "fresh" as const,
+};
+describe("MaintainerInbox", () => {
+  it("opens a saved Review by review id", () => {
+    const open = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={open}
+      />,
+    );
+    fireEvent.click(screen.getByRole("option"));
+    expect(open).toHaveBeenCalledWith("review-1");
+  });
+});

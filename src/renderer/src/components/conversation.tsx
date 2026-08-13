@@ -1,5 +1,9 @@
 import { PullRequestDescriptionPreview } from "./pull-request-description";
-import type { GitHubComment, GitHubConversationThread, PublishedReview } from "../../../domain/github-context";
+import type {
+  GitHubComment,
+  GitHubConversationThread,
+  PublishedReview,
+} from "../../../domain/github-context";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { Badge } from "./ui/badge";
 
@@ -25,7 +29,8 @@ export function Conversation({
 
         {/* Timeline entries */}
         <div className="flex flex-col">
-          {conversation.prDescription.length === 0 && conversation.entries.length === 0 ? (
+          {conversation.prDescription.length === 0 &&
+          conversation.entries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No conversation yet.
             </p>
@@ -62,7 +67,11 @@ function ConversationTimelineEntry({
     case "ReviewSummary":
       return <ReviewSummaryEntry review={entry.review as PublishedReview} />;
     case "GeneralThread":
-      return <GeneralThreadEntry thread={entry.thread as unknown as GitHubConversationThread} />;
+      return (
+        <GeneralThreadEntry
+          thread={entry.thread as unknown as GitHubConversationThread}
+        />
+      );
   }
 }
 

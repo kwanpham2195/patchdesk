@@ -24,7 +24,9 @@ export function workbenchUiKey(reviewId: string): string {
 }
 
 /** Load the persisted UI position for one review; undefined when absent or invalid. */
-export function loadWorkbenchUiState(reviewId: string): WorkbenchUiState | undefined {
+export function loadWorkbenchUiState(
+  reviewId: string,
+): WorkbenchUiState | undefined {
   if (typeof window === "undefined") return undefined;
   const raw = window.localStorage.getItem(workbenchUiKey(reviewId));
   if (raw === null) return undefined;
@@ -32,13 +34,20 @@ export function loadWorkbenchUiState(reviewId: string): WorkbenchUiState | undef
 }
 
 /** Persist the current UI position for one review. */
-export function saveWorkbenchUiState(reviewId: string, state: WorkbenchUiState): void {
+export function saveWorkbenchUiState(
+  reviewId: string,
+  state: WorkbenchUiState,
+): void {
   if (typeof window === "undefined") return;
   const normalized: WorkbenchUiState = {};
   if (state.activeTab !== undefined) normalized.activeTab = state.activeTab;
   if (state.section !== undefined) normalized.section = state.section;
-  if (state.selectedPath !== undefined) normalized.selectedPath = state.selectedPath.slice(0, 2_000);
-  window.localStorage.setItem(workbenchUiKey(reviewId), JSON.stringify(normalized));
+  if (state.selectedPath !== undefined)
+    normalized.selectedPath = state.selectedPath.slice(0, 2_000);
+  window.localStorage.setItem(
+    workbenchUiKey(reviewId),
+    JSON.stringify(normalized),
+  );
 }
 
 /** Remove the persisted position for one review (e.g., review removed from the workspace). */
@@ -58,7 +67,10 @@ export function loadSettingsRestore(): SettingsRestoreState | undefined {
 /** Persist the open Settings section so a reload reopens the same section. */
 export function saveSettingsRestore(section: string): void {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(SETTINGS_RESTORE_KEY, JSON.stringify({ section: section.slice(0, 48) }));
+  window.sessionStorage.setItem(
+    SETTINGS_RESTORE_KEY,
+    JSON.stringify({ section: section.slice(0, 48) }),
+  );
 }
 
 /** Called when Settings closes normally: a later reload must not reopen it. */
@@ -73,13 +85,24 @@ function parseWorkbenchUiState(raw: string): WorkbenchUiState | undefined {
     if (typeof parsed !== "object" || parsed === null) return undefined;
     const record = parsed as Record<string, unknown>;
     const result: WorkbenchUiState = {};
-    if (record.activeTab === "conversation" || record.activeTab === "diff" || record.activeTab === "insights") {
+    if (
+      record.activeTab === "conversation" ||
+      record.activeTab === "diff" ||
+      record.activeTab === "insights"
+    ) {
       result.activeTab = record.activeTab;
     }
-    if (record.section === "files" || record.section === "commits" || record.section === "insights") {
+    if (
+      record.section === "files" ||
+      record.section === "commits" ||
+      record.section === "insights"
+    ) {
       result.section = record.section;
     }
-    if (typeof record.selectedPath === "string" && record.selectedPath.length > 0) {
+    if (
+      typeof record.selectedPath === "string" &&
+      record.selectedPath.length > 0
+    ) {
       result.selectedPath = record.selectedPath.slice(0, 2_000);
     }
     return Object.keys(result).length === 0 ? undefined : result;

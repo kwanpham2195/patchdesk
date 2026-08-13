@@ -32,7 +32,9 @@ export class ReviewStore {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<Review, StorageFailure>> {
-    const stored = await readJsonFile(this.paths.reviewFile(profileId, reviewId));
+    const stored = await readJsonFile(
+      this.paths.reviewFile(profileId, reviewId),
+    );
     if (stored._tag === "err") return stored;
     const review = parseReview(stored.value);
     if (review._tag === "err") return invalidRead();
@@ -65,7 +67,10 @@ export class ReviewStore {
         if (current.error.reason !== "not_found") return current;
         if (expectedUpdatedAt !== undefined) return staleConflict();
       } else {
-        if (current.value.status._tag === "Terminal" && value.status._tag !== "Terminal") {
+        if (
+          current.value.status._tag === "Terminal" &&
+          value.status._tag !== "Terminal"
+        ) {
           return terminalConflict();
         }
         if (
@@ -76,7 +81,10 @@ export class ReviewStore {
         }
       }
 
-      if (current._tag === "ok" && Date.parse(value.updatedAt) <= Date.parse(current.value.updatedAt)) {
+      if (
+        current._tag === "ok" &&
+        Date.parse(value.updatedAt) <= Date.parse(current.value.updatedAt)
+      ) {
         return staleConflict();
       }
       return writeAtomicJson(
@@ -111,7 +119,9 @@ export class ReviewStore {
   ): Promise<Result<ReadonlyArray<Review>, StorageFailure>> {
     let entries: ReadonlyArray<string>;
     try {
-      entries = await readdir(this.paths.profileWorkbenchesDirectory(profileId));
+      entries = await readdir(
+        this.paths.profileWorkbenchesDirectory(profileId),
+      );
     } catch (cause: unknown) {
       if (isNotFound(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
@@ -129,7 +139,9 @@ export class ReviewStore {
       reviews.push(review.value);
     }
 
-    reviews.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    reviews.sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    );
     return ok(reviews);
   }
 

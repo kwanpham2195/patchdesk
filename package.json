@@ -22,7 +22,9 @@
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -62,9 +64,9 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "jsdom": "^26.1.0",
+    "oxfmt": "0.63.0",
     "oxlint": "1.78.0",
     "playwright": "^1.54.2",
-    "prettier": "^3.6.2",
     "react-doctor": "^0.9.11",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.1.12",

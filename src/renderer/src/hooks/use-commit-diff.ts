@@ -40,17 +40,20 @@ export function useCommitDiff({
 
     const sha = selectedSha;
     setState({ _tag: "Loading", sha });
-    void loader.current(sha).then((projection) => {
-      if (token.current !== requestToken) return;
-      if (projection.commit.sha !== sha) {
+    void loader
+      .current(sha)
+      .then((projection) => {
+        if (token.current !== requestToken) return;
+        if (projection.commit.sha !== sha) {
+          setState({ _tag: "Failed", sha });
+          return;
+        }
+        setState({ _tag: "Ready", projection });
+      })
+      .catch(() => {
+        if (token.current !== requestToken) return;
         setState({ _tag: "Failed", sha });
-        return;
-      }
-      setState({ _tag: "Ready", projection });
-    }).catch(() => {
-      if (token.current !== requestToken) return;
-      setState({ _tag: "Failed", sha });
-    });
+      });
     return () => {
       if (token.current === requestToken) token.current += 1;
     };

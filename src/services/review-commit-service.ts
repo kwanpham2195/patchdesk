@@ -43,8 +43,15 @@ export class ReviewCommitService {
     readonly commitSha: GitSha;
   }): Promise<Result<CommitDiffProjection, ReviewCommitFailure>> {
     const review = await this.reviews.load(input.profileId, input.reviewId);
-    if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage" });
-    if (review.value.currentHeadSha !== review.value.representedRemote?.headSha || review.value.representedRemote === undefined) return err({ reason: "stale_head" });
+    if (review._tag === "err")
+      return err({
+        reason: review.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    if (
+      review.value.currentHeadSha !== review.value.representedRemote?.headSha ||
+      review.value.representedRemote === undefined
+    )
+      return err({ reason: "stale_head" });
     const snapshot = await this.remote.load({
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -52,30 +59,85 @@ export class ReviewCommitService {
     });
     if (snapshot._tag === "err") return err({ reason: "storage" });
     const snapshotIdentity = snapshot.value.pullRequest.ref;
-    if (snapshot.value.pullRequest.headSha !== review.value.currentHeadSha || snapshotIdentity.host !== review.value.identity.host || snapshotIdentity.owner !== review.value.identity.owner || snapshotIdentity.repo !== review.value.identity.repo || snapshotIdentity.number !== review.value.identity.prNumber) return err({ reason: "stale_head" });
-    const position = snapshot.value.commits.findIndex((commit) => commit.sha === input.commitSha);
+    if (
+      snapshot.value.pullRequest.headSha !== review.value.currentHeadSha ||
+      snapshotIdentity.host !== review.value.identity.host ||
+      snapshotIdentity.owner !== review.value.identity.owner ||
+      snapshotIdentity.repo !== review.value.identity.repo ||
+      snapshotIdentity.number !== review.value.identity.prNumber
+    )
+      return err({ reason: "stale_head" });
+    const position = snapshot.value.commits.findIndex(
+      (commit) => commit.sha === input.commitSha,
+    );
     if (position < 0) return err({ reason: "foreign_commit" });
     const commit = snapshot.value.commits[position];
     if (commit === undefined) return err({ reason: "foreign_commit" });
-    const session = await this.sessions.load(input.profileId, review.value.currentSessionId);
-    if (session._tag === "err") return err({ reason: session.error.reason === "not_found" ? "not_found" : "storage" });
-    if (session.value.id !== review.value.currentSessionId || session.value.key.headSha !== review.value.currentHeadSha || session.value.key.profileId !== review.value.identity.profileId || session.value.key.host !== review.value.identity.host || session.value.key.owner !== review.value.identity.owner || session.value.key.repo !== review.value.identity.repo || session.value.key.prNumber !== review.value.identity.prNumber) return err({ reason: "stale_head" });
+    const session = await this.sessions.load(
+      input.profileId,
+      review.value.currentSessionId,
+    );
+    if (session._tag === "err")
+      return err({
+        reason: session.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    if (
+      session.value.id !== review.value.currentSessionId ||
+      session.value.key.headSha !== review.value.currentHeadSha ||
+      session.value.key.profileId !== review.value.identity.profileId ||
+      session.value.key.host !== review.value.identity.host ||
+      session.value.key.owner !== review.value.identity.owner ||
+      session.value.key.repo !== review.value.identity.repo ||
+      session.value.key.prNumber !== review.value.identity.prNumber
+    )
+      return err({ reason: "stale_head" });
 
     const managedHeadRef = `refs/patchdesk/reviews/${input.profileId}/${session.value.id}/head`;
     const resolved = await this.git.run([
-      "git", "-C", session.value.worktree.path, "rev-parse", "--verify", "--quiet", "--end-of-options", `${managedHeadRef}^{commit}`,
+      "git",
+      "-C",
+      session.value.worktree.path,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "--end-of-options",
+      `${managedHeadRef}^{commit}`,
     ]);
-    if (resolved._tag === "err" || resolved.value.stdout.trim() !== session.value.key.headSha) return err({ reason: "git_unavailable" });
+    if (
+      resolved._tag === "err" ||
+      resolved.value.stdout.trim() !== session.value.key.headSha
+    )
+      return err({ reason: "git_unavailable" });
     const reachable = await this.git.run([
-      "git", "-C", session.value.worktree.path, "merge-base", "--is-ancestor", input.commitSha, managedHeadRef,
+      "git",
+      "-C",
+      session.value.worktree.path,
+      "merge-base",
+      "--is-ancestor",
+      input.commitSha,
+      managedHeadRef,
     ]);
     if (reachable._tag === "err") return err({ reason: "git_unavailable" });
     const patch = await this.git.run([
-      "git", "-C", session.value.worktree.path, "diff", "--no-ext-diff", "--patch", "--binary", `${input.commitSha}^`, input.commitSha,
+      "git",
+      "-C",
+      session.value.worktree.path,
+      "diff",
+      "--no-ext-diff",
+      "--patch",
+      "--binary",
+      `${input.commitSha}^`,
+      input.commitSha,
     ]);
     if (patch._tag === "err") return err({ reason: "git_unavailable" });
-    if (patch.value.stdout.length === 0 || (patch.value.stdout.includes("GIT binary patch") && !patch.value.stdout.includes("\n@@"))) return err({ reason: "binary_only" });
-    if (Buffer.byteLength(patch.value.stdout, "utf8") > maxCommitPatchBytes) return err({ reason: "too_large" });
+    if (
+      patch.value.stdout.length === 0 ||
+      (patch.value.stdout.includes("GIT binary patch") &&
+        !patch.value.stdout.includes("\n@@"))
+    )
+      return err({ reason: "binary_only" });
+    if (Buffer.byteLength(patch.value.stdout, "utf8") > maxCommitPatchBytes)
+      return err({ reason: "too_large" });
     const files = parseUnifiedPatch(patch.value.stdout);
     return ok({
       commit,
@@ -89,7 +151,9 @@ export class ReviewCommitService {
   }
 }
 
-export function commitDiffFailureReason(failure: ReviewCommitFailure): "not_found" | "head_changed" | "storage" {
+export function commitDiffFailureReason(
+  failure: ReviewCommitFailure,
+): "not_found" | "head_changed" | "storage" {
   switch (failure.reason) {
     case "not_found":
       return "not_found";

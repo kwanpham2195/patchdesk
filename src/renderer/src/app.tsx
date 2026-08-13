@@ -43,7 +43,11 @@ import type { ReviewWorkbenchInitialState } from "./components/review-workbench"
 import type { ReviewWorkbenchFlowProps } from "./flows/review-workbench-flow";
 import type { SettingsSection } from "./flows/settings-flow";
 import { requestJson } from "./api-client";
-import { parseInboxResponse, type InboxResponse, type WorkbenchResponse } from "./renderer-contracts";
+import {
+  parseInboxResponse,
+  type InboxResponse,
+  type WorkbenchResponse,
+} from "./renderer-contracts";
 import {
   InboxRefreshScheduler,
   inboxFreshnessLabel,
@@ -63,7 +67,8 @@ import {
 } from "./diff-theme-preferences";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
-type ReviewWorkbenchFlowComponent = React.ComponentType<ReviewWorkbenchFlowProps>;
+type ReviewWorkbenchFlowComponent =
+  React.ComponentType<ReviewWorkbenchFlowProps>;
 type FixtureContentComponent = React.ComponentType<{
   readonly hash: string;
   readonly onNavigationStateChange: (state: NavigationState) => void;
@@ -144,12 +149,24 @@ export function App({
   );
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsOpener, setSettingsOpener] = useState<HTMLElement | undefined>();
-  const [settingsInitialSection] = useState<SettingsSection>(() => restoredSettingsSection() ?? "general");
+  const [settingsOpener, setSettingsOpener] = useState<
+    HTMLElement | undefined
+  >();
+  const [settingsInitialSection] = useState<SettingsSection>(
+    () => restoredSettingsSection() ?? "general",
+  );
   // Workbench position restored after reload; applied once to the matching review.
-  const restoredWorkbenchUi = useRef<{ readonly reviewId: string; readonly state: ReviewWorkbenchInitialState } | undefined>(undefined);
+  const restoredWorkbenchUi = useRef<
+    | { readonly reviewId: string; readonly state: ReviewWorkbenchInitialState }
+    | undefined
+  >(undefined);
   useEffect(() => {
-    if (fixtureMode || destination.kind !== "workbench" || restoredWorkbenchUi.current !== undefined) return;
+    if (
+      fixtureMode ||
+      destination.kind !== "workbench" ||
+      restoredWorkbenchUi.current !== undefined
+    )
+      return;
     const state = loadWorkbenchUiState(destination.reviewId);
     if (state !== undefined) {
       restoredWorkbenchUi.current = { reviewId: destination.reviewId, state };
@@ -161,7 +178,8 @@ export function App({
   }, [fixtureMode, workbench]);
   // A reload with Settings open reopens the overlay on the same section.
   useEffect(() => {
-    if (fixtureMode || settingsOpen || loadSettingsRestore() === undefined) return;
+    if (fixtureMode || settingsOpen || loadSettingsRestore() === undefined)
+      return;
     setSettingsOpen(true);
   }, [fixtureMode, settingsOpen]);
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
@@ -186,8 +204,7 @@ export function App({
     applyDiffThemePreferences(diffThemePreferences);
   }, [diffThemePreferences]);
   useEffect(() => {
-    if (fixtureMode || typeof window.patchdesk?.request !== "function")
-      return;
+    if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     let active = true;
     const loadGlobalPreferences = async (): Promise<void> => {
       let stored: GlobalSettings;
@@ -200,16 +217,20 @@ export function App({
       const diffThemeFromStorage = stored.diffTheme;
       const migratedAppearance = appearanceFromStorage === undefined;
       const migratedDiffTheme = diffThemeFromStorage === undefined;
-      const nextAppearance = appearanceFromStorage ?? loadAppearancePreference();
-      const nextDiffTheme = diffThemeFromStorage === undefined
-        ? loadDiffThemePreferences()
-        : parseDiffThemePreferences(diffThemeFromStorage);
-      const correctedDiffTheme = diffThemeFromStorage !== undefined &&
+      const nextAppearance =
+        appearanceFromStorage ?? loadAppearancePreference();
+      const nextDiffTheme =
+        diffThemeFromStorage === undefined
+          ? loadDiffThemePreferences()
+          : parseDiffThemePreferences(diffThemeFromStorage);
+      const correctedDiffTheme =
+        diffThemeFromStorage !== undefined &&
         !sameDiffTheme(diffThemeFromStorage, nextDiffTheme);
 
       if (!active) return;
       if (appearanceFromStorage !== undefined) setAppearance(nextAppearance);
-      if (diffThemeFromStorage !== undefined) setDiffThemePreferences(nextDiffTheme);
+      if (diffThemeFromStorage !== undefined)
+        setDiffThemePreferences(nextDiffTheme);
 
       if (!migratedAppearance && !migratedDiffTheme && !correctedDiffTheme)
         return;
@@ -240,7 +261,8 @@ export function App({
     undefined,
   );
   const inboxSchedulerInitialized = useRef(false);
-  const [navigationState, setNavigationState] = useState<NavigationState>("clear");
+  const [navigationState, setNavigationState] =
+    useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
   const loadWorkspace = useCallback(async (): Promise<void> => {
@@ -261,7 +283,8 @@ export function App({
       return;
     }
     if (generation !== workspaceGeneration.current) return;
-    if (Array.isArray(profilePayload)) setProfiles(profilePayload.filter(isProfile));
+    if (Array.isArray(profilePayload))
+      setProfiles(profilePayload.filter(isProfile));
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
       if (initialState === undefined) setState("empty");
@@ -355,7 +378,11 @@ export function App({
       if ((event.metaKey || event.ctrlKey) && event.key === ",") {
         event.preventDefault();
         if (navigationState === "clear") {
-          setSettingsOpener(document.activeElement instanceof HTMLElement ? document.activeElement : undefined);
+          setSettingsOpener(
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : undefined,
+          );
           setSettingsOpen(true);
         }
       }
@@ -386,12 +413,17 @@ export function App({
     },
     [destination, navigationState, performNavigation],
   );
-  const openSettings = useCallback((opener?: HTMLElement): void => {
-    if (navigationState !== "clear") return;
-    const fallback = document.querySelector<HTMLElement>("[data-settings-opener]") ?? document.querySelector<HTMLElement>("#main-content");
-    setSettingsOpener(opener ?? fallback ?? undefined);
-    setSettingsOpen(true);
-  }, [navigationState]);
+  const openSettings = useCallback(
+    (opener?: HTMLElement): void => {
+      if (navigationState !== "clear") return;
+      const fallback =
+        document.querySelector<HTMLElement>("[data-settings-opener]") ??
+        document.querySelector<HTMLElement>("#main-content");
+      setSettingsOpener(opener ?? fallback ?? undefined);
+      setSettingsOpen(true);
+    },
+    [navigationState],
+  );
   useEffect(() => {
     if (fixtureMode || typeof window.patchdesk?.onNavigate !== "function")
       return;
@@ -408,33 +440,49 @@ export function App({
     }
     await loadWorkspace();
   };
-  const updateAppearance = useCallback(async (next: AppearancePreference): Promise<void> => {
-    preferenceRetry.current = async () => updateAppearance(next);
-    setAppearance(next);
-    setPreferenceError(undefined);
-    try {
-      const stored = parseGlobalSettings(
-        await api("/v1/settings", { method: "PATCH", body: { appearance: next } }),
-      );
-      if (stored.appearance !== undefined) setAppearance(stored.appearance);
-    } catch {
-      setPreferenceError("Could not save appearance. The visible change is active; retry to persist it.");
-    }
-  }, []);
-  const updateDiffTheme = useCallback(async (next: DiffThemePreferences): Promise<void> => {
-    preferenceRetry.current = async () => updateDiffTheme(next);
-    setDiffThemePreferences(next);
-    setPreferenceError(undefined);
-    try {
-      const stored = parseGlobalSettings(
-        await api("/v1/settings", { method: "PATCH", body: { diffTheme: next } }),
-      );
-      if (stored.diffTheme !== undefined)
-        setDiffThemePreferences(parseDiffThemePreferences(stored.diffTheme));
-    } catch {
-      setPreferenceError("Could not save diff theme. The visible change is active; retry to persist it.");
-    }
-  }, []);
+  const updateAppearance = useCallback(
+    async (next: AppearancePreference): Promise<void> => {
+      preferenceRetry.current = async () => updateAppearance(next);
+      setAppearance(next);
+      setPreferenceError(undefined);
+      try {
+        const stored = parseGlobalSettings(
+          await api("/v1/settings", {
+            method: "PATCH",
+            body: { appearance: next },
+          }),
+        );
+        if (stored.appearance !== undefined) setAppearance(stored.appearance);
+      } catch {
+        setPreferenceError(
+          "Could not save appearance. The visible change is active; retry to persist it.",
+        );
+      }
+    },
+    [],
+  );
+  const updateDiffTheme = useCallback(
+    async (next: DiffThemePreferences): Promise<void> => {
+      preferenceRetry.current = async () => updateDiffTheme(next);
+      setDiffThemePreferences(next);
+      setPreferenceError(undefined);
+      try {
+        const stored = parseGlobalSettings(
+          await api("/v1/settings", {
+            method: "PATCH",
+            body: { diffTheme: next },
+          }),
+        );
+        if (stored.diffTheme !== undefined)
+          setDiffThemePreferences(parseDiffThemePreferences(stored.diffTheme));
+      } catch {
+        setPreferenceError(
+          "Could not save diff theme. The visible change is active; retry to persist it.",
+        );
+      }
+    },
+    [],
+  );
   const retryPreferences = useCallback((): void => {
     void preferenceRetry.current?.();
   }, []);
@@ -475,9 +523,13 @@ export function App({
         onSectionChange={(section) => saveSettingsRestore(section)}
         {...(dashboard === undefined ? {} : { dashboard })}
         appearance={appearance}
-        onAppearanceChange={(next) => { void updateAppearance(next); }}
+        onAppearanceChange={(next) => {
+          void updateAppearance(next);
+        }}
         diffThemePreferences={diffThemePreferences}
-        onDiffThemeChange={(next) => { void updateDiffTheme(next); }}
+        onDiffThemeChange={(next) => {
+          void updateDiffTheme(next);
+        }}
         profiles={profiles}
         onWorkspaceReload={loadWorkspace}
         onCleanupSuccess={(action) => {
@@ -563,20 +615,27 @@ export function App({
     return shell(
       <RouteLoadBoundary
         key={`${workbench.review.id}:${reviewLoaderGeneration}`}
-        onRetry={() => setReviewLoaderGeneration((generation) => generation + 1)}
+        onRetry={() =>
+          setReviewLoaderGeneration((generation) => generation + 1)
+        }
       >
-        <Suspense fallback={<RouteLoadingFallback label="Loading review workbench" />}>
+        <Suspense
+          fallback={<RouteLoadingFallback label="Loading review workbench" />}
+        >
           <LazyReviewWorkbench
             workbench={workbench}
             {...(destination.kind === "workbench" &&
-            (destination.initialSection === "diff" || destination.initialSection === "checks")
+            (destination.initialSection === "diff" ||
+              destination.initialSection === "checks")
               ? { initialSection: destination.initialSection }
               : {})}
             {...(restoredWorkbenchUi.current !== undefined &&
             restoredWorkbenchUi.current.reviewId === workbench.review.id
               ? { initialUiState: restoredWorkbenchUi.current.state }
               : {})}
-            onUiStateChange={(state) => saveWorkbenchUiState(workbench.review.id, state)}
+            onUiStateChange={(state) =>
+              saveWorkbenchUiState(workbench.review.id, state)
+            }
             onNavigate={(initialSection) =>
               navigate({
                 kind: "workbench",
@@ -593,7 +652,12 @@ export function App({
                   ...rest,
                   ...(insights === undefined
                     ? {}
-                    : { insights: { ...current.insights, ...insights } as WorkbenchResponse["insights"] }),
+                    : {
+                        insights: {
+                          ...current.insights,
+                          ...insights,
+                        } as WorkbenchResponse["insights"],
+                      }),
                 };
               })
             }
@@ -609,25 +673,35 @@ export function App({
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
-          destination={destination.kind}
-          {...(destination.kind === "workbench" ? { reviewId: destination.reviewId } : {})}
-          {...(dashboard === undefined ? {} : { dashboard })}
-          {...(inbox === undefined ? {} : { inbox })}
-          state={state}
-          refreshStatus={inboxFreshnessLabel({
-            ...(inbox?.inbox.snapshot?.state === undefined ? {} : { remote: inbox.inbox.snapshot.state }),
-            refreshing: inboxRefreshing,
-            paused: inboxPaused,
-            refreshFailed: inboxRefreshFailed,
-            ...(inbox?.inbox.snapshot?.refreshedAt === undefined ? {} : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
-          })}
-          onRefresh={() => void refreshDashboard()}
-          onSettings={() => openSettings()}
-          onOpenWorkbench={(next, initialSection) => {
-            setWorkbench(next);
-            navigate({ kind: "workbench", reviewId: next.review?.id ?? next.session.id, ...(initialSection === undefined ? {} : { initialSection }) });
-          }}
-        />
+        destination={destination.kind}
+        {...(destination.kind === "workbench"
+          ? { reviewId: destination.reviewId }
+          : {})}
+        {...(dashboard === undefined ? {} : { dashboard })}
+        {...(inbox === undefined ? {} : { inbox })}
+        state={state}
+        refreshStatus={inboxFreshnessLabel({
+          ...(inbox?.inbox.snapshot?.state === undefined
+            ? {}
+            : { remote: inbox.inbox.snapshot.state }),
+          refreshing: inboxRefreshing,
+          paused: inboxPaused,
+          refreshFailed: inboxRefreshFailed,
+          ...(inbox?.inbox.snapshot?.refreshedAt === undefined
+            ? {}
+            : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
+        })}
+        onRefresh={() => void refreshDashboard()}
+        onSettings={() => openSettings()}
+        onOpenWorkbench={(next, initialSection) => {
+          setWorkbench(next);
+          navigate({
+            kind: "workbench",
+            reviewId: next.review?.id ?? next.session.id,
+            ...(initialSection === undefined ? {} : { initialSection }),
+          });
+        }}
+      />
     </div>,
   );
 }
@@ -644,15 +718,26 @@ function restoredSettingsSection(): SettingsSection | undefined {
     : undefined;
 }
 
-function RouteLoadingFallback({ label }: { readonly label: string }): React.JSX.Element {
+function RouteLoadingFallback({
+  label,
+}: {
+  readonly label: string;
+}): React.JSX.Element {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center p-6" role="status" aria-live="polite">
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center p-6"
+      role="status"
+      aria-live="polite"
+    >
       {label}
     </div>
   );
 }
 
-class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, { readonly error: Error | undefined }> {
+class RouteLoadBoundary extends Component<
+  RouteLoadBoundaryProps,
+  { readonly error: Error | undefined }
+> {
   override state: { readonly error: Error | undefined } = { error: undefined };
 
   static getDerivedStateFromError(error: Error): { readonly error: Error } {
@@ -662,10 +747,17 @@ class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, { readonly err
   override render(): ReactNode {
     if (this.state.error === undefined) return this.props.children;
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6" role="alert">
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center p-6"
+        role="alert"
+      >
         <div className="space-y-3 text-center">
           <p>Patchdesk could not load the Review workbench.</p>
-          <button type="button" className="underline" onClick={this.props.onRetry}>
+          <button
+            type="button"
+            className="underline"
+            onClick={this.props.onRetry}
+          >
             Retry
           </button>
         </div>
@@ -699,24 +791,35 @@ type GlobalSettingsPatch = {
 function parseGlobalSettings(value: unknown): GlobalSettings {
   if (!record(value)) return {};
   return {
-    ...(value.appearance === "system" || value.appearance === "light" || value.appearance === "dark"
+    ...(value.appearance === "system" ||
+    value.appearance === "light" ||
+    value.appearance === "dark"
       ? { appearance: value.appearance }
       : {}),
-    ...(Object.hasOwn(value, "diffTheme") ? { diffTheme: value.diffTheme } : {}),
+    ...(Object.hasOwn(value, "diffTheme")
+      ? { diffTheme: value.diffTheme }
+      : {}),
   };
 }
 
-function sameDiffTheme(value: unknown, expected: DiffThemePreferences): boolean {
-  return record(value) &&
+function sameDiffTheme(
+  value: unknown,
+  expected: DiffThemePreferences,
+): boolean {
+  return (
+    record(value) &&
     value.light === expected.light &&
-    value.dark === expected.dark;
+    value.dark === expected.dark
+  );
 }
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function stringArray(value: unknown): value is ReadonlyArray<string> {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function isProfile(value: unknown): value is Profile {

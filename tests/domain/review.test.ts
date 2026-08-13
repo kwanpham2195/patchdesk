@@ -40,8 +40,14 @@ const secondSha = must(parseGitSha("2".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
-const firstSessionId = createReviewSessionId({ ...identity, headSha: firstSha });
-const secondSessionId = createReviewSessionId({ ...identity, headSha: secondSha });
+const firstSessionId = createReviewSessionId({
+  ...identity,
+  headSha: firstSha,
+});
+const secondSessionId = createReviewSessionId({
+  ...identity,
+  headSha: secondSha,
+});
 const snapshotHash = must(parseContentHash("a".repeat(64)));
 
 function review() {
@@ -117,7 +123,11 @@ describe("Review", () => {
       }),
     ).toMatchObject({ _tag: "err", error: { _tag: "ReviewTerminal" } });
     expect(
-      markReviewUnavailable(terminal, { detectedAt: later, reason: "github_read" }, later),
+      markReviewUnavailable(
+        terminal,
+        { detectedAt: later, reason: "github_read" },
+        later,
+      ),
     ).toEqual(terminal);
   });
 
@@ -126,7 +136,11 @@ describe("Review", () => {
       review(),
       {
         detectedAt: later,
-        identity: { headSha: secondSha, baseSha, canonicalPatchHash: snapshotHash },
+        identity: {
+          headSha: secondSha,
+          baseSha,
+          canonicalPatchHash: snapshotHash,
+        },
       },
       later,
     );
@@ -134,7 +148,11 @@ describe("Review", () => {
       freshness: {
         _tag: "RevisionChanged",
         detectedAt: later,
-        identity: { headSha: secondSha, baseSha, canonicalPatchHash: snapshotHash },
+        identity: {
+          headSha: secondSha,
+          baseSha,
+          canonicalPatchHash: snapshotHash,
+        },
       },
       currentSessionId: firstSessionId,
       currentHeadSha: firstSha,

@@ -63,8 +63,21 @@ Verify/update ADR-0017 and glossary wording. Add `ReviewFreshness` durable union
 ```ts
 type ReviewFreshness =
   | { readonly _tag: "Fresh" }
-  | { readonly _tag: "RevisionChanged"; readonly detectedAt: IsoTimestamp; readonly identity: ObservedRevisionIdentity }
-  | { readonly _tag: "Unavailable"; readonly detectedAt: IsoTimestamp; readonly reason: "base_missing" | "diff_incomplete" | "github_read" | "comparison_ambiguous" | "reconciliation_incomplete" };
+  | {
+      readonly _tag: "RevisionChanged";
+      readonly detectedAt: IsoTimestamp;
+      readonly identity: ObservedRevisionIdentity;
+    }
+  | {
+      readonly _tag: "Unavailable";
+      readonly detectedAt: IsoTimestamp;
+      readonly reason:
+        | "base_missing"
+        | "diff_incomplete"
+        | "github_read"
+        | "comparison_ambiguous"
+        | "reconciliation_incomplete";
+    };
 ```
 
 Use only the new durable Review schema; Patchdesk is unpublished, so do not retain a legacy `detectedUpdate` reader or data migration. Update `ReviewWriteGate.requireFresh()` to allow only `Fresh`; update workbench freshness projection and error mapping. Use compare-and-save expected `Review.updatedAt` on every change.

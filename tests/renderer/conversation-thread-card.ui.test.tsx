@@ -8,21 +8,30 @@ import { parseGitHubThreadId } from "../../src/domain/ids";
 afterEach(() => cleanup());
 
 const threadId = parseGitHubThreadId("thread-1");
-if (threadId._tag === "err") throw new Error("test fixture thread id must parse");
+if (threadId._tag === "err")
+  throw new Error("test fixture thread id must parse");
 
-const thread = (overrides: {
-  readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
-  readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
-  readonly onDeleteComment?: (commentId: string) => Promise<void>;
-  readonly onSetState?: (threadId: string, state: "open" | "resolved") => Promise<void>;
-  readonly comments?: readonly {
-    readonly id: string;
-    readonly author: string;
-    readonly body: string;
-    readonly createdAt: string;
-    readonly viewerDidAuthor?: boolean | undefined;
-  }[];
-} = {}): Parameters<typeof ConversationThreadCard>[0]["thread"] => ({
+const thread = (
+  overrides: {
+    readonly onReply?: (
+      threadId: string,
+      body: string,
+    ) => Promise<string | void>;
+    readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
+    readonly onDeleteComment?: (commentId: string) => Promise<void>;
+    readonly onSetState?: (
+      threadId: string,
+      state: "open" | "resolved",
+    ) => Promise<void>;
+    readonly comments?: readonly {
+      readonly id: string;
+      readonly author: string;
+      readonly body: string;
+      readonly createdAt: string;
+      readonly viewerDidAuthor?: boolean | undefined;
+    }[];
+  } = {},
+): Parameters<typeof ConversationThreadCard>[0]["thread"] => ({
   target: { _tag: "thread" as const, id: threadId.value },
   state: "open",
   complete: true,
@@ -47,7 +56,15 @@ describe("ConversationThreadCard", () => {
           onDeleteComment: vi.fn(),
           onSetState: vi.fn(),
           onReply: vi.fn(),
-          comments: [{ id: "c-new", author: "You", body: "Just published.", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true }],
+          comments: [
+            {
+              id: "c-new",
+              author: "You",
+              body: "Just published.",
+              createdAt: "2026-08-01T00:01:00.000Z",
+              viewerDidAuthor: true,
+            },
+          ],
         })}
       />,
     );
@@ -62,7 +79,9 @@ describe("ConversationThreadCard", () => {
   it("shows a published reply immediately and reconciles it with the authoritative thread", async () => {
     const user = userEvent.setup();
     const onReply = vi.fn(async () => "c-reply-1");
-    const { rerender } = render(<ConversationThreadCard thread={thread({ onReply })} />);
+    const { rerender } = render(
+      <ConversationThreadCard thread={thread({ onReply })} />,
+    );
     await user.type(screen.getByRole("textbox", { name: "Reply" }), "A reply");
     await user.click(screen.getByRole("button", { name: "Reply" }));
     expect(onReply).toHaveBeenCalledWith("thread-1", "A reply");
@@ -76,8 +95,20 @@ describe("ConversationThreadCard", () => {
         thread={thread({
           onReply,
           comments: [
-            { id: "c-1", author: "reviewer", body: "Check this line.", createdAt: "2026-08-01T00:00:00.000Z", viewerDidAuthor: true },
-            { id: "c-reply-1", author: "You", body: "A reply", createdAt: "2026-08-01T00:02:00.000Z", viewerDidAuthor: true },
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "Check this line.",
+              createdAt: "2026-08-01T00:00:00.000Z",
+              viewerDidAuthor: true,
+            },
+            {
+              id: "c-reply-1",
+              author: "You",
+              body: "A reply",
+              createdAt: "2026-08-01T00:02:00.000Z",
+              viewerDidAuthor: true,
+            },
           ],
         })}
       />,
@@ -89,7 +120,10 @@ describe("ConversationThreadCard", () => {
     const user = userEvent.setup();
     const onReply = vi.fn(async () => "c-reply-2");
     render(<ConversationThreadCard thread={thread({ onReply })} />);
-    await user.type(screen.getByRole("textbox", { name: "Reply" }), "Second reply");
+    await user.type(
+      screen.getByRole("textbox", { name: "Reply" }),
+      "Second reply",
+    );
     await user.click(screen.getByRole("button", { name: "Reply" }));
     expect(await screen.findByText("Second reply")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Reply" })).toBeTruthy();
@@ -102,8 +136,20 @@ describe("ConversationThreadCard", () => {
           onEditComment: vi.fn(),
           onDeleteComment: vi.fn(),
           comments: [
-            { id: "c-1", author: "reviewer", body: "Check this line.", createdAt: "2026-08-01T00:00:00.000Z", viewerDidAuthor: true },
-            { id: "c-reply", author: "You", body: "My reply", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true },
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "Check this line.",
+              createdAt: "2026-08-01T00:00:00.000Z",
+              viewerDidAuthor: true,
+            },
+            {
+              id: "c-reply",
+              author: "You",
+              body: "My reply",
+              createdAt: "2026-08-01T00:01:00.000Z",
+              viewerDidAuthor: true,
+            },
           ],
         })}
       />,
@@ -125,20 +171,37 @@ describe("ConversationThreadCard", () => {
         thread={thread({
           onEditComment,
           comments: [
-            { id: "c-1", author: "reviewer", body: "Check this line.", createdAt: "2026-08-01T00:00:00.000Z", viewerDidAuthor: true },
-            { id: "c-reply", author: "You", body: "My reply", createdAt: "2026-08-01T00:01:00.000Z", viewerDidAuthor: true },
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "Check this line.",
+              createdAt: "2026-08-01T00:00:00.000Z",
+              viewerDidAuthor: true,
+            },
+            {
+              id: "c-reply",
+              author: "You",
+              body: "My reply",
+              createdAt: "2026-08-01T00:01:00.000Z",
+              viewerDidAuthor: true,
+            },
           ],
         })}
       />,
     );
     const replyEdit = screen.getAllByRole("button", { name: "Edit" }).at(-1);
-    if (replyEdit === undefined) throw new Error("Expected a reply Edit control");
+    if (replyEdit === undefined)
+      throw new Error("Expected a reply Edit control");
     await user.click(replyEdit);
-    const editor = screen.getAllByRole("textbox", { name: "Edit comment" }).at(-1);
+    const editor = screen
+      .getAllByRole("textbox", { name: "Edit comment" })
+      .at(-1);
     if (editor === undefined) throw new Error("Expected a reply edit editor");
     await user.clear(editor);
     await user.type(editor, "Edited reply");
-    await user.click(screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement);
+    await user.click(
+      screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement,
+    );
     expect(onEditComment).toHaveBeenCalledWith("c-reply", "Edited reply");
   });
 });

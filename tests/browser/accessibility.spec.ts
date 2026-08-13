@@ -69,11 +69,21 @@ async function forceLightAppearance(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const root = document.documentElement;
     root.classList.remove("dark");
-    document.querySelectorAll(".dark").forEach((element) => element.classList.remove("dark"));
+    document
+      .querySelectorAll(".dark")
+      .forEach((element) => element.classList.remove("dark"));
     root.dataset.appearance = "light";
     root.style.colorScheme = "light";
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    await Promise.all(document.getAnimations().map(async (animation) => await animation.finished.catch(() => undefined)));
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    await Promise.all(
+      document
+        .getAnimations()
+        .map(
+          async (animation) => await animation.finished.catch(() => undefined),
+        ),
+    );
   });
 }
 
@@ -192,7 +202,9 @@ test("walkthrough takeover exposes rail, Reviewed controls, and quiet reader chr
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "light" });
-  await page.addInitScript(() => localStorage.setItem("patchdesk.appearance.v1", "light"));
+  await page.addInitScript(() =>
+    localStorage.setItem("patchdesk.appearance.v1", "light"),
+  );
   await page.goto(`${origin(renderer)}/#walkthrough-fixture`);
   await page.getByRole("button", { name: "Generate walkthrough" }).click();
   const dialog = page.getByTestId("walkthrough-generate-dialog");
@@ -222,9 +234,13 @@ test("walkthrough takeover exposes rail, Reviewed controls, and quiet reader chr
   await expect(
     page.getByRole("button", { name: "Mark Support reviewed" }),
   ).toBeVisible();
-  const walkthroughDiff = page.locator('[data-walkthrough-diff-block="section-1::h1::0"]');
+  const walkthroughDiff = page.locator(
+    '[data-walkthrough-diff-block="section-1::h1::0"]',
+  );
   await expect(
-    walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }),
+    walkthroughDiff.getByRole("button", {
+      name: "Add local comment on src/a.ts",
+    }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Keep the review local" }),
@@ -271,12 +287,8 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
 }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
-  await expect(
-    page.getByRole("button", { name: "Insights" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "PR overview" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Insights" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "PR overview" })).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () =>
       document.documentElement.scrollWidth -

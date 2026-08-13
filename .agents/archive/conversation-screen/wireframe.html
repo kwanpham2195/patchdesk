@@ -1,429 +1,587 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="dark">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Conversation screen — Patchdesk wireframe</title>
-<style>
-  /* ── tokens (mirrors project styles.css, desaturated for wireframe) ── */
-  :root {
-    color-scheme: dark;
-    --bg: #1a1a1a;
-    --fg: #e0e0e0;
-    --fg-dim: #999;
-    --fg-faint: #6b6b6b;
-    --card: #212121;
-    --card-hover: #282828;
-    --border: #333;
-    --accent: #7c85e0;
-    --accent-dim: #5e6ad2;
-    --badge-bg: #2a2a2a;
-    --badge-fg: #bbb;
-    --radius: 8px;
-    --font: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conversation screen — Patchdesk wireframe</title>
+    <style>
+      /* ── tokens (mirrors project styles.css, desaturated for wireframe) ── */
+      :root {
+        color-scheme: dark;
+        --bg: #1a1a1a;
+        --fg: #e0e0e0;
+        --fg-dim: #999;
+        --fg-faint: #6b6b6b;
+        --card: #212121;
+        --card-hover: #282828;
+        --border: #333;
+        --accent: #7c85e0;
+        --accent-dim: #5e6ad2;
+        --badge-bg: #2a2a2a;
+        --badge-fg: #bbb;
+        --radius: 8px;
+        --font: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+        --mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+      }
 
-  body {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--fg);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-size: 13px;
-  }
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--fg);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        font-size: 13px;
+      }
 
-  /* ── APP SHELL TOP BAR ── */
-  .app-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 40px;
-    padding: 0 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
-    flex-shrink: 0;
-  }
-  .app-titlebar-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .app-titlebar-left .back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px; height: 26px;
-    border: none; background: none;
-    color: var(--fg-dim); cursor: pointer;
-    border-radius: 6px;
-  }
-  .app-titlebar-left .back-btn:hover { background: var(--card); }
-  .app-titlebar-brand {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .app-titlebar-brand svg { width: 18px; height: 18px; }
-  .app-titlebar-sep {
-    width: 1px; height: 16px; background: var(--border);
-  }
-  .app-titlebar-dest {
-    font-size: 13px;
-    color: var(--fg-dim);
-  }
+      /* ── APP SHELL TOP BAR ── */
+      .app-titlebar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 40px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg);
+        flex-shrink: 0;
+      }
+      .app-titlebar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .app-titlebar-left .back-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: none;
+        color: var(--fg-dim);
+        cursor: pointer;
+        border-radius: 6px;
+      }
+      .app-titlebar-left .back-btn:hover {
+        background: var(--card);
+      }
+      .app-titlebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .app-titlebar-brand svg {
+        width: 18px;
+        height: 18px;
+      }
+      .app-titlebar-sep {
+        width: 1px;
+        height: 16px;
+        background: var(--border);
+      }
+      .app-titlebar-dest {
+        font-size: 13px;
+        color: var(--fg-dim);
+      }
 
-  /* ── WORKBENCH TABS (new: in app shell, only on workbench) ── */
-  .wb-tabs {
-    display: flex;
-    gap: 2px;
-    margin-left: 4px;
-  }
-  .wb-tab {
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fg-dim);
-    border: none;
-    background: none;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.1s;
-  }
-  .wb-tab:hover { background: var(--card); color: var(--fg); }
-  .wb-tab.active { background: var(--card); color: var(--fg); }
+      /* ── WORKBENCH TABS (new: in app shell, only on workbench) ── */
+      .wb-tabs {
+        display: flex;
+        gap: 2px;
+        margin-left: 4px;
+      }
+      .wb-tab {
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--fg-dim);
+        border: none;
+        background: none;
+        cursor: pointer;
+        border-radius: 6px;
+        transition: background 0.1s;
+      }
+      .wb-tab:hover {
+        background: var(--card);
+        color: var(--fg);
+      }
+      .wb-tab.active {
+        background: var(--card);
+        color: var(--fg);
+      }
 
-  .app-titlebar-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .app-titlebar-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--fg-dim);
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: var(--font);
-  }
-  .app-titlebar-btn:hover { background: var(--card); }
+      .app-titlebar-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .app-titlebar-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-dim);
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: var(--font);
+      }
+      .app-titlebar-btn:hover {
+        background: var(--card);
+      }
 
-  /* ── WORKBENCH HEADER ── */
-  .wb-header {
-    padding: 10px 16px 6px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .wb-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .wb-header h1 {
-    font-size: 16px;
-    font-weight: 600;
-    line-height: 1.3;
-    min-width: 0;
-  }
-  .wb-header-pills {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .wb-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--fg-dim);
-  }
-  .wb-pill.good { border-color: #3a5a3a; color: #8acc8a; }
-  .wb-meta {
-    font-size: 11px;
-    color: var(--fg-faint);
-    margin-top: 4px;
-  }
+      /* ── WORKBENCH HEADER ── */
+      .wb-header {
+        padding: 10px 16px 6px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .wb-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .wb-header h1 {
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.3;
+        min-width: 0;
+      }
+      .wb-header-pills {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .wb-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--fg-dim);
+      }
+      .wb-pill.good {
+        border-color: #3a5a3a;
+        color: #8acc8a;
+      }
+      .wb-meta {
+        font-size: 11px;
+        color: var(--fg-faint);
+        margin-top: 4px;
+      }
 
-  /* ── MAIN CONTENT ── */
-  .main {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
+      /* ── MAIN CONTENT ── */
+      .main {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
 
-  /* ── CONVERSATION TIMELINE ── */
-  .conversation {
-    flex: 1;
-    min-width: 0;
-    overflow-y: auto;
-  }
-  .conversation-inner {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
+      /* ── CONVERSATION TIMELINE ── */
+      .conversation {
+        flex: 1;
+        min-width: 0;
+        overflow-y: auto;
+      }
+      .conversation-inner {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
 
-  /* ── TIMELINE ENTRIES ── */
-  .tl-entry {
-    padding: 14px 0;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 10px;
-  }
-  .tl-entry:first-child { padding-top: 0; }
-  .tl-avatar {
-    width: 28px; height: 28px; border-radius: 14px;
-    background: var(--border); flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 600; color: var(--fg-dim);
-  }
-  .tl-body { flex: 1; min-width: 0; }
-  .tl-header {
-    display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;
-  }
-  .tl-author { font-size: 12px; font-weight: 600; }
-  .tl-time { font-size: 11px; color: var(--fg-faint); }
-  .tl-badge {
-    font-size: 10px; padding: 1px 7px; border-radius: 10px;
-    background: var(--badge-bg); color: var(--badge-fg); font-weight: 500;
-  }
-  .tl-text {
-    font-size: 13px; line-height: 1.55; color: var(--fg); white-space: pre-wrap;
-  }
+      /* ── TIMELINE ENTRIES ── */
+      .tl-entry {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        gap: 10px;
+      }
+      .tl-entry:first-child {
+        padding-top: 0;
+      }
+      .tl-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 14px;
+        background: var(--border);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--fg-dim);
+      }
+      .tl-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .tl-header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .tl-author {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .tl-time {
+        font-size: 11px;
+        color: var(--fg-faint);
+      }
+      .tl-badge {
+        font-size: 10px;
+        padding: 1px 7px;
+        border-radius: 10px;
+        background: var(--badge-bg);
+        color: var(--badge-fg);
+        font-weight: 500;
+      }
+      .tl-text {
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--fg);
+        white-space: pre-wrap;
+      }
 
-  .pr-desc {
-    padding: 16px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .pr-desc-label {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--fg-faint); margin-bottom: 8px;
-  }
-  .pr-desc-body {
-    font-size: 13px; line-height: 1.55; color: var(--fg);
-  }
-  .pr-desc-body ul { padding-left: 20px; margin-top: 6px; }
-  .pr-desc-body li { margin-top: 2px; }
+      .pr-desc {
+        padding: 16px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .pr-desc-label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--fg-faint);
+        margin-bottom: 8px;
+      }
+      .pr-desc-body {
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--fg);
+      }
+      .pr-desc-body ul {
+        padding-left: 20px;
+        margin-top: 6px;
+      }
+      .pr-desc-body li {
+        margin-top: 2px;
+      }
 
-  .thread-replies {
-    margin-top: 8px; padding-left: 12px;
-    border-left: 2px solid var(--border);
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .thread-reply {
-    display: flex; gap: 8px;
-  }
-  .thread-reply .tl-avatar {
-    width: 22px; height: 22px; border-radius: 11px; font-size: 9px;
-  }
-  .thread-reply .tl-author { font-size: 11px; }
-  .thread-reply .tl-time { font-size: 10px; }
-  .thread-reply .tl-text { font-size: 12px; }
+      .thread-replies {
+        margin-top: 8px;
+        padding-left: 12px;
+        border-left: 2px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .thread-reply {
+        display: flex;
+        gap: 8px;
+      }
+      .thread-reply .tl-avatar {
+        width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        font-size: 9px;
+      }
+      .thread-reply .tl-author {
+        font-size: 11px;
+      }
+      .thread-reply .tl-time {
+        font-size: 10px;
+      }
+      .thread-reply .tl-text {
+        font-size: 12px;
+      }
 
-  .annot {
-    background: #2a2a1a; border: 1px dashed #6b6b30; border-radius: 4px;
-    padding: 6px 10px; font-size: 10px; color: #b8b860; margin-top: 8px;
-    font-family: var(--mono); line-height: 1.4;
-  }
+      .annot {
+        background: #2a2a1a;
+        border: 1px dashed #6b6b30;
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 10px;
+        color: #b8b860;
+        margin-top: 8px;
+        font-family: var(--mono);
+        line-height: 1.4;
+      }
 
-  @media (max-width: 700px) {
-    .conversation-inner { max-width: 100%; padding: 12px; }
-    .wb-tab { padding: 5px 8px; font-size: 11px; }
-    .wb-header h1 { font-size: 14px; }
-  }
-</style>
-</head>
-<body>
-
-<!-- ═══ APP SHELL TOP BAR ═══ -->
-<header class="app-titlebar">
-  <div class="app-titlebar-left">
-    <button class="back-btn" aria-label="Back to pending pull requests">←</button>
-    <div class="app-titlebar-brand">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 3v18"/></svg>
-      Patchdesk
-    </div>
-    <div class="app-titlebar-sep"></div>
-    <!-- Workbench tabs (only visible when a review is open) -->
-    <div class="wb-tabs">
-      <button class="wb-tab active">Conversation</button>
-      <button class="wb-tab">Diff</button>
-      <button class="wb-tab">Insights</button>
-    </div>
-  </div>
-  <div class="app-titlebar-right">
-    <button class="app-titlebar-btn">Profile</button>
-    <button class="app-titlebar-btn">Settings</button>
-  </div>
-</header>
-
-<!-- ═══ WORKBENCH HEADER ═══ -->
-<div class="wb-header">
-  <div class="wb-header-row">
-    <h1>#42 Canonical workbench</h1>
-    <div class="wb-header-pills">
-      <span class="wb-pill good">✓ Checks · Passing</span>
-      <span class="wb-pill">Merge · Ready</span>
-      <button class="app-titlebar-btn">Open on GitHub</button>
-      <button class="app-titlebar-btn">PR overview</button>
-    </div>
-  </div>
-  <div class="wb-meta">
-    centraldigital/patchdesk · main ← feat/canonical-workbench · a1b2c3d4 · Current · refreshed 2026-07-19T10:30:00Z
-  </div>
-</div>
-
-<!-- ═══ MAIN CONTENT ═══ -->
-<div class="main">
-  <div class="conversation">
-    <div class="conversation-inner">
-
-      <!-- PR Description -->
-      <div class="pr-desc">
-        <div class="pr-desc-label">Pull request description</div>
-        <div class="pr-desc-body">
-          <p>This PR introduces a canonical review workbench that replaces the split prepared/completed review views with a single progressive surface.</p>
-          <p>Key changes:</p>
-          <ul>
-            <li>Unified diff view with file navigator, findings, and commit browser</li>
-            <li>Analysis results merged into findings panel</li>
-            <li>Walkthrough rendered as a separate insight tab</li>
-          </ul>
+      @media (max-width: 700px) {
+        .conversation-inner {
+          max-width: 100%;
+          padding: 12px;
+        }
+        .wb-tab {
+          padding: 5px 8px;
+          font-size: 11px;
+        }
+        .wb-header h1 {
+          font-size: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══ APP SHELL TOP BAR ═══ -->
+    <header class="app-titlebar">
+      <div class="app-titlebar-left">
+        <button class="back-btn" aria-label="Back to pending pull requests">
+          ←
+        </button>
+        <div class="app-titlebar-brand">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="3" />
+            <path d="M3 9h18M9 3v18" />
+          </svg>
+          Patchdesk
+        </div>
+        <div class="app-titlebar-sep"></div>
+        <!-- Workbench tabs (only visible when a review is open) -->
+        <div class="wb-tabs">
+          <button class="wb-tab active">Conversation</button>
+          <button class="wb-tab">Diff</button>
+          <button class="wb-tab">Insights</button>
         </div>
       </div>
+      <div class="app-titlebar-right">
+        <button class="app-titlebar-btn">Profile</button>
+        <button class="app-titlebar-btn">Settings</button>
+      </div>
+    </header>
 
-      <!-- Issue comment -->
-      <div class="tl-entry">
-        <div class="tl-avatar">M</div>
-        <div class="tl-body">
-          <div class="tl-header">
-            <span class="tl-author">pmquan2cfw</span>
-            <span class="tl-time">2 days ago</span>
-          </div>
-          <div class="tl-text">I've pushed an update that addresses the feedback from the last review round. The diff navigator now preserves scroll position when switching between files.</div>
+    <!-- ═══ WORKBENCH HEADER ═══ -->
+    <div class="wb-header">
+      <div class="wb-header-row">
+        <h1>#42 Canonical workbench</h1>
+        <div class="wb-header-pills">
+          <span class="wb-pill good">✓ Checks · Passing</span>
+          <span class="wb-pill">Merge · Ready</span>
+          <button class="app-titlebar-btn">Open on GitHub</button>
+          <button class="app-titlebar-btn">PR overview</button>
         </div>
       </div>
-
-      <!-- Review summary: approved -->
-      <div class="tl-entry">
-        <div class="tl-avatar">J</div>
-        <div class="tl-body">
-          <div class="tl-header">
-            <span class="tl-author">jessevu</span>
-            <span class="tl-time">1 day ago</span>
-            <span class="tl-badge">Approved</span>
-          </div>
-          <div class="tl-text">Looks good to me. The unified view is a big improvement over the old split layout.</div>
-        </div>
+      <div class="wb-meta">
+        centraldigital/patchdesk · main ← feat/canonical-workbench · a1b2c3d4 ·
+        Current · refreshed 2026-07-19T10:30:00Z
       </div>
+    </div>
 
-      <!-- General conversation thread -->
-      <div class="tl-entry">
-        <div class="tl-avatar">S</div>
-        <div class="tl-body">
-          <div class="tl-header">
-            <span class="tl-author">saran-pluem</span>
-            <span class="tl-time">1 day ago</span>
-            <span class="tl-badge">Open</span>
+    <!-- ═══ MAIN CONTENT ═══ -->
+    <div class="main">
+      <div class="conversation">
+        <div class="conversation-inner">
+          <!-- PR Description -->
+          <div class="pr-desc">
+            <div class="pr-desc-label">Pull request description</div>
+            <div class="pr-desc-body">
+              <p>
+                This PR introduces a canonical review workbench that replaces
+                the split prepared/completed review views with a single
+                progressive surface.
+              </p>
+              <p>Key changes:</p>
+              <ul>
+                <li>
+                  Unified diff view with file navigator, findings, and commit
+                  browser
+                </li>
+                <li>Analysis results merged into findings panel</li>
+                <li>Walkthrough rendered as a separate insight tab</li>
+              </ul>
+            </div>
           </div>
-          <div class="tl-text">I'm concerned about the performance of the unified diff with very large PRs (500+ files). Have we tested this on real-world repos?</div>
-          <div class="thread-replies">
-            <div class="thread-reply">
-              <div class="tl-avatar">M</div>
-              <div class="tl-body">
-                <div class="tl-header">
-                  <span class="tl-author">pmquan2cfw</span>
-                  <span class="tl-time">1 day ago</span>
-                </div>
-                <div class="tl-text">We tested on ~300 changed files and the virtualized diff handled it well. Happy to add a synthetic test before merging.</div>
+
+          <!-- Issue comment -->
+          <div class="tl-entry">
+            <div class="tl-avatar">M</div>
+            <div class="tl-body">
+              <div class="tl-header">
+                <span class="tl-author">pmquan2cfw</span>
+                <span class="tl-time">2 days ago</span>
+              </div>
+              <div class="tl-text">
+                I've pushed an update that addresses the feedback from the last
+                review round. The diff navigator now preserves scroll position
+                when switching between files.
               </div>
             </div>
-            <div class="thread-reply">
-              <div class="tl-avatar">S</div>
-              <div class="tl-body">
-                <div class="tl-header">
-                  <span class="tl-author">saran-pluem</span>
-                  <span class="tl-time">23 hours ago</span>
-                </div>
-                <div class="tl-text">That would be reassuring. Let's add it to the test plan.</div>
+          </div>
+
+          <!-- Review summary: approved -->
+          <div class="tl-entry">
+            <div class="tl-avatar">J</div>
+            <div class="tl-body">
+              <div class="tl-header">
+                <span class="tl-author">jessevu</span>
+                <span class="tl-time">1 day ago</span>
+                <span class="tl-badge">Approved</span>
+              </div>
+              <div class="tl-text">
+                Looks good to me. The unified view is a big improvement over the
+                old split layout.
               </div>
             </div>
           </div>
-          <div class="annot">General thread (no diff anchor). Shown in Conversation, not diff view. Read-only: no reply or resolve controls.</div>
-        </div>
-      </div>
 
-      <!-- Review summary: changes requested -->
-      <div class="tl-entry">
-        <div class="tl-avatar">T</div>
-        <div class="tl-body">
-          <div class="tl-header">
-            <span class="tl-author">ptthanh-central-co</span>
-            <span class="tl-time">3 hours ago</span>
-            <span class="tl-badge">Changes requested</span>
+          <!-- General conversation thread -->
+          <div class="tl-entry">
+            <div class="tl-avatar">S</div>
+            <div class="tl-body">
+              <div class="tl-header">
+                <span class="tl-author">saran-pluem</span>
+                <span class="tl-time">1 day ago</span>
+                <span class="tl-badge">Open</span>
+              </div>
+              <div class="tl-text">
+                I'm concerned about the performance of the unified diff with
+                very large PRs (500+ files). Have we tested this on real-world
+                repos?
+              </div>
+              <div class="thread-replies">
+                <div class="thread-reply">
+                  <div class="tl-avatar">M</div>
+                  <div class="tl-body">
+                    <div class="tl-header">
+                      <span class="tl-author">pmquan2cfw</span>
+                      <span class="tl-time">1 day ago</span>
+                    </div>
+                    <div class="tl-text">
+                      We tested on ~300 changed files and the virtualized diff
+                      handled it well. Happy to add a synthetic test before
+                      merging.
+                    </div>
+                  </div>
+                </div>
+                <div class="thread-reply">
+                  <div class="tl-avatar">S</div>
+                  <div class="tl-body">
+                    <div class="tl-header">
+                      <span class="tl-author">saran-pluem</span>
+                      <span class="tl-time">23 hours ago</span>
+                    </div>
+                    <div class="tl-text">
+                      That would be reassuring. Let's add it to the test plan.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="annot">
+                General thread (no diff anchor). Shown in Conversation, not diff
+                view. Read-only: no reply or resolve controls.
+              </div>
+            </div>
           </div>
-          <div class="tl-text">The commit browser should default to showing the full PR diff first, not the first commit.</div>
-        </div>
-      </div>
 
-      <!-- Issue comment -->
-      <div class="tl-entry">
-        <div class="tl-avatar">M</div>
-        <div class="tl-body">
-          <div class="tl-header">
-            <span class="tl-author">pmquan2cfw</span>
-            <span class="tl-time">2 hours ago</span>
+          <!-- Review summary: changes requested -->
+          <div class="tl-entry">
+            <div class="tl-avatar">T</div>
+            <div class="tl-body">
+              <div class="tl-header">
+                <span class="tl-author">ptthanh-central-co</span>
+                <span class="tl-time">3 hours ago</span>
+                <span class="tl-badge">Changes requested</span>
+              </div>
+              <div class="tl-text">
+                The commit browser should default to showing the full PR diff
+                first, not the first commit.
+              </div>
+            </div>
           </div>
-          <div class="tl-text">Fixed in the latest push. The diff now defaults to the full PR patch and the commit browser is opt-in via the navigator. Thanks for the feedback!</div>
+
+          <!-- Issue comment -->
+          <div class="tl-entry">
+            <div class="tl-avatar">M</div>
+            <div class="tl-body">
+              <div class="tl-header">
+                <span class="tl-author">pmquan2cfw</span>
+                <span class="tl-time">2 hours ago</span>
+              </div>
+              <div class="tl-text">
+                Fixed in the latest push. The diff now defaults to the full PR
+                patch and the commit browser is opt-in via the navigator. Thanks
+                for the feedback!
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-
     </div>
-  </div>
-</div>
 
-<!-- ═══ ANNOTATION LEGEND ═══ -->
-<div style="position: fixed; bottom: 12px; right: 12px; max-width: 260px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 10px; color: var(--fg-dim); line-height: 1.5;">
-  <strong style="color: var(--fg); font-size: 11px;">Key changes from current app</strong><br><br>
-  <strong>1. Tabs in app shell:</strong> Conversation · Diff · Insights live in the top bar (app-titlebar), between the separator and the destination title area. Only visible when a review workbench is open. Replaces the current "Insights" button inside the diff.<br><br>
-  <strong>2. Conversation is landing tab:</strong> active on load.<br><br>
-  <strong>3. Workbench header:</strong> unchanged — PR title, checks/merge pills, Open on GitHub, PR overview, metadata line.<br><br>
-  <strong>4. Published feedback panel:</strong> removed. Its content is now the Conversation tab.<br><br>
-  <strong>5. Diff navigator sidebar:</strong> only visible on Diff tab, not Conversation.<br><br>
-  <strong>6. Read-only:</strong> no reply/edit/delete on this screen.
-</div>
+    <!-- ═══ ANNOTATION LEGEND ═══ -->
+    <div
+      style="
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        max-width: 260px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 12px;
+        font-size: 10px;
+        color: var(--fg-dim);
+        line-height: 1.5;
+      "
+    >
+      <strong style="color: var(--fg); font-size: 11px"
+        >Key changes from current app</strong
+      ><br /><br />
+      <strong>1. Tabs in app shell:</strong> Conversation · Diff · Insights live
+      in the top bar (app-titlebar), between the separator and the destination
+      title area. Only visible when a review workbench is open. Replaces the
+      current "Insights" button inside the diff.<br /><br />
+      <strong>2. Conversation is landing tab:</strong> active on load.<br /><br />
+      <strong>3. Workbench header:</strong> unchanged — PR title, checks/merge
+      pills, Open on GitHub, PR overview, metadata line.<br /><br />
+      <strong>4. Published feedback panel:</strong> removed. Its content is now
+      the Conversation tab.<br /><br />
+      <strong>5. Diff navigator sidebar:</strong> only visible on Diff tab, not
+      Conversation.<br /><br />
+      <strong>6. Read-only:</strong> no reply/edit/delete on this screen.
+    </div>
 
-<script>
-  document.querySelectorAll('.wb-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.wb-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-    });
-  });
-</script>
-
-</body>
+    <script>
+      document.querySelectorAll(".wb-tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          document
+            .querySelectorAll(".wb-tab")
+            .forEach((t) => t.classList.remove("active"));
+          tab.classList.add("active");
+        });
+      });
+    </script>
+  </body>
 </html>

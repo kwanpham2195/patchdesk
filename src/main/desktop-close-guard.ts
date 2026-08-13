@@ -7,5 +7,5 @@ export async function resolveDesktopClose(
 ): Promise<"allow" | "prevent"> {
   if (state === "clear") return "allow";
   if (state === "write_pending") return "prevent";
-  return await confirmDiscard() ? "allow" : "prevent";
+  return (await confirmDiscard()) ? "allow" : "prevent";
 }

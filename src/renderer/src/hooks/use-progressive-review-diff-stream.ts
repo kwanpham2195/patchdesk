@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { CodeViewDiffItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
@@ -67,27 +73,24 @@ export function useProgressiveReviewDiffStream<T = undefined>({
     [items],
   );
 
-  const appendVisibleBatch = useCallback(
-    (): void => {
-      if (isAppendingBatch.current) return;
-      const start = nextItemIndex.current;
-      if (start >= items.length) return;
-      const appendedPaths = items
-        .slice(start, Math.min(start + VIRTUAL_FILE_BATCH_SIZE, items.length))
-        .map((item) => item.id);
-      const generation = streamGeneration.current;
-      isAppendingBatch.current = true;
-      void hydrateFiles(appendedPaths).finally(() => {
-        if (generation !== streamGeneration.current) {
-          isAppendingBatch.current = false;
-          return;
-        }
-        appendItemsThrough(start + VIRTUAL_FILE_BATCH_SIZE - 1);
+  const appendVisibleBatch = useCallback((): void => {
+    if (isAppendingBatch.current) return;
+    const start = nextItemIndex.current;
+    if (start >= items.length) return;
+    const appendedPaths = items
+      .slice(start, Math.min(start + VIRTUAL_FILE_BATCH_SIZE, items.length))
+      .map((item) => item.id);
+    const generation = streamGeneration.current;
+    isAppendingBatch.current = true;
+    void hydrateFiles(appendedPaths).finally(() => {
+      if (generation !== streamGeneration.current) {
         isAppendingBatch.current = false;
-      });
-    },
-    [appendItemsThrough, hydrateFiles, items],
-  );
+        return;
+      }
+      appendItemsThrough(start + VIRTUAL_FILE_BATCH_SIZE - 1);
+      isAppendingBatch.current = false;
+    });
+  }, [appendItemsThrough, hydrateFiles, items]);
 
   const handleViewerScroll = useCallback(
     (scrollTop: number, codeView: PierreCodeView<T>): void => {

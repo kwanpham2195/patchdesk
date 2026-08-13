@@ -33,10 +33,18 @@ const walkthrough = {
   citationVersion: 2,
   title: "Walkthrough",
   focus: "The patch adds a bounded review path.",
-  chapters: [{
-    title: "Review",
-    sections: [{ title: "One change", prose: "The child accepts one result.", hunkIds: ["h1"] }],
-  }],
+  chapters: [
+    {
+      title: "Review",
+      sections: [
+        {
+          title: "One change",
+          prose: "The child accepts one result.",
+          hunkIds: ["h1"],
+        },
+      ],
+    },
+  ],
 };
 const analysis = {
   changeSummary: "One change.",
@@ -53,7 +61,13 @@ describe("generated Pi catalog", () => {
     expect(first).toEqual(generateModelCatalog());
     expect(first.piVersion).toBe("0.84.1");
     expect(first.catalog).toHaveLength(32);
-    expect(first.catalog.flatMap((entry) => entry.models).every((model) => Object.keys(model).sort().join(",") === "id,name,provider")).toBe(true);
+    expect(
+      first.catalog
+        .flatMap((entry) => entry.models)
+        .every(
+          (model) => Object.keys(model).sort().join(",") === "id,name,provider",
+        ),
+    ).toBe(true);
     expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
   });
 });
@@ -62,7 +76,13 @@ function walkthroughInvocation() {
   return {
     type: "walkthrough" as const,
     input: {
-      profileId: "profile", sessionId: "session", contextPath: "/immutable/context", patchPath: "/immutable/patch", model: "faux/test", reasoning: "low" as const, prompt: "Submit one result.",
+      profileId: "profile",
+      sessionId: "session",
+      contextPath: "/immutable/context",
+      patchPath: "/immutable/patch",
+      model: "faux/test",
+      reasoning: "low" as const,
+      prompt: "Submit one result.",
     },
   };
 }
@@ -71,7 +91,15 @@ function analysisInvocation() {
   return {
     type: "analysis" as const,
     input: {
-      profileId: "profile", sessionId: "session", contextPath: "/immutable/context", reviewInputPath: "/immutable/input", patchPath: "/immutable/patch", worktreePath: "/immutable/worktree", model: "faux/test", reasoning: "low" as const, prompt: "Inspect then submit one result.",
+      profileId: "profile",
+      sessionId: "session",
+      contextPath: "/immutable/context",
+      reviewInputPath: "/immutable/input",
+      patchPath: "/immutable/patch",
+      worktreePath: "/immutable/worktree",
+      model: "faux/test",
+      reasoning: "low" as const,
+      prompt: "Inspect then submit one result.",
     },
   };
 }
@@ -87,89 +115,186 @@ const canonicalSessionId =
 
 describe("Flue 2 one-shot insight runtime", () => {
   it("uses start/init/dispatch/read and returns one strict data value without parsing prose", async () => {
-    const provider = fake([fauxAssistantMessage([fauxText("untrusted prose"), fauxToolCall("submit_patchdesk_result", walkthrough)], { stopReason: "toolUse" })]);
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [provider.provider] })).resolves.toEqual({ ok: true, value: walkthrough });
+    const provider = fake([
+      fauxAssistantMessage(
+        [
+          fauxText("untrusted prose"),
+          fauxToolCall("submit_patchdesk_result", walkthrough),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+      }),
+    ).resolves.toEqual({ ok: true, value: walkthrough });
     expect(provider.state.callCount).toBe(1);
   });
 
   it("rejects missing and extra data rather than treating assistant text as authority", async () => {
-    const provider = fake([fauxAssistantMessage(fauxText(JSON.stringify(walkthrough)))]);
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [provider.provider] })).resolves.toEqual({ ok: false, reason: "invalid_result" });
+    const provider = fake([
+      fauxAssistantMessage(fauxText(JSON.stringify(walkthrough))),
+    ]);
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "invalid_result" });
     const malformed = fake([
-      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", { ...walkthrough, extra: true }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(
+        fauxToolCall("submit_patchdesk_result", {
+          ...walkthrough,
+          extra: true,
+        }),
+        { stopReason: "toolUse" },
+      ),
       fauxAssistantMessage(fauxText("Unable to submit a valid result.")),
     ]);
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [malformed.provider] })).resolves.toEqual({ ok: false, reason: "invalid_result" });
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [malformed.provider],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "invalid_result" });
   });
 
   it("resolves the trusted skill from the direct development bundle", () => {
     expect(resolvePatchdeskReviewSkillPath()).toBe(
-      new URL("../../../src/skills/patchdesk-code-review/SKILL.md", import.meta.url).pathname,
+      new URL(
+        "../../../src/skills/patchdesk-code-review/SKILL.md",
+        import.meta.url,
+      ).pathname,
     );
   });
 
   it("rejects duplicate submission attempts after recording only the first data part", async () => {
-    const provider = fake([fauxAssistantMessage([
-      fauxToolCall("submit_patchdesk_result", walkthrough),
-      fauxToolCall("submit_patchdesk_result", walkthrough),
-    ], { stopReason: "toolUse" })]);
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [provider.provider] })).resolves.toEqual({ ok: false, reason: "invalid_result" });
+    const provider = fake([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", walkthrough),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "invalid_result" });
   });
 
   it("gives Analysis exactly four bounded inspectors plus submission and preserves one shared budget", async () => {
-    const tools = createAnalysisAgent(analysisInvocation().input, {
-      async listChangedFiles() { return { files: ["src/a.ts"] }; },
-      async searchFiles() { return { files: [] }; },
-      async readFileRange() { return { content: "const a = 1;" }; },
-      async gitShow() { return { content: "commit" }; },
-    }, {
-      name: "patchdesk-code-review",
-      description: "Review",
-      instructions: "Review safely.",
-    });
+    const tools = createAnalysisAgent(
+      analysisInvocation().input,
+      {
+        async listChangedFiles() {
+          return { files: ["src/a.ts"] };
+        },
+        async searchFiles() {
+          return { files: [] };
+        },
+        async readFileRange() {
+          return { content: "const a = 1;" };
+        },
+        async gitShow() {
+          return { content: "commit" };
+        },
+      },
+      {
+        name: "patchdesk-code-review",
+        description: "Review",
+        instructions: "Review safely.",
+      },
+    );
     expect(tools.agent).toBeTypeOf("function");
     expect(modelReviewResultSchema).toBeDefined();
     expect(walkthroughResultSchema).toBeDefined();
     const provider = fake([
-      fauxAssistantMessage(fauxToolCall("list_changed_files", {}), { stopReason: "toolUse" }),
-      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", analysis), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("list_changed_files", {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", analysis), {
+        stopReason: "toolUse",
+      }),
     ]);
-    await expect(runPatchdeskChild(analysisInvocation(), {
-      providers: [provider.provider],
-      inspectors: {
-        async listChangedFiles() { return { files: ["src/a.ts"] }; },
-        async searchFiles() { return { files: [] }; },
-        async readFileRange() { return { content: "const a = 1;" }; },
-        async gitShow() { return { content: "commit" }; },
-      },
-      skillPath: new URL("../../../src/skills/patchdesk-code-review/SKILL.md", import.meta.url).pathname,
-    })).resolves.toEqual({ ok: true, value: analysis });
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: {
+          async listChangedFiles() {
+            return { files: ["src/a.ts"] };
+          },
+          async searchFiles() {
+            return { files: [] };
+          },
+          async readFileRange() {
+            return { content: "const a = 1;" };
+          },
+          async gitShow() {
+            return { content: "commit" };
+          },
+        },
+        skillPath: new URL(
+          "../../../src/skills/patchdesk-code-review/SKILL.md",
+          import.meta.url,
+        ).pathname,
+      }),
+    ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(2);
   });
 
   it("settles a submission plus inspector batch in one model turn and retains only the submitted result", async () => {
-    const provider = fake([fauxAssistantMessage([
-      fauxToolCall("submit_patchdesk_result", analysis),
-      fauxToolCall("list_changed_files", {}),
-    ], { stopReason: "toolUse" })]);
-    await expect(runPatchdeskChild(analysisInvocation(), {
-      providers: [provider.provider],
-      inspectors: {
-        async listChangedFiles() { return { files: ["src/a.ts"] }; },
-        async searchFiles() { return { files: [] }; },
-        async readFileRange() { return { content: "" }; },
-        async gitShow() { return { content: "" }; },
-      },
-      skillPath: new URL("../../../src/skills/patchdesk-code-review/SKILL.md", import.meta.url).pathname,
-    })).resolves.toEqual({ ok: true, value: analysis });
+    const provider = fake([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("submit_patchdesk_result", analysis),
+          fauxToolCall("list_changed_files", {}),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: {
+          async listChangedFiles() {
+            return { files: ["src/a.ts"] };
+          },
+          async searchFiles() {
+            return { files: [] };
+          },
+          async readFileRange() {
+            return { content: "" };
+          },
+          async gitShow() {
+            return { content: "" };
+          },
+        },
+        skillPath: new URL(
+          "../../../src/skills/patchdesk-code-review/SKILL.md",
+          import.meta.url,
+        ).pathname,
+      }),
+    ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(1);
   });
 
   it("requests a durable abort through the agent handle when the caller cancels", async () => {
-    const provider = fake([fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", walkthrough), { stopReason: "toolUse" })]);
+    const provider = fake([
+      fauxAssistantMessage(
+        fauxToolCall("submit_patchdesk_result", walkthrough),
+        { stopReason: "toolUse" },
+      ),
+    ]);
     const controller = new AbortController();
     controller.abort();
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [provider.provider], signal: controller.signal })).resolves.toEqual({ ok: false, reason: "cancelled" });
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "cancelled" });
     expect(provider.state.callCount).toBe(0);
   });
 
@@ -236,10 +361,18 @@ describe("Flue 2 one-shot insight runtime", () => {
       runPatchdeskChild(analysisInvocation(), {
         providers: [analysisProvider.provider],
         inspectors: {
-          async listChangedFiles() { return { files: [] }; },
-          async searchFiles() { return { files: [] }; },
-          async readFileRange() { return { denied: true }; },
-          async gitShow() { return { denied: true }; },
+          async listChangedFiles() {
+            return { files: [] };
+          },
+          async searchFiles() {
+            return { files: [] };
+          },
+          async readFileRange() {
+            return { denied: true };
+          },
+          async gitShow() {
+            return { denied: true };
+          },
         },
         skillPath: new URL(
           "../../../src/skills/patchdesk-code-review/SKILL.md",
@@ -273,7 +406,9 @@ describe("Flue 2 one-shot insight runtime", () => {
       worktreePath: "/immutable/worktree",
       changedFiles: ["src/a.ts"],
       fileSnapshots: { "src/a.ts": "export const a = 1;\n" },
-      async gitShow() { return ""; },
+      async gitShow() {
+        return "";
+      },
     });
     const observed: Array<
       { readonly files: Array<string> } | { readonly denied: true }
@@ -281,27 +416,35 @@ describe("Flue 2 one-shot insight runtime", () => {
     const inspectors = {
       async listChangedFiles() {
         const result = await inspector.listChangedFiles();
-        const output = result._tag === "ok"
-          ? { files: [...result.value] }
-          : { denied: true as const };
+        const output =
+          result._tag === "ok"
+            ? { files: [...result.value] }
+            : { denied: true as const };
         observed.push(output);
         return output;
       },
-      async searchFiles() { return { files: [] }; },
-      async readFileRange() { return { denied: true as const }; },
-      async gitShow() { return { denied: true as const }; },
+      async searchFiles() {
+        return { files: [] };
+      },
+      async readFileRange() {
+        return { denied: true as const };
+      },
+      async gitShow() {
+        return { denied: true as const };
+      },
     };
     const firstBatch = Array.from({ length: 4 }, () =>
-      fauxToolCall("list_changed_files", {}));
+      fauxToolCall("list_changed_files", {}),
+    );
     const secondBatch = Array.from({ length: 5 }, () =>
-      fauxToolCall("list_changed_files", {}));
+      fauxToolCall("list_changed_files", {}),
+    );
     const provider = fake([
       fauxAssistantMessage(firstBatch, { stopReason: "toolUse" }),
       fauxAssistantMessage(secondBatch, { stopReason: "toolUse" }),
-      fauxAssistantMessage(
-        fauxToolCall("submit_patchdesk_result", analysis),
-        { stopReason: "toolUse" },
-      ),
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", analysis), {
+        stopReason: "toolUse",
+      }),
     ]);
     await expect(
       runPatchdeskChild(analysisInvocation(), {
@@ -349,10 +492,13 @@ describe("Flue 2 one-shot insight runtime", () => {
       canonicalizeProductionInvocation({ type: "analysis", input }, paths),
     ).toMatchObject({ type: "analysis", input });
     expect(
-      canonicalizeProductionInvocation({
-        type: "analysis",
-        input: { ...input, patchPath: "/tmp/foreign.diff" },
-      }, paths),
+      canonicalizeProductionInvocation(
+        {
+          type: "analysis",
+          input: { ...input, patchPath: "/tmp/foreign.diff" },
+        },
+        paths,
+      ),
     ).toBeUndefined();
   });
 
@@ -372,10 +518,18 @@ describe("Flue 2 one-shot insight runtime", () => {
     const created = createAnalysisAgent(
       analysisInvocation().input,
       {
-        async listChangedFiles() { return { files: [] }; },
-        async searchFiles() { return { files: [] }; },
-        async readFileRange() { return { denied: true }; },
-        async gitShow() { return { denied: true }; },
+        async listChangedFiles() {
+          return { files: [] };
+        },
+        async searchFiles() {
+          return { files: [] };
+        },
+        async readFileRange() {
+          return { denied: true };
+        },
+        async gitShow() {
+          return { denied: true };
+        },
       },
       {
         name: "patchdesk-code-review",

@@ -7,306 +7,306 @@ export type PierreThemeOption = {
 
 export const PIERRE_LIGHT_THEMES = [
   {
-    "id": "pierre-light",
-    "label": "Pierre Light"
+    id: "pierre-light",
+    label: "Pierre Light",
   },
   {
-    "id": "pierre-light-soft",
-    "label": "Pierre Light Soft"
+    id: "pierre-light-soft",
+    label: "Pierre Light Soft",
   },
   {
-    "id": "pierre-light-vibrant",
-    "label": "Pierre Light Vibrant"
+    id: "pierre-light-vibrant",
+    label: "Pierre Light Vibrant",
   },
   {
-    "id": "pierre-light-protanopia-deuteranopia",
-    "label": "Pierre Light Protanopia & Deuteranopia"
+    id: "pierre-light-protanopia-deuteranopia",
+    label: "Pierre Light Protanopia & Deuteranopia",
   },
   {
-    "id": "pierre-light-tritanopia",
-    "label": "Pierre Light Tritanopia"
+    id: "pierre-light-tritanopia",
+    label: "Pierre Light Tritanopia",
   },
   {
-    "id": "ayu-light",
-    "label": "ayu light"
+    id: "ayu-light",
+    label: "ayu light",
   },
   {
-    "id": "catppuccin-latte",
-    "label": "catppuccin latte"
+    id: "catppuccin-latte",
+    label: "catppuccin latte",
   },
   {
-    "id": "everforest-light",
-    "label": "everforest light"
+    id: "everforest-light",
+    label: "everforest light",
   },
   {
-    "id": "github-light",
-    "label": "github light"
+    id: "github-light",
+    label: "github light",
   },
   {
-    "id": "github-light-default",
-    "label": "github light default"
+    id: "github-light-default",
+    label: "github light default",
   },
   {
-    "id": "github-light-high-contrast",
-    "label": "github light high contrast"
+    id: "github-light-high-contrast",
+    label: "github light high contrast",
   },
   {
-    "id": "gruvbox-light-hard",
-    "label": "gruvbox light hard"
+    id: "gruvbox-light-hard",
+    label: "gruvbox light hard",
   },
   {
-    "id": "gruvbox-light-medium",
-    "label": "gruvbox light medium"
+    id: "gruvbox-light-medium",
+    label: "gruvbox light medium",
   },
   {
-    "id": "gruvbox-light-soft",
-    "label": "gruvbox light soft"
+    id: "gruvbox-light-soft",
+    label: "gruvbox light soft",
   },
   {
-    "id": "horizon-bright",
-    "label": "horizon bright"
+    id: "horizon-bright",
+    label: "horizon bright",
   },
   {
-    "id": "kanagawa-lotus",
-    "label": "kanagawa lotus"
+    id: "kanagawa-lotus",
+    label: "kanagawa lotus",
   },
   {
-    "id": "light-plus",
-    "label": "light plus"
+    id: "light-plus",
+    label: "light plus",
   },
   {
-    "id": "material-theme-lighter",
-    "label": "material theme lighter"
+    id: "material-theme-lighter",
+    label: "material theme lighter",
   },
   {
-    "id": "min-light",
-    "label": "min light"
+    id: "min-light",
+    label: "min light",
   },
   {
-    "id": "night-owl-light",
-    "label": "night owl light"
+    id: "night-owl-light",
+    label: "night owl light",
   },
   {
-    "id": "one-light",
-    "label": "one light"
+    id: "one-light",
+    label: "one light",
   },
   {
-    "id": "rose-pine-dawn",
-    "label": "rose pine dawn"
+    id: "rose-pine-dawn",
+    label: "rose pine dawn",
   },
   {
-    "id": "slack-ochin",
-    "label": "slack ochin"
+    id: "slack-ochin",
+    label: "slack ochin",
   },
   {
-    "id": "snazzy-light",
-    "label": "snazzy light"
+    id: "snazzy-light",
+    label: "snazzy light",
   },
   {
-    "id": "solarized-light",
-    "label": "solarized light"
+    id: "solarized-light",
+    label: "solarized light",
   },
   {
-    "id": "vitesse-light",
-    "label": "vitesse light"
-  }
+    id: "vitesse-light",
+    label: "vitesse light",
+  },
 ] as const satisfies ReadonlyArray<PierreThemeOption>;
 
 export const PIERRE_DARK_THEMES = [
   {
-    "id": "pierre-dark",
-    "label": "Pierre Dark"
+    id: "pierre-dark",
+    label: "Pierre Dark",
   },
   {
-    "id": "pierre-dark-soft",
-    "label": "Pierre Dark Soft"
+    id: "pierre-dark-soft",
+    label: "Pierre Dark Soft",
   },
   {
-    "id": "pierre-dark-vibrant",
-    "label": "Pierre Dark Vibrant"
+    id: "pierre-dark-vibrant",
+    label: "Pierre Dark Vibrant",
   },
   {
-    "id": "pierre-dark-protanopia-deuteranopia",
-    "label": "Pierre Dark Protanopia & Deuteranopia"
+    id: "pierre-dark-protanopia-deuteranopia",
+    label: "Pierre Dark Protanopia & Deuteranopia",
   },
   {
-    "id": "pierre-dark-tritanopia",
-    "label": "Pierre Dark Tritanopia"
+    id: "pierre-dark-tritanopia",
+    label: "Pierre Dark Tritanopia",
   },
   {
-    "id": "andromeeda",
-    "label": "andromeeda"
+    id: "andromeeda",
+    label: "andromeeda",
   },
   {
-    "id": "aurora-x",
-    "label": "aurora x"
+    id: "aurora-x",
+    label: "aurora x",
   },
   {
-    "id": "ayu-dark",
-    "label": "ayu dark"
+    id: "ayu-dark",
+    label: "ayu dark",
   },
   {
-    "id": "ayu-mirage",
-    "label": "ayu mirage"
+    id: "ayu-mirage",
+    label: "ayu mirage",
   },
   {
-    "id": "catppuccin-frappe",
-    "label": "catppuccin frappe"
+    id: "catppuccin-frappe",
+    label: "catppuccin frappe",
   },
   {
-    "id": "catppuccin-macchiato",
-    "label": "catppuccin macchiato"
+    id: "catppuccin-macchiato",
+    label: "catppuccin macchiato",
   },
   {
-    "id": "catppuccin-mocha",
-    "label": "catppuccin mocha"
+    id: "catppuccin-mocha",
+    label: "catppuccin mocha",
   },
   {
-    "id": "dark-plus",
-    "label": "dark plus"
+    id: "dark-plus",
+    label: "dark plus",
   },
   {
-    "id": "dracula",
-    "label": "dracula"
+    id: "dracula",
+    label: "dracula",
   },
   {
-    "id": "dracula-soft",
-    "label": "dracula soft"
+    id: "dracula-soft",
+    label: "dracula soft",
   },
   {
-    "id": "everforest-dark",
-    "label": "everforest dark"
+    id: "everforest-dark",
+    label: "everforest dark",
   },
   {
-    "id": "github-dark",
-    "label": "github dark"
+    id: "github-dark",
+    label: "github dark",
   },
   {
-    "id": "github-dark-default",
-    "label": "github dark default"
+    id: "github-dark-default",
+    label: "github dark default",
   },
   {
-    "id": "github-dark-dimmed",
-    "label": "github dark dimmed"
+    id: "github-dark-dimmed",
+    label: "github dark dimmed",
   },
   {
-    "id": "github-dark-high-contrast",
-    "label": "github dark high contrast"
+    id: "github-dark-high-contrast",
+    label: "github dark high contrast",
   },
   {
-    "id": "gruvbox-dark-hard",
-    "label": "gruvbox dark hard"
+    id: "gruvbox-dark-hard",
+    label: "gruvbox dark hard",
   },
   {
-    "id": "gruvbox-dark-medium",
-    "label": "gruvbox dark medium"
+    id: "gruvbox-dark-medium",
+    label: "gruvbox dark medium",
   },
   {
-    "id": "gruvbox-dark-soft",
-    "label": "gruvbox dark soft"
+    id: "gruvbox-dark-soft",
+    label: "gruvbox dark soft",
   },
   {
-    "id": "horizon",
-    "label": "horizon"
+    id: "horizon",
+    label: "horizon",
   },
   {
-    "id": "houston",
-    "label": "houston"
+    id: "houston",
+    label: "houston",
   },
   {
-    "id": "kanagawa-dragon",
-    "label": "kanagawa dragon"
+    id: "kanagawa-dragon",
+    label: "kanagawa dragon",
   },
   {
-    "id": "kanagawa-wave",
-    "label": "kanagawa wave"
+    id: "kanagawa-wave",
+    label: "kanagawa wave",
   },
   {
-    "id": "laserwave",
-    "label": "laserwave"
+    id: "laserwave",
+    label: "laserwave",
   },
   {
-    "id": "material-theme",
-    "label": "material theme"
+    id: "material-theme",
+    label: "material theme",
   },
   {
-    "id": "material-theme-darker",
-    "label": "material theme darker"
+    id: "material-theme-darker",
+    label: "material theme darker",
   },
   {
-    "id": "material-theme-ocean",
-    "label": "material theme ocean"
+    id: "material-theme-ocean",
+    label: "material theme ocean",
   },
   {
-    "id": "material-theme-palenight",
-    "label": "material theme palenight"
+    id: "material-theme-palenight",
+    label: "material theme palenight",
   },
   {
-    "id": "min-dark",
-    "label": "min dark"
+    id: "min-dark",
+    label: "min dark",
   },
   {
-    "id": "monokai",
-    "label": "monokai"
+    id: "monokai",
+    label: "monokai",
   },
   {
-    "id": "night-owl",
-    "label": "night owl"
+    id: "night-owl",
+    label: "night owl",
   },
   {
-    "id": "nord",
-    "label": "nord"
+    id: "nord",
+    label: "nord",
   },
   {
-    "id": "one-dark-pro",
-    "label": "one dark pro"
+    id: "one-dark-pro",
+    label: "one dark pro",
   },
   {
-    "id": "plastic",
-    "label": "plastic"
+    id: "plastic",
+    label: "plastic",
   },
   {
-    "id": "poimandres",
-    "label": "poimandres"
+    id: "poimandres",
+    label: "poimandres",
   },
   {
-    "id": "red",
-    "label": "red"
+    id: "red",
+    label: "red",
   },
   {
-    "id": "rose-pine",
-    "label": "rose pine"
+    id: "rose-pine",
+    label: "rose pine",
   },
   {
-    "id": "rose-pine-moon",
-    "label": "rose pine moon"
+    id: "rose-pine-moon",
+    label: "rose pine moon",
   },
   {
-    "id": "slack-dark",
-    "label": "slack dark"
+    id: "slack-dark",
+    label: "slack dark",
   },
   {
-    "id": "solarized-dark",
-    "label": "solarized dark"
+    id: "solarized-dark",
+    label: "solarized dark",
   },
   {
-    "id": "synthwave-84",
-    "label": "synthwave 84"
+    id: "synthwave-84",
+    label: "synthwave 84",
   },
   {
-    "id": "tokyo-night",
-    "label": "tokyo night"
+    id: "tokyo-night",
+    label: "tokyo night",
   },
   {
-    "id": "vesper",
-    "label": "vesper"
+    id: "vesper",
+    label: "vesper",
   },
   {
-    "id": "vitesse-black",
-    "label": "vitesse black"
+    id: "vitesse-black",
+    label: "vitesse black",
   },
   {
-    "id": "vitesse-dark",
-    "label": "vitesse dark"
-  }
+    id: "vitesse-dark",
+    label: "vitesse dark",
+  },
 ] as const satisfies ReadonlyArray<PierreThemeOption>;

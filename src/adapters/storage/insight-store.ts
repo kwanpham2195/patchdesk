@@ -303,9 +303,11 @@ function parseCommonRecord(input: {
   readonly nextToken: number;
   readonly retained?: unknown | undefined;
   readonly dismissals?:
-    ReadonlyArray<v.InferOutput<typeof dismissalSchema>> | undefined;
+    | ReadonlyArray<v.InferOutput<typeof dismissalSchema>>
+    | undefined;
   readonly walkthroughProgress?:
-    v.InferOutput<typeof walkthroughProgressSchema> | undefined;
+    | v.InferOutput<typeof walkthroughProgressSchema>
+    | undefined;
   readonly replacementFailure?: v.InferOutput<typeof failureSchema> | undefined;
   readonly updatedAt: string;
 }): Result<

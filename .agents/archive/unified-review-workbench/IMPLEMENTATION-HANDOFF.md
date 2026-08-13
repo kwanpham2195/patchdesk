@@ -105,7 +105,7 @@ boundary and whenever implementation changes course:
 
 - update `Progress` with a timestamp and accurate remaining work;
 - add unexpected source behavior or failed assumptions to `Surprises &
-  Discoveries` with evidence;
+Discoveries` with evidence;
 - record implementation-local choices in `Decision Log`;
 - add the milestone result and remaining gaps to `Outcomes & Retrospective`;
 - record focused commands, test counts, commit or uncommitted file state, and
@@ -148,12 +148,12 @@ Complete the repair ExecPlan in this order:
    lifecycle documents.
 10. Complete Finding disposition/focus actions and commit statistics.
 11. Wire the existing focused Needs-attention repair commands and all-items
-   publication gate.
+    publication gate.
 12. Reorder PR Overview and connect the Review-owned confirmed SHA-bound merge.
 13. Implement Ready, Publishing, Confirmed, and Needs confirmation publication
-   projections, including a durable successor draft after confirmation.
+    projections, including a durable successor draft after confirmation.
 14. Complete accessibility, responsive browser acceptance, cleanup, and
-   development plus packaged Electron proof.
+    development plus packaged Electron proof.
 
 Each step starts with its specified failing tests and ends with its focused
 verification command. Do not batch verification at the end. Do not weaken

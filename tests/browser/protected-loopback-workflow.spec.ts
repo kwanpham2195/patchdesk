@@ -72,8 +72,12 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByLabel("Label").fill("Enterprise");
   await page.getByLabel("GitHub host").fill("github.example.test");
   await page.getByLabel("GitHub account").fill("enterprise-user");
-  await page.getByRole("textbox", { name: "workspace root 1", exact: true }).fill("/workspace/enterprise");
-  await page.getByRole("textbox", { name: "owner filter 1", exact: true }).fill("enterprise");
+  await page
+    .getByRole("textbox", { name: "workspace root 1", exact: true })
+    .fill("/workspace/enterprise");
+  await page
+    .getByRole("textbox", { name: "owner filter 1", exact: true })
+    .fill("enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByRole("combobox", { name: "Active profile" }).last().click();
   const enterpriseOption = page.getByRole("option", { name: "Enterprise" });
@@ -81,7 +85,9 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await enterpriseOption.click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page.getByRole("combobox", { name: "Active profile" }).last()).toContainText("Enterprise updated");
+  await expect(
+    page.getByRole("combobox", { name: "Active profile" }).last(),
+  ).toContainText("Enterprise updated");
 
   const settingsRoute = page.url();
   await page.getByRole("tab", { name: "General" }).click();
@@ -91,7 +97,9 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByLabel("Label").fill("Enterprise dirty");
   await page.getByRole("button", { name: "Close" }).click();
-  const dirtyDialog = page.getByRole("alertdialog", { name: "Discard profile changes?" });
+  const dirtyDialog = page.getByRole("alertdialog", {
+    name: "Discard profile changes?",
+  });
   await expect(dirtyDialog).toBeVisible();
   await dirtyDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dirtyDialog).toBeHidden();
@@ -102,20 +110,32 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("tab", { name: "Workspace" }).click();
   await page.getByRole("button", { name: "Discover" }).click();
   await expect(page.getByText("acme/discovered")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "acme/discovered /workspace/discovered" })).not.toBeChecked();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "acme/discovered /workspace/discovered",
+    }),
+  ).not.toBeChecked();
 
   await page.getByRole("tab", { name: "Data & recovery" }).click();
   await page.getByRole("button", { name: "Clear cache" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Clear cache?" })).toBeVisible();
-  await page.getByRole("alertdialog", { name: "Clear cache?" }).getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Clear cache?" })).toBeHidden();
+  await expect(
+    page.getByRole("alertdialog", { name: "Clear cache?" }),
+  ).toBeVisible();
+  await page
+    .getByRole("alertdialog", { name: "Clear cache?" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(
+    page.getByRole("alertdialog", { name: "Clear cache?" }),
+  ).toBeHidden();
   await page.getByRole("button", { name: "Clear local review data" }).click();
-  const clearLocalDialog = page.getByRole("alertdialog", { name: "Clear local review data?" });
+  const clearLocalDialog = page.getByRole("alertdialog", {
+    name: "Clear local review data?",
+  });
   await expect(clearLocalDialog).toBeVisible();
   await clearLocalDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(clearLocalDialog).toBeHidden();
   await page.getByRole("button", { name: "Close" }).click();
-
 });
 
 async function serveRenderer(): Promise<Server> {

@@ -20,14 +20,54 @@ describe("review checks", () => {
         checks={{
           overall: "failing",
           checks: [
-            { name: "lint", required: true, status: "completed", conclusion: "failure" },
-            { name: "coverage", required: "unknown", status: "completed", conclusion: "success" },
-            { name: "coverage", required: "unknown", status: "completed", conclusion: "success" },
-            { name: "api", required: false, status: "completed", conclusion: "success" },
-            { name: "build", required: false, status: "completed", conclusion: "success" },
-            { name: "unit", required: false, status: "completed", conclusion: "success" },
-            { name: "e2e", required: false, status: "completed", conclusion: "success" },
-            { name: "package", required: false, status: "completed", conclusion: "success" },
+            {
+              name: "lint",
+              required: true,
+              status: "completed",
+              conclusion: "failure",
+            },
+            {
+              name: "coverage",
+              required: "unknown",
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "coverage",
+              required: "unknown",
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "api",
+              required: false,
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "build",
+              required: false,
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "unit",
+              required: false,
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "e2e",
+              required: false,
+              status: "completed",
+              conclusion: "success",
+            },
+            {
+              name: "package",
+              required: false,
+              status: "completed",
+              conclusion: "success",
+            },
           ],
         }}
         freshness="fresh"
@@ -37,8 +77,12 @@ describe("review checks", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toContain("lint");
-    expect(screen.getByRole("button", { name: "Show 6 passing checks" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Show 6 passing checks" }));
+    expect(
+      screen.getByRole("button", { name: "Show 6 passing checks" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Show 6 passing checks" }),
+    );
     expect(screen.getAllByRole("listitem")).toHaveLength(7);
     expect(screen.getByText("×2")).toBeTruthy();
     expect(screen.getAllByText("Passed")).toHaveLength(6);
@@ -50,16 +94,29 @@ describe("review checks", () => {
       <ReviewChecks
         checks={{
           overall: "passing",
-          checks: [{ name: "Sonar", required: "unknown", status: "completed", conclusion: "success" }],
+          checks: [
+            {
+              name: "Sonar",
+              required: "unknown",
+              status: "completed",
+              conclusion: "success",
+            },
+          ],
         }}
       />,
     );
 
-    expect(screen.getByText("No requirement metadata", { selector: ".sr-only" })).toBeTruthy();
+    expect(
+      screen.getByText("No requirement metadata", { selector: ".sr-only" }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Collapse checks" }));
-    expect(screen.queryByRole("list", { name: "Pull request checks" })).toBeNull();
+    expect(
+      screen.queryByRole("list", { name: "Pull request checks" }),
+    ).toBeNull();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("list", { name: "Pull request checks" })).toBeTruthy();
+    expect(
+      screen.getByRole("list", { name: "Pull request checks" }),
+    ).toBeTruthy();
   });
 
   it("maps every aggregate outcome through the shared label rule", () => {
@@ -98,7 +155,8 @@ describe("review checks", () => {
     const parsed = parsePullRequestInput(
       "https://github.com/centraldigital/patchdesk/pull/42",
     );
-    if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
+    if (parsed._tag === "err")
+      throw new Error("Fixture pull request is invalid");
     const openExternalHttps = vi.fn(async () => true);
     Object.defineProperty(window, "patchdesk", {
       configurable: true,
@@ -110,19 +168,23 @@ describe("review checks", () => {
         pullRequest={parsed.value}
         checks={{
           overall: "passing",
-          checks: [{
-            name: "unit",
-            required: true,
-            status: "completed",
-            conclusion: "success",
-            url: "/centraldigital/patchdesk/actions/runs/1",
-          }],
+          checks: [
+            {
+              name: "unit",
+              required: true,
+              status: "completed",
+              conclusion: "success",
+              url: "/centraldigital/patchdesk/actions/runs/1",
+            },
+          ],
         }}
       />,
     );
 
     expect(screen.queryByRole("link")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Open unit in GitHub" }));
+    await user.click(
+      screen.getByRole("button", { name: "Open unit in GitHub" }),
+    );
     expect(openExternalHttps).toHaveBeenCalledWith(
       "https://github.com/centraldigital/patchdesk/actions/runs/1",
     );

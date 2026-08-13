@@ -12,7 +12,13 @@ export function createDesktopMenuTemplate(
     submenu: [
       { role: "about" },
       { type: "separator" },
-      { label: "Settings…", accelerator: "CommandOrControl+,", ...(actions.openSettings === undefined ? {} : { click: actions.openSettings }) },
+      {
+        label: "Settings…",
+        accelerator: "CommandOrControl+,",
+        ...(actions.openSettings === undefined
+          ? {}
+          : { click: actions.openSettings }),
+      },
       { type: "separator" },
       { role: "services" },
       { type: "separator" },
@@ -26,7 +32,13 @@ export function createDesktopMenuTemplate(
   const fileMenu: MenuItemConstructorOptions = {
     label: "File",
     submenu: [
-      { label: "Settings…", accelerator: "CommandOrControl+,", ...(actions.openSettings === undefined ? {} : { click: actions.openSettings }) },
+      {
+        label: "Settings…",
+        accelerator: "CommandOrControl+,",
+        ...(actions.openSettings === undefined
+          ? {}
+          : { click: actions.openSettings }),
+      },
       { type: "separator" },
       { role: "close" },
       { type: "separator" },

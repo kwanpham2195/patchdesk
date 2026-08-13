@@ -94,11 +94,24 @@ const findingSchema = {
   suggestedComment: v.optional(v.pipe(v.string(), v.minLength(1))),
   confidence: v.picklist(["high", "medium", "low"]),
   category: v.optional(
-    v.picklist(["bug", "security", "test", "performance", "maintainability", "docs"]),
+    v.picklist([
+      "bug",
+      "security",
+      "test",
+      "performance",
+      "maintainability",
+      "docs",
+    ]),
   ),
-  affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
-  whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(900))),
-  suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
+  affectedScenario: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(500)),
+  ),
+  whyItMatters: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(900)),
+  ),
+  suggestedChange: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(500)),
+  ),
 } as const;
 
 const calloutSchema = v.strictObject({
@@ -123,11 +136,22 @@ export const modelReviewResultSchema = v.strictObject({
   verdict: v.picklist(["approve", "comment", "request_changes"]),
   summary: v.pipe(v.string(), v.minLength(1)),
   findings: v.pipe(v.array(v.strictObject(findingSchema)), v.maxLength(50)),
-  validationPlan: v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))), v.maxLength(20)),
-  assumptions: v.pipe(v.array(v.pipe(v.string(), v.maxLength(500))), v.maxLength(20)),
+  validationPlan: v.pipe(
+    v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
+    v.maxLength(20),
+  ),
+  assumptions: v.pipe(
+    v.array(v.pipe(v.string(), v.maxLength(500))),
+    v.maxLength(20),
+  ),
   coverage: v.optional(v.picklist(["high", "medium", "low"])),
   overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
-  unresolvedItems: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))), v.maxLength(10))),
+  unresolvedItems: v.optional(
+    v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))),
+      v.maxLength(10),
+    ),
+  ),
   callouts: v.optional(v.pipe(v.array(calloutSchema), v.maxLength(12))),
 });
 
@@ -142,11 +166,22 @@ export const reviewResultSchema = v.strictObject({
       mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
     }),
   ),
-  validationPlan: v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))), v.maxLength(20)),
-  assumptions: v.pipe(v.array(v.pipe(v.string(), v.maxLength(500))), v.maxLength(20)),
+  validationPlan: v.pipe(
+    v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
+    v.maxLength(20),
+  ),
+  assumptions: v.pipe(
+    v.array(v.pipe(v.string(), v.maxLength(500))),
+    v.maxLength(20),
+  ),
   coverage: v.optional(v.picklist(["high", "medium", "low"])),
   overallConfidence: v.optional(v.picklist(["high", "medium", "low"])),
-  unresolvedItems: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))), v.maxLength(10))),
+  unresolvedItems: v.optional(
+    v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(280))),
+      v.maxLength(10),
+    ),
+  ),
   callouts: v.optional(v.pipe(v.array(calloutSchema), v.maxLength(12))),
 });
 
@@ -167,9 +202,10 @@ export function parseModelReviewResult(
   if (findings._tag === "err") {
     return err({ _tag: "InvalidModelReviewResult" });
   }
-  const callouts = parsed.output.callouts === undefined
-    ? undefined
-    : parseCallouts(parsed.output.callouts);
+  const callouts =
+    parsed.output.callouts === undefined
+      ? undefined
+      : parseCallouts(parsed.output.callouts);
   if (callouts !== undefined && callouts._tag === "err") {
     return err({ _tag: "InvalidModelReviewResult" });
   }
@@ -181,9 +217,15 @@ export function parseModelReviewResult(
     findings: findings.value,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
-    ...(parsed.output.coverage === undefined ? {} : { coverage: parsed.output.coverage }),
-    ...(parsed.output.overallConfidence === undefined ? {} : { overallConfidence: parsed.output.overallConfidence }),
-    ...(parsed.output.unresolvedItems === undefined ? {} : { unresolvedItems: parsed.output.unresolvedItems }),
+    ...(parsed.output.coverage === undefined
+      ? {}
+      : { coverage: parsed.output.coverage }),
+    ...(parsed.output.overallConfidence === undefined
+      ? {}
+      : { overallConfidence: parsed.output.overallConfidence }),
+    ...(parsed.output.unresolvedItems === undefined
+      ? {}
+      : { unresolvedItems: parsed.output.unresolvedItems }),
     ...(callouts === undefined ? {} : { callouts: callouts.value }),
   });
 }
@@ -207,9 +249,10 @@ export function parseReviewResult(
     findings.push({ ...projected.value, mappingStatus: finding.mappingStatus });
   }
 
-  const callouts = parsed.output.callouts === undefined
-    ? undefined
-    : parseStoredCallouts(parsed.output.callouts);
+  const callouts =
+    parsed.output.callouts === undefined
+      ? undefined
+      : parseStoredCallouts(parsed.output.callouts);
   if (callouts !== undefined && callouts._tag === "err") {
     return err({ _tag: "InvalidReviewResult" });
   }
@@ -221,9 +264,15 @@ export function parseReviewResult(
     findings,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
-    ...(parsed.output.coverage === undefined ? {} : { coverage: parsed.output.coverage }),
-    ...(parsed.output.overallConfidence === undefined ? {} : { overallConfidence: parsed.output.overallConfidence }),
-    ...(parsed.output.unresolvedItems === undefined ? {} : { unresolvedItems: parsed.output.unresolvedItems }),
+    ...(parsed.output.coverage === undefined
+      ? {}
+      : { coverage: parsed.output.coverage }),
+    ...(parsed.output.overallConfidence === undefined
+      ? {}
+      : { overallConfidence: parsed.output.overallConfidence }),
+    ...(parsed.output.unresolvedItems === undefined
+      ? {}
+      : { unresolvedItems: parsed.output.unresolvedItems }),
     ...(callouts === undefined ? {} : { callouts: callouts.value }),
   });
 }
@@ -233,8 +282,12 @@ function parseStoredCallouts(
 ): Result<ReadonlyArray<ReviewCallout>, InvalidReviewResult> {
   const values: Array<ReviewCallout> = [];
   for (const callout of callouts) {
-    const path = callout.path === undefined ? undefined : parseRepoRelativePath(callout.path);
-    if (path !== undefined && path._tag === "err") return err({ _tag: "InvalidReviewResult" });
+    const path =
+      callout.path === undefined
+        ? undefined
+        : parseRepoRelativePath(callout.path);
+    if (path !== undefined && path._tag === "err")
+      return err({ _tag: "InvalidReviewResult" });
     values.push({
       category: callout.category,
       title: callout.title,
@@ -250,8 +303,12 @@ function parseCallouts(
 ): Result<ReadonlyArray<ReviewCallout>, InvalidModelReviewResult> {
   const values: Array<ReviewCallout> = [];
   for (const callout of callouts) {
-    const path = callout.path === undefined ? undefined : parseRepoRelativePath(callout.path);
-    if (path !== undefined && path._tag === "err") return err({ _tag: "InvalidModelReviewResult" });
+    const path =
+      callout.path === undefined
+        ? undefined
+        : parseRepoRelativePath(callout.path);
+    if (path !== undefined && path._tag === "err")
+      return err({ _tag: "InvalidModelReviewResult" });
     values.push({
       category: callout.category,
       title: callout.title,
@@ -263,7 +320,9 @@ function parseCallouts(
 }
 
 function parseModelFindings(
-  findings: ReadonlyArray<v.InferOutput<typeof modelReviewResultSchema>["findings"][number]>,
+  findings: ReadonlyArray<
+    v.InferOutput<typeof modelReviewResultSchema>["findings"][number]
+  >,
 ): Result<ReadonlyArray<ModelReviewFinding>, InvalidModelReviewResult> {
   const values: Array<ModelReviewFinding> = [];
   for (const finding of findings) {
@@ -282,7 +341,10 @@ function projectFinding(
   finding: v.InferOutput<typeof modelReviewResultSchema>["findings"][number],
 ): Result<ModelReviewFinding, InvalidModelReviewResult> {
   const id = parseFindingId(finding.id);
-  const file = finding.file === undefined ? undefined : parseRepoRelativePath(finding.file);
+  const file =
+    finding.file === undefined
+      ? undefined
+      : parseRepoRelativePath(finding.file);
   if (id._tag === "err" || (file !== undefined && file._tag === "err")) {
     return err({ _tag: "InvalidModelReviewResult" });
   }
@@ -290,19 +352,23 @@ function projectFinding(
     finding.lineStart !== undefined &&
     finding.lineEnd !== undefined &&
     finding.lineEnd < finding.lineStart
-  ) return err({ _tag: "InvalidModelReviewResult" });
+  )
+    return err({ _tag: "InvalidModelReviewResult" });
   if (
     finding.lineStart !== undefined &&
     finding.lineEnd !== undefined &&
     finding.lineEnd - finding.lineStart > 9
-  ) return err({ _tag: "InvalidModelReviewResult" });
+  )
+    return err({ _tag: "InvalidModelReviewResult" });
 
   return ok({
     id: id.value,
     severity: finding.severity,
     title: finding.title,
     ...(file === undefined ? {} : { file: file.value }),
-    ...(finding.lineStart === undefined ? {} : { lineStart: finding.lineStart }),
+    ...(finding.lineStart === undefined
+      ? {}
+      : { lineStart: finding.lineStart }),
     ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }),
     ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }),
     explanation: finding.explanation,
@@ -311,9 +377,15 @@ function projectFinding(
       : { suggestedComment: finding.suggestedComment }),
     confidence: finding.confidence,
     ...(finding.category === undefined ? {} : { category: finding.category }),
-    ...(finding.affectedScenario === undefined ? {} : { affectedScenario: finding.affectedScenario }),
-    ...(finding.whyItMatters === undefined ? {} : { whyItMatters: finding.whyItMatters }),
-    ...(finding.suggestedChange === undefined ? {} : { suggestedChange: finding.suggestedChange }),
+    ...(finding.affectedScenario === undefined
+      ? {}
+      : { affectedScenario: finding.affectedScenario }),
+    ...(finding.whyItMatters === undefined
+      ? {}
+      : { whyItMatters: finding.whyItMatters }),
+    ...(finding.suggestedChange === undefined
+      ? {}
+      : { suggestedChange: finding.suggestedChange }),
   });
 }
 
@@ -321,7 +393,9 @@ function hasConsistentVerdict(
   verdict: ReviewVerdict,
   findings: ReadonlyArray<{ readonly severity: FindingSeverity }>,
 ): boolean {
-  const hasBlocking = findings.some((finding) => finding.severity === "P0" || finding.severity === "P1");
+  const hasBlocking = findings.some(
+    (finding) => finding.severity === "P0" || finding.severity === "P1",
+  );
   if (hasBlocking) return verdict === "request_changes";
   if (findings.length > 0) return verdict === "comment";
   return verdict === "approve";

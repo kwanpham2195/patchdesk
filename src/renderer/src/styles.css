@@ -4,8 +4,12 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-.walkthrough-support-copy { color: #111827 !important; }
-:root.dark .walkthrough-support-copy { color: #d1d5db !important; }
+.walkthrough-support-copy {
+  color: #111827 !important;
+}
+:root.dark .walkthrough-support-copy {
+  color: #d1d5db !important;
+}
 
 :root {
   color-scheme: light dark;
@@ -129,7 +133,6 @@ body {
   select {
     font: inherit;
   }
-
 }
 
 :where(

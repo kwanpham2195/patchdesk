@@ -39,7 +39,9 @@ describe("InsightRunDialog model picker", () => {
 
     const input = screen.getByRole("combobox", { name: "Insight model" });
     await user.type(input, "MODEL-268");
-    expect(await screen.findByRole("option", { name: "Model 268" })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: "Model 268" }),
+    ).toBeTruthy();
     await user.keyboard("{ArrowDown}{Enter}");
 
     expect(onModelChange).toHaveBeenCalledWith("provider/model-268");
@@ -48,7 +50,9 @@ describe("InsightRunDialog model picker", () => {
   it("disables an empty catalog without exposing provider configuration", () => {
     render(<InsightRunDialog {...baseProps} models={[]} />);
 
-    const input = screen.getByRole("combobox", { name: "Insight model" }) as HTMLInputElement;
+    const input = screen.getByRole("combobox", {
+      name: "Insight model",
+    }) as HTMLInputElement;
     expect(input.disabled).toBe(true);
     expect(input.placeholder).toBe("No enabled model available");
     expect(screen.queryByText("No models found.")).toBeNull();
@@ -58,9 +62,16 @@ describe("InsightRunDialog model picker", () => {
     const user = userEvent.setup();
     render(<InsightRunDialog {...baseProps} />);
 
-    expect(screen.getByRole("combobox", { name: "Insight model" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Insight reasoning" })).toBeTruthy();
-    await user.type(screen.getByRole("combobox", { name: "Insight model" }), "not-a-model");
+    expect(
+      screen.getByRole("combobox", { name: "Insight model" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Insight reasoning" }),
+    ).toBeTruthy();
+    await user.type(
+      screen.getByRole("combobox", { name: "Insight model" }),
+      "not-a-model",
+    );
 
     expect(await screen.findByText("No models found.")).toBeTruthy();
   });

@@ -17,7 +17,10 @@ import { normalizeReviewPatch } from "./review-session-preparation";
 export type RevisionComparison =
   | { readonly _tag: "Same"; readonly identity: ObservedRevisionIdentity }
   | { readonly _tag: "Changed"; readonly identity: ObservedRevisionIdentity }
-  | { readonly _tag: "Unavailable"; readonly reason: RevisionUnavailableReason };
+  | {
+      readonly _tag: "Unavailable";
+      readonly reason: RevisionUnavailableReason;
+    };
 
 /**
  * Proves whether GitHub still represents a session's exact remote revision.
@@ -26,7 +29,10 @@ export type RevisionComparison =
  */
 export class GitHubRevisionIdentityReader {
   constructor(
-    private readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestDiff">,
+    private readonly github: Pick<
+      GitHubReader,
+      "getPullRequest" | "getPullRequestDiff"
+    >,
   ) {}
 
   /** Read GitHub's complete canonical identity for one represented session. */
@@ -69,7 +75,9 @@ export class GitHubRevisionIdentityReader {
       return ok({ _tag: "Unavailable", reason: "diff_incomplete" });
     }
 
-    const canonicalPatchHash = parseContentHash(hashReviewArtifactContent(normalizedPatch));
+    const canonicalPatchHash = parseContentHash(
+      hashReviewArtifactContent(normalizedPatch),
+    );
     if (canonicalPatchHash._tag === "err") {
       return ok({ _tag: "Unavailable", reason: "comparison_ambiguous" });
     }
@@ -86,17 +94,24 @@ export class GitHubRevisionIdentityReader {
       input.session.key.headSha === identity.headSha &&
       input.session.pr.baseSha === identity.baseSha &&
       sessionPatchHash === identity.canonicalPatchHash;
-    return ok(same ? { _tag: "Same", identity } : { _tag: "Changed", identity });
+    return ok(
+      same ? { _tag: "Same", identity } : { _tag: "Changed", identity },
+    );
   }
 
   private async sessionPatchHash(session: ReviewSession) {
-    const patch = await readFile(session.patchPath, "utf8").catch(() => undefined);
+    const patch = await readFile(session.patchPath, "utf8").catch(
+      () => undefined,
+    );
     if (patch === undefined) return undefined;
-    const hash = parseContentHash(hashReviewArtifactContent(normalizeReviewPatch(patch)));
+    const hash = parseContentHash(
+      hashReviewArtifactContent(normalizeReviewPatch(patch)),
+    );
     return hash._tag === "ok" ? hash.value : undefined;
   }
 }
 
 function countChangedFiles(patch: string): number {
-  return patch.split("\n").filter((line) => line.startsWith("diff --git ")).length;
+  return patch.split("\n").filter((line) => line.startsWith("diff --git "))
+    .length;
 }

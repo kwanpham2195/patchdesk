@@ -21,7 +21,10 @@ export type WatchedRepoConfig = {
   readonly localPath?: AbsolutePath;
 };
 
-export type AnalysisMergePolicy = "advisory" | "require_acknowledgement" | "block";
+export type AnalysisMergePolicy =
+  | "advisory"
+  | "require_acknowledgement"
+  | "block";
 
 export type WorkspaceProfileConfig = {
   readonly id: WorkspaceProfileId;
@@ -56,7 +59,9 @@ export const workspaceProfileConfigSchema = v.strictObject({
   workspaceRoots: v.array(v.string()),
   rulePaths: v.array(v.string()),
   repos: v.array(rawWatchedRepoSchema),
-  analysisMergePolicy: v.optional(v.picklist(["advisory", "require_acknowledgement", "block"])),
+  analysisMergePolicy: v.optional(
+    v.picklist(["advisory", "require_acknowledgement", "block"]),
+  ),
 });
 
 /** Parse unknown profile configuration into refined Patchdesk domain values. */
@@ -97,7 +102,8 @@ export function parseWorkspaceProfileConfig(
     workspaceRoots: workspaceRoots.value,
     rulePaths: rulePaths.value,
     repos: repos.value,
-    analysisMergePolicy: parsed.output.analysisMergePolicy ?? "require_acknowledgement",
+    analysisMergePolicy:
+      parsed.output.analysisMergePolicy ?? "require_acknowledgement",
   });
 }
 

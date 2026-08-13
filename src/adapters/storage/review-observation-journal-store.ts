@@ -24,7 +24,11 @@ import {
 } from "../../domain/pending-review";
 import { err, ok, type Result } from "../../domain/result";
 import type { PatchdeskPaths } from "./patchdesk-paths";
-import { readJsonFile, type StorageFailure, writeAtomicJson } from "./json-file";
+import {
+  readJsonFile,
+  type StorageFailure,
+  writeAtomicJson,
+} from "./json-file";
 
 /**
  * The exact cross-store transition for one same-revision observation. The
@@ -69,11 +73,16 @@ export class ReviewObservationJournalStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
   /** Persist the journal after its content-addressed candidate snapshot exists. */
-  async save(journal: ReviewObservationJournal): Promise<Result<void, StorageFailure>> {
+  async save(
+    journal: ReviewObservationJournal,
+  ): Promise<Result<void, StorageFailure>> {
     const parsed = parseReviewObservationJournal(journal);
     if (parsed._tag === "err") return invalidWrite();
     return writeAtomicJson(
-      this.paths.reviewObservationJournalFile(parsed.value.profileId, parsed.value.reviewId),
+      this.paths.reviewObservationJournalFile(
+        parsed.value.profileId,
+        parsed.value.reviewId,
+      ),
       parsed.value,
     );
   }
@@ -83,12 +92,18 @@ export class ReviewObservationJournalStore {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<ReviewObservationJournal | undefined, StorageFailure>> {
-    const stored = await readJsonFile(this.paths.reviewObservationJournalFile(profileId, reviewId));
+    const stored = await readJsonFile(
+      this.paths.reviewObservationJournalFile(profileId, reviewId),
+    );
     if (stored._tag === "err") {
       return stored.error.reason === "not_found" ? ok(undefined) : stored;
     }
     const parsed = parseReviewObservationJournal(stored.value);
-    if (parsed._tag === "err" || parsed.value.profileId !== profileId || parsed.value.reviewId !== reviewId) {
+    if (
+      parsed._tag === "err" ||
+      parsed.value.profileId !== profileId ||
+      parsed.value.reviewId !== reviewId
+    ) {
       return invalidRead();
     }
     return parsed;
@@ -100,7 +115,9 @@ export class ReviewObservationJournalStore {
   ): Promise<Result<ReadonlyArray<ReviewId>, StorageFailure>> {
     let entries: ReadonlyArray<string>;
     try {
-      entries = await readdir(this.paths.profileWorkbenchesDirectory(profileId));
+      entries = await readdir(
+        this.paths.profileWorkbenchesDirectory(profileId),
+      );
     } catch (cause: unknown) {
       if (isMissing(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
@@ -109,8 +126,11 @@ export class ReviewObservationJournalStore {
     for (const entry of entries) {
       const reviewId = parseReviewId(entry);
       if (reviewId._tag === "err") continue;
-      const journal = await readJsonFile(this.paths.reviewObservationJournalFile(profileId, reviewId.value));
-      if (journal._tag === "ok" || journal.error.reason !== "not_found") ids.push(reviewId.value);
+      const journal = await readJsonFile(
+        this.paths.reviewObservationJournalFile(profileId, reviewId.value),
+      );
+      if (journal._tag === "ok" || journal.error.reason !== "not_found")
+        ids.push(reviewId.value);
     }
     return ok(ids);
   }
@@ -141,25 +161,41 @@ export function parseReviewObservationJournal(
   const reviewId = parseReviewId(raw.output.reviewId);
   const sessionId = parseReviewSessionId(raw.output.sessionId);
   const sessionHeadSha = parseGitSha(raw.output.sessionHeadSha);
-  const expectedReviewUpdatedAt = parseIsoTimestamp(raw.output.expectedReviewUpdatedAt);
-  const expectedSessionUpdatedAt = parseIsoTimestamp(raw.output.expectedSessionUpdatedAt);
-  const nextSessionUpdatedAt = parseIsoTimestamp(raw.output.nextSessionUpdatedAt);
+  const expectedReviewUpdatedAt = parseIsoTimestamp(
+    raw.output.expectedReviewUpdatedAt,
+  );
+  const expectedSessionUpdatedAt = parseIsoTimestamp(
+    raw.output.expectedSessionUpdatedAt,
+  );
+  const nextSessionUpdatedAt = parseIsoTimestamp(
+    raw.output.nextSessionUpdatedAt,
+  );
   const nextReviewUpdatedAt = parseIsoTimestamp(raw.output.nextReviewUpdatedAt);
-  const previousSnapshotHash = parseContentHash(raw.output.previousSnapshotHash);
+  const previousSnapshotHash = parseContentHash(
+    raw.output.previousSnapshotHash,
+  );
   const nextSnapshotHash = parseContentHash(raw.output.nextSnapshotHash);
-  const pending = raw.output.nextPendingReview === undefined
-    ? ok(undefined)
-    : parsePendingReviewState(raw.output.nextPendingReview);
-  if (sessionId._tag === "err" || sessionHeadSha._tag === "err" || pending._tag === "err") {
+  const pending =
+    raw.output.nextPendingReview === undefined
+      ? ok(undefined)
+      : parsePendingReviewState(raw.output.nextPendingReview);
+  if (
+    sessionId._tag === "err" ||
+    sessionHeadSha._tag === "err" ||
+    pending._tag === "err"
+  ) {
     return invalidRead();
   }
-  const receipts = raw.output.nextFindingReviewReceipts === undefined
-    ? ok(undefined)
-    : parseFindingReviewReceipts(raw.output.nextFindingReviewReceipts, {
-        id: sessionId.value,
-        headSha: sessionHeadSha.value,
-        ...(pending.value === undefined ? {} : { pendingReview: pending.value }),
-      });
+  const receipts =
+    raw.output.nextFindingReviewReceipts === undefined
+      ? ok(undefined)
+      : parseFindingReviewReceipts(raw.output.nextFindingReviewReceipts, {
+          id: sessionId.value,
+          headSha: sessionHeadSha.value,
+          ...(pending.value === undefined
+            ? {}
+            : { pendingReview: pending.value }),
+        });
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   if (
     profileId._tag === "err" ||
@@ -172,8 +208,10 @@ export function parseReviewObservationJournal(
     nextSnapshotHash._tag === "err" ||
     receipts._tag === "err" ||
     createdAt._tag === "err" ||
-    Date.parse(nextSessionUpdatedAt.value) <= Date.parse(expectedSessionUpdatedAt.value) ||
-    Date.parse(nextReviewUpdatedAt.value) <= Date.parse(expectedReviewUpdatedAt.value)
+    Date.parse(nextSessionUpdatedAt.value) <=
+      Date.parse(expectedSessionUpdatedAt.value) ||
+    Date.parse(nextReviewUpdatedAt.value) <=
+      Date.parse(expectedReviewUpdatedAt.value)
   ) {
     return invalidRead();
   }
@@ -189,20 +227,37 @@ export function parseReviewObservationJournal(
     nextReviewUpdatedAt: nextReviewUpdatedAt.value,
     previousSnapshotHash: previousSnapshotHash.value,
     nextSnapshotHash: nextSnapshotHash.value,
-    ...(pending.value === undefined ? {} : { nextPendingReview: pending.value }),
-    ...(receipts.value === undefined ? {} : { nextFindingReviewReceipts: receipts.value }),
+    ...(pending.value === undefined
+      ? {}
+      : { nextPendingReview: pending.value }),
+    ...(receipts.value === undefined
+      ? {}
+      : { nextFindingReviewReceipts: receipts.value }),
     createdAt: createdAt.value,
   });
 }
 
 function isMissing(cause: unknown): boolean {
-  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === "ENOENT"
+  );
 }
 
 function invalidRead(): Result<never, StorageFailure> {
-  return err({ _tag: "StorageFailure", operation: "read", reason: "invalid_stored_value" });
+  return err({
+    _tag: "StorageFailure",
+    operation: "read",
+    reason: "invalid_stored_value",
+  });
 }
 
 function invalidWrite(): Result<never, StorageFailure> {
-  return err({ _tag: "StorageFailure", operation: "write", reason: "invalid_stored_value" });
+  return err({
+    _tag: "StorageFailure",
+    operation: "write",
+    reason: "invalid_stored_value",
+  });
 }

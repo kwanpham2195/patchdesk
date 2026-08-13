@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
-import type { InsightProvider, InsightReasoning } from "../../../domain/insight-provider";
-import { parseInsightRunResponse, parseWorkbenchResponse, type InsightRunResponse, type WorkbenchResponse } from "../renderer-contracts";
+import type {
+  InsightProvider,
+  InsightReasoning,
+} from "../../../domain/insight-provider";
+import {
+  parseInsightRunResponse,
+  parseWorkbenchResponse,
+  type InsightRunResponse,
+  type WorkbenchResponse,
+} from "../renderer-contracts";
 
 export type InsightRunType = "analysis" | "walkthrough";
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
@@ -13,7 +21,12 @@ export type InsightRunController = {
   readonly error: boolean;
   readonly failureReason?: InsightRunResponse["failureReason"];
   readonly busy: boolean;
-  readonly run: (provider: InsightProvider, model: string, reasoning: InsightReasoning, onAccepted?: () => void) => void;
+  readonly run: (
+    provider: InsightProvider,
+    model: string,
+    reasoning: InsightReasoning,
+    onAccepted?: () => void,
+  ) => void;
   readonly cancel: () => void;
 };
 
@@ -23,15 +36,27 @@ export function useInsightRun(input: {
   readonly type: InsightRunType;
   readonly activeRun?: WorkbenchResponse["insights"][InsightRunType]["activeRun"];
   readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
-  readonly onInsightPatch?: (type: InsightRunType, projection: WorkbenchResponse["insights"][InsightRunType]) => void;
+  readonly onInsightPatch?: (
+    type: InsightRunType,
+    projection: WorkbenchResponse["insights"][InsightRunType],
+  ) => void;
   readonly onCompleted?: () => void;
 }): InsightRunController {
-  const { profileId, reviewId, type, activeRun, onWorkbenchReplace, onInsightPatch, onCompleted } = input;
+  const {
+    profileId,
+    reviewId,
+    type,
+    activeRun,
+    onWorkbenchReplace,
+    onInsightPatch,
+    onCompleted,
+  } = input;
   const persistedRunId = activeRun?.runId;
   const [status, setStatus] = useState<InsightRunState>("idle");
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
-  const [failureReason, setFailureReason] = useState<InsightRunResponse["failureReason"]>();
+  const [failureReason, setFailureReason] =
+    useState<InsightRunResponse["failureReason"]>();
   const [starting, setStarting] = useState(false);
   const activeRunRef = useRef<string | undefined>(undefined);
   const startingRef = useRef(false);
@@ -43,7 +68,12 @@ export function useInsightRun(input: {
   onCompletedRef.current = onCompleted;
 
   useEffect(() => {
-    if (persistedRunId === undefined || startingRef.current || activeRunRef.current !== undefined) return;
+    if (
+      persistedRunId === undefined ||
+      startingRef.current ||
+      activeRunRef.current !== undefined
+    )
+      return;
     activeRunRef.current = persistedRunId;
     setRunId(persistedRunId);
     setStatus("running");
@@ -51,31 +81,42 @@ export function useInsightRun(input: {
     setFailureReason(undefined);
   }, [persistedRunId]);
 
-  const run = useCallback((provider: InsightProvider, model: string, reasoning: InsightReasoning, onAccepted?: () => void): void => {
-    if (startingRef.current || activeRunRef.current !== undefined) return;
-    startingRef.current = true;
-    setStarting(true);
-    setError(false);
-    setFailureReason(undefined);
-    void requestJson(`/v1/reviews/insights/${type}/run`, {
-      method: "POST",
-      body: { profileId, reviewId, type, provider, model, reasoning },
-    }).then((value) => {
-      const parsed = parseInsightRunResponse(value);
-      if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight run response");
-      activeRunRef.current = parsed.runId;
-      startingRef.current = false;
-      setStarting(false);
-      setRunId(parsed.runId);
-      setStatus(parsed.status);
-      onAccepted?.();
-    }).catch(() => {
-      startingRef.current = false;
-      setStarting(false);
-      setError(true);
-      setStatus("error");
-    });
-  }, [profileId, reviewId, type]);
+  const run = useCallback(
+    (
+      provider: InsightProvider,
+      model: string,
+      reasoning: InsightReasoning,
+      onAccepted?: () => void,
+    ): void => {
+      if (startingRef.current || activeRunRef.current !== undefined) return;
+      startingRef.current = true;
+      setStarting(true);
+      setError(false);
+      setFailureReason(undefined);
+      void requestJson(`/v1/reviews/insights/${type}/run`, {
+        method: "POST",
+        body: { profileId, reviewId, type, provider, model, reasoning },
+      })
+        .then((value) => {
+          const parsed = parseInsightRunResponse(value);
+          if (parsed === undefined || parsed.type !== type)
+            throw new Error("Invalid Insight run response");
+          activeRunRef.current = parsed.runId;
+          startingRef.current = false;
+          setStarting(false);
+          setRunId(parsed.runId);
+          setStatus(parsed.status);
+          onAccepted?.();
+        })
+        .catch(() => {
+          startingRef.current = false;
+          setStarting(false);
+          setError(true);
+          setStatus("error");
+        });
+    },
+    [profileId, reviewId, type],
+  );
 
   const cancel = useCallback((): void => {
     const activeRunId = activeRunRef.current;
@@ -83,11 +124,14 @@ export function useInsightRun(input: {
     void requestJson(`/v1/reviews/insights/${type}/cancel`, {
       method: "POST",
       body: { profileId, reviewId, type, runId: activeRunId },
-    }).then((value) => {
-      const parsed = parseInsightRunResponse(value);
-      if (parsed === undefined) throw new Error("Invalid Insight cancellation response");
-      setStatus(parsed.status);
-    }).catch(() => setError(true));
+    })
+      .then((value) => {
+        const parsed = parseInsightRunResponse(value);
+        if (parsed === undefined)
+          throw new Error("Invalid Insight cancellation response");
+        setStatus(parsed.status);
+      })
+      .catch(() => setError(true));
   }, [profileId, reviewId, type]);
 
   useEffect(() => {
@@ -96,19 +140,27 @@ export function useInsightRun(input: {
     let timer: number | undefined;
     const poll = async (): Promise<void> => {
       try {
-        const value = await requestJson(`/v1/reviews/insights/runs/${encodeURIComponent(runId)}?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}&type=${type}`);
+        const value = await requestJson(
+          `/v1/reviews/insights/runs/${encodeURIComponent(runId)}?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}&type=${type}`,
+        );
         if (cancelled || activeRunRef.current !== runId) return;
         const parsed = parseInsightRunResponse(value);
-        if (parsed === undefined || parsed.type !== type) throw new Error("Invalid Insight status response");
+        if (parsed === undefined || parsed.type !== type)
+          throw new Error("Invalid Insight status response");
         setStatus(parsed.status);
         setFailureReason(parsed.failureReason);
-        if (parsed.status === "completed" || parsed.status === "failed" || parsed.status === "cancelled") {
+        if (
+          parsed.status === "completed" ||
+          parsed.status === "failed" ||
+          parsed.status === "cancelled"
+        ) {
           const workbenchValue = await requestJson("/v1/reviews/load", {
             method: "POST",
             body: { profileId, reviewId },
           });
           const workbench = parseWorkbenchResponse(workbenchValue);
-          if (workbench === undefined) throw new Error("Invalid Review projection response");
+          if (workbench === undefined)
+            throw new Error("Invalid Review projection response");
           if (!cancelled && activeRunRef.current === runId) {
             if (onInsightPatchRef.current !== undefined) {
               onInsightPatchRef.current(type, workbench.insights[type]);

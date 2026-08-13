@@ -209,7 +209,7 @@ Evidence:
 ### 6. Read-only narrative walkthrough (optional branch)
 
 User goal: learn the change as a guided story instead of navigating the raw
-  diff first.
+diff first.
 
 Flow:
 

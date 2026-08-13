@@ -189,16 +189,16 @@ function createInsightCoordinator(
   operations: ReviewOperationCoordinator,
 ): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
-  const runtime = resolveInsightRuntime(
-    app.getAppPath(),
-    process.cwd(),
-  );
-  const insightInvoker = runtime === undefined ? undefined : new FlueInsightChildInvoker(
-    new CommandRunner(),
-    runtime.root,
-    process.execPath,
-    runtime.runnerPath,
-  );
+  const runtime = resolveInsightRuntime(app.getAppPath(), process.cwd());
+  const insightInvoker =
+    runtime === undefined
+      ? undefined
+      : new FlueInsightChildInvoker(
+          new CommandRunner(),
+          runtime.root,
+          process.execPath,
+          runtime.runnerPath,
+        );
   const readHead = async (
     worktreePath: string,
   ): Promise<string | undefined> => {
@@ -312,9 +312,18 @@ async function walkthroughTimeout(input: {
   readonly reasoning: "low" | "medium" | "high" | "minimal" | "xhigh";
 }): Promise<number> {
   const reasoning = input.reasoning;
-  if (reasoning === "minimal" || reasoning === "xhigh") return walkthroughTimeoutMs({ patchBytes: 0, contextBytes: 0, hunkCount: 0 });
+  if (reasoning === "minimal" || reasoning === "xhigh")
+    return walkthroughTimeoutMs({
+      patchBytes: 0,
+      contextBytes: 0,
+      hunkCount: 0,
+    });
   return walkthroughTimeoutMs(
-    await readWalkthroughArtifactSizes({ ...input, reasoning }).catch(() => ({ patchBytes: 0, contextBytes: 0, hunkCount: 0 })),
+    await readWalkthroughArtifactSizes({ ...input, reasoning }).catch(() => ({
+      patchBytes: 0,
+      contextBytes: 0,
+      hunkCount: 0,
+    })),
   );
 }
 

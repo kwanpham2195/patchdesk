@@ -1,6 +1,6 @@
 # Limit Insight comment mapping to Findings
-> **Status: Superseded.** ADR-0015 preserves current Mapped Finding commands, but they write directly to GitHub's pending review instead of a local draft.
 
+> **Status: Superseded.** ADR-0015 preserves current Mapped Finding commands, but they write directly to GitHub's pending review instead of a local draft.
 
 Within Insights, only a current Mapped finding can become a line-specific item in the Review draft. Walkthrough and future insight types may help the maintainer navigate to Files, but they do not create GitHub inline-comment drafts directly.
 

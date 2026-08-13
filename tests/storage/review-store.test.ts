@@ -99,7 +99,9 @@ describe("ReviewStore", () => {
   it("rejects malformed stored data", async () => {
     const { paths, store } = await storeFixture();
     const review = makeReview();
-    await mkdir(paths.reviewDirectory(profileId, review.id), { recursive: true });
+    await mkdir(paths.reviewDirectory(profileId, review.id), {
+      recursive: true,
+    });
     await writeFile(paths.reviewFile(profileId, review.id), "{}", "utf8");
 
     await expect(store.load(profileId, review.id)).resolves.toMatchObject({
@@ -127,8 +129,15 @@ describe("ReviewStore", () => {
     const { store } = await storeFixture();
     const review = makeReview();
     await expect(store.save(review)).resolves.toMatchObject({ _tag: "ok" });
-    await expect(store.findOwner(review.id)).resolves.toEqual({ _tag: "ok", value: profileId });
-    await expect(store.findOwner(createReviewId({ ...review.identity, repo: anotherRepo }))).resolves.toEqual({ _tag: "ok", value: undefined });
+    await expect(store.findOwner(review.id)).resolves.toEqual({
+      _tag: "ok",
+      value: profileId,
+    });
+    await expect(
+      store.findOwner(
+        createReviewId({ ...review.identity, repo: anotherRepo }),
+      ),
+    ).resolves.toEqual({ _tag: "ok", value: undefined });
   });
 
   it("rejects a review whose identity does not match its destination", async () => {
@@ -185,8 +194,15 @@ describe("ReviewStore", () => {
     const firstUpdate = markReviewTerminal(review, "closed", now);
     const secondUpdate = markReviewTerminal(review, "merged", now);
     await expect(store.save(review)).resolves.toMatchObject({ _tag: "ok" });
-    await expect(store.save(firstUpdate, review.updatedAt)).resolves.toMatchObject({ _tag: "ok" });
-    await expect(store.save(secondUpdate, review.updatedAt)).resolves.toMatchObject({ _tag: "err", error: { reason: "stale_revision" } });
+    await expect(
+      store.save(firstUpdate, review.updatedAt),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    await expect(
+      store.save(secondUpdate, review.updatedAt),
+    ).resolves.toMatchObject({
+      _tag: "err",
+      error: { reason: "stale_revision" },
+    });
   });
 
   it("does not replace a persisted terminal Review with an old open value", async () => {

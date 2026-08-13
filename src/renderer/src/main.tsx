@@ -13,10 +13,18 @@ if (rootElement === null) {
   throw new Error("Patchdesk renderer root is missing");
 }
 
-class RendererErrorBoundary extends Component<{ readonly children: ReactNode }, { readonly failed: boolean }> {
+class RendererErrorBoundary extends Component<
+  { readonly children: ReactNode },
+  { readonly failed: boolean }
+> {
   override state = { failed: false };
-  static getDerivedStateFromError(): { readonly failed: true } { return { failed: true }; }
-  override componentDidCatch(error: unknown, info: { readonly componentStack?: string }): void {
+  static getDerivedStateFromError(): { readonly failed: true } {
+    return { failed: true };
+  }
+  override componentDidCatch(
+    error: unknown,
+    info: { readonly componentStack?: string },
+  ): void {
     appLog.error("react-boundary", "Renderer crashed", {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
@@ -31,6 +39,8 @@ class RendererErrorBoundary extends Component<{ readonly children: ReactNode }, 
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RendererErrorBoundary><App /></RendererErrorBoundary>
+    <RendererErrorBoundary>
+      <App />
+    </RendererErrorBoundary>
   </StrictMode>,
 );

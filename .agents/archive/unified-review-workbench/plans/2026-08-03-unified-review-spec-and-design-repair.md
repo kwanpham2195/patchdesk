@@ -42,65 +42,65 @@ packaged macOS app.
 ## Progress
 
 - [x] (2026-08-03) Consolidated the 18 spec/code findings and 16 design findings
-  into one repair plan at baseline commit `3cfccf6`.
+      into one repair plan at baseline commit `3cfccf6`.
 - [x] (2026-08-03) Archived the five completed implementation plans and marked
-  this ExecPlan as the only active implementation plan.
+      this ExecPlan as the only active implementation plan.
 - [x] (2026-08-03) Converted the repair plan to the repository's restartable
-  ExecPlan format with seven proof milestones and fourteen concrete steps.
+      ExecPlan format with seven proof milestones and fourteen concrete steps.
 - [x] (2026-08-03) Milestone 1: Protected route parity is implemented,
-  reviewer-validated, and verified. The bridge now covers every canonical
-  Review route with exact static entries or bounded dynamic-path patterns,
-  including publication recovery. Focused bridge/local API tests and the
-  delegated Playwright route matrix pass; publication recovery uses durable
-  receipt reconciliation and rejects replay.
+      reviewer-validated, and verified. The bridge now covers every canonical
+      Review route with exact static entries or bounded dynamic-path patterns,
+      including publication recovery. Focused bridge/local API tests and the
+      delegated Playwright route matrix pass; publication recovery uses durable
+      receipt reconciliation and rejects replay.
 - [x] (2026-08-03) Milestone 2: Analysis, Refresh, publication, and merge
-  authority are repaired and verified. Steps 2–4 now retain Patchdesk-mapped
-  Analysis before completion, keep represented revision advancement behind
-  explicit Refresh, and route publication/merge through ReviewWriteGate with
-  immutable identity and frozen unknown outcomes. The exact milestone command
-  passes (15 files, 163 tests).
+      authority are repaired and verified. Steps 2–4 now retain Patchdesk-mapped
+      Analysis before completion, keep represented revision advancement behind
+      explicit Refresh, and route publication/merge through ReviewWriteGate with
+      immutable identity and frozen unknown outcomes. The exact milestone command
+      passes (15 files, 163 tests).
 - [x] (2026-08-03) Reviewer blockers: automatic publication now rebinds its
-  immutable authorization to the advancing seeded draft revision before
-  consumption, and Published feedback performs a final exact-head read after
-  comment/capability checks and immediately before every writer call. Focused
-  authorization, advancing-timestamp, ordering, and head-race tests pass.
+      immutable authorization to the advancing seeded draft revision before
+      consumption, and Published feedback performs a final exact-head read after
+      comment/capability checks and immediately before every writer call. Focused
+      authorization, advancing-timestamp, ordering, and head-race tests pass.
 - [x] (2026-08-03) Milestone 3: Migration, Published feedback permissions,
-  and terminal guards are complete. Marker-last migration now runs before
-  Review list/open/load; adapter capabilities use authenticated identity,
-  repository permission, and branch evidence; mutation services fail closed
-  for terminal Reviews and record-specific capability loss.
+      and terminal guards are complete. Marker-last migration now runs before
+      Review list/open/load; adapter capabilities use authenticated identity,
+      repository permission, and branch evidence; mutation services fail closed
+      for terminal Reviews and record-specific capability loss.
 - [x] (2026-08-03) Migration blocker follow-up: migration now stages the
-  represented remote snapshot, retained Analysis, and legacy Walkthrough/
-  progress through their existing durable owners before the marker. Existing
-  targets win on rerun, and stage hooks cover interruption recovery.
+      represented remote snapshot, retained Analysis, and legacy Walkthrough/
+      progress through their existing durable owners before the marker. Existing
+      targets win on rerun, and stage hooks cover interruption recovery.
 - [x] (2026-08-03) Legacy publication recovery follow-up: startup reconciliation
-  now enumerates every Submitted/Applying session independently of the stable
-  Review current-session pointer, while explicit publication recovery retains
-  its current-session gate. Regression coverage proves an older Submitted
-  session is not stranded when migration selects a newer session.
+      now enumerates every Submitted/Applying session independently of the stable
+      Review current-session pointer, while explicit publication recovery retains
+      its current-session gate. Regression coverage proves an older Submitted
+      session is not stranded when migration selects a newer session.
 - [x] (2026-08-03) Milestone 4: deterministic unified Review fixtures, compact
-  shell geometry, persistent draft dock, and split local/GitHub eligibility are
-  implemented. Focused renderer/design tests, lint, and typecheck pass; stale
-  browser design tests still reference removed legacy scenarios and require
-  migration.
+      shell geometry, persistent draft dock, and split local/GitHub eligibility are
+      implemented. Focused renderer/design tests, lint, and typecheck pass; stale
+      browser design tests still reference removed legacy scenarios and require
+      migration.
 - [x] (2026-08-03) Milestone 5: Insights, Finding focus, and commit detail are
-  complete. The Insights surface now uses a selected rail and central document
-  with explicit running/current/outdated/failed/not-generated states; current
-  Finding disposition and focus actions are exposed only for current mapped
-  evidence; immutable commit patches now carry derived file/addition/deletion
-  statistics into the diff header.
+      complete. The Insights surface now uses a selected rail and central document
+      with explicit running/current/outdated/failed/not-generated states; current
+      Finding disposition and focus actions are exposed only for current mapped
+      evidence; immutable commit patches now carry derived file/addition/deletion
+      statistics into the diff header.
 - [x] (2026-08-03) Milestone 6: Needs-attention repair, PR Overview, merge,
-  and publication recovery are complete. All unsafe inline items now block
-  publication regardless of inclusion, the dock exposes a focused repair queue,
-  PR Overview owns ordered freshness/Insight/merge sections, and confirmed
-  publication rotates to a durable empty successor draft. Final validation
-  passes 775 tests, lint, typecheck, build, and diff checks; independent review
-  found no blockers.
+      and publication recovery are complete. All unsafe inline items now block
+      publication regardless of inclusion, the dock exposes a focused repair queue,
+      PR Overview owns ordered freshness/Insight/merge sections, and confirmed
+      publication rotates to a durable empty successor draft. Final validation
+      passes 775 tests, lint, typecheck, build, and diff checks; independent review
+      found no blockers.
 - [x] (2026-08-04) Milestone 7: Full automated and development Electron/browser
-  acceptance passes. Live QA covered desktop workflows, publication safety,
-  accessibility, responsive geometry at desktop/mobile sizes, and network
-  isolation with no GitHub/model writes. Evidence is stored under
-  `.agents/tasks/unified-review-workbench/evidence/live-qa/`.
+      acceptance passes. Live QA covered desktop workflows, publication safety,
+      accessibility, responsive geometry at desktop/mobile sizes, and network
+      isolation with no GitHub/model writes. Evidence is stored under
+      `.agents/tasks/unified-review-workbench/evidence/live-qa/`.
 
 ## Surprises & Discoveries
 
@@ -382,10 +382,16 @@ slots={{
 // src/renderer/src/components/review-workbench.tsx:240-249
 <TabsContent value="insights" className="min-h-0 flex-1 overflow-auto p-6">
   {slots.insights}
-</TabsContent>
-{slots.publishedFeedback}
-{slots.mergeAction}
-{slots.draftDock}
+</TabsContent>;
+{
+  slots.publishedFeedback;
+}
+{
+  slots.mergeAction;
+}
+{
+  slots.draftDock;
+}
 ```
 
 That sibling composition caused Published feedback to overlap Insights and the
@@ -394,9 +400,15 @@ instead of the selected rail and document:
 
 ```tsx
 // src/renderer/src/flows/review-workbench-flow.tsx:298-331
-<div className="grid gap-4 md:grid-cols-2">/* Analysis and Walkthrough cards */</div>
-{analysisReaderOpen ? <AnalysisReader /* ... */ /> : null}
-{walkthroughReaderOpen ? <NarrativeWalkthrough /* ... */ /> : null}
+<div className="grid gap-4 md:grid-cols-2">
+  /* Analysis and Walkthrough cards */
+</div>;
+{
+  analysisReaderOpen ? <AnalysisReader /* ... */ /> : null;
+}
+{
+  walkthroughReaderOpen ? <NarrativeWalkthrough /* ... */ /> : null;
+}
 ```
 
 The existing domain and services must be reused rather than replaced:
@@ -1521,44 +1533,44 @@ assertions for its status, action availability, and safety boundary.
 ### Acceptance conditions
 
 - All 18 spec/code findings and all 16 design findings map to passing focused
-      tests and no item is deferred.
+  tests and no item is deferred.
 - Every canonical renderer route is explicitly allowed by the desktop
-      bridge and protected by capability/origin checks.
+  bridge and protected by capability/origin checks.
 - Providers cannot supply final Finding mapping, disposition, postability,
-      or GitHub coordinates.
+  or GitHub coordinates.
 - Existing Review open never advances represented state; explicit Refresh
-      is the sole revision-advance owner.
+  is the sole revision-advance owner.
 - Publication, Published feedback mutation, thread mutation, and merge all
-      resolve the stable Review through `ReviewWriteGate` and recheck exact head.
+  resolve the stable Review through `ReviewWriteGate` and recheck exact head.
 - Migration preserves every required artifact, survives interruption, runs
-      before list/open/load, and is idempotent.
+  before list/open/load, and is idempotent.
 - Published feedback actions appear and execute only when authenticated
-      record-specific capability is proven.
+  record-specific capability is proven.
 - All 18 approved design targets have deterministic production-component
-      scenarios; the audit result can be updated from 0 complete passes.
+  scenarios; the audit result can be updated from 0 complete passes.
 - Published feedback, primary content, and the draft never overlap at
-      1280px or 1440px, collapsed or expanded.
+  1280px or 1440px, collapsed or expanded.
 - Updates available preserves local draft editing while every GitHub write
-      remains blocked.
+  remains blocked.
 - Insights uses the stable rail and one central document; every Analysis
-      and Walkthrough lifecycle state is explicit.
+  and Walkthrough lifecycle state is explicit.
 - Outdated evidence cannot navigate, mutate a draft, publish, dismiss a
-      Finding, or affect merge policy.
+  Finding, or affect merge policy.
 - Needs attention supports reattach, convert, confirmed remove, automatic
-      advance, and an all-items hard preview/publication block.
+  advance, and an all-items hard preview/publication block.
 - PR Overview uses the selected order and owns the existing confirmed
-      SHA-bound merge action.
+  SHA-bound merge action.
 - Publication exposes Ready, Publishing, Confirmed, and Needs confirmation;
-      active/uncertain writes cannot be closed or repeated.
+  active/uncertain writes cannot be closed or repeated.
 - Confirmed publication retains durable evidence, refreshes GitHub-owned
-      Published feedback, and exposes a new empty local draft.
+  Published feedback, and exposes a new empty local draft.
 - Prepared, completed, model-review, and read-only workbench copy and fixture
-      branches are absent.
+  branches are absent.
 - `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`,
-      `pnpm exec playwright test`, `pnpm run package:mac`, and
-      `pnpm run test:package-smoke` all exit 0.
+  `pnpm exec playwright test`, `pnpm run package:mac`, and
+  `pnpm run test:package-smoke` all exit 0.
 - Dedicated development and packaged Electron QA passes with evidence and
-      no real remote write.
+  no real remote write.
 - Only authorized in-scope files plus this task package are modified.
 - The repair plan is marked DONE in the task package `README.md`.
 
@@ -1677,11 +1689,11 @@ not be executed.
   `scripts/package-smoke.mjs` from removed legacy `Review complete` and
   `centraldigital/patchdesk#42` selectors to the canonical rendered Review
   state marker (`Review state is current.`) and current PR heading (`#42
-  Protect review writes`). `pnpm package:mac` passed, followed by
+Protect review writes`). `pnpm package:mac` passed, followed by
   `pnpm test:package-smoke` passing against `release/mac-arm64/Patchdesk.app`
   with no renderer failures. Full `pnpm test -- --run` passed (106 files,
   775 tests); `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff
-  --check` passed. No GitHub writes or model runs were used.
+--check` passed. No GitHub writes or model runs were used.
 
 ### Maintenance notes
 

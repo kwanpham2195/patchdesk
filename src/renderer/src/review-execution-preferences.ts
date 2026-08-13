@@ -24,10 +24,13 @@ export function loadReviewExecutionPreference(
       value === null ||
       !Object.hasOwn(value, "model") ||
       !Object.hasOwn(value, "reasoning")
-    ) return undefined;
+    )
+      return undefined;
     const { model, reasoning } = value as Record<string, unknown>;
-    return typeof model === "string" && model.length > 0 && model.length <= 200 &&
-        (reasoning === "low" || reasoning === "medium" || reasoning === "high")
+    return typeof model === "string" &&
+      model.length > 0 &&
+      model.length <= 200 &&
+      (reasoning === "low" || reasoning === "medium" || reasoning === "high")
       ? { model, reasoning }
       : undefined;
   } catch {
@@ -39,5 +42,8 @@ export function saveReviewExecutionPreference(
   profileId: string,
   preference: ReviewExecutionPreference,
 ): void {
-  window.localStorage.setItem(storageKey(profileId), JSON.stringify(preference));
+  window.localStorage.setItem(
+    storageKey(profileId),
+    JSON.stringify(preference),
+  );
 }

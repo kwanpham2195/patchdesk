@@ -80,9 +80,17 @@ export type InsightRunResponse = {
   readonly runId: InsightRunId;
   readonly type: InsightType;
   readonly status:
-    "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
+    | "queued"
+    | "running"
+    | "cancelling"
+    | "completed"
+    | "failed"
+    | "cancelled";
   readonly failureReason?:
-    "cancelled" | "failed" | "invalid_result" | "superseded";
+    | "cancelled"
+    | "failed"
+    | "invalid_result"
+    | "superseded";
 };
 export type InsightCoordinatorInput = {
   readonly profileId: WorkspaceProfileId;

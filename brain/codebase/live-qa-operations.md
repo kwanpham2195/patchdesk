@@ -54,8 +54,11 @@ not readable from outside.
 From the page, use the preload bridge (no capability needed):
 
 ```js
-window.patchdesk.request({ path: "/v1/reviews/open", method: "POST",
-  body: { profileId, host, owner, repo, number } })
+window.patchdesk.request({
+  path: "/v1/reviews/open",
+  method: "POST",
+  body: { profileId, host, owner, repo, number },
+});
 ```
 
 ## Renderer-side debugging gotchas

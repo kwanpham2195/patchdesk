@@ -16,7 +16,10 @@ type RendererChunk = {
   readonly modules: Record<string, unknown>;
 };
 
-type RendererBundle = Record<string, RendererChunk | { readonly type: "asset" }>;
+type RendererBundle = Record<
+  string,
+  RendererChunk | { readonly type: "asset" }
+>;
 
 function rendererGraphArtifact(): Plugin {
   return {
@@ -42,7 +45,8 @@ function rendererGraphArtifact(): Plugin {
         });
       }
       chunks.sort((left, right) => left.fileName.localeCompare(right.fileName));
-      const outputDirectory = typeof options.dir === "string" ? options.dir : "out/renderer";
+      const outputDirectory =
+        typeof options.dir === "string" ? options.dir : "out/renderer";
       await writeFile(
         join(outputDirectory, "renderer-graph.json"),
         `${JSON.stringify({ chunks }, null, 2)}\n`,

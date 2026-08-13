@@ -21,7 +21,10 @@ import {
   type DashboardPrList,
   type DiscoveredRepo,
 } from "./dashboard-service";
-import { MaintainerInboxService, type MaintainerInbox } from "./maintainer-inbox-service";
+import {
+  MaintainerInboxService,
+  type MaintainerInbox,
+} from "./maintainer-inbox-service";
 import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
 import {
   addWatchedRepo,
@@ -189,7 +192,10 @@ export class DashboardController {
         repo.repo === ref.value.repo,
     );
     if (target === undefined) return failure("not_found");
-    const refreshed = await this.dashboard.refreshRepository(profile.value, target);
+    const refreshed = await this.dashboard.refreshRepository(
+      profile.value,
+      target,
+    );
     return refreshed._tag === "ok" ? refreshed : failure("storage");
   }
 

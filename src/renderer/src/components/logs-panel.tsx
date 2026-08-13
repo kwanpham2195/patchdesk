@@ -4,7 +4,13 @@ import { Pause, Play } from "lucide-react";
 import { requestJson } from "../api-client";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import {
   Select,
   SelectContent,
@@ -30,7 +36,10 @@ type LogEntry = {
 const MAX_DISPLAYED = 1_000;
 const POLL_INTERVAL_MS = 2_000;
 
-const levelOptions: ReadonlyArray<{ readonly value: "all" | LogLevel; readonly label: string }> = [
+const levelOptions: ReadonlyArray<{
+  readonly value: "all" | LogLevel;
+  readonly label: string;
+}> = [
   { value: "all", label: "All levels" },
   { value: "error", label: "Error" },
   { value: "warn", label: "Warn" },
@@ -38,7 +47,10 @@ const levelOptions: ReadonlyArray<{ readonly value: "all" | LogLevel; readonly l
   { value: "debug", label: "Debug" },
 ];
 
-const processOptions: ReadonlyArray<{ readonly value: "all" | LogProcess; readonly label: string }> = [
+const processOptions: ReadonlyArray<{
+  readonly value: "all" | LogProcess;
+  readonly label: string;
+}> = [
   { value: "all", label: "All processes" },
   { value: "main", label: "Main" },
   { value: "renderer", label: "Renderer" },
@@ -51,7 +63,10 @@ function isLogEntry(value: unknown): value is LogEntry {
     typeof record.seq === "number" &&
     typeof record.at === "string" &&
     (record.process === "main" || record.process === "renderer") &&
-    (record.level === "debug" || record.level === "info" || record.level === "warn" || record.level === "error") &&
+    (record.level === "debug" ||
+      record.level === "info" ||
+      record.level === "warn" ||
+      record.level === "error") &&
     typeof record.topic === "string" &&
     typeof record.message === "string"
   );
@@ -59,10 +74,14 @@ function isLogEntry(value: unknown): value is LogEntry {
 
 function levelClass(level: LogLevel): string {
   switch (level) {
-    case "error": return "text-red-600 dark:text-red-400";
-    case "warn": return "text-amber-600 dark:text-amber-400";
-    case "info": return "text-sky-600 dark:text-sky-400";
-    case "debug": return "text-muted-foreground";
+    case "error":
+      return "text-red-600 dark:text-red-400";
+    case "warn":
+      return "text-amber-600 dark:text-amber-400";
+    case "info":
+      return "text-sky-600 dark:text-sky-400";
+    case "debug":
+      return "text-muted-foreground";
   }
 }
 
@@ -85,11 +104,17 @@ export function LogsPanel(): React.JSX.Element {
     let cancelled = false;
     const load = async (after: number | undefined): Promise<void> => {
       try {
-        const query = after === undefined ? "limit=300" : `after=${after}&limit=500`;
+        const query =
+          after === undefined ? "limit=300" : `after=${after}&limit=500`;
         const value = await requestJson(`/v1/logs?${query}`);
         if (cancelled || typeof value !== "object" || value === null) return;
-        const record = value as { readonly entries?: unknown; readonly nextAfter?: unknown };
-        const incoming = Array.isArray(record.entries) ? record.entries.filter(isLogEntry) : [];
+        const record = value as {
+          readonly entries?: unknown;
+          readonly nextAfter?: unknown;
+        };
+        const incoming = Array.isArray(record.entries)
+          ? record.entries.filter(isLogEntry)
+          : [];
         // The cursor is the last delivered sequence (or the supplied cursor
         // when nothing arrived); it is sent back unchanged on the next poll.
         if (typeof record.nextAfter === "number") {
@@ -98,7 +123,8 @@ export function LogsPanel(): React.JSX.Element {
           setAfterSeq(after);
         }
         setEntries((current) => {
-          const merged = after === undefined ? incoming : [...current, ...incoming];
+          const merged =
+            after === undefined ? incoming : [...current, ...incoming];
           return merged.slice(-MAX_DISPLAYED);
         });
         setError(undefined);
@@ -146,7 +172,11 @@ export function LogsPanel(): React.JSX.Element {
             onClick={() => setPaused((current) => !current)}
             aria-label={paused ? "Resume log tail" : "Pause log tail"}
           >
-            {paused ? <Play data-icon="inline-start" /> : <Pause data-icon="inline-start" />}
+            {paused ? (
+              <Play data-icon="inline-start" />
+            ) : (
+              <Pause data-icon="inline-start" />
+            )}
             {paused ? "Resume" : "Pause"}
           </Button>
           <Select
@@ -156,7 +186,12 @@ export function LogsPanel(): React.JSX.Element {
               if (value !== null) setLevelFilter(value as "all" | LogLevel);
             }}
           >
-            <SelectTrigger id="log-level-filter" size="sm" aria-label="Filter by level" className="w-36">
+            <SelectTrigger
+              id="log-level-filter"
+              size="sm"
+              aria-label="Filter by level"
+              className="w-36"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -174,7 +209,12 @@ export function LogsPanel(): React.JSX.Element {
               if (value !== null) setProcessFilter(value as "all" | LogProcess);
             }}
           >
-            <SelectTrigger id="log-process-filter" size="sm" aria-label="Filter by process" className="w-36">
+            <SelectTrigger
+              id="log-process-filter"
+              size="sm"
+              aria-label="Filter by process"
+              className="w-36"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -196,7 +236,11 @@ export function LogsPanel(): React.JSX.Element {
           ref={scrollRef}
           onScroll={(event) => {
             const container = event.currentTarget;
-            atBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+            atBottomRef.current =
+              container.scrollHeight -
+                container.scrollTop -
+                container.clientHeight <
+              40;
           }}
           className="h-[55vh] overflow-y-auto rounded-md border p-2 font-mono text-xs"
           aria-label="Log stream"
@@ -204,16 +248,31 @@ export function LogsPanel(): React.JSX.Element {
         >
           {visible.length === 0 ? (
             <p className="p-2 text-muted-foreground" role="status">
-              {entries.length === 0 ? "No log entries yet." : "No entries match the filters."}
+              {entries.length === 0
+                ? "No log entries yet."
+                : "No entries match the filters."}
             </p>
           ) : (
             <ol className="flex flex-col gap-1">
               {visible.map((entry) => (
                 <li key={entry.seq} className="flex gap-2 px-1 py-0.5">
-                  <span className="shrink-0 text-muted-foreground">{entry.at.slice(11, 23)}</span>
-                  <span className={cn("w-12 shrink-0 font-medium", levelClass(entry.level))}>{entry.level}</span>
-                  <span className="w-16 shrink-0 text-muted-foreground">{entry.process}</span>
-                  <span className="w-28 shrink-0 truncate text-muted-foreground">{entry.topic}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {entry.at.slice(11, 23)}
+                  </span>
+                  <span
+                    className={cn(
+                      "w-12 shrink-0 font-medium",
+                      levelClass(entry.level),
+                    )}
+                  >
+                    {entry.level}
+                  </span>
+                  <span className="w-16 shrink-0 text-muted-foreground">
+                    {entry.process}
+                  </span>
+                  <span className="w-28 shrink-0 truncate text-muted-foreground">
+                    {entry.topic}
+                  </span>
                   <span className="min-w-0 flex-1">{entry.message}</span>
                   {entry.meta === undefined ? null : (
                     <span className="min-w-0 shrink truncate text-muted-foreground">

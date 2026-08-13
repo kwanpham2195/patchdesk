@@ -1,4 +1,12 @@
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,7 +55,9 @@ async function fixture() {
 }
 
 function worktrees(paths: PatchdeskPaths): ReviewWorktreeService {
-  return new ReviewWorktreeService(paths, { run: async () => ok({ stdout: "" }) });
+  return new ReviewWorktreeService(paths, {
+    run: async () => ok({ stdout: "" }),
+  });
 }
 
 async function writePersistedJournal(
@@ -61,7 +71,11 @@ async function writePersistedJournal(
   },
 ): Promise<void> {
   await mkdir(join(filePath, ".."), { recursive: true });
-  await writeFile(filePath, JSON.stringify({ schemaVersion: 1, state: "preparing", ...content }), "utf8");
+  await writeFile(
+    filePath,
+    JSON.stringify({ schemaVersion: 1, state: "preparing", ...content }),
+    "utf8",
+  );
 }
 
 async function expectPresent(path: string): Promise<void> {
@@ -82,21 +96,33 @@ function persistedSession(subject: Awaited<ReturnType<typeof fixture>>) {
       isDraft: false,
       isOpen: true,
     },
-    patchPath: must(parseAbsolutePath(subject.paths.patchFile(subject.profileId, subject.sessionId))),
+    patchPath: must(
+      parseAbsolutePath(
+        subject.paths.patchFile(subject.profileId, subject.sessionId),
+      ),
+    ),
     worktree: {
-      path: must(parseAbsolutePath(subject.paths.worktreeDirectory(subject.profileId, subject.sessionId))),
+      path: must(
+        parseAbsolutePath(
+          subject.paths.worktreeDirectory(subject.profileId, subject.sessionId),
+        ),
+      ),
       headSha,
     },
     createdAt: must(parseIsoTimestamp("2026-08-01T00:00:00.000Z")),
   });
 }
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 describe("ReviewPreparationJournal", () => {
   it("exposes an active operation without exposing journal paths", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-preparation-journal-"));
+    const root = await mkdtemp(
+      join(tmpdir(), "patchdesk-preparation-journal-"),
+    );
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
     const profileId = parseWorkspaceProfileId("cfw");
@@ -114,14 +140,22 @@ describe("ReviewPreparationJournal", () => {
       headSha: must(headSha),
     });
     const profile = must(profileId);
-    const journal = await ReviewPreparationJournal.begin(paths, profile, sessionId);
+    const journal = await ReviewPreparationJournal.begin(
+      paths,
+      profile,
+      sessionId,
+    );
     expect(journal).toMatchObject({ _tag: "ok" });
-    await expect(ReviewPreparationJournal.activeFor(paths, profile, sessionId)).resolves.toEqual({
+    await expect(
+      ReviewPreparationJournal.activeFor(paths, profile, sessionId),
+    ).resolves.toEqual({
       _tag: "ok",
       value: { profileId: profile, sessionId, phase: "preparing" },
     });
     if (journal._tag === "ok") await journal.value.complete();
-    await expect(ReviewPreparationJournal.activeFor(paths, profile, sessionId)).resolves.toEqual({ _tag: "ok", value: undefined });
+    await expect(
+      ReviewPreparationJournal.activeFor(paths, profile, sessionId),
+    ).resolves.toEqual({ _tag: "ok", value: undefined });
   });
 
   it("preserves an outside sentinel when a persisted target is absolute", async () => {
@@ -135,7 +169,9 @@ describe("ReviewPreparationJournal", () => {
       targets: [sentinel],
     });
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths))).resolves.toEqual({ recovered: 0, failed: 1 });
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
 
     await expectPresent(sentinel);
     await expectPresent(subject.journalFile);
@@ -149,10 +185,23 @@ describe("ReviewPreparationJournal", () => {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
       stagingRoot: join(subject.sessionDirectory, ".staging"),
-      targets: [join(subject.sessionDirectory, "..", "..", "..", "..", "..", "..", "outside-parent-sentinel")],
+      targets: [
+        join(
+          subject.sessionDirectory,
+          "..",
+          "..",
+          "..",
+          "..",
+          "..",
+          "..",
+          "outside-parent-sentinel",
+        ),
+      ],
     });
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths))).resolves.toEqual({ recovered: 0, failed: 1 });
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
 
     await expectPresent(sentinel);
     await expectPresent(subject.journalFile);
@@ -165,7 +214,10 @@ describe("ReviewPreparationJournal", () => {
     await mkdir(sentinelDirectory, { recursive: true });
     await writeFile(sentinel, "keep", "utf8");
     await mkdir(subject.sessionDirectory, { recursive: true });
-    await symlink(sentinelDirectory, join(subject.sessionDirectory, ".staging"));
+    await symlink(
+      sentinelDirectory,
+      join(subject.sessionDirectory, ".staging"),
+    );
     await writePersistedJournal(subject.journalFile, {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
@@ -173,7 +225,9 @@ describe("ReviewPreparationJournal", () => {
       targets: [],
     });
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths))).resolves.toEqual({ recovered: 0, failed: 1 });
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
 
     await expectPresent(sentinel);
     await expectPresent(subject.journalFile);
@@ -190,7 +244,9 @@ describe("ReviewPreparationJournal", () => {
       targets: [],
     });
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths))).resolves.toEqual({ recovered: 0, failed: 1 });
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
 
     await expectPresent(sentinel);
     await expectPresent(subject.journalFile);
@@ -198,20 +254,33 @@ describe("ReviewPreparationJournal", () => {
 
   it("recovers an interrupted preparation by deleting only its derived Session paths", async () => {
     const subject = await fixture();
-    const journal = must(await ReviewPreparationJournal.begin(subject.paths, subject.profileId, subject.sessionId));
+    const journal = must(
+      await ReviewPreparationJournal.begin(
+        subject.paths,
+        subject.profileId,
+        subject.sessionId,
+      ),
+    );
     const staged = join(journal.stagingRoot, "artifact.tmp");
-    const target = subject.paths.preparedContextFile(subject.profileId, subject.sessionId);
+    const target = subject.paths.preparedContextFile(
+      subject.profileId,
+      subject.sessionId,
+    );
     await mkdir(join(staged, ".."), { recursive: true });
     await mkdir(join(target, ".."), { recursive: true });
     await writeFile(staged, "staged", "utf8");
     await writeFile(target, "target", "utf8");
     expect((await journal.record(target))._tag).toBe("ok");
-    expect(JSON.parse(await readFile(subject.journalFile, "utf8"))).toMatchObject({
+    expect(
+      JSON.parse(await readFile(subject.journalFile, "utf8")),
+    ).toMatchObject({
       stagingRoot: journal.stagingRoot,
       targets: [target],
     });
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths))).resolves.toEqual({ recovered: 1, failed: 0 });
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
 
     await expect(access(target)).rejects.toThrow();
     await expect(access(journal.stagingRoot)).rejects.toThrow();
@@ -220,8 +289,17 @@ describe("ReviewPreparationJournal", () => {
 
   it("removes a committed journal while retaining its prepared artifacts", async () => {
     const subject = await fixture();
-    const journal = must(await ReviewPreparationJournal.begin(subject.paths, subject.profileId, subject.sessionId));
-    const target = subject.paths.preparedContextFile(subject.profileId, subject.sessionId);
+    const journal = must(
+      await ReviewPreparationJournal.begin(
+        subject.paths,
+        subject.profileId,
+        subject.sessionId,
+      ),
+    );
+    const target = subject.paths.preparedContextFile(
+      subject.profileId,
+      subject.sessionId,
+    );
     await mkdir(join(target, ".."), { recursive: true });
     await writeFile(target, "target", "utf8");
     expect((await journal.record(target))._tag).toBe("ok");
@@ -231,7 +309,13 @@ describe("ReviewPreparationJournal", () => {
       load: async () => ok(persisted),
     };
 
-    await expect(ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths), sessions)).resolves.toEqual({ recovered: 1, failed: 0 });
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        sessions,
+      ),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
 
     await expectPresent(target);
     await expect(access(subject.journalFile)).rejects.toThrow();

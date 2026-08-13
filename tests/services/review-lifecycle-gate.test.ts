@@ -12,15 +12,21 @@ describe("ReviewLifecycleGate", () => {
     const gate = new ReviewLifecycleGate();
     const events: string[] = [];
     let release: (() => void) | undefined;
-    const held = new Promise<void>((resolve) => { release = resolve; });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const first = gate.withProfileLock(profile.value, async () => {
       events.push("first-start");
       await held;
       events.push("first-end");
     });
     await Promise.resolve();
-    const second = gate.withProfileLock(profile.value, async () => events.push("second"));
-    const other = gate.withProfileLock(otherProfile.value, async () => events.push("other"));
+    const second = gate.withProfileLock(profile.value, async () =>
+      events.push("second"),
+    );
+    const other = gate.withProfileLock(otherProfile.value, async () =>
+      events.push("other"),
+    );
     await Promise.resolve();
     expect(events).toEqual(["first-start", "other"]);
     release?.();

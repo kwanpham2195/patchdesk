@@ -2,15 +2,32 @@ import { join } from "node:path";
 
 import { providerEnvironmentNames } from "../adapters/pi/pi-provider-catalog";
 
-import type { CommandFailure, CommandRunner } from "../adapters/github/command-runner";
-import { parseModelReviewResult, type ModelReviewResult } from "../domain/review-result";
+import type {
+  CommandFailure,
+  CommandRunner,
+} from "../adapters/github/command-runner";
+import {
+  parseModelReviewResult,
+  type ModelReviewResult,
+} from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
-import { parseWalkthroughOutput, type WalkthroughInput, type WalkthroughOutput } from "./walkthrough-operation";
+import {
+  parseWalkthroughOutput,
+  type WalkthroughInput,
+  type WalkthroughOutput,
+} from "./walkthrough-operation";
 
 const MAX_CHILD_STDIN_BYTES = 2 * 1024 * 1024;
 
 export type FlueInsightChildFailure = {
-  readonly reason: "cancelled" | "authentication_required" | "rate_limited" | "runtime_unavailable" | "timed_out" | "execution_failed" | "invalid_result";
+  readonly reason:
+    | "cancelled"
+    | "authentication_required"
+    | "rate_limited"
+    | "runtime_unavailable"
+    | "timed_out"
+    | "execution_failed"
+    | "invalid_result";
 };
 
 export type FlueInsightChildAnalysisInput = {
@@ -30,30 +47,60 @@ export class FlueInsightChildInvoker {
     private readonly commands: CommandRunner,
     private readonly projectRoot: string,
     private readonly runtimeExecutable = process.execPath,
-    private readonly runnerPath = join(projectRoot, "runtime", "flue", "dist", "patchdesk-insight-runner.js"),
+    private readonly runnerPath = join(
+      projectRoot,
+      "runtime",
+      "flue",
+      "dist",
+      "patchdesk-insight-runner.js",
+    ),
   ) {}
 
-  async invokeAnalysis(input: FlueInsightChildAnalysisInput, options?: { readonly signal?: AbortSignal }): Promise<Result<ModelReviewResult, FlueInsightChildFailure>> {
-    const result = await this.invoke({ type: "analysis", input }, 10 * 60_000, options?.signal);
+  async invokeAnalysis(
+    input: FlueInsightChildAnalysisInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Result<ModelReviewResult, FlueInsightChildFailure>> {
+    const result = await this.invoke(
+      { type: "analysis", input },
+      10 * 60_000,
+      options?.signal,
+    );
     if (result._tag === "err") return result;
     const parsed = parseModelReviewResult(result.value);
-    return parsed._tag === "ok" ? ok(parsed.value) : err({ reason: "invalid_result" });
+    return parsed._tag === "ok"
+      ? ok(parsed.value)
+      : err({ reason: "invalid_result" });
   }
 
-  async invokeWalkthrough(input: WalkthroughInput, timeoutMs: number, options?: { readonly signal?: AbortSignal }): Promise<Result<WalkthroughOutput, FlueInsightChildFailure>> {
-    const result = await this.invoke({ type: "walkthrough", input }, timeoutMs, options?.signal);
+  async invokeWalkthrough(
+    input: WalkthroughInput,
+    timeoutMs: number,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Result<WalkthroughOutput, FlueInsightChildFailure>> {
+    const result = await this.invoke(
+      { type: "walkthrough", input },
+      timeoutMs,
+      options?.signal,
+    );
     if (result._tag === "err") return result;
     const parsed = parseWalkthroughOutput(result.value);
-    return parsed._tag === "ok" ? ok(parsed.value) : err({ reason: "invalid_result" });
+    return parsed._tag === "ok"
+      ? ok(parsed.value)
+      : err({ reason: "invalid_result" });
   }
 
-  private async invoke(body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<Result<unknown, FlueInsightChildFailure>> {
+  private async invoke(
+    body: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<Result<unknown, FlueInsightChildFailure>> {
     if (signal?.aborted) return err({ reason: "cancelled" });
     const stdin = JSON.stringify(body);
     if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
       return err({ reason: "execution_failed" });
     const environment = productionChildEnvironment(body);
-    if (environment === undefined) return err({ reason: "runtime_unavailable" });
+    if (environment === undefined)
+      return err({ reason: "runtime_unavailable" });
     const output = await this.commands.runJson({
       argv: [this.runtimeExecutable, this.runnerPath],
       cwd: this.projectRoot,
@@ -64,7 +111,8 @@ export class FlueInsightChildInvoker {
       ...(signal === undefined ? {} : { signal }),
     });
     if (signal?.aborted) return err({ reason: "cancelled" });
-    if (output._tag === "err") return err({ reason: childFailureReason(output.error) });
+    if (output._tag === "err")
+      return err({ reason: childFailureReason(output.error) });
     const response = parseChildResponse(output.value);
     if (response === undefined) return err({ reason: "invalid_result" });
     if (response.ok) return ok(response.value);
@@ -74,17 +122,22 @@ export class FlueInsightChildInvoker {
           ? "cancelled"
           : response.reason === "runtime_unavailable"
             ? "runtime_unavailable"
-            : response.reason === "invalid_result" || response.reason === "invalid_input"
+            : response.reason === "invalid_result" ||
+                response.reason === "invalid_input"
               ? "invalid_result"
               : "execution_failed",
     });
   }
 }
 
-function productionChildEnvironment(body: unknown): Readonly<Record<string, string>> | undefined {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+function productionChildEnvironment(
+  body: unknown,
+): Readonly<Record<string, string>> | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body))
+    return undefined;
   const input = (body as { readonly input?: unknown }).input;
-  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined;
+  if (typeof input !== "object" || input === null || Array.isArray(input))
+    return undefined;
   const model = (input as { readonly model?: unknown }).model;
   if (typeof model !== "string") return undefined;
   const separator = model.indexOf("/");
@@ -103,7 +156,11 @@ function productionChildEnvironment(body: unknown): Readonly<Record<string, stri
     if (value !== undefined) environment[name] = value;
   }
   const home = process.env.HOME;
-  if (home !== undefined && (provider === "amazon-bedrock" || provider === "google-vertex")) environment.HOME = home;
+  if (
+    home !== undefined &&
+    (provider === "amazon-bedrock" || provider === "google-vertex")
+  )
+    environment.HOME = home;
   return environment;
 }
 
@@ -130,14 +187,21 @@ function parseChildResponse(
   return undefined;
 }
 
-function childFailureReason(failure: CommandFailure): FlueInsightChildFailure["reason"] {
+function childFailureReason(
+  failure: CommandFailure,
+): FlueInsightChildFailure["reason"] {
   switch (failure._tag) {
-    case "CommandAuthenticationRequired": return "authentication_required";
-    case "CommandRateLimited": return "rate_limited";
+    case "CommandAuthenticationRequired":
+      return "authentication_required";
+    case "CommandRateLimited":
+      return "rate_limited";
     case "CommandNotFound":
     case "CommandRuntimeUnavailable":
-    case "CommandUnavailable": return "runtime_unavailable";
-    case "CommandTimedOut": return "timed_out";
-    default: return "execution_failed";
+    case "CommandUnavailable":
+      return "runtime_unavailable";
+    case "CommandTimedOut":
+      return "timed_out";
+    default:
+      return "execution_failed";
   }
 }

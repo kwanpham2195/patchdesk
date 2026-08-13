@@ -5,7 +5,9 @@ import { discoverExecutable } from "../../src/main/executable-discovery";
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
-vi.mock("../../src/main/executable-discovery", () => ({ discoverExecutable: vi.fn() }));
+vi.mock("../../src/main/executable-discovery", () => ({
+  discoverExecutable: vi.fn(),
+}));
 
 describe("CommandRunner", () => {
   beforeEach(() => {
@@ -15,9 +17,10 @@ describe("CommandRunner", () => {
   it("does not spawn when cancellation happens during executable discovery", async () => {
     let resolveDiscovery!: (path: string) => void;
     vi.mocked(discoverExecutable).mockImplementation(
-      () => new Promise<string | undefined>((resolve) => {
-        resolveDiscovery = resolve;
-      }),
+      () =>
+        new Promise<string | undefined>((resolve) => {
+          resolveDiscovery = resolve;
+        }),
     );
     const controller = new AbortController();
 
@@ -26,7 +29,9 @@ describe("CommandRunner", () => {
       timeoutMs: 1_000,
       signal: controller.signal,
     });
-    await vi.waitFor(() => expect(discoverExecutable).toHaveBeenCalledWith("runtime"));
+    await vi.waitFor(() =>
+      expect(discoverExecutable).toHaveBeenCalledWith("runtime"),
+    );
 
     controller.abort();
     resolveDiscovery("/usr/bin/runtime");

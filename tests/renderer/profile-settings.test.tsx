@@ -29,25 +29,45 @@ describe("workspace profile settings", () => {
 
     renderSettings(reload);
 
-    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      true,
+    );
     await user.click(screen.getByRole("button", { name: "New profile" }));
-    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      false,
+    );
 
     await user.type(screen.getByLabelText("Profile ID"), "enterprise");
     await user.type(screen.getByLabelText("Label"), "Enterprise");
     await user.clear(screen.getByLabelText("GitHub host"));
-    await user.type(screen.getByLabelText("GitHub host"), "github.example.test");
+    await user.type(
+      screen.getByLabelText("GitHub host"),
+      "github.example.test",
+    );
     await user.type(screen.getByLabelText("GitHub account"), "enterprise-user");
-    await user.type(screen.getByLabelText("workspace root 1"), "/workspace/enterprise");
-    await user.click(screen.getByRole("button", { name: "Add workspace root" }));
-    const chooseFolders = screen.getAllByRole("button", { name: "Choose folder" });
+    await user.type(
+      screen.getByLabelText("workspace root 1"),
+      "/workspace/enterprise",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Add workspace root" }),
+    );
+    const chooseFolders = screen.getAllByRole("button", {
+      name: "Choose folder",
+    });
     const secondChooseFolder = chooseFolders[1];
-    if (secondChooseFolder === undefined) throw new Error("Expected a second workspace root picker.");
+    if (secondChooseFolder === undefined)
+      throw new Error("Expected a second workspace root picker.");
     await user.click(secondChooseFolder);
-    await user.click(screen.getByRole("button", { name: "Remove workspace root 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "Remove workspace root 1" }),
+    );
     await user.type(screen.getByLabelText("owner filter 1"), "enterprise");
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
-    await user.type(screen.getByLabelText("rule path 1"), "/workspace/enterprise/AGENTS.md");
+    await user.type(
+      screen.getByLabelText("rule path 1"),
+      "/workspace/enterprise/AGENTS.md",
+    );
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
     await vi.waitFor(() =>
@@ -65,7 +85,11 @@ describe("workspace profile settings", () => {
         },
       }),
     );
-    expect(request).toHaveBeenCalledWith({ path: "/v1/profiles/select", method: "POST", body: { id: "enterprise" } });
+    expect(request).toHaveBeenCalledWith({
+      path: "/v1/profiles/select",
+      method: "POST",
+      body: { id: "enterprise" },
+    });
     expect(reload).toHaveBeenCalled();
   });
 
@@ -86,7 +110,9 @@ describe("workspace profile settings", () => {
     await user.type(label, "Newer");
 
     releaseSave();
-    await vi.waitFor(() => expect((label as HTMLInputElement).value).toBe("Newer"));
+    await vi.waitFor(() =>
+      expect((label as HTMLInputElement).value).toBe("Newer"),
+    );
   });
 
   it("shows inline validation for a blank list entry without saving", async () => {
@@ -97,8 +123,12 @@ describe("workspace profile settings", () => {
     await user.click(screen.getByRole("button", { name: "Add owner filter" }));
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
-    expect(screen.getByText("Owner filters cannot contain blank entries.")).toBeTruthy();
-    expect(request.mock.calls.some(([input]) => input.path === "/v1/profiles")).toBe(false);
+    expect(
+      screen.getByText("Owner filters cannot contain blank entries."),
+    ).toBeTruthy();
+    expect(
+      request.mock.calls.some(([input]) => input.path === "/v1/profiles"),
+    ).toBe(false);
   });
 
   it("shows a save error inline when the profile API rejects the request", async () => {
@@ -109,12 +139,20 @@ describe("workspace profile settings", () => {
     await user.type(screen.getByLabelText("Label"), " changed");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
-    expect(await screen.findByText("Patchdesk could not save the local review state.")).toBeTruthy();
-    expect(request.mock.calls.some(([input]) => input.path === "/v1/profiles")).toBe(true);
+    expect(
+      await screen.findByText(
+        "Patchdesk could not save the local review state.",
+      ),
+    ).toBeTruthy();
+    expect(
+      request.mock.calls.some(([input]) => input.path === "/v1/profiles"),
+    ).toBe(true);
   });
 });
 
-function renderSettings(onWorkspaceReload = async (): Promise<void> => undefined): void {
+function renderSettings(
+  onWorkspaceReload = async (): Promise<void> => undefined,
+): void {
   render(
     <SettingsFlow
       dashboard={{ profile, dashboard: { rows: [], repos: [] } }}
@@ -129,22 +167,53 @@ function renderSettings(onWorkspaceReload = async (): Promise<void> => undefined
   );
 }
 
-function installDesktopApi(options: { readonly rejectProfileSave?: boolean; readonly pendingProfileSave?: Promise<ReturnType<typeof success>> } = {}): ReturnType<typeof vi.fn> {
-  const request = vi.fn(async (input: { readonly path?: string; readonly method?: string; readonly body?: unknown; readonly operation?: string }) => {
-    if (input.operation === "selectDirectory") return success({ path: "/picked/enterprise" });
-    if (input.path === "/v1/environment") return success({});
-    if (input.path === "/v1/profiles" && options.pendingProfileSave !== undefined) return options.pendingProfileSave;
-    if (input.path === "/v1/profiles" && options.rejectProfileSave === true) return failure({ error: "storage" });
-    return success({});
+function installDesktopApi(
+  options: {
+    readonly rejectProfileSave?: boolean;
+    readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
+  } = {},
+): ReturnType<typeof vi.fn> {
+  const request = vi.fn(
+    async (input: {
+      readonly path?: string;
+      readonly method?: string;
+      readonly body?: unknown;
+      readonly operation?: string;
+    }) => {
+      if (input.operation === "selectDirectory")
+        return success({ path: "/picked/enterprise" });
+      if (input.path === "/v1/environment") return success({});
+      if (
+        input.path === "/v1/profiles" &&
+        options.pendingProfileSave !== undefined
+      )
+        return options.pendingProfileSave;
+      if (input.path === "/v1/profiles" && options.rejectProfileSave === true)
+        return failure({ error: "storage" });
+      return success({});
+    },
+  );
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: { request, onNavigate: () => () => undefined },
   });
-  Object.defineProperty(window, "patchdesk", { configurable: true, value: { request, onNavigate: () => () => undefined } });
   return request;
 }
 
-function success(body: unknown): { readonly ok: true; readonly status: 200; readonly body: unknown; readonly correlationId: string } {
+function success(body: unknown): {
+  readonly ok: true;
+  readonly status: 200;
+  readonly body: unknown;
+  readonly correlationId: string;
+} {
   return { ok: true, status: 200, body, correlationId: "test" };
 }
 
-function failure(body: unknown): { readonly ok: false; readonly status: 500; readonly body: unknown; readonly correlationId: string } {
+function failure(body: unknown): {
+  readonly ok: false;
+  readonly status: 500;
+  readonly body: unknown;
+  readonly correlationId: string;
+} {
   return { ok: false, status: 500, body, correlationId: "test" };
 }

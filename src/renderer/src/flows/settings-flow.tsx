@@ -53,7 +53,12 @@ import {
 } from "../components/ui/select";
 import type { Dashboard, Profile } from "../renderer-models";
 
-export type SettingsSection = "general" | "workspace" | "review" | "data" | "logs";
+export type SettingsSection =
+  | "general"
+  | "workspace"
+  | "review"
+  | "data"
+  | "logs";
 
 type ProfileDraft = {
   readonly id: string;
@@ -383,43 +388,46 @@ export function SettingsFlow({
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="flex flex-col gap-6">
           <Card>
-          <CardHeader>
+            <CardHeader>
               <CardTitle>Profile</CardTitle>
-            <CardDescription>
-                The active GitHub account and profile details for this workspace.
-            </CardDescription>
-          </CardHeader>
+              <CardDescription>
+                The active GitHub account and profile details for this
+                workspace.
+              </CardDescription>
+            </CardHeader>
             <CardContent className="flex flex-col gap-5">
               <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
-                <Select
-                  value={dashboard?.profile.id ?? profileDraft.id}
-                  items={profiles.map((profile) => ({
-                    label: profile.label,
-                    value: profile.id,
-                  }))}
-                  onValueChange={(value) => {
-                    if (value !== null) selectProfile(value);
-                  }}
-                >
-                  <SelectTrigger
-                    id="active-profile"
-                    aria-label="Active profile"
+                <Field>
+                  <FieldLabel htmlFor="active-profile">
+                    Active profile
+                  </FieldLabel>
+                  <Select
+                    value={dashboard?.profile.id ?? profileDraft.id}
+                    items={profiles.map((profile) => ({
+                      label: profile.label,
+                      value: profile.id,
+                    }))}
+                    onValueChange={(value) => {
+                      if (value !== null) selectProfile(value);
+                    }}
                   >
-                    <SelectValue placeholder="Select a profile">
-                      {profileDraft.label}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {profiles.map((profile) => (
-                      <SelectItem key={profile.id} value={profile.id}>
-                        {profile.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+                    <SelectTrigger
+                      id="active-profile"
+                      aria-label="Active profile"
+                    >
+                      <SelectValue placeholder="Select a profile">
+                        {profileDraft.label}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profiles.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={startNewProfile}>
                     <Plus data-icon="inline-start" />
@@ -468,7 +476,9 @@ export function SettingsFlow({
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="profile-gh-account">GitHub account</FieldLabel>
+                    <FieldLabel htmlFor="profile-gh-account">
+                      GitHub account
+                    </FieldLabel>
                     <Input
                       id="profile-gh-account"
                       aria-label="GitHub account"
@@ -482,7 +492,9 @@ export function SettingsFlow({
                     />
                   </Field>
                   <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="profile-github-host">GitHub host</FieldLabel>
+                    <FieldLabel htmlFor="profile-github-host">
+                      GitHub host
+                    </FieldLabel>
                     <Input
                       id="profile-github-host"
                       aria-label="GitHub host"
@@ -546,7 +558,14 @@ export function SettingsFlow({
           </Card>
         </div>
         <WatchlistPanel
-          profile={dashboard?.profile ?? { id: "", label: "", githubHost: "github.com", ghAccount: "" }}
+          profile={
+            dashboard?.profile ?? {
+              id: "",
+              label: "",
+              githubHost: "github.com",
+              ghAccount: "",
+            }
+          }
           onWorkspaceReload={onWorkspaceReload}
         />
       </div>
@@ -785,7 +804,9 @@ function ReviewPreferences({
   readonly profileId: string | undefined;
 }): React.JSX.Element {
   const [preference, setPreference] = useState(() => preferenceFor(profileId));
-  const [models, setModels] = useState<ReadonlyArray<{ readonly id: string; readonly label: string }>>([]);
+  const [models, setModels] = useState<
+    ReadonlyArray<{ readonly id: string; readonly label: string }>
+  >([]);
   const [catalogUnavailable, setCatalogUnavailable] = useState(false);
   const [codexAvailable, setCodexAvailable] = useState<boolean | undefined>();
   useEffect(() => {
@@ -794,10 +815,18 @@ function ReviewPreferences({
       .then((value) => {
         const catalog = parseInsightProviderCatalog(value);
         if (!active) return;
-        setCodexAvailable(catalog?.providers.find((provider) => provider.id === "codex-cli-account")?.available ?? false);
+        setCodexAvailable(
+          catalog?.providers.find(
+            (provider) => provider.id === "codex-cli-account",
+          )?.available ?? false,
+        );
       })
-      .catch(() => { if (active) setCodexAvailable(false); });
-    return () => { active = false; };
+      .catch(() => {
+        if (active) setCodexAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [profileId]);
   useEffect(() => {
     const saved = preferenceFor(profileId);
@@ -818,10 +847,17 @@ function ReviewPreferences({
           .map((candidate) => ({ id: candidate.id, label: candidate.label }));
         const model = selectedModel(piModels, piModels[0]?.id, saved.model);
         setModels(piModels);
-        const next = { model: model ?? saved.model, reasoning: saved.reasoning };
+        const next = {
+          model: model ?? saved.model,
+          reasoning: saved.reasoning,
+        };
         setPreference(next);
         setCatalogUnavailable(false);
-        if (profileId !== undefined && model !== undefined && saved.model !== model)
+        if (
+          profileId !== undefined &&
+          model !== undefined &&
+          saved.model !== model
+        )
           saveReviewExecutionPreference(profileId, next);
       })
       .catch(() => {
@@ -848,7 +884,17 @@ function ReviewPreferences({
           Profile-scoped defaults for the next Analysis run. They never start
           work.
         </CardDescription>
-        <p className="text-sm text-muted-foreground" data-testid="codex-provider-status">Codex CLI account: {codexAvailable === undefined ? "checking availability" : codexAvailable ? "available" : "unavailable; expose codex on the app launch PATH and log in externally"}</p>
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="codex-provider-status"
+        >
+          Codex CLI account:{" "}
+          {codexAvailable === undefined
+            ? "checking availability"
+            : codexAvailable
+              ? "available"
+              : "unavailable; expose codex on the app launch PATH and log in externally"}
+        </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <FieldGroup>
@@ -862,43 +908,55 @@ function ReviewPreferences({
               disabled={catalogUnavailable}
               placeholder="No enabled model available"
               onValueChange={(value) => {
-                if (value !== null && models.some((model) => model.id === value))
+                if (
+                  value !== null &&
+                  models.some((model) => model.id === value)
+                )
                   update({ ...preference, model: value });
               }}
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="default-reasoning">Default reasoning</FieldLabel>
-          <Select
-            value={preference.reasoning}
-            onValueChange={(value) => {
-              if (value === "low" || value === "medium" || value === "high")
-                update({ ...preference, reasoning: value });
-            }}
-          >
-            <SelectTrigger id="default-reasoning" aria-label="Default reasoning">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-            </SelectContent>
-          </Select>
+            <FieldLabel htmlFor="default-reasoning">
+              Default reasoning
+            </FieldLabel>
+            <Select
+              value={preference.reasoning}
+              onValueChange={(value) => {
+                if (value === "low" || value === "medium" || value === "high")
+                  update({ ...preference, reasoning: value });
+              }}
+            >
+              <SelectTrigger
+                id="default-reasoning"
+                aria-label="Default reasoning"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
         </FieldGroup>
-        {catalogUnavailable || (models.length === 0 && codexAvailable !== true) ? (
+        {catalogUnavailable ||
+        (models.length === 0 && codexAvailable !== true) ? (
           <Alert>
             <AlertTitle>No eligible model configured</AlertTitle>
             <AlertDescription>
-              Configure an API key or ambient provider credentials in the Electron process, then reload this screen. Your saved preference is kept.
+              Configure an API key or ambient provider credentials in the
+              Electron process, then reload this screen. Your saved preference
+              is kept.
             </AlertDescription>
           </Alert>
         ) : models.length === 0 ? (
           <Alert>
             <AlertTitle>No Pi model configured</AlertTitle>
             <AlertDescription>
-              Codex CLI account is available. Start an Insight and select Codex CLI account to load its models.
+              Codex CLI account is available. Start an Insight and select Codex
+              CLI account to load its models.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -1017,9 +1075,7 @@ function profileDraftFromNormalized(profile: {
   return { ...profile };
 }
 
-function normalizeProfileDraft(
-  draft: ProfileDraft,
-):
+function normalizeProfileDraft(draft: ProfileDraft):
   | {
       readonly id: string;
       readonly label: string;
@@ -1086,7 +1142,10 @@ function ProfileListEditor({
       <legend className="text-sm font-medium">{label}</legend>
       <div className="flex flex-col gap-2 rounded-lg border p-2">
         {entries.map((entry, index) => (
-          <div key={`${field}-${index + 1}`} className="flex min-w-0 items-center gap-2">
+          <div
+            key={`${field}-${index + 1}`}
+            className="flex min-w-0 items-center gap-2"
+          >
             <Input
               aria-label={`${singular} ${index + 1}`}
               value={entry}

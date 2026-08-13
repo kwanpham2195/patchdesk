@@ -5,11 +5,13 @@ When facing a novel interaction or architectural decision with no established pr
 **The Rule:** For decisions where the right answer isn't obvious, build 2-3 competing prototypes or sketches. Compare them side-by-side. Only then commit.
 
 **When It Applies:**
+
 - Novel UI interactions (no prior art in the codebase)
 - Architectural choices with multiple viable approaches
 - Product design decisions where user experience depends on feel, not logic
 
 **When It Doesn't:**
+
 - Mechanical implementation where the pattern is established
 - Bug fixes or refactors with a clear target state
 - Changes where constraints dictate a single viable approach

@@ -92,7 +92,10 @@ export class ReviewSessionStore {
     return this.withSaveLock(key, async () => {
       const current = await this.load(value.key.profileId, value.id);
       if (current._tag === "err") {
-        if (current.error.reason !== "not_found" || expectedUpdatedAt !== undefined)
+        if (
+          current.error.reason !== "not_found" ||
+          expectedUpdatedAt !== undefined
+        )
           return current;
       } else if (
         expectedUpdatedAt !== undefined &&
@@ -101,7 +104,10 @@ export class ReviewSessionStore {
       ) {
         return invalidWrite();
       }
-      return writeAtomicJson(this.paths.sessionFile(value.key.profileId, value.id), value);
+      return writeAtomicJson(
+        this.paths.sessionFile(value.key.profileId, value.id),
+        value,
+      );
     });
   }
 
@@ -109,11 +115,14 @@ export class ReviewSessionStore {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
   ): Promise<Result<ReviewSession, StorageFailure>> {
-    const stored = await readJsonFile(this.paths.sessionFile(profileId, sessionId));
+    const stored = await readJsonFile(
+      this.paths.sessionFile(profileId, sessionId),
+    );
     if (stored._tag === "err") return stored;
     const parsed = parseStoredReviewSession(stored.value);
     if (parsed._tag === "err") return parsed;
-    return parsed.value.key.profileId === profileId && parsed.value.id === sessionId
+    return parsed.value.key.profileId === profileId &&
+      parsed.value.id === sessionId
       ? parsed
       : invalidRead();
   }
@@ -140,9 +149,12 @@ export class ReviewSessionStore {
       }
       const loaded = await this.load(profileId, sessionId.value);
       if (loaded._tag === "ok") sessions.push(loaded.value);
-      else invalidEntries.push({ entryName: entry, sessionId: sessionId.value });
+      else
+        invalidEntries.push({ entryName: entry, sessionId: sessionId.value });
     }
-    sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    sessions.sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    );
     return ok({ sessions, invalidEntries });
   }
 

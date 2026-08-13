@@ -8,7 +8,10 @@ import * as v from "valibot";
 
 import { CommandRunner } from "../../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
-import { parseReviewSessionId, parseWorkspaceProfileId } from "../../../src/domain/ids";
+import {
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "../../../src/domain/ids";
 import { prepareModelReview } from "../../../src/services/model-review-runner";
 import type { ReviewInspector } from "../../../src/services/review-inspector";
 import { prepareWalkthroughPrompt } from "../../../src/services/walkthrough-operation";
@@ -30,23 +33,47 @@ import {
 } from "./patchdesk-insight-agent";
 
 const childProtocolSchema = v.variant("type", [
-  v.strictObject({ type: v.literal("analysis"), input: analysisInvocationSchema }),
-  v.strictObject({ type: v.literal("walkthrough"), input: walkthroughInvocationSchema }),
+  v.strictObject({
+    type: v.literal("analysis"),
+    input: analysisInvocationSchema,
+  }),
+  v.strictObject({
+    type: v.literal("walkthrough"),
+    input: walkthroughInvocationSchema,
+  }),
 ]);
 
 const productionProtocolSchema = v.variant("type", [
-  v.strictObject({ type: v.literal("analysis"), input: productionAnalysisInvocationSchema }),
-  v.strictObject({ type: v.literal("walkthrough"), input: productionWalkthroughInvocationSchema }),
+  v.strictObject({
+    type: v.literal("analysis"),
+    input: productionAnalysisInvocationSchema,
+  }),
+  v.strictObject({
+    type: v.literal("walkthrough"),
+    input: productionWalkthroughInvocationSchema,
+  }),
 ]);
 
-export type PatchdeskChildInvocation = v.InferOutput<typeof childProtocolSchema>;
+export type PatchdeskChildInvocation = v.InferOutput<
+  typeof childProtocolSchema
+>;
 type ProductionChildInvocation = v.InferOutput<typeof productionProtocolSchema>;
 export type PatchdeskChildResult =
   | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly reason: "invalid_input" | "invalid_result" | "runtime_unavailable" | "cancelled" | "execution_failed" };
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "invalid_input"
+        | "invalid_result"
+        | "runtime_unavailable"
+        | "cancelled"
+        | "execution_failed";
+    };
 
 /** Parses one bounded stdin protocol object. */
-export function parsePatchdeskChildInvocation(input: unknown): PatchdeskChildInvocation | undefined {
+export function parsePatchdeskChildInvocation(
+  input: unknown,
+): PatchdeskChildInvocation | undefined {
   const parsed = v.safeParse(childProtocolSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
@@ -67,10 +94,12 @@ export async function runPatchdeskChild(
     assertSupportedNode();
     if (options.signal?.aborted) return { ok: false, reason: "cancelled" };
     const agent = await createAgent(invocation, options);
-    if (agent === undefined) return { ok: false, reason: "runtime_unavailable" };
-    const flue = options.providers === undefined
-      ? await start({ agents: [agent.agent] })
-      : await start({ agents: [agent.agent], providers: options.providers });
+    if (agent === undefined)
+      return { ok: false, reason: "runtime_unavailable" };
+    const flue =
+      options.providers === undefined
+        ? await start({ agents: [agent.agent] })
+        : await start({ agents: [agent.agent], providers: options.providers });
     let abortRequested = false;
     const handle = init(agent.agent, { id: `patchdesk-${invocation.type}` });
     options.onHandle?.(() => handle.abort());
@@ -85,24 +114,35 @@ export async function runPatchdeskChild(
         abort();
         return { ok: false, reason: "cancelled" };
       }
-      const receipt = await handle.dispatch("Complete the prepared Patchdesk operation.");
+      const receipt = await handle.dispatch(
+        "Complete the prepared Patchdesk operation.",
+      );
       if (options.signal?.aborted) {
         abort();
         return { ok: false, reason: "cancelled" };
       }
       const reply = await handle.read(receipt);
-      if (abortRequested || options.signal?.aborted) return { ok: false, reason: "cancelled" };
+      if (abortRequested || options.signal?.aborted)
+        return { ok: false, reason: "cancelled" };
       const values = reply.data.patchdeskResult;
-      if (agent.state.duplicateSubmissionAttempted() || values === undefined || values.length !== 1) {
+      if (
+        agent.state.duplicateSubmissionAttempted() ||
+        values === undefined ||
+        values.length !== 1
+      ) {
         return { ok: false, reason: "invalid_result" };
       }
       const value = values[0];
-      const parsed = invocation.type === "analysis"
-        ? v.safeParse(modelReviewResultSchema, value)
-        : v.safeParse(walkthroughResultSchema, value);
-      return parsed.success ? { ok: true, value: parsed.output } : { ok: false, reason: "invalid_result" };
+      const parsed =
+        invocation.type === "analysis"
+          ? v.safeParse(modelReviewResultSchema, value)
+          : v.safeParse(walkthroughResultSchema, value);
+      return parsed.success
+        ? { ok: true, value: parsed.output }
+        : { ok: false, reason: "invalid_result" };
     } catch (cause: unknown) {
-      if (abortRequested || options.signal?.aborted) return { ok: false, reason: "cancelled" };
+      if (abortRequested || options.signal?.aborted)
+        return { ok: false, reason: "cancelled" };
       void cause;
       return { ok: false, reason: "execution_failed" };
     } finally {
@@ -122,8 +162,10 @@ async function createAgent(
     readonly inspectors?: InspectorOperations;
   },
 ) {
-  if (invocation.type === "walkthrough") return createWalkthroughAgent(invocation.input);
-  if (options.skillPath === undefined || options.inspectors === undefined) return undefined;
+  if (invocation.type === "walkthrough")
+    return createWalkthroughAgent(invocation.input);
+  if (options.skillPath === undefined || options.inspectors === undefined)
+    return undefined;
   const skill = await loadPatchdeskReviewSkill(options.skillPath);
   return createAnalysisAgent(invocation.input, options.inspectors, skill);
 }
@@ -171,12 +213,16 @@ export async function runPatchdeskChildProcess(
   }
 }
 
-function parseProductionInvocation(input: unknown): ProductionChildInvocation | undefined {
+function parseProductionInvocation(
+  input: unknown,
+): ProductionChildInvocation | undefined {
   const parsed = v.safeParse(productionProtocolSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 
-async function readBoundedStdin(input: NodeJS.ReadableStream): Promise<string | undefined> {
+async function readBoundedStdin(
+  input: NodeJS.ReadableStream,
+): Promise<string | undefined> {
   const chunks: Array<Buffer> = [];
   let bytes = 0;
   for await (const chunk of input) {
@@ -187,7 +233,6 @@ async function readBoundedStdin(input: NodeJS.ReadableStream): Promise<string | 
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-
 
 export async function runProductionChild(
   invocation: ProductionChildInvocation,
@@ -208,12 +253,19 @@ export async function runProductionChild(
     ...canonical.input,
     debugPath: canonical.debugPath ?? "",
     async gitShow(argv) {
-      const output = await commands.runText({ argv, timeoutMs: 15_000, signal });
+      const output = await commands.runText({
+        argv,
+        timeoutMs: 15_000,
+        signal,
+      });
       return output._tag === "ok" ? output.value : "";
     },
   });
   return await runPatchdeskChild(
-    { type: "analysis", input: { ...canonical.input, prompt: prepared.prompt } },
+    {
+      type: "analysis",
+      input: { ...canonical.input, prompt: prepared.prompt },
+    },
     {
       signal,
       onHandle: options.onHandle,
@@ -225,9 +277,23 @@ export async function runProductionChild(
 
 function resolvePatchdeskReviewSkillPath(): string {
   const runtimeDirectory = dirname(new URL(import.meta.url).pathname);
-  const staged = join(runtimeDirectory, "skills", "patchdesk-code-review", "SKILL.md");
+  const staged = join(
+    runtimeDirectory,
+    "skills",
+    "patchdesk-code-review",
+    "SKILL.md",
+  );
   if (existsSync(staged)) return staged;
-  return join(runtimeDirectory, "..", "..", "..", "src", "skills", "patchdesk-code-review", "SKILL.md");
+  return join(
+    runtimeDirectory,
+    "..",
+    "..",
+    "..",
+    "src",
+    "skills",
+    "patchdesk-code-review",
+    "SKILL.md",
+  );
 }
 
 async function boundedStop(stop: Promise<void>): Promise<void> {
@@ -235,7 +301,9 @@ async function boundedStop(stop: Promise<void>): Promise<void> {
   try {
     await Promise.race([
       stop.catch(() => undefined),
-      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1_000); }),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, 1_000);
+      }),
     ]);
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
@@ -255,14 +323,16 @@ export function canonicalizeProductionInvocation(
     invocation.input.contextPath !==
       paths.preparedContextFile(profile.value, session.value) ||
     invocation.input.patchPath !== paths.patchFile(profile.value, session.value)
-  ) return undefined;
+  )
+    return undefined;
   if (invocation.type === "walkthrough") return invocation;
   if (
     invocation.input.reviewInputPath !==
       paths.preparedReviewInputFile(profile.value, session.value) ||
     invocation.input.worktreePath !==
       paths.worktreeDirectory(profile.value, session.value)
-  ) return undefined;
+  )
+    return undefined;
   return {
     ...invocation,
     debugPath: paths.preparedDebugFile(profile.value, session.value),
@@ -273,15 +343,35 @@ function inspectorOperations(inspector: ReviewInspector): InspectorOperations {
   return {
     async listChangedFiles() {
       const result = await inspector.listChangedFiles();
-      return result._tag === "ok" ? { files: [...result.value] } : { denied: true };
+      return result._tag === "ok"
+        ? { files: [...result.value] }
+        : { denied: true };
     },
-    async searchFiles(query) { const result = await inspector.searchFiles(query); return result._tag === "ok" ? { files: [...result.value] } : { denied: true }; },
-    async readFileRange(path, startLine, endLine) { const result = await inspector.readFileRange(path, startLine, endLine); return result._tag === "ok" ? { content: result.value } : { denied: true }; },
-    async gitShow(revision) { const result = await inspector.gitShow(revision); return result._tag === "ok" ? { content: result.value } : { denied: true }; },
+    async searchFiles(query) {
+      const result = await inspector.searchFiles(query);
+      return result._tag === "ok"
+        ? { files: [...result.value] }
+        : { denied: true };
+    },
+    async readFileRange(path, startLine, endLine) {
+      const result = await inspector.readFileRange(path, startLine, endLine);
+      return result._tag === "ok"
+        ? { content: result.value }
+        : { denied: true };
+    },
+    async gitShow(revision) {
+      const result = await inspector.gitShow(revision);
+      return result._tag === "ok"
+        ? { content: result.value }
+        : { denied: true };
+    },
   };
 }
 
-function writeProtocolOutput(output: NodeJS.WritableStream, result: PatchdeskChildResult): void {
+function writeProtocolOutput(
+  output: NodeJS.WritableStream,
+  result: PatchdeskChildResult,
+): void {
   const encoded = JSON.stringify(result);
   if (
     Buffer.byteLength(encoded, "utf8") > MAX_RUNTIME_STDOUT_BYTES ||
@@ -296,7 +386,9 @@ function writeProtocolOutput(output: NodeJS.WritableStream, result: PatchdeskChi
 function isSingleJsonObject(value: string): boolean {
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+    return (
+      typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    );
   } catch {
     return false;
   }

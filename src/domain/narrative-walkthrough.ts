@@ -61,7 +61,10 @@ export type NarrativeSupport = {
 };
 
 /** A normalized, snapshot-bound walkthrough ready for renderer projection. */
-export type NarrativeCitationStatus = "verified" | "partially_verified" | "unverified";
+export type NarrativeCitationStatus =
+  | "verified"
+  | "partially_verified"
+  | "unverified";
 
 export type NarrativeWalkthrough = {
   readonly snapshot: NarrativeSnapshot;
@@ -103,7 +106,8 @@ const MAX_HUNK_RAW_LENGTH = 200_000;
 export const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
 
-const boundedText = (maxLength: number) => v.pipe(v.string(), v.maxLength(maxLength));
+const boundedText = (maxLength: number) =>
+  v.pipe(v.string(), v.maxLength(maxLength));
 const boundedHunkIds = v.pipe(
   v.array(boundedText(MAX_HUNK_ALIAS_LENGTH)),
   v.maxLength(MAX_HUNKS_PER_SECTION),
@@ -157,11 +161,15 @@ type ParsedPatch = {
   readonly hunks: ReadonlyArray<ParsedHunk>;
 };
 
-function invalid(reason: NarrativeWalkthroughError["reason"]): Result<never, NarrativeWalkthroughError> {
+function invalid(
+  reason: NarrativeWalkthroughError["reason"],
+): Result<never, NarrativeWalkthroughError> {
   return err({ _tag: "InvalidNarrativeWalkthrough", reason });
 }
 
-function parseSnapshot(input: unknown): Result<NarrativeSnapshot, NarrativeWalkthroughError> {
+function parseSnapshot(
+  input: unknown,
+): Result<NarrativeSnapshot, NarrativeWalkthroughError> {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     return invalid("malformed_snapshot");
   }
@@ -198,7 +206,10 @@ function parseSnapshot(input: unknown): Result<NarrativeSnapshot, NarrativeWalkt
   });
 }
 
-function sameSnapshot(left: NarrativeSnapshot, right: NarrativeSnapshot): boolean {
+function sameSnapshot(
+  left: NarrativeSnapshot,
+  right: NarrativeSnapshot,
+): boolean {
   return (
     left.profileId === right.profileId &&
     left.sessionId === right.sessionId &&
@@ -208,15 +219,25 @@ function sameSnapshot(left: NarrativeSnapshot, right: NarrativeSnapshot): boolea
 }
 
 function snapshotId(snapshot: NarrativeSnapshot): string {
-  return [snapshot.profileId, snapshot.sessionId, snapshot.headSha, snapshot.patchHash].join(":");
+  return [
+    snapshot.profileId,
+    snapshot.sessionId,
+    snapshot.headSha,
+    snapshot.patchHash,
+  ].join(":");
 }
 
 function normalizeText(value: string): string {
   return value.trim();
 }
 
-function parseDiffPath(value: string): Result<RepoRelativePath, NarrativeWalkthroughError> {
-  const normalized = value === "/dev/null" ? "dev/null" : value.replace(/^a\//, "").replace(/^b\//, "");
+function parseDiffPath(
+  value: string,
+): Result<RepoRelativePath, NarrativeWalkthroughError> {
+  const normalized =
+    value === "/dev/null"
+      ? "dev/null"
+      : value.replace(/^a\//, "").replace(/^b\//, "");
   const path = parseRepoRelativePath(normalized);
   return path._tag === "err" ? invalid("invalid_patch") : ok(path.value);
 }
@@ -228,18 +249,21 @@ function parseHunkHeader(line: string): HunkRange | undefined {
   const oldLines = Number(match[2] ?? "1");
   const newStart = Number(match[3]);
   const newLines = Number(match[4] ?? "1");
-  if (![oldStart, oldLines, newStart, newLines].every(Number.isSafeInteger)) return undefined;
-  if (
-    !validRange(oldStart, oldLines) ||
-    !validRange(newStart, newLines)
-  ) {
+  if (![oldStart, oldLines, newStart, newLines].every(Number.isSafeInteger))
+    return undefined;
+  if (!validRange(oldStart, oldLines) || !validRange(newStart, newLines)) {
     return undefined;
   }
   return { oldStart, oldLines, newStart, newLines };
 }
 
 function validRange(start: number, lines: number): boolean {
-  if (start < 0 || lines < 0 || start > MAX_PATCH_LINE_COORDINATE || lines > MAX_HUNK_LINE_COUNT) {
+  if (
+    start < 0 ||
+    lines < 0 ||
+    start > MAX_PATCH_LINE_COORDINATE ||
+    lines > MAX_HUNK_LINE_COUNT
+  ) {
     return false;
   }
   return lines === 0 || start > 0;
@@ -289,26 +313,57 @@ function validHunkBody(
   range: HunkRange,
 ): boolean {
   const counted = countHunkBody(lines, start, end);
-  return counted !== undefined && counted.oldLines === range.oldLines && counted.newLines === range.newLines;
+  return (
+    counted !== undefined &&
+    counted.oldLines === range.oldLines &&
+    counted.newLines === range.newLines
+  );
 }
 
-function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkthroughError> {
+function parseNarrativePatch(
+  patch: string,
+): Result<ParsedPatch, NarrativeWalkthroughError> {
   if (patch.length === 0) return invalid("invalid_patch");
   const lines = (patch.endsWith("\n") ? patch.slice(0, -1) : patch).split("\n");
-  const files: Array<{ readonly start: number; prefixEnd: number | undefined; hunks: Array<{ readonly start: number; end: number; header: string; range: HunkRange; path: RepoRelativePath }> }> = [];
+  const files: Array<{
+    readonly start: number;
+    prefixEnd: number | undefined;
+    hunks: Array<{
+      readonly start: number;
+      end: number;
+      header: string;
+      range: HunkRange;
+      path: RepoRelativePath;
+    }>;
+  }> = [];
   let current: (typeof files)[number] | undefined;
   let currentPath: RepoRelativePath | undefined;
   let currentHunkStart: number | undefined;
 
   const finishHunk = (end: number): boolean => {
-    if (current === undefined || currentHunkStart === undefined || currentPath === undefined) return true;
+    if (
+      current === undefined ||
+      currentHunkStart === undefined ||
+      currentPath === undefined
+    )
+      return true;
     const header = lines[currentHunkStart];
     if (header === undefined) return false;
     const range = parseHunkHeader(header);
-    if (range === undefined || !validHunkBody(lines, currentHunkStart + 1, end, range)) return false;
+    if (
+      range === undefined ||
+      !validHunkBody(lines, currentHunkStart + 1, end, range)
+    )
+      return false;
     const raw = lines.slice(currentHunkStart, end).join("\n");
     if (raw.length > MAX_HUNK_RAW_LENGTH) return false;
-    current.hunks.push({ start: currentHunkStart, end, header, range, path: currentPath });
+    current.hunks.push({
+      start: currentHunkStart,
+      end,
+      header,
+      range,
+      path: currentPath,
+    });
     currentHunkStart = undefined;
     return true;
   };
@@ -328,13 +383,16 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     // Git emits bare submodule-change lines without a diff header (for example
     // "Submodule yim-proto-hub 00000000...4619420d (new submodule)"). They are
     // metadata, not hunk body; close any open hunk and skip the line.
-    if (/^Submodule [^\s]+ [0-9a-f]+\.{2,3}[0-9a-f]+(?: \([^)]*\))?$/.test(line)) {
+    if (
+      /^Submodule [^\s]+ [0-9a-f]+\.{2,3}[0-9a-f]+(?: \([^)]*\))?$/.test(line)
+    ) {
       if (!finishHunk(index)) return invalid("invalid_patch");
       continue;
     }
     if (current === undefined) continue;
     const hunkRange = parseHunkHeader(line);
-    if (line.startsWith("@@ ") && hunkRange === undefined) return invalid("invalid_patch");
+    if (line.startsWith("@@ ") && hunkRange === undefined)
+      return invalid("invalid_patch");
     if (hunkRange !== undefined) {
       if (!finishHunk(index)) return invalid("invalid_patch");
       current.prefixEnd ??= index;
@@ -355,10 +413,14 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     if (file.hunks.length === 0) continue;
     const prefixEnd = file.prefixEnd ?? file.hunks[0]?.start ?? file.start;
     const prefix = lines.slice(file.start, prefixEnd).join("\n");
-    if (prefix.length > MAX_NARRATIVE_FILE_PREFIX_LENGTH) return invalid("invalid_patch");
+    if (prefix.length > MAX_NARRATIVE_FILE_PREFIX_LENGTH)
+      return invalid("invalid_patch");
     const hunks: Array<ParsedHunk> = [];
     for (const hunk of file.hunks) {
-      const raw = lines.slice(hunk.start, hunk.end).join("\n").replace(/\n+$/, "");
+      const raw = lines
+        .slice(hunk.start, hunk.end)
+        .join("\n")
+        .replace(/\n+$/, "");
       const parsed: ParsedHunk = {
         id: `h${nextAlias}`,
         path: hunk.path,
@@ -377,20 +439,31 @@ function parseNarrativePatch(patch: string): Result<ParsedPatch, NarrativeWalkth
     parsedFiles.push({ prefix, hunks });
   }
 
-  return parsedHunks.length === 0 ? invalid("invalid_patch") : ok({ files: parsedFiles, hunks: parsedHunks });
+  return parsedHunks.length === 0
+    ? invalid("invalid_patch")
+    : ok({ files: parsedFiles, hunks: parsedHunks });
 }
 
-function hunkMap(hunks: ReadonlyArray<ParsedHunk>): ReadonlyMap<string, ParsedHunk> {
+function hunkMap(
+  hunks: ReadonlyArray<ParsedHunk>,
+): ReadonlyMap<string, ParsedHunk> {
   return new Map(hunks.map((hunk) => [hunk.id, hunk]));
 }
 
-function validateRawSnapshot(raw: RawWalkthrough, snapshot: NarrativeSnapshot): NarrativeWalkthroughError["reason"] | undefined {
+function validateRawSnapshot(
+  raw: RawWalkthrough,
+  snapshot: NarrativeSnapshot,
+): NarrativeWalkthroughError["reason"] | undefined {
   if (raw.snapshot !== undefined) {
     const parsed = parseSnapshot(raw.snapshot);
     if (parsed._tag === "err") return parsed.error.reason;
     if (!sameSnapshot(parsed.value, snapshot)) return "stale_snapshot";
   }
-  if (raw.snapshotId !== undefined && raw.snapshotId !== snapshot.sessionId && raw.snapshotId !== snapshotId(snapshot)) {
+  if (
+    raw.snapshotId !== undefined &&
+    raw.snapshotId !== snapshot.sessionId &&
+    raw.snapshotId !== snapshotId(snapshot)
+  ) {
     return "stale_snapshot";
   }
   return undefined;
@@ -406,7 +479,11 @@ function isWithinBounds(raw: RawWalkthrough): boolean {
   }
   let sectionCount = 0;
   for (const chapter of raw.chapters) {
-    if (chapter.title.length > MAX_CHAPTER_TITLE_LENGTH || chapter.sections.length === 0) return false;
+    if (
+      chapter.title.length > MAX_CHAPTER_TITLE_LENGTH ||
+      chapter.sections.length === 0
+    )
+      return false;
     sectionCount += chapter.sections.length;
     if (sectionCount > MAX_SECTIONS) return false;
     for (const section of chapter.sections) {
@@ -470,7 +547,12 @@ export function normalizeNarrativeWalkthrough(
         if (!HUNK_ALIAS_SYNTAX.test(alias) || covered.has(alias)) continue;
         const hunk = byAlias.get(alias);
         if (hunk === undefined) continue;
-        if (!citationVersion || !section.prose.toLocaleLowerCase().includes(hunk.path.toLocaleLowerCase())) {
+        if (
+          !citationVersion ||
+          !section.prose
+            .toLocaleLowerCase()
+            .includes(hunk.path.toLocaleLowerCase())
+        ) {
           rejectedCitationCount += 1;
           continue;
         }
@@ -492,16 +574,26 @@ export function normalizeNarrativeWalkthrough(
       sectionNumber += 1;
     }
     if (sections.length > 0) {
-      chapters.push({ id: `chapter-${chapterIndex + 1}`, title: normalizeText(chapter.title), sections });
+      chapters.push({
+        id: `chapter-${chapterIndex + 1}`,
+        title: normalizeText(chapter.title),
+        sections,
+      });
     }
   }
 
   if (chapters.length === 0) return invalid("empty_primary");
-  const supportHunks = parsedPatch.value.hunks.filter((hunk) => !covered.has(hunk.id));
+  const supportHunks = parsedPatch.value.hunks.filter(
+    (hunk) => !covered.has(hunk.id),
+  );
   return ok({
     snapshot: parsedSnapshot.value,
     ...(citationVersion ? { citationVersion: 2 as const } : {}),
-    citationStatus: !citationVersion ? "unverified" : rejectedCitationCount > 0 ? "partially_verified" : "verified",
+    citationStatus: !citationVersion
+      ? "unverified"
+      : rejectedCitationCount > 0
+        ? "partially_verified"
+        : "verified",
     title: normalizeText(input.title),
     focus: normalizeText(input.focus),
     chapters,
@@ -515,12 +607,23 @@ export function normalizeNarrativeWalkthrough(
 }
 
 /** Returns the immutable alias-to-source manifest supplied to the walkthrough model. */
-export function narrativeHunkManifest(
-  patch: string,
-): Result<ReadonlyArray<{ readonly id: string; readonly path: RepoRelativePath; readonly header: string }>, NarrativeWalkthroughError> {
+export function narrativeHunkManifest(patch: string): Result<
+  ReadonlyArray<{
+    readonly id: string;
+    readonly path: RepoRelativePath;
+    readonly header: string;
+  }>,
+  NarrativeWalkthroughError
+> {
   const parsed = parseNarrativePatch(patch);
   if (parsed._tag === "err") return parsed;
-  return ok(parsed.value.hunks.map((hunk) => ({ id: hunk.id, path: hunk.path, header: hunk.header })));
+  return ok(
+    parsed.value.hunks.map((hunk) => ({
+      id: hunk.id,
+      path: hunk.path,
+      header: hunk.header,
+    })),
+  );
 }
 
 /** Filter an immutable unified patch to known hunk aliases while preserving file headers and hunk order. */

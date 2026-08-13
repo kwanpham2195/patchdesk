@@ -22,19 +22,32 @@ const artifactSchema = v.strictObject({
 type PiAiModel = v.InferOutput<typeof modelSchema>;
 
 /** Generated from runtime/flue's exact Pi catalog; this root module never imports Pi. */
-function parseGeneratedCatalog(input: unknown): ReadonlyArray<{ readonly provider: string; readonly models: ReadonlyArray<PiAiModel> }> {
+function parseGeneratedCatalog(input: unknown): ReadonlyArray<{
+  readonly provider: string;
+  readonly models: ReadonlyArray<PiAiModel>;
+}> {
   const parsed = v.safeParse(artifactSchema, input);
-  if (!parsed.success || !matchesDigest(parsed.output)) throw new Error("Invalid generated Pi model catalog artifact");
+  if (!parsed.success || !matchesDigest(parsed.output))
+    throw new Error("Invalid generated Pi model catalog artifact");
   return parsed.output.catalog.map(({ provider, models }) => ({
     provider,
     models: models.filter((model) => model.provider === provider),
   }));
 }
 
-function matchesDigest(artifact: v.InferOutput<typeof artifactSchema>): boolean {
-  return createHash("sha256")
-    .update(JSON.stringify({ piVersion: artifact.piVersion, catalog: artifact.catalog }))
-    .digest("hex") === artifact.digest;
+function matchesDigest(
+  artifact: v.InferOutput<typeof artifactSchema>,
+): boolean {
+  return (
+    createHash("sha256")
+      .update(
+        JSON.stringify({
+          piVersion: artifact.piVersion,
+          catalog: artifact.catalog,
+        }),
+      )
+      .digest("hex") === artifact.digest
+  );
 }
 
 export const PI_AI_CATALOG = parseGeneratedCatalog(generatedPiAiCatalog);

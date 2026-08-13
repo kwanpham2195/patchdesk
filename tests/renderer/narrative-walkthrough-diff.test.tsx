@@ -21,16 +21,34 @@ const hunk: NarrativeHunk = {
 
 describe("narrative walkthrough diff block", () => {
   it("renders a unique block id and the filtered raw patch", () => {
-    render(<NarrativeWalkthroughDiff blockId="block-1" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
-    const block = document.querySelector('[data-walkthrough-diff-block]');
+    render(
+      <NarrativeWalkthroughDiff
+        blockId="block-1"
+        hunkIds={[hunk.id]}
+        hunks={[hunk]}
+        allHunks={[hunk]}
+      />,
+    );
+    const block = document.querySelector("[data-walkthrough-diff-block]");
     expect(block).toBeTruthy();
     expect(block?.getAttribute("data-walkthrough-diff-block")).toBe("block-1");
     expect(block?.getAttribute("data-walkthrough-hunk-id")).toBe("h1");
-    expect(document.querySelector('[data-walkthrough-diff-viewport]')?.getAttribute("class")).toContain("overflow-x-auto");
+    expect(
+      document
+        .querySelector("[data-walkthrough-diff-viewport]")
+        ?.getAttribute("class"),
+    ).toContain("overflow-x-auto");
   });
 
   it("sizes a walkthrough hunk at natural height so the reader owns scrolling", () => {
-    render(<NarrativeWalkthroughDiff blockId="block-size" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
+    render(
+      <NarrativeWalkthroughDiff
+        blockId="block-size"
+        hunkIds={[hunk.id]}
+        hunks={[hunk]}
+        allHunks={[hunk]}
+      />,
+    );
     const diff = screen.getByLabelText("Plain text diff");
     expect(diff.classList.contains("max-h-[calc(100vh-12rem)]")).toBe(false);
     expect(diff.classList.contains("h-[calc(100vh-12rem)]")).toBe(false);
@@ -68,8 +86,11 @@ describe("narrative walkthrough diff block", () => {
         allHunks={[hunk, secondHunk]}
       />,
     );
-    const renderedPatch = screen.getByLabelText("Review diff").textContent ?? "";
-    expect(renderedPatch).toContain("diff --git a/src/second.ts b/src/second.ts");
+    const renderedPatch =
+      screen.getByLabelText("Review diff").textContent ?? "";
+    expect(renderedPatch).toContain(
+      "diff --git a/src/second.ts b/src/second.ts",
+    );
     expect(renderedPatch).not.toContain("src/example.ts");
   });
 
@@ -82,28 +103,59 @@ describe("narrative walkthrough diff block", () => {
       newStart: 0,
       newLines: 0,
     };
-    render(<NarrativeWalkthroughDiff blockId="block-deletion" hunkIds={[deletion.id]} hunks={[deletion]} allHunks={[deletion]} />);
+    render(
+      <NarrativeWalkthroughDiff
+        blockId="block-deletion"
+        hunkIds={[deletion.id]}
+        hunks={[deletion]}
+        allHunks={[deletion]}
+      />,
+    );
     expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });
 
   it("honors the unified/split and wrap preferences from the user", async () => {
     const user = userEvent.setup();
-    const { container } = render(<NarrativeWalkthroughDiff blockId="block-prefs" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
-    const buttons = container.querySelectorAll('button');
-    const splitButton = Array.from(buttons).find((b) => b.textContent?.includes('Split'));
-    const wrapButton = Array.from(buttons).find((b) => b.textContent?.includes('Wrap'));
+    const { container } = render(
+      <NarrativeWalkthroughDiff
+        blockId="block-prefs"
+        hunkIds={[hunk.id]}
+        hunks={[hunk]}
+        allHunks={[hunk]}
+      />,
+    );
+    const buttons = container.querySelectorAll("button");
+    const splitButton = Array.from(buttons).find((b) =>
+      b.textContent?.includes("Split"),
+    );
+    const wrapButton = Array.from(buttons).find((b) =>
+      b.textContent?.includes("Wrap"),
+    );
     if (!splitButton || !wrapButton) throw new Error("Missing buttons");
     await user.click(splitButton);
-    expect(container.querySelector('[aria-label="Review diff"]')?.getAttribute("data-diff-style")).toBe("split");
+    expect(
+      container
+        .querySelector('[aria-label="Review diff"]')
+        ?.getAttribute("data-diff-style"),
+    ).toBe("split");
     await user.click(wrapButton);
     expect(screen.getByRole("button", { name: "Scroll" })).toBeTruthy();
   });
 
   it("honors appearance and diff-theme events", () => {
-    render(<NarrativeWalkthroughDiff blockId="block-theme" hunkIds={[hunk.id]} hunks={[hunk]} allHunks={[hunk]} />);
+    render(
+      <NarrativeWalkthroughDiff
+        blockId="block-theme"
+        hunkIds={[hunk.id]}
+        hunks={[hunk]}
+        allHunks={[hunk]}
+      />,
+    );
     const event = new CustomEvent("patchdesk:appearance", { detail: "light" });
     window.dispatchEvent(event);
-    const themeEvent = new CustomEvent("patchdesk:diff-theme", { detail: { light: "github-light", dark: "github-dark" } });
+    const themeEvent = new CustomEvent("patchdesk:diff-theme", {
+      detail: { light: "github-light", dark: "github-dark" },
+    });
     window.dispatchEvent(themeEvent);
     expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });

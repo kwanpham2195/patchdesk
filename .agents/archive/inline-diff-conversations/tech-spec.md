@@ -227,7 +227,9 @@ export interface GitHubPendingReviewGateway {
     readonly reviewId: GitHubReviewRestId;
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
-  }): Promise<Result<{ readonly reviewId: GitHubReviewRestId }, GitHubWriteFailure>>;
+  }): Promise<
+    Result<{ readonly reviewId: GitHubReviewRestId }, GitHubWriteFailure>
+  >;
 
   discardPendingReview(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -274,10 +276,18 @@ export interface PendingReviewService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
   }): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
-  start(input: StartPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
-  addThread(input: AddPendingReviewThreadInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
-  submit(input: SubmitPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
-  discard(input: DiscardPendingReviewInput): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  start(
+    input: StartPendingReviewInput,
+  ): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  addThread(
+    input: AddPendingReviewThreadInput,
+  ): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  submit(
+    input: SubmitPendingReviewInput,
+  ): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
+  discard(
+    input: DiscardPendingReviewInput,
+  ): Promise<Result<PendingReviewState, PendingReviewWriteFailure>>;
 }
 ```
 

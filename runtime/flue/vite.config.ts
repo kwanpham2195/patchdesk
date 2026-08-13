@@ -15,7 +15,12 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["@flue/runtime", "@flue/runtime/node", "@earendil-works/pi-ai", "valibot"],
+      external: [
+        "@flue/runtime",
+        "@flue/runtime/node",
+        "@earendil-works/pi-ai",
+        "valibot",
+      ],
     },
   },
 });

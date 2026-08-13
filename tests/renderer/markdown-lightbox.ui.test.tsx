@@ -25,8 +25,16 @@ describe("MarkdownLightbox", () => {
 
     viewport.scrollLeft = 120;
     viewport.scrollTop = 200;
-    fireEvent.pointerDown(viewport, { pointerId: 1, clientX: 300, clientY: 400 });
-    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 250, clientY: 360 });
+    fireEvent.pointerDown(viewport, {
+      pointerId: 1,
+      clientX: 300,
+      clientY: 400,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 360,
+    });
 
     expect(viewport.scrollLeft).toBe(170);
     expect(viewport.scrollTop).toBe(240);

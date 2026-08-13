@@ -2,7 +2,10 @@ import type { PullRequestRef } from "../../domain/pull-request";
 
 /** Builds the immutable GitHub page used as the sole base for review links. */
 export function pullRequestPageUrl(pr: PullRequestRef): URL {
-  return new URL(`/${pr.owner}/${pr.repo}/pull/${pr.number}`, `https://${pr.host}`);
+  return new URL(
+    `/${pr.owner}/${pr.repo}/pull/${pr.number}`,
+    `https://${pr.host}`,
+  );
 }
 
 /**
@@ -16,8 +19,9 @@ export function resolvePullRequestExternalUrl(
   if (pr === undefined) return undefined;
   if (
     value.trim() !== value ||
-    Array.from(value).some((character) =>
-      (character.codePointAt(0) ?? Number.POSITIVE_INFINITY) <= 0x20,
+    Array.from(value).some(
+      (character) =>
+        (character.codePointAt(0) ?? Number.POSITIVE_INFINITY) <= 0x20,
     )
   ) {
     return undefined;

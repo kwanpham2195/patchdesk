@@ -14,7 +14,9 @@ export type MergeReadiness = {
     | "github_review"
     | "analysis_finding"
   >;
-  readonly warnings: ReadonlyArray<"request_changes" | "high_severity_finding" | "analysis_finding">;
+  readonly warnings: ReadonlyArray<
+    "request_changes" | "high_severity_finding" | "analysis_finding"
+  >;
 };
 
 /** Decide only GitHub/PR hard blockers; executing a merge remains outside the domain layer. */
@@ -42,15 +44,27 @@ export function evaluateMergeReadiness(input: {
   if (input.hasGitHubReviewBlocker) blockers.push("github_review");
   const analysisFindingCount = input.analysisFindingCount ?? 0;
   const analysisPolicy = input.analysisMergePolicy ?? "advisory";
-  if (analysisFindingCount > 0 && analysisPolicy === "block") blockers.push("analysis_finding");
+  if (analysisFindingCount > 0 && analysisPolicy === "block")
+    blockers.push("analysis_finding");
 
   const warnings: Array<MergeReadiness["warnings"][number]> = [];
   if (input.hasRequestChanges) warnings.push("request_changes");
   if (input.hasHighSeverityFinding) warnings.push("high_severity_finding");
-  if (analysisFindingCount > 0 && analysisPolicy === "advisory") warnings.push("analysis_finding");
-  if (analysisFindingCount > 0 && analysisPolicy === "require_acknowledgement" && input.analysisAcknowledged !== true) warnings.push("analysis_finding");
+  if (analysisFindingCount > 0 && analysisPolicy === "advisory")
+    warnings.push("analysis_finding");
+  if (
+    analysisFindingCount > 0 &&
+    analysisPolicy === "require_acknowledgement" &&
+    input.analysisAcknowledged !== true
+  )
+    warnings.push("analysis_finding");
   return {
-    _tag: blockers.length > 0 ? "Blocked" : warnings.length > 0 ? "NeedsAcknowledgement" : "Ready",
+    _tag:
+      blockers.length > 0
+        ? "Blocked"
+        : warnings.length > 0
+          ? "NeedsAcknowledgement"
+          : "Ready",
     blockers,
     warnings,
   };

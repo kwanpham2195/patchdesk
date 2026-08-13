@@ -103,16 +103,17 @@ Label shows just the model name. Change to `provider/model-code`.
 
 ## Commands you will need
 
-| Purpose   | Command                  | Expected on success |
-|-----------|--------------------------|---------------------|
-| Typecheck | `pnpm typecheck`         | exit 0, no errors   |
-| Lint      | `pnpm lint`              | exit 0, no warnings |
-| Tests     | `pnpm test -- --run`     | all pass            |
-| Build     | `pnpm build`             | exit 0              |
+| Purpose   | Command              | Expected on success |
+| --------- | -------------------- | ------------------- |
+| Typecheck | `pnpm typecheck`     | exit 0, no errors   |
+| Lint      | `pnpm lint`          | exit 0, no warnings |
+| Tests     | `pnpm test -- --run` | all pass            |
+| Build     | `pnpm build`         | exit 0              |
 
 ## Scope
 
 **In scope:**
+
 - `src/adapters/pi/pi-runtime-model-catalog.ts` — model label change (1 line)
 - `src/domain/workspace-profile.ts` — remove `archived` from WatchedRepoConfig + valibot schema
 - `src/services/profile-service.ts` — remove `setWatchedRepoArchived`
@@ -134,6 +135,7 @@ Label shows just the model name. Change to `provider/model-code`.
 - Tests for each touched file
 
 **Out of scope:**
+
 - Custom saved inbox views.
 - Owner filters logic.
 - The Discovery API (`/v1/watchlist/suggestions`) stays as-is.
@@ -146,10 +148,13 @@ Label shows just the model name. Change to `provider/model-code`.
 ### Step 1: Model label — show `provider/model-code`
 
 In `src/adapters/pi/pi-runtime-model-catalog.ts`, line 106:
+
 ```
 label: model.name,
 ```
+
 Change to:
+
 ```
 label: `${model.provider}/${model.id}`,
 ```
@@ -160,6 +165,7 @@ label: `${model.provider}/${model.id}`,
 ### Step 2: Remove `archived` from the domain model
 
 In `src/domain/workspace-profile.ts`:
+
 - Remove `readonly archived?: boolean;` from `WatchedRepoConfig`.
 - Remove `archived: v.optional(v.boolean()),` from `rawWatchedRepoSchema`.
 - Remove any `archived` handling in `parseWatchedRepoConfig`.
@@ -183,26 +189,32 @@ Remove archive-related code. For each file, verify the change compiles before mo
 ### Step 4: Remove `missing_local_path` state
 
 In `src/services/dashboard-service.ts`, change:
+
 ```ts
 : repo.localPath === undefined
   ? "missing_local_path"
   : "ready",
 ```
+
 To:
+
 ```ts
 : "ready",
 ```
 
 In `src/services/maintainer-inbox-service.ts`:
+
 - Remove the archived filter block (lines 57-60). Keep only `const active = profile.repos;`.
 - Remove the `const repositories = [...archived, ...]` merge; use `const repositories = results.map(...)`.
 
 In `src/renderer/src/flows/inbox-flow.tsx`:
+
 - Remove the `"archived"` outcome case (lines ~663-664).
 - Remove `"missing_local_path"` from the condition at line ~684 (keep other states).
 - Remove `"archived"` from the `DashboardScreenState` type if referenced.
 
 In `src/renderer/src/app.tsx`:
+
 - Remove the `archived` property spreading (lines ~624-626).
 - Remove the `"archived"` check in the outcomes mapping (line ~654).
 
@@ -212,11 +224,13 @@ In `src/renderer/src/app.tsx`:
 ### Step 5: Simplify the Watchlist panel
 
 Redesign `src/renderer/src/components/watchlist-panel.tsx`:
+
 - Remove the `owner/repo` text input area.
 - Remove the archive toggle, path editing UI, and remove confirmation dialog.
 - Remove the `WatchlistActions` dropdown component.
 - New UI: on mount, call Discovery (`GET /v1/watchlist/suggestions`). Show results grouped by workspace root (derive from `profile.workspaceRoots`). Each repo shows its auto-detected `localPath` (read-only). Checkbox next to each; watched repos pre-ticked. Toggling adds via `POST /v1/watchlist` or removes via `DELETE /v1/watchlist`.
 - Accept `profile` directly instead of `dashboard`:
+
 ```ts
 export type WatchlistPanelProps = {
   readonly profile: Profile;
@@ -230,6 +244,7 @@ export type WatchlistPanelProps = {
 ### Step 6: Update Settings flow
 
 In `src/renderer/src/flows/settings-flow.tsx`:
+
 - Pass `profile` (derived from `dashboard?.profile` or the profile draft) to `WatchlistPanel` instead of `dashboard`.
 - Remove the `onRepositoryRefresh` prop passthrough to `WatchlistPanel`.
 
@@ -239,6 +254,7 @@ In `src/renderer/src/flows/settings-flow.tsx`:
 ### Step 7: Add profile switcher to app shell
 
 In `src/renderer/src/components/app-shell.tsx`:
+
 - Accept `profiles: ReadonlyArray<{ id: string; label: string }>` and `activeProfileId: string` and `onProfileSwitch: (id: string) => void` props.
 - Add a `Select` dropdown in the toolbar showing the current profile label.
 - On change, call `onProfileSwitch(id)`.
@@ -249,10 +265,12 @@ In `src/renderer/src/components/app-shell.tsx`:
 ### Step 8: Update design files
 
 In `src/design/mock-bridge.ts`:
+
 - Remove the `archived: true` and `state: "archived"` mock entries.
 - Remove the `repositoriesWithArchived` transform.
 
 In `src/design/design-settings-overlay.tsx`:
+
 - Remove `WatchlistActions` dropdown from preview.
 - Update `WatchlistPreviewRow` to show read-only path (no edit UI).
 
@@ -261,6 +279,7 @@ In `src/design/design-settings-overlay.tsx`:
 ### Step 9: Update tests
 
 Update tests for each changed file:
+
 - `tests/adapters/pi-runtime-model-catalog.test.ts` — label assertions to `provider/model` format.
 - `tests/renderer/settings-modal.ui.test.tsx` — update Watchlist assertions (remove archive, path editing, manual input).
 - `tests/services/dashboard-service.test.ts` — remove `archived`/`missing_local_path` test cases.

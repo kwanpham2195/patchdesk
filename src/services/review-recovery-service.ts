@@ -15,7 +15,11 @@ import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
-export type RecoveryDiagnostic = { readonly profileId: WorkspaceProfileId; readonly entryName: string; readonly reason: "invalid_session" };
+export type RecoveryDiagnostic = {
+  readonly profileId: WorkspaceProfileId;
+  readonly entryName: string;
+  readonly reason: "invalid_session";
+};
 
 /** Recovers only current preparation, invalid-record, and durable merge evidence. */
 export class ReviewRecoveryService {
@@ -39,51 +43,101 @@ export class ReviewRecoveryService {
     },
   ) {}
 
-  async reconcile(): Promise<{ readonly recovered: number; readonly failed: number }> {
+  async reconcile(): Promise<{
+    readonly recovered: number;
+    readonly failed: number;
+  }> {
     const profiles = await this.profiles.list();
     if (profiles._tag === "err") return { recovered: 0, failed: 1 };
-    let recovered = 0; let failed = 0;
+    let recovered = 0;
+    let failed = 0;
     for (const profile of profiles.value) {
-      const result = this.options.lifecycleGate === undefined
-        ? await this.reconcileProfile(profile.id)
-        : await this.options.lifecycleGate.withProfileLock(profile.id, () => this.reconcileProfile(profile.id));
-      recovered += result.recovered; failed += result.failed;
+      const result =
+        this.options.lifecycleGate === undefined
+          ? await this.reconcileProfile(profile.id)
+          : await this.options.lifecycleGate.withProfileLock(profile.id, () =>
+              this.reconcileProfile(profile.id),
+            );
+      recovered += result.recovered;
+      failed += result.failed;
     }
     return { recovered, failed };
   }
 
-  async reconcileReview(profileId: WorkspaceProfileId, reviewId: ReviewId): Promise<{ readonly recovered: number; readonly failed: number }> {
+  async reconcileReview(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const work = () => this.reconcileMergeOperations(profileId, reviewId);
-    return this.options.operationCoordinator.withReviewLock(profileId, reviewId, work);
+    return this.options.operationCoordinator.withReviewLock(
+      profileId,
+      reviewId,
+      work,
+    );
   }
 
-  private async reconcileProfile(profileId: WorkspaceProfileId): Promise<{ readonly recovered: number; readonly failed: number }> {
+  private async reconcileProfile(
+    profileId: WorkspaceProfileId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const merge = await this.reconcileMergeOperations(profileId);
     const scan = await this.sessions.scanSessionEntries(profileId);
-    if (scan._tag === "err") return { recovered: merge.recovered, failed: merge.failed + 1 };
-    let recovered = merge.recovered; let failed = merge.failed;
+    if (scan._tag === "err")
+      return { recovered: merge.recovered, failed: merge.failed + 1 };
+    let recovered = merge.recovered;
+    let failed = merge.failed;
     for (const invalid of scan.value.invalidEntries) {
-      const quarantined = this.options.artifacts === undefined ? undefined : invalid.sessionId === undefined
-        ? await this.options.artifacts.quarantineInvalidEntry(profileId, invalid.entryName)
-        : await this.options.artifacts.quarantine(profileId, invalid.sessionId);
-      if (quarantined?._tag === "ok") { recovered += 1; await this.recordDiagnostic({ profileId, entryName: invalid.entryName, reason: "invalid_session" }); }
-      else failed += 1;
+      const quarantined =
+        this.options.artifacts === undefined
+          ? undefined
+          : invalid.sessionId === undefined
+            ? await this.options.artifacts.quarantineInvalidEntry(
+                profileId,
+                invalid.entryName,
+              )
+            : await this.options.artifacts.quarantine(
+                profileId,
+                invalid.sessionId,
+              );
+      if (quarantined?._tag === "ok") {
+        recovered += 1;
+        await this.recordDiagnostic({
+          profileId,
+          entryName: invalid.entryName,
+          reason: "invalid_session",
+        });
+      } else failed += 1;
     }
     return { recovered, failed };
   }
 
-  private async reconcileMergeOperations(profileId: WorkspaceProfileId, onlyReviewId?: ReviewId): Promise<{ readonly recovered: number; readonly failed: number }> {
-    const profile = await this.profiles.load(profileId); if (profile._tag === "err") return { recovered: 0, failed: 1 };
-    const operations = await this.options.mergeOperations.listPending(profileId); if (operations._tag === "err") return { recovered: 0, failed: 1 };
-    let recovered = 0; let failed = 0;
+  private async reconcileMergeOperations(
+    profileId: WorkspaceProfileId,
+    onlyReviewId?: ReviewId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const profile = await this.profiles.load(profileId);
+    if (profile._tag === "err") return { recovered: 0, failed: 1 };
+    const operations =
+      await this.options.mergeOperations.listPending(profileId);
+    if (operations._tag === "err") return { recovered: 0, failed: 1 };
+    let recovered = 0;
+    let failed = 0;
     for (const operation of operations.value) {
-      if (onlyReviewId !== undefined && operation.reviewId !== onlyReviewId) continue;
-      const result = await this.reconcileMergeOperation(profile.value, operation); recovered += result.recovered; failed += result.failed;
+      if (onlyReviewId !== undefined && operation.reviewId !== onlyReviewId)
+        continue;
+      const result = await this.reconcileMergeOperation(
+        profile.value,
+        operation,
+      );
+      recovered += result.recovered;
+      failed += result.failed;
     }
     return { recovered, failed };
   }
 
-  private async reconcileMergeOperation(profile: WorkspaceProfileConfig, operation: MergeOperation): Promise<{ readonly recovered: number; readonly failed: number }> {
+  private async reconcileMergeOperation(
+    profile: WorkspaceProfileConfig,
+    operation: MergeOperation,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const outcome = await this.options.github.getMergeOutcome({
       profile,
       pr: operation.pr,
@@ -108,19 +162,46 @@ export class ReviewRecoveryService {
       review.value.updatedAt,
     );
     if (saved._tag === "err") return { recovered: 0, failed: 1 };
-    const removed = await this.options.mergeOperations.removeAfterSessionReceipt(
-      operation.profileId,
-      operation.sessionId,
-    );
+    const removed =
+      await this.options.mergeOperations.removeAfterSessionReceipt(
+        operation.profileId,
+        operation.sessionId,
+      );
     return removed._tag === "ok"
       ? { recovered: 1, failed: 0 }
       : { recovered: 0, failed: 1 };
   }
 
   private async recordDiagnostic(event: RecoveryDiagnostic): Promise<void> {
-    if (this.options.diagnostics !== undefined) { await this.options.diagnostics.record({ profileId: event.profileId, category: "recovery", phase: event.reason, retryable: true, detail: event.entryName }); return; }
-    if (this.options.recordDiagnostic !== undefined) { await this.options.recordDiagnostic(event); return; }
+    if (this.options.diagnostics !== undefined) {
+      await this.options.diagnostics.record({
+        profileId: event.profileId,
+        category: "recovery",
+        phase: event.reason,
+        retryable: true,
+        detail: event.entryName,
+      });
+      return;
+    }
+    if (this.options.recordDiagnostic !== undefined) {
+      await this.options.recordDiagnostic(event);
+      return;
+    }
     if (this.options.paths === undefined) return;
-    try { await mkdir(this.options.paths.profileReviewsDirectory(event.profileId), { recursive: true }); await appendFile(join(this.options.paths.profileReviewsDirectory(event.profileId), "diagnostics.jsonl"), `${JSON.stringify({ at: this.now(), kind: event.reason, entryName: event.entryName.slice(0, 160) })}\n`, "utf8"); } catch { /* Quarantine is durable even when diagnostics fail. */ }
+    try {
+      await mkdir(this.options.paths.profileReviewsDirectory(event.profileId), {
+        recursive: true,
+      });
+      await appendFile(
+        join(
+          this.options.paths.profileReviewsDirectory(event.profileId),
+          "diagnostics.jsonl",
+        ),
+        `${JSON.stringify({ at: this.now(), kind: event.reason, entryName: event.entryName.slice(0, 160) })}\n`,
+        "utf8",
+      );
+    } catch {
+      /* Quarantine is durable even when diagnostics fail. */
+    }
   }
 }

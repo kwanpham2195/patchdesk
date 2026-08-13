@@ -1,4 +1,9 @@
-import type { GitHubThreadId, GitSha, IsoTimestamp, RepoRelativePath } from "./ids";
+import type {
+  GitHubThreadId,
+  GitSha,
+  IsoTimestamp,
+  RepoRelativePath,
+} from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
 export type DiffLocation = {
@@ -34,7 +39,12 @@ export type CheckRunSummary = {
   readonly required: boolean | "unknown";
   readonly status: "queued" | "in_progress" | "completed" | "unknown";
   readonly conclusion?:
-    "success" | "failure" | "cancelled" | "timed_out" | "skipped" | "neutral";
+    | "success"
+    | "failure"
+    | "cancelled"
+    | "timed_out"
+    | "skipped"
+    | "neutral";
   readonly url?: string;
 };
 
@@ -59,22 +69,38 @@ export type GitHubMergeStateStatus =
 export type GitHubMergeEvidence = {
   readonly mergeable: "mergeable" | "conflicting" | "blocked" | "unknown";
   readonly mergeStateStatus: GitHubMergeStateStatus;
-  readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
+  readonly reviewDecision:
+    | "approved"
+    | "changes_requested"
+    | "review_required"
+    | "unknown";
   /** Optional policy configuration; absence is not a merge authorization signal. */
   readonly policy?: GitHubMergePolicyEvidence;
 };
 
 export type MergeDisplayReason = {
-  readonly code: "review_required" | "changes_requested" | "behind" | "conflicts" | "checks" | "blocked";
+  readonly code:
+    | "review_required"
+    | "changes_requested"
+    | "behind"
+    | "conflicts"
+    | "checks"
+    | "blocked";
   readonly message: string;
-  readonly source: "github_pr_state" | "branch_protection" | "ruleset_configuration" | "checks";
+  readonly source:
+    | "github_pr_state"
+    | "branch_protection"
+    | "ruleset_configuration"
+    | "checks";
   readonly availability: "available" | "partial" | "unavailable";
   readonly openOnGitHub: boolean;
 };
 
 /** Why an optional policy endpoint did not disclose configuration. */
-export type GitHubOptionalEvidenceUnavailable =
-  | { readonly state: "unavailable"; readonly reason: "forbidden" | "not_found" | "unsupported" };
+export type GitHubOptionalEvidenceUnavailable = {
+  readonly state: "unavailable";
+  readonly reason: "forbidden" | "not_found" | "unsupported";
+};
 
 /** Bounded review-policy fields from classic branch protection. */
 export type GitHubClassicBranchProtectionEvidence = {
@@ -93,10 +119,16 @@ export type GitHubAppliedRulesetEvidence = {
 
 export type GitHubMergePolicyEvidence = {
   readonly branchProtection:
-    | { readonly state: "available"; readonly value: GitHubClassicBranchProtectionEvidence }
+    | {
+        readonly state: "available";
+        readonly value: GitHubClassicBranchProtectionEvidence;
+      }
     | GitHubOptionalEvidenceUnavailable;
   readonly appliedRuleset:
-    | { readonly state: "available"; readonly value: GitHubAppliedRulesetEvidence }
+    | {
+        readonly state: "available";
+        readonly value: GitHubAppliedRulesetEvidence;
+      }
     | GitHubOptionalEvidenceUnavailable;
 };
 
@@ -111,10 +143,19 @@ export type MergePolicySnapshot = {
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
   /** Optional for bounded readers that cannot provide aggregate merge state. */
   readonly mergeStateStatus?: GitHubMergeStateStatus;
-  readonly reviewDecision: "approved" | "changes_requested" | "review_required" | "unknown";
+  readonly reviewDecision:
+    | "approved"
+    | "changes_requested"
+    | "review_required"
+    | "unknown";
   readonly checks: CheckSummary;
   readonly complete: boolean;
-  readonly incompleteReason?: "head_mismatch" | "pagination" | "permission" | "unavailable" | "mapping";
+  readonly incompleteReason?:
+    | "head_mismatch"
+    | "pagination"
+    | "permission"
+    | "unavailable"
+    | "mapping";
 };
 
 export type PullRequestCommit = {
@@ -139,9 +180,15 @@ export type PublishedReview = {
 /** One entry in the Conversation timeline, in chronological order. */
 export type ConversationEntry =
   | { readonly _tag: "PrDescription"; readonly body: string }
-  | { readonly _tag: "IssueComment"; readonly comment: ConversationIssueComment }
+  | {
+      readonly _tag: "IssueComment";
+      readonly comment: ConversationIssueComment;
+    }
   | { readonly _tag: "ReviewSummary"; readonly review: PublishedReview }
-  | { readonly _tag: "GeneralThread"; readonly thread: GitHubConversationThread };
+  | {
+      readonly _tag: "GeneralThread";
+      readonly thread: GitHubConversationThread;
+    };
 
 /** Timeline issue comment; review-attached comments also expose their review and editability. */
 export type ConversationIssueComment = GitHubComment & {
@@ -183,7 +230,11 @@ export type GitHubPublishedFeedback = {
 export type GitHubComments = {
   readonly threads: ReadonlyArray<GitHubConversationThread>;
   readonly complete?: boolean;
-  readonly incompleteReason?: "thread_cap" | "comment_cap" | "pagination" | "unavailable";
+  readonly incompleteReason?:
+    | "thread_cap"
+    | "comment_cap"
+    | "pagination"
+    | "unavailable";
 };
 export type PullRequestSnapshot = {
   readonly headSha: GitSha;
@@ -202,7 +253,11 @@ export type PullRequestSummary = PullRequestSnapshot & {
   readonly headBranch: string;
   readonly baseBranch: string;
   readonly reviewState:
-    "none" | "review_pending" | "approved" | "changes_requested" | "unknown";
+    | "none"
+    | "review_pending"
+    | "approved"
+    | "changes_requested"
+    | "unknown";
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
   readonly labels: ReadonlyArray<string>;
   /** GitHub metadata used for dashboard priority; labels are never interpreted as assignment state. */
@@ -213,5 +268,3 @@ export type PullRequestSummary = PullRequestSnapshot & {
   readonly additions?: number;
   readonly deletions?: number;
 };
-
-

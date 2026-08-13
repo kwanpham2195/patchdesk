@@ -18,7 +18,10 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
-import { createReviewSession, type ReviewSession } from "../domain/review-session";
+import {
+  createReviewSession,
+  type ReviewSession,
+} from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
@@ -62,7 +65,10 @@ type PreparationDependencies = {
   readonly sessions: ReviewSessionStore;
   readonly github: Pick<
     GitHubReader,
-    "getPullRequest" | "getPullRequestComments" | "getPullRequestChecks" | "getPullRequestDiff"
+    | "getPullRequest"
+    | "getPullRequestComments"
+    | "getPullRequestChecks"
+    | "getPullRequestDiff"
   >;
   readonly paths: PatchdeskPaths;
   readonly now: () => IsoTimestamp;
@@ -103,13 +109,26 @@ export class ReviewSessionPreparation {
       prNumber: input.pullRequest.number,
       headSha: current.value.headSha,
     });
-    const run = (): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> =>
-      this.serialized(input.profileId, sessionId, async () =>
-        await this.prepareCurrent(input, profile.value, current.value.headSha, sessionId),
+    const run = (): Promise<
+      Result<PreparedReviewSession, PrepareReviewSessionFailure>
+    > =>
+      this.serialized(
+        input.profileId,
+        sessionId,
+        async () =>
+          await this.prepareCurrent(
+            input,
+            profile.value,
+            current.value.headSha,
+            sessionId,
+          ),
       );
     return this.dependencies.lifecycleGate === undefined
       ? await run()
-      : await this.dependencies.lifecycleGate.withProfileLock(input.profileId, run);
+      : await this.dependencies.lifecycleGate.withProfileLock(
+          input.profileId,
+          run,
+        );
   }
 
   private async prepareCurrent(
@@ -118,8 +137,12 @@ export class ReviewSessionPreparation {
     headSha: GitSha,
     sessionId: ReviewSessionId,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
-    const stored = await this.dependencies.sessions.load(input.profileId, sessionId);
-    if (stored._tag === "ok") return ok({ session: stored.value, disposition: "resumed" });
+    const stored = await this.dependencies.sessions.load(
+      input.profileId,
+      sessionId,
+    );
+    if (stored._tag === "ok")
+      return ok({ session: stored.value, disposition: "resumed" });
     if (stored.error.reason !== "not_found") {
       if (stored.error.reason !== "invalid_stored_value")
         return err({ _tag: "SessionStorageUnavailable" });
@@ -135,7 +158,8 @@ export class ReviewSessionPreparation {
       input.profileId,
       sessionId,
     );
-    if (started._tag === "err") return err({ _tag: "SessionStorageUnavailable" });
+    if (started._tag === "err")
+      return err({ _tag: "SessionStorageUnavailable" });
     return await this.commit(input, profile, headSha, sessionId, started.value);
   }
 
@@ -146,9 +170,14 @@ export class ReviewSessionPreparation {
     sessionId: ReviewSessionId,
     journal: ReviewPreparationJournal,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
-    const current = await this.dependencies.github.getPullRequest({ profile, pr: input.pullRequest });
-    if (current._tag === "err") return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    if (current.value.headSha !== headSha) return await this.abort(journal, { _tag: "HeadChanged" });
+    const current = await this.dependencies.github.getPullRequest({
+      profile,
+      pr: input.pullRequest,
+    });
+    if (current._tag === "err")
+      return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (current.value.headSha !== headSha)
+      return await this.abort(journal, { _tag: "HeadChanged" });
     if (current.value.baseSha === undefined)
       return await this.abort(journal, { _tag: "PreparationUnavailable" });
     const matchingRepo = profile.repos.find(
@@ -157,7 +186,10 @@ export class ReviewSessionPreparation {
         candidate.owner === input.pullRequest.owner &&
         candidate.repo === input.pullRequest.repo,
     );
-    const worktreePath = this.dependencies.paths.worktreeDirectory(input.profileId, sessionId);
+    const worktreePath = this.dependencies.paths.worktreeDirectory(
+      input.profileId,
+      sessionId,
+    );
     if (matchingRepo?.localPath !== undefined) {
       const recorded = await journal.recordWorktree({
         path: worktreePath,
@@ -175,7 +207,9 @@ export class ReviewSessionPreparation {
       baseSha: current.value.baseSha,
       sha: headSha,
       sessionId,
-      ...(matchingRepo?.localPath === undefined ? {} : { localPath: matchingRepo.localPath }),
+      ...(matchingRepo?.localPath === undefined
+        ? {}
+        : { localPath: matchingRepo.localPath }),
     });
     if (prepared._tag === "err")
       return await this.abort(journal, { _tag: "PreparationUnavailable" });
@@ -190,10 +224,17 @@ export class ReviewSessionPreparation {
       journal,
     });
     if (artifacts._tag === "err") return artifacts;
-    const verified = await this.dependencies.github.getPullRequest({ profile, pr: input.pullRequest });
-    if (verified._tag === "err") return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    if (verified.value.headSha !== headSha) return await this.abort(journal, { _tag: "HeadChanged" });
-    const patchPath = parseAbsolutePath(this.dependencies.paths.patchFile(input.profileId, sessionId));
+    const verified = await this.dependencies.github.getPullRequest({
+      profile,
+      pr: input.pullRequest,
+    });
+    if (verified._tag === "err")
+      return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (verified.value.headSha !== headSha)
+      return await this.abort(journal, { _tag: "HeadChanged" });
+    const patchPath = parseAbsolutePath(
+      this.dependencies.paths.patchFile(input.profileId, sessionId),
+    );
     const parsedWorktreePath = parseAbsolutePath(worktreePath);
     if (patchPath._tag === "err" || parsedWorktreePath._tag === "err")
       return await this.abort(journal, { _tag: "PreparationUnavailable" });
@@ -217,7 +258,9 @@ export class ReviewSessionPreparation {
       },
       prContext: {
         title: current.value.title,
-        ...(current.value.description === undefined ? {} : { description: current.value.description }),
+        ...(current.value.description === undefined
+          ? {}
+          : { description: current.value.description }),
         author: current.value.author,
         headBranch: current.value.headBranch,
         baseBranch: current.value.baseBranch,
@@ -243,13 +286,18 @@ export class ReviewSessionPreparation {
     readonly prepared: ManagedWorktree | MetadataOnlyReview;
     readonly journal: ReviewPreparationJournal;
   }): Promise<Result<void, PrepareReviewSessionFailure>> {
-    const patchPath = this.dependencies.paths.patchFile(input.input.profileId, input.sessionId);
+    const patchPath = this.dependencies.paths.patchFile(
+      input.input.profileId,
+      input.sessionId,
+    );
     const preparedWorktreePath =
       input.prepared.mode === "worktree"
         ? parseAbsolutePath(input.prepared.path)
         : undefined;
     if (preparedWorktreePath?._tag === "err")
-      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+      return await this.abort(input.journal, {
+        _tag: "PreparationUnavailable",
+      });
     const fetchedRefs =
       input.prepared.mode !== "worktree" || preparedWorktreePath === undefined
         ? undefined
@@ -261,10 +309,19 @@ export class ReviewSessionPreparation {
             headSha: input.headSha,
           });
     if (fetchedRefs?._tag === "err")
-      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+      return await this.abort(input.journal, {
+        _tag: "PreparationUnavailable",
+      });
     const [comments, checks, diff] = await Promise.all([
-      this.dependencies.github.getPullRequestComments({ profile: input.profile, pr: input.input.pullRequest }),
-      this.dependencies.github.getPullRequestChecks({ profile: input.profile, pr: input.input.pullRequest, headSha: input.headSha }),
+      this.dependencies.github.getPullRequestComments({
+        profile: input.profile,
+        pr: input.input.pullRequest,
+      }),
+      this.dependencies.github.getPullRequestChecks({
+        profile: input.profile,
+        pr: input.input.pullRequest,
+        headSha: input.headSha,
+      }),
       this.dependencies.github.getPullRequestDiff({
         profile: input.profile,
         pr: input.input.pullRequest,
@@ -274,25 +331,45 @@ export class ReviewSessionPreparation {
       }),
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err")
-      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+      return await this.abort(input.journal, {
+        _tag: "PreparationUnavailable",
+      });
     if ((await input.journal.record(patchPath))._tag === "err")
-      return await this.abort(input.journal, { _tag: "SessionStorageUnavailable" });
+      return await this.abort(input.journal, {
+        _tag: "SessionStorageUnavailable",
+      });
     const normalizedPatch = normalizeReviewPatch(diff.value);
     try {
       await mkdir(dirname(patchPath), { recursive: true });
       await writeFile(patchPath, normalizedPatch, "utf8");
     } catch {
-      return await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+      return await this.abort(input.journal, {
+        _tag: "PreparationUnavailable",
+      });
     }
-    const contextPath = this.dependencies.paths.preparedContextFile(input.input.profileId, input.sessionId);
-    const reviewInputPath = this.dependencies.paths.preparedReviewInputFile(input.input.profileId, input.sessionId);
-    const debugPath = this.dependencies.paths.preparedDebugFile(input.input.profileId, input.sessionId);
+    const contextPath = this.dependencies.paths.preparedContextFile(
+      input.input.profileId,
+      input.sessionId,
+    );
+    const reviewInputPath = this.dependencies.paths.preparedReviewInputFile(
+      input.input.profileId,
+      input.sessionId,
+    );
+    const debugPath = this.dependencies.paths.preparedDebugFile(
+      input.input.profileId,
+      input.sessionId,
+    );
     for (const path of [contextPath, reviewInputPath, debugPath]) {
       if ((await input.journal.record(path))._tag === "err")
-        return await this.abort(input.journal, { _tag: "SessionStorageUnavailable" });
+        return await this.abort(input.journal, {
+          _tag: "SessionStorageUnavailable",
+        });
     }
     const context = await this.dependencies.context.prepare({
-      worktreePath: input.prepared.mode === "worktree" ? input.prepared.path : input.worktreePath,
+      worktreePath:
+        input.prepared.mode === "worktree"
+          ? input.prepared.path
+          : input.worktreePath,
       preparedDirectory: dirname(contextPath),
       pr: {
         title: `${input.input.pullRequest.owner}/${input.input.pullRequest.repo}#${input.input.pullRequest.number}`,
@@ -301,7 +378,10 @@ export class ReviewSessionPreparation {
       comments: comments.value,
       checks: checks.value,
       changedFiles: changedFiles(diff.value),
-      patch: { path: patchPath, sha256: hashReviewArtifactContent(normalizedPatch) },
+      patch: {
+        path: patchPath,
+        sha256: hashReviewArtifactContent(normalizedPatch),
+      },
       rulePaths: input.profile.rulePaths,
     });
     return context._tag === "ok"
@@ -319,7 +399,8 @@ export class ReviewSessionPreparation {
         profileId: journal.profileId,
         sessionId: journal.sessionId,
         category: "preparation",
-        phase: cleaned._tag === "ok" ? "preparation-failure" : "preparation-cleanup",
+        phase:
+          cleaned._tag === "ok" ? "preparation-failure" : "preparation-cleanup",
         retryable: true,
         detail: failure._tag,
       });
@@ -351,7 +432,7 @@ export class ReviewSessionPreparation {
 }
 
 function changedFiles(diff: string): ReadonlyArray<string> {
-  return diff.split("\n").flatMap((line) =>
-    line.startsWith("+++ b/") ? [line.slice(6)] : [],
-  );
+  return diff
+    .split("\n")
+    .flatMap((line) => (line.startsWith("+++ b/") ? [line.slice(6)] : []));
 }

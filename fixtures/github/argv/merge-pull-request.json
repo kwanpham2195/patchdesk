@@ -1,1 +1,11 @@
-["gh","api","--hostname","github.com","--method","PUT","repos/centraldigital/patchdesk/pulls/42/merge","--input","-"]
+[
+  "gh",
+  "api",
+  "--hostname",
+  "github.com",
+  "--method",
+  "PUT",
+  "repos/centraldigital/patchdesk/pulls/42/merge",
+  "--input",
+  "-"
+]

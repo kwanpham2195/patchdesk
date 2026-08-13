@@ -9,7 +9,11 @@
  */
 
 export type RecoveryActionKey =
-  "run_review" | "reconnect" | "start_again" | "try_again" | "prepare_again";
+  | "run_review"
+  | "reconnect"
+  | "start_again"
+  | "try_again"
+  | "prepare_again";
 
 /** Return copy for an action key when the UI only knows the next action. */
 export function recoveryActionLabel(key: RecoveryActionKey): string {
@@ -28,7 +32,11 @@ export function recoveryActionLabel(key: RecoveryActionKey): string {
 }
 
 export type WalkthroughLifecycleKey =
-  "idle" | "generating" | "ready" | "failed" | "stale";
+  | "idle"
+  | "generating"
+  | "ready"
+  | "failed"
+  | "stale";
 
 const WALKTHROUGH_COPY: Readonly<
   Record<

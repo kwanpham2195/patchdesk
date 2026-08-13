@@ -179,44 +179,56 @@ describe("desktop hardening", () => {
   });
 
   it("prefers a packaged one-shot runtime with an exact manifest and lock digest", () => {
-    const packagedRoot = "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
+    const packagedRoot =
+      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
     const lock = "lockfileVersion: '6.0'\n";
-    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string }).digest;
+    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
+      .digest;
     const files = new Map<string, string>([
       [`${packagedRoot}/patchdesk-insight-runner.js`, ""],
       [`${packagedRoot}/pnpm-lock.yaml`, lock],
-      [`${packagedRoot}/runtime-manifest.json`, JSON.stringify({
-        flueVersion: "2.0.3",
-        piVersion: "0.84.1",
-        catalogDigest,
-        nodeFloor: ">=22.19.0",
-        lockDigest: createHash("sha256").update(lock).digest("hex"),
-      })],
+      [
+        `${packagedRoot}/runtime-manifest.json`,
+        JSON.stringify({
+          flueVersion: "2.0.3",
+          piVersion: "0.84.1",
+          catalogDigest,
+          nodeFloor: ">=22.19.0",
+          lockDigest: createHash("sha256").update(lock).digest("hex"),
+        }),
+      ],
     ]);
 
-    expect(resolveInsightRuntime(
-      "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-      "/workspace/patchdesk",
-      (path) => files.has(path),
-      (path) => files.get(path) ?? "",
-    )).toEqual({
+    expect(
+      resolveInsightRuntime(
+        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
+        "/workspace/patchdesk",
+        (path) => files.has(path),
+        (path) => files.get(path) ?? "",
+      ),
+    ).toEqual({
       root: packagedRoot,
       runnerPath: `${packagedRoot}/patchdesk-insight-runner.js`,
       manifestPath: `${packagedRoot}/runtime-manifest.json`,
     });
 
-    files.set(`${packagedRoot}/runtime-manifest.json`, JSON.stringify({
-      flueVersion: "2.0.2",
-      piVersion: "0.84.1",
-      catalogDigest,
-      nodeFloor: ">=22.19.0",
-      lockDigest: createHash("sha256").update(lock).digest("hex"),
-    }));
-    expect(resolveInsightRuntime(
-      "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-      "/workspace/patchdesk",
-      (path) => files.has(path),
-      (path) => files.get(path) ?? "",
-    )).toBeUndefined();
+    files.set(
+      `${packagedRoot}/runtime-manifest.json`,
+      JSON.stringify({
+        flueVersion: "2.0.2",
+        piVersion: "0.84.1",
+        catalogDigest,
+        nodeFloor: ">=22.19.0",
+        lockDigest: createHash("sha256").update(lock).digest("hex"),
+      }),
+    );
+    expect(
+      resolveInsightRuntime(
+        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
+        "/workspace/patchdesk",
+        (path) => files.has(path),
+        (path) => files.get(path) ?? "",
+      ),
+    ).toBeUndefined();
   });
 });

@@ -8,10 +8,13 @@ import { parseIsoTimestamp } from "../../src/domain/ids";
 import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 
 const profileId = "cfw" as never;
-const sessionId = "github.com__centraldigital__patchdesk__pr-42__sha-22222222__000000000000" as never;
+const sessionId =
+  "github.com__centraldigital__patchdesk__pr-42__sha-22222222__000000000000" as never;
 const at = parseIsoTimestamp("2026-07-18T00:00:00.000Z");
 
-function must<T>(result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" }): T {
+function must<T>(
+  result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
+): T {
   if (result._tag === "err") throw new Error("invalid fixture");
   return result.value;
 }
@@ -21,7 +24,12 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-001", { maxEvents: 2 });
+      const service = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-001",
+        { maxEvents: 2 },
+      );
 
       const recorded = await service.record({
         profileId,
@@ -29,7 +37,8 @@ describe("ReviewDiagnosticService", () => {
         category: "cleanup",
         phase: "remove-session",
         retryable: true,
-        detail: "failed at /Users/matthew/.local/share/patchdesk with Bearer secret-token and a full diff @@ -1 +1 @@",
+        detail:
+          "failed at /Users/matthew/.local/share/patchdesk with Bearer secret-token and a full diff @@ -1 +1 @@",
       });
 
       expect(recorded).toMatchObject({
@@ -46,7 +55,10 @@ describe("ReviewDiagnosticService", () => {
       expect(recorded.value.detail).not.toContain("Bearer");
       expect(recorded.value.detail).not.toContain("@@ -1 +1 @@");
 
-      const stored = await readFile(join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl"), "utf8");
+      const stored = await readFile(
+        join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl"),
+        "utf8",
+      );
       expect(stored.split("\n").filter(Boolean)).toHaveLength(1);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -57,7 +69,11 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-unsafe");
+      const service = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-unsafe",
+      );
       const recorded = await service.record({
         profileId,
         sessionId,
@@ -76,11 +92,28 @@ describe("ReviewDiagnosticService", () => {
       expect(recorded._tag).toBe("ok");
       if (recorded._tag === "err") return;
       expect(recorded.value.detail).toBe("[redacted diagnostic detail]");
-      const bundle = await service.exportSupportBundle({ profileId, sessionId });
+      const bundle = await service.exportSupportBundle({
+        profileId,
+        sessionId,
+      });
       expect(bundle._tag).toBe("ok");
       if (bundle._tag === "err") return;
       const serialized = JSON.stringify(bundle.value);
-      for (const forbidden of ["/opt/app", "/var/log", "C:\\\\work", "diff --git", "--- a/", "+++ b/", "PR title", "secret-value", "dXNlcjpwYXNz", "Bearer", "hunter2", "Error: raw failure", "at /opt"]) {
+      for (const forbidden of [
+        "/opt/app",
+        "/var/log",
+        "C:\\\\work",
+        "diff --git",
+        "--- a/",
+        "+++ b/",
+        "PR title",
+        "secret-value",
+        "dXNlcjpwYXNz",
+        "Bearer",
+        "hunter2",
+        "Error: raw failure",
+        "at /opt",
+      ]) {
         expect(serialized).not.toContain(forbidden);
       }
     } finally {
@@ -92,18 +125,36 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const service = new ReviewDiagnosticService(paths, () => must(at), () => `incident-${Math.random()}`, { maxEvents: 10_000 });
-      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
-      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
-      await writeFile(file, `${"not-json\n".repeat(500_000)}${JSON.stringify({ schemaVersion: 1, incidentId: "old", at: "2026-07-18T00:00:00.000Z", category: "run", phase: "old", profileId, retryable: false })}\n`, "utf8");
+      const service = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => `incident-${Math.random()}`,
+        { maxEvents: 10_000 },
+      );
+      const file = join(
+        paths.profileReviewsDirectory(profileId),
+        "diagnostics.jsonl",
+      );
+      await mkdir(paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      });
+      await writeFile(
+        file,
+        `${"not-json\n".repeat(500_000)}${JSON.stringify({ schemaVersion: 1, incidentId: "old", at: "2026-07-18T00:00:00.000Z", category: "run", phase: "old", profileId, retryable: false })}\n`,
+        "utf8",
+      );
 
-      const results = await Promise.all(Array.from({ length: 25 }, (_, index) => service.record({
-        profileId,
-        category: "run",
-        phase: `concurrent-${index}`,
-        retryable: true,
-        detail: `safe failure ${index}`,
-      })));
+      const results = await Promise.all(
+        Array.from({ length: 25 }, (_, index) =>
+          service.record({
+            profileId,
+            category: "run",
+            phase: `concurrent-${index}`,
+            retryable: true,
+            detail: `safe failure ${index}`,
+          }),
+        ),
+      );
       expect(results.every((result) => result._tag === "ok")).toBe(true);
       const recent = await service.recent(profileId);
       expect(recent._tag).toBe("ok");
@@ -120,7 +171,11 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-context");
+      const service = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-context",
+      );
       const unsafeDetails = [
         "path=/opt/app/index.ts",
         "file:/private/repo/index.ts",
@@ -135,8 +190,17 @@ describe("ReviewDiagnosticService", () => {
         "RangeError: invalid range",
       ];
       for (const detail of unsafeDetails) {
-        const result = await service.record({ profileId, category: "recovery", phase: "boundary", retryable: true, detail });
-        expect(result).toMatchObject({ _tag: "ok", value: { detail: "[redacted diagnostic detail]" } });
+        const result = await service.record({
+          profileId,
+          category: "recovery",
+          phase: "boundary",
+          retryable: true,
+          detail,
+        });
+        expect(result).toMatchObject({
+          _tag: "ok",
+          value: { detail: "[redacted diagnostic detail]" },
+        });
       }
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -147,21 +211,40 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
-      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
-      await writeFile(file, `${JSON.stringify({
-        schemaVersion: 1,
-        incidentId: "incident-historical",
-        at: "2026-07-18T00:00:00.000Z",
-        category: "recovery",
-        phase: "path=/opt/app",
-        profileId,
-        retryable: true,
-        detail: "path=/opt/app TypeError: secret Bearer abc123",
-      })}\n`, "utf8");
+      const file = join(
+        paths.profileReviewsDirectory(profileId),
+        "diagnostics.jsonl",
+      );
+      await mkdir(paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      });
+      await writeFile(
+        file,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          incidentId: "incident-historical",
+          at: "2026-07-18T00:00:00.000Z",
+          category: "recovery",
+          phase: "path=/opt/app",
+          profileId,
+          retryable: true,
+          detail: "path=/opt/app TypeError: secret Bearer abc123",
+        })}\n`,
+        "utf8",
+      );
       const service = new ReviewDiagnosticService(paths, () => must(at));
       const bundle = await service.exportSupportBundle({ profileId });
-      expect(bundle).toMatchObject({ _tag: "ok", value: { events: [{ incidentId: "incident-historical", detail: "[redacted diagnostic detail]" }] } });
+      expect(bundle).toMatchObject({
+        _tag: "ok",
+        value: {
+          events: [
+            {
+              incidentId: "incident-historical",
+              detail: "[redacted diagnostic detail]",
+            },
+          ],
+        },
+      });
       if (bundle._tag === "ok") {
         const serialized = JSON.stringify(bundle.value);
         expect(serialized).not.toContain("/opt/app");
@@ -177,18 +260,39 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const first = new ReviewDiagnosticService(paths, () => must(at), () => "incident-first");
-      const second = new ReviewDiagnosticService(paths, () => must(at), () => "incident-second");
+      const first = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-first",
+      );
+      const second = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-second",
+      );
       const results = await Promise.all([
-        first.record({ profileId, category: "run", phase: "first", retryable: true }),
-        second.record({ profileId, category: "run", phase: "second", retryable: true }),
+        first.record({
+          profileId,
+          category: "run",
+          phase: "first",
+          retryable: true,
+        }),
+        second.record({
+          profileId,
+          category: "run",
+          phase: "second",
+          retryable: true,
+        }),
       ]);
       expect(results.every((result) => result._tag === "ok")).toBe(true);
       const recent = await first.recent(profileId);
-      expect(recent).toMatchObject({ _tag: "ok", value: expect.arrayContaining([
-        expect.objectContaining({ phase: "first" }),
-        expect.objectContaining({ phase: "second" }),
-      ]) });
+      expect(recent).toMatchObject({
+        _tag: "ok",
+        value: expect.arrayContaining([
+          expect.objectContaining({ phase: "first" }),
+          expect.objectContaining({ phase: "second" }),
+        ]),
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -206,15 +310,30 @@ describe("ReviewDiagnosticService", () => {
         { maxEvents: 2, maxDetailLength: 80 },
       );
 
-      await service.record({ profileId, sessionId, category: "run", phase: "first", retryable: false, detail: "first" });
-      await service.record({ profileId, sessionId, category: "run", phase: "second", retryable: true, detail: "second" });
+      await service.record({
+        profileId,
+        sessionId,
+        category: "run",
+        phase: "first",
+        retryable: false,
+        detail: "first",
+      });
+      await service.record({
+        profileId,
+        sessionId,
+        category: "run",
+        phase: "second",
+        retryable: true,
+        detail: "second",
+      });
       await service.record({
         profileId,
         sessionId,
         category: "recovery",
         phase: "third",
         retryable: true,
-        detail: "Error: raw stack at /private/repo\n at doThing() with token=top-secret",
+        detail:
+          "Error: raw stack at /private/repo\n at doThing() with token=top-secret",
       });
 
       const bundle = await service.exportSupportBundle({
@@ -228,7 +347,10 @@ describe("ReviewDiagnosticService", () => {
       expect(bundle._tag).toBe("ok");
       if (bundle._tag === "err") return;
       expect(bundle.value.events).toHaveLength(2);
-      expect(bundle.value.events.map((event) => event.incidentId)).toEqual(["incident-2", "incident-3"]);
+      expect(bundle.value.events.map((event) => event.incidentId)).toEqual([
+        "incident-2",
+        "incident-3",
+      ]);
       const serialized = JSON.stringify(bundle.value);
       expect(serialized).not.toContain("/private/repo");
       expect(serialized).not.toContain("top-secret");
@@ -244,8 +366,13 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
-      await mkdir(paths.profileReviewsDirectory(profileId), { recursive: true });
+      const file = join(
+        paths.profileReviewsDirectory(profileId),
+        "diagnostics.jsonl",
+      );
+      await mkdir(paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      });
       const unsafeDetails = [
         "path=/tmp",
         "path=/Users",
@@ -257,24 +384,37 @@ describe("ReviewDiagnosticService", () => {
         "RangeError invalid range",
         "    at processTicksAndRejections (node:internal/process/task_queues:95:5)",
       ];
-      await writeFile(file, `${unsafeDetails.map((detail, index) => JSON.stringify({
-        schemaVersion: 1,
-        incidentId: `legacy-${index}`,
-        at: "2026-07-18T00:00:00.000Z",
-        category: "recovery",
-        phase: "legacy",
-        profileId,
-        retryable: true,
-        detail,
-      })).join("\n")}\n`, "utf8");
+      await writeFile(
+        file,
+        `${unsafeDetails
+          .map((detail, index) =>
+            JSON.stringify({
+              schemaVersion: 1,
+              incidentId: `legacy-${index}`,
+              at: "2026-07-18T00:00:00.000Z",
+              category: "recovery",
+              phase: "legacy",
+              profileId,
+              retryable: true,
+              detail,
+            }),
+          )
+          .join("\n")}\n`,
+        "utf8",
+      );
       const service = new ReviewDiagnosticService(paths, () => must(at));
       const bundle = await service.exportSupportBundle({ profileId });
       expect(bundle._tag).toBe("ok");
       if (bundle._tag === "err") return;
       expect(bundle.value.events).toHaveLength(unsafeDetails.length);
       const serialized = JSON.stringify(bundle.value);
-      for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
-      expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+      for (const detail of unsafeDetails)
+        expect(serialized).not.toContain(detail);
+      expect(
+        bundle.value.events.every(
+          (event) => event.detail === "[redacted diagnostic detail]",
+        ),
+      ).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -284,7 +424,11 @@ describe("ReviewDiagnosticService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diagnostics-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const service = new ReviewDiagnosticService(paths, () => must(at), () => "incident-delimiters");
+      const service = new ReviewDiagnosticService(
+        paths,
+        () => must(at),
+        () => "incident-delimiters",
+      );
       const unsafeDetails = [
         'path="/tmp"',
         "path:/tmp",
@@ -302,40 +446,72 @@ describe("ReviewDiagnosticService", () => {
       const credentialValues = ["secret", "dXNlcjpwYXNz"];
 
       for (const detail of unsafeDetails) {
-        const recorded = await service.record({ profileId, category: "recovery", phase: "delimiter", retryable: true, detail });
-        expect(recorded).toMatchObject({ _tag: "ok", value: { detail: "[redacted diagnostic detail]" } });
+        const recorded = await service.record({
+          profileId,
+          category: "recovery",
+          phase: "delimiter",
+          retryable: true,
+          detail,
+        });
+        expect(recorded).toMatchObject({
+          _tag: "ok",
+          value: { detail: "[redacted diagnostic detail]" },
+        });
       }
 
-      const file = join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
-      await writeFile(file, `${unsafeDetails.map((detail, index) => JSON.stringify({
-        schemaVersion: 1,
-        incidentId: `legacy-delimiter-${index}`,
-        at: "2026-07-18T00:00:00.000Z",
-        category: "recovery",
-        phase: "legacy",
-        profileId,
-        retryable: true,
-        detail,
-      })).join("\n")}\n`, "utf8");
+      const file = join(
+        paths.profileReviewsDirectory(profileId),
+        "diagnostics.jsonl",
+      );
+      await writeFile(
+        file,
+        `${unsafeDetails
+          .map((detail, index) =>
+            JSON.stringify({
+              schemaVersion: 1,
+              incidentId: `legacy-delimiter-${index}`,
+              at: "2026-07-18T00:00:00.000Z",
+              category: "recovery",
+              phase: "legacy",
+              profileId,
+              retryable: true,
+              detail,
+            }),
+          )
+          .join("\n")}\n`,
+        "utf8",
+      );
 
       const recentResult = await service.recent(profileId);
       expect(recentResult).toMatchObject({ _tag: "ok" });
       if (recentResult._tag === "err") return;
       const recent = recentResult.value;
       expect(recent).toHaveLength(unsafeDetails.length);
-      expect(recent.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+      expect(
+        recent.every(
+          (event) => event.detail === "[redacted diagnostic detail]",
+        ),
+      ).toBe(true);
       const recentSerialized = JSON.stringify(recent);
-      for (const detail of unsafeDetails) expect(recentSerialized).not.toContain(detail);
-      for (const value of credentialValues) expect(recentSerialized).not.toContain(value);
+      for (const detail of unsafeDetails)
+        expect(recentSerialized).not.toContain(detail);
+      for (const value of credentialValues)
+        expect(recentSerialized).not.toContain(value);
 
       const bundle = await service.exportSupportBundle({ profileId });
       expect(bundle).toMatchObject({ _tag: "ok" });
       if (bundle._tag === "err") return;
       expect(bundle.value.events).toHaveLength(unsafeDetails.length);
       const serialized = JSON.stringify(bundle.value);
-      for (const detail of unsafeDetails) expect(serialized).not.toContain(detail);
-      for (const value of credentialValues) expect(serialized).not.toContain(value);
-      expect(bundle.value.events.every((event) => event.detail === "[redacted diagnostic detail]")).toBe(true);
+      for (const detail of unsafeDetails)
+        expect(serialized).not.toContain(detail);
+      for (const value of credentialValues)
+        expect(serialized).not.toContain(value);
+      expect(
+        bundle.value.events.every(
+          (event) => event.detail === "[redacted diagnostic detail]",
+        ),
+      ).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

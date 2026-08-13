@@ -11,7 +11,8 @@ describe("Conversation", () => {
     render(
       <Conversation
         conversation={{
-          prDescription: "# What happened\n\n- Changed the route-planning solver.",
+          prDescription:
+            "# What happened\n\n- Changed the route-planning solver.",
           entries: [],
         }}
       />,

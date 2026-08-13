@@ -331,11 +331,7 @@ git commit -m "feat: preserve every review draft item"
 
 ```ts
 export type InsightStatus =
-  | "not_generated"
-  | "running"
-  | "current"
-  | "outdated"
-  | "failed";
+  "not_generated" | "running" | "current" | "outdated" | "failed";
 
 export type InsightProjection<T> = {
   readonly status: InsightStatus;
@@ -372,10 +368,7 @@ export type ReviewWorkbenchProjection = {
     readonly reviewedHeadSha: GitSha;
     readonly currentHeadSha?: GitSha;
     readonly freshness:
-      | "fresh"
-      | "updates_available"
-      | "unavailable"
-      | "not_refreshed";
+      "fresh" | "updates_available" | "unavailable" | "not_refreshed";
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;

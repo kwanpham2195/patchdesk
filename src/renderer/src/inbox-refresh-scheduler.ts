@@ -1,4 +1,9 @@
-export type InboxRefreshReason = "entry" | "foreground" | "poll" | "retry" | "manual";
+export type InboxRefreshReason =
+  | "entry"
+  | "foreground"
+  | "poll"
+  | "retry"
+  | "manual";
 export type InboxRefreshOutcome = "success" | "failure";
 
 const POLL_DELAY_MS = 60_000;
@@ -74,7 +79,10 @@ export class InboxRefreshScheduler {
           this.schedule("poll", POLL_DELAY_MS);
           return;
         }
-        const delay = RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)] ?? 300_000;
+        const delay =
+          RETRY_DELAYS_MS[
+            Math.min(this.failures, RETRY_DELAYS_MS.length - 1)
+          ] ?? 300_000;
         this.failures += 1;
         this.schedule("retry", delay);
       })
@@ -93,20 +101,39 @@ export class InboxRefreshScheduler {
 }
 
 export function inboxFreshnessLabel(input: {
-  readonly remote?: "current" | "partial" | "failed_cached" | "unavailable" | undefined;
+  readonly remote?:
+    | "current"
+    | "partial"
+    | "failed_cached"
+    | "unavailable"
+    | undefined;
   readonly refreshing: boolean;
   readonly paused: boolean;
   readonly refreshFailed?: boolean;
   readonly refreshedAt?: string | undefined;
   readonly now?: number;
-}): "Refreshing" | "Current" | "Aged" | "Partial" | "Cached after refresh failure" | "Unavailable" | "Paused" {
+}):
+  | "Refreshing"
+  | "Current"
+  | "Aged"
+  | "Partial"
+  | "Cached after refresh failure"
+  | "Unavailable"
+  | "Paused" {
   if (input.refreshing) return "Refreshing";
   if (input.paused) return "Paused";
   if (input.refreshFailed === true) return "Cached after refresh failure";
   if (input.remote === "partial") return "Partial";
   if (input.remote === "failed_cached") return "Cached after refresh failure";
   if (input.remote === "unavailable") return "Unavailable";
-  const refreshedAt = input.refreshedAt === undefined ? Number.NaN : Date.parse(input.refreshedAt);
-  if (!Number.isNaN(refreshedAt) && (input.now ?? Date.now()) - refreshedAt > 120_000) return "Aged";
+  const refreshedAt =
+    input.refreshedAt === undefined
+      ? Number.NaN
+      : Date.parse(input.refreshedAt);
+  if (
+    !Number.isNaN(refreshedAt) &&
+    (input.now ?? Date.now()) - refreshedAt > 120_000
+  )
+    return "Aged";
   return "Current";
 }

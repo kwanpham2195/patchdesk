@@ -98,10 +98,7 @@ export class DashboardService {
       }
       repos.push({
         repo,
-        state:
-          list.value.length === 0
-            ? "no_open_prs"
-            : "ready",
+        state: list.value.length === 0 ? "no_open_prs" : "ready",
       });
       rows.push(
         ...list.value.map((summary) =>
@@ -198,7 +195,12 @@ function parseGitOrigin(
     owner._tag === "ok" &&
     repo._tag === "ok" &&
     path._tag === "ok"
-    ? { host: host.value, owner: owner.value, repo: repo.value, localPath: path.value }
+    ? {
+        host: host.value,
+        owner: owner.value,
+        repo: repo.value,
+        localPath: path.value,
+      }
     : undefined;
 }
 

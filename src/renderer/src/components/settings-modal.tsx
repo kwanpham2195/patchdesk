@@ -60,7 +60,9 @@ export function SettingsModal({
   onSectionChange,
   ...flowProps
 }: SettingsModalProps): React.JSX.Element {
-  const [section, setSection] = useState<SettingsSection>(initialSection ?? "general");
+  const [section, setSection] = useState<SettingsSection>(
+    initialSection ?? "general",
+  );
   const firstOpenRef = useRef(true);
   const [dirty, setDirty] = useState(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
@@ -75,7 +77,11 @@ export function SettingsModal({
 
   useEffect(() => {
     if (open && !lastOpen.current) {
-      setSection(firstOpenRef.current && initialSection !== undefined ? initialSection : "general");
+      setSection(
+        firstOpenRef.current && initialSection !== undefined
+          ? initialSection
+          : "general",
+      );
       firstOpenRef.current = false;
       openerRef.current = opener ?? null;
     }

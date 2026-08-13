@@ -569,7 +569,8 @@ export type MergeOutcome =
 
 /** Whether a thread node is a member of the active pull request. */
 export type GitHubThreadTarget =
-  { readonly found: true } | { readonly found: false };
+  | { readonly found: true }
+  | { readonly found: false };
 
 /** Whether a comment node is a member of the active pull request, and who authored it. */
 export type GitHubCommentTarget =
@@ -819,7 +820,12 @@ export type AuthenticatedGitHubAccount = {
 export type RepositoryPermissionEvidence = {
   readonly account: string;
   readonly permission:
-    "admin" | "maintain" | "push" | "triage" | "pull" | "none";
+    | "admin"
+    | "maintain"
+    | "push"
+    | "triage"
+    | "pull"
+    | "none";
   readonly pullRequestsWrite: boolean;
 };
 

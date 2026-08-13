@@ -131,7 +131,10 @@ export class ReviewWorkbenchController {
     const reviewId = createReviewId(identity);
     const recovered = await this.recoverObservation(profileId.value, reviewId);
     if (recovered._tag === "err") return recovered;
-    const existing = await this.lifecycle.reviews.load(profileId.value, reviewId);
+    const existing = await this.lifecycle.reviews.load(
+      profileId.value,
+      reviewId,
+    );
     if (existing._tag === "err" && existing.error.reason !== "not_found")
       return err({ reason: "storage" });
     let existingUpdatedAt: IsoTimestamp | undefined;
@@ -193,10 +196,16 @@ export class ReviewWorkbenchController {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<Review, ReviewWorkbenchFailure>> {
-    const initialRefresh = await this.lifecycle.refresh.refresh({ profileId, reviewId });
+    const initialRefresh = await this.lifecycle.refresh.refresh({
+      profileId,
+      reviewId,
+    });
     if (initialRefresh._tag === "err")
       return err({ reason: initialRefresh.error.reason });
-    const refreshedReview = await this.lifecycle.reviews.load(profileId, reviewId);
+    const refreshedReview = await this.lifecycle.reviews.load(
+      profileId,
+      reviewId,
+    );
     if (refreshedReview._tag === "err")
       return err({
         reason:
@@ -238,7 +247,10 @@ export class ReviewWorkbenchController {
     );
     if (journal._tag === "err" || journal.value !== undefined)
       return err({ reason: "storage" });
-    if (review.representedRemote === undefined || review.representedRemote.headSha !== review.currentHeadSha)
+    if (
+      review.representedRemote === undefined ||
+      review.representedRemote.headSha !== review.currentHeadSha
+    )
       return err({ reason: "storage" });
     const snapshot = await this.lifecycle.remote.load({
       profileId: review.identity.profileId,
@@ -261,13 +273,25 @@ export class ReviewWorkbenchController {
   async load(
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(readObjectField(input, "profileId"));
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    if (profileId._tag === "err" || reviewId._tag === "err") return err({ reason: "invalid_input" });
-    const recovered = await this.recoverObservation(profileId.value, reviewId.value);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return err({ reason: "invalid_input" });
+    const recovered = await this.recoverObservation(
+      profileId.value,
+      reviewId.value,
+    );
     if (recovered._tag === "err") return recovered;
-    const review = await this.lifecycle.reviews.load(profileId.value, reviewId.value);
-    if (review._tag === "err") return err({ reason: review.error.reason === "not_found" ? "not_found" : "storage" });
+    const review = await this.lifecycle.reviews.load(
+      profileId.value,
+      reviewId.value,
+    );
+    if (review._tag === "err")
+      return err({
+        reason: review.error.reason === "not_found" ? "not_found" : "storage",
+      });
     return this.projectStable(review.value);
   }
 
@@ -322,10 +346,12 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-        return this.lifecycle.observation.observe({
+    return this.lifecycle.observation.observe({
       profileId: input.profileId,
       reviewId: input.reviewId,
-      ...(input.recentWrites === undefined ? {} : { recentWrites: input.recentWrites }),
+      ...(input.recentWrites === undefined
+        ? {}
+        : { recentWrites: input.recentWrites }),
     });
   }
 
@@ -336,9 +362,15 @@ export class ReviewWorkbenchController {
       readObjectField(input, "profileId"),
     );
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    if (profileId._tag === "err" || reviewId._tag === "err") return err({ reason: "invalid_input" });
-    const refreshed = await this.lifecycle.refresh.refresh({ profileId: profileId.value, reviewId: reviewId.value });
-    return refreshed._tag === "err" ? err({ reason: refreshed.error.reason }) : refreshed;
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return err({ reason: "invalid_input" });
+    const refreshed = await this.lifecycle.refresh.refresh({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+    });
+    return refreshed._tag === "err"
+      ? err({ reason: refreshed.error.reason })
+      : refreshed;
   }
 
   private async serializedOpen<T>(

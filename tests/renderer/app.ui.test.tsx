@@ -13,7 +13,10 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
-  Object.defineProperty(window, "patchdesk", { configurable: true, value: undefined });
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: undefined,
+  });
 });
 
 describe("App Review route loading", () => {
@@ -29,7 +32,13 @@ describe("App Review route loading", () => {
       return { default: () => <p>Unexpected fixture load</p> };
     };
     installDesktop();
-    render(<App initialState="empty" reviewWorkbenchLoader={reviewLoader} fixtureContentLoader={fixtureLoader} />);
+    render(
+      <App
+        initialState="empty"
+        reviewWorkbenchLoader={reviewLoader}
+        fixtureContentLoader={fixtureLoader}
+      />,
+    );
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("dialog", { name: "Settings" });
@@ -40,24 +49,71 @@ describe("App Review route loading", () => {
   it("loads a restored Review through InboxFlow and keeps route callbacks", async () => {
     const deferred = promise<React.ComponentType<ReviewWorkbenchFlowProps>>();
     let received: ReviewWorkbenchFlowProps | undefined;
-    window.localStorage.setItem("patchdesk.destination", "workbench:review-42:diff");
-    window.localStorage.setItem("patchdesk.workbench-ui.v1.review-42", JSON.stringify({ activeTab: "diff", section: "files", selectedPath: "src/a.ts" }));
+    window.localStorage.setItem(
+      "patchdesk.destination",
+      "workbench:review-42:diff",
+    );
+    window.localStorage.setItem(
+      "patchdesk.workbench-ui.v1.review-42",
+      JSON.stringify({
+        activeTab: "diff",
+        section: "files",
+        selectedPath: "src/a.ts",
+      }),
+    );
     installDesktop();
-    render(<App reviewWorkbenchLoader={() => deferred.promise.then((defaultComponent) => ({ default: defaultComponent }))} />);
+    render(
+      <App
+        reviewWorkbenchLoader={() =>
+          deferred.promise.then((defaultComponent) => ({
+            default: defaultComponent,
+          }))
+        }
+      />,
+    );
     expect(await screen.findByRole("status")).not.toBeNull();
     deferred.resolve((props) => {
       received = props;
-      return <>
-        <button type="button" onClick={() => props.onNavigationStateChange("dirty_draft")}>Dirty</button>
-        <button type="button" onClick={() => props.onNavigate("checks")}>Checks</button>
-        <button type="button" onClick={() => props.onUiStateChange?.({ activeTab: "insights", section: "files", selectedPath: "src/b.ts" })}>Save position</button>
-        <button type="button" onClick={() => props.onWorkbenchReplace(replacedProjection())}>Replace</button>
-        <p>{props.workbench.pullRequest?.title}</p>
-      </>;
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => props.onNavigationStateChange("dirty_draft")}
+          >
+            Dirty
+          </button>
+          <button type="button" onClick={() => props.onNavigate("checks")}>
+            Checks
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              props.onUiStateChange?.({
+                activeTab: "insights",
+                section: "files",
+                selectedPath: "src/b.ts",
+              })
+            }
+          >
+            Save position
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onWorkbenchReplace(replacedProjection())}
+          >
+            Replace
+          </button>
+          <p>{props.workbench.pullRequest?.title}</p>
+        </>
+      );
     });
     expect(await screen.findByText("Review")).not.toBeNull();
     expect(received?.initialSection).toBe("diff");
-    expect(received?.initialUiState).toEqual({ activeTab: "diff", section: "files", selectedPath: "src/a.ts" });
+    expect(received?.initialUiState).toEqual({
+      activeTab: "diff",
+      section: "files",
+      selectedPath: "src/a.ts",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Checks" }));
     expect(window.localStorage.getItem("patchdesk.destination")).toBe(
       "workbench:review-42:diff",
@@ -95,7 +151,9 @@ describe("App Review route loading", () => {
     window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
     installDesktop();
     render(<App reviewWorkbenchLoader={reviewLoader} />);
-    expect((await screen.findByRole("alert")).textContent).toContain("could not load the Review workbench");
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "could not load the Review workbench",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Recovered review")).not.toBeNull();
     expect(attempts).toBe(2);
@@ -103,41 +161,126 @@ describe("App Review route loading", () => {
 });
 
 function installDesktop(): void {
-  Object.defineProperty(window, "patchdesk", { configurable: true, value: {
-    request: async (input: { readonly path?: string }) => ({
-      ok: true, status: 200, correlationId: "test",
-      body: input.path === "/v1/profiles"
-        ? [{ id: "profile", label: "Profile", githubHost: "github.com", ghAccount: "fixture" }]
-        : input.path === "/v1/inbox" ? inbox()
-          : input.path === "/v1/reviews/load" ? projection() : {},
-    }),
-    onNavigate: () => () => undefined,
-  } });
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: {
+      request: async (input: { readonly path?: string }) => ({
+        ok: true,
+        status: 200,
+        correlationId: "test",
+        body:
+          input.path === "/v1/profiles"
+            ? [
+                {
+                  id: "profile",
+                  label: "Profile",
+                  githubHost: "github.com",
+                  ghAccount: "fixture",
+                },
+              ]
+            : input.path === "/v1/inbox"
+              ? inbox()
+              : input.path === "/v1/reviews/load"
+                ? projection()
+                : {},
+      }),
+      onNavigate: () => () => undefined,
+    },
+  });
 }
 
 function inbox() {
-  return { profile: { id: "profile", label: "Profile", githubHost: "github.com", ghAccount: "fixture" }, inbox: { rows: [], repositories: [], dataFreshness: "fresh" } };
+  return {
+    profile: {
+      id: "profile",
+      label: "Profile",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+    },
+    inbox: { rows: [], repositories: [], dataFreshness: "fresh" },
+  };
 }
 
-function projection(overrides: Partial<WorkbenchResponse> = {}): WorkbenchResponse {
+function projection(
+  overrides: Partial<WorkbenchResponse> = {},
+): WorkbenchResponse {
   return {
-    state: "review", review: { id: "review-42", status: "open" },
-    session: { id: "session-42", key: { profileId: "profile", host: "github.com", owner: "centraldigital", repo: "patchdesk", prNumber: 42, headSha: sha } },
-    revision: { reviewedHeadSha: sha, currentHeadSha: sha, freshness: "fresh", refreshedAt: "2026-08-01T00:00:00.000Z", patchHash: patchHash as never },
-    fullPatch: "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
-    pullRequest: { ref: { host: "github.com", owner: "centraldigital", repo: "patchdesk", number: 42 }, title: "Review", author: "fixture", headBranch: "feature", baseBranch: "main", headSha: sha, isOpen: true, isDraft: false, reviewState: "none", mergeability: "mergeable", labels: [], updatedAt: "2026-08-01T00:00:00.000Z" },
-    commits: [], insights: { analysis: { status: "not_generated" }, walkthrough: { status: "not_generated" } }, conversation: { prDescription: "", entries: [] }, checks: { overall: "passing", checks: [] }, mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] }, mergeReasons: [], ...overrides,
+    state: "review",
+    review: { id: "review-42", status: "open" },
+    session: {
+      id: "session-42",
+      key: {
+        profileId: "profile",
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        prNumber: 42,
+        headSha: sha,
+      },
+    },
+    revision: {
+      reviewedHeadSha: sha,
+      currentHeadSha: sha,
+      freshness: "fresh",
+      refreshedAt: "2026-08-01T00:00:00.000Z",
+      patchHash: patchHash as never,
+    },
+    fullPatch:
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+    pullRequest: {
+      ref: {
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      },
+      title: "Review",
+      author: "fixture",
+      headBranch: "feature",
+      baseBranch: "main",
+      headSha: sha,
+      isOpen: true,
+      isDraft: false,
+      reviewState: "none",
+      mergeability: "mergeable",
+      labels: [],
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    },
+    commits: [],
+    insights: {
+      analysis: { status: "not_generated" },
+      walkthrough: { status: "not_generated" },
+    },
+    conversation: { prDescription: "", entries: [] },
+    checks: { overall: "passing", checks: [] },
+    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+    mergeReasons: [],
+    ...overrides,
   } as WorkbenchResponse;
 }
 
 function replacedProjection(): WorkbenchResponse {
   const value = projection();
   const pullRequest = value.pullRequest;
-  if (pullRequest === undefined) throw new Error("Fixture is missing pull request");
-  return projection({ pullRequest: { ...pullRequest, title: "Replaced" } as WorkbenchResponse["pullRequest"] });
+  if (pullRequest === undefined)
+    throw new Error("Fixture is missing pull request");
+  return projection({
+    pullRequest: {
+      ...pullRequest,
+      title: "Replaced",
+    } as WorkbenchResponse["pullRequest"],
+  });
 }
 
-function promise<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+function promise<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
   let resolve: (value: T) => void = () => undefined;
-  return { promise: new Promise<T>((done) => { resolve = done; }), resolve };
+  return {
+    promise: new Promise<T>((done) => {
+      resolve = done;
+    }),
+    resolve,
+  };
 }

@@ -125,14 +125,20 @@ export function AppShell({
     setCommandOpen(false);
     onNavigate({ kind: "dashboard" });
     window.setTimeout(
-      () => window.dispatchEvent(new CustomEvent("patchdesk:inbox-view", { detail: view })),
+      () =>
+        window.dispatchEvent(
+          new CustomEvent("patchdesk:inbox-view", { detail: view }),
+        ),
       0,
     );
   };
   const openSelectedInboxAction = (): void => {
     setCommandOpen(false);
     onNavigate({ kind: "dashboard" });
-    window.setTimeout(() => window.dispatchEvent(new Event("patchdesk:inbox-action")), 0);
+    window.setTimeout(
+      () => window.dispatchEvent(new Event("patchdesk:inbox-action")),
+      0,
+    );
   };
   return (
     <div className="compact-surface flex h-screen min-h-screen w-full flex-col bg-background text-foreground">
@@ -152,7 +158,9 @@ export function AppShell({
             </Button>
           ) : null}
           <BrandMark size={26} />
-          <span className="text-[13px] font-semibold tracking-tight">Patchdesk</span>
+          <span className="text-[13px] font-semibold tracking-tight">
+            Patchdesk
+          </span>
           <Separator orientation="vertical" className="mx-0.5 h-4" />
           <span className="truncate text-[13px] text-muted-foreground">
             {destinationTitle(destination)}
@@ -167,7 +175,8 @@ export function AppShell({
                 value: profile.id,
               }))}
               onValueChange={(value) => {
-                if (value !== null && onProfileSwitch !== undefined) onProfileSwitch(value);
+                if (value !== null && onProfileSwitch !== undefined)
+                  onProfileSwitch(value);
               }}
             >
               <SelectTrigger
@@ -176,7 +185,8 @@ export function AppShell({
               >
                 <User className="size-3" />
                 <SelectValue placeholder="Select profile">
-                  {profiles.find((p) => p.id === activeProfileId)?.label ?? "Profile"}
+                  {profiles.find((p) => p.id === activeProfileId)?.label ??
+                    "Profile"}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -273,7 +283,13 @@ export function AppShell({
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Actions">
-              <CommandItem value="Settings" onSelect={() => { setCommandOpen(false); onOpenSettings(navigateOpenerRef.current ?? undefined); }}>
+              <CommandItem
+                value="Settings"
+                onSelect={() => {
+                  setCommandOpen(false);
+                  onOpenSettings(navigateOpenerRef.current ?? undefined);
+                }}
+              >
                 <Settings />
                 Settings
               </CommandItem>
@@ -281,12 +297,19 @@ export function AppShell({
             <CommandSeparator />
             <CommandGroup heading="Inbox">
               {inboxCommands.map(([id, label]) => (
-                <CommandItem key={id} value={label} onSelect={() => chooseInboxView(id)}>
+                <CommandItem
+                  key={id}
+                  value={label}
+                  onSelect={() => chooseInboxView(id)}
+                >
                   <GitPullRequest />
                   {label}
                 </CommandItem>
               ))}
-              <CommandItem value="Open selected pull request action" onSelect={openSelectedInboxAction}>
+              <CommandItem
+                value="Open selected pull request action"
+                onSelect={openSelectedInboxAction}
+              >
                 <ArrowLeft className="rotate-180" />
                 Open selected pull request
               </CommandItem>

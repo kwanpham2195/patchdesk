@@ -1,4 +1,11 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -75,7 +82,11 @@ function github(heads: ReadonlyArray<GitSha>, onDiff?: () => Promise<void>) {
     updatedAt: now,
   });
   return {
-    counts: { get diffs() { return diffs; } },
+    counts: {
+      get diffs() {
+        return diffs;
+      },
+    },
     async getPullRequest() {
       const head = heads[Math.min(getPullRequest, heads.length - 1)] ?? headSha;
       getPullRequest += 1;
@@ -102,25 +113,35 @@ function github(heads: ReadonlyArray<GitSha>, onDiff?: () => Promise<void>) {
   > & { readonly counts: { readonly diffs: number } };
 }
 
-function git(): GitReadExecutor & { readonly calls: ReadonlyArray<ReadonlyArray<string>> } {
+function git(): GitReadExecutor & {
+  readonly calls: ReadonlyArray<ReadonlyArray<string>>;
+} {
   const calls: ReadonlyArray<string>[] = [];
   return {
     calls,
     async run(argv) {
       calls.push(argv);
-      if (argv.includes("--show-toplevel")) return ok({ stdout: "/fixture/repository\n" });
-      if (argv.includes("status") || argv.includes("fetch") || argv.includes("worktree")) return ok({ stdout: "" });
+      if (argv.includes("--show-toplevel"))
+        return ok({ stdout: "/fixture/repository\n" });
+      if (
+        argv.includes("status") ||
+        argv.includes("fetch") ||
+        argv.includes("worktree")
+      )
+        return ok({ stdout: "" });
       if (argv.includes("rev-parse")) return ok({ stdout: `${baseSha}\n` });
       return err({ _tag: "GitReadFailed" });
     },
   };
 }
 
-async function setup(options: {
-  readonly heads?: ReadonlyArray<GitSha>;
-  readonly onDiff?: () => Promise<void>;
-  readonly localPath?: string;
-} = {}) {
+async function setup(
+  options: {
+    readonly heads?: ReadonlyArray<GitSha>;
+    readonly onDiff?: () => Promise<void>;
+    readonly localPath?: string;
+  } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-preparation-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
@@ -168,26 +189,65 @@ async function present(path: string): Promise<boolean> {
 describe("ReviewSessionPreparation", () => {
   it("prepares complete immutable patch, context, review-input, and debug artifacts", async () => {
     const fixture = await setup();
-    const prepared = await fixture.preparation.prepare({ profileId, pullRequest });
+    const prepared = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
 
-    expect(prepared).toMatchObject({ _tag: "ok", value: { disposition: "prepared" } });
+    expect(prepared).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "prepared" },
+    });
     if (prepared._tag === "err") return;
     const session = prepared.value.session;
     expect(await readFile(session.patchPath, "utf8")).toBe(patch);
-    expect(await readFile(fixture.paths.preparedContextFile(profileId, session.id), "utf8")).toContain("src/a.ts");
-    expect(await readFile(fixture.paths.preparedReviewInputFile(profileId, session.id), "utf8")).toContain("PR review input");
-    expect(JSON.parse(await readFile(fixture.paths.preparedDebugFile(profileId, session.id), "utf8"))).toMatchObject({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0 });
-    expect(await present(join(fixture.paths.sessionDirectory(profileId, session.id), "preparation.journal.json"))).toBe(false);
+    expect(
+      await readFile(
+        fixture.paths.preparedContextFile(profileId, session.id),
+        "utf8",
+      ),
+    ).toContain("src/a.ts");
+    expect(
+      await readFile(
+        fixture.paths.preparedReviewInputFile(profileId, session.id),
+        "utf8",
+      ),
+    ).toContain("PR review input");
+    expect(
+      JSON.parse(
+        await readFile(
+          fixture.paths.preparedDebugFile(profileId, session.id),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0 });
+    expect(
+      await present(
+        join(
+          fixture.paths.sessionDirectory(profileId, session.id),
+          "preparation.journal.json",
+        ),
+      ),
+    ).toBe(false);
     expect(session.pr.baseSha).toBe(baseSha);
   });
 
   it("resumes the deterministic prepared session without rewriting the patch", async () => {
     const fixture = await setup();
     const first = await fixture.preparation.prepare({ profileId, pullRequest });
-    const second = await fixture.preparation.prepare({ profileId, pullRequest });
+    const second = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
 
-    expect(first).toMatchObject({ _tag: "ok", value: { disposition: "prepared" } });
-    expect(second).toMatchObject({ _tag: "ok", value: { disposition: "resumed" } });
+    expect(first).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "prepared" },
+    });
+    expect(second).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "resumed" },
+    });
     if (first._tag === "err" || second._tag === "err") return;
     expect(second.value.session.id).toBe(first.value.session.id);
     expect(fixture.reader.counts.diffs).toBe(1);
@@ -195,7 +255,9 @@ describe("ReviewSessionPreparation", () => {
 
   it("serializes concurrent preparation for one deterministic session", async () => {
     let release: (() => void) | undefined;
-    const wait = new Promise<void>((resolve) => { release = resolve; });
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const fixture = await setup({ onDiff: async () => await wait });
     const first = fixture.preparation.prepare({ profileId, pullRequest });
     const second = fixture.preparation.prepare({ profileId, pullRequest });
@@ -204,18 +266,36 @@ describe("ReviewSessionPreparation", () => {
     const results = await Promise.all([first, second]);
 
     expect(results.map((result) => result._tag)).toEqual(["ok", "ok"]);
-    expect(results.flatMap((result) => result._tag === "ok" ? [result.value.disposition] : []).sort()).toEqual(["prepared", "resumed"]);
+    expect(
+      results
+        .flatMap((result) =>
+          result._tag === "ok" ? [result.value.disposition] : [],
+        )
+        .sort(),
+    ).toEqual(["prepared", "resumed"]);
     expect(fixture.reader.counts.diffs).toBe(1);
   });
 
   it("rejects a head race and cleans the preparation journal and artifacts", async () => {
     const fixture = await setup({ heads: [headSha, changedHeadSha] });
-    const result = await fixture.preparation.prepare({ profileId, pullRequest });
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
     const sessionId = `github.com__centraldigital__patchdesk__pr-42__sha-${headSha.slice(0, 8)}`;
 
     expect(result).toEqual({ _tag: "err", error: { _tag: "HeadChanged" } });
-    expect(await present(fixture.paths.patchFile(profileId, sessionId as never))).toBe(false);
-    expect(await present(join(fixture.paths.sessionDirectory(profileId, sessionId as never), "preparation.journal.json"))).toBe(false);
+    expect(
+      await present(fixture.paths.patchFile(profileId, sessionId as never)),
+    ).toBe(false);
+    expect(
+      await present(
+        join(
+          fixture.paths.sessionDirectory(profileId, sessionId as never),
+          "preparation.journal.json",
+        ),
+      ),
+    ).toBe(false);
   });
 
   it("quarantines an invalid current session before preparing the exact replacement", async () => {
@@ -228,20 +308,24 @@ describe("ReviewSessionPreparation", () => {
       prNumber: pullRequest.number,
       headSha,
     });
-    await mkdir(
-      fixture.paths.sessionDirectory(profileId, sessionId),
-      { recursive: true },
-    );
+    await mkdir(fixture.paths.sessionDirectory(profileId, sessionId), {
+      recursive: true,
+    });
     await writeFile(
       fixture.paths.sessionFile(profileId, sessionId),
       JSON.stringify({ schemaVersion: 1, id: sessionId }),
       "utf8",
     );
-    const result = await fixture.preparation.prepare({ profileId, pullRequest });
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
 
-    expect(result).toMatchObject({ _tag: "ok", value: { disposition: "prepared", session: { id: sessionId } } });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "prepared", session: { id: sessionId } },
+    });
     const quarantined = fixture.paths.profileReviewsDirectory(profileId);
     expect(await present(join(quarantined, ".quarantine"))).toBe(true);
   });
-
 });

@@ -3,7 +3,11 @@
  * parse the returned value into their domain input before using it.
  */
 export function readObjectField(value: unknown, name: string): unknown {
-  if (typeof value !== "object" || value === null || !Object.hasOwn(value, name)) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !Object.hasOwn(value, name)
+  ) {
     return undefined;
   }
   return (value as Record<string, unknown>)[name];

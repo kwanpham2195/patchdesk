@@ -33,9 +33,15 @@ describe("SettingsModal", () => {
     renderModal(onOpenChange);
 
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen
+        .getByRole("tab", { name: "General" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
     expect(screen.getByTestId("settings-section-general")).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Settings content" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Settings content" }),
+    ).toBeTruthy();
     expect(screen.queryByText("Saved reviews")).toBeNull();
     expect(screen.queryByText("Watchlist")).toBeNull();
 
@@ -45,13 +51,23 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
     expect(screen.getByText("Local review data")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Clear cache" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear local review data" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Discard/ })).toBeNull();
     expect(screen.queryByText(/quarantine/i)).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Clear local review data" }));
-    expect(screen.getByRole("heading", { name: "Clear local review data?" })).toBeTruthy();
-    expect(screen.getByText("This removes completed and failed local reviews. An active review and diagnostic reports stay.")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Clear local review data?" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This removes completed and failed local reviews. An active review and diagnostic reports stay.",
+      ),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Clear local data" }));
 
     await waitFor(() =>
@@ -88,7 +104,9 @@ describe("SettingsModal", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "Logs" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen.getByRole("tab", { name: "Logs" }).getAttribute("aria-selected"),
+    ).toBe("true");
     expect(screen.getByTestId("settings-section-logs")).toBeTruthy();
 
     // Close and reopen the same mounted instance: the restore applies only once.
@@ -99,7 +117,10 @@ describe("SettingsModal", () => {
       dashboard,
       appearance: "system" as const,
       onAppearanceChange: () => undefined,
-      diffThemePreferences: { light: "pierre-light", dark: "github-dark" } as const,
+      diffThemePreferences: {
+        light: "pierre-light",
+        dark: "github-dark",
+      } as const,
       onDiffThemeChange: () => undefined,
       profiles: [profile],
       onWorkspaceReload: async () => undefined,
@@ -108,7 +129,11 @@ describe("SettingsModal", () => {
     };
     view.rerender(<SettingsModal {...modalProps} open={false} />);
     view.rerender(<SettingsModal {...modalProps} open />);
-    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen
+        .getByRole("tab", { name: "General" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("reports section switches through onSectionChange", async () => {
@@ -141,12 +166,20 @@ describe("SettingsModal", () => {
 
     renderModal();
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
-    await user.click(screen.getByRole("button", { name: "Clear local review data" }));
+    await user.click(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    );
     await user.click(screen.getByRole("button", { name: "Clear local data" }));
 
-    expect((await screen.findByRole("alert")).textContent).toContain("Could not clear local review data");
-    expect(screen.getByRole("heading", { name: "Clear local review data?" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear local data" })).toBeTruthy();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not clear local review data",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Clear local review data?" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Clear local data" }),
+    ).toBeTruthy();
   });
 
   it("does not offer cleanup that has no active profile to target", async () => {
@@ -167,9 +200,22 @@ describe("SettingsModal", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
-    expect(screen.getByText("Choose a workspace profile before clearing its local data.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Clear cache" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Clear local review data" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText(
+        "Choose a workspace profile before clearing its local data.",
+      ),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Clear cache" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Clear local review data",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   it("returns focus to the opener after closing", async () => {
@@ -210,7 +256,11 @@ describe("SettingsModal", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/v1/profiles", method: "PUT" })));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
+      ),
+    );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -223,22 +273,40 @@ describe("SettingsModal", () => {
     await user.type(screen.getByLabelText("Label"), " changed");
     await user.click(screen.getByRole("button", { name: "Close" }));
 
-    expect(screen.getByRole("heading", { name: "Discard profile changes?" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Discard profile changes?" }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Discard changes" }));
-    await waitFor(() => expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy(),
+    );
     expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 
   it("selects an enabled default review model and saves it for this profile", async () => {
     const request = installDesktopApi({
       models: {
-        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+        providers: [
+          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+        ],
         models: [
-          { provider: "pi", id: "deepseek-flash", label: "DeepSeek Flash", reasoning: ["medium"], defaultReasoning: "medium" },
-          { provider: "pi", id: "openai-codex", label: "OpenAI Codex", reasoning: ["medium"], defaultReasoning: "medium" },
+          {
+            provider: "pi",
+            id: "deepseek-flash",
+            label: "DeepSeek Flash",
+            reasoning: ["medium"],
+            defaultReasoning: "medium",
+          },
+          {
+            provider: "pi",
+            id: "openai-codex",
+            label: "OpenAI Codex",
+            reasoning: ["medium"],
+            defaultReasoning: "medium",
+          },
         ],
       },
     });
@@ -246,10 +314,14 @@ describe("SettingsModal", () => {
 
     renderModal();
     await user.click(screen.getByRole("tab", { name: "Review" }));
-    const model = await screen.findByRole("combobox", { name: "Default model" });
+    const model = await screen.findByRole("combobox", {
+      name: "Default model",
+    });
     expect((model as HTMLInputElement).value).toBe("DeepSeek Flash");
     await user.click(model);
-    await user.click(await screen.findByRole("option", { name: "OpenAI Codex" }));
+    await user.click(
+      await screen.findByRole("option", { name: "OpenAI Codex" }),
+    );
 
     expect(
       window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
@@ -260,10 +332,15 @@ describe("SettingsModal", () => {
   it("searches a late default model by canonical ID and selects it with the keyboard", async () => {
     installDesktopApi({
       models: {
-        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
+        providers: [
+          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+        ],
         models: Array.from({ length: 493 }, (_, index) => ({
-          provider: "pi", id: `provider/model-${index}`, label: `Model ${index}`,
-          reasoning: ["medium"], defaultReasoning: "medium",
+          provider: "pi",
+          id: `provider/model-${index}`,
+          label: `Model ${index}`,
+          reasoning: ["medium"],
+          defaultReasoning: "medium",
         })),
       },
     });
@@ -271,14 +348,20 @@ describe("SettingsModal", () => {
 
     renderModal();
     await user.click(screen.getByRole("tab", { name: "Review" }));
-    const model = await screen.findByRole("combobox", { name: "Default model" });
+    const model = await screen.findByRole("combobox", {
+      name: "Default model",
+    });
     await user.click(model);
     await user.clear(model);
     await user.type(model, "MODEL-492");
-    expect(await screen.findByRole("option", { name: "Model 492" })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: "Model 492" }),
+    ).toBeTruthy();
     await user.keyboard("{ArrowDown}{Enter}");
 
-    expect(window.localStorage.getItem("patchdesk.review-execution.v1.cfw")).toBe(
+    expect(
+      window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
+    ).toBe(
       JSON.stringify({ model: "provider/model-492", reasoning: "medium" }),
     );
   });
@@ -286,24 +369,47 @@ describe("SettingsModal", () => {
   it("gives long select options room without overflowing the viewport", async () => {
     installDesktopApi({
       models: {
-        providers: [{ id: "pi", label: "Pi", available: true, guidance: "Configured." }],
-        models: [{ provider: "pi", id: "long-model", label: "A model with a deliberately long label", reasoning: ["medium"], defaultReasoning: "medium" }],
+        providers: [
+          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+        ],
+        models: [
+          {
+            provider: "pi",
+            id: "long-model",
+            label: "A model with a deliberately long label",
+            reasoning: ["medium"],
+            defaultReasoning: "medium",
+          },
+        ],
       },
     });
     const user = userEvent.setup();
 
     renderModal();
     await user.click(screen.getByRole("tab", { name: "Review" }));
-    await user.click(await screen.findByRole("combobox", { name: "Default model" }));
+    await user.click(
+      await screen.findByRole("combobox", { name: "Default model" }),
+    );
 
-    const content = document.querySelector('[data-slot="model-combobox-content"]');
+    const content = document.querySelector(
+      '[data-slot="model-combobox-content"]',
+    );
     expect(content).not.toBeNull();
-    expect(content?.classList.contains("max-w-[var(--available-width)]")).toBe(true);
-    expect(content?.querySelector('[data-slot="combobox-list"]') ?? content?.textContent).toBeTruthy();
+    expect(content?.classList.contains("max-w-[var(--available-width)]")).toBe(
+      true,
+    );
+    expect(
+      content?.querySelector('[data-slot="combobox-list"]') ??
+        content?.textContent,
+    ).toBeTruthy();
   });
 });
 
-function renderModal(onOpenChange = vi.fn(), open = true, opener?: HTMLElement): ReturnType<typeof render> {
+function renderModal(
+  onOpenChange = vi.fn(),
+  open = true,
+  opener?: HTMLElement,
+): ReturnType<typeof render> {
   return render(
     <SettingsModal
       open={open}
@@ -320,18 +426,32 @@ function renderModal(onOpenChange = vi.fn(), open = true, opener?: HTMLElement):
   );
 }
 
-function installDesktopApi(options: {
-  readonly clearLocalDataFails?: boolean;
-  readonly models?: unknown;
-} = {}): ReturnType<typeof vi.fn> {
-  const request = vi.fn(async (input: { readonly path?: string; readonly method?: string; readonly body?: unknown; readonly operation?: string }) => {
-    if (input.operation === "selectDirectory") return success({ path: "/picked/workspace" });
-    if (input.path === "/v1/environment") return success({});
-    if (input.path === "/v1/insight-providers") return success(options.models ?? {});
-    if (input.path === "/v1/storage/clear-local-data" && options.clearLocalDataFails === true)
-      return failure({ error: "storage_unavailable" });
-    return success({});
-  });
+function installDesktopApi(
+  options: {
+    readonly clearLocalDataFails?: boolean;
+    readonly models?: unknown;
+  } = {},
+): ReturnType<typeof vi.fn> {
+  const request = vi.fn(
+    async (input: {
+      readonly path?: string;
+      readonly method?: string;
+      readonly body?: unknown;
+      readonly operation?: string;
+    }) => {
+      if (input.operation === "selectDirectory")
+        return success({ path: "/picked/workspace" });
+      if (input.path === "/v1/environment") return success({});
+      if (input.path === "/v1/insight-providers")
+        return success(options.models ?? {});
+      if (
+        input.path === "/v1/storage/clear-local-data" &&
+        options.clearLocalDataFails === true
+      )
+        return failure({ error: "storage_unavailable" });
+      return success({});
+    },
+  );
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: { request, onNavigate: () => () => undefined },
@@ -339,10 +459,20 @@ function installDesktopApi(options: {
   return request;
 }
 
-function success(body: unknown): { readonly ok: true; readonly status: 200; readonly body: unknown; readonly correlationId: string } {
+function success(body: unknown): {
+  readonly ok: true;
+  readonly status: 200;
+  readonly body: unknown;
+  readonly correlationId: string;
+} {
   return { ok: true, status: 200, body, correlationId: "test" };
 }
 
-function failure(body: unknown): { readonly ok: false; readonly status: 503; readonly body: unknown; readonly correlationId: string } {
+function failure(body: unknown): {
+  readonly ok: false;
+  readonly status: 503;
+  readonly body: unknown;
+  readonly correlationId: string;
+} {
   return { ok: false, status: 503, body, correlationId: "test" };
 }

@@ -146,7 +146,12 @@ export function AppFixtureContent({
       />
     );
   }
-  if (hash === "#submission-fixture") return <p className="p-6 text-sm text-muted-foreground">Use the Review workbench to manage a GitHub pending review.</p>;
+  if (hash === "#submission-fixture")
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        Use the Review workbench to manage a GitHub pending review.
+      </p>
+    );
   if (hash === "#merge-fixture")
     return (
       <div className="mx-auto max-w-3xl p-6">
@@ -326,18 +331,13 @@ function CanonicalFixtureWorkbench({
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
   readonly modelOverrides?: Partial<
-    Pick<
-      WorkbenchResponse,
-      "mergeReadiness" | "mergeReasons" | "conversation"
-    >
+    Pick<WorkbenchResponse, "mergeReadiness" | "mergeReasons" | "conversation">
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
 }): React.JSX.Element {
   const model = canonicalWorkbenchModel(data);
   const merged =
-    modelOverrides === undefined
-      ? model
-      : { ...model, ...modelOverrides };
+    modelOverrides === undefined ? model : { ...model, ...modelOverrides };
   return (
     <ReviewWorkbench
       model={merged}
@@ -431,8 +431,16 @@ export function createUnifiedReviewFixture(
   state: UnifiedReviewFixtureState = "files-default",
 ): WorkbenchResponse {
   const base = canonicalWorkbenchModel(workbenchFixtureData);
-  const retainedWalkthrough = fixtureWalkthroughRetention(base.session.id, base.revision.reviewedHeadSha);
-  const withFeedback = state === "published-feedback-collapsed" || state === "published-feedback-expanded" || state === "pr-overview" || state === "merged" || state === "closed";
+  const retainedWalkthrough = fixtureWalkthroughRetention(
+    base.session.id,
+    base.revision.reviewedHeadSha,
+  );
+  const withFeedback =
+    state === "published-feedback-collapsed" ||
+    state === "published-feedback-expanded" ||
+    state === "pr-overview" ||
+    state === "merged" ||
+    state === "closed";
   const analysisFailure = {
     runId: "insight-analysis-1-aaaaaaaaaaaa-review",
     category: "unexpected_failure" as const,
@@ -537,7 +545,11 @@ export function createUnifiedReviewFixture(
                 author: "fixture-maintainer",
                 body: "Published inline feedback",
                 createdAt: base.revision.refreshedAt,
-                location: { path: "src/b.ts", line: 1, diffSide: "new" as const },
+                location: {
+                  path: "src/b.ts",
+                  line: 1,
+                  diffSide: "new" as const,
+                },
               },
             },
           ],
@@ -778,7 +790,6 @@ function WalkthroughFixtureControls({
     </div>
   );
 }
-
 
 const fixturePatch = buildFixturePatch();
 const walkthroughFixturePatch = `${fixturePatch}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+new\n`;

@@ -32,7 +32,7 @@ same workbench tab/file and an open Settings overlay.
     (reload-only restore; a fresh launch must not pop Settings open).
 - `review-workbench.tsx`: add `activeTab` to `ReviewWorkbenchInitialState`;
   add optional `onStateChange({ activeTab, section, selectedPath })` callback
-  + effect; call on position changes.
+  - effect; call on position changes.
 - `review-workbench-flow.tsx`: accept + forward `onUiStateChange` to
   `ReviewWorkbench`. (`initialUiState` forwarding already exists.)
 - `app.tsx`:
@@ -43,7 +43,7 @@ same workbench tab/file and an open Settings overlay.
   - Boot: if `loadSettingsRestore()` present (and not fixture mode) open
     Settings with `initialSection`; close -> clear restore.
 - `settings-modal.tsx`: `initialSection` prop (first open only, then general)
-  + `onSectionChange` callback.
+  - `onSectionChange` callback.
 
 ## Tests
 

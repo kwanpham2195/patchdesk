@@ -1,1 +1,7 @@
-{"flueVersion":"2.0.3","piVersion":"0.84.1","catalogDigest":"e355e8c4bccc51112b8b14a1bc1c455b6169b8af48c7169aeac265feef522ffb","nodeFloor":">=22.19.0","lockDigest":"05847f8ea0e5979e90740e363104a11344216b14cc247cf450c20ef497dc37dc"}
+{
+  "flueVersion": "2.0.3",
+  "piVersion": "0.84.1",
+  "catalogDigest": "e355e8c4bccc51112b8b14a1bc1c455b6169b8af48c7169aeac265feef522ffb",
+  "nodeFloor": ">=22.19.0",
+  "lockDigest": "05847f8ea0e5979e90740e363104a11344216b14cc247cf450c20ef497dc37dc"
+}

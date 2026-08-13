@@ -5,10 +5,19 @@ import {
   type FindingLocationInput,
 } from "../../../domain/patch";
 import { PierreFileTree } from "./pierre-file-tree";
-import { ReviewDiffView, type LocalCommentAuthoring, type PendingReviewComposerActions, type ReviewConversationActions, type ReviewInlineAnnotation } from "./review-diff-view";
+import {
+  ReviewDiffView,
+  type LocalCommentAuthoring,
+  type PendingReviewComposerActions,
+  type ReviewConversationActions,
+  type ReviewInlineAnnotation,
+} from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES, type ReviewViewPreferences } from "@/review-view-preferences";
+import {
+  DEFAULT_REVIEW_VIEW_PREFERENCES,
+  type ReviewViewPreferences,
+} from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -43,7 +52,10 @@ export function DiffWorkbench({
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
-  readonly sourceSession?: { readonly profileId: string; readonly sessionId: string };
+  readonly sourceSession?: {
+    readonly profileId: string;
+    readonly sessionId: string;
+  };
   readonly className?: string;
   readonly fillViewport?: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
@@ -57,24 +69,27 @@ export function DiffWorkbench({
   readonly diffSubtitle?: string;
   readonly copyValue?: string;
   readonly preferences?: ReviewViewPreferences;
-  readonly onPreferencesChange?: (update: Partial<ReviewViewPreferences>) => void;
+  readonly onPreferencesChange?: (
+    update: Partial<ReviewViewPreferences>,
+  ) => void;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
   readonly surfaceAction?: React.ReactNode;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const [internalSelectedPath, setInternalSelectedPath] = useState<string | undefined>(
-    files[0]?.newPath,
-  );
+  const [internalSelectedPath, setInternalSelectedPath] = useState<
+    string | undefined
+  >(files[0]?.newPath);
   const selectedPath = controlledSelectedPath ?? internalSelectedPath;
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
-  const [internalPreferences, setInternalPreferences] = useState<ReviewViewPreferences>({
-    ...DEFAULT_REVIEW_VIEW_PREFERENCES,
-    fileMode: "all",
-  });
+  const [internalPreferences, setInternalPreferences] =
+    useState<ReviewViewPreferences>({
+      ...DEFAULT_REVIEW_VIEW_PREFERENCES,
+      fileMode: "all",
+    });
   const preferences = controlledPreferences ?? internalPreferences;
   const [pendingLargeFileMode, setPendingLargeFileMode] = useState<string>();
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
@@ -121,13 +136,13 @@ export function DiffWorkbench({
   const fileRows = useMemo(
     () =>
       files.map((file) => ({
-      path: file.newPath,
-      stats: parsedDiff.statsByPath.get(file.newPath) ?? {
         path: file.newPath,
-        additions: 0,
-        deletions: 0,
-      },
-      gitStatus: parsedDiff.gitStatusByPath.get(file.newPath),
+        stats: parsedDiff.statsByPath.get(file.newPath) ?? {
+          path: file.newPath,
+          additions: 0,
+          deletions: 0,
+        },
+        gitStatus: parsedDiff.gitStatusByPath.get(file.newPath),
       })),
     [files, parsedDiff.gitStatusByPath, parsedDiff.statsByPath],
   );
@@ -139,7 +154,8 @@ export function DiffWorkbench({
     if (mappedPath !== undefined) selectFile(mappedPath);
   }, [mappedPath, selectFile]);
   useEffect(() => {
-    if (controlledSelectedPath !== undefined) setActivePath(controlledSelectedPath);
+    if (controlledSelectedPath !== undefined)
+      setActivePath(controlledSelectedPath);
   }, [controlledSelectedPath]);
   return (
     <section
@@ -153,17 +169,19 @@ export function DiffWorkbench({
         className,
       )}
     >
-      {hideFileNavigation ? null : <aside
-        aria-label="Review navigation"
-        className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
-      >
-        <PierreFileTree
-          files={fileRows}
-          {...(selectedPath === undefined ? {} : { selectedPath })}
-          {...(activePath === undefined ? {} : { activePath })}
-          onSelect={selectFile}
-        />
-      </aside>}
+      {hideFileNavigation ? null : (
+        <aside
+          aria-label="Review navigation"
+          className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
+        >
+          <PierreFileTree
+            files={fileRows}
+            {...(selectedPath === undefined ? {} : { selectedPath })}
+            {...(activePath === undefined ? {} : { activePath })}
+            onSelect={selectFile}
+          />
+        </aside>
+      )}
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
         <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
           <div className="min-w-0">
@@ -171,38 +189,55 @@ export function DiffWorkbench({
               {diffTitle ?? selectedPath ?? "No file selected"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {diffSubtitle ?? "Review snapshot · GitHub writes require confirmation"}
+              {diffSubtitle ??
+                "Review snapshot · GitHub writes require confirmation"}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
             {surfaceAction}
-            {copyValue === undefined ? null : <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(copyValue)}>Copy commit SHA</Button>}
-            {hideFileNavigation ? null : <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-              <SheetTrigger
-                render={<Button variant="outline" size="sm" className="max-[1099px]:inline-flex min-[1100px]:hidden" />}
+            {copyValue === undefined ? null : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void navigator.clipboard?.writeText(copyValue)}
               >
-                Files
-              </SheetTrigger>
-              <SheetContent side="left">
-                <SheetHeader>
-                  <SheetTitle>Changed files</SheetTitle>
-                  <SheetDescription>
-                    Choose a file to inspect its change.
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="min-h-0 overflow-auto p-4">
-                  <PierreFileTree
-                    files={fileRows}
-                    {...(selectedPath === undefined ? {} : { selectedPath })}
-                    {...(activePath === undefined ? {} : { activePath })}
-                    onSelect={(path) => {
-                      selectFile(path);
-                      setNavigationOpen(false);
-                    }}
-                  />
-                </div>
-              </SheetContent>
-            </Sheet>}
+                Copy commit SHA
+              </Button>
+            )}
+            {hideFileNavigation ? null : (
+              <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+                <SheetTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="max-[1099px]:inline-flex min-[1100px]:hidden"
+                    />
+                  }
+                >
+                  Files
+                </SheetTrigger>
+                <SheetContent side="left">
+                  <SheetHeader>
+                    <SheetTitle>Changed files</SheetTitle>
+                    <SheetDescription>
+                      Choose a file to inspect its change.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="min-h-0 overflow-auto p-4">
+                    <PierreFileTree
+                      files={fileRows}
+                      {...(selectedPath === undefined ? {} : { selectedPath })}
+                      {...(activePath === undefined ? {} : { activePath })}
+                      onSelect={(path) => {
+                        selectFile(path);
+                        setNavigationOpen(false);
+                      }}
+                    />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
           </div>
         </header>
         <ReviewDiffView
@@ -210,15 +245,24 @@ export function DiffWorkbench({
           parsedFiles={parsedDiff.files}
           fileStatsByPath={parsedDiff.statsByPath}
           {...(selectedPath === undefined ? {} : { selectedPath })}
-          onActiveFileChange={(path) => { setActivePath(path); onActiveFileChange?.(path); }}
+          onActiveFileChange={(path) => {
+            setActivePath(path);
+            onActiveFileChange?.(path);
+          }}
           preferences={preferences}
           collapsedPaths={collapsedPaths}
           onPreferencesChange={updatePreferences}
           onCollapsedPathsChange={setCollapsedPaths}
           {...(sourceSession === undefined ? {} : { sourceSession })}
-          {...(localCommentAuthoring === undefined ? {} : { localCommentAuthoring })}
-          {...(pendingReviewComposer === undefined ? {} : { pendingReviewComposer })}
-          {...(conversationActions === undefined ? {} : { conversationActions })}
+          {...(localCommentAuthoring === undefined
+            ? {}
+            : { localCommentAuthoring })}
+          {...(pendingReviewComposer === undefined
+            ? {}
+            : { pendingReviewComposer })}
+          {...(conversationActions === undefined
+            ? {}
+            : { conversationActions })}
           {...(annotations === undefined ? {} : { annotations })}
         />
       </div>

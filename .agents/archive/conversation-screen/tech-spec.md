@@ -98,7 +98,10 @@ export type ConversationEntry =
   | { readonly _tag: "PrDescription"; readonly body: string }
   | { readonly _tag: "IssueComment"; readonly comment: GitHubComment }
   | { readonly _tag: "ReviewSummary"; readonly review: PublishedReview }
-  | { readonly _tag: "GeneralThread"; readonly thread: GitHubConversationThread };
+  | {
+      readonly _tag: "GeneralThread";
+      readonly thread: GitHubConversationThread;
+    };
 
 /** Unified Conversation payload replacing GitHubComments and GitHubPublishedFeedback. */
 export type Conversation = {
@@ -106,14 +109,12 @@ export type Conversation = {
   readonly entries: ReadonlyArray<ConversationEntry>;
   readonly complete?: boolean;
   readonly incompleteReason?:
-    | "thread_cap"
-    | "comment_cap"
-    | "pagination"
-    | "unavailable";
+    "thread_cap" | "comment_cap" | "pagination" | "unavailable";
 };
 ```
 
 **Key decisions:**
+
 - `prDescription` is a separate field, not an entry — it always renders at the top with distinct visual treatment.
 - Entries are pre-sorted chronologically by the adapter. The renderer does not sort.
 - `GitHubComment` and `PublishedReview` are reused as-is — no new comment or review types.
@@ -126,7 +127,7 @@ export type Conversation = {
 ```ts
 // REMOVED from github-context.ts:
 // - GitHubPublishedFeedback
-// - GitHubComments  
+// - GitHubComments
 // - PublishedReviewComment
 ```
 
@@ -136,7 +137,7 @@ export type Conversation = {
 
 ```ts
 export type ZoomState = {
-  readonly scale: number;      // 0.25 .. 4.0
+  readonly scale: number; // 0.25 .. 4.0
   readonly fitToScreen: boolean;
 };
 
@@ -175,15 +176,26 @@ const workbenchProjectionSchema = v.strictObject({
 // AFTER:
 const conversationEntrySchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
-  v.strictObject({ _tag: v.literal("IssueComment"), comment: githubCommentSchema }),
-  v.strictObject({ _tag: v.literal("ReviewSummary"), review: publishedReviewSchema }),
-  v.strictObject({ _tag: v.literal("GeneralThread"), thread: githubThreadSchema }),
+  v.strictObject({
+    _tag: v.literal("IssueComment"),
+    comment: githubCommentSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("ReviewSummary"),
+    review: publishedReviewSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("GeneralThread"),
+    thread: githubThreadSchema,
+  }),
 ]);
 const conversationSchema = v.strictObject({
   prDescription: v.string(),
   entries: v.array(conversationEntrySchema),
   complete: v.optional(v.boolean()),
-  incompleteReason: v.optional(v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"])),
+  incompleteReason: v.optional(
+    v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"]),
+  ),
 });
 
 const workbenchProjectionSchema = v.strictObject({
@@ -229,15 +241,15 @@ The lightbox wraps the content (image or Mermaid SVG) in a `Dialog` with a dark 
 
 ## Seams, Boundaries, Adapters, and Implementations
 
-| Seam | What crosses it | Owner |
-|---|---|---|
-| `GitHubReader.loadConversation()` | `Conversation` DTO | Adapter (GitHub API → domain) |
-| `WorkbenchResponse` Valibot schema | `conversation` field | Main process → Renderer bridge |
-| `ReviewWorkbench` props | `activeTab` state, tab bar UI | Renderer |
-| `Conversation` component | `Conversation` payload → React tree | Renderer |
-| `PullRequestDescriptionPreview` | Markdown string → rendered nodes | Renderer (reused, no change) |
-| `MarkdownLightbox` | Open/close, zoom state, children | Renderer (new) |
-| Loopback API `/v1/reviews/load` | WorkbenchResponse with `conversation` | Main process service |
+| Seam                               | What crosses it                       | Owner                          |
+| ---------------------------------- | ------------------------------------- | ------------------------------ |
+| `GitHubReader.loadConversation()`  | `Conversation` DTO                    | Adapter (GitHub API → domain)  |
+| `WorkbenchResponse` Valibot schema | `conversation` field                  | Main process → Renderer bridge |
+| `ReviewWorkbench` props            | `activeTab` state, tab bar UI         | Renderer                       |
+| `Conversation` component           | `Conversation` payload → React tree   | Renderer                       |
+| `PullRequestDescriptionPreview`    | Markdown string → rendered nodes      | Renderer (reused, no change)   |
+| `MarkdownLightbox`                 | Open/close, zoom state, children      | Renderer (new)                 |
+| Loopback API `/v1/reviews/load`    | WorkbenchResponse with `conversation` | Main process service           |
 
 ## Call Stacks and Data Flow
 
@@ -324,33 +336,33 @@ User triggers refresh
 
 ### Files to ADD
 
-| File | Responsibility |
-|---|---|
-| `src/renderer/src/components/conversation.tsx` | Conversation tab content — renders `Conversation` payload as chronological timeline |
-| `src/renderer/src/components/markdown-lightbox.tsx` | Zoomable lightbox for images and Mermaid diagrams |
-| `tests/renderer/conversation.ui.test.tsx` | Conversation tab UI tests |
-| `tests/renderer/markdown-lightbox.ui.test.tsx` | Lightbox zoom behavior tests |
+| File                                                | Responsibility                                                                      |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/renderer/src/components/conversation.tsx`      | Conversation tab content — renders `Conversation` payload as chronological timeline |
+| `src/renderer/src/components/markdown-lightbox.tsx` | Zoomable lightbox for images and Mermaid diagrams                                   |
+| `tests/renderer/conversation.ui.test.tsx`           | Conversation tab UI tests                                                           |
+| `tests/renderer/markdown-lightbox.ui.test.tsx`      | Lightbox zoom behavior tests                                                        |
 
 ### Files to CHANGE
 
-| File | Change |
-|---|---|
-| `src/domain/github-context.ts` | Add `Conversation`, `ConversationEntry` types. Remove `GitHubPublishedFeedback`, `GitHubComments`. |
-| `src/adapters/github/github-adapter.ts` | Add `loadConversation()` to `GitHubReader`. Implement composing GraphQL threads + REST feedback. |
-| `src/renderer/src/renderer-contracts.ts` | Replace `publishedFeedback` + `comments` with `conversation` field in `workbenchProjectionSchema`. |
-| `src/renderer/src/flows/review-workbench-flow.tsx` | Remove `PublishedFeedbackSlot` and its props wiring. Route `conversation` to new `Conversation` component. |
-| `src/renderer/src/components/review-workbench.tsx` | Extend `primarySurface` → `activeTab` (3-way). Add tab bar to workbench header. Render Conversation/Diff/Insights by tab. Remove published feedback slot rendering. Remove `surfaceAction` prop passthrough to `DiffWorkbench`. |
-| `src/renderer/src/components/pull-request-description.tsx` | Wrap `renderMarkdownImage` images and `MermaidDiagram` SVGs in click-to-zoom handlers that open `MarkdownLightbox`. |
-| `tests/renderer/renderer-contracts.test.ts` | Update `WorkbenchResponse` fixtures — add `conversation`, remove `publishedFeedback`/`comments`. |
-| `tests/renderer/review-workbench-flow.ui.test.tsx` | Update fixtures. Add tab navigation assertions. Remove published feedback assertions. |
-| `CONTEXT.md` | Already updated with new glossary terms. |
+| File                                                       | Change                                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/domain/github-context.ts`                             | Add `Conversation`, `ConversationEntry` types. Remove `GitHubPublishedFeedback`, `GitHubComments`.                                                                                                                              |
+| `src/adapters/github/github-adapter.ts`                    | Add `loadConversation()` to `GitHubReader`. Implement composing GraphQL threads + REST feedback.                                                                                                                                |
+| `src/renderer/src/renderer-contracts.ts`                   | Replace `publishedFeedback` + `comments` with `conversation` field in `workbenchProjectionSchema`.                                                                                                                              |
+| `src/renderer/src/flows/review-workbench-flow.tsx`         | Remove `PublishedFeedbackSlot` and its props wiring. Route `conversation` to new `Conversation` component.                                                                                                                      |
+| `src/renderer/src/components/review-workbench.tsx`         | Extend `primarySurface` → `activeTab` (3-way). Add tab bar to workbench header. Render Conversation/Diff/Insights by tab. Remove published feedback slot rendering. Remove `surfaceAction` prop passthrough to `DiffWorkbench`. |
+| `src/renderer/src/components/pull-request-description.tsx` | Wrap `renderMarkdownImage` images and `MermaidDiagram` SVGs in click-to-zoom handlers that open `MarkdownLightbox`.                                                                                                             |
+| `tests/renderer/renderer-contracts.test.ts`                | Update `WorkbenchResponse` fixtures — add `conversation`, remove `publishedFeedback`/`comments`.                                                                                                                                |
+| `tests/renderer/review-workbench-flow.ui.test.tsx`         | Update fixtures. Add tab navigation assertions. Remove published feedback assertions.                                                                                                                                           |
+| `CONTEXT.md`                                               | Already updated with new glossary terms.                                                                                                                                                                                        |
 
 ### Files to DELETE
 
-| File | Reason |
-|---|---|
-| `src/renderer/src/components/published-feedback.tsx` | Replaced by Conversation screen |
-| `tests/renderer/published-feedback.ui.test.tsx` (if exists) | Component deleted |
+| File                                                        | Reason                          |
+| ----------------------------------------------------------- | ------------------------------- |
+| `src/renderer/src/components/published-feedback.tsx`        | Replaced by Conversation screen |
+| `tests/renderer/published-feedback.ui.test.tsx` (if exists) | Component deleted               |
 
 ## RGR TDD Test Plan
 

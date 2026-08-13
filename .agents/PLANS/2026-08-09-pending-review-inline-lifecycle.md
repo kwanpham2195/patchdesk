@@ -98,6 +98,7 @@ Consequences observed in the live Electron app:
    ```
 
    `pageInfo` must not be a sibling of `comments`.
+
 4. Add an adapter regression test that captures the `gh api graphql` query from the existing fake process executor. Assert the corrected nesting and explicitly reject the old `nodes{id body}} pageInfo` shape. Keep the test at the adapter command seam; do not use a brittle full-query snapshot.
 
 **Verify:** focused desktop-bridge and GitHub-adapter tests pass. The AddThread query test must fail with the old brace placement before the production query changes.

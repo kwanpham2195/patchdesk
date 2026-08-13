@@ -21,7 +21,10 @@ const sessionProjection = {
 
 const reviewProjection = {
   state: "review",
-  review: { id: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456", status: "open" },
+  review: {
+    id: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
+    status: "open",
+  },
   session: sessionProjection,
   revision: {
     reviewedHeadSha: "2222222222222222222222222222222222222222",
@@ -40,13 +43,51 @@ const reviewProjection = {
 
 describe("commit diff response", () => {
   it("parses provider catalogs and rejects paths or raw diagnostics", () => {
-    expect(parseInsightProviderCatalog({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "Load models explicitly." }], models: [{ provider: "codex-cli-account", id: "fixture", label: "Fixture", reasoning: ["low"], defaultReasoning: "low" }] })).toBeDefined();
-    expect(parseInsightProviderCatalog({ providers: [{ id: "codex-cli-account", label: "Codex CLI account", available: true, guidance: "/Users/private" }], models: [] })).toBeUndefined();
+    expect(
+      parseInsightProviderCatalog({
+        providers: [
+          {
+            id: "codex-cli-account",
+            label: "Codex CLI account",
+            available: true,
+            guidance: "Load models explicitly.",
+          },
+        ],
+        models: [
+          {
+            provider: "codex-cli-account",
+            id: "fixture",
+            label: "Fixture",
+            reasoning: ["low"],
+            defaultReasoning: "low",
+          },
+        ],
+      }),
+    ).toBeDefined();
+    expect(
+      parseInsightProviderCatalog({
+        providers: [
+          {
+            id: "codex-cli-account",
+            label: "Codex CLI account",
+            available: true,
+            guidance: "/Users/private",
+          },
+        ],
+        models: [],
+      }),
+    ).toBeUndefined();
   });
 
   it("parses bounded data and rejects unknown fields", () => {
     const valid = parseCommitDiffResponse({
-      commit: { sha: "1".repeat(40), message: "Commit", author: "Author", authoredAt: "2026-08-01T00:00:00.000Z", isHead: true },
+      commit: {
+        sha: "1".repeat(40),
+        message: "Commit",
+        author: "Author",
+        authoredAt: "2026-08-01T00:00:00.000Z",
+        isHead: true,
+      },
       position: 1,
       total: 1,
       patch: "diff --git a/file.ts b/file.ts",
@@ -55,21 +96,32 @@ describe("commit diff response", () => {
       deletions: 0,
     });
     expect(valid?.position).toBe(1);
-    expect(parseCommitDiffResponse({
-      commit: { sha: "1".repeat(40), message: "Commit", author: "Author", authoredAt: "2026-08-01T00:00:00.000Z", isHead: true, prompt: "secret" },
-      position: 1,
-      total: 1,
-      patch: "",
-      fileCount: 0,
-      additions: 0,
-      deletions: 0,
-    })).toBeUndefined();
+    expect(
+      parseCommitDiffResponse({
+        commit: {
+          sha: "1".repeat(40),
+          message: "Commit",
+          author: "Author",
+          authoredAt: "2026-08-01T00:00:00.000Z",
+          isHead: true,
+          prompt: "secret",
+        },
+        position: 1,
+        total: 1,
+        patch: "",
+        fileCount: 0,
+        additions: 0,
+        deletions: 0,
+      }),
+    ).toBeUndefined();
   });
 });
 
 describe("parseWorkbenchResponse", () => {
   it("accepts one strict review projection", () => {
-    expect(parseWorkbenchResponse(reviewProjection)).toMatchObject({ state: "review" });
+    expect(parseWorkbenchResponse(reviewProjection)).toMatchObject({
+      state: "review",
+    });
   });
 
   it("accepts Patchdesk-owned Finding dispositions", () => {
@@ -88,7 +140,17 @@ describe("parseWorkbenchResponse", () => {
               changeSummary: "A change",
               verdict: "comment" as const,
               summary: "A finding",
-              findings: [{ id: "finding-1", severity: "P1" as const, title: "Guard", explanation: "Missing guard.", confidence: "high" as const, mappingStatus: "mapped" as const, disposition: "dismissed" as const }],
+              findings: [
+                {
+                  id: "finding-1",
+                  severity: "P1" as const,
+                  title: "Guard",
+                  explanation: "Missing guard.",
+                  confidence: "high" as const,
+                  mappingStatus: "mapped" as const,
+                  disposition: "dismissed" as const,
+                },
+              ],
               validationPlan: [],
               assumptions: [],
             },
@@ -96,17 +158,32 @@ describe("parseWorkbenchResponse", () => {
         },
       },
     };
-    expect(parseWorkbenchResponse(projection)?.insights.analysis.retained?.value.findings[0]?.disposition).toBe("dismissed");
+    expect(
+      parseWorkbenchResponse(projection)?.insights.analysis.retained?.value
+        .findings[0]?.disposition,
+    ).toBe("dismissed");
   });
 
   it("rejects paths, worktree data, provider events, prompt text, and raw errors", () => {
-    for (const field of ["patchPath", "worktree", "contextPath", "providerEvent", "prompt", "errorDetail"]) {
-      expect(parseWorkbenchResponse({ ...reviewProjection, [field]: "/tmp/secret" }), field).toBeUndefined();
+    for (const field of [
+      "patchPath",
+      "worktree",
+      "contextPath",
+      "providerEvent",
+      "prompt",
+      "errorDetail",
+    ]) {
+      expect(
+        parseWorkbenchResponse({ ...reviewProjection, [field]: "/tmp/secret" }),
+        field,
+      ).toBeUndefined();
     }
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      session: { ...sessionProjection, worktree: "/tmp/secret" },
-    })).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        session: { ...sessionProjection, worktree: "/tmp/secret" },
+      }),
+    ).toBeUndefined();
   });
 
   it("rejects forbidden or unknown fields at every nested projection boundary", () => {
@@ -146,76 +223,134 @@ describe("parseWorkbenchResponse", () => {
       updatedAt: "2026-07-18T00:00:00.000Z",
     };
 
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      checks: { overall: "passing", checks: [{ ...legalCheck, providerEvent: "raw" }] },
-    })).toBeUndefined();
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      conversation: { prDescription: "", entries: [{ _tag: "GeneralThread", thread: { ...legalThread, comments: [{ ...legalComment, prompt: "secret" }] } }] },
-    })).toBeUndefined();
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      insights: {
-        analysis: {
-          status: "current",
-          retained: {
-            sessionId: sessionProjection.id,
-            headSha: sessionProjection.key.headSha,
-            generatedAt: "2026-07-18T00:00:00.000Z",
-            value: { ...legalResult, error: { stack: "secret" } },
-          },
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        checks: {
+          overall: "passing",
+          checks: [{ ...legalCheck, providerEvent: "raw" }],
         },
-        walkthrough: { status: "not_generated" },
-      },
-    })).toBeUndefined();
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      draft: { ...legalDraft, items: [{ _tag: "ThreadReply", id: "item-1", provenance: { _tag: "human" }, threadId: "thread-1", body: "reply", include: true, localPath: "/tmp/secret" }] },
-    })).toBeUndefined();
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      conversation: {
-        prDescription: "",
-        entries: [{ _tag: "IssueComment", comment: { ...legalComment, prompt: "secret" } }],
-      },
-    })).toBeUndefined();
-
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      conversation: {
-        prDescription: "",
-        entries: [{ _tag: "IssueComment", comment: { ...legalComment, reviewId: "review-1", canEdit: true, canDelete: false } }],
-      },
-    })).toBeDefined();
-
-    expect(parseWorkbenchResponse({
-      ...reviewProjection,
-      checks: { overall: "passing", checks: [legalCheck] },
-      conversation: {
-        prDescription: "A PR description",
-        entries: [{ _tag: "IssueComment", comment: { ...legalComment } }],
-      },
-      commits: [{
-        sha: sessionProjection.key.headSha,
-        message: "A legal commit",
-        author: "author",
-        authoredAt: "2026-07-18T00:00:00.000Z",
-        isHead: true,
-      }],
-      insights: {
-        analysis: {
-          status: "current",
-          retained: {
-            sessionId: sessionProjection.id,
-            headSha: sessionProjection.key.headSha,
-            generatedAt: "2026-07-18T00:00:00.000Z",
-            value: legalResult,
-          },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        conversation: {
+          prDescription: "",
+          entries: [
+            {
+              _tag: "GeneralThread",
+              thread: {
+                ...legalThread,
+                comments: [{ ...legalComment, prompt: "secret" }],
+              },
+            },
+          ],
         },
-        walkthrough: { status: "not_generated" },
-      },
-    })).toBeDefined();
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        insights: {
+          analysis: {
+            status: "current",
+            retained: {
+              sessionId: sessionProjection.id,
+              headSha: sessionProjection.key.headSha,
+              generatedAt: "2026-07-18T00:00:00.000Z",
+              value: { ...legalResult, error: { stack: "secret" } },
+            },
+          },
+          walkthrough: { status: "not_generated" },
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        draft: {
+          ...legalDraft,
+          items: [
+            {
+              _tag: "ThreadReply",
+              id: "item-1",
+              provenance: { _tag: "human" },
+              threadId: "thread-1",
+              body: "reply",
+              include: true,
+              localPath: "/tmp/secret",
+            },
+          ],
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        conversation: {
+          prDescription: "",
+          entries: [
+            {
+              _tag: "IssueComment",
+              comment: { ...legalComment, prompt: "secret" },
+            },
+          ],
+        },
+      }),
+    ).toBeUndefined();
+
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        conversation: {
+          prDescription: "",
+          entries: [
+            {
+              _tag: "IssueComment",
+              comment: {
+                ...legalComment,
+                reviewId: "review-1",
+                canEdit: true,
+                canDelete: false,
+              },
+            },
+          ],
+        },
+      }),
+    ).toBeDefined();
+
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        checks: { overall: "passing", checks: [legalCheck] },
+        conversation: {
+          prDescription: "A PR description",
+          entries: [{ _tag: "IssueComment", comment: { ...legalComment } }],
+        },
+        commits: [
+          {
+            sha: sessionProjection.key.headSha,
+            message: "A legal commit",
+            author: "author",
+            authoredAt: "2026-07-18T00:00:00.000Z",
+            isHead: true,
+          },
+        ],
+        insights: {
+          analysis: {
+            status: "current",
+            retained: {
+              sessionId: sessionProjection.id,
+              headSha: sessionProjection.key.headSha,
+              generatedAt: "2026-07-18T00:00:00.000Z",
+              value: legalResult,
+            },
+          },
+          walkthrough: { status: "not_generated" },
+        },
+      }),
+    ).toBeDefined();
   });
 });
 
@@ -255,7 +390,9 @@ describe("parseModelCatalog", () => {
       parseModelCatalog({ models: [{ id: "i".repeat(201), label: "Model" }] }),
     ).toBeUndefined();
     expect(
-      parseModelCatalog({ models: [{ id: "model-a", label: "l".repeat(201) }] }),
+      parseModelCatalog({
+        models: [{ id: "model-a", label: "l".repeat(201) }],
+      }),
     ).toBeUndefined();
   });
 

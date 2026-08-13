@@ -27,7 +27,12 @@ export async function readBoundedArtifact(
     let bytesRead = 0;
 
     while (bytesRead < buffer.byteLength) {
-      const result = await handle.read(buffer, bytesRead, buffer.byteLength - bytesRead, bytesRead);
+      const result = await handle.read(
+        buffer,
+        bytesRead,
+        buffer.byteLength - bytesRead,
+        bytesRead,
+      );
       if (result.bytesRead === 0) break;
       bytesRead += result.bytesRead;
     }

@@ -29,7 +29,9 @@ test("production walkthrough stays manual, supports review actions, and keeps th
     ).toHaveAttribute("data-walkthrough-generate-requests", "1");
 
     await page.getByRole("button", { name: "Open walkthrough" }).click();
-    await expect(page.getByRole("button", { name: "Back to files" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Back to files" }),
+    ).toHaveCount(0);
     await expect(page.getByText("Citations verified")).toHaveCount(0);
     await expect(page.getByText("Reading")).toHaveCount(0);
     await expect(
@@ -44,7 +46,9 @@ test("production walkthrough stays manual, supports review actions, and keeps th
     await expect(
       page.getByRole("button", { name: "Next section" }),
     ).toBeEnabled();
-    await expect(page.getByRole("region", { name: "Walkthrough chapters" })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Walkthrough chapters" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Mark section reviewed" }).click();
     await expect(
       page.getByRole("button", { name: "Section reviewed" }),
@@ -58,7 +62,9 @@ test("production walkthrough stays manual, supports review actions, and keeps th
       '[data-walkthrough-diff-block="section-1::h1::0"]',
     );
     await expect(
-      walkthroughDiff.getByRole("button", { name: "Add local comment on src/a.ts" }),
+      walkthroughDiff.getByRole("button", {
+        name: "Add local comment on src/a.ts",
+      }),
     ).toHaveCount(0);
     await page.getByRole("button", { name: "Next section" }).click();
     await expect(
@@ -72,7 +78,9 @@ test("production walkthrough stays manual, supports review actions, and keeps th
     ).toBeDisabled();
 
     await page.reload();
-    await expect(page.getByRole("button", { name: "Generate walkthrough" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Generate walkthrough" }),
+    ).toBeVisible();
     await expect(
       page.locator("[data-walkthrough-generate-requests]"),
     ).toHaveAttribute("data-walkthrough-generate-requests", "0");
@@ -167,7 +175,9 @@ test("Patchdesk has no application sidebar and keeps the desktop width", async (
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
-    await expect(page.getByRole("region", { name: "Review diff" })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Review diff" }),
+    ).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const titlebar = document.querySelector(".app-titlebar");
@@ -571,9 +581,7 @@ test("PR overview shows a blocked merge state without a duplicate alert", async 
     await expect(
       overview.getByText("Required checks have not passed."),
     ).toBeVisible();
-    await expect(
-      overview.getByText("Checks · available"),
-    ).toBeVisible();
+    await expect(overview.getByText("Checks · available")).toBeVisible();
     await expect(
       overview.getByRole("button", { name: "Open on GitHub" }),
     ).toBeVisible();
@@ -603,16 +611,18 @@ test("PR overview reaches the confirmation dialog from an acknowledgement-requir
         "A current Analysis finding requires acknowledgement before merge.",
       ),
     ).toBeVisible();
+    await expect(overview.getByText("request_changes")).toHaveCount(0);
+    await expect(overview.getByText("analysis_finding")).toHaveCount(0);
     await expect(
-      overview.getByText("request_changes"),
+      overview.getByRole("button", { name: "Prepare merge confirmation" }),
     ).toHaveCount(0);
-    await expect(
-      overview.getByText("analysis_finding"),
-    ).toHaveCount(0);
-    await expect(overview.getByRole("button", { name: "Prepare merge confirmation" })).toHaveCount(0);
-    const acknowledgement = overview.getByRole("checkbox", { name: "I acknowledge: request changes, analysis finding." });
+    const acknowledgement = overview.getByRole("checkbox", {
+      name: "I acknowledge: request changes, analysis finding.",
+    });
     await acknowledgement.check();
-    await expect(overview.getByRole("button", { name: "Merge", exact: true })).toBeEnabled();
+    await expect(
+      overview.getByRole("button", { name: "Merge", exact: true }),
+    ).toBeEnabled();
   } finally {
     await close(server);
   }

@@ -156,7 +156,8 @@ export type CancelInsightRequest = {
 export type InsightRunResponse = {
   readonly runId: string;
   readonly type: InsightType;
-  readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
+  readonly status:
+    "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
 };
 ```
 

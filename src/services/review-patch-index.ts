@@ -22,7 +22,9 @@ export class ReviewPatchIndex {
 
   static create(source: string): ReviewPatchIndex {
     const parsed = parseUnifiedPatch(source);
-    const starts = Array.from(source.matchAll(/^diff --git /gm)).map((match) => match.index ?? 0);
+    const starts = Array.from(source.matchAll(/^diff --git /gm)).map(
+      (match) => match.index ?? 0,
+    );
     const files = parsed.map((file, index) => ({
       file,
       start: starts[index] ?? source.length,
@@ -37,6 +39,8 @@ export class ReviewPatchIndex {
 
   slice(path: string): string | undefined {
     const entry = this.get(path);
-    return entry === undefined ? undefined : this.source.slice(entry.start, entry.end);
+    return entry === undefined
+      ? undefined
+      : this.source.slice(entry.start, entry.end);
   }
 }

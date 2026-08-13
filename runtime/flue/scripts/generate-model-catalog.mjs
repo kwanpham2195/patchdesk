@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { AMAZON_BEDROCK_MODELS } from "@earendil-works/pi-ai/providers/amazon-bedrock.models";
 import { ANT_LING_MODELS } from "@earendil-works/pi-ai/providers/ant-ling.models";
@@ -34,41 +36,119 @@ import { XIAOMI_MODELS } from "@earendil-works/pi-ai/providers/xiaomi.models";
 import { ZAI_CODING_CN_MODELS } from "@earendil-works/pi-ai/providers/zai-coding-cn.models";
 import { ZAI_MODELS } from "@earendil-works/pi-ai/providers/zai.models";
 
-const PI_VERSION = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).dependencies["@earendil-works/pi-ai"];
+const PI_VERSION = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+).dependencies["@earendil-works/pi-ai"];
 const CATALOGS = [
-  ["amazon-bedrock", AMAZON_BEDROCK_MODELS], ["ant-ling", ANT_LING_MODELS], ["anthropic", ANTHROPIC_MODELS],
-  ["azure-openai-responses", AZURE_OPENAI_RESPONSES_MODELS], ["cerebras", CEREBRAS_MODELS], ["cloudflare-ai-gateway", CLOUDFLARE_AI_GATEWAY_MODELS],
-  ["deepseek", DEEPSEEK_MODELS], ["fireworks", FIREWORKS_MODELS], ["google", GOOGLE_MODELS], ["google-vertex", GOOGLE_VERTEX_MODELS],
-  ["groq", GROQ_MODELS], ["huggingface", HUGGINGFACE_MODELS], ["kimi-coding", KIMI_CODING_MODELS], ["minimax", MINIMAX_MODELS],
-  ["minimax-cn", MINIMAX_CN_MODELS], ["mistral", MISTRAL_MODELS], ["moonshotai", MOONSHOTAI_MODELS], ["moonshotai-cn", MOONSHOTAI_CN_MODELS],
-  ["nvidia", NVIDIA_MODELS], ["openai", OPENAI_MODELS], ["opencode", OPENCODE_MODELS], ["opencode-go", OPENCODE_GO_MODELS],
-  ["openrouter", OPENROUTER_MODELS], ["together", TOGETHER_MODELS], ["vercel-ai-gateway", VERCEL_AI_GATEWAY_MODELS], ["xai", XAI_MODELS],
-  ["xiaomi", XIAOMI_MODELS], ["xiaomi-token-plan-ams", XIAOMI_TOKEN_PLAN_AMS_MODELS], ["xiaomi-token-plan-cn", XIAOMI_TOKEN_PLAN_CN_MODELS],
-  ["xiaomi-token-plan-sgp", XIAOMI_TOKEN_PLAN_SGP_MODELS], ["zai", ZAI_MODELS], ["zai-coding-cn", ZAI_CODING_CN_MODELS],
+  ["amazon-bedrock", AMAZON_BEDROCK_MODELS],
+  ["ant-ling", ANT_LING_MODELS],
+  ["anthropic", ANTHROPIC_MODELS],
+  ["azure-openai-responses", AZURE_OPENAI_RESPONSES_MODELS],
+  ["cerebras", CEREBRAS_MODELS],
+  ["cloudflare-ai-gateway", CLOUDFLARE_AI_GATEWAY_MODELS],
+  ["deepseek", DEEPSEEK_MODELS],
+  ["fireworks", FIREWORKS_MODELS],
+  ["google", GOOGLE_MODELS],
+  ["google-vertex", GOOGLE_VERTEX_MODELS],
+  ["groq", GROQ_MODELS],
+  ["huggingface", HUGGINGFACE_MODELS],
+  ["kimi-coding", KIMI_CODING_MODELS],
+  ["minimax", MINIMAX_MODELS],
+  ["minimax-cn", MINIMAX_CN_MODELS],
+  ["mistral", MISTRAL_MODELS],
+  ["moonshotai", MOONSHOTAI_MODELS],
+  ["moonshotai-cn", MOONSHOTAI_CN_MODELS],
+  ["nvidia", NVIDIA_MODELS],
+  ["openai", OPENAI_MODELS],
+  ["opencode", OPENCODE_MODELS],
+  ["opencode-go", OPENCODE_GO_MODELS],
+  ["openrouter", OPENROUTER_MODELS],
+  ["together", TOGETHER_MODELS],
+  ["vercel-ai-gateway", VERCEL_AI_GATEWAY_MODELS],
+  ["xai", XAI_MODELS],
+  ["xiaomi", XIAOMI_MODELS],
+  ["xiaomi-token-plan-ams", XIAOMI_TOKEN_PLAN_AMS_MODELS],
+  ["xiaomi-token-plan-cn", XIAOMI_TOKEN_PLAN_CN_MODELS],
+  ["xiaomi-token-plan-sgp", XIAOMI_TOKEN_PLAN_SGP_MODELS],
+  ["zai", ZAI_MODELS],
+  ["zai-coding-cn", ZAI_CODING_CN_MODELS],
 ];
 
 export function generateModelCatalog() {
   const catalog = CATALOGS.map(([provider, models]) => ({
     provider,
-    models: Object.values(models).map((model) => projectModel(provider, model)).sort((left, right) => left.id.localeCompare(right.id)),
+    models: Object.values(models)
+      .map((model) => projectModel(provider, model))
+      .sort((left, right) => left.id.localeCompare(right.id)),
   })).sort((left, right) => left.provider.localeCompare(right.provider));
   const payload = { piVersion: PI_VERSION, catalog };
-  return { ...payload, digest: createHash("sha256").update(JSON.stringify(payload)).digest("hex") };
+  return {
+    ...payload,
+    digest: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+  };
 }
 
 function projectModel(provider, value) {
-  if (typeof value !== "object" || value === null) throw new Error(`Invalid ${provider} model catalog value`);
+  if (typeof value !== "object" || value === null)
+    throw new Error(`Invalid ${provider} model catalog value`);
   const { id, name, provider: valueProvider } = value;
-  if (typeof id !== "string" || !id || typeof name !== "string" || !name || valueProvider !== provider) {
+  if (
+    typeof id !== "string" ||
+    !id ||
+    typeof name !== "string" ||
+    !name ||
+    valueProvider !== provider
+  ) {
     throw new Error(`Invalid ${provider} model catalog value`);
   }
   return { id, name, provider };
 }
 
-export async function writeModelCatalog(output = new URL("../../../src/adapters/pi/pi-ai-catalog.generated.ts", import.meta.url)) {
+export async function writeModelCatalog(
+  output = new URL(
+    "../../../src/adapters/pi/pi-ai-catalog.generated.ts",
+    import.meta.url,
+  ),
+) {
   const artifact = generateModelCatalog();
-  await writeFile(output, `// Generated by runtime/flue/scripts/generate-model-catalog.mjs. Do not edit.\nexport const generatedPiAiCatalog: unknown = ${JSON.stringify(artifact, null, 2)};\n`);
+  const source = await formatCatalog(
+    `// Generated by runtime/flue/scripts/generate-model-catalog.mjs. Do not edit.\nexport const generatedPiAiCatalog: unknown = ${JSON.stringify(artifact, null, 2)};\n`,
+    output,
+  );
+  await writeFile(output, source);
   return artifact;
+}
+
+async function formatCatalog(source, output) {
+  const oxfmtPath = fileURLToPath(
+    new URL("../../../node_modules/.bin/oxfmt", import.meta.url),
+  );
+  return await new Promise((resolveFormat, rejectFormat) => {
+    const child = spawn(
+      oxfmtPath,
+      ["--stdin-filepath", fileURLToPath(output)],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", rejectFormat);
+    child.on("close", (code) => {
+      if (code === 0) resolveFormat(stdout);
+      else
+        rejectFormat(
+          new Error(`Oxfmt failed for the Pi catalog: ${stderr.trim()}`),
+        );
+    });
+    child.stdin.end(source);
+  });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await writeModelCatalog();

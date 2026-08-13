@@ -19,11 +19,16 @@ describe("ReviewPatchIndex", () => {
       "",
     ].join("\n");
     const index = ReviewPatchIndex.create(patch);
-    const expectedRename = patch.slice(0, patch.indexOf("diff --git a/image.png"));
+    const expectedRename = patch.slice(
+      0,
+      patch.indexOf("diff --git a/image.png"),
+    );
 
     expect(index.slice("old name.ts")).toBe(expectedRename);
     expect(index.slice("new name.ts")).toBe(expectedRename);
-    expect(index.slice("image.png")).toBe(patch.slice(patch.indexOf("diff --git a/image.png")));
+    expect(index.slice("image.png")).toBe(
+      patch.slice(patch.indexOf("diff --git a/image.png")),
+    );
     expect(index.slice("missing.ts")).toBeUndefined();
   });
 });

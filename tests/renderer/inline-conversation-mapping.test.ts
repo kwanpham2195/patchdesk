@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { parseUnifiedPatch } from "../../src/domain/patch";
-import { citedHunkRelation, mapConversationThread, projectReadOnlyConversationAnnotations } from "../../src/renderer/src/inline-conversation-mapping";
+import {
+  citedHunkRelation,
+  mapConversationThread,
+  projectReadOnlyConversationAnnotations,
+} from "../../src/renderer/src/inline-conversation-mapping";
 import { toDiffLineAnnotation } from "../../src/renderer/src/review-diff-annotations";
 
 const patch = parseUnifiedPatch(`diff --git a/src/example.ts b/src/example.ts
@@ -15,12 +19,14 @@ const patch = parseUnifiedPatch(`diff --git a/src/example.ts b/src/example.ts
  context
 `);
 
-function thread(input: {
-  readonly state?: "open" | "resolved" | "outdated";
-  readonly start?: number;
-  readonly end?: number;
-  readonly side?: "new" | "old";
-} = {}) {
+function thread(
+  input: {
+    readonly state?: "open" | "resolved" | "outdated";
+    readonly start?: number;
+    readonly end?: number;
+    readonly side?: "new" | "old";
+  } = {},
+) {
   return {
     id: "thread-1",
     state: input.state ?? "open",
@@ -53,10 +59,12 @@ describe("mapConversationThread", () => {
   });
 
   it("excludes outdated and partially mapped ranges", () => {
-    expect(mapConversationThread(patch, thread({ state: "outdated" }))).toEqual({
-      _tag: "Excluded",
-      reason: "outdated",
-    });
+    expect(mapConversationThread(patch, thread({ state: "outdated" }))).toEqual(
+      {
+        _tag: "Excluded",
+        reason: "outdated",
+      },
+    );
     expect(mapConversationThread(patch, thread({ start: 1, end: 5 }))).toEqual({
       _tag: "Excluded",
       reason: "unmapped",
@@ -91,14 +99,43 @@ describe("mapConversationThread", () => {
 
 describe("projectReadOnlyConversationAnnotations", () => {
   it("keeps only current mapped data and classifies exact and partial cited ranges", () => {
-    const [annotation] = projectReadOnlyConversationAnnotations(patch, [thread({ start: 1, end: 2 })]);
-    expect(annotation).toMatchObject({ id: "thread-1", path: "src/example.ts", start: 1, end: 2, side: "new" });
+    const [annotation] = projectReadOnlyConversationAnnotations(patch, [
+      thread({ start: 1, end: 2 }),
+    ]);
+    expect(annotation).toMatchObject({
+      id: "thread-1",
+      path: "src/example.ts",
+      start: 1,
+      end: 2,
+      side: "new",
+    });
     if (annotation === undefined) throw new Error("fixture");
-    expect(citedHunkRelation(annotation, { path: "src/example.ts", newStart: 1, newLines: 3, oldStart: 1, oldLines: 3 })).toBe("exact");
-    expect(citedHunkRelation(annotation, { path: "src/example.ts", newStart: 2, newLines: 2, oldStart: 2, oldLines: 2 })).toBe("partial");
+    expect(
+      citedHunkRelation(annotation, {
+        path: "src/example.ts",
+        newStart: 1,
+        newLines: 3,
+        oldStart: 1,
+        oldLines: 3,
+      }),
+    ).toBe("exact");
+    expect(
+      citedHunkRelation(annotation, {
+        path: "src/example.ts",
+        newStart: 2,
+        newLines: 2,
+        oldStart: 2,
+        oldLines: 2,
+      }),
+    ).toBe("partial");
   });
 
   it("excludes outdated and invalid ranges without carrying mutation capability", () => {
-    expect(projectReadOnlyConversationAnnotations(patch, [thread({ state: "outdated" }), thread({ start: 1, end: 5 })])).toEqual([]);
+    expect(
+      projectReadOnlyConversationAnnotations(patch, [
+        thread({ state: "outdated" }),
+        thread({ start: 1, end: 5 }),
+      ]),
+    ).toEqual([]);
   });
 });

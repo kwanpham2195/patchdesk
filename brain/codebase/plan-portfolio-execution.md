@@ -21,3 +21,9 @@
   Pierre theme metadata is generated and parity-checked without entering the
   eager graph. Performance timing begins after a double-animation-frame paint
   boundary and keeps the original 200 ms interaction ceilings.
+- Plan 008 is complete. Root quality tooling uses exact Oxlint 1.78.0 and Oxfmt
+  0.63.0. React Doctor can retain transitive ESLint for its separate workflow,
+  but Patchdesk has no direct ESLint or Prettier tool contract.
+- Oxfmt does not support SVG. By explicit repository-owner policy,
+  `resources/branding/**/*.svg` is outside the formatting contract; all other
+  supported tracked production formats remain checked.

@@ -33,7 +33,10 @@ describe("review diff hydration", () => {
       body: {
         state: "ready",
         oldFile: { name: "src/a.ts", contents: "before\nold tail\n" },
-        newFile: { name: "src/a.ts", contents: "after\nnew tail\nnew tail 2\n" },
+        newFile: {
+          name: "src/a.ts",
+          contents: "after\nnew tail\nnew tail 2\n",
+        },
       },
       correlationId: "test",
     }));
@@ -46,7 +49,8 @@ describe("review diff hydration", () => {
         qaScrollDiagnosticsEnabled: false,
       },
     });
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-before\n+after\n";
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-before\n+after\n";
     const parsed = parseReviewDiff(patch);
 
     render(
@@ -69,9 +73,13 @@ describe("review diff hydration", () => {
 
   it("submits a fingerprinted inline comment through the accessible fallback", async () => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    Object.defineProperty(window, "CSSStyleSheet", {
+      configurable: true,
+      value: undefined,
+    });
     const onSave = vi.fn(async () => undefined);
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
     const user = userEvent.setup();
     try {
@@ -89,16 +97,40 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const addition = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
-      const commentButton = addition?.querySelector<HTMLButtonElement>('button[aria-label="Add comment on src/a.ts"]');
-      if (commentButton === null || commentButton === undefined) throw new Error("Expected an inline comment action");
-      expect(commentButton.getAttribute("title")).toBe("Add comment on src/a.ts line 1");
+      const addition = document.querySelector<HTMLElement>(
+        '[data-line-type="change-addition"]',
+      );
+      const commentButton = addition?.querySelector<HTMLButtonElement>(
+        'button[aria-label="Add comment on src/a.ts"]',
+      );
+      if (commentButton === null || commentButton === undefined)
+        throw new Error("Expected an inline comment action");
+      expect(commentButton.getAttribute("title")).toBe(
+        "Add comment on src/a.ts line 1",
+      );
       await user.click(commentButton);
-      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Publish this");
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Publish this",
+      );
       await user.click(screen.getByRole("button", { name: "Comment" }));
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ path: "src/a.ts", startLine: 1, line: 1, side: "new", fingerprint: expect.objectContaining({ path: "src/a.ts", startLine: 1, line: 1, side: "new" }) }));
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+          fingerprint: expect.objectContaining({
+            path: "src/a.ts",
+            startLine: 1,
+            line: 1,
+            side: "new",
+          }),
+        }),
+      );
     } finally {
-      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      if (styleSheet === undefined)
+        delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
     }
   });
@@ -117,7 +149,8 @@ describe("review diff hydration", () => {
     ) {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
-    const patch = "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1 @@\\n-old\\n+new\\n";
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\\n--- a/src/a.ts\\n+++ b/src/a.ts\\n@@ -1 +1 @@\\n-old\\n+new\\n";
     const parsed = parseReviewDiff(patch);
     try {
       render(
@@ -130,17 +163,19 @@ describe("review diff hydration", () => {
           collapsedPaths={new Set()}
           onPreferencesChange={() => undefined}
           onCollapsedPathsChange={() => undefined}
-          annotations={[{
-            id: "local-draft:comment-1",
-            path: "src/a.ts",
-            start: 1,
-            end: 1,
-            side: "new",
-            severity: "info",
-            title: "Local comment",
-            explanation: "Keep this local",
-            localComment: { body: "Keep this local" },
-          }]}
+          annotations={[
+            {
+              id: "local-draft:comment-1",
+              path: "src/a.ts",
+              start: 1,
+              end: 1,
+              side: "new",
+              severity: "info",
+              title: "Local comment",
+              explanation: "Keep this local",
+              localComment: { body: "Keep this local" },
+            },
+          ]}
           virtualized={false}
         />,
       );
@@ -153,15 +188,23 @@ describe("review diff hydration", () => {
       );
       expect(screen.getByText("Keep this local")).toBeTruthy();
       expect(screen.getByText("Mock reviewer")).toBeTruthy();
-      expect(screen.getByText("Thanks — threaded replies are UI-only for now.")).toBeTruthy();
       expect(
-        (screen.getByRole("button", { name: "Add reply…" }) as HTMLButtonElement).disabled,
+        screen.getByText("Thanks — threaded replies are UI-only for now."),
+      ).toBeTruthy();
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Add reply…",
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(true);
       expect(
-        (screen.getByRole("button", { name: "Resolve" }) as HTMLButtonElement).disabled,
+        (screen.getByRole("button", { name: "Resolve" }) as HTMLButtonElement)
+          .disabled,
       ).toBe(true);
       expect(
-        (screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled,
+        (screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement)
+          .disabled,
       ).toBe(true);
     } finally {
       if (styleSheet?.value !== undefined) {
@@ -185,8 +228,14 @@ describe("review diff hydration", () => {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
     let resolveSave!: (value: { readonly commentId: string } | void) => void;
-    const onSave = vi.fn(async () => new Promise<{ readonly commentId: string } | void>((resolve) => { resolveSave = resolve; }));
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const onSave = vi.fn(
+      async () =>
+        new Promise<{ readonly commentId: string } | void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
     const user = userEvent.setup();
     try {
@@ -205,21 +254,33 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      const authorButtons = screen.getAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
       const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined) throw new Error("Expected an inline comment action");
+      if (commentButton === undefined)
+        throw new Error("Expected an inline comment action");
       // Pierre populates the gutter action's line from its internal hover
       // state, which jsdom cannot produce; seed it directly.
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
-      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Publish this");
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Publish this",
+      );
       await user.click(screen.getByRole("button", { name: "Comment" }));
       // The pending card is visible before the write completes.
-      expect(screen.getByRole("article", { name: "Publishing conversation" })).toBeTruthy();
+      expect(
+        screen.getByRole("article", { name: "Publishing conversation" }),
+      ).toBeTruthy();
       expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
       resolveSave({ commentId: "PRRC_real" });
-      await waitFor(() => expect(screen.queryByRole("article", { name: "Publishing conversation" })).toBeNull());
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("article", { name: "Publishing conversation" }),
+        ).toBeNull(),
+      );
       // The published card has the real comment id: Edit and Delete are
       // reachable, but Reply and Resolve are not, because the REST create
       // receipt carries no thread id.
@@ -248,8 +309,11 @@ describe("review diff hydration", () => {
     ) {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
-    const onSave = vi.fn(async () => { throw new Error("timeout"); });
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const onSave = vi.fn(async () => {
+      throw new Error("timeout");
+    });
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
     const user = userEvent.setup();
     try {
@@ -267,17 +331,25 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
+      const authorButtons = screen.getAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
       const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined) throw new Error("Expected an inline comment action");
+      if (commentButton === undefined)
+        throw new Error("Expected an inline comment action");
       // Pierre populates the gutter action's line from its internal hover
       // state, which jsdom cannot produce; seed it directly.
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
-      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Will fail");
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Will fail",
+      );
       await user.click(screen.getByRole("button", { name: "Comment" }));
-      const failed = await screen.findByRole("article", { name: "Comment failed conversation" });
+      const failed = await screen.findByRole("article", {
+        name: "Comment failed conversation",
+      });
       expect(failed).toBeTruthy();
       expect(screen.getByRole("alert")).toBeTruthy();
       // A failed card has no GitHub identity and no write actions.
@@ -286,7 +358,9 @@ describe("review diff hydration", () => {
       expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
       await user.click(screen.getByRole("button", { name: "Dismiss" }));
-      expect(screen.queryByRole("article", { name: "Comment failed conversation" })).toBeNull();
+      expect(
+        screen.queryByRole("article", { name: "Comment failed conversation" }),
+      ).toBeNull();
     } finally {
       if (styleSheet?.value !== undefined) {
         delete styleSheet.value.prototype.replaceSync;
@@ -342,83 +416,111 @@ describe("review diff hydration", () => {
   });
 });
 
-  it("keeps Reply and Resolve off a published create card even when all global conversation actions are present", async () => {
-    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    if (
-      styleSheet?.value !== undefined &&
-      styleSheet.value.prototype.replaceSync === undefined
-    ) {
-      styleSheet.value.prototype.replaceSync = () => undefined;
+it("keeps Reply and Resolve off a published create card even when all global conversation actions are present", async () => {
+  const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+  if (
+    styleSheet?.value !== undefined &&
+    styleSheet.value.prototype.replaceSync === undefined
+  ) {
+    styleSheet.value.prototype.replaceSync = () => undefined;
+  }
+  if (
+    window.CSSStyleSheet !== undefined &&
+    window.CSSStyleSheet.prototype.replaceSync === undefined
+  ) {
+    window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+  }
+  let resolveSave!: (value: { readonly commentId: string } | void) => void;
+  const onSave = vi.fn(
+    async () =>
+      new Promise<{ readonly commentId: string } | void>((resolve) => {
+        resolveSave = resolve;
+      }),
+  );
+  const setThreadState = vi.fn(async () => undefined);
+  const replyToThread = vi.fn(async () => undefined);
+  const editComment = vi.fn(async () => undefined);
+  const deleteComment = vi.fn(async () => undefined);
+  const patch =
+    "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+  const parsed = parseReviewDiff(patch);
+  const user = userEvent.setup();
+  try {
+    render(
+      <ReviewDiffView
+        patch={patch}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath="src/a.ts"
+        preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+        collapsedPaths={new Set()}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={() => undefined}
+        localCommentAuthoring={{ enabled: true, onSave }}
+        conversationActions={{
+          setThreadState,
+          replyToThread,
+          editComment,
+          deleteComment,
+        }}
+        virtualized={false}
+      />,
+    );
+    const authorButtons = screen.getAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
+    const commentButton = authorButtons.at(-1);
+    if (commentButton === undefined)
+      throw new Error("Expected an inline comment action");
+    commentButton.dataset.lineNumber = "1";
+    commentButton.dataset.lineSide = "additions";
+    await user.click(commentButton);
+    await user.type(
+      screen.getByRole("textbox", { name: "Inline comment" }),
+      "Publish this",
+    );
+    await user.click(screen.getByRole("button", { name: "Comment" }));
+    expect(
+      screen.getByRole("article", { name: "Publishing conversation" }),
+    ).toBeTruthy();
+    resolveSave({ commentId: "PRRC_real" });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("article", { name: "Publishing conversation" }),
+      ).toBeNull(),
+    );
+    // Edit and Delete use the authoritative comment id.
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    // The global thread callbacks must not be re-attached to a card that has
+    // no GitHub thread id: no Reply, no Resolve, and no command calls.
+    expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unresolve" })).toBeNull();
+    expect(replyToThread).not.toHaveBeenCalled();
+    expect(setThreadState).not.toHaveBeenCalled();
+  } finally {
+    if (styleSheet?.value !== undefined) {
+      delete styleSheet.value.prototype.replaceSync;
     }
-    if (
-      window.CSSStyleSheet !== undefined &&
-      window.CSSStyleSheet.prototype.replaceSync === undefined
-    ) {
-      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
-    }
-    let resolveSave!: (value: { readonly commentId: string } | void) => void;
-    const onSave = vi.fn(async () => new Promise<{ readonly commentId: string } | void>((resolve) => { resolveSave = resolve; }));
-    const setThreadState = vi.fn(async () => undefined);
-    const replyToThread = vi.fn(async () => undefined);
-    const editComment = vi.fn(async () => undefined);
-    const deleteComment = vi.fn(async () => undefined);
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
-    const parsed = parseReviewDiff(patch);
-    const user = userEvent.setup();
-    try {
-      render(
-        <ReviewDiffView
-          patch={patch}
-          parsedFiles={parsed.files}
-          fileStatsByPath={parsed.statsByPath}
-          selectedPath="src/a.ts"
-          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
-          collapsedPaths={new Set()}
-          onPreferencesChange={() => undefined}
-          onCollapsedPathsChange={() => undefined}
-          localCommentAuthoring={{ enabled: true, onSave }}
-          conversationActions={{ setThreadState, replyToThread, editComment, deleteComment }}
-          virtualized={false}
-        />,
-      );
-      const authorButtons = screen.getAllByRole("button", { name: "Add comment on src/a.ts" });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined) throw new Error("Expected an inline comment action");
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
-      await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "Publish this");
-      await user.click(screen.getByRole("button", { name: "Comment" }));
-      expect(screen.getByRole("article", { name: "Publishing conversation" })).toBeTruthy();
-      resolveSave({ commentId: "PRRC_real" });
-      await waitFor(() => expect(screen.queryByRole("article", { name: "Publishing conversation" })).toBeNull());
-      // Edit and Delete use the authoritative comment id.
-      expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
-      // The global thread callbacks must not be re-attached to a card that has
-      // no GitHub thread id: no Reply, no Resolve, and no command calls.
-      expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Unresolve" })).toBeNull();
-      expect(replyToThread).not.toHaveBeenCalled();
-      expect(setThreadState).not.toHaveBeenCalled();
-    } finally {
-      if (styleSheet?.value !== undefined) {
-        delete styleSheet.value.prototype.replaceSync;
-      }
-    }
-  });
+  }
+});
 describe("pending-review composer lifecycle", () => {
-  const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+  const patch =
+    "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
   // The accessible fallback renders the composer synchronously; the Pierre
   // code-view path renders annotations asynchronously in jsdom.
   const withFallbackDom = async (run: () => Promise<void>): Promise<void> => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    Object.defineProperty(window, "CSSStyleSheet", { configurable: true, value: undefined });
+    Object.defineProperty(window, "CSSStyleSheet", {
+      configurable: true,
+      value: undefined,
+    });
     try {
       await run();
     } finally {
-      if (styleSheet === undefined) delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+      if (styleSheet === undefined)
+        delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
     }
   };
@@ -434,7 +536,10 @@ describe("pending-review composer lifecycle", () => {
         collapsedPaths={new Set()}
         onPreferencesChange={() => undefined}
         onCollapsedPathsChange={() => undefined}
-        localCommentAuthoring={{ enabled: true, onSave: vi.fn(async () => undefined) }}
+        localCommentAuthoring={{
+          enabled: true,
+          onSave: vi.fn(async () => undefined),
+        }}
         virtualized={false}
         {...overrides}
       />,
@@ -444,7 +549,10 @@ describe("pending-review composer lifecycle", () => {
   // asynchronously in jsdom; keep constructable stylesheets available.
   const withCodeViewDom = async (run: () => Promise<void>): Promise<void> => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    if (window.CSSStyleSheet !== undefined && window.CSSStyleSheet.prototype.replaceSync === undefined) {
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
     try {
@@ -455,14 +563,23 @@ describe("pending-review composer lifecycle", () => {
       }
     }
   };
-  const openCodeViewComposer = async (user: ReturnType<typeof userEvent.setup>, body: string) => {
-    const authorButtons = await screen.findAllByRole("button", { name: "Add comment on src/a.ts" });
+  const openCodeViewComposer = async (
+    user: ReturnType<typeof userEvent.setup>,
+    body: string,
+  ) => {
+    const authorButtons = await screen.findAllByRole("button", {
+      name: "Add comment on src/a.ts",
+    });
     const commentButton = authorButtons.at(-1);
-    if (commentButton === undefined) throw new Error("Expected an inline comment action");
+    if (commentButton === undefined)
+      throw new Error("Expected an inline comment action");
     commentButton.dataset.lineNumber = "1";
     commentButton.dataset.lineSide = "additions";
     await user.click(commentButton);
-    await user.type(await screen.findByRole("textbox", { name: "Inline comment" }), body);
+    await user.type(
+      await screen.findByRole("textbox", { name: "Inline comment" }),
+      body,
+    );
   };
   const composerActions = (overrides: Record<string, unknown> = {}) => ({
     state: { state: "none" },
@@ -472,11 +589,18 @@ describe("pending-review composer lifecycle", () => {
     ...overrides,
   });
   const openComposer = async (user: ReturnType<typeof userEvent.setup>) => {
-    const row = document.querySelector<HTMLElement>('[data-line-type="change-addition"]');
-    const addButton = row?.querySelector<HTMLButtonElement>('button[aria-label="Add comment on src/a.ts"]');
+    const row = document.querySelector<HTMLElement>(
+      '[data-line-type="change-addition"]',
+    );
+    const addButton = row?.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add comment on src/a.ts"]',
+    );
     if (!addButton) throw new Error("Expected inline comment action");
     await user.click(addButton);
-    await user.type(screen.getByRole("textbox", { name: "Inline comment" }), "test");
+    await user.type(
+      screen.getByRole("textbox", { name: "Inline comment" }),
+      "test",
+    );
   };
 
   it("closes the composer immediately when Start a review is submitted", async () => {
@@ -486,8 +610,12 @@ describe("pending-review composer lifecycle", () => {
       renderDiff({ pendingReviewComposer: actions });
       await openComposer(user);
       await user.click(screen.getByRole("button", { name: "Start a review" }));
-      await waitFor(() => expect(actions.onStartReview).toHaveBeenCalledTimes(1));
-      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+      await waitFor(() =>
+        expect(actions.onStartReview).toHaveBeenCalledTimes(1),
+      );
+      expect(
+        screen.queryByRole("textbox", { name: "Inline comment" }),
+      ).toBeNull();
     });
   });
 
@@ -495,15 +623,25 @@ describe("pending-review composer lifecycle", () => {
     await withCodeViewDom(async () => {
       const user = userEvent.setup();
       let resolveStart!: () => void;
-      const startPromise = new Promise<void>((resolve) => { resolveStart = resolve; });
-      const actions = composerActions({ onStartReview: vi.fn(async () => { await startPromise; }) });
+      const startPromise = new Promise<void>((resolve) => {
+        resolveStart = resolve;
+      });
+      const actions = composerActions({
+        onStartReview: vi.fn(async () => {
+          await startPromise;
+        }),
+      });
       renderDiff({ pendingReviewComposer: actions });
       await openCodeViewComposer(user, "test");
       await user.click(screen.getByRole("button", { name: "Start a review" }));
       expect(await screen.findByText("Starting review…")).toBeTruthy();
-      expect(screen.queryByRole("textbox", { name: "Inline comment" })).toBeNull();
+      expect(
+        screen.queryByRole("textbox", { name: "Inline comment" }),
+      ).toBeNull();
       resolveStart();
-      await waitFor(() => expect(screen.queryByText("Starting review…")).toBeNull());
+      await waitFor(() =>
+        expect(screen.queryByText("Starting review…")).toBeNull(),
+      );
       expect(actions.onStartReview).toHaveBeenCalledTimes(1);
     });
   });
@@ -512,16 +650,26 @@ describe("pending-review composer lifecycle", () => {
     await withCodeViewDom(async () => {
       const user = userEvent.setup();
       const actions = composerActions({
-        onStartReview: vi.fn(async () => { throw new PatchdeskApiError("github_rejected", 409, false, "corr", "rejected"); }),
+        onStartReview: vi.fn(async () => {
+          throw new PatchdeskApiError(
+            "github_rejected",
+            409,
+            false,
+            "corr",
+            "rejected",
+          );
+        }),
       });
       renderDiff({ pendingReviewComposer: actions });
       await openCodeViewComposer(user, "test");
       await user.click(screen.getByRole("button", { name: "Start a review" }));
-      expect(await screen.findByText("GitHub rejected this comment.")).toBeTruthy();
+      expect(
+        await screen.findByText("GitHub rejected this comment."),
+      ).toBeTruthy();
       expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
       // No retry is offered and no thread identity is advertised.
       expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-      expect(document.querySelector('[data-review-pending-thread]')).toBeNull();
+      expect(document.querySelector("[data-review-pending-thread]")).toBeNull();
     });
   });
 
@@ -529,37 +677,62 @@ describe("pending-review composer lifecycle", () => {
     await withCodeViewDom(async () => {
       const user = userEvent.setup();
       const actions = composerActions({
-        onStartReview: vi.fn(async () => { throw new PatchdeskApiError("outcome_unknown", 503, false, "corr", "unknown"); }),
+        onStartReview: vi.fn(async () => {
+          throw new PatchdeskApiError(
+            "outcome_unknown",
+            503,
+            false,
+            "corr",
+            "unknown",
+          );
+        }),
       });
       renderDiff({ pendingReviewComposer: actions });
       await openCodeViewComposer(user, "test");
       await user.click(screen.getByRole("button", { name: "Start a review" }));
-      await waitFor(() => expect(actions.onStartReview).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(document.querySelector('[data-review-pending-write]')).toBeNull());
+      await waitFor(() =>
+        expect(actions.onStartReview).toHaveBeenCalledTimes(1),
+      );
+      await waitFor(() =>
+        expect(
+          document.querySelector("[data-review-pending-write]"),
+        ).toBeNull(),
+      );
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });
 
   it("renders an authoritative pending-review thread card without published-thread controls", async () => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    if (window.CSSStyleSheet !== undefined && window.CSSStyleSheet.prototype.replaceSync === undefined) {
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
     const threadId = must(parseGitHubThreadId("PRRT_pending_test"));
     renderDiff({
-      annotations: [{
-        id: "pending-review:PRRT_pending_test",
-        path: "src/a.ts",
-        start: 1,
-        end: 1,
-        side: "new",
-        severity: "conversation",
-        title: "Pending review",
-        explanation: "",
-        pendingReviewThread: { threadId, body: "Needs a follow-up", nodeId: "PRR_kwDORJzsQM7e6QwJ" },
-      }],
+      annotations: [
+        {
+          id: "pending-review:PRRT_pending_test",
+          path: "src/a.ts",
+          start: 1,
+          end: 1,
+          side: "new",
+          severity: "conversation",
+          title: "Pending review",
+          explanation: "",
+          pendingReviewThread: {
+            threadId,
+            body: "Needs a follow-up",
+            nodeId: "PRR_kwDORJzsQM7e6QwJ",
+          },
+        },
+      ],
     });
-    const card = await screen.findByRole("article", { name: "Pending review comment" });
+    const card = await screen.findByRole("article", {
+      name: "Pending review comment",
+    });
     expect(card.textContent).toContain("Pending review");
     expect(card.textContent).toContain("Needs a follow-up");
     // No Reply/Resolve/Unresolve/edit/delete controls on a pending card.

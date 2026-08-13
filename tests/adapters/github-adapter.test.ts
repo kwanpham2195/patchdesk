@@ -1062,8 +1062,6 @@ describe("GitHubAdapter read boundary", () => {
     ).toBe(true);
   });
 
-
-
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
     const [listOpenPrs, getPr, getComments, getChecks, getStatuses, getDiff] =
       await Promise.all([

@@ -1,6 +1,9 @@
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { Result } from "../domain/result";
-import type { MaintainerInbox, MaintainerInboxService } from "./maintainer-inbox-service";
+import type {
+  MaintainerInbox,
+  MaintainerInboxService,
+} from "./maintainer-inbox-service";
 
 type ReadOnlyInbox = Pick<MaintainerInboxService, "list">;
 

@@ -17,10 +17,14 @@ const inbox = {
 
 describe("inbox refresh coordinator", () => {
   it("shares one read-only inbox scan for concurrent callers in the same profile", async () => {
-    let resolveScan: ((value: ReturnType<typeof ok<MaintainerInbox>>) => void) | undefined;
-    const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>((resolve) => {
-      resolveScan = resolve;
-    });
+    let resolveScan:
+      | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+      | undefined;
+    const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+      (resolve) => {
+        resolveScan = resolve;
+      },
+    );
     const list = vi.fn(() => scan);
     const coordinator = new InboxRefreshCoordinator({ list });
 
@@ -40,7 +44,10 @@ describe("inbox refresh coordinator", () => {
     const list = vi.fn(async () => ok(inbox));
     const coordinator = new InboxRefreshCoordinator({ list });
 
-    await Promise.all([coordinator.refresh(profile), coordinator.refresh(secondProfile)]);
+    await Promise.all([
+      coordinator.refresh(profile),
+      coordinator.refresh(secondProfile),
+    ]);
 
     expect(list).toHaveBeenCalledTimes(2);
   });

@@ -73,9 +73,21 @@ Add these local draft commands:
 export type ReviewBatchUpdate =
   | { readonly _tag: "UpdateBody"; readonly body: string }
   | { readonly _tag: "SetSuggestedEvent"; readonly event: GitHubReviewEvent }
-  | { readonly _tag: "SetItemIncluded"; readonly itemId: LocalReviewItemId; readonly include: boolean }
-  | { readonly _tag: "ConvertInlineToGeneral"; readonly itemId: LocalReviewItemId }
-  | { readonly _tag: "RepairInlineAnchor"; readonly itemId: LocalReviewItemId; readonly anchor: ReviewAnchor; readonly fingerprint: ReviewAnchorFingerprint }
+  | {
+      readonly _tag: "SetItemIncluded";
+      readonly itemId: LocalReviewItemId;
+      readonly include: boolean;
+    }
+  | {
+      readonly _tag: "ConvertInlineToGeneral";
+      readonly itemId: LocalReviewItemId;
+    }
+  | {
+      readonly _tag: "RepairInlineAnchor";
+      readonly itemId: LocalReviewItemId;
+      readonly anchor: ReviewAnchor;
+      readonly fingerprint: ReviewAnchorFingerprint;
+    }
   | ReviewBatchUpdateExistingCommands;
 ```
 
@@ -181,7 +193,9 @@ export type PublicationPreview = {
     readonly action: "reply" | "resolve" | "reopen";
     readonly body?: string;
   }>;
-  readonly warnings: ReadonlyArray<"no_inline_comments" | "github_decision_changed">;
+  readonly warnings: ReadonlyArray<
+    "no_inline_comments" | "github_decision_changed"
+  >;
 };
 ```
 
@@ -460,7 +474,8 @@ GitHub references:
 - [ ] Add required profile field:
 
 ```ts
-export type AnalysisMergePolicy = "advisory" | "require_acknowledgement" | "block";
+export type AnalysisMergePolicy =
+  "advisory" | "require_acknowledgement" | "block";
 
 type WorkspaceProfileConfig = {
   // existing fields

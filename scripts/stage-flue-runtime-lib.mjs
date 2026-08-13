@@ -20,15 +20,29 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
   if (
     sourceManifest.dependencies?.["@flue/runtime"] !== FLUE_VERSION ||
     sourceManifest.dependencies?.["@earendil-works/pi-ai"] !== PI_VERSION
-  ) throw new Error("The dedicated Flue runtime manifest does not contain the expected exact versions.");
+  )
+    throw new Error(
+      "The dedicated Flue runtime manifest does not contain the expected exact versions.",
+    );
 
   await run("pnpm", ["--dir", source, "build"]);
-  const sourceRuntimeManifest = JSON.parse(await readFile(join(source, "runtime-manifest.json"), "utf8"));
-  const catalogSource = join(projectRoot, "src", "adapters", "pi", "pi-ai-catalog.generated.ts");
+  const sourceRuntimeManifest = JSON.parse(
+    await readFile(join(source, "runtime-manifest.json"), "utf8"),
+  );
+  const catalogSource = join(
+    projectRoot,
+    "src",
+    "adapters",
+    "pi",
+    "pi-ai-catalog.generated.ts",
+  );
   await access(catalogSource);
   const catalogText = await readFile(catalogSource, "utf8");
   const catalogDigest = /"digest":\s*"([a-f0-9]{64})"/.exec(catalogText)?.[1];
-  if (sourceRuntimeManifest.catalogDigest !== catalogDigest) throw new Error("The generated Pi catalog does not match the runtime manifest.");
+  if (sourceRuntimeManifest.catalogDigest !== catalogDigest)
+    throw new Error(
+      "The generated Pi catalog does not match the runtime manifest.",
+    );
   await Promise.all([
     cp(manifest, join(runtimeRoot, "package.json")),
     cp(lockfile, join(runtimeRoot, "pnpm-lock.yaml")),
@@ -42,7 +56,8 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
   ]);
   try {
     await run("pnpm", [
-      "--dir", runtimeRoot,
+      "--dir",
+      runtimeRoot,
       "install",
       "--frozen-lockfile",
       "--prod",
@@ -61,7 +76,7 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
     access(join(runtimeRoot, "skills", "patchdesk-code-review", "SKILL.md")),
   ]);
   const lockDigest = createHash("sha256")
-    .update(await readFile(join(runtimeRoot, "pnpm-lock.yaml")) )
+    .update(await readFile(join(runtimeRoot, "pnpm-lock.yaml")))
     .digest("hex");
   await writeFile(
     join(runtimeRoot, "runtime-manifest.json"),

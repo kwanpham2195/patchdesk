@@ -33,7 +33,12 @@ export async function prepareModelReview(
   ]);
   const files = changedFiles(context);
   const headSha = reviewHeadSha(context);
-  const fileSnapshots = await snapshotChangedFiles(input.worktreePath, headSha, files, input.gitShow);
+  const fileSnapshots = await snapshotChangedFiles(
+    input.worktreePath,
+    headSha,
+    files,
+    input.gitShow,
+  );
   const inspector = new ReviewInspector({
     worktreePath: input.worktreePath,
     changedFiles: files,
@@ -42,10 +47,18 @@ export async function prepareModelReview(
     allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
     gitShow: input.gitShow,
   });
-  return { prompt: composeReviewPrompt({ reviewInput, context, fullPatch }), inspector };
+  return {
+    prompt: composeReviewPrompt({ reviewInput, context, fullPatch }),
+    inspector,
+  };
 }
 
-async function snapshotChangedFiles(worktreePath: string, headSha: string | undefined, files: ReadonlyArray<string>, gitShow: (argv: ReadonlyArray<string>) => Promise<string>): Promise<Readonly<Record<string, string>>> {
+async function snapshotChangedFiles(
+  worktreePath: string,
+  headSha: string | undefined,
+  files: ReadonlyArray<string>,
+  gitShow: (argv: ReadonlyArray<string>) => Promise<string>,
+): Promise<Readonly<Record<string, string>>> {
   const snapshots: Record<string, string> = {};
   if (headSha === undefined) return snapshots;
   let snapshotBytes = 0;
@@ -54,11 +67,22 @@ async function snapshotChangedFiles(worktreePath: string, headSha: string | unde
     try {
       const object = `${headSha}:${path}`;
       const git = ["git", "--no-replace-objects", "-C", worktreePath] as const;
-      const mode = await gitShow([...git, "ls-tree", "--format=%(objectmode)", headSha, "--", path]);
+      const mode = await gitShow([
+        ...git,
+        "ls-tree",
+        "--format=%(objectmode)",
+        headSha,
+        "--",
+        path,
+      ]);
       if (!isRegularTreeEntry(mode)) continue;
-      if ((await gitShow([...git, "cat-file", "-t", object])).trim() !== "blob") continue;
-      const fileBytes = parseBlobByteLength(await gitShow([...git, "cat-file", "-s", object]));
-      if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES) continue;
+      if ((await gitShow([...git, "cat-file", "-t", object])).trim() !== "blob")
+        continue;
+      const fileBytes = parseBlobByteLength(
+        await gitShow([...git, "cat-file", "-s", object]),
+      );
+      if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES)
+        continue;
       if (snapshotBytes + fileBytes > MAX_SNAPSHOT_TOTAL_BYTES) break;
       const contents = await gitShow([...git, "cat-file", "blob", object]);
       if (Buffer.byteLength(contents, "utf8") !== fileBytes) continue;
@@ -71,8 +95,51 @@ async function snapshotChangedFiles(worktreePath: string, headSha: string | unde
   return snapshots;
 }
 
-function isSafeRelativePath(path: string): boolean { return path.length > 0 && path !== "." && !path.startsWith("./") && !path.startsWith(".\\") && !isAbsolute(path) && !win32.isAbsolute(path) && !/^[a-z]:/i.test(path) && !path.includes("\0") && !path.split(/[\\/]/).includes(".."); }
-function isRegularTreeEntry(raw: string): boolean { return ["100644", "100755"].includes(raw.trim()); }
-function parseBlobByteLength(raw: string): number | undefined { const bytes = raw.trim(); return /^(?:0|[1-9]\d*)$/.test(bytes) && Number.isSafeInteger(Number(bytes)) ? Number(bytes) : undefined; }
-function reviewHeadSha(context: string): string | undefined { try { const parsed: unknown = JSON.parse(context); const head = typeof parsed === "object" && parsed !== null ? (parsed as { pr?: { headSha?: unknown } }).pr?.headSha : undefined; return typeof head === "string" && GIT_SHA.test(head) ? head : undefined; } catch { return undefined; } }
-function changedFiles(context: string): ReadonlyArray<string> { try { const parsed: unknown = JSON.parse(context); const files = typeof parsed === "object" && parsed !== null ? (parsed as { changedFiles?: unknown }).changedFiles : undefined; return Array.isArray(files) ? files.filter((path): path is string => typeof path === "string") : []; } catch { return []; } }
+function isSafeRelativePath(path: string): boolean {
+  return (
+    path.length > 0 &&
+    path !== "." &&
+    !path.startsWith("./") &&
+    !path.startsWith(".\\") &&
+    !isAbsolute(path) &&
+    !win32.isAbsolute(path) &&
+    !/^[a-z]:/i.test(path) &&
+    !path.includes("\0") &&
+    !path.split(/[\\/]/).includes("..")
+  );
+}
+function isRegularTreeEntry(raw: string): boolean {
+  return ["100644", "100755"].includes(raw.trim());
+}
+function parseBlobByteLength(raw: string): number | undefined {
+  const bytes = raw.trim();
+  return /^(?:0|[1-9]\d*)$/.test(bytes) && Number.isSafeInteger(Number(bytes))
+    ? Number(bytes)
+    : undefined;
+}
+function reviewHeadSha(context: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(context);
+    const head =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { pr?: { headSha?: unknown } }).pr?.headSha
+        : undefined;
+    return typeof head === "string" && GIT_SHA.test(head) ? head : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function changedFiles(context: string): ReadonlyArray<string> {
+  try {
+    const parsed: unknown = JSON.parse(context);
+    const files =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { changedFiles?: unknown }).changedFiles
+        : undefined;
+    return Array.isArray(files)
+      ? files.filter((path): path is string => typeof path === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}

@@ -6,7 +6,13 @@ import type { Profile } from "../renderer-models";
 import { repositoryKey } from "../renderer-models";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
@@ -31,9 +37,15 @@ function entryKey(entry: DiscoveryEntry): string {
 function groupByRoot(
   entries: ReadonlyArray<DiscoveryEntry>,
   roots: ReadonlyArray<string>,
-): ReadonlyArray<{ readonly root: string; readonly repos: ReadonlyArray<DiscoveryEntry> }> {
+): ReadonlyArray<{
+  readonly root: string;
+  readonly repos: ReadonlyArray<DiscoveryEntry>;
+}> {
   const assigned = new Set<string>();
-  const groups: Array<{ readonly root: string; readonly repos: DiscoveryEntry[] }> = [];
+  const groups: Array<{
+    readonly root: string;
+    readonly repos: DiscoveryEntry[];
+  }> = [];
   for (const root of roots) {
     const repos: DiscoveryEntry[] = [];
     for (const entry of entries) {
@@ -57,7 +69,9 @@ export function WatchlistPanel({
   profile,
   onWorkspaceReload,
 }: WatchlistPanelProps): React.JSX.Element {
-  const [discovered, setDiscoverResult] = useState<ReadonlyArray<DiscoveryEntry>>([]);
+  const [discovered, setDiscoverResult] = useState<
+    ReadonlyArray<DiscoveryEntry>
+  >([]);
   const [watched, setWatched] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<string>();
   const [error, setError] = useState<string>();
@@ -137,7 +151,10 @@ export function WatchlistPanel({
     void discover();
   }, []);
 
-  const toggleRepo = async (entry: DiscoveryEntry, currentlyWatched: boolean): Promise<void> => {
+  const toggleRepo = async (
+    entry: DiscoveryEntry,
+    currentlyWatched: boolean,
+  ): Promise<void> => {
     const key = entryKey(entry);
     setPending(key);
     setError(undefined);
@@ -156,7 +173,12 @@ export function WatchlistPanel({
       } else {
         await requestJson("/v1/watchlist", {
           method: "POST",
-          body: { host: entry.host, owner: entry.owner, repo: entry.repo, localPath: entry.localPath },
+          body: {
+            host: entry.host,
+            owner: entry.owner,
+            repo: entry.repo,
+            localPath: entry.localPath,
+          },
         });
         setWatched((current) => new Set(current).add(key));
         setFeedback(`Added ${entry.owner}/${entry.repo} to the watchlist.`);
@@ -174,12 +196,16 @@ export function WatchlistPanel({
   };
 
   return (
-    <section aria-labelledby="watchlist-management-title" data-testid="watchlist-management">
+    <section
+      aria-labelledby="watchlist-management-title"
+      data-testid="watchlist-management"
+    >
       <Card className="h-full">
         <CardHeader className="gap-2 pb-4">
           <CardTitle id="watchlist-management-title">Watchlist</CardTitle>
           <CardDescription>
-            Repositories found in your workspace roots. Tick to add to the active queue.
+            Repositories found in your workspace roots. Tick to add to the
+            active queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -196,7 +222,11 @@ export function WatchlistPanel({
             Refresh
           </Button>
           {feedback === undefined ? null : (
-            <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-xs text-muted-foreground"
+            >
               {feedback}
             </p>
           )}
@@ -211,7 +241,10 @@ export function WatchlistPanel({
               <Label className="text-xs font-semibold uppercase text-muted-foreground">
                 {group.root}
               </Label>
-              <div className="flex flex-col gap-1" aria-label={`Repositories under ${group.root}`}>
+              <div
+                className="flex flex-col gap-1"
+                aria-label={`Repositories under ${group.root}`}
+              >
                 {group.repos.map((entry) => {
                   const key = entryKey(entry);
                   const currentlyWatched = watched.has(key);
@@ -246,7 +279,8 @@ export function WatchlistPanel({
           ))}
           {discovered.length === 0 && pending !== "discover" ? (
             <p className="text-xs text-muted-foreground" role="status">
-              No repositories discovered. Add workspace roots in profile settings to find repositories.
+              No repositories discovered. Add workspace roots in profile
+              settings to find repositories.
             </p>
           ) : null}
         </CardContent>

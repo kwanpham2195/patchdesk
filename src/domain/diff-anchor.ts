@@ -84,17 +84,50 @@ function patchLines(patch: string): ReadonlyArray<PatchLine> {
       hunk += 1;
       continue;
     }
-    if (hunk === 0 || raw.startsWith("\\") || oldPath === undefined || newPath === undefined)
+    if (
+      hunk === 0 ||
+      raw.startsWith("\\") ||
+      oldPath === undefined ||
+      newPath === undefined
+    )
       continue;
     if (raw.startsWith("-")) {
-      if (oldPath !== "/dev/null") lines.push({ path: oldPath, side: "old", line: oldLine, text: raw.slice(1), hunk });
+      if (oldPath !== "/dev/null")
+        lines.push({
+          path: oldPath,
+          side: "old",
+          line: oldLine,
+          text: raw.slice(1),
+          hunk,
+        });
       oldLine += 1;
     } else if (raw.startsWith("+")) {
-      if (newPath !== "/dev/null") lines.push({ path: newPath, side: "new", line: newLine, text: raw.slice(1), hunk });
+      if (newPath !== "/dev/null")
+        lines.push({
+          path: newPath,
+          side: "new",
+          line: newLine,
+          text: raw.slice(1),
+          hunk,
+        });
       newLine += 1;
     } else if (raw.startsWith(" ")) {
-      if (oldPath !== "/dev/null") lines.push({ path: oldPath, side: "old", line: oldLine, text: raw.slice(1), hunk });
-      if (newPath !== "/dev/null") lines.push({ path: newPath, side: "new", line: newLine, text: raw.slice(1), hunk });
+      if (oldPath !== "/dev/null")
+        lines.push({
+          path: oldPath,
+          side: "old",
+          line: oldLine,
+          text: raw.slice(1),
+          hunk,
+        });
+      if (newPath !== "/dev/null")
+        lines.push({
+          path: newPath,
+          side: "new",
+          line: newLine,
+          text: raw.slice(1),
+          hunk,
+        });
       oldLine += 1;
       newLine += 1;
     }

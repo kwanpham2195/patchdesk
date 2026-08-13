@@ -1,6 +1,10 @@
 export type AppDestination =
   | { readonly kind: "dashboard" }
-  | { readonly kind: "workbench"; readonly reviewId: string; readonly initialSection?: "overview" | "diff" | "checks" };
+  | {
+      readonly kind: "workbench";
+      readonly reviewId: string;
+      readonly initialSection?: "overview" | "diff" | "checks";
+    };
 
 export const primaryDestinations = [
   { kind: "dashboard", label: "Inbox" },
@@ -23,8 +27,18 @@ export function destinationTitle(destination: AppDestination): string {
 
 export function parseDestination(value: string | null): AppDestination {
   if (value?.startsWith("workbench:")) {
-    const [reviewId, section] = value.slice("workbench:".length).trim().split(":", 2);
-    if (reviewId !== undefined && reviewId.length > 0) return { kind: "workbench", reviewId, ...(section === "diff" || section === "checks" ? { initialSection: section } : {}) };
+    const [reviewId, section] = value
+      .slice("workbench:".length)
+      .trim()
+      .split(":", 2);
+    if (reviewId !== undefined && reviewId.length > 0)
+      return {
+        kind: "workbench",
+        reviewId,
+        ...(section === "diff" || section === "checks"
+          ? { initialSection: section }
+          : {}),
+      };
   }
   return { kind: "dashboard" };
 }

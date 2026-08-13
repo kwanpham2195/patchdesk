@@ -62,7 +62,7 @@ Severity meanings:
 ### P1-7: Needs-attention drafts can bypass the publication block and have no recovery UI
 
 - Spec: lines 186-193 and 242-247 require every unsafe anchor to remain under Needs attention until reattached, converted, or removed; publication must remain unavailable until all affected items are handled.
-- Evidence: the backend already supports `RepairInlineAnchor` and `ConvertInlineToGeneral` (`src/services/review-batch-controller.ts:66-124,614-637`), but the renderer exposes neither operation. `src/renderer/src/components/review-batch-panel.tsx:203-206` shows only the item and Remove. Publication checks only *included* Needs-attention items (`src/services/publication-preview-service.ts:35-42`; `src/services/review-submission-service.ts:236-239`), and the UI permits changing inclusion.
+- Evidence: the backend already supports `RepairInlineAnchor` and `ConvertInlineToGeneral` (`src/services/review-batch-controller.ts:66-124,614-637`), but the renderer exposes neither operation. `src/renderer/src/components/review-batch-panel.tsx:203-206` shows only the item and Remove. Publication checks only _included_ Needs-attention items (`src/services/publication-preview-service.ts:35-42`; `src/services/review-submission-service.ts:236-239`), and the UI permits changing inclusion.
 - Impact: the user cannot perform two required recovery actions and can exclude an unresolved item to bypass the all-items publication safety rule.
 - Required correction: show original context and reason, wire exact reattach/convert/remove actions, and block preview/apply/submit while any Needs-attention item exists regardless of inclusion.
 

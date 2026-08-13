@@ -4,12 +4,21 @@ import { GitMerge, ShieldAlert } from "lucide-react";
 import type { MergeDisplayReason } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
-import { openPullRequestExternalUrl, pullRequestPageUrl } from "../external-links";
+import {
+  openPullRequestExternalUrl,
+  pullRequestPageUrl,
+} from "../external-links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 
@@ -30,10 +39,15 @@ export function CompactMergeCommand(props: {
   readonly context: MergeContext;
   readonly methods: ReadonlyArray<MergeMethod>;
   readonly initialMethod?: MergeMethod;
-  readonly onMerge: (method: MergeMethod, warningCodes: ReadonlyArray<string>) => Promise<{ readonly mergeCommitSha?: string }>;
+  readonly onMerge: (
+    method: MergeMethod,
+    warningCodes: ReadonlyArray<string>,
+  ) => Promise<{ readonly mergeCommitSha?: string }>;
   readonly onRecoverMerge?: () => Promise<void>;
 }): React.JSX.Element {
-  const [method, setMethod] = useState<MergeMethod>(props.initialMethod ?? props.methods[0] ?? "squash");
+  const [method, setMethod] = useState<MergeMethod>(
+    props.initialMethod ?? props.methods[0] ?? "squash",
+  );
   const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
@@ -45,10 +59,15 @@ export function CompactMergeCommand(props: {
     setPending(true);
     setError(undefined);
     try {
-      const result = await props.onMerge(method, acknowledged ? props.readiness.warnings : []);
+      const result = await props.onMerge(
+        method,
+        acknowledged ? props.readiness.warnings : [],
+      );
       setMerged(result.mergeCommitSha ?? "pull request");
     } catch {
-      setError("GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.");
+      setError(
+        "GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.",
+      );
     } finally {
       setPending(false);
     }
@@ -60,36 +79,148 @@ export function CompactMergeCommand(props: {
     try {
       await props.onRecoverMerge();
     } catch {
-      setError("GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.");
+      setError(
+        "GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.",
+      );
     } finally {
       setRecovering(false);
     }
   };
 
-  if (merged !== undefined) return <p role="status" className="text-sm text-primary">Merged {merged}.</p>;
+  if (merged !== undefined)
+    return (
+      <p role="status" className="text-sm text-primary">
+        Merged {merged}.
+      </p>
+    );
   if (props.readiness._tag === "Blocked") {
-    return <Alert variant="destructive" aria-label="Merge readiness"><ShieldAlert /><AlertTitle>Merge blocked</AlertTitle><AlertDescription><ul className="mt-1 list-disc pl-5">{props.mergeReasons?.length
-      ? props.mergeReasons.map((reason) => <li key={reason.code}>{reason.message}{reason.openOnGitHub && props.pullRequest !== undefined ? <Button variant="link" size="sm" className="ml-1 h-auto p-0 align-baseline" onClick={() => { if (props.pullRequest !== undefined) void openPullRequestExternalUrl(pullRequestPageUrl(props.pullRequest).toString(), props.pullRequest); }}>Open on GitHub</Button> : null}</li>)
-      : props.readiness.blockers.map((blocker) => <li key={blocker}>{mergeBlockerLabel(blocker)}</li>)}</ul></AlertDescription></Alert>;
+    return (
+      <Alert variant="destructive" aria-label="Merge readiness">
+        <ShieldAlert />
+        <AlertTitle>Merge blocked</AlertTitle>
+        <AlertDescription>
+          <ul className="mt-1 list-disc pl-5">
+            {props.mergeReasons?.length
+              ? props.mergeReasons.map((reason) => (
+                  <li key={reason.code}>
+                    {reason.message}
+                    {reason.openOnGitHub && props.pullRequest !== undefined ? (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="ml-1 h-auto p-0 align-baseline"
+                        onClick={() => {
+                          if (props.pullRequest !== undefined)
+                            void openPullRequestExternalUrl(
+                              pullRequestPageUrl(props.pullRequest).toString(),
+                              props.pullRequest,
+                            );
+                        }}
+                      >
+                        Open on GitHub
+                      </Button>
+                    ) : null}
+                  </li>
+                ))
+              : props.readiness.blockers.map((blocker) => (
+                  <li key={blocker}>{mergeBlockerLabel(blocker)}</li>
+                ))}
+          </ul>
+        </AlertDescription>
+      </Alert>
+    );
   }
   const needsAcknowledgement = props.readiness._tag === "NeedsAcknowledgement";
-  return <section aria-label="Merge command" className="flex flex-col gap-3 border-t pt-3">
-    <p className="text-xs text-muted-foreground">{props.context.repo}#{props.context.prNumber} · {props.context.base} ← {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code></p>
-    {error === undefined ? null : <Alert variant="destructive"><AlertTitle>Merge not confirmed</AlertTitle><AlertDescription><p>{error}</p>{props.onRecoverMerge === undefined ? null : <Button className="mt-2" variant="outline" disabled={recovering || pending} onClick={() => void recover()}>{recovering ? "Checking GitHub…" : "Check GitHub status"}</Button>}</AlertDescription></Alert>}
-    {needsAcknowledgement ? <div className="flex items-start gap-2"><Checkbox id="merge-ack" checked={acknowledged} onCheckedChange={(checked) => setAcknowledged(checked === true)} /><Label htmlFor="merge-ack" className="leading-5">I acknowledge: {props.readiness.warnings.map((warning) => warning.replaceAll("_", " ")).join(", ")}.</Label></div> : null}
-    <div className="flex flex-wrap items-end gap-2">
-      <label className="grid gap-1 text-sm font-medium" htmlFor="merge-method">Merge method<Select value={method} onValueChange={(value) => setMethod(value as MergeMethod)}><SelectTrigger id="merge-method"><SelectValue /></SelectTrigger><SelectContent>{props.methods.map((candidate) => <SelectItem key={candidate} value={candidate}>{candidate}</SelectItem>)}</SelectContent></Select></label>
-      <Button onClick={() => void merge()} disabled={pending || (needsAcknowledgement && !acknowledged)}><GitMerge data-icon="inline-start" />{pending ? "Merging…" : "Merge"}</Button>
-    </div>
-  </section>;
+  return (
+    <section
+      aria-label="Merge command"
+      className="flex flex-col gap-3 border-t pt-3"
+    >
+      <p className="text-xs text-muted-foreground">
+        {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
+        {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code>
+      </p>
+      {error === undefined ? null : (
+        <Alert variant="destructive">
+          <AlertTitle>Merge not confirmed</AlertTitle>
+          <AlertDescription>
+            <p>{error}</p>
+            {props.onRecoverMerge === undefined ? null : (
+              <Button
+                className="mt-2"
+                variant="outline"
+                disabled={recovering || pending}
+                onClick={() => void recover()}
+              >
+                {recovering ? "Checking GitHub…" : "Check GitHub status"}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+      {needsAcknowledgement ? (
+        <div className="flex items-start gap-2">
+          <Checkbox
+            id="merge-ack"
+            checked={acknowledged}
+            onCheckedChange={(checked) => setAcknowledged(checked === true)}
+          />
+          <Label htmlFor="merge-ack" className="leading-5">
+            I acknowledge:{" "}
+            {props.readiness.warnings
+              .map((warning) => warning.replaceAll("_", " "))
+              .join(", ")}
+            .
+          </Label>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-end gap-2">
+        <label
+          className="grid gap-1 text-sm font-medium"
+          htmlFor="merge-method"
+        >
+          Merge method
+          <Select
+            value={method}
+            onValueChange={(value) => setMethod(value as MergeMethod)}
+          >
+            <SelectTrigger id="merge-method">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {props.methods.map((candidate) => (
+                <SelectItem key={candidate} value={candidate}>
+                  {candidate}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <Button
+          onClick={() => void merge()}
+          disabled={pending || (needsAcknowledgement && !acknowledged)}
+        >
+          <GitMerge data-icon="inline-start" />
+          {pending ? "Merging…" : "Merge"}
+        </Button>
+      </div>
+    </section>
+  );
 }
 
-function mergeBlockerLabel(blocker: MergeReadiness["blockers"][number]): string {
+function mergeBlockerLabel(
+  blocker: MergeReadiness["blockers"][number],
+): string {
   switch (blocker) {
-    case "conflicting": return "conflicting changes";
-    case "merge_blocked": return "blocked by GitHub";
-    case "mergeability_unknown": return "GitHub merge status unavailable";
-    case "github_review": return "approval required";
-    default: return blocker.replaceAll("_", " ");
+    case "conflicting":
+      return "conflicting changes";
+    case "merge_blocked":
+      return "blocked by GitHub";
+    case "mergeability_unknown":
+      return "GitHub merge status unavailable";
+    case "github_review":
+      return "approval required";
+    default:
+      return blocker.replaceAll("_", " ");
   }
 }

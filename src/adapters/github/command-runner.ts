@@ -105,11 +105,12 @@ class NodeCommandExecutor implements CommandExecutor {
         ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
         shell: false,
         detached: process.platform !== "win32",
-        env: input.inheritEnvironment === false
-          ? input.environment
-          : input.environment === undefined
-            ? process.env
-            : { ...process.env, ...input.environment },
+        env:
+          input.inheritEnvironment === false
+            ? input.environment
+            : input.environment === undefined
+              ? process.env
+              : { ...process.env, ...input.environment },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
@@ -122,7 +123,10 @@ class NodeCommandExecutor implements CommandExecutor {
       let forceKill: ReturnType<typeof setTimeout> | undefined;
       const terminate = (): void => {
         terminateOwnedProcess(child.pid, "SIGTERM");
-        forceKill ??= setTimeout(() => terminateOwnedProcess(child.pid, "SIGKILL"), FORCE_KILL_AFTER_MS);
+        forceKill ??= setTimeout(
+          () => terminateOwnedProcess(child.pid, "SIGKILL"),
+          FORCE_KILL_AFTER_MS,
+        );
       };
       const onAbort = (): void => terminate();
       const finish = (execution: CommandExecution): void => {
@@ -191,13 +195,19 @@ function classifyExecution(
   if (isPendingReviewFailure(execution.stderr)) {
     return { _tag: "CommandPendingReview" };
   }
-  if (isUnsupportedFailure(execution.stderr)) return { _tag: "CommandUnsupported" };
-  if (isRateLimitFailure(execution.stderr)) return { _tag: "CommandRateLimited" };
-  if (isRuntimeFailure(execution.stderr)) return { _tag: "CommandRuntimeUnavailable" };
+  if (isUnsupportedFailure(execution.stderr))
+    return { _tag: "CommandUnsupported" };
+  if (isRateLimitFailure(execution.stderr))
+    return { _tag: "CommandRateLimited" };
+  if (isRuntimeFailure(execution.stderr))
+    return { _tag: "CommandRuntimeUnavailable" };
   return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
 }
 
-function terminateOwnedProcess(pid: number | undefined, signal: "SIGTERM" | "SIGKILL"): void {
+function terminateOwnedProcess(
+  pid: number | undefined,
+  signal: "SIGTERM" | "SIGKILL",
+): void {
   if (pid === undefined) return;
   try {
     process.kill(process.platform === "win32" ? pid : -pid, signal);
@@ -221,7 +231,9 @@ function isNotFoundFailure(stderr: string): boolean {
 }
 
 function isUnsupportedFailure(stderr: string): boolean {
-  return /(?:\b405\b|\b415\b|\b422\b|\b501\b|unsupported|not implemented)/i.test(stderr);
+  return /(?:\b405\b|\b415\b|\b422\b|\b501\b|unsupported|not implemented)/i.test(
+    stderr,
+  );
 }
 
 function isPendingReviewFailure(stderr: string): boolean {
@@ -231,9 +243,13 @@ function isPendingReviewFailure(stderr: string): boolean {
 }
 
 function isRateLimitFailure(stderr: string): boolean {
-  return /(?:\b429\b|rate[ -]?limit|too many requests|quota exceeded)/i.test(stderr);
+  return /(?:\b429\b|rate[ -]?limit|too many requests|quota exceeded)/i.test(
+    stderr,
+  );
 }
 
 function isRuntimeFailure(stderr: string): boolean {
-  return /(?:ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|cannot find (?:module|package)|missing dependency)/i.test(stderr);
+  return /(?:ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|cannot find (?:module|package)|missing dependency)/i.test(
+    stderr,
+  );
 }

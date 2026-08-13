@@ -130,7 +130,6 @@ export type ReviewRefreshDependencies = {
 
 /** Separates cheap remote detection from the explicit, durable refresh command. */
 export class ReviewRefreshService {
-
   constructor(private readonly dependencies: ReviewRefreshDependencies) {}
 
   async detect(input: {

@@ -47,7 +47,10 @@ export function useReviewDiffHydration({
   const [contextStatus, setContextStatus] =
     useState<ReviewContextStatus>("idle");
   const hydrationRequests = useRef(
-    new Map<string, { readonly token: symbol; readonly promise: Promise<boolean> }>(),
+    new Map<
+      string,
+      { readonly token: symbol; readonly promise: Promise<boolean> }
+    >(),
   );
   const hydratedFilesRef = useRef(hydratedFiles);
   const unavailableHydrationPaths = useRef(new Set<string>());
@@ -76,7 +79,8 @@ export function useReviewDiffHydration({
   const hydrateFile = useCallback(
     (path: string): Promise<boolean> => {
       if (hydratedFilesRef.current.has(path)) return Promise.resolve(true);
-      if (unavailableHydrationPaths.current.has(path)) return Promise.resolve(false);
+      if (unavailableHydrationPaths.current.has(path))
+        return Promise.resolve(false);
       const existing = hydrationRequests.current.get(path);
       if (existing !== undefined) return existing.promise;
 
@@ -109,8 +113,12 @@ export function useReviewDiffHydration({
             return false;
           }
           const hydrated = processFile(rawFilePatch, {
-            ...(source.oldFile === undefined ? {} : { oldFile: source.oldFile }),
-            ...(source.newFile === undefined ? {} : { newFile: source.newFile }),
+            ...(source.oldFile === undefined
+              ? {}
+              : { oldFile: source.oldFile }),
+            ...(source.newFile === undefined
+              ? {}
+              : { newFile: source.newFile }),
           });
           if (hydrated === undefined) {
             unavailableHydrationPaths.current.add(path);
@@ -146,7 +154,11 @@ export function useReviewDiffHydration({
           !hydratedFilesRef.current.has(path) &&
           !unavailableHydrationPaths.current.has(path),
       );
-      for (let start = 0; start < pending.length; start += HYDRATION_CONCURRENCY) {
+      for (
+        let start = 0;
+        start < pending.length;
+        start += HYDRATION_CONCURRENCY
+      ) {
         await Promise.all(
           pending
             .slice(start, start + HYDRATION_CONCURRENCY)
@@ -196,7 +208,9 @@ export function selectPatch(
   selectedPath: string | undefined,
 ): string {
   return (
-    (selectedPath === undefined ? undefined : patchesByPath.get(selectedPath)) ??
+    (selectedPath === undefined
+      ? undefined
+      : patchesByPath.get(selectedPath)) ??
     files[0] ??
     patch
   );
@@ -223,12 +237,17 @@ function indexPatchPaths(
   return indexed;
 }
 
-function parseDiffSourceResponse(value: unknown): DiffSourceResponse | undefined {
+function parseDiffSourceResponse(
+  value: unknown,
+): DiffSourceResponse | undefined {
   if (typeof value !== "object" || value === null || !("state" in value)) {
     return undefined;
   }
   const candidate = value as Record<string, unknown>;
-  if (candidate.state === "unavailable" && typeof candidate.reason === "string") {
+  if (
+    candidate.state === "unavailable" &&
+    typeof candidate.reason === "string"
+  ) {
     return { state: "unavailable", reason: candidate.reason };
   }
   if (candidate.state !== "ready") return undefined;

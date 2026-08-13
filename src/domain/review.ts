@@ -222,9 +222,13 @@ export function reconcileReviewRemoteState(
     readonly pullRequestUpdatedAt: IsoTimestamp;
     readonly refreshedAt: IsoTimestamp;
   },
-): Result<Review, { readonly _tag: "ReviewTerminal" | "ReviewNotRepresented" }> {
+): Result<
+  Review,
+  { readonly _tag: "ReviewTerminal" | "ReviewNotRepresented" }
+> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  if (review.representedRemote === undefined) return err({ _tag: "ReviewNotRepresented" });
+  if (review.representedRemote === undefined)
+    return err({ _tag: "ReviewNotRepresented" });
   return ok({
     ...review,
     representedRemote: {
@@ -244,7 +248,10 @@ export function markReviewFresh(
   pullRequestUpdatedAt: IsoTimestamp,
   updatedAt: IsoTimestamp,
 ): Review {
-  if (review.status._tag === "Terminal" || review.representedRemote === undefined) {
+  if (
+    review.status._tag === "Terminal" ||
+    review.representedRemote === undefined
+  ) {
     return review;
   }
   return {
@@ -317,7 +324,10 @@ export function markReviewTerminal(
   };
 }
 
-function laterTimestamp(previous: IsoTimestamp, requested: IsoTimestamp): IsoTimestamp {
+function laterTimestamp(
+  previous: IsoTimestamp,
+  requested: IsoTimestamp,
+): IsoTimestamp {
   return Date.parse(requested) > Date.parse(previous)
     ? requested
     : (new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp);
@@ -338,7 +348,17 @@ function parseV2Review(raw: RawReviewV2): Result<Review, InvalidReview> {
 }
 
 function parseReviewBase(
-  raw: Pick<RawReviewV2, "id" | "identity" | "currentSessionId" | "currentHeadSha" | "representedRemote" | "status" | "createdAt" | "updatedAt">,
+  raw: Pick<
+    RawReviewV2,
+    | "id"
+    | "identity"
+    | "currentSessionId"
+    | "currentHeadSha"
+    | "representedRemote"
+    | "status"
+    | "createdAt"
+    | "updatedAt"
+  >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
   const host = parseGitHubHost(raw.identity.host);
@@ -374,18 +394,22 @@ function parseReviewBase(
   };
   if (id.value !== createReviewId(identity)) return invalid();
 
-  const representedRemote = raw.representedRemote === undefined
-    ? ok(undefined)
-    : parseRepresentedRemote(raw.representedRemote);
+  const representedRemote =
+    raw.representedRemote === undefined
+      ? ok(undefined)
+      : parseRepresentedRemote(raw.representedRemote);
   const status = parseStatus(raw.status);
-  if (representedRemote._tag === "err" || status._tag === "err") return invalid();
+  if (representedRemote._tag === "err" || status._tag === "err")
+    return invalid();
 
   return ok({
     id: id.value,
     identity,
     currentSessionId: sessionId.value,
     currentHeadSha: headSha.value,
-    ...(representedRemote.value === undefined ? {} : { representedRemote: representedRemote.value }),
+    ...(representedRemote.value === undefined
+      ? {}
+      : { representedRemote: representedRemote.value }),
     status: status.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
@@ -422,12 +446,21 @@ function parseFreshness(
   const detectedAt = parseIsoTimestamp(raw.detectedAt);
   if (detectedAt._tag === "err") return invalid();
   if (raw._tag === "Unavailable") {
-    return ok({ _tag: "Unavailable", detectedAt: detectedAt.value, reason: raw.reason });
+    return ok({
+      _tag: "Unavailable",
+      detectedAt: detectedAt.value,
+      reason: raw.reason,
+    });
   }
   const headSha = parseGitSha(raw.identity.headSha);
   const baseSha = parseGitSha(raw.identity.baseSha);
   const canonicalPatchHash = parseContentHash(raw.identity.canonicalPatchHash);
-  if (headSha._tag === "err" || baseSha._tag === "err" || canonicalPatchHash._tag === "err") return invalid();
+  if (
+    headSha._tag === "err" ||
+    baseSha._tag === "err" ||
+    canonicalPatchHash._tag === "err"
+  )
+    return invalid();
   return ok({
     _tag: "RevisionChanged",
     detectedAt: detectedAt.value,
@@ -439,7 +472,9 @@ function parseFreshness(
   });
 }
 
-function parseStatus(raw: RawReviewV2["status"]): Result<ReviewStatus, InvalidReview> {
+function parseStatus(
+  raw: RawReviewV2["status"],
+): Result<ReviewStatus, InvalidReview> {
   if (raw._tag === "Open") return ok({ _tag: "Open" });
   const observedAt = parseIsoTimestamp(raw.observedAt);
   return observedAt._tag === "err"

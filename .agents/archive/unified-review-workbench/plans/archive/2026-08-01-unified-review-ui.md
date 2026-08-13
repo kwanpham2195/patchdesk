@@ -157,7 +157,9 @@ export function destinationKey(destination: AppDestination): string {
 - [ ] Write a flow test that renders a Review, applies a new-session refresh projection, and proves the React destination key remains unchanged.
 
 ```tsx
-expect(destinationKey(beforeDestination)).toBe(destinationKey(afterDestination));
+expect(destinationKey(beforeDestination)).toBe(
+  destinationKey(afterDestination),
+);
 expect(afterProjection.session.id).not.toBe(beforeProjection.session.id);
 ```
 
@@ -196,7 +198,10 @@ function reviewWorkbenchFixture(
 ): WorkbenchResponse {
   return {
     state: "review",
-    review: { id: "github.com__centraldigital__patchdesk__pr-42__abc123", status: "open" },
+    review: {
+      id: "github.com__centraldigital__patchdesk__pr-42__abc123",
+      status: "open",
+    },
     session: fixtureSession,
     revision: {
       reviewedHeadSha: "1".repeat(40),
@@ -206,7 +211,10 @@ function reviewWorkbenchFixture(
     },
     fullPatch: fixturePatch,
     commits: [],
-    insights: { analysis: { status: "not_generated" }, walkthrough: { status: "not_generated" } },
+    insights: {
+      analysis: { status: "not_generated" },
+      walkthrough: { status: "not_generated" },
+    },
     publishedFeedback: { reviews: [], comments: [], complete: true },
     comments: { threads: [], complete: true },
     checks: { overall: "passing", checks: [] },

@@ -33,9 +33,15 @@ export function resolveInsightRuntime(
   const staged = join(cwd, "out", "workflow-runtime");
   const development = join(cwd, "runtime", "flue");
   for (const candidate of [
-    { root: packaged, runnerPath: join(packaged, "patchdesk-insight-runner.js") },
+    {
+      root: packaged,
+      runnerPath: join(packaged, "patchdesk-insight-runner.js"),
+    },
     { root: staged, runnerPath: join(staged, "patchdesk-insight-runner.js") },
-    { root: development, runnerPath: join(development, "dist", "patchdesk-insight-runner.js") },
+    {
+      root: development,
+      runnerPath: join(development, "dist", "patchdesk-insight-runner.js"),
+    },
   ]) {
     const manifestPath = join(candidate.root, "runtime-manifest.json");
     if (!exists(candidate.runnerPath) || !exists(manifestPath)) continue;
@@ -59,16 +65,20 @@ function validManifest(
       manifest.catalogDigest !== catalogDigest() ||
       manifest.nodeFloor !== NODE_FLOOR ||
       !/^[a-f0-9]{64}$/.test(manifest.lockDigest)
-    ) return false;
+    )
+      return false;
     const lock = readFile(join(root, "pnpm-lock.yaml"));
-    return createHash("sha256").update(lock).digest("hex") === manifest.lockDigest;
+    return (
+      createHash("sha256").update(lock).digest("hex") === manifest.lockDigest
+    );
   } catch {
     return false;
   }
 }
 
 function catalogDigest(): string | undefined {
-  if (typeof generatedPiAiCatalog !== "object" || generatedPiAiCatalog === null) return undefined;
+  if (typeof generatedPiAiCatalog !== "object" || generatedPiAiCatalog === null)
+    return undefined;
   const digest = (generatedPiAiCatalog as { readonly digest?: unknown }).digest;
   return typeof digest === "string" ? digest : undefined;
 }

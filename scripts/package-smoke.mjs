@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { access, chmod, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -18,7 +26,10 @@ const runtimeRoot = join(bundle, "Contents/Resources/flue-runtime");
 await validatePackagedRuntime(executable, runtimeRoot);
 const plist = join(bundle, "Contents/Info.plist");
 await access(executable);
-await Promise.all([access(join(runtimeRoot, "package-smoke-runner.js")), access(join(runtimeRoot, "runtime-manifest.json"))]);
+await Promise.all([
+  access(join(runtimeRoot, "package-smoke-runner.js")),
+  access(join(runtimeRoot, "runtime-manifest.json")),
+]);
 const { stdout: plistJson } = await execute("plutil", [
   "-convert",
   "json",
@@ -59,30 +70,43 @@ try {
   const runtimeBefore = await snapshotTree(runtimeRoot);
   smoke = await runRuntimeSmoke(executable, runtimeRoot, home);
   const runtimeAfter = await snapshotTree(runtimeRoot);
-  if (JSON.stringify(runtimeAfter) !== JSON.stringify(runtimeBefore)) throw new Error("Packaged Flue smoke modified app Resources.");
+  if (JSON.stringify(runtimeAfter) !== JSON.stringify(runtimeBefore))
+    throw new Error("Packaged Flue smoke modified app Resources.");
 } finally {
   await makeTreeWritable(runtimeRoot);
 }
-if (!smoke?.walkthrough?.ok || !smoke.analysis?.ok || smoke.analysisCallNineDenied !== true || smoke.cancellation?.reason !== "cancelled") throw new Error("Packaged Flue smoke fixtures did not produce the required strict results.");
+if (
+  !smoke?.walkthrough?.ok ||
+  !smoke.analysis?.ok ||
+  smoke.analysisCallNineDenied !== true ||
+  smoke.cancellation?.reason !== "cancelled"
+)
+  throw new Error(
+    "Packaged Flue smoke fixtures did not produce the required strict results.",
+  );
 const cdpPort = 20_000 + Math.floor(Math.random() * 20_000);
-const packagedApp = spawn(executable, [
-  `--user-data-dir=${join(home, "user-data")}`,
-  `--remote-debugging-port=${cdpPort}`,
-], {
-  env: {
-    HOME: home,
-    PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+const packagedApp = spawn(
+  executable,
+  [
+    `--user-data-dir=${join(home, "user-data")}`,
+    `--remote-debugging-port=${cdpPort}`,
+  ],
+  {
+    env: {
+      HOME: home,
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+    },
+    stdio: "ignore",
   },
-  stdio: "ignore",
-});
+);
 let browser;
 try {
   browser = await connectToPackagedApp(cdpPort);
   const context = browser.contexts()[0];
-  const window = context === undefined
-    ? undefined
-    : await waitForWindow(context);
-  if (window === undefined) throw new Error("Packaged app did not create a window");
+  const window =
+    context === undefined ? undefined : await waitForWindow(context);
+  if (window === undefined)
+    throw new Error("Packaged app did not create a window");
   const rendererFailures = [];
   window.on("console", (message) => {
     if (message.type() === "error") rendererFailures.push(message.text());
@@ -132,7 +156,7 @@ try {
   await settings.waitFor();
   const generalTab = settings.getByRole("tab", { name: "General" });
   await generalTab.waitFor();
-  if (await generalTab.getAttribute("aria-selected") !== "true")
+  if ((await generalTab.getAttribute("aria-selected")) !== "true")
     throw new Error("Packaged Settings did not open on the General tab");
   const workspaceTab = settings.getByRole("tab", { name: "Workspace" });
   await workspaceTab.click();
@@ -160,7 +184,9 @@ try {
     overflowY: window.getComputedStyle(element).overflowY,
   }));
   if (scrollMetrics.overflowY !== "scroll")
-    throw new Error(`Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`);
+    throw new Error(
+      `Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`,
+    );
   console.log(
     `${bundle}: packaged fixture workbench loaded (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
   );
@@ -210,14 +236,29 @@ async function stopPackagedApp(port) {
 }
 
 async function runRuntimeSmoke(executable, runtime, home) {
-  const credentials = ["ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY", "GOOGLE_API_KEY"];
+  const credentials = [
+    "ANTHROPIC_API_KEY",
+    "AWS_SECRET_ACCESS_KEY",
+    "GOOGLE_API_KEY",
+  ];
   const previous = new Map(credentials.map((key) => [key, process.env[key]]));
   try {
     for (const key of credentials) process.env[key] = "must-not-reach-child";
     const environment = packageSmokeEnvironment(home);
-    if (credentials.some((key) => Object.hasOwn(environment, key))) throw new Error("Package smoke environment inherited a provider credential.");
-    const { stdout } = await execute(executable, [join(runtime, "package-smoke-runner.js")], { env: environment, maxBuffer: 2 * 1024 * 1024 });
-    try { return JSON.parse(stdout); } catch { throw new Error("Packaged Flue smoke child returned invalid JSON."); }
+    if (credentials.some((key) => Object.hasOwn(environment, key)))
+      throw new Error(
+        "Package smoke environment inherited a provider credential.",
+      );
+    const { stdout } = await execute(
+      executable,
+      [join(runtime, "package-smoke-runner.js")],
+      { env: environment, maxBuffer: 2 * 1024 * 1024 },
+    );
+    try {
+      return JSON.parse(stdout);
+    } catch {
+      throw new Error("Packaged Flue smoke child returned invalid JSON.");
+    }
   } finally {
     for (const [key, value] of previous) {
       if (value === undefined) delete process.env[key];
@@ -228,8 +269,15 @@ async function runRuntimeSmoke(executable, runtime, home) {
 
 async function validatePackagedRuntime(executable, runtime) {
   const environment = packageSmokeEnvironment(tmpdir());
-  const { stdout: nodeVersion } = await execute(executable, ["-p", "process.versions.node"], { env: environment });
-  if (!meetsNodeFloor(nodeVersion.trim(), [22, 19, 0])) throw new Error(`Packaged Electron Node ${nodeVersion.trim()} is below 22.19.0.`);
+  const { stdout: nodeVersion } = await execute(
+    executable,
+    ["-p", "process.versions.node"],
+    { env: environment },
+  );
+  if (!meetsNodeFloor(nodeVersion.trim(), [22, 19, 0]))
+    throw new Error(
+      `Packaged Electron Node ${nodeVersion.trim()} is below 22.19.0.`,
+    );
   const [manifestRaw, packageRaw, lock] = await Promise.all([
     readFile(join(runtime, "runtime-manifest.json"), "utf8"),
     readFile(join(runtime, "package.json"), "utf8"),
@@ -238,18 +286,36 @@ async function validatePackagedRuntime(executable, runtime) {
   const manifest = JSON.parse(manifestRaw);
   const runtimePackage = JSON.parse(packageRaw);
   const lockDigest = createHash("sha256").update(lock).digest("hex");
-  if (manifest.flueVersion !== "2.0.3" || manifest.piVersion !== "0.84.1" || manifest.nodeFloor !== ">=22.19.0" || manifest.lockDigest !== lockDigest) {
-    throw new Error("Packaged Flue runtime manifest does not match its exact runtime closure.");
+  if (
+    manifest.flueVersion !== "2.0.3" ||
+    manifest.piVersion !== "0.84.1" ||
+    manifest.nodeFloor !== ">=22.19.0" ||
+    manifest.lockDigest !== lockDigest
+  ) {
+    throw new Error(
+      "Packaged Flue runtime manifest does not match its exact runtime closure.",
+    );
   }
-  if (runtimePackage.dependencies?.["@flue/runtime"] !== "2.0.3" || runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.1") {
-    throw new Error("Packaged Flue runtime package does not contain the expected exact versions.");
+  if (
+    runtimePackage.dependencies?.["@flue/runtime"] !== "2.0.3" ||
+    runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.1"
+  ) {
+    throw new Error(
+      "Packaged Flue runtime package does not contain the expected exact versions.",
+    );
   }
-  console.log(`Packaged runtime: Flue ${manifest.flueVersion}, Pi ${manifest.piVersion}, Node ${nodeVersion.trim()}`);
+  console.log(
+    `Packaged runtime: Flue ${manifest.flueVersion}, Pi ${manifest.piVersion}, Node ${nodeVersion.trim()}`,
+  );
 }
 
 function meetsNodeFloor(version, floor) {
   const parts = version.split(".").map(Number);
-  if (parts.length < 3 || parts.some((part) => !Number.isSafeInteger(part) || part < 0)) return false;
+  if (
+    parts.length < 3 ||
+    parts.some((part) => !Number.isSafeInteger(part) || part < 0)
+  )
+    return false;
   for (let index = 0; index < floor.length; index += 1) {
     if (parts[index] > floor[index]) return true;
     if (parts[index] < floor[index]) return false;
@@ -267,7 +333,9 @@ async function makeTreeReadOnly(root) {
 }
 async function makeTreeWritable(root) {
   await chmod(root, 0o755).catch(() => undefined);
-  for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+  for (const entry of await readdir(root, { withFileTypes: true }).catch(
+    () => [],
+  )) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) await makeTreeWritable(path);
     else if (entry.isFile()) await chmod(path, 0o644);
@@ -277,9 +345,12 @@ async function makeTreeWritable(root) {
 async function snapshotTree(root, relative = "") {
   const entries = await readdir(join(root, relative), { withFileTypes: true });
   const snapshot = [];
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
     const child = join(relative, entry.name);
-    if (entry.isDirectory()) snapshot.push(...await snapshotTree(root, child));
+    if (entry.isDirectory())
+      snapshot.push(...(await snapshotTree(root, child)));
     else if (entry.isFile()) {
       const metadata = await stat(join(root, child));
       snapshot.push([child, metadata.size, metadata.mtimeMs]);
