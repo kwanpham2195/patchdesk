@@ -38,6 +38,7 @@
 - **Depends on**: `plans/004-lock-packaged-flue-runtime.md` and
   `plans/005-remove-superseded-review-systems.md`
 - **Category**: migration / dependencies / packaging
+- **Status**: IN PROGRESS — 2026-08-13
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
 - **Target checked**: npm `latest` and upstream tag `v2.0.3`, 2026-08-13
 
