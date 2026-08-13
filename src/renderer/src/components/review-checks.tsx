@@ -20,7 +20,7 @@ export type CheckResultPresentation = {
 };
 
 /** One renderer rule that classifies a represented check run. */
-// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+// oxlint-disable-next-line react/only-export-components -- Shared presentation rule consumed by the sidebar summary.
 export function classifyCheck(check: CheckRunSummary): CheckResultKind {
   if (check.conclusion === "success") return "passed";
   if (
@@ -35,7 +35,7 @@ export function classifyCheck(check: CheckRunSummary): CheckResultKind {
 }
 
 /** Typed icon, label, and semantic treatment for one check run. */
-// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+// oxlint-disable-next-line react/only-export-components -- Shared presentation rule consumed by the sidebar summary.
 export function presentCheckResult(
   check: CheckRunSummary,
 ): CheckResultPresentation {
@@ -55,7 +55,7 @@ export function presentCheckResult(
 }
 
 /** Typed icon, label, and semantic treatment for the aggregate check row. */
-// eslint-disable-next-line react-refresh/only-export-components -- Shared presentation rule consumed by the sidebar summary.
+// oxlint-disable-next-line react/only-export-components -- Shared presentation rule consumed by the sidebar summary.
 export function presentOverallCheckResult(
   overall: CheckSummary["overall"],
   freshness:

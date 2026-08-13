@@ -253,13 +253,13 @@ const PublishedFeedbackNavigationContext = createContext<
 >(undefined);
 
 /** Lets an Insight reader return to the primary Files surface without coupling it to Tabs. */
-// eslint-disable-next-line react-refresh/only-export-components -- Hook intentionally shares the workbench navigation context.
+// oxlint-disable-next-line react/only-export-components -- Hook intentionally shares the workbench navigation context.
 export function useReviewWorkbenchNavigation(): (() => void) | undefined {
   return useContext(ReviewWorkbenchNavigationContext);
 }
 
 /** Focuses the actual Published feedback region from confirmation actions. */
-// eslint-disable-next-line react-refresh/only-export-components -- Hook intentionally shares workbench focus navigation.
+// oxlint-disable-next-line react/only-export-components -- Hook intentionally shares workbench focus navigation.
 export function usePublishedFeedbackNavigation(): (() => void) | undefined {
   return useContext(PublishedFeedbackNavigationContext);
 }

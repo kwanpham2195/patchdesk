@@ -37,7 +37,8 @@ describe("LogsPanel", () => {
       const polls = request.mock.calls.filter((call) => ((call[0] as { readonly path?: string }).path ?? "").includes("/v1/logs"));
       expect(polls.length).toBeGreaterThanOrEqual(2);
       const resumed = polls.find((call) => ((call[0] as { readonly path?: string }).path ?? "").startsWith("/v1/logs?after="));
-      expect((resumed?.[0] as { readonly path?: string }).path).toBe("/v1/logs?after=1&limit=500");
+      const resumedPath = resumed === undefined ? undefined : (resumed[0] as { readonly path?: string }).path;
+      expect(resumedPath).toBe("/v1/logs?after=1&limit=500");
       expect(screen.getAllByText("third")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -65,7 +66,9 @@ describe("LogsPanel", () => {
       expect(screen.getAllByText("only")).toHaveLength(1);
       const polls = request.mock.calls.filter((call) => ((call[0] as { readonly path?: string }).path ?? "").includes("/v1/logs"));
       expect(polls).toHaveLength(2);
-      expect((polls[1]?.[0] as { readonly path?: string }).path).toBe("/v1/logs?after=0&limit=500");
+      const secondPoll = polls[1];
+      const secondPollPath = secondPoll === undefined ? undefined : (secondPoll[0] as { readonly path?: string }).path;
+      expect(secondPollPath).toBe("/v1/logs?after=0&limit=500");
       await act(async () => { await vi.advanceTimersByTimeAsync(0); });
       expect(screen.getAllByText("only")).toHaveLength(1);
     } finally {

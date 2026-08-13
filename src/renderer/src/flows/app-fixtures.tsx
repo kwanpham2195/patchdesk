@@ -393,7 +393,7 @@ export type UnifiedReviewFixtureState =
   | "published-feedback-expanded";
 
 /** Build every design state from one production-shaped Review projection. */
-// eslint-disable-next-line react-refresh/only-export-components -- Design bridge consumes the typed fixture factory.
+// oxlint-disable-next-line react/only-export-components -- Design bridge consumes the typed fixture factory.
 export function unifiedReviewInitialState(
   state: UnifiedReviewFixtureState,
 ): ReviewWorkbenchInitialState {
@@ -426,7 +426,7 @@ export function unifiedReviewInitialState(
   }
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- Design bridge consumes the typed fixture factory.
+// oxlint-disable-next-line react/only-export-components -- Design bridge consumes the typed fixture factory.
 export function createUnifiedReviewFixture(
   state: UnifiedReviewFixtureState = "files-default",
 ): WorkbenchResponse {
@@ -813,7 +813,7 @@ function buildActiveFollowPatch(): string {
   }).join("");
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic completed-workbench payload.
+// oxlint-disable-next-line react/only-export-components -- Design reuses this deterministic completed-workbench payload.
 export const workbenchFixtureData = {
   fullPatch: fixturePatch,
   pullRequest: {
@@ -988,7 +988,7 @@ const longWorkbenchFixtureData = {
     ),
   },
 };
-// eslint-disable-next-line react-refresh/only-export-components -- Design reuses this deterministic submission payload.
+// oxlint-disable-next-line react/only-export-components -- Design reuses this deterministic submission payload.
 export const submissionFixtureData = {
   batch: {
     sessionId:
