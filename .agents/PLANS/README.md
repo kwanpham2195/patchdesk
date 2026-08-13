@@ -1,18 +1,25 @@
 # Implementation Plans
 
-Updated 2026-08-12. The active implementation plan separates safe PR-metadata
-reconciliation from explicit code-revision refresh, then corrects the file-tree theme
-and PR Overview merge controls. Production styling continues using the existing
-Base UI/shadcn primitives and Tailwind utilities.
+Updated 2026-08-13. The active execution tracker now coordinates the complete
+numbered portfolio in `plans/`, including the remaining reconciliation fix,
+accessibility, packaging, Review authority cleanup, Flue 2, bundle splitting,
+and tooling migration.
 
 ## Current active plan
 
-- **2026-08-12 — Separate PR metadata reconciliation from revision refresh and polish the workbench**
+- **2026-08-13 — Complete the Patchdesk implementation-plan portfolio**
   - Priority: P1
-  - Effort: M
-  - Status: IN PROGRESS — freshness, canonical proof, shared coordination, observation journal, and bounded same-revision adoption are implemented. Review follow-up requires fail-closed journal recovery, recovery-route merge reconciliation, journal-owned pending adoption, compact merge/Pierre work, and Codex-specific no-model guidance.
-  - Plan: `.agents/PLANS/2026-08-12-pr-metadata-reconciliation-and-workbench-polish.md`
-  - Depends on: ADR-0017 (to be written as Step 1).
+  - Effort: XL
+  - Status: IN PROGRESS — durable tracker/memory and live dev/log panes are
+    established; Plans 001-008 remain to execute in order.
+  - Plan: `.agents/PLANS/2026-08-13-complete-plan-portfolio.md`
+  - Queue: `plans/README.md`
+  - Depends on: preserve the current dirty feature work; add the Flue 2 ADR at
+    the Plan 006 checkpoint.
+
+The prior 2026-08-12 reconciliation plan is implemented and retained under
+historical plans. Its remaining introduced direct-summary generation race is
+now Plan 001 in the active portfolio.
 
 ## Historical and deferred plans
 
