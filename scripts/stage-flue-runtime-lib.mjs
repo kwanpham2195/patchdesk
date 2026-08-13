@@ -1,39 +1,48 @@
-import { access, cp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-const CLI_VERSION = "1.0.0-beta.9";
-const RUNTIME_FILES = [
-  "flue-assets.d.ts",
-  "flue-runtime-types.ts",
-  "flue-routing-types.ts",
-];
-const RUNTIME_DIRECTORIES = [
-  "adapters",
-  "domain",
-  "services",
-  "skills",
-  "workflows",
-];
+const FLUE_VERSION = "2.0.3";
+const PI_VERSION = "0.84.1";
+const NODE_FLOOR = ">=22.19.0";
 
-/** Stages the locked beta.9 Flue runtime into an Electron resource directory. */
+/** Stages the exact self-contained Flue 2 one-shot runtime for Electron resources. */
 export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
-  const sourceRuntimeRoot = join(projectRoot, "runtime", "flue-beta9");
-  const manifest = join(sourceRuntimeRoot, "package.json");
-  const lockfile = join(sourceRuntimeRoot, "pnpm-lock.yaml");
+  const source = join(projectRoot, "runtime", "flue");
+  const manifest = join(source, "package.json");
+  const lockfile = join(source, "pnpm-lock.yaml");
+  const dist = join(source, "dist");
 
   await rm(runtimeRoot, { recursive: true, force: true });
   await mkdir(runtimeRoot, { recursive: true });
-  await access(manifest);
-  await access(lockfile);
+  await Promise.all([access(manifest), access(lockfile)]);
+  const sourceManifest = JSON.parse(await readFile(manifest, "utf8"));
+  if (
+    sourceManifest.dependencies?.["@flue/runtime"] !== FLUE_VERSION ||
+    sourceManifest.dependencies?.["@earendil-works/pi-ai"] !== PI_VERSION
+  ) throw new Error("The dedicated Flue runtime manifest does not contain the expected exact versions.");
+
+  await run("pnpm", ["--dir", source, "build"]);
+  const sourceRuntimeManifest = JSON.parse(await readFile(join(source, "runtime-manifest.json"), "utf8"));
+  const catalogSource = join(projectRoot, "src", "adapters", "pi", "pi-ai-catalog.generated.ts");
+  await access(catalogSource);
+  const catalogText = await readFile(catalogSource, "utf8");
+  const catalogDigest = /"digest":\s*"([a-f0-9]{64})"/.exec(catalogText)?.[1];
+  if (sourceRuntimeManifest.catalogDigest !== catalogDigest) throw new Error("The generated Pi catalog does not match the runtime manifest.");
   await Promise.all([
     cp(manifest, join(runtimeRoot, "package.json")),
     cp(lockfile, join(runtimeRoot, "pnpm-lock.yaml")),
+    cp(dist, runtimeRoot, { recursive: true }),
+    cp(catalogSource, join(runtimeRoot, "pi-ai-catalog.generated.ts")),
+    cp(
+      join(projectRoot, "src", "skills", "patchdesk-code-review"),
+      join(runtimeRoot, "skills", "patchdesk-code-review"),
+      { recursive: true, dereference: false },
+    ),
   ]);
-
   try {
     await run("pnpm", [
-      "--dir",
-      runtimeRoot,
+      "--dir", runtimeRoot,
       "install",
       "--frozen-lockfile",
       "--prod",
@@ -46,60 +55,16 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
       { cause: error },
     );
   }
-
   await Promise.all([
-    cp(
-      join(projectRoot, "flue.config.ts"),
-      join(runtimeRoot, "flue.config.ts"),
-    ),
-    ...RUNTIME_DIRECTORIES.map(
-      async (directory) =>
-        await cp(
-          join(projectRoot, "src", directory),
-          join(runtimeRoot, "src", directory),
-          { recursive: true },
-        ),
-    ),
-    ...RUNTIME_FILES.map(
-      async (file) =>
-        await cp(
-          join(projectRoot, "src", file),
-          join(runtimeRoot, "src", file),
-        ),
-    ),
+    access(join(runtimeRoot, "patchdesk-insight-runner.js")),
+    access(join(runtimeRoot, "package-smoke-runner.js")),
+    access(join(runtimeRoot, "skills", "patchdesk-code-review", "SKILL.md")),
   ]);
-  await stageWalkthroughRuntime(runtimeRoot);
-
-  const cli = join(
-    runtimeRoot,
-    "node_modules",
-    "@flue",
-    "cli",
-    "bin",
-    "flue.mjs",
+  const lockDigest = createHash("sha256")
+    .update(await readFile(join(runtimeRoot, "pnpm-lock.yaml")) )
+    .digest("hex");
+  await writeFile(
+    join(runtimeRoot, "runtime-manifest.json"),
+    `${JSON.stringify({ flueVersion: FLUE_VERSION, piVersion: PI_VERSION, catalogDigest, nodeFloor: NODE_FLOOR, lockDigest })}\n`,
   );
-  await access(cli);
-  await access(join(runtimeRoot, "flue.config.ts"));
-  const version = (await run("node", [cli, "--version"])).trim();
-  if (version !== CLI_VERSION) {
-    throw new Error(
-      `Staged Flue CLI was ${version || "unavailable"}, expected ${CLI_VERSION}.`,
-    );
-  }
-}
-
-async function stageWalkthroughRuntime(runtimeRoot) {
-  const walkthroughRoot = join(runtimeRoot, "walkthrough");
-  await mkdir(join(walkthroughRoot, "src", "workflows"), { recursive: true });
-  await Promise.all([
-    cp(
-      join(runtimeRoot, "flue.config.ts"),
-      join(walkthroughRoot, "flue.config.ts"),
-    ),
-    writeFile(
-      join(walkthroughRoot, "src", "workflows", "generate-walkthrough.ts"),
-      'export { default } from "../../../src/workflows/generate-walkthrough";\n',
-    ),
-    symlink("../node_modules", join(walkthroughRoot, "node_modules"), "dir"),
-  ]);
 }

@@ -9,7 +9,11 @@
   runtime evidence before advancing the queue.
 - Keep Herdr tabs `patchdesk logs live` and `patchdesk dev live` active; IDs are
   ephemeral. The dev app must own CDP 9233.
-- Plan 006 needs a new ADR for the Flue 2 one-shot child/capability boundary
-  before production migration.
+- Plan 006 is complete. ADR-0018 records the Flue 2 one-shot child and
+  capability boundary. The exact isolated runtime owns Flue 2.0.3 and Pi
+  0.84.1; root consumes its generated version/digest-bound model catalog.
+- Production Insight children never inherit the complete Electron environment.
+  They receive only the selected provider's allowlisted values, fixed system
+  PATH/locale, and approved ambient HOME.
 - Preserve pre-existing dirty work and inspect committed, staged, and unstaged
   path diffs before each plan.

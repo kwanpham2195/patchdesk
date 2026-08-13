@@ -1,8 +1,0 @@
-{
-  "name": "patchdesk-flue-beta9-runtime",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@flue/cli": "1.0.0-beta.9"
-  }
-}

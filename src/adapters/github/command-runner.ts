@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../../main/executable-discovery";
 
+const FORCE_KILL_AFTER_MS = 2_000;
+
 /** An explicit executable and argument vector owned by an external adapter. */
 export type CommandRequest = {
   readonly argv: ReadonlyArray<string>;
@@ -117,23 +119,27 @@ class NodeCommandExecutor implements CommandExecutor {
       let outputExceeded = false;
       const maxOutputBytes = 2 * 1024 * 1024;
 
-      const onAbort = (): void => {
-        terminateOwnedProcess(child.pid);
+      let forceKill: ReturnType<typeof setTimeout> | undefined;
+      const terminate = (): void => {
+        terminateOwnedProcess(child.pid, "SIGTERM");
+        forceKill ??= setTimeout(() => terminateOwnedProcess(child.pid, "SIGKILL"), FORCE_KILL_AFTER_MS);
       };
+      const onAbort = (): void => terminate();
       const finish = (execution: CommandExecution): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        if (forceKill !== undefined) clearTimeout(forceKill);
         input.signal?.removeEventListener("abort", onAbort);
         resolve(execution);
       };
       const timeout = setTimeout(() => {
         timedOut = true;
-        terminateOwnedProcess(child.pid);
+        terminate();
       }, input.timeoutMs);
 
       if (input.signal?.aborted) {
-        terminateOwnedProcess(child.pid);
+        terminate();
       } else {
         input.signal?.addEventListener("abort", onAbort, { once: true });
       }
@@ -143,14 +149,14 @@ class NodeCommandExecutor implements CommandExecutor {
         stdout += chunk;
         if (Buffer.byteLength(stdout) > maxOutputBytes) {
           outputExceeded = true;
-          terminateOwnedProcess(child.pid);
+          terminate();
         }
       });
       child.stderr?.on("data", (chunk: string) => {
         stderr += chunk;
         if (Buffer.byteLength(stderr) > maxOutputBytes) {
           outputExceeded = true;
-          terminateOwnedProcess(child.pid);
+          terminate();
         }
       });
       child.stdin?.end(input.stdin);
@@ -191,10 +197,10 @@ function classifyExecution(
   return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
 }
 
-function terminateOwnedProcess(pid: number | undefined): void {
+function terminateOwnedProcess(pid: number | undefined, signal: "SIGTERM" | "SIGKILL"): void {
   if (pid === undefined) return;
   try {
-    process.kill(process.platform === "win32" ? pid : -pid, "SIGTERM");
+    process.kill(process.platform === "win32" ? pid : -pid, signal);
   } catch {
     // The process may already have exited between the timeout/output event and termination.
   }

@@ -4,6 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { LocalPiProviderCatalog } from "../../src/adapters/pi/pi-provider-catalog";
+
+it("parses the generated isolated Pi catalog and exposes only its safe projection", async () => {
+  const { PI_AI_CATALOG } = await import("../../src/adapters/pi/pi-ai-catalog");
+  expect(PI_AI_CATALOG).toHaveLength(32);
+  expect(PI_AI_CATALOG.find((entry) => entry.provider === "openai")?.models.some((model) => model.id === "gpt-4-turbo")).toBe(true);
+  expect(JSON.stringify(PI_AI_CATALOG)).not.toContain("apiKey");
+});
 import { LocalPiRuntimeModelCatalog, canonicalModelId } from "../../src/adapters/pi/pi-runtime-model-catalog";
 
 const roots: string[] = [];

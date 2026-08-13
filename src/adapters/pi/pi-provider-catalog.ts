@@ -103,6 +103,24 @@ function provider(
 
 const PROVIDER_BY_ID = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
 
+const AMBIENT_ENVIRONMENT: Readonly<Record<NonNullable<ProviderDefinition["ambient"]>, ReadonlyArray<string>>> = {
+  bedrock: [
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_SDK_LOAD_CONFIG",
+    "AWS_BEARER_TOKEN_BEDROCK", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_CONFIG_FILE", "AWS_EC2_METADATA_DISABLED", "AWS_EC2_METADATA_SERVICE_ENDPOINT",
+    "AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE",
+  ],
+  vertex: [
+    "GOOGLE_CLOUD_API_KEY", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION", "GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CONFIG",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+  ],
+};
+
 export class LocalPiProviderCatalog {
   private readonly environment: (name: string) => string | undefined;
   private readonly fileExists: (path: string) => Promise<boolean>;
@@ -167,6 +185,17 @@ export class LocalPiProviderCatalog {
 
 export function providerCatalog(): ReadonlyArray<ProviderDefinition> { return PROVIDERS; }
 export function providerDefinition(id: string): ProviderDefinition | undefined { return PROVIDER_BY_ID.get(id); }
+
+/** Environment names needed by one selected built-in provider; values never cross this boundary. */
+export function providerEnvironmentNames(id: string): ReadonlyArray<string> {
+  const definition = PROVIDER_BY_ID.get(id);
+  if (definition === undefined) return [];
+  return [...new Set([
+    ...(definition.keys ?? []),
+    ...(definition.requiredKeys ?? []),
+    ...(definition.ambient === undefined ? [] : AMBIENT_ENVIRONMENT[definition.ambient]),
+  ])];
+}
 
 function hasValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;

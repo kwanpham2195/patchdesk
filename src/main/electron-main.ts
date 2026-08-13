@@ -37,12 +37,12 @@ import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { parseAbsolutePath, parseGitSha } from "../domain/ids";
 import { err } from "../domain/result";
-import { FlueCliReviewInvoker } from "../services/flue-cli-review-invoker";
-import { FlueCliWalkthroughInvoker } from "../services/flue-cli-walkthrough-invoker";
+import { FlueInsightChildInvoker } from "../services/flue-insight-child-invoker";
+import { resolveInsightRuntime } from "./insight-runtime";
 import {
-  resolveWorkflowCliPath,
-  resolveWorkflowRuntimeRoot,
-} from "./workflow-runtime-root";
+  readWalkthroughArtifactSizes,
+  walkthroughTimeoutMs,
+} from "../services/walkthrough-timeout";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
@@ -189,21 +189,15 @@ function createInsightCoordinator(
   operations: ReviewOperationCoordinator,
 ): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
-  const workflowRoot = resolveWorkflowRuntimeRoot(
+  const runtime = resolveInsightRuntime(
     app.getAppPath(),
     process.cwd(),
   );
-  const reviewInvoker = new FlueCliReviewInvoker(
+  const insightInvoker = runtime === undefined ? undefined : new FlueInsightChildInvoker(
     new CommandRunner(),
-    workflowRoot,
+    runtime.root,
     process.execPath,
-    resolveWorkflowCliPath(workflowRoot),
-  );
-  const walkthroughInvoker = new FlueCliWalkthroughInvoker(
-    new CommandRunner(),
-    workflowRoot,
-    process.execPath,
-    resolveWorkflowCliPath(workflowRoot),
+    runtime.runnerPath,
   );
   const readHead = async (
     worktreePath: string,
@@ -253,7 +247,9 @@ function createInsightCoordinator(
         worktreePath._tag === "err"
       )
         return err({ reason: "execution_failed" as const });
-      return reviewInvoker.invoke(
+      if (insightInvoker === undefined)
+        return err({ reason: "runtime_unavailable" as const });
+      return insightInvoker.invokeAnalysis(
         {
           profileId: input.profileId,
           sessionId: input.sessionId,
@@ -277,7 +273,9 @@ function createInsightCoordinator(
         return codexInvoke(input, options);
       if (input.reasoning === "minimal" || input.reasoning === "xhigh")
         return err({ reason: "execution_failed" as const });
-      return walkthroughInvoker.invoke(
+      if (insightInvoker === undefined)
+        return err({ reason: "runtime_unavailable" as const });
+      return insightInvoker.invokeWalkthrough(
         {
           profileId: input.profileId,
           sessionId: input.sessionId,
@@ -286,6 +284,7 @@ function createInsightCoordinator(
           model: input.model,
           reasoning: input.reasoning,
         },
+        await walkthroughTimeout(input),
         options,
       );
     },
@@ -301,6 +300,21 @@ function createInsightCoordinator(
     undefined,
     diagnostics,
     providerCatalog,
+  );
+}
+
+async function walkthroughTimeout(input: {
+  readonly patchPath: string;
+  readonly contextPath: string;
+  readonly profileId: string;
+  readonly sessionId: string;
+  readonly model: string;
+  readonly reasoning: "low" | "medium" | "high" | "minimal" | "xhigh";
+}): Promise<number> {
+  const reasoning = input.reasoning;
+  if (reasoning === "minimal" || reasoning === "xhigh") return walkthroughTimeoutMs({ patchBytes: 0, contextBytes: 0, hunkCount: 0 });
+  return walkthroughTimeoutMs(
+    await readWalkthroughArtifactSizes({ ...input, reasoning }).catch(() => ({ patchBytes: 0, contextBytes: 0, hunkCount: 0 })),
   );
 }
 
@@ -550,12 +564,7 @@ async function createWorkbenchWindow(
   try {
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
     if (rendererUrl === undefined) {
-      await window.loadFile(
-        join(__dirname, "../renderer/index.html"),
-        process.env.PATCHDESK_PACKAGE_SMOKE === "1"
-          ? { hash: "workbench-fixture" }
-          : undefined,
-      );
+      await window.loadFile(join(__dirname, "../renderer/index.html"));
     } else {
       await window.loadURL(rendererUrl);
     }

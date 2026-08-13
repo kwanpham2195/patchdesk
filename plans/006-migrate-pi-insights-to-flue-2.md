@@ -38,7 +38,7 @@
 - **Depends on**: `plans/004-lock-packaged-flue-runtime.md` and
   `plans/005-remove-superseded-review-systems.md`
 - **Category**: migration / dependencies / packaging
-- **Status**: IN PROGRESS — 2026-08-13
+- **Status**: DONE — 2026-08-13
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
 - **Target checked**: npm `latest` and upstream tag `v2.0.3`, 2026-08-13
 
@@ -630,6 +630,11 @@ Requirements:
 - timeout and forced termination remain safe even when the provider ignores
   cancellation;
 - output arriving after parent cancellation is discarded.
+- production launches use `inheritEnvironment: false`; derive one explicit
+  allowlist from the selected built-in provider, include only its required
+  credential/configuration variables, a fixed system PATH and locale, and HOME
+  only for approved AWS or Google ambient credentials. Never pass unrelated
+  GitHub or provider credentials.
 
 Do not pass the parent signal only to `handle.read()`: upstream says that stops
 only the local wait and leaves the submission running.
@@ -661,8 +666,14 @@ switch in one change:
 - point both Pi Insight invokers and production composition at the compiled
   dedicated child;
 - remove root `@flue/cli`, `@flue/react`, `@flue/runtime`, and `@flue/sdk`;
-- update root `@earendil-works/pi-ai` to the same exact version selected by the
-  isolated runtime;
+- remove root `@earendil-works/pi-ai`; keep the exact Pi provider SDK graph
+  owned by the isolated runtime only. Generate a version-locked, renderer-safe
+  model-catalog artifact from that package during its build and consume only
+  the parsed artifact in the root application. This corrects the original
+  alignment requirement because both compatible Pi releases tested (`0.84.1`
+  and `0.83.0`) expose invalid third-party declaration graphs under the root's
+  strict TypeScript configuration; do not add declaration shims or
+  `skipLibCheck`;
 - remove beta TypeScript aliases and declarations only when no current source
   import needs them;
 - remove temporary beta wrappers and old workflow modules only after both
@@ -679,8 +690,9 @@ pnpm why @flue/runtime
 pnpm why @earendil-works/pi-ai
 ```
 
-Expected: root has no Flue runtime package; the dedicated package owns exactly
-Flue 2.0.3; root and child use one exact compatible Pi version; beta.9 is gone.
+Expected: root has no Flue or Pi runtime package; the dedicated package owns
+exactly Flue 2.0.3 and Pi 0.84.1; the root consumes one generated catalog
+artifact whose manifest binds it to that Pi version; beta.9 is gone.
 
 Do not finish this step in a state where root tests import Flue 2 hooks through
 the old beta declaration aliases. The root application must typecheck and both
@@ -937,37 +949,39 @@ from read-only packaged resources. Static file existence is not enough.
 
 All must hold:
 
-- [ ] Plan 005 is complete and no attempt/incremental/completion/local-batch
+- [x] Plan 005 is complete and no attempt/incremental/completion/local-batch
       fields were ported into Flue 2.
-- [ ] Root and dedicated runtime resolve `@flue/runtime@2.0.3` and a compatible
-      exact `pi-ai` version; no Flue beta package remains.
-- [ ] `@flue/cli`, `@flue/react`, `@flue/sdk`, and `@flue/vite` are absent unless
+- [x] The dedicated runtime resolves `@flue/runtime@2.0.3` and exact
+      `pi-ai@0.84.1`; root runtime dependencies contain neither Flue nor Pi,
+      and the generated catalog manifest binds root model projection to Pi
+      0.84.1.
+- [x] `@flue/cli`, `@flue/react`, `@flue/sdk`, and `@flue/vite` are absent unless
       a documented, tested current caller requires one.
-- [ ] No `defineWorkflow`, `defineAgent`, workflow discovery, or
+- [x] No `defineWorkflow`, `defineAgent`, workflow discovery, or
       `harness.session()` remains in current source.
-- [ ] Pi Analysis and Walkthrough run through a Patchdesk-owned one-shot child
+- [x] Pi Analysis and Walkthrough run through a Patchdesk-owned one-shot child
       using Flue 2 `start/init/dispatch/read`.
-- [ ] Strict results travel through the Valibot-backed
+- [x] Strict results travel through the Valibot-backed
       `submit_patchdesk_result` tool and exactly one `AgentReply.data` value;
       assistant prose is never parsed as authority.
-- [ ] `InsightRunCoordinator` remains the only durable Insight lifecycle,
+- [x] `InsightRunCoordinator` remains the only durable Insight lifecycle,
       revision, cancellation, validation, and retention owner.
-- [ ] Analysis has exactly four Patchdesk inspector tools and no sandbox/write
+- [x] Analysis has exactly four Patchdesk inspector tools and no sandbox/write
       surface; Walkthrough has no model inspection tools.
-- [ ] The aggregate eight-call inspector budget survives rerenders and
+- [x] The aggregate eight-call inspector budget survives rerenders and
       concurrent calls.
-- [ ] Cancellation requests Flue abort and retains owned-process termination as
+- [x] Cancellation requests Flue abort and retains owned-process termination as
       a hard backstop.
-- [ ] The dedicated packaged runtime has an exact committed lock, installs with
+- [x] The dedicated packaged runtime has an exact committed lock, installs with
       `--frozen-lockfile`, and never reuses a previous packaged cache.
-- [ ] Package smoke executes real faux-provider Analysis and Walkthrough from
+- [x] Package smoke executes real faux-provider Analysis and Walkthrough from
       read-only packaged resources with no credentials/network.
-- [ ] Node `>=22.19.0` is documented and checked in development and package
+- [x] Node `>=22.19.0` is documented and checked in development and package
       smoke.
-- [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`,
+- [x] `pnpm lint`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm build`,
       Playwright, staging, packaging, and package smoke all pass.
-- [ ] `git diff --check` has no output.
-- [ ] `plans/README.md` marks Plan 006 DONE.
+- [x] `git diff --check` has no output.
+- [x] `plans/README.md` marks Plan 006 DONE.
 
 ## STOP conditions
 
@@ -1007,8 +1021,9 @@ Stop and report; do not improvise if:
   `2.0.3`; re-run `npm view @flue/runtime version` before execution. If latest
   has advanced, review the intervening changelog and either update this plan or
   deliberately pin 2.0.3. Do not silently install a newer major/minor.
-- Keep the dedicated runtime lock synchronized with the root direct Pi version.
-  A review should reject split Flue/Pi runtime registries.
+- Keep the dedicated runtime lock synchronized with the generated catalog
+  manifest. A review should reject any second Flue/Pi runtime registry or any
+  hand-maintained root model catalog.
 - Any future Flue instrumentation needs a separate content/redaction review.
 - Any future sandbox or subagent use changes the Analysis capability boundary
   and requires an ADR, threat review, and new negative tests.

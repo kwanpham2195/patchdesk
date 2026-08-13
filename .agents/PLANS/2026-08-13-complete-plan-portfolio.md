@@ -71,7 +71,7 @@ only when Plans 001-008 are DONE and their combined current-state audit passes.
 - [x] Plan 003: correct safety/runtime docs
 - [x] Plan 004: lock packaged Flue beta.9 runtime
 - [x] Plan 005: remove superseded Review systems
-- [ ] Plan 006: migrate Pi Insights to Flue 2.0.3
+- [x] Plan 006: migrate Pi Insights to Flue 2.0.3
 - [ ] Plan 007: lazy-load the Review workbench
 - [ ] Plan 008: migrate quality tooling to Oxc
 - [ ] Portfolio audit: prove every plan criterion against current state
@@ -186,7 +186,39 @@ live checks, changed files, residual risks, and any ADR added or updated.
   closed all three; follow-up review found no blocking findings and approved
   DONE. ADR: none; existing superseded decisions remain historical records.
 
-## Resume protocol
+### 2026-08-13 — Plan 006 complete
+
+- Replaced root Flue beta.9/Pi dependencies and workflow discovery with one
+  exact, isolated `runtime/flue` package using Flue 2.0.3 and Pi 0.84.1.
+- Analysis and Walkthrough run in Patchdesk-owned one-shot children through
+  `start/init/dispatch/read`; strict Valibot submission data is authoritative,
+  while prose and malformed or duplicate submissions fail closed.
+- Production children expose only the selected provider's allowlisted
+  credential/configuration variables, fixed PATH/locale, and approved ambient
+  HOME. They mount no sandbox, MCP, subagents, generic shell/filesystem tools,
+  or GitHub writer.
+- Analysis retains exactly four immutable inspector tools and one aggregate
+  eight-call budget across turns and concurrent calls. Walkthrough has only
+  strict submission. Child abort, bounded Flue stop, and parent
+  SIGTERM-to-SIGKILL process-group termination were proven.
+- Root model selection uses a deterministic version/digest-bound generated
+  catalog; strict root typechecking contains no Pi declaration shim,
+  `skipLibCheck`, or filesystem-layout workaround.
+- Staging uses the exact isolated lock and manifest. Fresh package smoke proved
+  Flue 2.0.3, Pi 0.84.1, embedded Node 24.18.0, credential exclusion, read-only
+  Resources, immutable runtime metadata, Analysis, Walkthrough, cancellation,
+  ninth-call denial, and UI startup.
+- Full parent gate: isolated Flue 15/15; root Vitest 594/594; lint, typecheck,
+  build, exact staging, fresh macOS package, package smoke, Playwright 35/35,
+  performance 1/1, production audits with no high/critical findings, removal
+  inventories, and `git diff --check` passed.
+- Two read-only live DeepSeek V4 Flash Analysis runs after Electron restarts
+  reached Current with no GitHub write. The second run proved the final
+  selected-provider environment boundary still supplies the required key.
+- ADR-0018 records the one-shot process and capability boundary. Independent
+  follow-up review reran focused root and isolated tests and approved technical
+  completion with no remaining blocker.
+
 ## Resume protocol
 
 1. Read this file and `plans/README.md`.

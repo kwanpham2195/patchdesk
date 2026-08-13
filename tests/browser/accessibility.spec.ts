@@ -13,6 +13,7 @@ test.afterAll(async () => {
 });
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => {
     window.localStorage.setItem("patchdesk.appearance.v1", "light");
     Object.defineProperty(window, "patchdesk", {
@@ -65,12 +66,14 @@ for (const fixture of [
 }
 
 async function forceLightAppearance(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const root = document.documentElement;
     root.classList.remove("dark");
     document.querySelectorAll(".dark").forEach((element) => element.classList.remove("dark"));
     root.dataset.appearance = "light";
     root.style.colorScheme = "light";
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await Promise.all(document.getAnimations().map(async (animation) => await animation.finished.catch(() => undefined)));
   });
 }
 

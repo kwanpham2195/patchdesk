@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "generate:catalog": "node scripts/generate-model-catalog.mjs",
+    "build": "pnpm generate:catalog && vite build && node scripts/write-manifest.mjs",
     "test": "vitest",
     "deploy:verify": "pnpm install --frozen-lockfile --prod --offline --ignore-scripts"
   },

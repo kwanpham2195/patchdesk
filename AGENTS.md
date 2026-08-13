@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-Patchdesk is a local-first Electron workbench for pull-request review. `src/domain/` holds types and invariants, `src/services/` orchestration, and `src/adapters/` I/O. Electron code is in `src/main/`; React is in `src/renderer/src/`. Executable Flue workflow entries belong in `src/workflows/`.
+Patchdesk is a local-first Electron workbench for pull-request review. `src/domain/` holds types and invariants, `src/services/` orchestration, and `src/adapters/` I/O. Electron code is in `src/main/`; React is in `src/renderer/src/`. Pi Insights run in the isolated `runtime/flue/` Flue 2 one-shot child; Patchdesk remains the lifecycle, validation, and GitHub authority.
 
 Tests mirror those boundaries under `tests/`. Browser coverage is in `tests/browser/`; renderer tests are in `tests/renderer/`. Shared fixtures live in `fixtures/flue/` and `fixtures/github/`; assets are in `resources/`.
 
@@ -42,7 +42,7 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 - Keep the renderer sandboxed: do not weaken Electron’s Node isolation or web security.
 - The loopback API requires its per-launch capability. GitHub writes require an explicit current UI action. Merge and Published feedback deletion or dismissal also require explicit confirmation.
 - Do not persist credentials in profiles.
-- Provider support uses built-in environment API-key or ambient machine-credential providers, plus the Codex CLI account provider defined by ADR-0016; exclude all other OAuth-only providers and Cloudflare Workers bindings from selectable catalogs. Codex may use verified sandboxed read-only inspection tools only in Patchdesk's immutable represented-review worktree; deny writes, file changes, network/permission escalation, and unverified requests. Keep availability checks main-process-only and redacted; never probe providers, read a full environment, execute custom-provider configuration, or expose/persist credential values. Keep Flue beta.9 pinned; plan a Flue 2 migration separately.
+- Provider support uses built-in environment API-key or ambient machine-credential providers, plus the Codex CLI account provider defined by ADR-0016; exclude all other OAuth-only providers and Cloudflare Workers bindings from selectable catalogs. Codex may use verified sandboxed read-only inspection tools only in Patchdesk's immutable represented-review worktree; deny writes, file changes, network/permission escalation, and unverified requests. Keep availability checks main-process-only and redacted; never probe providers, read a full environment, execute custom-provider configuration, or expose/persist credential values. Flue 2 runs only as a Patchdesk-owned one-shot child with no sandbox, MCP, subagents, filesystem tools, or GitHub authority.
 - Cleanup may remove only non-running review sessions.
 
 ## Memory

@@ -78,3 +78,14 @@ describe("LocalPiProviderCatalog", () => {
     }
   });
 });
+
+describe("provider environment allowlist", () => {
+  it("exposes only the selected provider credential names", async () => {
+    const { providerEnvironmentNames } = await import("../../src/adapters/pi/pi-provider-catalog");
+    expect(providerEnvironmentNames("deepseek")).toEqual(["DEEPSEEK_API_KEY"]);
+    expect(providerEnvironmentNames("amazon-bedrock")).toContain("AWS_WEB_IDENTITY_TOKEN_FILE");
+    expect(providerEnvironmentNames("google-vertex")).toContain("GOOGLE_APPLICATION_CREDENTIALS");
+    expect(providerEnvironmentNames("deepseek")).not.toContain("GH_TOKEN");
+    expect(providerEnvironmentNames("unknown")).toEqual([]);
+  });
+});

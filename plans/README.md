@@ -18,7 +18,7 @@ its status row when done.
 | 003 | Correct write-safety and development-runtime documentation | P1 | S | LOW | 001, 002 | DONE |
 | 004 | Make the packaged Flue runtime reproducible | P1 | M | MED | 001–003 | DONE |
 | 005 | Remove superseded Review systems and keep one current runtime | P1 | L | HIGH | 001–004 | DONE |
-| 006 | Migrate Pi Insights from Flue beta.9 to Flue 2.0.3 | P1 | L | HIGH | 004, 005 | IN PROGRESS |
+| 006 | Migrate Pi Insights from Flue beta.9 to Flue 2.0.3 | P1 | L | HIGH | 004, 005 | DONE |
 | 007 | Keep the Review workbench out of the initial renderer bundle | P2 | M | MED | 005, 006 | TODO |
 | 008 | Migrate quality tooling to Oxc | P3 | M | MED | 001–007; clean branch | TODO |
 

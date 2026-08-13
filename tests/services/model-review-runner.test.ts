@@ -1,12 +1,10 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import * as v from "valibot";
 
-import type { modelReviewResultSchema } from "../../src/domain/review-result";
-import { runModelReview } from "../../src/services/model-review-runner";
-import type { ReviewModelSession } from "../../src/services/model-review-runner";
+import { describe, expect, it } from "vitest";
+
+import { prepareModelReview } from "../../src/services/model-review-runner";
 
 type GitObjectFixture = string | {
   readonly contents: string;
@@ -35,65 +33,44 @@ function gitBlobReader(
   };
 }
 
-describe("model review runner", () => {
-  it("passes the immutable patch, prepared metadata, and only the four inspector tools to a structured model operation", async () => {
+async function writeArtifacts(
+  root: string,
+  headSha: string,
+  changedFiles: ReadonlyArray<string>,
+): Promise<{ readonly contextPath: string; readonly reviewInputPath: string; readonly patchPath: string }> {
+  const contextPath = join(root, "context.json");
+  const reviewInputPath = join(root, "review-input.md");
+  const patchPath = join(root, "patch.diff");
+  await writeFile(contextPath, JSON.stringify({
+    pr: { title: "centraldigital/patchdesk#42", headSha },
+    changedFiles,
+    checks: { overall: "passing" },
+  }));
+  await writeFile(reviewInputPath, "# PR review input\n\nPR: centraldigital/patchdesk#42\n");
+  await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n+export const review = true;\n");
+  return { contextPath, reviewInputPath, patchPath };
+}
+
+describe("model review preparation", () => {
+  it("prepares the immutable prompt and one invocation-scoped inspector", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-review-"));
     try {
       const headSha = "a".repeat(40);
-      await mkdir(join(root, "src"));
-      await writeFile(join(root, "src", "review.ts"), "export const review = true;\n", "utf8");
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { title: "centraldigital/patchdesk#42", headSha }, changedFiles: ["src/review.ts"], checks: { overall: "passing" } }), "utf8");
-      await writeFile(reviewInputPath, "# PR review input\n\nPR: centraldigital/patchdesk#42\n", "utf8");
-      await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n+export const review = true;\n", "utf8");
-      let prompt = "";
-      let toolNames: ReadonlyArray<string> = [];
-      let inspected: unknown;
-      let resultSchema: typeof modelReviewResultSchema | undefined;
-      let malformed = false;
-      const session: ReviewModelSession = {
-        async prompt(input, options) {
-          prompt = input;
-          resultSchema = options.result;
-          toolNames = options.tools.map((tool) => tool.name);
-          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
-          inspected = await readTool?.run({ input: { path: "src/review.ts", startLine: 1, endLine: 1 } });
-          return { data: malformed
-            ? { changeSummary: "Review complete.", verdict: "comment" as const, summary: "One issue found.", findings: [], validationPlan: ["pnpm test"], assumptions: [], rawNotes: "must reject" }
-            : { changeSummary: "Review complete.", verdict: "comment" as const, summary: "One issue found.", findings: [], validationPlan: ["pnpm test"], assumptions: [] } };
-        },
-      };
-
-      const result = await runModelReview({
-        session,
+      const artifacts = await writeArtifacts(root, headSha, ["src/review.ts"]);
+      const prepared = await prepareModelReview({
+        ...artifacts,
         worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
         debugPath: join(root, "debug.json"),
         gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "export const review = true;\n" }),
       });
 
-      expect(result).toMatchObject({ verdict: "comment", findings: [] });
-      expect(prompt).toContain("centraldigital/patchdesk#42");
-      expect(prompt).toContain("Review the complete represented pull request.");
-      expect(prompt).toContain("export const review");
-      expect(toolNames).toEqual(["list_changed_files", "search_files", "read_file_range", "git_show"]);
-      expect(inspected).toEqual({ content: "export const review = true;" });
-      if (resultSchema === undefined) throw new Error("expected result schema");
-      expect(v.safeParse(resultSchema, { changeSummary: "ok", verdict: "approve", summary: "ok", findings: [], validationPlan: [], assumptions: [], rawNotes: "must reject" }).success).toBe(false);
-      malformed = true;
-      await expect(runModelReview({
-        session,
-        worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
-        debugPath: join(root, "debug.json"),
-        gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "export const review = true;\n" }),
-      })).rejects.toThrow("Invalid model review result");
+      expect(prepared.prompt).toContain("centraldigital/patchdesk#42");
+      expect(prepared.prompt).toContain("Review the complete represented pull request.");
+      expect(prepared.prompt).toContain("export const review");
+      await expect(prepared.inspector.readFileRange("src/review.ts", 1, 1)).resolves.toEqual({
+        _tag: "ok",
+        value: "export const review = true;",
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -104,38 +81,24 @@ describe("model review runner", () => {
     try {
       const headSha = "b".repeat(40);
       await mkdir(join(root, "src"));
-      await writeFile(join(root, "src", "review.ts"), "WORKTREE_PROTECTED_CONTENT\n", "utf8");
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles: ["src/review.ts"] }), "utf8");
-      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
-      await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n", "utf8");
-      let inspected: unknown;
+      await writeFile(join(root, "src", "review.ts"), "WORKTREE_PROTECTED_CONTENT\n");
+      const artifacts = await writeArtifacts(root, headSha, ["src/review.ts"]);
       const commands: Array<ReadonlyArray<string>> = [];
-      const session: ReviewModelSession = {
-        async prompt(_input, options) {
-          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
-          inspected = await readTool?.run({ input: { path: "src/review.ts", startLine: 1, endLine: 1 } });
-          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
-        },
-      };
-
-      await runModelReview({
-        session,
+      const prepared = await prepareModelReview({
+        ...artifacts,
         worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
         debugPath: join(root, "debug.json"),
         gitShow: gitBlobReader({ [`${headSha}:src/review.ts`]: "IMMUTABLE_GIT_SNAPSHOT\n" }, commands),
       });
 
-      expect(inspected).toEqual({ content: "IMMUTABLE_GIT_SNAPSHOT" });
+      const inspected = await prepared.inspector.readFileRange("src/review.ts", 1, 1);
+      expect(inspected).toEqual({ _tag: "ok", value: "IMMUTABLE_GIT_SNAPSHOT" });
       expect(JSON.stringify(inspected)).not.toContain("WORKTREE_PROTECTED_CONTENT");
       expect(commands).not.toEqual([]);
       expect(commands.every((argv) => argv.includes("--no-replace-objects"))).toBe(true);
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("denies committed symlink and non-regular tree entries", async () => {
@@ -143,29 +106,10 @@ describe("model review runner", () => {
     try {
       const headSha = "d".repeat(40);
       const changedFiles = ["src/regular.ts", "src/link.ts", "src/directory"];
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
-      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
-      await writeFile(patchPath, "diff --git a/src/regular.ts b/src/regular.ts\n", "utf8");
-      const inspected = new Map<string, unknown>();
-      const session: ReviewModelSession = {
-        async prompt(_input, options) {
-          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
-          for (const path of changedFiles) {
-            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
-          }
-          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
-        },
-      };
-
-      await runModelReview({
-        session,
+      const artifacts = await writeArtifacts(root, headSha, changedFiles);
+      const prepared = await prepareModelReview({
+        ...artifacts,
         worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
         debugPath: join(root, "debug.json"),
         gitShow: gitBlobReader({
           [`${headSha}:src/regular.ts`]: "export const regular = true;\n",
@@ -174,43 +118,26 @@ describe("model review runner", () => {
         }),
       });
 
-      expect(inspected.get("src/regular.ts")).toEqual({ content: "export const regular = true;" });
-      expect(inspected.get("src/link.ts")).toEqual({ denied: true });
-      expect(inspected.get("src/directory")).toEqual({ denied: true });
-      expect(JSON.stringify([...inspected.values()])).not.toContain("COMMITTED_SYMLINK_TARGET");
-      expect(JSON.stringify([...inspected.values()])).not.toContain("NON_REGULAR_TREE_CONTENT");
-    } finally { await rm(root, { recursive: true, force: true }); }
+      await expect(prepared.inspector.readFileRange("src/regular.ts", 1, 1)).resolves.toEqual({
+        _tag: "ok",
+        value: "export const regular = true;",
+      });
+      await expect(prepared.inspector.readFileRange("src/link.ts", 1, 1)).resolves.toMatchObject({ _tag: "err" });
+      await expect(prepared.inspector.readFileRange("src/directory", 1, 1)).resolves.toMatchObject({ _tag: "err" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("denies root-like paths before forming Git objects", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-git-root-"));
     try {
       const headSha = "e".repeat(40);
-      const changedFiles = [".", "./review.ts", "src/review.ts"];
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
-      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
-      await writeFile(patchPath, "diff --git a/src/review.ts b/src/review.ts\n", "utf8");
-      const inspected = new Map<string, unknown>();
+      const artifacts = await writeArtifacts(root, headSha, [".", "./review.ts", "src/review.ts"]);
       const commands: Array<ReadonlyArray<string>> = [];
-      const session: ReviewModelSession = {
-        async prompt(_input, options) {
-          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
-          for (const path of changedFiles) {
-            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
-          }
-          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
-        },
-      };
-
-      await runModelReview({
-        session,
+      const prepared = await prepareModelReview({
+        ...artifacts,
         worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
         debugPath: join(root, "debug.json"),
         gitShow: gitBlobReader({
           [`${headSha}:.`]: "ROOT_PROTECTED_CONTENT\n",
@@ -219,86 +146,55 @@ describe("model review runner", () => {
         }, commands),
       });
 
-      expect(inspected.get(".")).toEqual({ denied: true });
-      expect(inspected.get("./review.ts")).toEqual({ denied: true });
-      expect(inspected.get("src/review.ts")).toEqual({ content: "export const review = true;" });
+      await expect(prepared.inspector.readFileRange(".", 1, 1)).resolves.toMatchObject({ _tag: "err" });
+      await expect(prepared.inspector.readFileRange("./review.ts", 1, 1)).resolves.toMatchObject({ _tag: "err" });
+      await expect(prepared.inspector.readFileRange("src/review.ts", 1, 1)).resolves.toEqual({
+        _tag: "ok",
+        value: "export const review = true;",
+      });
       expect(commands.flat()).not.toContain(`${headSha}:.`);
       expect(commands.flat()).not.toContain(`${headSha}:./review.ts`);
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
-  it("denies unsafe and oversized changed-file snapshots to the model", async () => {
+  it("denies unsafe, non-regular, and oversized snapshots", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-snapshots-"));
-    const outsideRoot = await mkdtemp(join(tmpdir(), "patchdesk-model-outside-"));
     try {
       const headSha = "c".repeat(40);
+      const aggregateFiles = Array.from({ length: 8 }, (_, index) => `src/aggregate-${index}.ts`);
       const changedFiles = [
         "src/allowed.ts",
-        "src/outside-link.ts",
-        "src/inside-link/inside.ts",
+        "../outside.ts",
         "src/directory",
         "src/too-large.ts",
-        ...Array.from({ length: 8 }, (_, index) => `src/aggregate-${index}.ts`),
+        ...aggregateFiles,
         "src/aggregate-over-limit.ts",
       ];
-      await mkdir(join(root, "src"));
-      await mkdir(join(root, "src", "directory"));
-      await mkdir(join(root, "src", "real"));
-      await writeFile(join(root, "src", "allowed.ts"), "export const allowed = true;\n", "utf8");
-      await writeFile(join(outsideRoot, "protected.ts"), "OUTSIDE_PROTECTED_CONTENT\n", "utf8");
-      await symlink(join(outsideRoot, "protected.ts"), join(root, "src", "outside-link.ts"));
-      await writeFile(join(root, "src", "real", "inside.ts"), "ANCESTOR_SYMLINK_PROTECTED_CONTENT\n", "utf8");
-      await symlink(join(root, "src", "real"), join(root, "src", "inside-link"));
-      await writeFile(join(root, "src", "too-large.ts"), `OVERSIZED_PROTECTED_CONTENT${"x".repeat(512 * 1024)}\n`, "utf8");
-      await Promise.all(Array.from({ length: 8 }, (_, index) => writeFile(join(root, "src", `aggregate-${index}.ts`), "a".repeat(512 * 1024), "utf8")));
-      await writeFile(join(root, "src", "aggregate-over-limit.ts"), "AGGREGATE_PROTECTED_CONTENT\n", "utf8");
-      const contextPath = join(root, "context.json");
-      const reviewInputPath = join(root, "review-input.md");
-      const patchPath = join(root, "patch.diff");
-      await writeFile(contextPath, JSON.stringify({ pr: { headSha }, changedFiles }), "utf8");
-      await writeFile(reviewInputPath, "# PR review input\n", "utf8");
-      await writeFile(patchPath, "diff --git a/src/allowed.ts b/src/allowed.ts\n", "utf8");
-      const inspected = new Map<string, unknown>();
-      const session: ReviewModelSession = {
-        async prompt(_input, options) {
-          const readTool = options.tools.find((tool) => tool.name === "read_file_range");
-          for (const path of changedFiles) {
-            inspected.set(path, await readTool?.run({ input: { path, startLine: 1, endLine: 1 } }));
-          }
-          return { data: { changeSummary: "Review complete.", verdict: "comment" as const, summary: "No issues.", findings: [], validationPlan: [], assumptions: [] } };
-        },
-      };
-
-      await runModelReview({
-        session,
+      const artifacts = await writeArtifacts(root, headSha, changedFiles);
+      const prepared = await prepareModelReview({
+        ...artifacts,
         worktreePath: root,
-        contextPath,
-        reviewInputPath,
-        patchPath,
         debugPath: join(root, "debug.json"),
         gitShow: gitBlobReader({
           [`${headSha}:src/allowed.ts`]: "export const allowed = true;\n",
-          ...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`${headSha}:src/aggregate-${index}.ts`, "a".repeat(512 * 1024)])),
+          [`${headSha}:src/directory`]: { contents: "NON_REGULAR_TREE_CONTENT\n", mode: "040000", type: "tree" },
           [`${headSha}:src/too-large.ts`]: `OVERSIZED_PROTECTED_CONTENT${"x".repeat(512 * 1024)}\n`,
+          ...Object.fromEntries(aggregateFiles.map((path) => [`${headSha}:${path}`, "a".repeat(512 * 1024)])),
           [`${headSha}:src/aggregate-over-limit.ts`]: "AGGREGATE_PROTECTED_CONTENT\n",
         }),
       });
 
-      expect(inspected.get("src/allowed.ts")).toEqual({ content: "export const allowed = true;" });
-      expect(inspected.get("src/outside-link.ts")).toEqual({ denied: true });
-      expect(inspected.get("src/inside-link/inside.ts")).toEqual({ denied: true });
-      expect(inspected.get("src/directory")).toEqual({ denied: true });
-      expect(inspected.get("src/too-large.ts")).toEqual({ denied: true });
-      expect(inspected.get("src/aggregate-over-limit.ts")).toEqual({ denied: true });
-      expect(JSON.stringify([...inspected.values()])).not.toContain("OUTSIDE_PROTECTED_CONTENT");
-      expect(JSON.stringify([...inspected.values()])).not.toContain("ANCESTOR_SYMLINK_PROTECTED_CONTENT");
-      expect(JSON.stringify([...inspected.values()])).not.toContain("OVERSIZED_PROTECTED_CONTENT");
-      expect(JSON.stringify([...inspected.values()])).not.toContain("AGGREGATE_PROTECTED_CONTENT");
+      await expect(prepared.inspector.readFileRange("src/allowed.ts", 1, 1)).resolves.toEqual({
+        _tag: "ok",
+        value: "export const allowed = true;",
+      });
+      for (const path of ["../outside.ts", "src/directory", "src/too-large.ts", "src/aggregate-over-limit.ts"]) {
+        await expect(prepared.inspector.readFileRange(path, 1, 1)).resolves.toMatchObject({ _tag: "err" });
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
-      await rm(outsideRoot, { recursive: true, force: true });
     }
   });
-
-
 });

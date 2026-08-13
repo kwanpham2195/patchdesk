@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+
+import type { WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDesktopMenuTemplate } from "../src/main/desktop-menu";
@@ -10,12 +13,8 @@ import {
   openAllowedExternalUrl,
 } from "../src/main/external-navigation";
 import { clampWindowBounds } from "../src/main/window-state";
-import {
-  resolveWalkthroughRuntimeRoot,
-  resolveWorkflowCliPath,
-  resolveWorkflowRuntimeRoot,
-} from "../src/main/workflow-runtime-root";
-import type { WebContents } from "electron";
+import { generatedPiAiCatalog } from "../src/adapters/pi/pi-ai-catalog.generated";
+import { resolveInsightRuntime } from "../src/main/insight-runtime";
 
 describe("desktop hardening", () => {
   it("allows clean close, confirms dirty drafts, and blocks pending writes", async () => {
@@ -179,71 +178,45 @@ describe("desktop hardening", () => {
     ).toEqual({ x: 0, y: 0, width: 800, height: 600 });
   });
 
-  it("prefers the staged packaged workflow runtime and resolves its CLI", () => {
-    const files = new Set([
-      "/workspace/patchdesk/flue.config.ts",
-      "/workspace/patchdesk/node_modules/@flue/cli/bin/flue.mjs",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/flue.config.ts",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
+  it("prefers a packaged one-shot runtime with an exact manifest and lock digest", () => {
+    const packagedRoot = "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
+    const lock = "lockfileVersion: '6.0'\n";
+    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string }).digest;
+    const files = new Map<string, string>([
+      [`${packagedRoot}/patchdesk-insight-runner.js`, ""],
+      [`${packagedRoot}/pnpm-lock.yaml`, lock],
+      [`${packagedRoot}/runtime-manifest.json`, JSON.stringify({
+        flueVersion: "2.0.3",
+        piVersion: "0.84.1",
+        catalogDigest,
+        nodeFloor: ">=22.19.0",
+        lockDigest: createHash("sha256").update(lock).digest("hex"),
+      })],
     ]);
-    const packagedRoot =
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
-    expect(
-      resolveWorkflowRuntimeRoot(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/workspace/patchdesk",
-        (path) => files.has(path),
-      ),
-    ).toBe(packagedRoot);
-    expect(
-      resolveWorkflowCliPath(
-        packagedRoot,
-        (path) => path.includes("/.pnpm/") && files.has(path),
-        () => ["@flue+cli@1.0.0-beta.9"],
-      ),
-    ).toBe(
-      `${packagedRoot}/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs`,
-    );
-    expect(
-      resolveWorkflowRuntimeRoot(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/workspace/patchdesk",
-        (path) => path.startsWith("/workspace/patchdesk") && files.has(path),
-      ),
-    ).toBe("/workspace/patchdesk");
-    expect(
-      resolveWorkflowRuntimeRoot(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/tmp",
-        () => false,
-      ),
-    ).toBe("/Applications/Patchdesk.app/Contents/Resources/app.asar");
-  });
 
-  it("resolves the isolated walkthrough project and its parent CLI", () => {
-    const files = new Set([
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/walkthrough/flue.config.ts",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm",
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
-    ]);
-    const walkthroughRoot =
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/walkthrough";
-    expect(
-      resolveWalkthroughRuntimeRoot(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/tmp",
-        (path) => files.has(path),
-      ),
-    ).toBe(walkthroughRoot);
-    expect(
-      resolveWorkflowCliPath(
-        walkthroughRoot,
-        (path) => files.has(path),
-        () => ["@flue+cli@1.0.0-beta.9"],
-      ),
-    ).toBe(
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime/node_modules/.pnpm/@flue+cli@1.0.0-beta.9/node_modules/@flue/cli/bin/flue.mjs",
-    );
+    expect(resolveInsightRuntime(
+      "/Applications/Patchdesk.app/Contents/Resources/app.asar",
+      "/workspace/patchdesk",
+      (path) => files.has(path),
+      (path) => files.get(path) ?? "",
+    )).toEqual({
+      root: packagedRoot,
+      runnerPath: `${packagedRoot}/patchdesk-insight-runner.js`,
+      manifestPath: `${packagedRoot}/runtime-manifest.json`,
+    });
+
+    files.set(`${packagedRoot}/runtime-manifest.json`, JSON.stringify({
+      flueVersion: "2.0.2",
+      piVersion: "0.84.1",
+      catalogDigest,
+      nodeFloor: ">=22.19.0",
+      lockDigest: createHash("sha256").update(lock).digest("hex"),
+    }));
+    expect(resolveInsightRuntime(
+      "/Applications/Patchdesk.app/Contents/Resources/app.asar",
+      "/workspace/patchdesk",
+      (path) => files.has(path),
+      (path) => files.get(path) ?? "",
+    )).toBeUndefined();
   });
 });

@@ -1,5 +1,7 @@
 import { join } from "node:path";
 
+import { providerEnvironmentNames } from "../adapters/pi/pi-provider-catalog";
+
 import type { CommandFailure, CommandRunner } from "../adapters/github/command-runner";
 import { parseModelReviewResult, type ModelReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
@@ -22,7 +24,7 @@ export type FlueInsightChildAnalysisInput = {
   readonly reasoning: "low" | "medium" | "high";
 };
 
-/** Runs a bounded one-shot child with no inherited parent environment. */
+/** Runs a bounded app-owned one-shot child with the selected built-in provider's ambient credentials. */
 export class FlueInsightChildInvoker {
   constructor(
     private readonly commands: CommandRunner,
@@ -50,14 +52,14 @@ export class FlueInsightChildInvoker {
     const stdin = JSON.stringify(body);
     if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
       return err({ reason: "execution_failed" });
+    const environment = productionChildEnvironment(body);
+    if (environment === undefined) return err({ reason: "runtime_unavailable" });
     const output = await this.commands.runJson({
       argv: [this.runtimeExecutable, this.runnerPath],
       cwd: this.projectRoot,
       stdin,
       timeoutMs,
-      // This isolated adapter does not inherit parent credentials. Step 8
-      // supplies the selected provider's explicit environment contract.
-      environment: { ELECTRON_RUN_AS_NODE: "1" },
+      environment,
       inheritEnvironment: false,
       ...(signal === undefined ? {} : { signal }),
     });
@@ -78,6 +80,34 @@ export class FlueInsightChildInvoker {
     });
   }
 }
+
+function productionChildEnvironment(body: unknown): Readonly<Record<string, string>> | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  const input = (body as { readonly input?: unknown }).input;
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined;
+  const model = (input as { readonly model?: unknown }).model;
+  if (typeof model !== "string") return undefined;
+  const separator = model.indexOf("/");
+  if (separator <= 0) return undefined;
+  const provider = model.slice(0, separator).toLowerCase();
+  const names = providerEnvironmentNames(provider);
+  if (names.length === 0) return undefined;
+  const environment: Record<string, string> = {
+    ELECTRON_RUN_AS_NODE: "1",
+    PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    LANG: "C",
+    LC_ALL: "C",
+  };
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined) environment[name] = value;
+  }
+  const home = process.env.HOME;
+  if (home !== undefined && (provider === "amazon-bedrock" || provider === "google-vertex")) environment.HOME = home;
+  return environment;
+}
+
+export { productionChildEnvironment };
 
 function parseChildResponse(
   input: unknown,

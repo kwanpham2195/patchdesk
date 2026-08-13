@@ -1,4 +1,5 @@
 import { PassThrough, Readable } from "node:stream";
+import { generateModelCatalog } from "../scripts/generate-model-catalog.mjs";
 import { describe, expect, it } from "vitest";
 import {
   fauxAssistantMessage,
@@ -23,6 +24,7 @@ import {
 } from "../src/patchdesk-insight-agent";
 import {
   canonicalizeProductionInvocation,
+  resolvePatchdeskReviewSkillPath,
   runPatchdeskChild,
   runPatchdeskChildProcess,
 } from "../src/patchdesk-insight-runner";
@@ -44,6 +46,17 @@ const analysis = {
   validationPlan: [],
   assumptions: [],
 };
+
+describe("generated Pi catalog", () => {
+  it("imports and projects all 32 current allowlisted provider catalogs deterministically", () => {
+    const first = generateModelCatalog();
+    expect(first).toEqual(generateModelCatalog());
+    expect(first.piVersion).toBe("0.84.1");
+    expect(first.catalog).toHaveLength(32);
+    expect(first.catalog.flatMap((entry) => entry.models).every((model) => Object.keys(model).sort().join(",") === "id,name,provider")).toBe(true);
+    expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
 
 function walkthroughInvocation() {
   return {
@@ -82,8 +95,17 @@ describe("Flue 2 one-shot insight runtime", () => {
   it("rejects missing and extra data rather than treating assistant text as authority", async () => {
     const provider = fake([fauxAssistantMessage(fauxText(JSON.stringify(walkthrough)))]);
     await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [provider.provider] })).resolves.toEqual({ ok: false, reason: "invalid_result" });
-    const malformed = fake([fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", { ...walkthrough, extra: true }), { stopReason: "toolUse" })]);
-    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [malformed.provider] })).resolves.toEqual({ ok: false, reason: "execution_failed" });
+    const malformed = fake([
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", { ...walkthrough, extra: true }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxText("Unable to submit a valid result.")),
+    ]);
+    await expect(runPatchdeskChild(walkthroughInvocation(), { providers: [malformed.provider] })).resolves.toEqual({ ok: false, reason: "invalid_result" });
+  });
+
+  it("resolves the trusted skill from the direct development bundle", () => {
+    expect(resolvePatchdeskReviewSkillPath()).toBe(
+      new URL("../../../src/skills/patchdesk-code-review/SKILL.md", import.meta.url).pathname,
+    );
   });
 
   it("rejects duplicate submission attempts after recording only the first data part", async () => {

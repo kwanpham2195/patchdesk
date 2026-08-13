@@ -5,11 +5,11 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "out", "out-electron", "release", "node_modules"] },
+  { ignores: ["dist", "out", "out-electron", "release", "node_modules", "runtime/flue/dist"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "runtime/flue/scripts/**/*.mjs"],
     languageOptions: { globals: globals.node },
   },
   {

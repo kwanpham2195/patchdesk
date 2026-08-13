@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { init } from "@flue/runtime";
@@ -9,6 +10,7 @@ import { CommandRunner } from "../../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
 import { parseReviewSessionId, parseWorkspaceProfileId } from "../../../src/domain/ids";
 import { prepareModelReview } from "../../../src/services/model-review-runner";
+import type { ReviewInspector } from "../../../src/services/review-inspector";
 import { prepareWalkthroughPrompt } from "../../../src/services/walkthrough-operation";
 
 import {
@@ -24,9 +26,7 @@ import {
   modelReviewResultSchema,
   walkthroughResultSchema,
   walkthroughInvocationSchema,
-  type AnalysisInvocation,
   type InspectorOperations,
-  type WalkthroughInvocation,
 } from "./patchdesk-insight-agent";
 
 const childProtocolSchema = v.variant("type", [
@@ -107,7 +107,7 @@ export async function runPatchdeskChild(
       return { ok: false, reason: "execution_failed" };
     } finally {
       options.signal?.removeEventListener("abort", abort);
-      await flue.stop();
+      await boundedStop(flue.stop());
     }
   } catch (cause: unknown) {
     void cause;
@@ -224,13 +224,25 @@ export async function runProductionChild(
 }
 
 function resolvePatchdeskReviewSkillPath(): string {
-  return join(
-    dirname(new URL(import.meta.url).pathname),
-    "skills",
-    "patchdesk-code-review",
-    "SKILL.md",
-  );
+  const runtimeDirectory = dirname(new URL(import.meta.url).pathname);
+  const staged = join(runtimeDirectory, "skills", "patchdesk-code-review", "SKILL.md");
+  if (existsSync(staged)) return staged;
+  return join(runtimeDirectory, "..", "..", "..", "src", "skills", "patchdesk-code-review", "SKILL.md");
 }
+
+async function boundedStop(stop: Promise<void>): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      stop.catch(() => undefined),
+      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1_000); }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+export { resolvePatchdeskReviewSkillPath };
 
 export function canonicalizeProductionInvocation(
   invocation: ProductionChildInvocation,
@@ -257,7 +269,7 @@ export function canonicalizeProductionInvocation(
   };
 }
 
-function inspectorOperations(inspector: import("../../../src/services/review-inspector").ReviewInspector): InspectorOperations {
+function inspectorOperations(inspector: ReviewInspector): InspectorOperations {
   return {
     async listChangedFiles() {
       const result = await inspector.listChangedFiles();

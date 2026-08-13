@@ -5,9 +5,9 @@ explicitly running pull-request reviews.
 
 ## Development
 
-**Runtime.** Use pnpm 8.8.0. Node 24.18.0 is the currently verified development
-line; Electron 43.1.1 also embeds Node 24.18.0. This is not an `engines`
-contract. A later Flue 2 migration will set its runtime floor.
+**Runtime.** Use pnpm 8.8.0 and Node >=22.19.0. Electron 43.1.1 embeds a
+compatible Node release. The isolated Flue 2 runtime has an exact lock and is
+validated during package smoke.
 
 **Install and fast checks.**
 
@@ -38,6 +38,9 @@ pnpm test:performance
 pnpm package:mac
 pnpm test:package-smoke
 ```
+
+`pnpm stage:flue-runtime` builds and stages the exact isolated Flue runtime.
+Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI checks.
 
 **Local work.**
 
