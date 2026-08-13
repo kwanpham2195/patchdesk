@@ -20,7 +20,8 @@
     "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac dir",
     "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
-    "test:package-smoke": "node scripts/package-smoke.mjs"
+    "test:package-smoke": "node scripts/package-smoke.mjs",
+    "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

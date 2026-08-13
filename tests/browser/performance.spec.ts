@@ -30,6 +30,14 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
     await page.goto(`${origin(server)}/#performance-fixture`);
     const workbench = page.getByRole("region", { name: "Diff workbench" });
     await expect(workbench).toBeVisible({ timeout: 15_000 });
+    // Visibility can resolve during the frame that commits the 10 MB fixture.
+    // Start interaction timing only after the browser can present that frame.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     const bytes = Number(await workbench.getAttribute("data-patch-bytes"));
     expect(bytes).toBeGreaterThanOrEqual(10_000_000);
 

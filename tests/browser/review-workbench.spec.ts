@@ -167,6 +167,7 @@ test("Patchdesk has no application sidebar and keeps the desktop width", async (
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${origin(server)}/#workbench-fixture`);
+    await expect(page.getByRole("region", { name: "Review diff" })).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const titlebar = document.querySelector(".app-titlebar");

@@ -35,6 +35,7 @@
 - **Depends on**: Plans 005 and 006
 - **Category**: performance / architecture
 - **Planned at**: commit `7b4f6e6`, 2026-08-13
+- **Status**: DONE (2026-08-13)
 
 ## Why this matters
 
@@ -263,16 +264,16 @@ Required coverage:
 
 ## Done criteria
 
-- [ ] No static production import of `ReviewWorkbenchFlow` remains in `app.tsx`.
-- [ ] Fixture imports do not pull the Review graph back into the initial entry.
-- [ ] Build output has a dedicated async Review workbench chunk.
-- [ ] A deterministic graph check guards the boundary.
-- [ ] Inbox and Settings tests prove the chunk is not loaded.
-- [ ] Review loading, failure, restore, and navigation tests pass.
-- [ ] Browser and large-patch performance tests pass unchanged.
-- [ ] Full quality gate passes.
-- [ ] `git diff --check` has no output.
-- [ ] `plans/README.md` marks Plan 007 DONE.
+- [x] No static production import of `ReviewWorkbenchFlow` remains in `app.tsx`.
+- [x] Fixture imports do not pull the Review graph back into the initial entry.
+- [x] Build output has a dedicated async Review workbench chunk.
+- [x] A deterministic graph check guards the boundary.
+- [x] Inbox and Settings tests prove the chunk is not loaded.
+- [x] Review loading, failure, restore, and navigation tests pass.
+- [x] Browser and large-patch performance tests pass unchanged.
+- [x] Full quality gate passes.
+- [x] `git diff --check` has no output.
+- [x] `plans/README.md` marks Plan 007 DONE.
 
 ## STOP conditions
 

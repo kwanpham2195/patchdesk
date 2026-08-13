@@ -17,3 +17,7 @@
   PATH/locale, and approved ambient HOME.
 - Preserve pre-existing dirty work and inspect committed, staged, and unstaged
   path diffs before each plan.
+- Plan 007 is complete. Its graph check uses exact Rollup module identities;
+  Pierre theme metadata is generated and parity-checked without entering the
+  eager graph. Performance timing begins after a double-animation-frame paint
+  boundary and keeps the original 200 ms interaction ceilings.

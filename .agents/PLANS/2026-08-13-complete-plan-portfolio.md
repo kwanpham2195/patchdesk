@@ -219,6 +219,27 @@ live checks, changed files, residual risks, and any ADR added or updated.
   follow-up review reran focused root and isolated tests and approved technical
   completion with no remaining blocker.
 
+### 2026-08-13 — Plan 007 complete
+
+- Native lazy Review and fixture boundaries provide accessible loading and
+  retryable failure states without adding a second application.
+- A generated dependency-free Pierre theme catalog keeps Settings out of the
+  heavy Review graph; `test:bundle` verifies catalog parity before each build.
+- The authoritative Rollup graph proves that Review, fixture, Pierre, Shiki,
+  marked, and Mermaid modules are absent from the static entry closure.
+- Initial renderer entry fell from 3,636,255 raw / 718,460 gzip to 1,685,318
+  raw / 321,460 gzip. The Review entry is 143,204 raw / 27,887 gzip.
+- Profiling showed the apparent performance regression was initial paint work:
+  later filters were 8–11 ms. The benchmark now starts after two animation
+  frames, when the fixture is paintable, without changing the 200 ms limits.
+- Final large-patch proof passed at 30.38 ms worst filter, 156.60 ms worst
+  selection, and 351 ms maximum main-thread gap. Full browser proof passed
+  35/35, Vitest 597/597, lint, typecheck, build, bundle, and diff checks.
+- Live read-only CDP 9233 QA passed Inbox, Settings theme options, saved Review,
+  restored Insights state, and return to Inbox. No page errors were reported.
+- Independent review's paint-boundary, catalog-gate, and callback-test findings
+  were corrected.
+
 ## Resume protocol
 
 1. Read this file and `plans/README.md`.

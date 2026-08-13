@@ -2,7 +2,7 @@ import {
   PIERRE_DARK_THEMES,
   PIERRE_LIGHT_THEMES,
   type PierreThemeOption,
-} from "./pierre-theme-catalog";
+} from "./pierre-theme-catalog.generated";
 
 export type DiffThemeOption = PierreThemeOption;
 export const DIFF_LIGHT_THEMES = PIERRE_LIGHT_THEMES;

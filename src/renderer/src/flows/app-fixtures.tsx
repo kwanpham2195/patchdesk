@@ -44,17 +44,6 @@ export function AppFixtureContent({
         finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }}
       />
     );
-  if (hash === "#performance-fixture")
-    return (
-      <DiffWorkbench
-        patch={buildLargePatchFixture()}
-        finding={{
-          file: "src/generated/file-0999.ts",
-          lineStart: 1,
-          diffSide: "new",
-        }}
-      />
-    );
   if (hash === "#walkthrough-fixture")
     return (
       <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />
@@ -812,22 +801,6 @@ diff --git a/src/b.ts b/src/b.ts
 +new
 `;
 }
-function buildLargePatchFixture(): string {
-  const files: Array<string> = [];
-  const oldLine = `-${"old-value-".padEnd(79, "x")}`;
-  const newLine = `+${"new-value-".padEnd(79, "y")}`;
-  for (let index = 0; index < 1_000; index += 1) {
-    const number = String(index).padStart(4, "0");
-    const path = `src/generated/file-${number}.ts`;
-    const changes: Array<string> = [];
-    for (let line = 0; line < 64; line += 1) changes.push(oldLine, newLine);
-    files.push(
-      `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,64 +1,64 @@\n${changes.join("\n")}\n`,
-    );
-  }
-  return files.join("");
-}
-
 function buildActiveFollowPatch(): string {
   return Array.from({ length: 3 }, (_, fileIndex) => {
     const path = `src/${String.fromCharCode(97 + fileIndex)}.ts`;

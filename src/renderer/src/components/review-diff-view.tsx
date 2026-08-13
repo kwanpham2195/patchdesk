@@ -48,7 +48,7 @@ import { compareTreePaths } from "@/review-diff-order";
 import {
   reviewContextControl,
 } from "@/review-context-control";
-import { registerPierreThemeLoaders } from "@/pierre-theme-catalog";
+import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import {
   selectPatch,
   useReviewDiffHydration,

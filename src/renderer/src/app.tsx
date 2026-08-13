@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { AppShell } from "./components/app-shell";
-import { ReviewWorkbenchFlow } from "./flows/review-workbench-flow";
-import { AppFixtureContent } from "./flows/app-fixtures";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsModal } from "./components/settings-modal";
@@ -32,6 +40,7 @@ import {
   saveWorkbenchUiState,
 } from "./lib/screen-restore";
 import type { ReviewWorkbenchInitialState } from "./components/review-workbench";
+import type { ReviewWorkbenchFlowProps } from "./flows/review-workbench-flow";
 import type { SettingsSection } from "./flows/settings-flow";
 import { requestJson } from "./api-client";
 import { parseInboxResponse, type InboxResponse, type WorkbenchResponse } from "./renderer-contracts";
@@ -53,12 +62,70 @@ import {
   type DiffThemePreferences,
 } from "./diff-theme-preferences";
 
-export type AppProps = { readonly initialState?: DashboardScreenState };
+type NavigationState = "clear" | "dirty_draft" | "write_pending";
+type ReviewWorkbenchFlowComponent = React.ComponentType<ReviewWorkbenchFlowProps>;
+type FixtureContentComponent = React.ComponentType<{
+  readonly hash: string;
+  readonly onNavigationStateChange: (state: NavigationState) => void;
+}>;
+type PerformanceFixtureComponent = React.ComponentType;
+type RouteLoadBoundaryProps = {
+  readonly children: ReactNode;
+  readonly onRetry: () => void;
+};
+
+export type ReviewWorkbenchLoader = () => Promise<{
+  readonly default: ReviewWorkbenchFlowComponent;
+}>;
+export type FixtureContentLoader = () => Promise<{
+  readonly default: FixtureContentComponent;
+}>;
+export type PerformanceFixtureLoader = () => Promise<{
+  readonly default: PerformanceFixtureComponent;
+}>;
+
+const loadReviewWorkbench: ReviewWorkbenchLoader = async () => ({
+  default: (await import("./flows/review-workbench-flow")).ReviewWorkbenchFlow,
+});
+const loadFixtureContent: FixtureContentLoader = async () => ({
+  default: (await import("./flows/app-fixtures")).AppFixtureContent,
+});
+const loadPerformanceFixture: PerformanceFixtureLoader = async () => ({
+  default: (await import("./flows/performance-fixture")).PerformanceFixture,
+});
+
+export type AppProps = {
+  readonly initialState?: DashboardScreenState;
+  /** Loads the Review route only after Patchdesk has a canonical Review projection. */
+  readonly reviewWorkbenchLoader?: ReviewWorkbenchLoader;
+  /** Loads browser fixture-only code only for a recognized fixture hash. */
+  readonly fixtureContentLoader?: FixtureContentLoader;
+  /** Loads the performance fixture without the broader fixture route graph. */
+  readonly performanceFixtureLoader?: PerformanceFixtureLoader;
+};
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
-export function App({ initialState }: AppProps): React.JSX.Element {
+export function App({
+  initialState,
+  reviewWorkbenchLoader = loadReviewWorkbench,
+  fixtureContentLoader = loadFixtureContent,
+  performanceFixtureLoader = loadPerformanceFixture,
+}: AppProps): React.JSX.Element {
   const fixtureHash = typeof window === "undefined" ? "" : window.location.hash;
   const fixtureMode = isFixtureHash(fixtureHash);
+  const [reviewLoaderGeneration, setReviewLoaderGeneration] = useState(0);
+  const LazyReviewWorkbench = useMemo(
+    () => lazy(reviewWorkbenchLoader),
+    [reviewWorkbenchLoader, reviewLoaderGeneration],
+  );
+  const LazyFixtureContent = useMemo(
+    () => lazy(fixtureContentLoader),
+    [fixtureContentLoader],
+  );
+  const LazyPerformanceFixture = useMemo(
+    () => lazy(performanceFixtureLoader),
+    [performanceFixtureLoader],
+  );
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
       typeof window === "undefined"
@@ -173,9 +240,7 @@ export function App({ initialState }: AppProps): React.JSX.Element {
     undefined,
   );
   const inboxSchedulerInitialized = useRef(false);
-  const [navigationState, setNavigationState] = useState<
-    "clear" | "dirty_draft" | "write_pending"
-  >("clear");
+  const [navigationState, setNavigationState] = useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
   const loadWorkspace = useCallback(async (): Promise<void> => {
@@ -479,49 +544,64 @@ export function App({ initialState }: AppProps): React.JSX.Element {
 
   if (fixtureMode)
     return shell(
-      <AppFixtureContent
-        hash={fixtureHash}
-        onNavigationStateChange={setNavigationState}
-      />,
+      fixtureHash === "#performance-fixture" ? (
+        <Suspense fallback={<RouteLoadingFallback label="Loading fixture" />}>
+          <LazyPerformanceFixture />
+        </Suspense>
+      ) : (
+        <Suspense fallback={<RouteLoadingFallback label="Loading fixture" />}>
+          <LazyFixtureContent
+            hash={fixtureHash}
+            onNavigationStateChange={setNavigationState}
+          />
+        </Suspense>
+      ),
       fixtureDestination(fixtureHash),
     );
 
   if (workbench?.state === "review") {
     return shell(
-      <ReviewWorkbenchFlow
-        workbench={workbench}
-        {...(destination.kind === "workbench" &&
-        (destination.initialSection === "diff" || destination.initialSection === "checks")
-          ? { initialSection: destination.initialSection }
-          : {})}
-        {...(restoredWorkbenchUi.current !== undefined &&
-        restoredWorkbenchUi.current.reviewId === workbench.review.id
-          ? { initialUiState: restoredWorkbenchUi.current.state }
-          : {})}
-        onUiStateChange={(state) => saveWorkbenchUiState(workbench.review.id, state)}
-        onNavigate={(initialSection) =>
-          navigate({
-            kind: "workbench",
-            reviewId: workbench.review.id,
-            initialSection,
-          })
-        }
-        onWorkbenchPatch={(patch) =>
-          setWorkbench((current) => {
-            if (current === undefined) return current;
-            const { insights, ...rest } = patch;
-            return {
-              ...current,
-              ...rest,
-              ...(insights === undefined
-                ? {}
-                : { insights: { ...current.insights, ...insights } as WorkbenchResponse["insights"] }),
-            };
-          })
-        }
-        onWorkbenchReplace={(next) => setWorkbench(next)}
-        onNavigationStateChange={setNavigationState}
-      />,
+      <RouteLoadBoundary
+        key={`${workbench.review.id}:${reviewLoaderGeneration}`}
+        onRetry={() => setReviewLoaderGeneration((generation) => generation + 1)}
+      >
+        <Suspense fallback={<RouteLoadingFallback label="Loading review workbench" />}>
+          <LazyReviewWorkbench
+            workbench={workbench}
+            {...(destination.kind === "workbench" &&
+            (destination.initialSection === "diff" || destination.initialSection === "checks")
+              ? { initialSection: destination.initialSection }
+              : {})}
+            {...(restoredWorkbenchUi.current !== undefined &&
+            restoredWorkbenchUi.current.reviewId === workbench.review.id
+              ? { initialUiState: restoredWorkbenchUi.current.state }
+              : {})}
+            onUiStateChange={(state) => saveWorkbenchUiState(workbench.review.id, state)}
+            onNavigate={(initialSection) =>
+              navigate({
+                kind: "workbench",
+                reviewId: workbench.review.id,
+                initialSection,
+              })
+            }
+            onWorkbenchPatch={(patch) =>
+              setWorkbench((current) => {
+                if (current === undefined) return current;
+                const { insights, ...rest } = patch;
+                return {
+                  ...current,
+                  ...rest,
+                  ...(insights === undefined
+                    ? {}
+                    : { insights: { ...current.insights, ...insights } as WorkbenchResponse["insights"] }),
+                };
+              })
+            }
+            onWorkbenchReplace={(next) => setWorkbench(next)}
+            onNavigationStateChange={setNavigationState}
+          />
+        </Suspense>
+      </RouteLoadBoundary>,
       { kind: "workbench", reviewId: workbench.review.id },
     );
   }
@@ -562,6 +642,36 @@ function restoredSettingsSection(): SettingsSection | undefined {
     restored.section === "logs"
     ? restored.section
     : undefined;
+}
+
+function RouteLoadingFallback({ label }: { readonly label: string }): React.JSX.Element {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6" role="status" aria-live="polite">
+      {label}
+    </div>
+  );
+}
+
+class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, { readonly error: Error | undefined }> {
+  override state: { readonly error: Error | undefined } = { error: undefined };
+
+  static getDerivedStateFromError(error: Error): { readonly error: Error } {
+    return { error };
+  }
+
+  override render(): ReactNode {
+    if (this.state.error === undefined) return this.props.children;
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6" role="alert">
+        <div className="space-y-3 text-center">
+          <p>Patchdesk could not load the Review workbench.</p>
+          <button type="button" className="underline" onClick={this.props.onRetry}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 }
 
 async function api(
