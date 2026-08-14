@@ -1,8 +1,22 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ProfileStore } from "../src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
+import { createReviewSession } from "../src/domain/review-session";
+import {
+  createReviewSessionId,
+  parseAbsolutePath,
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
+  parseGitSha,
+  parsePullRequestNumber,
+  parseWorkspaceProfileId,
+} from "../src/domain/ids";
+import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
 import {
   startLocalApiServer,
@@ -30,12 +44,17 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function start(): Promise<LocalApiServer> {
+type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
+
+async function start(
+  options: Pick<LocalApiServerConfiguration, "readOnlyGit"> = {},
+): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
   const value = await startLocalApiServer({
     capability,
     allowedOrigin: origin,
     paths: PatchdeskPaths.forTest(root),
+    ...options,
   });
   if (value._tag !== "started") throw new Error("local API did not start");
   server = value.server;
@@ -63,6 +82,97 @@ async function post(
 }
 
 describe("local API current Review capability boundary", () => {
+  it("serves the current Review diff-file hydration contract", async () => {
+    const api = await start({
+      readOnlyGit: {
+        run: async (argv) =>
+          ok({ stdout: argv.at(-1)?.includes("/base:") ? "old\n" : "new\n" }),
+      },
+    });
+    if (root === undefined) throw new Error("test root was not created");
+    const paths = PatchdeskPaths.forTest(root);
+    const profileId = must(parseWorkspaceProfileId("profile"));
+    const host = must(parseGitHubHost("github.com"));
+    const owner = must(parseGitHubOwner("centraldigital"));
+    const repo = must(parseGitHubRepoName("patchdesk"));
+    const number = must(parsePullRequestNumber(42));
+    const headSha = must(
+      parseGitSha("abcdef1234567890abcdef1234567890abcdef12"),
+    );
+    const baseSha = must(
+      parseGitSha("1234567890abcdef1234567890abcdef12345678"),
+    );
+    expect(
+      (
+        await new ProfileStore(paths).save(
+          must(
+            parseWorkspaceProfileConfig({
+              id: "profile",
+              label: "Profile",
+              githubHost: "github.com",
+              ghAccount: "fixture",
+              ownerFilters: [],
+              workspaceRoots: [],
+              rulePaths: [],
+              repos: [],
+            }),
+          ),
+        )
+      )._tag,
+    ).toBe("ok");
+    const sessionId = createReviewSessionId({
+      profileId,
+      host,
+      owner,
+      repo,
+      prNumber: number,
+      headSha,
+    });
+    const patchPath = paths.patchFile(profileId, sessionId);
+    await mkdir(dirname(patchPath), { recursive: true });
+    await writeFile(
+      patchPath,
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+    );
+    expect(
+      (
+        await new ReviewSessionStore(paths).save(
+          createReviewSession({
+            key: { profileId, host, owner, repo, prNumber: number, headSha },
+            pr: { headSha, baseSha, isOpen: true, isDraft: false },
+            patchPath: must(parseAbsolutePath(patchPath)),
+            worktree: {
+              path: must(parseAbsolutePath("/tmp/patchdesk-worktree")),
+              headSha,
+            },
+            createdAt: "2026-08-14T00:00:00.000Z" as never,
+          }),
+        )
+      )._tag,
+    ).toBe("ok");
+
+    const response = await post(api, "v1/reviews/diff-file", {
+      profileId: "profile",
+      sessionId,
+      path: "src/a.ts",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      state: "ready",
+      oldFile: { name: "src/a.ts", contents: "old\n" },
+      newFile: { name: "src/a.ts", contents: "new\n" },
+    });
+    const unavailable = await post(api, "v1/reviews/diff-file", {
+      profileId: "profile",
+      sessionId,
+      path: "src/missing.ts",
+    });
+    expect(unavailable.status).toBe(200);
+    await expect(unavailable.json()).resolves.toEqual({
+      state: "unavailable",
+      reason: "path_unavailable",
+    });
+  });
   it("requires both per-launch capability and allowed origin on a real loopback server", async () => {
     const api = await start();
     await expect(fetch(new URL("v1/profiles", api.url))).resolves.toMatchObject(
@@ -223,3 +333,10 @@ describe("local API current Review capability boundary", () => {
     );
   });
 });
+
+function must<T>(
+  result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
+): T {
+  if (result._tag === "err") throw new Error("invalid fixture");
+  return result.value;
+}

@@ -90,6 +90,7 @@ import {
   type GitReadExecutor,
 } from "../services/review-worktree-service";
 import { ReviewWriteGate } from "../services/review-write-gate";
+import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import { readObjectField } from "../services/read-object-field";
@@ -530,6 +531,11 @@ export async function startLocalApiServer(
     sessions,
     readOnlyGit,
   );
+  const reviewDiffSources = new ReviewDiffSourceService(
+    profiles,
+    sessions,
+    configuration.readOnlyGit ?? readOnlyGit,
+  );
   const reviewWorkbench = new ReviewWorkbenchController(
     reviewPreparation,
     reviewProjection,
@@ -895,6 +901,9 @@ export async function startLocalApiServer(
       ? response(context, await reviewWorkbench.commitDiff(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/diff-file", async (context) =>
+    response(context, await reviewDiffSources.load(await jsonBody(context))),
+  );
   app.post("/v1/reviews/merge", async (context) =>
     mergeWrites === undefined
       ? context.json({ error: "merge_unavailable" }, 503)
