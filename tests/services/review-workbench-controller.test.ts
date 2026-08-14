@@ -4,6 +4,7 @@ import { createReviewId } from "../../src/domain/ids";
 import type { Review } from "../../src/domain/review";
 import { err, ok } from "../../src/domain/result";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const profileId = "cfw" as never;
 const headSha = "a".repeat(40) as never;
@@ -62,6 +63,13 @@ function fixture(overrides: Record<string, unknown> = {}) {
     reviews: {
       load: vi.fn(async () => ok(review)),
       save: vi.fn(async () => ok(undefined)),
+    },
+    sessions: { load: vi.fn(async () => ok({ id: sessionId })) },
+    artifacts: {
+      quarantineIfPresent: vi.fn(async () =>
+        ok({ entryName: "session.backup" }),
+      ),
+      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
     },
     remote: { load: vi.fn(async () => ok(snapshot)) },
     journals: { load: vi.fn(async () => ok(undefined)) },
@@ -150,6 +158,117 @@ describe("ReviewWorkbenchController", () => {
         number: 42,
       }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(value.preparation.prepare).not.toHaveBeenCalled();
+  });
+
+  it("starts fresh automatically when an upgrade left the current session unavailable", async () => {
+    let storedReview = review;
+    let sessionAvailable = false;
+    let observedPreflight: (() => void) | undefined;
+    const preflight = new Promise<void>((resolve) => {
+      observedPreflight = resolve;
+    });
+    const reviews = {
+      async load() {
+        return ok(storedReview);
+      },
+      async save(next: Review) {
+        storedReview = next;
+        return ok(undefined);
+      },
+    };
+    const sessions = {
+      async load() {
+        observedPreflight?.();
+        return sessionAvailable
+          ? ok({ id: sessionId })
+          : err({
+              _tag: "StorageFailure" as const,
+              operation: "read" as const,
+              reason: "not_found" as const,
+            });
+      },
+    };
+    const artifacts = {
+      quarantineIfPresent: vi.fn(async () =>
+        ok({ entryName: "session.backup" }),
+      ),
+      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
+    };
+    const refresh = {
+      async refresh() {
+        storedReview = review;
+        return ok(projection);
+      },
+    };
+    const coordinator = new ReviewOperationCoordinator();
+    expect(coordinator.acquire(`${profileId}:${reviewId}`)).toBe(true);
+    const value = fixture({
+      reviews,
+      sessions,
+      artifacts,
+      refresh,
+      coordinator,
+    });
+    value.preparation.prepare.mockImplementation(async () => {
+      sessionAvailable = true;
+      return ok({
+        session: { id: sessionId, key: { headSha }, createdAt: at },
+        disposition: "prepared" as const,
+      });
+    });
+
+    const opened = value.controller.open({
+      profileId,
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 42,
+    });
+    await preflight;
+    expect(artifacts.quarantineReview).not.toHaveBeenCalled();
+    coordinator.release(`${profileId}:${reviewId}`);
+
+    await expect(opened).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(artifacts.quarantineIfPresent).toHaveBeenCalledWith(
+      profileId,
+      sessionId,
+    );
+    expect(artifacts.quarantineReview).toHaveBeenCalledWith(
+      profileId,
+      reviewId,
+    );
+    expect(value.preparation.prepare).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed instead of resetting state after a transient storage error", async () => {
+    const artifacts = {
+      quarantineIfPresent: vi.fn(),
+      quarantineReview: vi.fn(),
+    };
+    const value = fixture({
+      sessions: {
+        load: vi.fn(async () =>
+          err({
+            _tag: "StorageFailure" as const,
+            operation: "read" as const,
+            reason: "io" as const,
+          }),
+        ),
+      },
+      artifacts,
+    });
+
+    await expect(
+      value.controller.open({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(artifacts.quarantineReview).not.toHaveBeenCalled();
     expect(value.preparation.prepare).not.toHaveBeenCalled();
   });
 

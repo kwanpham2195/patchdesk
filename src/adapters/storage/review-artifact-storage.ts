@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, relative, resolve, join } from "node:path";
 
@@ -5,6 +6,7 @@ import { err, ok, type Result } from "../../domain/result";
 import {
   parseReviewSessionId,
   type IsoTimestamp,
+  type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
@@ -27,7 +29,8 @@ export function toQuarantineStamp(at: IsoTimestamp): string {
   return `${year}${month}${day}T${hour}${minute}${second}`;
 }
 
-const quarantineEntrySyntax = /^([A-Za-z0-9][A-Za-z0-9._-]*)\.(\d{8}T\d{6})$/;
+const quarantineEntrySyntax =
+  /^([A-Za-z0-9][A-Za-z0-9._-]*)\.(\d{8}T\d{6})(?:\.[0-9a-f-]{36})?$/;
 
 /**
  * Strict quarantine entry-name parser. Rejects anything that could escape
@@ -203,6 +206,81 @@ export class ReviewArtifactStorage {
     }
     const moved = await renameIfPresentPath(source, target);
     return moved._tag === "ok" ? ok({ entryName: targetName }) : moved;
+  }
+
+  /** Preserve any surviving session/worktree artifacts during upgrade reset. */
+  async quarantineIfPresent(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): Promise<Result<{ readonly entryName: string }, QuarantineFailure>> {
+    const entryName = `${sessionId}.${toQuarantineStamp(this.clock())}.${randomUUID()}`;
+    const sourceSession = this.paths.sessionDirectory(profileId, sessionId);
+    const sourceWorktree = this.paths.worktreeDirectory(profileId, sessionId);
+    const targetSession = this.paths.quarantinedSessionDirectory(
+      profileId,
+      entryName,
+    );
+    const targetWorktree = this.paths.quarantinedWorktreeDirectory(
+      profileId,
+      entryName,
+    );
+    if (
+      !(await this.isUnderRoot(
+        sourceSession,
+        this.paths.profileReviewsDirectory(profileId),
+      )) ||
+      !(await this.isUnderRoot(
+        sourceWorktree,
+        this.paths.worktreeRootDirectory(profileId),
+      )) ||
+      !(await this.isUnderRoot(
+        targetSession,
+        this.paths.profileReviewsDirectory(profileId),
+      )) ||
+      !(await this.isUnderRoot(
+        targetWorktree,
+        this.paths.worktreeRootDirectory(profileId),
+      ))
+    ) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    const worktree = await this.renameIfPresent(sourceWorktree, targetWorktree);
+    if (worktree._tag === "err") return worktree;
+    const session = await this.renameIfPresent(sourceSession, targetSession);
+    return session._tag === "ok" ? ok({ entryName }) : session;
+  }
+
+  /** Preserve one unusable Review aggregate before a clean local restart. */
+  async quarantineReview(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<{ readonly entryName: string }, QuarantineFailure>> {
+    const entryName = `${reviewId}.${toQuarantineStamp(this.clock())}.${randomUUID()}`;
+    const source = this.paths.reviewDirectory(profileId, reviewId);
+    const target = this.paths.quarantinedReviewDirectory(profileId, entryName);
+    if (
+      !(await this.isUnderRoot(
+        source,
+        this.paths.profileWorkbenchesDirectory(profileId),
+      )) ||
+      !(await this.isUnderRoot(
+        target,
+        join(this.paths.profileWorkbenchesDirectory(profileId), ".quarantine"),
+      ))
+    ) {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      await rename(source, target);
+      return ok({ entryName });
+    } catch (cause: unknown) {
+      return err({
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: isNotFound(cause) ? "not_found" : "io",
+      });
+    }
   }
 
   /** Remove one disposable session and its rebuildable worktree idempotently. */

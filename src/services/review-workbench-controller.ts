@@ -1,5 +1,5 @@
-import type { Review } from "../domain/review";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type { Review, ReviewIdentity } from "../domain/review";
+import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -14,6 +14,9 @@ import { createReview } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
+import type { StorageFailure } from "../adapters/storage/json-file";
 import type {
   RecentReviewWrite,
   ReviewRefreshService,
@@ -60,6 +63,11 @@ export class ReviewWorkbenchController {
     private readonly projection: ReviewWorkbenchProjectionService,
     private readonly lifecycle: {
       readonly reviews: Pick<ReviewStore, "load" | "save">;
+      readonly sessions: Pick<ReviewSessionStore, "load">;
+      readonly artifacts: Pick<
+        ReviewArtifactStorage,
+        "quarantineIfPresent" | "quarantineReview"
+      >;
       readonly remote: Pick<ReviewRemoteStore, "load">;
       readonly journals: Pick<ReviewObservationJournalStore, "load">;
       readonly refresh: ReviewRefreshService;
@@ -137,12 +145,28 @@ export class ReviewWorkbenchController {
     );
     if (existing._tag === "err" && existing.error.reason !== "not_found")
       return err({ reason: "storage" });
-    let existingUpdatedAt: IsoTimestamp | undefined;
     if (existing._tag === "ok") {
-      existingUpdatedAt = existing.value.updatedAt;
+      const currentSession = await this.lifecycle.sessions.load(
+        profileId.value,
+        existing.value.currentSessionId,
+      );
+      if (currentSession._tag === "err") {
+        if (!isRestartableStorageFailure(currentSession.error))
+          return err({ reason: "storage" });
+        return this.restartUnusableReview(identity);
+      }
       if (existing.value.representedRemote !== undefined) {
-        const stable = await this.projectStable(existing.value);
-        return stable;
+        const represented = await this.lifecycle.remote.load({
+          profileId: profileId.value,
+          reviewId,
+          snapshotHash: existing.value.representedRemote.snapshotHash,
+        });
+        if (represented._tag === "err") {
+          if (!isRestartableStorageFailure(represented.error))
+            return err({ reason: "storage" });
+          return this.restartUnusableReview(identity);
+        }
+        return this.projectStable(existing.value);
       }
       const initialized = await this.initializeSnapshot(
         profileId.value,
@@ -151,40 +175,136 @@ export class ReviewWorkbenchController {
       if (initialized._tag === "err") return initialized;
       return this.projectStable(initialized.value);
     }
+    return this.openFresh(identity);
+  }
+
+  private async openFresh(
+    identity: ReviewIdentity,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const created = await this.createFreshReview(identity);
+    if (created._tag === "err") return created;
+    const reviewId = createReviewId(identity);
+    const initialized = await this.initializeSnapshot(
+      identity.profileId,
+      reviewId,
+    );
+    return initialized._tag === "err"
+      ? initialized
+      : this.projectStable(initialized.value);
+  }
+
+  private async createFreshReview(
+    identity: ReviewIdentity,
+  ): Promise<Result<Review, ReviewWorkbenchFailure>> {
     const prepared = await this.preparation.prepare({
-      profileId: profileId.value,
+      profileId: identity.profileId,
       pullRequest: {
-        host: host.value,
-        owner: owner.value,
-        repo: repo.value,
-        number: number.value,
+        host: identity.host,
+        owner: identity.owner,
+        repo: identity.repo,
+        number: identity.prNumber,
       },
     });
     if (prepared._tag === "err")
       return err(mapPreparationFailure(prepared.error));
-    let created = createReview({
+    const created = createReview({
       identity,
       currentSessionId: prepared.value.session.id,
       headSha: prepared.value.session.key.headSha,
       createdAt: prepared.value.session.createdAt,
     });
-    // If we are replacing an existing review, ensure the new updatedAt is strictly
-    // later so the CAS guard in ReviewStore.save accepts the replacement.
-    if (
-      existingUpdatedAt !== undefined &&
-      Date.parse(created.updatedAt) <= Date.parse(existingUpdatedAt)
-    ) {
-      created = {
-        ...created,
-        updatedAt: new Date(
-          Date.parse(existingUpdatedAt) + 1,
-        ).toISOString() as IsoTimestamp,
-      };
+    const saved = await this.lifecycle.reviews.save(created);
+    return saved._tag === "ok" ? ok(created) : err({ reason: "storage" });
+  }
+
+  private async restartUnusableReview(
+    identity: ReviewIdentity,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const reviewId = createReviewId(identity);
+    const reset = await this.lifecycle.coordinator.withReviewLock(
+      identity.profileId,
+      reviewId,
+      async (): Promise<
+        Result<
+          { readonly review: Review; readonly restarted: boolean },
+          ReviewWorkbenchFailure
+        >
+      > => {
+        const journal = await this.lifecycle.journals.load(
+          identity.profileId,
+          reviewId,
+        );
+        if (journal._tag === "err" || journal.value !== undefined)
+          return err({ reason: "storage" });
+        const current = await this.lifecycle.reviews.load(
+          identity.profileId,
+          reviewId,
+        );
+        if (current._tag === "err") {
+          if (current.error.reason !== "not_found")
+            return err({ reason: "storage" });
+          const created = await this.createFreshReview(identity);
+          return created._tag === "err"
+            ? created
+            : ok({ review: created.value, restarted: true });
+        }
+        const session = await this.lifecycle.sessions.load(
+          identity.profileId,
+          current.value.currentSessionId,
+        );
+        if (
+          session._tag === "err" &&
+          !isRestartableStorageFailure(session.error)
+        )
+          return err({ reason: "storage" });
+        let restart = session._tag === "err";
+        if (!restart && current.value.representedRemote !== undefined) {
+          const represented = await this.lifecycle.remote.load({
+            profileId: identity.profileId,
+            reviewId,
+            snapshotHash: current.value.representedRemote.snapshotHash,
+          });
+          if (
+            represented._tag === "err" &&
+            !isRestartableStorageFailure(represented.error)
+          )
+            return err({ reason: "storage" });
+          restart = represented._tag === "err";
+        }
+        if (!restart) return ok({ review: current.value, restarted: false });
+        const quarantinedSession =
+          await this.lifecycle.artifacts.quarantineIfPresent(
+            identity.profileId,
+            current.value.currentSessionId,
+          );
+        if (quarantinedSession._tag === "err")
+          return err({ reason: "storage" });
+        const quarantinedReview =
+          await this.lifecycle.artifacts.quarantineReview(
+            identity.profileId,
+            reviewId,
+          );
+        if (quarantinedReview._tag === "err") return err({ reason: "storage" });
+        const created = await this.createFreshReview(identity);
+        return created._tag === "err"
+          ? created
+          : ok({ review: created.value, restarted: true });
+      },
+    );
+    if (reset._tag === "err") return reset;
+    if (!reset.value.restarted) {
+      if (reset.value.review.representedRemote !== undefined)
+        return this.projectStable(reset.value.review);
+      const initialized = await this.initializeSnapshot(
+        identity.profileId,
+        reviewId,
+      );
+      return initialized._tag === "err"
+        ? initialized
+        : this.projectStable(initialized.value);
     }
-    const saved = await this.lifecycle.reviews.save(created, existingUpdatedAt);
-    if (saved._tag === "err") return err({ reason: "storage" });
     const initialized = await this.initializeSnapshot(
-      profileId.value,
+      identity.profileId,
       reviewId,
     );
     return initialized._tag === "err"
@@ -424,4 +544,12 @@ function mapProjectionFailure(
     case "SessionStorageUnavailable":
       return { reason: "storage" };
   }
+}
+
+function isRestartableStorageFailure(failure: StorageFailure): boolean {
+  return (
+    failure.reason === "not_found" ||
+    failure.reason === "invalid_json" ||
+    failure.reason === "invalid_stored_value"
+  );
 }

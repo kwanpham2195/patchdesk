@@ -95,6 +95,17 @@ export class PatchdeskPaths {
     return join(this.profileWorkbenchesDirectory(profileId), reviewId);
   }
 
+  quarantinedReviewDirectory(
+    profileId: WorkspaceProfileId,
+    entryName: string,
+  ): string {
+    return join(
+      this.profileWorkbenchesDirectory(profileId),
+      ".quarantine",
+      entryName,
+    );
+  }
+
   reviewObservationJournalFile(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

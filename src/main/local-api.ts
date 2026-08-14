@@ -535,6 +535,8 @@ export async function startLocalApiServer(
     reviewProjection,
     {
       reviews,
+      sessions,
+      artifacts: storageArtifacts,
       remote: remoteReviews,
       journals: observationJournals,
       coordinator: reviewOperations,
