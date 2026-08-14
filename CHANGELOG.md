@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Recovered Reviews automatically after an upgrade leaves incompatible local session or snapshot data, while preserving the old files in quarantine.
+- Recovered Reviews automatically after an upgrade leaves incompatible local session or snapshot data, preserved the old files in quarantine, and restored review-comment controls after GitHub reconciliation.
 - Migrated Pi Analysis and Walkthrough to a bounded Flue 2 one-shot child runtime with strict results and packaged runtime verification.
 - Reduced Inbox and Settings startup work by loading the Review workbench only when a saved Review opens.
 - Kept a proven GitHub pending review usable for inspection, comments, submission, and discard when one Analysis Finding cannot be linked to its exact thread.

@@ -249,7 +249,7 @@ export class PendingReviewService {
       pr: sessionPr(session),
       account: parsedAccount.value,
     });
-    if (read._tag === "err") {
+    if (read._tag === "err" || read.value._tag === "Unavailable") {
       return ok({ session, state: stored, unavailable: true });
     }
     let next: PendingReviewState;
@@ -261,7 +261,10 @@ export class PendingReviewService {
     } else {
       next = adoptObservedPendingReview(stored, read.value);
     }
-    if (samePendingReviewState(next, stored)) {
+    if (
+      session.pendingReview !== undefined &&
+      samePendingReviewState(next, stored)
+    ) {
       return ok({ session, state: next, unavailable: false });
     }
     const saved = await this.sessions.save({

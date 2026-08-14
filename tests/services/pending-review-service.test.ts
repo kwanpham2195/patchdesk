@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { err, ok } from "../../src/domain/result";
+import type { StorageFailure } from "../../src/adapters/storage/json-file";
+import { err, ok, type Result } from "../../src/domain/result";
 import type { ViewerPendingReview } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
 import {
@@ -90,11 +91,13 @@ function fixture(
   const saves: unknown[] = [];
   const store = {
     load: vi.fn(async () => ok(stored)),
-    save: vi.fn(async (next: ReviewSession) => {
-      stored = next;
-      saves.push(next);
-      return ok(undefined);
-    }),
+    save: vi.fn(
+      async (next: ReviewSession): Promise<Result<void, StorageFailure>> => {
+        stored = next;
+        saves.push(next);
+        return ok(undefined);
+      },
+    ),
   };
   const gate = {
     requireFresh: vi.fn(async () =>
@@ -181,7 +184,8 @@ describe("PendingReviewService", () => {
       _tag: "ok",
       value: { state: { _tag: "None" }, unavailable: false },
     });
-    expect(value.saves).toHaveLength(0);
+    expect(value.saves).toHaveLength(1);
+    expect(value.current().pendingReview).toEqual({ _tag: "None" });
     const persisted = fixture({ _tag: "Pending", review: pending() });
     await expect(
       persisted.service.reconcile({ profileId, reviewId }),
@@ -190,6 +194,40 @@ describe("PendingReviewService", () => {
       value: { state: { _tag: "None" }, unavailable: false },
     });
     expect(persisted.saves).toHaveLength(1);
+  });
+
+  it("keeps an absent pending state unavailable after an incomplete read", async () => {
+    const value = fixture(undefined, {
+      getViewerPendingReview: vi.fn(async () => ok({ _tag: "Unavailable" })),
+    });
+
+    await expect(
+      value.service.reconcile({ profileId, reviewId }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { unavailable: true, state: { _tag: "None" } },
+    });
+    expect(value.saves).toHaveLength(0);
+    expect(value.current().pendingReview).toBeUndefined();
+  });
+
+  it("keeps confirmed None unavailable when persistence fails", async () => {
+    const value = fixture();
+    value.store.save.mockImplementation(async () =>
+      err({
+        _tag: "StorageFailure" as const,
+        operation: "write" as const,
+        reason: "io" as const,
+      }),
+    );
+
+    await expect(
+      value.service.reconcile({ profileId, reviewId }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { unavailable: true, state: { _tag: "None" } },
+    });
+    expect(value.current().pendingReview).toBeUndefined();
   });
 
   it("does not turn a failed read into None", async () => {
