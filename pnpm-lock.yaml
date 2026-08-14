@@ -8,9 +8,6 @@ dependencies:
   '@base-ui/react':
     specifier: ^1.6.0
     version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)
-  '@fontsource-variable/geist':
-    specifier: ^5.3.0
-    version: 5.3.0
   '@fontsource-variable/inter':
     specifier: 5.3.0
     version: 5.3.0
@@ -73,9 +70,6 @@ devDependencies:
   '@axe-core/playwright':
     specifier: ^4.12.1
     version: 4.12.1(playwright-core@1.61.1)
-  '@electron-toolkit/utils':
-    specifier: ^4.0.0
-    version: 4.0.0(electron@43.1.1)
   '@swc/core':
     specifier: ^1.15.3
     version: 1.15.43
@@ -494,14 +488,6 @@ packages:
   /@electron-internal/extract-zip@1.0.4:
     resolution: {integrity: sha512-Zr1Vs7E9tpCNhZHDAbFVXc2gEVCG9RqPDjrno5+bdgB6LRAuvgyMHJut4NCVyYwtAieapMzc3fiQ3CSTi75ARg==}
     engines: {node: '>=22.12.0'}
-    dev: true
-
-  /@electron-toolkit/utils@4.0.0(electron@43.1.1):
-    resolution: {integrity: sha512-qXSntwEzluSzKl4z5yFNBknmPGjPa3zFhE4mp9+h0cgokY5ornAeP+CJQDBhKsL1S58aOQfcwkD3NwLZCl+64g==}
-    peerDependencies:
-      electron: '>=13.0.0'
-    dependencies:
-      electron: 43.1.1
     dev: true
 
   /@electron/asar@3.4.1:
@@ -1222,10 +1208,6 @@ packages:
 
   /@floating-ui/utils@0.2.12:
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
-    dev: false
-
-  /@fontsource-variable/geist@5.3.0:
-    resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
     dev: false
 
   /@fontsource-variable/inter@5.3.0:
