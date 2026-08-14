@@ -38,36 +38,3 @@ export function parseInsightReasoning(
     return ok(input);
   return err("invalid_reasoning");
 }
-
-/** Parses a provider/model/reasoning selection without accepting unknown fields. */
-export function parseInsightSelection(
-  input: unknown,
-): Result<InsightSelection, "invalid_selection"> {
-  if (typeof input !== "object" || input === null || Array.isArray(input))
-    return err("invalid_selection");
-  const value = input as {
-    readonly provider?: unknown;
-    readonly model?: unknown;
-    readonly reasoning?: unknown;
-  };
-  const provider = parseInsightProvider(value.provider);
-  const reasoning = parseInsightReasoning(value.reasoning);
-  if (
-    provider._tag === "err" ||
-    reasoning._tag === "err" ||
-    typeof value.model !== "string" ||
-    value.model.trim().length < 1 ||
-    value.model.length > 200
-  )
-    return err("invalid_selection");
-  return ok({
-    provider: provider.value,
-    model: value.model,
-    reasoning: reasoning.value,
-  });
-}
-
-/** Returns whether the provider is available for the requested Insight type. */
-export function isInsightProvider(input: unknown): input is InsightProvider {
-  return input === "pi" || input === "codex-cli-account";
-}

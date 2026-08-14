@@ -1,5 +1,3 @@
-import * as v from "valibot";
-
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -73,11 +71,6 @@ export function parsePullRequestInput(
 
   return err({ _tag: "InvalidPullRequestInput" });
 }
-
-/** Valibot schema for a direct-entry request body before it enters a service. */
-export const pullRequestInputSchema = v.strictObject({
-  value: v.pipe(v.string(), v.minLength(1)),
-});
 
 function parseReference(
   hostInput: string | undefined,

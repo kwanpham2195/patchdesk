@@ -150,20 +150,3 @@ export class ReviewCommitService {
     });
   }
 }
-
-export function commitDiffFailureReason(
-  failure: ReviewCommitFailure,
-): "not_found" | "head_changed" | "storage" {
-  switch (failure.reason) {
-    case "not_found":
-      return "not_found";
-    case "stale_head":
-    case "foreign_commit":
-      return "head_changed";
-    case "storage":
-    case "git_unavailable":
-    case "binary_only":
-    case "too_large":
-      return "storage";
-  }
-}

@@ -24,7 +24,7 @@ const boundedIdentifier = (maxLength: number) =>
 const reasoningSchema = v.picklist(["low", "medium", "high"]);
 
 /** Strict app-owned input for a finite walkthrough operation. */
-export const walkthroughInputSchema = v.strictObject({
+const walkthroughInputSchema = v.strictObject({
   profileId: boundedIdentifier(128),
   sessionId: boundedIdentifier(256),
   contextPath: boundedIdentifier(4_096),

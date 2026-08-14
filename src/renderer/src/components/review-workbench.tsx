@@ -257,12 +257,6 @@ export function useReviewWorkbenchNavigation(): (() => void) | undefined {
   return useContext(ReviewWorkbenchNavigationContext);
 }
 
-/** Focuses the actual Published feedback region from confirmation actions. */
-// oxlint-disable-next-line react/only-export-components -- Hook intentionally shares workbench focus navigation.
-export function usePublishedFeedbackNavigation(): (() => void) | undefined {
-  return useContext(PublishedFeedbackNavigationContext);
-}
-
 /** Renders the canonical Review projection. Optional work stays in typed slots. */
 export function ReviewWorkbench({
   model,

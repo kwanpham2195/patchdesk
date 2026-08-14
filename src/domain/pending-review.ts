@@ -161,13 +161,6 @@ export type InvalidPendingReview = {
   readonly _tag: "InvalidPendingReview";
 };
 
-/** Whether a pending-review state is a confirmed actionable owner. */
-export function isPendingReviewConfirmed(
-  state: PendingReviewState,
-): state is { readonly _tag: "Pending"; readonly review: ViewerPendingReview } {
-  return state._tag === "Pending";
-}
-
 /** Whether a pending-review state carries an uncertain write lock. */
 export function isPendingReviewLocked(state: PendingReviewState): boolean {
   return state._tag === "WriteInFlight" || state._tag === "OutcomeUnknown";

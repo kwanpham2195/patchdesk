@@ -4,7 +4,6 @@ import {
   mkdir,
   readdir,
   realpath,
-  rename,
   rm,
   rmdir,
   stat,
@@ -593,21 +592,4 @@ function parseJournalWorktree(input: unknown): JournalWorktree | undefined {
   return typeof raw.path === "string" && typeof raw.repositoryPath === "string"
     ? { path: raw.path, repositoryPath: raw.repositoryPath }
     : undefined;
-}
-
-/** Rename a staged artifact into its final Session location, recording it first. */
-export async function promoteStagedArtifact(
-  journal: ReviewPreparationJournal,
-  stagedPath: string,
-  finalPath: string,
-): Promise<Result<void, PreparationJournalFailure>> {
-  const recorded = await journal.record(finalPath);
-  if (recorded._tag === "err") return recorded;
-  try {
-    await mkdir(dirname(finalPath), { recursive: true });
-    await rename(stagedPath, finalPath);
-    return ok(undefined);
-  } catch {
-    return err({ _tag: "PreparationJournalFailed" });
-  }
 }

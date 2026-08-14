@@ -112,10 +112,6 @@ export function cleanupCopy(key: CleanupActionKey): {
   return CLEANUP_COPY[key];
 }
 
-/** Combined list of lifecycle keys exposed for type guards. */
-export const WALKTHROUGH_LIFECYCLE_KEYS: ReadonlyArray<WalkthroughLifecycleKey> =
-  ["idle", "generating", "ready", "failed", "stale"];
-
 /** Combined list of recovery action keys exposed for type guards. */
 export const RECOVERY_ACTION_KEYS: ReadonlyArray<RecoveryActionKey> = [
   "run_review",

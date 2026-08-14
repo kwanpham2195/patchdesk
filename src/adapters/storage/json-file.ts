@@ -76,37 +76,6 @@ export async function writeAtomicJson(
     return err(storageFailure("write", "io"));
   }
 }
-
-/** Append a safe JSON record; debug traces never replace source-of-truth JSON files. */
-export async function appendJsonLine(
-  path: string,
-  value: unknown,
-): Promise<Result<void, StorageFailure>> {
-  if (containsSensitiveData(value)) {
-    return err(storageFailure("append", "sensitive_value"));
-  }
-
-  const serialized = JSON.stringify(value);
-  if (serialized === undefined) {
-    return err(storageFailure("append", "invalid_stored_value"));
-  }
-
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-  try {
-    await mkdir(dirname(path), { recursive: true });
-    handle = await open(path, "a", 0o600);
-    await handle.writeFile(`${serialized}\n`, "utf8");
-    await syncBestEffort(handle);
-    await handle.close();
-    return ok(undefined);
-  } catch {
-    if (handle !== undefined) {
-      await handle.close().catch(() => undefined);
-    }
-    return err(storageFailure("append", "io"));
-  }
-}
-
 function storageFailure(
   operation: StorageFailure["operation"],
   reason: StorageFailure["reason"],

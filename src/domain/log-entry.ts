@@ -47,7 +47,6 @@ export const LOG_MAX_IDENTIFIER_LENGTH = 180;
 export const LOG_MAX_CORRELATION_ID_LENGTH = 120;
 export const LOG_MAX_META_DEPTH = 3;
 export const LOG_MAX_META_STRING_LENGTH = 512;
-export const LOG_MAX_ENTRY_BYTES = 8_000;
 
 const SENSITIVE_META_KEY =
   /^(?:authorization|token|password|secret|credential|api[_-]?key|set-cookie|cookie)$/i;
@@ -209,9 +208,4 @@ function sanitizeMetaValue(value: unknown, depth: number): unknown {
     return sanitizeLogMeta(value, depth + 1);
   }
   return undefined;
-}
-
-/** True when a message or meta cannot shrink below the entry byte cap. */
-export function fitsLogEntryBytes(entry: LogEntry): boolean {
-  return JSON.stringify(entry).length <= LOG_MAX_ENTRY_BYTES;
 }

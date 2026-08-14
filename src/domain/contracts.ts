@@ -1,19 +1,12 @@
 import * as v from "valibot";
 
 import {
-  parseGitSha,
-  parsePullRequestNumber,
   parseWorkspaceProfileId,
   type GitSha,
   type PullRequestNumber,
   type WorkspaceProfileId,
 } from "./ids";
-import { parsePullRequestInput, type PullRequestRef } from "./pull-request";
-import {
-  modelReviewResultSchema,
-  parseModelReviewResult,
-  type ModelReviewResult,
-} from "./review-result";
+import type { PullRequestRef } from "./pull-request";
 import { err, ok, type Result } from "./result";
 
 export type InvalidDomainContract = {
@@ -76,25 +69,6 @@ export const patchdeskSettingsPatchSchema = v.strictObject({
   ),
 });
 
-/** Valibot schema for the GitHub pull-request DTO used by Patchdesk's adapter boundary. */
-export const githubPullRequestDtoSchema = v.strictObject({
-  number: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  title: v.string(),
-  state: v.picklist(["open", "closed"]),
-  draft: v.boolean(),
-  head: v.strictObject({ ref: v.string(), sha: v.string() }),
-  base: v.strictObject({ ref: v.string() }),
-});
-
-/** Valibot schema for a Flue model result before Patchdesk maps finding locations. */
-export const reviewPrWorkflowOutputSchema = modelReviewResultSchema;
-
-/** Valibot schema for the direct-review UI/API request body. */
-export const startReviewRequestSchema = v.strictObject({
-  profileId: v.string(),
-  value: v.pipe(v.string(), v.minLength(1)),
-});
-
 /** Parse the global config boundary into profile IDs that core code can trust. */
 export function parsePatchdeskConfig(
   input: unknown,
@@ -149,47 +123,6 @@ function parsePatchdeskConfigFields(input: {
     ...(input.appearance === undefined ? {} : { appearance: input.appearance }),
     ...(input.diffTheme === undefined ? {} : { diffTheme: input.diffTheme }),
   });
-}
-
-/** Parse a GitHub DTO without allowing adapter-shaped data into the domain unchecked. */
-export function parseGitHubPullRequestDto(
-  input: unknown,
-): Result<GitHubPullRequestDto, InvalidDomainContract> {
-  const parsed = v.safeParse(githubPullRequestDtoSchema, input);
-  if (!parsed.success) return invalid("github");
-
-  const number = parsePullRequestNumber(parsed.output.number);
-  const headSha = parseGitSha(parsed.output.head.sha);
-  if (number._tag === "err" || headSha._tag === "err") return invalid("github");
-  return ok({
-    number: number.value,
-    title: parsed.output.title,
-    state: parsed.output.state,
-    draft: parsed.output.draft,
-    head: { ref: parsed.output.head.ref, sha: headSha.value },
-    base: { ref: parsed.output.base.ref },
-  });
-}
-
-/** Parse Flue output using the model-result boundary that excludes trusted location mapping. */
-export function parseReviewPrWorkflowOutput(
-  input: unknown,
-): Result<ModelReviewResult, InvalidDomainContract> {
-  const parsed = parseModelReviewResult(input);
-  return parsed._tag === "ok" ? ok(parsed.value) : invalid("flue");
-}
-
-/** Parse the UI/API request body into branded profile and PR references before service use. */
-export function parseStartReviewRequest(
-  input: unknown,
-): Result<StartReviewRequest, InvalidDomainContract> {
-  const parsed = v.safeParse(startReviewRequestSchema, input);
-  if (!parsed.success) return invalid("ui");
-
-  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-  const pr = parsePullRequestInput(parsed.output.value);
-  if (profileId._tag === "err" || pr._tag === "err") return invalid("ui");
-  return ok({ profileId: profileId.value, pr: pr.value });
 }
 
 function invalid(

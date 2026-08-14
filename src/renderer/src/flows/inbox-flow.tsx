@@ -185,7 +185,7 @@ export function InboxFlow({
   );
 }
 
-export function InboxScreen({
+function InboxScreen({
   state,
   inbox,
   dashboard,
@@ -253,7 +253,7 @@ export function InboxScreen({
   );
 }
 
-export function Pending({
+function Pending({
   state,
   dashboard,
   inbox,
