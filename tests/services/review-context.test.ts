@@ -232,4 +232,72 @@ describe("ReviewContextService", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("bounds checks, threads, and changed files with recorded truncation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
+    try {
+      const worktree = join(root, "worktree");
+      const attempt = join(root, "attempt");
+      await mkdir(worktree);
+      await mkdir(attempt);
+      const threads = Array.from({ length: 8 }, (_, index) => ({
+        id: `thread-${index}`,
+        state: "open",
+        comments: [{ body: "x".repeat(40_000) }],
+      }));
+      const checks = Array.from({ length: 12 }, (_, index) => ({
+        name: `check-${index}-${"c".repeat(8_000)}`,
+        status: "completed",
+        conclusion: "success",
+      }));
+      const changedFiles = Array.from(
+        { length: 10 },
+        (_, index) => `src/file-${index}-${"y".repeat(20_000)}.ts`,
+      );
+
+      const result = await new ReviewContextService().prepare({
+        worktreePath: worktree,
+        preparedDirectory: attempt,
+        pr: { title: "Fixture PR", headSha: "abcdef" },
+        comments: { threads },
+        checks: { overall: "passing", checks },
+        changedFiles,
+        patch: { path: "patch.diff", sha256: "a".repeat(64) },
+        rulePaths: [],
+      });
+
+      expect(result).toMatchObject({ _tag: "ok" });
+      const rendered = await readFile(join(attempt, "context.json"), "utf8");
+      expect(Buffer.byteLength(rendered, "utf8")).toBeLessThanOrEqual(
+        512 * 1024,
+      );
+      const parsed = JSON.parse(rendered) as {
+        readonly truncated: {
+          readonly checks: number;
+          readonly threads: number;
+          readonly files: number;
+          readonly rules: number;
+        };
+        readonly comments: {
+          readonly threads: ReadonlyArray<{ readonly id: string }>;
+        };
+        readonly checks: {
+          readonly checks: ReadonlyArray<{ readonly name: string }>;
+        };
+        readonly changedFiles: ReadonlyArray<string>;
+      };
+      expect(parsed.truncated.checks).toBeGreaterThan(0);
+      expect(parsed.truncated.threads).toBeGreaterThan(0);
+      expect(parsed.truncated.files).toBeGreaterThan(0);
+      expect(parsed.truncated.rules).toBe(0);
+      expect(parsed.comments.threads[0]?.id).toBe("thread-0");
+      expect(rendered).not.toContain('"thread-7"');
+      expect(parsed.checks.checks[0]?.name).toContain("check-0");
+      expect(rendered).not.toContain('"check-11"');
+      expect(parsed.changedFiles[0]).toContain("file-0");
+      expect(rendered).not.toContain("file-9-");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

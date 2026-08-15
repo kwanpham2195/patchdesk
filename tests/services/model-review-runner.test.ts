@@ -4,7 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { prepareModelReview } from "../../src/services/model-review-runner";
+import {
+  AnalysisPromptTooLargeError,
+  prepareModelReview,
+} from "../../src/services/model-review-runner";
 
 type GitObjectFixture =
   | string
@@ -280,6 +283,42 @@ describe("model review preparation", () => {
           prepared.inspector.readFileRange(path, 1, 1),
         ).resolves.toMatchObject({ _tag: "err" });
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a composed prompt above the bounded model input size", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-model-review-large-"));
+    try {
+      const headSha = "f".repeat(40);
+      const contextPath = join(root, "context.json");
+      const reviewInputPath = join(root, "review-input.md");
+      const patchPath = join(root, "patch.diff");
+      await writeFile(
+        contextPath,
+        JSON.stringify({
+          pr: { title: "centraldigital/patchdesk#42", headSha },
+          changedFiles: ["src/review.ts"],
+          checks: { overall: "passing" },
+        }),
+      );
+      await writeFile(reviewInputPath, "# PR review input\n");
+      await writeFile(
+        patchPath,
+        `diff --git a/src/review.ts b/src/review.ts\n+${"x".repeat(7 * 1024 * 1024)}\n`,
+      );
+
+      await expect(
+        prepareModelReview({
+          contextPath,
+          reviewInputPath,
+          patchPath,
+          worktreePath: root,
+          debugPath: join(root, "debug.json"),
+          gitShow: async () => "",
+        }),
+      ).rejects.toBeInstanceOf(AnalysisPromptTooLargeError);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -12,7 +12,11 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../../src/domain/ids";
-import { prepareModelReview } from "../../../src/services/model-review-runner";
+import {
+  AnalysisPromptTooLargeError,
+  prepareModelReview,
+  type PreparedModelReview,
+} from "../../../src/services/model-review-runner";
 import type { ReviewInspector } from "../../../src/services/review-inspector";
 import { prepareWalkthroughPrompt } from "../../../src/services/walkthrough-operation";
 
@@ -249,18 +253,25 @@ export async function runProductionChild(
     );
   }
   const commands = new CommandRunner();
-  const prepared = await prepareModelReview({
-    ...canonical.input,
-    debugPath: canonical.debugPath ?? "",
-    async gitShow(argv) {
-      const output = await commands.runText({
-        argv,
-        timeoutMs: 15_000,
-        signal,
-      });
-      return output._tag === "ok" ? output.value : "";
-    },
-  });
+  let prepared: PreparedModelReview;
+  try {
+    prepared = await prepareModelReview({
+      ...canonical.input,
+      debugPath: canonical.debugPath ?? "",
+      async gitShow(argv) {
+        const output = await commands.runText({
+          argv,
+          timeoutMs: 15_000,
+          signal,
+        });
+        return output._tag === "ok" ? output.value : "";
+      },
+    });
+  } catch (cause) {
+    if (cause instanceof AnalysisPromptTooLargeError)
+      return { ok: false, reason: "invalid_input" };
+    throw cause;
+  }
   return await runPatchdeskChild(
     {
       type: "analysis",

@@ -19,16 +19,46 @@ type LoadedProjectReviewCriteria = {
 
 const MAX_RULE_BYTES = 128 * 1024;
 const MAX_TOTAL_RULE_BYTES = 512 * 1024;
+/** Aggregate rendered budget for context.json; matches the walkthrough consumer read cap. */
+const MAX_CONTEXT_JSON_BYTES = 512 * 1024;
+const MAX_CONTEXT_CHECKS_BYTES = 64 * 1024;
+const MAX_CONTEXT_THREADS_BYTES = 256 * 1024;
+const MAX_CONTEXT_FILES_BYTES = 128 * 1024;
+
+/** Structural slices of the GitHub snapshots that the bundle bounds by bytes. */
+type ContextComments = {
+  readonly threads: ReadonlyArray<unknown>;
+};
+type ContextChecks = {
+  readonly overall?: unknown;
+  readonly checks?: ReadonlyArray<unknown>;
+};
 type ContextInput = {
   readonly worktreePath: string;
   readonly preparedDirectory: string;
   readonly pr: { readonly title: string; readonly headSha: string };
-  readonly comments: unknown;
-  readonly checks: unknown;
+  readonly comments: ContextComments;
+  readonly checks: ContextChecks;
   readonly changedFiles: ReadonlyArray<string>;
   readonly patch: { readonly path: string; readonly sha256: string };
   readonly rulePaths: ReadonlyArray<string>;
 };
+
+/** Keeps the longest prefix of items whose compact JSON fits one byte budget. */
+function fitPrefix<T>(
+  items: ReadonlyArray<T>,
+  maxBytes: number,
+): { readonly kept: ReadonlyArray<T>; readonly dropped: number } {
+  let bytes = 0;
+  const kept: Array<T> = [];
+  for (const item of items) {
+    const size = Buffer.byteLength(JSON.stringify(item) ?? "", "utf8");
+    if (bytes + size > maxBytes) break;
+    kept.push(item);
+    bytes += size;
+  }
+  return { kept, dropped: items.length - kept.length };
+}
 
 /** Produces a compact, secret-safe review bundle with bounded repository rule evidence. */
 export class ReviewContextService {
@@ -65,16 +95,58 @@ export class ReviewContextService {
         input.rulePaths,
       );
       const packageSummary = await this.packageSummary(input.worktreePath);
-      const context = {
-        pr: input.pr,
-        comments: input.comments,
-        checks: input.checks,
-        changedFiles: input.changedFiles,
-        patch: input.patch,
-        projectReviewCriteria: projectReviewCriteria.criteria,
-        packageSummary,
-      };
-      const rendered = JSON.stringify(context, null, 2);
+      const truncated = { checks: 0, threads: 0, files: 0, rules: 0 };
+      let checks = input.checks;
+      let comments = input.comments;
+      let changedFiles = input.changedFiles;
+      let criteria = projectReviewCriteria.criteria;
+      const checksTrim = fitPrefix(
+        checks.checks ?? [],
+        MAX_CONTEXT_CHECKS_BYTES,
+      );
+      if (checksTrim.dropped > 0) {
+        checks = { ...checks, checks: checksTrim.kept };
+        truncated.checks = checksTrim.dropped;
+      }
+      const threadsTrim = fitPrefix(
+        comments.threads,
+        MAX_CONTEXT_THREADS_BYTES,
+      );
+      if (threadsTrim.dropped > 0) {
+        comments = { ...comments, threads: threadsTrim.kept };
+        truncated.threads = threadsTrim.dropped;
+      }
+      const filesTrim = fitPrefix(changedFiles, MAX_CONTEXT_FILES_BYTES);
+      if (filesTrim.dropped > 0) {
+        changedFiles = filesTrim.kept;
+        truncated.files = filesTrim.dropped;
+      }
+      const render = (): string =>
+        JSON.stringify(
+          {
+            pr: input.pr,
+            comments,
+            checks,
+            changedFiles,
+            patch: input.patch,
+            projectReviewCriteria: criteria,
+            packageSummary,
+            truncated,
+          },
+          null,
+          2,
+        );
+      let rendered = render();
+      while (
+        Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES &&
+        criteria.length > 0
+      ) {
+        criteria = criteria.slice(0, -1);
+        truncated.rules += 1;
+        rendered = render();
+      }
+      if (Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES)
+        return err({ _tag: "ReviewContextFailed" });
       const contextPath = join(input.preparedDirectory, "context.json");
       const reviewInputPath = join(input.preparedDirectory, "review-input.md");
       const debugPath = join(input.preparedDirectory, "debug.json");

@@ -6,12 +6,22 @@ import { composeReviewPrompt } from "./review-rubric";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
 const MAX_SNAPSHOT_TOTAL_BYTES = 4 * 1024 * 1024;
+/** Hard bound for one composed Analysis prompt; mirrors the child protocol prompt cap. */
+export const MAX_ANALYSIS_PROMPT_BYTES = 6 * 1024 * 1024;
 const GIT_SHA = /^[a-f0-9]{40,64}$/;
 
 export type PreparedModelReview = {
   readonly prompt: string;
   readonly inspector: ReviewInspector;
 };
+
+/** Signals a composed Analysis prompt that exceeds the bounded model input. */
+export class AnalysisPromptTooLargeError extends Error {
+  constructor() {
+    super("Analysis prompt exceeds the bounded input size");
+    this.name = "AnalysisPromptTooLargeError";
+  }
+}
 
 type PrepareModelReviewInput = {
   readonly worktreePath: string;
@@ -47,8 +57,11 @@ export async function prepareModelReview(
     allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
     gitShow: input.gitShow,
   });
+  const prompt = composeReviewPrompt({ reviewInput, context, fullPatch });
+  if (Buffer.byteLength(prompt, "utf8") > MAX_ANALYSIS_PROMPT_BYTES)
+    throw new AnalysisPromptTooLargeError();
   return {
-    prompt: composeReviewPrompt({ reviewInput, context, fullPatch }),
+    prompt,
     inspector,
   };
 }
