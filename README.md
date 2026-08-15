@@ -50,6 +50,12 @@ pnpm dev
 
 See [AGENTS.md](AGENTS.md) for the ordered full gate and live-app checks.
 
+## Documentation
+
+- [Architecture](docs/architecture.md) describes the high-level architecture.
+- [CONTEXT.md](CONTEXT.md) is the glossary of domain terms.
+- [docs/adr/](docs/adr/) holds the architecture decision records.
+
 ## Safety statement
 
 The renderer is sandboxed and has no Node.js access. Preload exposes its IPC
