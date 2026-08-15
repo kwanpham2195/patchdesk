@@ -1,0 +1,12 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": ["out/**", "release/**", "test-results/**", "runtime/flue/**"],
+    "overrides": [
+      {
+        "files": ["scripts/**/*.mjs"],
+        "rules": ["eslint/no-undef"]
+      }
+    ]
+  }
+}

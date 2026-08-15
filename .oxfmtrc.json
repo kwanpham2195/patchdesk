@@ -4,5 +4,8 @@
   "trailingComma": "all",
   "printWidth": 80,
   "sortPackageJson": false,
-  "ignorePatterns": ["resources/branding/**/*.svg"]
+  "ignorePatterns": [
+    "resources/branding/**/*.svg",
+    ".agents/research/2026-08-14-react-doctor-delta/*.json"
+  ]
 }

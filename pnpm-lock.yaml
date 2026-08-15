@@ -12,8 +12,8 @@ dependencies:
     specifier: 5.3.0
     version: 5.3.0
   '@hono/node-server':
-    specifier: ^2.0.3
-    version: 2.0.10(hono@4.12.30)
+    specifier: ^2.1.1
+    version: 2.1.1(hono@4.13.2)
   '@pierre/diffs':
     specifier: ^1.2.12
     version: 1.2.12(@shikijs/themes@4.3.1)(react-dom@19.2.7)(react@19.2.7)
@@ -39,8 +39,8 @@ dependencies:
     specifier: ^1.1.1
     version: 1.1.1(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)
   hono:
-    specifier: ^4.8.3
-    version: 4.12.30
+    specifier: ^4.13.2
+    version: 4.13.2
   lucide-react:
     specifier: ^1.25.0
     version: 1.25.0(react@19.2.7)
@@ -48,8 +48,8 @@ dependencies:
     specifier: 18.0.7
     version: 18.0.7
   mermaid:
-    specifier: 11.16.0
-    version: 11.16.0
+    specifier: 11.16.1
+    version: 11.16.1
   react:
     specifier: ^19.1.1
     version: 19.2.7
@@ -1214,13 +1214,13 @@ packages:
     resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
     dev: false
 
-  /@hono/node-server@2.0.10(hono@4.12.30):
-    resolution: {integrity: sha512-ZcnNVhKTmyDJeg0UlnZjvM73JBsTAuhrH/J4fjwGOw59PwOW51r4J+p6CsKZWXdKSme4MFqU62CZMOsdDrU4CA==}
+  /@hono/node-server@2.1.1(hono@4.13.2):
+    resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
     dependencies:
-      hono: 4.12.30
+      hono: 4.13.2
     dev: false
 
   /@humanfs/core@0.19.2:
@@ -5119,8 +5119,8 @@ packages:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
     dev: true
 
-  /dompurify@3.4.12:
-    resolution: {integrity: sha512-zQvGet8Z2sWbQhCmfFz/T5QWH2oBmjnqK3qvOjaqaNLrLEF912WamU+ohnTp0TCep/MFVHpdJuCZEdFOdTnEFg==}
+  /dompurify@3.4.13:
+    resolution: {integrity: sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==}
     optionalDependencies:
       '@types/trusted-types': 2.0.7
     dev: false
@@ -5952,8 +5952,8 @@ packages:
       hermes-estree: 0.25.1
     dev: true
 
-  /hono@4.12.30:
-    resolution: {integrity: sha512-emn+JoJjrN9YTpRDS5it/UI2SO9BAE37T6I3d963RxcZ81G9A4pr2SZTEiiaiKbzx+NKRg5BZ89fCL7gCJCUog==}
+  /hono@4.13.2:
+    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
     engines: {node: '>=16.9.0'}
     dev: false
 
@@ -6649,8 +6649,8 @@ packages:
     engines: {node: '>=18.0.0'}
     dev: true
 
-  /mermaid@11.16.0:
-    resolution: {integrity: sha512-Zvm3kbstgdpvIJPPItlL7fppIZ3kibvc1oZIGxdvk9t6UFz6flv+Jw7FtRGKwfcI8OckmH04LqG6LlS6X4B1pA==}
+  /mermaid@11.16.1:
+    resolution: {integrity: sha512-TQsq6u22fAn3rek5VOubrhKPo1g5hwC3FXUN9hiyupTckcYiGuuKGkNQrKYwGJkXUxZdojwRG46gsSCFZMDp4g==}
     dependencies:
       '@braintree/sanitize-url': 7.1.2
       '@iconify/utils': 3.1.4
@@ -6664,7 +6664,7 @@ packages:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.21
-      dompurify: 3.4.12
+      dompurify: 3.4.13
       es-toolkit: 1.50.0
       katex: 0.16.47
       khroma: 2.1.0
