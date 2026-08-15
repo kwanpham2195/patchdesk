@@ -91,12 +91,13 @@ export function renderAnalysisReviewSummary(input: {
 
 function renderFindings(result: ReviewResult): string {
   const findings = ["P0", "P1", "P2", "P3"].flatMap((severity) =>
-    result.findings
-      .filter((finding) => finding.severity === severity)
-      .map(
-        (finding) =>
-          `- **${severity}** ${text(finding.title)}${finding.file === undefined ? "" : ` (${code(finding.file)}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`})`}: ${text(finding.explanation)}`,
-      ),
+    result.findings.flatMap((finding) =>
+      finding.severity === severity
+        ? [
+            `- **${severity}** ${text(finding.title)}${finding.file === undefined ? "" : ` (${code(finding.file)}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`})`}: ${text(finding.explanation)}`,
+          ]
+        : [],
+    ),
   );
   return findings.length === 0 ? "No findings." : findings.join("\n");
 }

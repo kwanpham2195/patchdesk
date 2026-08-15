@@ -227,10 +227,10 @@ export class ReviewWorkbenchProjectionService {
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const fullPatch = await readFile(session.patchPath, "utf8").catch(
-      () => undefined,
-    );
-    const storedInsights = await this.loadStoredInsights(session);
+    const [fullPatch, storedInsights] = await Promise.all([
+      readFile(session.patchPath, "utf8").catch(() => undefined),
+      this.loadStoredInsights(session),
+    ]);
     if (storedInsights._tag === "err") return storedInsights;
     const patchHash =
       fullPatch === undefined
@@ -375,16 +375,18 @@ export class ReviewWorkbenchProjectionService {
   private async loadStoredInsights(
     session: ReviewSession,
   ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
-    const analysis = await this.insights.loadTyped(
-      session.key.profileId,
-      createReviewId(session.key),
-      "analysis",
-      parseRetainedAnalysis,
-    );
     // A retained Walkthrough belongs to the Session that produced it. Never
     // validate it against the currently represented Session's patch: Refresh
     // intentionally changes that artifact while old reading evidence remains.
-    const walkthrough = await this.loadWalkthroughRecord(session);
+    const [analysis, walkthrough] = await Promise.all([
+      this.insights.loadTyped(
+        session.key.profileId,
+        createReviewId(session.key),
+        "analysis",
+        parseRetainedAnalysis,
+      ),
+      this.loadWalkthroughRecord(session),
+    ]);
     if (analysis._tag === "err" && analysis.error.reason !== "not_found")
       return err({ _tag: "SessionStorageUnavailable" });
     if (walkthrough._tag === "err" && walkthrough.error.reason !== "not_found")

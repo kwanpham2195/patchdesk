@@ -478,14 +478,10 @@ export class ReviewObservationService {
     }
     if (journal.value === undefined)
       return ok({ _tag: "Unchanged", detectedAt: this.dependencies.now() });
-    const review = await this.dependencies.reviews.load(
-      input.profileId,
-      input.reviewId,
-    );
-    const session = await this.dependencies.sessions.load(
-      input.profileId,
-      journal.value.sessionId,
-    );
+    const [review, session] = await Promise.all([
+      this.dependencies.reviews.load(input.profileId, input.reviewId),
+      this.dependencies.sessions.load(input.profileId, journal.value.sessionId),
+    ]);
     if (
       review._tag === "err" ||
       session._tag === "err" ||

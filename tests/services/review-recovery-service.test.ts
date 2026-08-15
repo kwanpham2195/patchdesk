@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
 import { ok, err } from "../../src/domain/result";
 
@@ -76,6 +77,152 @@ describe("ReviewRecoveryService", () => {
       }),
       reviewUpdatedAt,
     );
+  });
+
+  it("reconciles independent profiles concurrently behind their profile locks", async () => {
+    const started: string[] = [];
+    const complete: Array<() => void> = [];
+    const recovery = new ReviewRecoveryService(
+      {
+        list: async () => ok([{ id: "cfw" }, { id: "other" }]),
+        load: async () => ok({}),
+      } as never,
+      {
+        scanSessionEntries: async (profileId: string) => {
+          started.push(profileId);
+          await new Promise<void>((resolve) => complete.push(resolve));
+          return ok({ sessions: [], invalidEntries: [] });
+        },
+      } as never,
+      () => now,
+      {
+        lifecycleGate: new ReviewLifecycleGate(),
+        operationCoordinator: new ReviewOperationCoordinator(),
+        reviews: {
+          load: async () => ok(review),
+          save: async () => ok(undefined),
+        },
+        mergeOperations: {
+          listPending: async () => ok([]),
+          removeAfterSessionReceipt: async () => ok(undefined),
+        },
+        github: { getMergeOutcome: async () => ok({ state: "open" }) },
+      },
+    );
+
+    const reconciled = recovery.reconcile();
+    await vi.waitFor(() => expect(started).toEqual(["cfw", "other"]));
+    for (const resolve of complete) resolve();
+    await expect(reconciled).resolves.toEqual({ recovered: 0, failed: 0 });
+  });
+
+  it("checks independent merge operations concurrently while retaining Review locks", async () => {
+    const otherOperation = {
+      operationId: "merge-2",
+      profileId: "cfw",
+      reviewId:
+        "github.com__centraldigital__patchdesk__pr-43__review-bbbbbbbbbbbb",
+      sessionId:
+        "github.com__centraldigital__patchdesk__pr-43__sha-bcdef123__439aa21713b5",
+      pr: {
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 43,
+      },
+      expectedHeadSha: "a".repeat(40),
+      method: "squash",
+      acknowledgedWarningCodes: [],
+      startedAt: now,
+      state: { _tag: "OutcomeUnknown" },
+    } as never;
+    const started: string[] = [];
+    const complete: Array<() => void> = [];
+    const recovery = new ReviewRecoveryService(
+      {
+        list: async () => ok([{ id: "cfw" }]),
+        load: async () => ok({}),
+      } as never,
+      {
+        scanSessionEntries: async () =>
+          ok({ sessions: [], invalidEntries: [] }),
+      } as never,
+      () => now,
+      {
+        operationCoordinator: new ReviewOperationCoordinator(),
+        reviews: {
+          load: async () => ok(review),
+          save: async () => ok(undefined),
+        },
+        mergeOperations: {
+          listPending: async () => ok([operation, otherOperation]),
+          removeAfterSessionReceipt: async () => ok(undefined),
+        },
+        github: {
+          getMergeOutcome: async ({ pr }) => {
+            started.push(String(pr.number));
+            await new Promise<void>((resolve) => complete.push(resolve));
+            return ok({ state: "merged", mergedAt: now });
+          },
+        },
+      },
+    );
+
+    const reconciled = recovery.reconcile();
+    await vi.waitFor(() => expect(started).toEqual(["42", "43"]));
+    for (const resolve of complete) resolve();
+    await expect(reconciled).resolves.toEqual({ recovered: 2, failed: 0 });
+  });
+
+  it("quarantines distinct fixed scan entries concurrently", async () => {
+    const started: string[] = [];
+    const complete: Array<() => void> = [];
+    const recovery = new ReviewRecoveryService(
+      {
+        list: async () => ok([{ id: "cfw" }]),
+        load: async () => ok({}),
+      } as never,
+      {
+        scanSessionEntries: async () =>
+          ok({
+            sessions: [],
+            invalidEntries: [
+              { entryName: "invalid-one" },
+              { entryName: "invalid-two" },
+            ],
+          }),
+      } as never,
+      () => now,
+      {
+        artifacts: {
+          quarantineInvalidEntry: async (
+            _profileId: string,
+            entryName: string,
+          ) => {
+            started.push(entryName);
+            await new Promise<void>((resolve) => complete.push(resolve));
+            return ok({ entryName });
+          },
+        },
+        operationCoordinator: new ReviewOperationCoordinator(),
+        reviews: {
+          load: async () => ok(review),
+          save: async () => ok(undefined),
+        },
+        mergeOperations: {
+          listPending: async () => ok([]),
+          removeAfterSessionReceipt: async () => ok(undefined),
+        },
+        github: { getMergeOutcome: async () => ok({ state: "open" }) },
+      } as never,
+    );
+
+    const reconciled = recovery.reconcile();
+    await vi.waitFor(() =>
+      expect(started).toEqual(["invalid-one", "invalid-two"]),
+    );
+    for (const resolve of complete) resolve();
+    await expect(reconciled).resolves.toEqual({ recovered: 2, failed: 0 });
   });
 
   it("retains merge evidence when the terminal Review save fails", async () => {

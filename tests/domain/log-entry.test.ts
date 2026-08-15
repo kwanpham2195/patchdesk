@@ -76,7 +76,7 @@ describe("log entry redaction", () => {
       topic: "api",
       message: "POST /v1/removed-review-command failed",
     });
-    expect(parseLogEntry(JSON.parse(JSON.stringify(entry)))).toMatchObject({
+    expect(parseLogEntry(structuredClone(entry))).toMatchObject({
       seq: 2,
       process: "renderer",
     });

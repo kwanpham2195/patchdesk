@@ -50,13 +50,18 @@ export class ReviewInspector {
     if (!safeQuery(query)) return denied("invalid_input");
     this.searchCount += 1;
     await this.persistDebug();
-    const matches: Array<string> = [];
-    for (const path of this.input.changedFiles) {
-      const content = await this.readWhole(path);
-      if (content._tag === "ok" && content.value.includes(query))
-        matches.push(path);
-    }
-    return ok(matches);
+    const contents = await mapConcurrent(this.input.changedFiles, 4, (path) =>
+      this.readWhole(path, false),
+    );
+    await this.persistDebug();
+    return ok(
+      this.input.changedFiles.flatMap((path, index) => {
+        const content = contents[index];
+        return content?._tag === "ok" && content.value.includes(query)
+          ? [path]
+          : [];
+      }),
+    );
   }
 
   async readFileRange(
@@ -121,6 +126,7 @@ export class ReviewInspector {
 
   private async readWhole(
     path: string,
+    persistDebug = true,
   ): Promise<Result<string, InspectorDenied>> {
     if (!isRelative(path)) return denied("invalid_input");
     const { fileSnapshots } = this.input;
@@ -130,7 +136,7 @@ export class ReviewInspector {
       const snapshot = fileSnapshots[path];
       if (snapshot === undefined) return denied("outside_snapshot");
       this.inspectedFileCount += 1;
-      await this.persistDebug();
+      if (persistDebug) await this.persistDebug();
       return ok(snapshot);
     }
     try {
@@ -140,7 +146,7 @@ export class ReviewInspector {
       const resolved = await realpath(candidate);
       if (!isContainedPath(root, resolved)) return denied("outside_snapshot");
       this.inspectedFileCount += 1;
-      await this.persistDebug();
+      if (persistDebug) await this.persistDebug();
       return ok(await readFile(resolved, "utf8"));
     } catch {
       return denied("outside_snapshot");
@@ -181,6 +187,27 @@ export class ReviewInspector {
       "utf8",
     ).catch(() => undefined);
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }
 
 function isRelative(path: string): boolean {

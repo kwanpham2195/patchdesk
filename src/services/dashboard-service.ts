@@ -80,32 +80,40 @@ export class DashboardService {
         directEntryAvailable: true,
       });
 
-    const rows: DashboardRow[] = [];
-    const repos: DashboardRepo[] = [];
-    for (const repo of activeRepos) {
-      const list = await this.github.listOpenPullRequests({
-        profile,
-        repo: {
-          host: repo.host,
-          owner: repo.owner,
-          repo: repo.repo,
-          number: 1 as never,
-        },
-      });
-      if (list._tag === "err") {
-        repos.push({ repo, state: mapFailure(list.error) });
-        continue;
-      }
-      repos.push({
+    const results = await mapConcurrent(
+      activeRepos,
+      4,
+      async (
         repo,
-        state: list.value.length === 0 ? "no_open_prs" : "ready",
-      });
-      rows.push(
-        ...list.value.map((summary) =>
-          projectRow(summary, repo, profile.ghAccount),
-        ),
-      );
-    }
+      ): Promise<{
+        readonly rows: ReadonlyArray<DashboardRow>;
+        readonly repo: DashboardRepo;
+      }> => {
+        const list = await this.github.listOpenPullRequests({
+          profile,
+          repo: {
+            host: repo.host,
+            owner: repo.owner,
+            repo: repo.repo,
+            number: 1 as never,
+          },
+        });
+        if (list._tag === "err") {
+          return { rows: [], repo: { repo, state: mapFailure(list.error) } };
+        }
+        return {
+          rows: list.value.map((summary) =>
+            projectRow(summary, repo, profile.ghAccount),
+          ),
+          repo: {
+            repo,
+            state: list.value.length === 0 ? "no_open_prs" : "ready",
+          },
+        };
+      },
+    );
+    const rows = results.flatMap((result) => result.rows);
+    const repos = results.map((result) => result.repo);
     rows.sort(
       (left, right) =>
         priorityRank(left.priority) - priorityRank(right.priority),
@@ -139,6 +147,26 @@ export class DashboardService {
     }
     return ok(discovered);
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    const index = next++;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }
 
 function projectRow(

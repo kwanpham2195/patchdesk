@@ -800,14 +800,15 @@ function withoutRecentWrites(
     // Remove only the journaled comment; a thread survives while any other
     // (external) comment remains in it, so an external reply in a thread this
     // session touched is still a fingerprint difference.
-    threads: comments.threads
-      .map((thread) => ({
+    threads: comments.threads.flatMap((thread) => {
+      const projected = {
         ...thread,
         comments: thread.comments.filter(
           (comment) => !commentIds.has(comment.id),
         ),
-      }))
-      .filter((thread) => thread.comments.length > 0),
+      };
+      return projected.comments.length > 0 ? [projected] : [];
+    }),
   });
   // A pending-review thread this session created (Start/AddThread) appears only
   // in the candidate snapshot; one this session discarded appears only in the

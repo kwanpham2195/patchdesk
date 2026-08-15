@@ -266,28 +266,26 @@ export class ReviewPreparationJournal {
     diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const journals = await findJournals(paths);
-    let recovered = 0;
-    let failed = 0;
-    for (const filePath of journals) {
+    const recoverOne = async (
+      filePath: string,
+    ): Promise<{ readonly recovered: number; readonly failed: number }> => {
       const stored = await readJsonFile(filePath);
       if (stored._tag === "err") {
-        failed += 1;
         await recordRecoveredJournalDiagnostic(
           diagnostics,
           filePath,
           "journal-read",
         );
-        continue;
+        return { recovered: 0, failed: 1 };
       }
       const content = parseJournal(stored.value);
       if (content === undefined) {
-        failed += 1;
         await recordRecoveredJournalDiagnostic(
           diagnostics,
           filePath,
           "journal-parse",
         );
-        continue;
+        return { recovered: 0, failed: 1 };
       }
       const journal = new ReviewPreparationJournal(paths, filePath, content);
       const process = async (): Promise<boolean> => {
@@ -313,10 +311,7 @@ export class ReviewPreparationJournal {
         lifecycleGate !== undefined && profileId._tag === "ok"
           ? await lifecycleGate.withProfileLock(profileId.value, process)
           : await process();
-      if (success) {
-        recovered += 1;
-      } else {
-        failed += 1;
+      if (!success) {
         const parsedSessionId = parseReviewSessionId(content.sessionId);
         if (
           diagnostics !== undefined &&
@@ -333,8 +328,32 @@ export class ReviewPreparationJournal {
           });
         }
       }
-    }
-    return { recovered, failed };
+      return success
+        ? { recovered: 1, failed: 0 }
+        : { recovered: 0, failed: 1 };
+    };
+    const groups = groupJournalPaths(journals);
+    const recovered = await mapConcurrent(groups, 4, async (group) => {
+      const results = await mapConcurrent(
+        group,
+        lifecycleGate === undefined ? 1 : 4,
+        recoverOne,
+      );
+      return results.reduce(
+        (total, result) => ({
+          recovered: total.recovered + result.recovered,
+          failed: total.failed + result.failed,
+        }),
+        { recovered: 0, failed: 0 },
+      );
+    });
+    return recovered.reduce(
+      (total, result) => ({
+        recovered: total.recovered + result.recovered,
+        failed: total.failed + result.failed,
+      }),
+      { recovered: 0, failed: 0 },
+    );
   }
 
   private async write(): Promise<Result<void, PreparationJournalFailure>> {
@@ -476,37 +495,76 @@ async function recordRecoveredJournalDiagnostic(
 async function findJournals(
   paths: PatchdeskPaths,
 ): Promise<ReadonlyArray<string>> {
-  const found: string[] = [];
   const profilesRoot = join(paths.dataDirectory(), "profiles");
   let profileEntries: ReadonlyArray<string>;
   try {
     profileEntries = await readdir(profilesRoot);
   } catch {
-    return found;
+    return [];
   }
-  for (const profileEntry of profileEntries) {
-    const reviewsRoot = join(profilesRoot, profileEntry, "reviews");
-    let sessionEntries: ReadonlyArray<string>;
-    try {
-      sessionEntries = await readdir(reviewsRoot);
-    } catch {
-      continue;
-    }
-    for (const sessionEntry of sessionEntries) {
-      const candidate = join(
-        reviewsRoot,
-        sessionEntry,
-        "preparation.journal.json",
-      );
+  const reviewDirectories = await mapConcurrent(
+    profileEntries,
+    4,
+    async (profileEntry) => {
+      const reviewsRoot = join(profilesRoot, profileEntry, "reviews");
       try {
-        await stat(candidate);
-        found.push(candidate);
+        return { reviewsRoot, sessionEntries: await readdir(reviewsRoot) };
       } catch {
-        continue;
+        return undefined;
       }
+    },
+  );
+  const candidates = reviewDirectories.flatMap((directory) => {
+    if (directory === undefined) return [];
+    return directory.sessionEntries.map((sessionEntry) =>
+      join(directory.reviewsRoot, sessionEntry, "preparation.journal.json"),
+    );
+  });
+  const exists = await mapConcurrent(candidates, 8, async (candidate) => {
+    try {
+      await stat(candidate);
+      return true;
+    } catch {
+      return false;
     }
+  });
+  return candidates.flatMap((candidate, index) =>
+    exists[index] ? [candidate] : [],
+  );
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
+}
+
+function groupJournalPaths(
+  paths: ReadonlyArray<string>,
+): ReadonlyArray<ReadonlyArray<string>> {
+  const groups = new Map<string, Array<string>>();
+  for (const path of paths) {
+    const key = dirname(dirname(path));
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [path]);
+    else group.push(path);
   }
-  return found;
+  return [...groups.values()];
 }
 
 function parseJournal(input: unknown): JournalContent | undefined {
@@ -554,8 +612,10 @@ async function isSafeOwnedPath(
   const entry = await lstat(path).catch(() => undefined);
   if (entry?.isSymbolicLink() || (requirePath && entry === undefined))
     return false;
-  const canonicalRoot = await realpath(root).catch(() => undefined);
-  const canonicalParent = await realpathNearestExistingParent(dirname(path));
+  const [canonicalRoot, canonicalParent] = await Promise.all([
+    realpath(root).catch(() => undefined),
+    realpathNearestExistingParent(dirname(path)),
+  ]);
   return (
     canonicalRoot !== undefined &&
     canonicalParent !== undefined &&

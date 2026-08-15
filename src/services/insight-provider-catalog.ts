@@ -70,8 +70,10 @@ export class InsightProviderCatalog {
   async passive(): Promise<
     Result<InsightProviderCatalogSnapshot, InsightProviderCatalogFailure>
   > {
-    const piResult = await this.pi.get();
-    const codexPath = await this.executableResolver("codex");
+    const [piResult, codexPath] = await Promise.all([
+      this.pi.get(),
+      this.executableResolver("codex"),
+    ]);
     const piModels =
       piResult._tag === "ok"
         ? piResult.value.models.map((model) => ({

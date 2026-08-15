@@ -38,10 +38,10 @@ export class CodexInsightInvoker implements InsightInvoker {
       input.profileId,
       input.sessionId,
     );
-    const candidatePath = await realpath(input.worktreePath).catch(
-      () => undefined,
-    );
-    const ownedPath = await realpath(expectedPath).catch(() => undefined);
+    const [candidatePath, ownedPath] = await Promise.all([
+      realpath(input.worktreePath).catch(() => undefined),
+      realpath(expectedPath).catch(() => undefined),
+    ]);
     if (
       candidatePath === undefined ||
       ownedPath === undefined ||

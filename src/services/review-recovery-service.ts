@@ -49,26 +49,28 @@ export class ReviewRecoveryService {
   }> {
     const profiles = await this.profiles.list();
     if (profiles._tag === "err") return { recovered: 0, failed: 1 };
-    let recovered = 0;
-    let failed = 0;
-    for (const profile of profiles.value) {
-      const result =
-        this.options.lifecycleGate === undefined
-          ? await this.reconcileProfile(profile.id)
-          : await this.options.lifecycleGate.withProfileLock(profile.id, () =>
-              this.reconcileProfile(profile.id),
-            );
-      recovered += result.recovered;
-      failed += result.failed;
-    }
-    return { recovered, failed };
+    const results = await mapConcurrent(profiles.value, 4, async (profile) =>
+      this.options.lifecycleGate === undefined
+        ? this.reconcileProfile(profile.id)
+        : this.options.lifecycleGate.withProfileLock(profile.id, () =>
+            this.reconcileProfile(profile.id),
+          ),
+    );
+    return results.reduce(
+      (total, result) => ({
+        recovered: total.recovered + result.recovered,
+        failed: total.failed + result.failed,
+      }),
+      { recovered: 0, failed: 0 },
+    );
   }
 
   async reconcileReview(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
-    const work = () => this.reconcileMergeOperations(profileId, reviewId);
+    const work = () =>
+      this.reconcileMergeOperations(profileId, reviewId, false);
     return this.options.operationCoordinator.withReviewLock(
       profileId,
       reviewId,
@@ -79,59 +81,78 @@ export class ReviewRecoveryService {
   private async reconcileProfile(
     profileId: WorkspaceProfileId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
-    const merge = await this.reconcileMergeOperations(profileId);
-    const scan = await this.sessions.scanSessionEntries(profileId);
+    const [merge, scan] = await Promise.all([
+      this.reconcileMergeOperations(profileId),
+      this.sessions.scanSessionEntries(profileId),
+    ]);
     if (scan._tag === "err")
       return { recovered: merge.recovered, failed: merge.failed + 1 };
-    let recovered = merge.recovered;
-    let failed = merge.failed;
-    for (const invalid of scan.value.invalidEntries) {
-      const quarantined =
-        this.options.artifacts === undefined
-          ? undefined
-          : invalid.sessionId === undefined
-            ? await this.options.artifacts.quarantineInvalidEntry(
-                profileId,
-                invalid.entryName,
-              )
-            : await this.options.artifacts.quarantine(
-                profileId,
-                invalid.sessionId,
-              );
-      if (quarantined?._tag === "ok") {
-        recovered += 1;
-        await this.recordDiagnostic({
-          profileId,
-          entryName: invalid.entryName,
-          reason: "invalid_session",
-        });
-      } else failed += 1;
-    }
-    return { recovered, failed };
+    const quarantined = await mapConcurrent(
+      scan.value.invalidEntries,
+      4,
+      async (invalid) => {
+        const result =
+          this.options.artifacts === undefined
+            ? undefined
+            : invalid.sessionId === undefined
+              ? await this.options.artifacts.quarantineInvalidEntry(
+                  profileId,
+                  invalid.entryName,
+                )
+              : await this.options.artifacts.quarantine(
+                  profileId,
+                  invalid.sessionId,
+                );
+        if (result?._tag === "ok") {
+          await this.recordDiagnostic({
+            profileId,
+            entryName: invalid.entryName,
+            reason: "invalid_session",
+          });
+          return { recovered: 1, failed: 0 };
+        }
+        return { recovered: 0, failed: 1 };
+      },
+    );
+    return quarantined.reduce(
+      (total, result) => ({
+        recovered: total.recovered + result.recovered,
+        failed: total.failed + result.failed,
+      }),
+      merge,
+    );
   }
 
   private async reconcileMergeOperations(
     profileId: WorkspaceProfileId,
     onlyReviewId?: ReviewId,
+    acquireReviewLock = true,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const profile = await this.profiles.load(profileId);
     if (profile._tag === "err") return { recovered: 0, failed: 1 };
     const operations =
       await this.options.mergeOperations.listPending(profileId);
     if (operations._tag === "err") return { recovered: 0, failed: 1 };
-    let recovered = 0;
-    let failed = 0;
-    for (const operation of operations.value) {
-      if (onlyReviewId !== undefined && operation.reviewId !== onlyReviewId)
-        continue;
-      const result = await this.reconcileMergeOperation(
-        profile.value,
-        operation,
-      );
-      recovered += result.recovered;
-      failed += result.failed;
-    }
-    return { recovered, failed };
+    const selected = operations.value.filter(
+      (operation) =>
+        onlyReviewId === undefined || operation.reviewId === onlyReviewId,
+    );
+    const results = await mapConcurrent(selected, 4, (operation) =>
+      acquireReviewLock
+        ? this.options.operationCoordinator.withReviewLock(
+            profileId,
+            operation.reviewId,
+            () => this.reconcileMergeOperation(profile.value, operation),
+          )
+        : this.reconcileMergeOperation(profile.value, operation),
+    );
+    return results.reduce(
+      (total, result) => ({
+        recovered: total.recovered + result.recovered,
+        failed: total.failed + result.failed,
+      }),
+      { recovered: 0, failed: 0 },
+    );
   }
 
   private async reconcileMergeOperation(
@@ -204,4 +225,25 @@ export class ReviewRecoveryService {
       /* Quarantine is durable even when diagnostics fail. */
     }
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }

@@ -571,34 +571,48 @@ export class InsightRunCoordinator {
     } catch {
       return;
     }
-    for (const entry of profileEntries) {
+    const profileIds = profileEntries.flatMap((entry) => {
       const profileId = parseWorkspaceProfileId(entry);
-      if (profileId._tag === "err") continue;
-      const reviews = await this.reviews.list(profileId.value);
-      if (reviews._tag === "err") {
-        await this.recordRecoveryDiagnostic(
-          profileId.value,
+      return profileId._tag === "ok" ? [profileId.value] : [];
+    });
+    const listed = await mapConcurrent(profileIds, 4, async (profileId) => ({
+      profileId,
+      reviews: await this.reviews.list(profileId),
+    }));
+    await mapConcurrent(
+      listed.filter((entry) => entry.reviews._tag === "err"),
+      4,
+      async ({ profileId }) =>
+        this.recordRecoveryDiagnostic(
+          profileId,
           undefined,
           "review_list_failed",
+        ),
+    );
+    const recoveryTargets = listed.flatMap(({ profileId, reviews }) =>
+      reviews._tag === "ok"
+        ? reviews.value.flatMap((review) =>
+            (["analysis", "walkthrough"] as const).map((type) => ({
+              profileId,
+              review,
+              type,
+            })),
+          )
+        : [],
+    );
+    await mapConcurrent(recoveryTargets, 8, async (target) => {
+      const recovered = await this.recover({
+        profileId: target.profileId,
+        reviewId: target.review.id,
+        type: target.type,
+      });
+      if (recovered._tag === "err")
+        await this.recordRecoveryDiagnostic(
+          target.profileId,
+          target.review.currentSessionId,
+          `${target.type}_recovery_failed`,
         );
-        continue;
-      }
-      for (const review of reviews.value) {
-        for (const type of ["analysis", "walkthrough"] as const) {
-          const recovered = await this.recover({
-            profileId: profileId.value,
-            reviewId: review.id,
-            type,
-          });
-          if (recovered._tag === "err")
-            await this.recordRecoveryDiagnostic(
-              profileId.value,
-              review.currentSessionId,
-              `${type}_recovery_failed`,
-            );
-        }
-      }
-    }
+    });
   }
 
   async observe(input: {
@@ -1081,6 +1095,27 @@ export class InsightRunCoordinator {
       // Diagnostics are best effort and never become an unhandled rejection.
     }
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }
 
 function safeFailureDetail(): "unexpected_failure" {

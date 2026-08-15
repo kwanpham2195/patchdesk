@@ -128,7 +128,16 @@ async function fixture(
     operations,
     () => now,
   );
-  return { coordinator, insights, review, session, paths, operations };
+  return {
+    coordinator,
+    insights,
+    reviews,
+    sessions,
+    review,
+    session,
+    paths,
+    operations,
+  };
 }
 
 async function settled(
@@ -156,6 +165,64 @@ async function settled(
 }
 
 describe("InsightRunCoordinator current lifecycle", () => {
+  it("recovers persisted active runs during bounded startup recovery", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const value = await fixture({
+      async invoke() {
+        await waiting;
+        return ok(analysisResult);
+      },
+    });
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected active run");
+
+    const recovered = new InsightRunCoordinator(
+      value.reviews,
+      value.sessions,
+      value.insights,
+      value.paths,
+      {
+        async get() {
+          return ok({ models: [{ id: "model", label: "Model" }] });
+        },
+      },
+      {
+        analysis: {
+          async invoke() {
+            return ok(analysisResult);
+          },
+        },
+        walkthrough: {
+          async invoke() {
+            return ok(analysisResult);
+          },
+        },
+      },
+      value.operations,
+      () => now,
+    );
+    await recovered.recoverAll();
+    expect(
+      await value.insights.load(profileId, value.review.id, "analysis"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        replacementFailure: { reason: "failed" },
+      },
+    });
+    release();
+    await settled(value.coordinator, value.review.id, started.value.runId);
+  });
+
   it("waits for an existing Review mutation before starting an Insight", async () => {
     const operations = new ReviewOperationCoordinator();
     const value = await fixture(
