@@ -2,13 +2,31 @@
 created_at: 2026-08-14
 repos:
   - patchdesk
-status: ready
+status: in-progress
 spec: plans/audit-2026-08-14-react-doctor-disposition.md
 supersedes:
   - .agents/PLANS/2026-08-14-react-doctor-remediation-program.md
   - plans/013-harden-react-toolchain-dependencies.md
   - plans/014-disposition-remaining-react-doctor-debt.md
 ---
+
+## Progress note (2026-08-15)
+
+- Tasks 1-6 and Task 7 steps 1-6 are complete and verified: baseline 207 IDs
+  match the audit, all 207 rows are terminal with owner/evidence/verification,
+  the renderer origin parser and native lightbox are implemented with tests,
+  static reachability and package evidence are recorded, and the full
+  repository gate passes (lint, typecheck, 640 Vitest tests, build).
+- A fresh React Doctor 0.9.11 full scan on this checkout reports 0 errors,
+  0 Bugs diagnostics, 18 warnings, and score 76. The delta baseline was 207
+  warnings at score 57; the separate Bugs remediation plan closed the Bugs
+  category to zero.
+- Task 7 step 7 (read-only live Electron verification) remains open. The user
+  accepted leaving it for a dedicated live-CDP pass rather than running it in
+  this closeout; the app restart and route-restoration evidence are recorded
+  under Task 7 step 6 and in the audit Final scan section.
+- The precommit hook now runs the calibrated advisory React Doctor changed-file
+  scan (`pnpm precommit`) before each commit.
 
 # React Doctor Delta Remediation Implementation Plan
 
@@ -100,7 +118,7 @@ The old umbrella plan and Plans 013–014 are superseded by this delta plan. The
 - Consumes: React Doctor schema-3 JSON from the current checkout.
 - Produces: one immutable baseline plus one audit row per original ID with an owner task and allowed terminal outcome.
 
-- [ ] **Step 1: Record the dirty-tree preimage**
+- [x] **Step 1: Record the dirty-tree preimage**
 
 ```bash
 git status -sb
@@ -111,7 +129,7 @@ node_modules/.bin/react-doctor --version
 
 Expected: React Doctor `0.9.11`. Do not stage, commit, switch branches, or create a worktree.
 
-- [ ] **Step 2: Create the immutable baseline directory and scan**
+- [x] **Step 2: Create the immutable baseline directory and scan**
 
 ```bash
 mkdir -p .agents/research/2026-08-14-react-doctor-delta
@@ -130,7 +148,7 @@ jq -e '
 
 Expected: `jq` exits `0`. If the count differs, update the audit and this plan's baseline before source edits.
 
-- [ ] **Step 3: Compare the scan IDs with the existing audit without altering IDs**
+- [x] **Step 3: Compare the scan IDs with the existing audit without altering IDs**
 
 ```bash
 BASE_DIR=.agents/research/2026-08-14-react-doctor-delta
@@ -144,7 +162,7 @@ diff -u "$BASE_DIR/scan.ids" "$BASE_DIR/audit.ids"
 
 Expected: exactly 207 unique IDs and no diff. Do not use `sed` on IDs.
 
-- [ ] **Step 4: Apply one exact row contract**
+- [x] **Step 4: Apply one exact row contract**
 
 Every original diagnostic bullet must use this complete shape:
 
@@ -154,7 +172,7 @@ Every original diagnostic bullet must use this complete shape:
 
 Do not remove the full diagnostic ID. An outcome without all four fields is incomplete.
 
-- [ ] **Step 5: Normalize lifecycle and identity rows as one audit-only unit**
+- [x] **Step 5: Normalize lifecycle and identity rows as one audit-only unit**
 
 Review these rules against the existing renderer tests: `exhaustive-deps`, `jsx-no-constructed-context-values`, `no-adjust-state-on-prop-change`, `no-array-index-as-key`, `no-children-prop`, `no-derived-useState`, `no-effect-chain`, `no-loading-flag-reset-outside-finally`, `no-pass-data-to-parent`, `no-pass-live-state-to-parent`, `no-prop-callback-in-effect`, `no-reset-all-state-on-prop-change`, `no-set-state-after-await-in-effect`, `no-side-effect-in-state-updater-function`, `no-static-element-interactions`, `no-unowned-async-error-clear`, `only-export-components`, `prefer-html-dialog`, `prefer-tag-over-role`, `rerender-lazy-ref-init`, `rerender-memo-with-default-value`, and `rerender-state-only-in-handlers`.
 
@@ -164,11 +182,11 @@ Review these rules against the existing renderer tests: `exhaustive-deps`, `jsx-
 - Shared shadcn/Base UI variant exports: `rejected-with-evidence`; evidence names importing callers or package-local primitive ownership.
 - Renderer URL and lightbox fixes remain owned by Tasks 2–3. App, Settings, and walkthrough rejections remain owned by Task 4. Both Item findings remain owned by Task 5.
 
-- [ ] **Step 6: Normalize ordered async rows as one audit-only unit**
+- [x] **Step 6: Normalize ordered async rows as one audit-only unit**
 
 Review `async-await-in-loop` and `server-sequential-independent-await` rows against their current service/storage tests. Use `intentional-ordered-operation` only after naming one exact invariant: first-success search, durable write order, journal sequence, cleanup dependency, rate bound, or deterministic failure order. Owner is the current service/adapter. Trigger is a new test proving operations independent without changing result order or failure classification.
 
-- [ ] **Step 7: Normalize bounded performance and architecture rows as one audit-only unit**
+- [x] **Step 7: Normalize bounded performance and architecture rows as one audit-only unit**
 
 Review `js-cache-property-access`, `js-combine-iterations`, `js-hoist-intl`, `js-set-map-lookups`, `no-fetch-response-used-without-status-check`, `no-giant-component`, `no-json-parse-stringify-clone`, `no-unguarded-throwing-parse-call`, `prefer-module-scope-static-value`, and `prefer-useReducer`.
 
@@ -177,7 +195,7 @@ Review `js-cache-property-access`, `js-combine-iterations`, `js-hoist-intl`, `js
 - JSON serialization test and desktop bridge status handling: `rejected-with-evidence`; verification names the existing contract test.
 - Renderer URL remains owned by Task 2.
 
-- [ ] **Step 8: Normalize static reachability and package-policy rows as one audit-only unit**
+- [x] **Step 8: Normalize static reachability and package-policy rows as one audit-only unit**
 
 Review `require-pnpm-hardening`, `unused-dependency`, `unused-dev-dependency`, `unused-export`, and `unused-file`.
 
@@ -185,7 +203,7 @@ Review `require-pnpm-hardening`, `unused-dependency`, `unused-dev-dependency`, `
 - Pnpm hardening: owner is package-manager maintenance; evidence records pnpm `8.8.0`, missing root `pnpm-workspace.yaml`, and current option support; trigger is an explicitly approved package-manager upgrade.
 - Dependency candidates: owner is package maintenance; trigger is Task 5's exact reachability and approval result.
 
-- [ ] **Step 9: Validate every original row has all required fields**
+- [x] **Step 9: Validate every original row has all required fields**
 
 ```bash
 python3 - <<'PY'
@@ -201,7 +219,7 @@ assert not incomplete, "\n".join(incomplete)
 PY
 ```
 
-- [ ] **Step 10: Verify no broad unresolved label remains outside static approval**
+- [x] **Step 10: Verify no broad unresolved label remains outside static approval**
 
 ```bash
 if rg -n 'needs measurement|explicit follow-up reference|unavailable' \
@@ -212,7 +230,7 @@ fi
 
 Expected: no matches. Static candidates use `observation-with-owner` until Task 5.
 
-- [ ] **Step 11: Run document checks**
+- [x] **Step 11: Run document checks**
 
 ```bash
 pnpm exec oxfmt --check \
@@ -243,7 +261,7 @@ git diff --check -- \
 - Produces: `rendererOrigin(value: string | undefined): string`.
 - Contract: return a normalized absolute origin for valid input; return the existing fail-closed value `"null"` for missing or malformed input.
 
-- [ ] **Step 1: Write the failing boundary test**
+- [x] **Step 1: Write the failing boundary test**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -264,7 +282,7 @@ describe("rendererOrigin", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and confirm the missing-module failure**
+- [x] **Step 2: Run the test and confirm the missing-module failure**
 
 ```bash
 pnpm test -- --run tests/main/renderer-origin.test.ts
@@ -272,7 +290,7 @@ pnpm test -- --run tests/main/renderer-origin.test.ts
 
 Expected: fail because `src/main/renderer-origin.ts` does not exist.
 
-- [ ] **Step 3: Implement the boundary parser**
+- [x] **Step 3: Implement the boundary parser**
 
 ```ts
 /** Returns the renderer origin or the fail-closed opaque origin. */
@@ -282,7 +300,7 @@ export function rendererOrigin(value: string | undefined): string {
 }
 ```
 
-- [ ] **Step 4: Use it from Electron main**
+- [x] **Step 4: Use it from Electron main**
 
 Add:
 
@@ -298,7 +316,7 @@ function getRendererOrigin(): string {
 }
 ```
 
-- [ ] **Step 5: Run focused proof and changed-file scan**
+- [x] **Step 5: Run focused proof and changed-file scan**
 
 ```bash
 pnpm test -- --run tests/main/renderer-origin.test.ts
@@ -316,7 +334,7 @@ git diff --check -- \
   tests/main/renderer-origin.test.ts
 ```
 
-- [ ] **Step 6: Update the exact audit row**
+- [x] **Step 6: Update the exact audit row**
 
 Mark `src/main/electron-main.ts::687:47::react-doctor/no-unguarded-throwing-parse-call::dfdf095868eae247b9168d541f2d52c05542d0bda510f998f562f4babfbad9d3` as `fixed`. Record the focused test and changed-file scan.
 
@@ -339,7 +357,7 @@ Mark `src/main/electron-main.ts::687:47::react-doctor/no-unguarded-throwing-pars
 - Native `cancel` owns Escape. The dialog key handler owns only `+`, `=`, `-`, and `0` zoom shortcuts.
 - Close/reopen resets scale to 100% and fit-to-screen.
 
-- [ ] **Step 1: Add a local native-dialog test polyfill without spies**
+- [x] **Step 1: Add a local native-dialog test polyfill without spies**
 
 In `tests/renderer/markdown-lightbox.ui.test.tsx`, import `beforeEach` and save the original methods:
 
@@ -377,7 +395,7 @@ afterEach(() => {
 
 Replace the current `afterEach(cleanup)` with this cleanup block.
 
-- [ ] **Step 2: Add native dialog and reset tests**
+- [x] **Step 2: Add native dialog and reset tests**
 
 ```ts
 it("opens as a native modal and delegates cancel to onClose", () => {
@@ -435,7 +453,7 @@ it("resets zoom and fit state after close and reopen", async () => {
 });
 ```
 
-- [ ] **Step 3: Run the tests and confirm the native-tag failure**
+- [x] **Step 3: Run the tests and confirm the native-tag failure**
 
 ```bash
 pnpm test -- --run tests/renderer/markdown-lightbox.ui.test.tsx
@@ -443,7 +461,7 @@ pnpm test -- --run tests/renderer/markdown-lightbox.ui.test.tsx
 
 Expected before the fix: the native-dialog test fails because the current element is a `DIV`.
 
-- [ ] **Step 4: Implement native dialog lifecycle**
+- [x] **Step 4: Implement native dialog lifecycle**
 
 Change the React import to include `useLayoutEffect` and `type KeyboardEvent`. Add:
 
@@ -471,7 +489,7 @@ const handleKeyDown = useCallback(
 
 Remove the global `window.addEventListener("keydown", ...)` effect. Native `cancel` now owns Escape.
 
-- [ ] **Step 5: Replace the modal return block exactly**
+- [x] **Step 5: Replace the modal return block exactly**
 
 Keep `if (!open) return null;`, then use this complete return block:
 
@@ -559,7 +577,7 @@ return (
 );
 ```
 
-- [ ] **Step 6: Pass `createElement` children positionally**
+- [x] **Step 6: Pass `createElement` children positionally**
 
 Replace the `lightbox` callback in `src/renderer/src/use-lightbox.ts` with:
 
@@ -571,7 +589,7 @@ const lightbox = useCallback(
 );
 ```
 
-- [ ] **Step 7: Extend the existing browser test with native assertions**
+- [x] **Step 7: Extend the existing browser test with native assertions**
 
 After `await expect(dialog).toBeVisible()` in `tests/browser/accessibility.spec.ts`, add:
 
@@ -584,7 +602,7 @@ expect(
 
 Keep the existing serious-violation, Escape, hidden-dialog, and focus-return assertions.
 
-- [ ] **Step 8: Verify renderer and browser behavior**
+- [x] **Step 8: Verify renderer and browser behavior**
 
 ```bash
 pnpm test -- --run \
@@ -608,7 +626,7 @@ git diff --check -- \
   tests/browser/accessibility.spec.ts
 ```
 
-- [ ] **Step 9: Update the exact audit rows**
+- [x] **Step 9: Update the exact audit rows**
 
 Mark these outcomes:
 
@@ -635,7 +653,7 @@ Mark these outcomes:
 - No production interface changes.
 - Evidence is current source plus existing behavior tests.
 
-- [ ] **Step 1: Prove App already resets loading in `finally`**
+- [x] **Step 1: Prove App already resets loading in `finally`**
 
 ```bash
 node_modules/.bin/react-doctor why --cwd "$PWD" src/renderer/src/app.tsx:324
@@ -646,7 +664,7 @@ pnpm test -- --run \
 
 Inspect `refreshInbox`: `setInboxRefreshing(false)` is inside `finally` and is generation-guarded. Mark the diagnostic `rejected-with-evidence`; do not edit the function.
 
-- [ ] **Step 2: Prove Settings save failures resolve `false`**
+- [x] **Step 2: Prove Settings save failures resolve `false`**
 
 ```bash
 node_modules/.bin/react-doctor why --cwd "$PWD" src/renderer/src/components/settings-modal.tsx:130
@@ -657,7 +675,7 @@ pnpm test -- --run \
 
 Inspect `SettingsFlow.saveProfile`: it catches `unknown`, displays an error, returns `false`, and clears its own pending state in `finally`. `SettingsModal.saveAndContinue` receives `Promise<boolean>`, so the current reset runs for all contract-compliant outcomes. Mark the diagnostic `rejected-with-evidence`; do not add a production `try/finally` for an impossible rejecting callback.
 
-- [ ] **Step 3: Prove the walkthrough wrapper is delegated keyboard scope**
+- [x] **Step 3: Prove the walkthrough wrapper is delegated keyboard scope**
 
 ```bash
 node_modules/.bin/react-doctor why --cwd "$PWD" src/renderer/src/components/narrative-walkthrough.tsx:271
@@ -666,7 +684,7 @@ pnpm test -- --run tests/renderer/narrative-walkthrough.ui.test.tsx
 
 Use the existing tests `supports j/k vim aliases only when no editor control has focus` and `returns focus to the section heading on Escape`. The root receives bubbled keyboard events and is not an activation target. Mark the diagnostic `rejected-with-evidence` under the canonical delegated-wrapper exception. Do not add `role="application"`, `role="button"`, or `tabIndex={0}`.
 
-- [ ] **Step 4: Retain the bridge status-check rejection**
+- [x] **Step 4: Retain the bridge status-check rejection**
 
 ```bash
 node_modules/.bin/react-doctor why --cwd "$PWD" src/main/desktop-bridge.ts:221
@@ -675,7 +693,7 @@ pnpm test -- --run tests/renderer/renderer-contracts.test.ts
 
 Verify the bridge returns `ok: response.ok` and `status`, while `requestJson` rejects non-OK responses and preserves the structured body. Keep `rejected-with-evidence`; do not add a second status policy.
 
-- [ ] **Step 5: Verify the audit no longer calls these confirmed failures**
+- [x] **Step 5: Verify the audit no longer calls these confirmed failures**
 
 ```bash
 if rg -n 'app\.tsx.*confirmed failure|settings-modal\.tsx.*confirmed failure|narrative-walkthrough\.tsx.*confirmed failure|desktop-bridge\.ts.*confirmed failure' \
@@ -847,14 +865,15 @@ If the production audit is no longer clean or a patched direct version regressed
 
 - Create: `.agents/research/2026-08-14-react-doctor-delta/final.json`
 - Modify: `plans/audit-2026-08-14-react-doctor-disposition.md`
-- No source edits in this task.
+- Modify: `.oxfmtrc.json` only to ignore machine-generated React Doctor JSON artifacts under `.agents/research/2026-08-14-react-doctor-delta/`; immutable scan bytes remain unchanged.
+- No production source or test edits in this task.
 
 **Interfaces:**
 
 - Consumes immutable `initial.json` and final schema-3 scan.
 - Produces zero unclassified initial logical findings and zero new unreviewed final signatures.
 
-- [ ] **Step 1: Run the same complete final scan**
+- [x] **Step 1: Run the same complete final scan**
 
 ```bash
 BASE_DIR=.agents/research/2026-08-14-react-doctor-delta
@@ -869,7 +888,7 @@ jq -e '
 jq '.summary' "$BASE_DIR/final.json"
 ```
 
-- [ ] **Step 2: Compare stable signatures so line shifts do not look new**
+- [x] **Step 2: Compare stable signatures so line shifts do not look new**
 
 ```bash
 jq -r '.projects[].diagnostics[] | [.plugin, .rule, .normalizedFilePath, .message] | @tsv' \
@@ -886,7 +905,7 @@ fi
 
 Expected: no new logical signatures. Fixed findings may disappear; unchanged findings may have shifted IDs.
 
-- [ ] **Step 3: Verify all original audit IDs remain exactly once**
+- [x] **Step 3: Verify all original audit IDs remain exactly once**
 
 ```bash
 rg --no-filename -o '`[^`]+::[0-9]+:[0-9]+::[^`]+::[0-9a-f]+`' \
@@ -899,7 +918,7 @@ diff -u "$BASE_DIR/audit-final.ids" "$BASE_DIR/audit-final-unique.ids"
 
 Expected: 207 rows and no duplicate original ID. Final shifted IDs go in a separate `Final scan` section and are not inserted into the original 207-row manifest.
 
-- [ ] **Step 4: Verify every original row is terminal**
+- [x] **Step 4: Verify every original row is terminal**
 
 ```bash
 if rg -n 'confirmed failure|needs measurement|explicit follow-up reference|unavailable|approved-removal-pending|fixed-after-approved-removal' \
@@ -910,7 +929,7 @@ fi
 
 Expected: no matches after Tasks 2–6 and any approved-removal task are complete.
 
-- [ ] **Step 5: Run the full repository gate in required order**
+- [x] **Step 5: Run the full repository gate in required order**
 
 ```bash
 pnpm format:check
@@ -926,7 +945,7 @@ git diff --check
 
 Do not weaken the existing 1,000-file performance thresholds.
 
-- [ ] **Step 6: Restart the dev app because main-process code changed**
+- [x] **Step 6: Restart the dev app because main-process code changed**
 
 In `patchdesk dev live`, stop the current process and run:
 
@@ -935,6 +954,21 @@ pnpm dev -- --remote-debugging-port=9233
 ```
 
 Confirm the local API starts and DevTools listens on `127.0.0.1:9233`.
+Evidence: HERDR_ENV=1; log-tail pane `wF:p1N` and dev pane `wF:p1P` were
+confirmed live. The dev process was stopped with Ctrl-C and restarted with the
+exact command above. The pane reported `Local API started` and
+`DevTools listening on ws://127.0.0.1:9233/...`. No UI interaction was done.
+Progress update after the required live restart: dedicated read-only QA then
+found the existing Review route contract was broken by the earlier
+`e982d0d refactor: remove superseded review systems` cleanup. The renderer and
+desktop bridge still used `POST /v1/reviews/diff-file`, while the local API no
+longer composed `ReviewDiffSourceService` or registered that route; real
+requests returned deterministic `404` and unchanged-context hydration was
+unavailable. The user explicitly approved restoring this current read-only
+route. A public local-API regression test first failed with `expected 404 to be
+200`, then passed after restoring only the service composition and route. The
+focused test proves both `ready` and `unavailable` `200` contracts. The live
+UI verification step remains pending and no final live pass is claimed yet.
 
 - [ ] **Step 7: Run read-only live Electron verification**
 

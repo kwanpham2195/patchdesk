@@ -6,3 +6,4 @@
 - [[codebase/github-adapter-quirks]]
 - [[codebase/pierre-controlled-items]]
 - [[codebase/plan-portfolio-execution]]
+- [[codebase/review-schema-evolution]]

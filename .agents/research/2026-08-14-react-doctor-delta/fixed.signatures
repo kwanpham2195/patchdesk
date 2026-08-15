@@ -1,0 +1,27 @@
+deslop	unused-dependency	package.json	Unused dependency: `@fontsource-variable/geist`
+deslop	unused-dev-dependency	package.json	Unused devDependency: `@electron-toolkit/utils`
+deslop	unused-export	src/adapters/storage/json-file.ts	Unused export: `appendJsonLine` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/contracts.ts	Unused export: `parseGitHubPullRequestDto` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/contracts.ts	Unused export: `parseReviewPrWorkflowOutput` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/contracts.ts	Unused export: `parseStartReviewRequest` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/contracts.ts	Unused export: `reviewPrWorkflowOutputSchema` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/insight-provider.ts	Unused export: `isInsightProvider` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/insight-provider.ts	Unused export: `parseInsightSelection` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/log-entry.ts	Unused export: `fitsLogEntryBytes` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/pending-review.ts	Unused export: `isPendingReviewConfirmed` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/domain/pull-request.ts	Unused export: `pullRequestInputSchema` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/renderer/src/components/pr-overview-sheet.tsx	Unused export: `PullRequestOverviewSheet` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/renderer/src/components/review-workbench.tsx	Unused export: `usePublishedFeedbackNavigation` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/renderer/src/flows/inbox-flow.tsx	Unused export: `InboxScreen` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/renderer/src/flows/inbox-flow.tsx	Unused export: `Pending` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/renderer/src/review-copy.ts	Unused export: `WALKTHROUGH_LIFECYCLE_KEYS` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/services/review-commit-service.ts	Unused export: `commitDiffFailureReason` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/services/review-preparation-journal.ts	Unused export: `promoteStagedArtifact` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-export	src/services/walkthrough-operation.ts	Unused export: `walkthroughInputSchema` is exported but no module imports it, so it expands the public surface and can mislead callers about supported API.
+deslop	unused-file	src/renderer/src/components/dashboard-empty-state.tsx	Unused file is not reachable from any entry point, so it adds maintenance surface without shipping any code.
+deslop	unused-file	src/renderer/src/format-byte-size.ts	Unused file is not reachable from any entry point, so it adds maintenance surface without shipping any code.
+deslop	unused-file	src/renderer/src/hooks/use-mobile.ts	Unused file is not reachable from any entry point, so it adds maintenance surface without shipping any code.
+deslop	unused-file	src/renderer/src/review-identity.ts	Unused file is not reachable from any entry point, so it adds maintenance surface without shipping any code.
+react-doctor	no-children-prop	src/renderer/src/use-lightbox.ts	A `children` prop can override or hide nested children, so the component may render different content than the JSX shows.
+react-doctor	no-unguarded-throwing-parse-call	src/main/electron-main.ts	This builds a `URL` from a runtime URL/route value (`params`, `searchParams`, a `location` field), which throws `TypeError` on a malformed string and crashes render. Guard it with `URL.canParse`, pass a base-URL second argument, or wrap the call in a try/catch.
+react-doctor	prefer-html-dialog	src/renderer/src/components/markdown-lightbox.tsx	Screen reader users get native dialog semantics for free from the HTML `<dialog>` element, so swap this `role="dialog"` element for `<dialog>` and open it with `dialog.show()` (non-modal) or `dialog.showModal()` (modal).

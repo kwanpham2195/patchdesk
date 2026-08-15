@@ -1,0 +1,632 @@
+{
+  "schemaVersion": 3,
+  "mode": "baseline",
+  "baseline": {
+    "baseRef": "a3813b8f9da4b5d569a3e21c47838b27a2916136",
+    "newCount": 10,
+    "fixedCount": 22,
+    "baseTotalCount": 79
+  },
+  "reactDetected": true,
+  "version": "0.9.11",
+  "ok": true,
+  "directory": "/Users/kwanpham/Work/cfw/patchdesk",
+  "diff": {
+    "baseBranch": "HEAD",
+    "currentBranch": "main",
+    "changedFileCount": 67,
+    "isCurrentChanges": false
+  },
+  "projects": [
+    {
+      "directory": "/Users/kwanpham/Work/cfw/patchdesk",
+      "packageRoot": "/Users/kwanpham/Work/cfw/patchdesk",
+      "framework": "vite",
+      "project": {
+        "rootDirectory": "/Users/kwanpham/Work/cfw/patchdesk",
+        "projectName": "patchdesk",
+        "reactVersion": "^19.1.1",
+        "reactMajorVersion": 19,
+        "tailwindVersion": "^4.1.12",
+        "zodVersion": null,
+        "zodMajorVersion": null,
+        "mobxVersion": null,
+        "mobxMajorVersion": null,
+        "hasMobxReact": false,
+        "mobxReactVersion": null,
+        "hasMobxReactLite": false,
+        "mobxReactLiteVersion": null,
+        "hasMobxStateTree": false,
+        "hasMobxReactObserver": false,
+        "zustandVersion": null,
+        "zustandMajorVersion": null,
+        "framework": "vite",
+        "hasTypeScript": true,
+        "hasReactCompiler": false,
+        "hasReactCompilerLintPlugin": false,
+        "hasTanStackQuery": false,
+        "hasI18nLibrary": false,
+        "tanstackQueryVersion": null,
+        "styledComponentsVersion": null,
+        "valtioVersion": null,
+        "valtioMajorVersion": null,
+        "hasRemotion": false,
+        "remotionVersion": null,
+        "remotionMajorVersion": null,
+        "hasThree": false,
+        "threeVersion": null,
+        "threeRelease": null,
+        "hasReactThreeFiber": false,
+        "reactThreeFiberVersion": null,
+        "reactThreeFiberMajorVersion": null,
+        "hasSsrDependency": false,
+        "preactVersion": null,
+        "preactMajorVersion": null,
+        "hasReactNativeWorkspace": false,
+        "nextjsVersion": null,
+        "nextjsMajorVersion": null,
+        "reactRouterVersion": null,
+        "hasReactRouterFramework": false,
+        "expoVersion": null,
+        "shopifyFlashListVersion": null,
+        "shopifyFlashListMajorVersion": null,
+        "hasReanimated": false,
+        "reanimatedVersion": null,
+        "isPreES2023Target": true,
+        "isStaticExport": false,
+        "sourceFileCount": 351
+      },
+      "diagnostics": [
+        {
+          "filePath": "src/renderer/src/components/logs-panel.tsx",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useEffect` can run with a stale `pausedRef, afterSeqRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 142,
+          "column": 6,
+          "offset": 4553,
+          "length": 2,
+          "endLine": 142,
+          "category": "Bugs",
+          "id": "src/renderer/src/components/logs-panel.tsx::142:6::react-doctor/exhaustive-deps::8c56b14fc0ce01437f42c66004bf96c1593c54cdbd7d8f29f715b561899ca3b9",
+          "normalizedFilePath": "src/renderer/src/components/logs-panel.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/components/markdown-lightbox.tsx",
+          "plugin": "react-doctor",
+          "rule": "no-noninteractive-element-interactions",
+          "severity": "warning",
+          "title": "Handler on non-interactive element",
+          "message": "Keyboard & screen reader users can't trigger this `<dialog>` because it isn't interactive, so use a button or link or add an interactive role.",
+          "help": "Put interactions on a button or link, or add an interactive role.",
+          "line": 120,
+          "column": 6,
+          "offset": 3503,
+          "length": 6,
+          "endLine": 132,
+          "category": "Accessibility",
+          "matchByOccurrence": true,
+          "id": "src/renderer/src/components/markdown-lightbox.tsx::120:6::react-doctor/no-noninteractive-element-interactions::d2defd21e8e4d1d1368e3a1452d7fb632ee5389add0645cd90288bc5042e18d7",
+          "normalizedFilePath": "src/renderer/src/components/markdown-lightbox.tsx",
+          "tags": [
+            "react-jsx-only"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/inbox-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "js-combine-iterations",
+          "severity": "warning",
+          "title": "Chained array iterations",
+          "message": "This loops over your list twice because .filter().map() makes two passes, so do it in one pass with .reduce() or a for...of loop",
+          "help": "Combine `.map().filter()` style chains into one pass with `.reduce()` or a `for...of` loop, so you only loop over the list once",
+          "line": 565,
+          "column": 8,
+          "offset": 18340,
+          "length": 1532,
+          "endLine": 606,
+          "category": "Performance",
+          "id": "src/renderer/src/flows/inbox-flow.tsx::565:8::react-doctor/js-combine-iterations::86f8632615fdfb3adc9efe484c1e1ab781c7771048e0b9f5c2d8b6920d63cb33",
+          "normalizedFilePath": "src/renderer/src/flows/inbox-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useCallback` can run with a stale `workbenchRef, recentWritesRef, replaceWorkbench, onWorkbenchPatchRef, detectedStaleFreshnessRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 358,
+          "column": 6,
+          "offset": 14630,
+          "length": 2,
+          "endLine": 358,
+          "category": "Bugs",
+          "id": "src/renderer/src/flows/review-workbench-flow.tsx::358:6::react-doctor/exhaustive-deps::5d603088eda113e21e6b782a72c7721d9252a4a9d738cd891e19d1fcf9e803e2",
+          "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "no-pass-live-state-to-parent",
+          "severity": "warning",
+          "title": "Live state pushed to parent via effect",
+          "message": "Pushing state up to a parent from a useEffect costs your users an extra render.",
+          "help": "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
+          "line": 361,
+          "column": 10,
+          "offset": 14665,
+          "length": 11,
+          "endLine": 361,
+          "category": "Bugs",
+          "id": "src/renderer/src/flows/review-workbench-flow.tsx::361:10::react-doctor/no-pass-live-state-to-parent::b4ca677c4f4ac350ed4e36aab18c8d11638b2b00a18f93465d1a2907b3298aa7",
+          "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useCallback` can run with a stale `workbenchRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 426,
+          "column": 6,
+          "offset": 17490,
+          "length": 18,
+          "endLine": 426,
+          "category": "Bugs",
+          "id": "src/renderer/src/flows/review-workbench-flow.tsx::426:6::react-doctor/exhaustive-deps::5ccb3c3880e6c62b3b1038d98129fb9cacb867f7de05cf10a169d4bd1a67bf61",
+          "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useCallback` can run with a stale `workbenchRef, refreshingRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 440,
+          "column": 6,
+          "offset": 17869,
+          "length": 16,
+          "endLine": 440,
+          "category": "Bugs",
+          "id": "src/renderer/src/flows/review-workbench-flow.tsx::440:6::react-doctor/exhaustive-deps::26d2c75e17412b00663bea6258cf23cb63526f2020fd42620999c257276a70a9",
+          "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useCallback` can run with a stale `workbenchRef, onWorkbenchPatchRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 500,
+          "column": 5,
+          "offset": 20000,
+          "length": 36,
+          "endLine": 500,
+          "category": "Bugs",
+          "id": "src/renderer/src/flows/review-workbench-flow.tsx::500:5::react-doctor/exhaustive-deps::c493978d34290944a26b1b4954cb909d955c4db5c77de108d68336529cdc4ec1",
+          "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/hooks/use-commit-diff.ts",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useEffect` can run with a stale `loader` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 59,
+          "column": 6,
+          "offset": 1959,
+          "length": 26,
+          "endLine": 59,
+          "category": "Bugs",
+          "id": "src/renderer/src/hooks/use-commit-diff.ts::59:6::react-doctor/exhaustive-deps::b2b0a067d6973ec4c64b0d6738a591f8791b6d4a5012da4214eae20284753af4",
+          "normalizedFilePath": "src/renderer/src/hooks/use-commit-diff.ts",
+          "tags": [
+            "test-noise"
+          ]
+        },
+        {
+          "filePath": "src/renderer/src/hooks/use-insight-run.ts",
+          "plugin": "react-doctor",
+          "rule": "exhaustive-deps",
+          "severity": "warning",
+          "title": "Missing effect dependencies",
+          "message": "`useEffect` can run with a stale `onInsightPatchRef, onWorkbenchReplaceRef, onCompletedRef` & show your users old data.",
+          "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+          "line": 190,
+          "column": 6,
+          "offset": 6408,
+          "length": 34,
+          "endLine": 190,
+          "category": "Bugs",
+          "id": "src/renderer/src/hooks/use-insight-run.ts::190:6::react-doctor/exhaustive-deps::3c7893bcdd7d25f90b8642f13a7c5d4f2958cc0acc494acdda6420c895576259",
+          "normalizedFilePath": "src/renderer/src/hooks/use-insight-run.ts",
+          "tags": [
+            "test-noise"
+          ]
+        }
+      ],
+      "score": {
+        "score": 66,
+        "label": "Needs work",
+        "rules": {
+          "react-doctor/exhaustive-deps": {
+            "priority": 66,
+            "tier": "P2"
+          },
+          "react-doctor/no-reset-all-state-on-prop-change": {
+            "priority": 48,
+            "tier": "P3"
+          },
+          "react-doctor/no-adjust-state-on-prop-change": {
+            "priority": 47,
+            "tier": "P3"
+          },
+          "react-doctor/no-noninteractive-element-interactions": {
+            "priority": 34,
+            "tier": "P3"
+          },
+          "react-doctor/no-array-index-as-key": {
+            "priority": 66,
+            "tier": "P2"
+          },
+          "react-doctor/no-giant-component": {
+            "priority": 30,
+            "tier": "P3"
+          },
+          "react-doctor/prefer-useReducer": {
+            "priority": 22,
+            "tier": "P3"
+          },
+          "react-doctor/no-pass-live-state-to-parent": {
+            "priority": 50,
+            "tier": "P2"
+          },
+          "react-doctor/no-prop-callback-in-effect": {
+            "priority": 50,
+            "tier": "P2"
+          },
+          "react-doctor/no-side-effect-in-state-updater-function": {
+            "priority": null,
+            "tier": "P3"
+          },
+          "react-doctor/js-hoist-intl": {
+            "priority": 36,
+            "tier": "P3"
+          },
+          "react-doctor/prefer-module-scope-static-value": {
+            "priority": 38,
+            "tier": "P3"
+          },
+          "react-doctor/no-set-state-after-await-in-effect": {
+            "priority": null,
+            "tier": "P3"
+          },
+          "react-doctor/js-combine-iterations": {
+            "priority": 26,
+            "tier": "P3"
+          },
+          "react-doctor/rerender-lazy-ref-init": {
+            "priority": 38,
+            "tier": "P3"
+          },
+          "react-doctor/js-set-map-lookups": {
+            "priority": 48,
+            "tier": "P3"
+          },
+          "react-doctor/rerender-state-only-in-handlers": {
+            "priority": 46,
+            "tier": "P3"
+          },
+          "react-doctor/no-derived-useState": {
+            "priority": 56,
+            "tier": "P2"
+          },
+          "react-doctor/async-await-in-loop": {
+            "priority": 57,
+            "tier": "P2"
+          },
+          "react-doctor/server-sequential-independent-await": {
+            "priority": 60,
+            "tier": "P2"
+          }
+        }
+      },
+      "skippedChecks": [],
+      "analyzedFiles": [
+        "src/adapters/storage/json-file.ts",
+        "src/domain/contracts.ts",
+        "src/domain/insight-provider.ts",
+        "src/domain/log-entry.ts",
+        "src/domain/pending-review.ts",
+        "src/domain/pull-request.ts",
+        "src/main/electron-main.ts",
+        "src/main/renderer-origin.ts",
+        "src/renderer/src/components/conversation.tsx",
+        "src/renderer/src/components/logs-panel.tsx",
+        "src/renderer/src/components/markdown-lightbox.tsx",
+        "src/renderer/src/components/pr-overview-sheet.tsx",
+        "src/renderer/src/components/pull-request-description.tsx",
+        "src/renderer/src/components/review-workbench.tsx",
+        "src/renderer/src/flows/app-fixtures.tsx",
+        "src/renderer/src/flows/fixture-routes.ts",
+        "src/renderer/src/flows/inbox-flow.tsx",
+        "src/renderer/src/flows/review-workbench-flow.tsx",
+        "src/renderer/src/hooks/use-commit-diff.ts",
+        "src/renderer/src/hooks/use-insight-run.ts",
+        "src/renderer/src/hooks/use-latest-committed.ts",
+        "src/renderer/src/review-copy.ts",
+        "src/renderer/src/use-lightbox.ts",
+        "src/services/review-commit-service.ts",
+        "src/services/review-preparation-journal.ts",
+        "src/services/walkthrough-operation.ts",
+        "tests/browser/accessibility.spec.ts",
+        "tests/main/desktop-bridge.test.ts",
+        "tests/main/renderer-origin.test.ts",
+        "tests/renderer/api-client.test.ts",
+        "tests/renderer/app.ui.test.tsx",
+        "tests/renderer/logs-panel.ui.test.tsx",
+        "tests/renderer/markdown-lightbox.ui.test.tsx",
+        "tests/renderer/narrative-walkthrough.ui.test.tsx",
+        "tests/renderer/pull-request-description.ui.test.tsx",
+        "tests/renderer/review-workbench-flow.ui.test.tsx",
+        "tests/renderer/settings-modal.ui.test.tsx",
+        "tests/renderer/use-commit-diff.test.ts",
+        "tests/renderer/use-insight-run.test.ts",
+        "tests/renderer/use-latest-committed.test.ts",
+        "tests/renderer/use-progressive-review-diff-stream.test.ts",
+        "tests/renderer/use-review-diff-hydration.test.ts"
+      ],
+      "analyzedFileCount": 42,
+      "complete": true,
+      "scannedFileCount": 42,
+      "elapsedMilliseconds": 12371.058084
+    }
+  ],
+  "diagnostics": [
+    {
+      "filePath": "src/renderer/src/components/logs-panel.tsx",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useEffect` can run with a stale `pausedRef, afterSeqRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 142,
+      "column": 6,
+      "offset": 4553,
+      "length": 2,
+      "endLine": 142,
+      "category": "Bugs",
+      "id": "src/renderer/src/components/logs-panel.tsx::142:6::react-doctor/exhaustive-deps::8c56b14fc0ce01437f42c66004bf96c1593c54cdbd7d8f29f715b561899ca3b9",
+      "normalizedFilePath": "src/renderer/src/components/logs-panel.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/components/markdown-lightbox.tsx",
+      "plugin": "react-doctor",
+      "rule": "no-noninteractive-element-interactions",
+      "severity": "warning",
+      "title": "Handler on non-interactive element",
+      "message": "Keyboard & screen reader users can't trigger this `<dialog>` because it isn't interactive, so use a button or link or add an interactive role.",
+      "help": "Put interactions on a button or link, or add an interactive role.",
+      "line": 120,
+      "column": 6,
+      "offset": 3503,
+      "length": 6,
+      "endLine": 132,
+      "category": "Accessibility",
+      "matchByOccurrence": true,
+      "id": "src/renderer/src/components/markdown-lightbox.tsx::120:6::react-doctor/no-noninteractive-element-interactions::d2defd21e8e4d1d1368e3a1452d7fb632ee5389add0645cd90288bc5042e18d7",
+      "normalizedFilePath": "src/renderer/src/components/markdown-lightbox.tsx",
+      "tags": [
+        "react-jsx-only"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/inbox-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "js-combine-iterations",
+      "severity": "warning",
+      "title": "Chained array iterations",
+      "message": "This loops over your list twice because .filter().map() makes two passes, so do it in one pass with .reduce() or a for...of loop",
+      "help": "Combine `.map().filter()` style chains into one pass with `.reduce()` or a `for...of` loop, so you only loop over the list once",
+      "line": 565,
+      "column": 8,
+      "offset": 18340,
+      "length": 1532,
+      "endLine": 606,
+      "category": "Performance",
+      "id": "src/renderer/src/flows/inbox-flow.tsx::565:8::react-doctor/js-combine-iterations::86f8632615fdfb3adc9efe484c1e1ab781c7771048e0b9f5c2d8b6920d63cb33",
+      "normalizedFilePath": "src/renderer/src/flows/inbox-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useCallback` can run with a stale `workbenchRef, recentWritesRef, replaceWorkbench, onWorkbenchPatchRef, detectedStaleFreshnessRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 358,
+      "column": 6,
+      "offset": 14630,
+      "length": 2,
+      "endLine": 358,
+      "category": "Bugs",
+      "id": "src/renderer/src/flows/review-workbench-flow.tsx::358:6::react-doctor/exhaustive-deps::5d603088eda113e21e6b782a72c7721d9252a4a9d738cd891e19d1fcf9e803e2",
+      "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "no-pass-live-state-to-parent",
+      "severity": "warning",
+      "title": "Live state pushed to parent via effect",
+      "message": "Pushing state up to a parent from a useEffect costs your users an extra render.",
+      "help": "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
+      "line": 361,
+      "column": 10,
+      "offset": 14665,
+      "length": 11,
+      "endLine": 361,
+      "category": "Bugs",
+      "id": "src/renderer/src/flows/review-workbench-flow.tsx::361:10::react-doctor/no-pass-live-state-to-parent::b4ca677c4f4ac350ed4e36aab18c8d11638b2b00a18f93465d1a2907b3298aa7",
+      "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useCallback` can run with a stale `workbenchRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 426,
+      "column": 6,
+      "offset": 17490,
+      "length": 18,
+      "endLine": 426,
+      "category": "Bugs",
+      "id": "src/renderer/src/flows/review-workbench-flow.tsx::426:6::react-doctor/exhaustive-deps::5ccb3c3880e6c62b3b1038d98129fb9cacb867f7de05cf10a169d4bd1a67bf61",
+      "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useCallback` can run with a stale `workbenchRef, refreshingRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 440,
+      "column": 6,
+      "offset": 17869,
+      "length": 16,
+      "endLine": 440,
+      "category": "Bugs",
+      "id": "src/renderer/src/flows/review-workbench-flow.tsx::440:6::react-doctor/exhaustive-deps::26d2c75e17412b00663bea6258cf23cb63526f2020fd42620999c257276a70a9",
+      "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useCallback` can run with a stale `workbenchRef, onWorkbenchPatchRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 500,
+      "column": 5,
+      "offset": 20000,
+      "length": 36,
+      "endLine": 500,
+      "category": "Bugs",
+      "id": "src/renderer/src/flows/review-workbench-flow.tsx::500:5::react-doctor/exhaustive-deps::c493978d34290944a26b1b4954cb909d955c4db5c77de108d68336529cdc4ec1",
+      "normalizedFilePath": "src/renderer/src/flows/review-workbench-flow.tsx",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/hooks/use-commit-diff.ts",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useEffect` can run with a stale `loader` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 59,
+      "column": 6,
+      "offset": 1959,
+      "length": 26,
+      "endLine": 59,
+      "category": "Bugs",
+      "id": "src/renderer/src/hooks/use-commit-diff.ts::59:6::react-doctor/exhaustive-deps::b2b0a067d6973ec4c64b0d6738a591f8791b6d4a5012da4214eae20284753af4",
+      "normalizedFilePath": "src/renderer/src/hooks/use-commit-diff.ts",
+      "tags": [
+        "test-noise"
+      ]
+    },
+    {
+      "filePath": "src/renderer/src/hooks/use-insight-run.ts",
+      "plugin": "react-doctor",
+      "rule": "exhaustive-deps",
+      "severity": "warning",
+      "title": "Missing effect dependencies",
+      "message": "`useEffect` can run with a stale `onInsightPatchRef, onWorkbenchReplaceRef, onCompletedRef` & show your users old data.",
+      "help": "Don't blindly add missing dependencies. Read the hook callback first.\n\nBad:\nuseEffect(() => {\n  setCount(count + 1);\n}, [count]);\n\nBetter:\nuseEffect(() => {\n  setCount((currentCount) => currentCount + 1);\n}, []);\n\nIf the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.",
+      "line": 190,
+      "column": 6,
+      "offset": 6408,
+      "length": 34,
+      "endLine": 190,
+      "category": "Bugs",
+      "id": "src/renderer/src/hooks/use-insight-run.ts::190:6::react-doctor/exhaustive-deps::3c7893bcdd7d25f90b8642f13a7c5d4f2958cc0acc494acdda6420c895576259",
+      "normalizedFilePath": "src/renderer/src/hooks/use-insight-run.ts",
+      "tags": [
+        "test-noise"
+      ]
+    }
+  ],
+  "summary": {
+    "errorCount": 0,
+    "warningCount": 10,
+    "affectedFileCount": 6,
+    "totalDiagnosticCount": 10,
+    "score": 66,
+    "scoreLabel": "Needs work"
+  },
+  "elapsedMilliseconds": 12548.273542,
+  "error": null
+}

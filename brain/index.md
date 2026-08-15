@@ -2,7 +2,14 @@
 
 ## Codebase
 
+- [[codebase/commit-convention]]
+- [[codebase/github-adapter-quirks]]
 - [[codebase/index]]
+- [[codebase/live-qa-operations]]
+- [[codebase/pierre-controlled-items]]
+- [[codebase/plan-portfolio-execution]]
+- [[codebase/renderer-contract-boundary]]
+- [[codebase/review-schema-evolution]]
 
 ## Plans
 

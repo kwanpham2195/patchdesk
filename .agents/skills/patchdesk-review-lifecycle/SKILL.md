@@ -34,3 +34,10 @@ Preserve one Review across revisions and keep each Review session immutable. The
 1. Cover freshness detection versus Refresh, no-drop draft migration, Insight concurrency and retention, cancellation and late suppression, model authority, receipt recovery, write gates, and redaction.
 2. Use the approved design artifact. For the Unified Review Workbench, use `.agents/archive/unified-review-workbench/design/`; do not create a parallel `src/design/` source.
 3. Run focused, phase, and full gates. Delegate live UI verification to `$patchdesk-electron-tester` as required by `AGENTS.md`.
+
+## Evolve persisted schemas deliberately
+
+1. Treat a stored `ReviewSession` version as an upgrade boundary. Inventory its readers, writers, fixtures, and recovery behavior before changing it.
+2. Before release, exercise the real open/load path with a fixture from the prior stored version. It must migrate to the current schema while preserving user-owned state, or take a clear, safe recovery path that does not leave the PR unable to open.
+3. Keep stored schemas strict. Do not silently discard unknown fields to make an old record parse. Make version handling, migration, or recovery explicit.
+4. When restoring tests after a lifecycle redesign, write cases for the current protocol. Do not copy historical tests that restore removed batch, attempt, run, publication, or compatibility systems.

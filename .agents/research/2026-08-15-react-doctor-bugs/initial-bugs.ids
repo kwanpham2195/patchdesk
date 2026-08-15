@@ -1,0 +1,15 @@
+src/renderer/src/app.tsx::118:33::react-doctor/prefer-useReducer::6eddf4cb5296be91cfe217cba638451d32cc6f98cb1b15d536e6050a4d9d4056
+src/renderer/src/components/logs-panel.tsx::102:3::react-doctor/no-set-state-after-await-in-effect::f8a3098c4187a026148f3bba5017161009b7e72f71596f3e13984bda065d0ef0
+src/renderer/src/components/maintainer-inbox.tsx::138:23::react-doctor/prefer-useReducer::b24c418354e16cc972e588336672ae0079754c2fa002465c61fc3ecf64e6de22
+src/renderer/src/components/maintainer-inbox.tsx::207:3::react-doctor/no-effect-chain::3c2264f1c7481a4bd522273bfb180c94b8a83348bd5156b343cf92931dd5e3a1
+src/renderer/src/components/review-workbench.tsx::334:5::react-doctor/no-pass-live-state-to-parent::b4ca677c4f4ac350ed4e36aab18c8d11638b2b00a18f93465d1a2907b3298aa7
+src/renderer/src/components/review-workbench.tsx::334:5::react-doctor/no-prop-callback-in-effect::4a5796651b973202d060fa3feaec263f826ef568923cbb91623687d54e26a491
+src/renderer/src/flows/review-workbench-flow.tsx::1435:23::react-doctor/prefer-useReducer::80f16ab3697b03bdf069271e0ba1f61881d9bf2633bff97c0bc5cb24af2b4816
+src/renderer/src/flows/review-workbench-flow.tsx::1470:69::react-doctor/no-derived-useState::ed2622cd728d35cff2cf76a3c9b9d6ff01f21bcf4ce368ca982f39ac72bee3e9
+src/renderer/src/flows/review-workbench-flow.tsx::945:10::react-doctor/no-pass-live-state-to-parent::b4ca677c4f4ac350ed4e36aab18c8d11638b2b00a18f93465d1a2907b3298aa7
+src/renderer/src/flows/settings-flow.tsx::156:5::react-doctor/no-pass-data-to-parent::f9a337f15a58a63835a2dfa409b9f3cc5e142f61a51153dfbe94d0c4ece3edf2
+src/renderer/src/flows/settings-flow.tsx::156:5::react-doctor/no-pass-live-state-to-parent::b4ca677c4f4ac350ed4e36aab18c8d11638b2b00a18f93465d1a2907b3298aa7
+src/renderer/src/flows/settings-flow.tsx::156:5::react-doctor/no-prop-callback-in-effect::aa1e6c8439a49ec48425fa2f460a3abc3200d5c114a233f08adf4b317a8165bf
+src/renderer/src/flows/settings-flow.tsx::373:7::react-doctor/no-unowned-async-error-clear::16e149dbc90364ff0958ad6e0a4abb0bce6657a2783aec47fedb3bc00770e35c
+src/renderer/src/hooks/use-insight-run.ts::144:3::react-doctor/no-set-state-after-await-in-effect::f8a3098c4187a026148f3bba5017161009b7e72f71596f3e13984bda065d0ef0
+src/services/review-recovery-service.ts::83:5::react-doctor/server-sequential-independent-await::14b608b0fad993c68e4f8734737f66ea466e68024a6a87faf664ea795926cb5f

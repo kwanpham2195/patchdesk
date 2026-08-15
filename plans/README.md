@@ -1,26 +1,41 @@
 # Implementation Plans
 
-Reconciled with fresh eyes on 2026-08-13. Execute plans in numeric order unless
-a dependency says otherwise. The order is leverage-first: small, high-confidence
-correctness and safety gains precede large migrations; broad tooling churn is
-last.
+Reconciled with fresh eyes on 2026-08-14. Execute plans in numeric order unless
+a dependency says otherwise. Plans 001–008 are the completed portfolio. React
+Doctor Plans 009–012 are complete. Plans 013–014 are closed as superseded by
+`.agents/PLANS/2026-08-14-complete-react-doctor-remediation.md`, which owns the
+remaining delta work and final acceptance.
 
 Each executor must read the complete plan, preserve pre-existing working-tree
 edits, honor every STOP condition, run each verification gate, and update only
 its status row when done.
 
+## Active superseding plan
+
+- Plan: `.agents/PLANS/2026-08-14-complete-react-doctor-remediation.md`
+- Status: IN PROGRESS — implementation and full gate complete; Task 7 step 7 read-only live Electron verification remains open
+- Depends on: completed Plans 009–012
+- Owns: remaining confirmed fixes, static-reachability decision, package evidence, final scan reconciliation, and live acceptance
+- Authority: plan readiness does not authorize execution, commits, branches, worktrees, staging, deletion, pushes, or GitHub writes
+
 ## Execution order and status
 
-| Plan | Title                                                           | Priority | Effort | Risk | Depends on            | Status |
-| ---- | --------------------------------------------------------------- | -------- | ------ | ---- | --------------------- | ------ |
-| 001  | Prevent stale direct-summary observation from replacing Refresh | P1       | S      | LOW  | —                     | DONE   |
-| 002  | Restore valid Review workbench navigation semantics             | P1       | S      | LOW  | —                     | DONE   |
-| 003  | Correct write-safety and development-runtime documentation      | P1       | S      | LOW  | 001, 002              | DONE   |
-| 004  | Make the packaged Flue runtime reproducible                     | P1       | M      | MED  | 001–003               | DONE   |
-| 005  | Remove superseded Review systems and keep one current runtime   | P1       | L      | HIGH | 001–004               | DONE   |
-| 006  | Migrate Pi Insights from Flue beta.9 to Flue 2.0.3              | P1       | L      | HIGH | 004, 005              | DONE   |
-| 007  | Keep the Review workbench out of the initial renderer bundle    | P2       | M      | MED  | 005, 006              | DONE   |
-| 008  | Migrate quality tooling to Oxc                                  | P3       | M      | MED  | 001–007; clean branch | DONE   |
+| Plan | Title                                                           | Priority | Effort | Risk | Depends on            | Status                              |
+| ---- | --------------------------------------------------------------- | -------- | ------ | ---- | --------------------- | ----------------------------------- |
+| 001  | Prevent stale direct-summary observation from replacing Refresh | P1       | S      | LOW  | —                     | DONE                                |
+| 002  | Restore valid Review workbench navigation semantics             | P1       | S      | LOW  | —                     | DONE                                |
+| 003  | Correct write-safety and development-runtime documentation      | P1       | S      | LOW  | 001, 002              | DONE                                |
+| 004  | Make the packaged Flue runtime reproducible                     | P1       | M      | MED  | 001–003               | DONE                                |
+| 005  | Remove superseded Review systems and keep one current runtime   | P1       | L      | HIGH | 001–004               | DONE                                |
+| 006  | Migrate Pi Insights from Flue beta.9 to Flue 2.0.3              | P1       | L      | HIGH | 004, 005              | DONE                                |
+| 007  | Keep the Review workbench out of the initial renderer bundle    | P2       | M      | MED  | 005, 006              | DONE                                |
+| 008  | Migrate quality tooling to Oxc                                  | P3       | M      | MED  | 001–007; clean branch | DONE                                |
+| 009  | Make React Doctor report trusted source findings                | P1       | S      | LOW  | —                     | DONE                                |
+| 010  | Characterize React lifecycle and interaction regressions        | P1       | M      | LOW  | 009                   | DONE                                |
+| 011  | Keep scheduled React work bound to committed values             | P1       | M      | HIGH | 009, 010              | DONE                                |
+| 012  | Stabilize Conversation identity and Mermaid semantics           | P1       | S      | LOW  | 009, 010              | DONE                                |
+| 013  | Patch runtime and build-tool dependency advisories              | P1       | M      | MED  | 009                   | REJECTED — superseded by delta plan |
+| 014  | Measure and disposition remaining React Doctor debt             | P2       | L      | MED  | 009–013               | REJECTED — superseded by delta plan |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -55,6 +70,20 @@ executable plan and has no status.
 8. **Plan 008 last:** Oxc can improve feedback speed, but it has no immediate
    product safety gain and Oxfmt rewrites hundreds of files. Running it last on
    a clean branch prevents formatting churn from hiding functional changes.
+9. **Plan 009 starts the new program:** The 34/100 baseline is dominated by
+   generated artifacts, Node-script environment mismatches, and the separate
+   Flue runtime. Fix scanner scope before changing source.
+10. **Plan 010 adds proofs before refactors:** Existing broad tests are strong,
+    but detector, hydration, Insight polling, log polling, and interaction
+    races need direct characterization.
+11. **Plans 011 and 012 use those proofs:** Committed-value ref cleanup is
+    lifecycle-sensitive and high risk; stable Conversation identity and Mermaid
+    semantics are smaller and can proceed independently after tests exist.
+12. **Plan 013 is independent after calibration:** Dependency advisories need
+    pnpm reachability evidence and package gates, not React Doctor score chasing.
+13. **Plan 014 remains last:** Performance, dead-code, and giant-component
+    warnings require measurement and explicit disposition. It must not
+    parallelize ordered safety work or delete intentional entry points.
 
 ## Dependency and contract notes
 
@@ -83,6 +112,27 @@ executable plan and has no status.
 - Plan 008 must inventory the full effective ESLint policy, including JS and
   TypeScript recommended rules and React Hooks. Four explicit overrides alone
   are not lint parity.
+- Plan 009 keeps Oxlint as the lint authority and excludes generated output and
+  the separately verified Flue package from the root React scan. It must not
+  disable renderer correctness rules globally.
+- Plan 010 changes tests only. Plans 011 and 012 cannot start until its race,
+  polling, and accessibility proofs pass.
+- Plan 011 may replace only refs that mirror render inputs. Request tokens,
+  generation counters, active-run ownership, timers, and in-flight guards stay.
+- Plan 013 keeps exact Flue production versions unchanged unless a separate
+  approved Flue migration changes them.
+- Plan 014 accepts evidence-backed rejection as a valid result. A perfect score
+  is not the objective.
+
+## React Doctor planning baseline
+
+At commit `a3813b8`, React Doctor 0.9.11 completed a full 342-file scan with
+schema version 3 and no skipped checks. It reported score 34 (Critical), 44
+errors, and 215 warnings. Thirty-two errors came from generated output, Node
+scripts, or the separate Flue runtime; 11 renderer errors were render-time ref
+mutations. The repository baseline remained green: 603 Vitest tests, 35
+Playwright tests, format, lint, typecheck, build, and read-only live Electron
+verification.
 
 ## Working-tree baseline
 
@@ -130,3 +180,17 @@ paths. Do not overwrite, reformat, or absorb unrelated hunks.
   the product owner. They remain in the audit.
 - **Migrate Oxc during feature work:** rejected. It adds large formatter review
   noise and low immediate product gain.
+- **Treat generated environment-name lists as leaked credentials:** rejected.
+  The generated main bundle lists ambient provider variable names; package
+  smoke explicitly checks that credential values are absent. No value was
+  exposed by the diagnostic.
+- **Edit Node scripts to satisfy 29 `no-undef` findings:** rejected. React
+  Doctor lacked the Node environment policy already owned by Oxlint.
+- **Treat Flue `useTool` as a React Hooks loop:** rejected in the root scan.
+  Flue is a separate runtime with bounded capability and package tests.
+- **Bulk-fix all array-index keys or dependency arrays:** rejected. Only
+  reorderable/stateful identity and proven stale-effect defects are actionable.
+- **Parallelize every awaited loop:** rejected. Many storage and Review loops
+  preserve ordering, bounded concurrency, or durable evidence.
+- **Split files only because they exceed 300 lines:** rejected. Plan 014 permits
+  cohesive extraction only when lifecycle ownership and tests remain clear.
