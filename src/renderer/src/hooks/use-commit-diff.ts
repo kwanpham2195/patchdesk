@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { CommitDiffResponse } from "../renderer-contracts";
+import { useLatestCommitted } from "./use-latest-committed";
 
 export type CommitDiffState =
   | { readonly _tag: "Idle" }
@@ -20,12 +21,10 @@ export function useCommitDiff({
   readonly revisionKey: string;
   readonly loadCommitDiff: CommitDiffLoader;
 }): CommitDiffState {
-  const loader = useRef(loadCommitDiff);
+  const loader = useLatestCommitted(loadCommitDiff);
   const token = useRef(0);
   const previousRevision = useRef(revisionKey);
   const [state, setState] = useState<CommitDiffState>({ _tag: "Idle" });
-  loader.current = loadCommitDiff;
-
   useEffect(() => {
     const requestToken = token.current + 1;
     token.current = requestToken;
@@ -57,7 +56,7 @@ export function useCommitDiff({
     return () => {
       if (token.current === requestToken) token.current += 1;
     };
-  }, [revisionKey, selectedSha]);
+  }, [loader, revisionKey, selectedSha]);
 
   return state;
 }

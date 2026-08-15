@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
 
 import { requestJson } from "@/api-client";
@@ -18,6 +25,12 @@ type DiffSourceResponse =
       readonly newFile?: { readonly name: string; readonly contents: string };
     }
   | { readonly state: "unavailable"; readonly reason: string };
+
+type HydrationSource = {
+  readonly patch: string;
+  readonly profileId?: string;
+  readonly sessionId?: string;
+};
 
 export type ReviewDiffHydration = {
   readonly hydratedFiles: ReadonlyMap<string, FileDiffMetadata>;
@@ -46,6 +59,26 @@ export function useReviewDiffHydration({
   >(() => new Map());
   const [contextStatus, setContextStatus] =
     useState<ReviewContextStatus>("idle");
+  const sourceProfileId = sourceSession?.profileId;
+  const sourceSessionId = sourceSession?.sessionId;
+  const currentSource: HydrationSource = {
+    patch,
+    ...(sourceProfileId === undefined ? {} : { profileId: sourceProfileId }),
+    ...(sourceSessionId === undefined ? {} : { sessionId: sourceSessionId }),
+  };
+  const [hydrationSource, setHydrationSource] =
+    useState<HydrationSource>(currentSource);
+  const [hydrationGeneration, setHydrationGeneration] = useState(0);
+  if (
+    hydrationSource.patch !== currentSource.patch ||
+    hydrationSource.profileId !== currentSource.profileId ||
+    hydrationSource.sessionId !== currentSource.sessionId
+  ) {
+    setHydrationSource(currentSource);
+    setHydrationGeneration((current) => current + 1);
+    setHydratedFiles(new Map());
+    setContextStatus("idle");
+  }
   const hydrationRequests = useRef(
     new Map<
       string,
@@ -54,27 +87,21 @@ export function useReviewDiffHydration({
   );
   const hydratedFilesRef = useRef(hydratedFiles);
   const unavailableHydrationPaths = useRef(new Set<string>());
-  const hydrationGeneration = useRef(0);
+  const committedHydrationGeneration = useRef(hydrationGeneration);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
   const rawPatchesByPath = useMemo(
     () => indexPatchPaths(rawFilePatches),
     [rawFilePatches],
   );
-  const sourceProfileId = sourceSession?.profileId;
-  const sourceSessionId = sourceSession?.sessionId;
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     hydratedFilesRef.current = hydratedFiles;
   }, [hydratedFiles]);
 
-  useEffect(() => {
-    hydrationGeneration.current += 1;
+  useLayoutEffect(() => {
+    committedHydrationGeneration.current = hydrationGeneration;
     hydrationRequests.current.clear();
     unavailableHydrationPaths.current.clear();
-    hydratedFilesRef.current = new Map();
-    setHydratedFiles(new Map());
-    setContextStatus("idle");
-  }, [patch, sourceProfileId, sourceSessionId]);
+  }, [hydrationGeneration]);
 
   const hydrateFile = useCallback(
     (path: string): Promise<boolean> => {
@@ -99,14 +126,14 @@ export function useReviewDiffHydration({
         return Promise.resolve(false);
       }
 
-      const generation = hydrationGeneration.current;
+      const generation = hydrationGeneration;
       const token = Symbol(path);
       const request = requestJson("/v1/reviews/diff-file", {
         method: "POST",
         body: { profileId: sourceProfileId, sessionId: sourceSessionId, path },
       })
         .then((value) => {
-          if (generation !== hydrationGeneration.current) return false;
+          if (generation !== committedHydrationGeneration.current) return false;
           const source = parseDiffSourceResponse(value);
           if (source?.state !== "ready") {
             unavailableHydrationPaths.current.add(path);
@@ -131,7 +158,7 @@ export function useReviewDiffHydration({
           return true;
         })
         .catch(() => {
-          if (generation === hydrationGeneration.current) {
+          if (generation === committedHydrationGeneration.current) {
             unavailableHydrationPaths.current.add(path);
           }
           return false;
@@ -144,7 +171,14 @@ export function useReviewDiffHydration({
       hydrationRequests.current.set(path, { token, promise: request });
       return request;
     },
-    [patch, rawFilePatches, rawPatchesByPath, sourceProfileId, sourceSessionId],
+    [
+      hydrationGeneration,
+      patch,
+      rawFilePatches,
+      rawPatchesByPath,
+      sourceProfileId,
+      sourceSessionId,
+    ],
   );
 
   const hydrateFiles = useCallback(

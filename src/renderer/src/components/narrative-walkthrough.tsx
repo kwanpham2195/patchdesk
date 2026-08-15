@@ -269,6 +269,8 @@ export function NarrativeWalkthrough({
 
   return (
     <div
+      role="region"
+      aria-label="Review walkthrough"
       data-walkthrough-takeover
       data-walkthrough-layout={focused ? "focused" : "docked"}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"

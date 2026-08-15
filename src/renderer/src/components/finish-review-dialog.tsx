@@ -40,7 +40,7 @@ const DECISION_LABELS = {
  * sent only with Submit and is never persisted as a second local summary.
  * Discard is not offered: its GitHub semantics are unproven.
  */
-export function FinishReviewDialog({
+function FinishReviewDialogContent({
   open,
   onOpenChange,
   projection,
@@ -58,7 +58,7 @@ export function FinishReviewDialog({
   readonly error?: string;
   readonly initialSummary?: string;
 }): React.JSX.Element {
-  const [summary, setSummary] = useState("");
+  const [summary, setSummary] = useState(initialSummary ?? "");
   const [event, setEvent] = useState<"COMMENT" | "APPROVE" | "REQUEST_CHANGES">(
     "COMMENT",
   );
@@ -68,19 +68,9 @@ export function FinishReviewDialog({
   const summaryRef = useRef<HTMLTextAreaElement>(null);
   const locked = actions.busy || submitting;
 
-  // The summary is ephemeral: it belongs to this modal instance only and is
-  // never seeded from or written back into the durable projection.
   useEffect(() => {
-    if (open) {
-      setSummary(initialSummary ?? "");
-      setEvent("COMMENT");
-      setSubmitting(false);
-      setSubmitError(undefined);
-      setDiscardArmed(false);
-      // Focus the summary input when the modal opens (initial focus behavior).
-      window.setTimeout(() => summaryRef.current?.focus(), 0);
-    }
-  }, [initialSummary, open]);
+    if (open) window.setTimeout(() => summaryRef.current?.focus(), 0);
+  }, [open]);
 
   const submit = async (): Promise<void> => {
     if (locked) return;
@@ -310,4 +300,11 @@ export function FinishReviewDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Remounts ephemeral form state when the dialog opens or its seed changes. */
+export function FinishReviewDialog(
+  props: Parameters<typeof FinishReviewDialogContent>[0],
+): React.JSX.Element {
+  return <FinishReviewDialogContent key={`${props.open}:${props.initialSummary ?? ""}`} {...props} />;
 }

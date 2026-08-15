@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import {
@@ -17,10 +17,47 @@ const pullRequest = (() => {
   return parsed.value;
 })();
 
+const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  "showModal",
+);
+const originalCloseDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  "close",
+);
+
+beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.setAttribute("open", "");
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.removeAttribute("open");
+    },
+  });
+});
+
 afterEach(() => {
   cleanup();
   delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  restoreDialogMethod("showModal", originalShowModalDescriptor);
+  restoreDialogMethod("close", originalCloseDescriptor);
 });
+
+function restoreDialogMethod(
+  method: "showModal" | "close",
+  descriptor: PropertyDescriptor | undefined,
+): void {
+  if (descriptor === undefined) {
+    Reflect.deleteProperty(HTMLDialogElement.prototype, method);
+    return;
+  }
+  Object.defineProperty(HTMLDialogElement.prototype, method, descriptor);
+}
 
 describe("PullRequestDescription", () => {
   it("renders safe GitHub-flavored Markdown and opens only an explicit same-host link", async () => {
@@ -97,6 +134,55 @@ describe("PullRequestDescription", () => {
     expect((window as unknown as { bad?: boolean }).bad).toBeUndefined();
   });
 
+  it("keeps rendered Mermaid source and lightbox controls independent", async () => {
+    const user = userEvent.setup();
+    const svgPrototype = SVGElement.prototype as unknown as Record<
+      string,
+      unknown
+    >;
+    const previousGetBBox = svgPrototype.getBBox;
+    const previousTextLength = svgPrototype.getComputedTextLength;
+    Object.defineProperty(svgPrototype, "getBBox", {
+      configurable: true,
+      value: () => ({ x: 0, y: 0, width: 100, height: 30 }),
+    });
+    Object.defineProperty(svgPrototype, "getComputedTextLength", {
+      configurable: true,
+      value: () => 100,
+    });
+    try {
+      render(
+        <PullRequestDescriptionPreview
+          markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
+          pullRequest={pullRequest}
+        />,
+      );
+      const diagramButton = await screen.findByRole("button", {
+        name: "Mermaid diagram",
+      });
+      const summary = screen.getByText("Mermaid source");
+      expect(summary.tagName).toBe("SUMMARY");
+      expect(summary.closest("button")).toBeNull();
+      summary.focus();
+      await user.keyboard("{Enter}");
+      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
+      await user.click(summary);
+      expect((summary.parentElement as HTMLDetailsElement).open).toBe(true);
+      diagramButton.focus();
+      await user.keyboard("{Enter}");
+      const dialog = screen.getByRole("dialog", { name: "Image viewer" });
+      expect(dialog).toBeTruthy();
+      fireEvent(dialog, new Event("cancel", { cancelable: true }));
+      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
+    } finally {
+      if (previousGetBBox === undefined) delete svgPrototype.getBBox;
+      else svgPrototype.getBBox = previousGetBBox;
+      if (previousTextLength === undefined)
+        delete svgPrototype.getComputedTextLength;
+      else svgPrototype.getComputedTextLength = previousTextLength;
+    }
+  });
+
   it("renders Mermaid fences as a diagram surface with readable source fallback", async () => {
     render(
       <PullRequestDescriptionPreview
@@ -106,6 +192,8 @@ describe("PullRequestDescription", () => {
     );
 
     expect(screen.getByLabelText("Mermaid diagram")).toBeTruthy();
+    const source = screen.getByText("Mermaid source");
+    expect(source.closest('[role="img"]')).toBeNull();
     expect(screen.getByText(/graph TD/)).toBeTruthy();
   });
 

@@ -1,6 +1,7 @@
 import type { AppDestination } from "../routes";
 
 const fixtureHashes = new Set([
+  "#mermaid-fixture",
   "#diff-fixture",
   "#run-fixture",
   "#workbench-fixture",

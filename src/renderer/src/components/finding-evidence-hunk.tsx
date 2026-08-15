@@ -8,6 +8,11 @@ import { parseReviewDiff } from "@/review-diff-data";
 import { extractFindingEvidenceHunk } from "../../../domain/patch";
 import { ReviewDiffView } from "./review-diff-view";
 
+const findingEvidencePreferences: ReviewViewPreferences = {
+  ...DEFAULT_REVIEW_VIEW_PREFERENCES,
+  fileMode: "all",
+};
+
 /** Read-only, exact diff evidence for a Finding; it exposes no authoring or GitHub capability. */
 export function FindingEvidenceHunk({
   patch,
@@ -31,10 +36,6 @@ export function FindingEvidenceHunk({
     [evidence],
   );
   if (evidence === undefined || parsed === undefined) return null;
-  const preferences: ReviewViewPreferences = {
-    ...DEFAULT_REVIEW_VIEW_PREFERENCES,
-    fileMode: "all",
-  };
   return (
     <section
       aria-label={`Finding evidence ${evidence.path}`}
@@ -56,7 +57,7 @@ export function FindingEvidenceHunk({
           fileStatsByPath={parsed.statsByPath}
           selectedPath={evidence.path}
           selectedRange={evidence.selectedRange}
-          preferences={preferences}
+          preferences={findingEvidencePreferences}
           collapsedPaths={new Set()}
           onPreferencesChange={() => undefined}
           onCollapsedPathsChange={() => undefined}

@@ -18,6 +18,7 @@ import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
+import { useLatestCommitted } from "@/hooks/use-latest-committed";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -77,6 +78,10 @@ export function DiffWorkbench({
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
+  const mapped =
+    finding === undefined ? undefined : mapFindingLocation(files, finding);
+  const mappedPath =
+    mapped?.mappingStatus === "mapped" ? mapped.path : undefined;
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [internalSelectedPath, setInternalSelectedPath] = useState<
     string | undefined
@@ -85,6 +90,16 @@ export function DiffWorkbench({
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
+  const [previousMappedPath, setPreviousMappedPath] = useState<
+    string | undefined
+  >(undefined);
+  if (mappedPath !== previousMappedPath) {
+    setPreviousMappedPath(mappedPath);
+    if (mappedPath !== undefined) {
+      setInternalSelectedPath(mappedPath);
+      setActivePath(mappedPath);
+    }
+  }
   const [internalPreferences, setInternalPreferences] =
     useState<ReviewViewPreferences>({
       ...DEFAULT_REVIEW_VIEW_PREFERENCES,
@@ -103,17 +118,18 @@ export function DiffWorkbench({
     },
     [onPreferencesChange],
   );
+  const updatePreferencesRef = useLatestCommitted(updatePreferences);
   useEffect(() => {
     if (pendingLargeFileMode === undefined) return;
     // Do not let a single deep selection synchronously reconstruct a 10 MB
     // virtual surface. A brief quiet period still opens the requested file,
     // while quick navigator movement remains responsive.
     const timer = window.setTimeout(() => {
-      updatePreferences({ fileMode: "selected" });
+      updatePreferencesRef.current({ fileMode: "selected" });
       setPendingLargeFileMode(undefined);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [pendingLargeFileMode]);
+  }, [pendingLargeFileMode, updatePreferencesRef]);
   const selectFile = useCallback(
     (path: string): void => {
       if (controlledSelectedPath === undefined) setInternalSelectedPath(path);
@@ -146,13 +162,6 @@ export function DiffWorkbench({
       })),
     [files, parsedDiff.gitStatusByPath, parsedDiff.statsByPath],
   );
-  const mapped =
-    finding === undefined ? undefined : mapFindingLocation(files, finding);
-  const mappedPath =
-    mapped?.mappingStatus === "mapped" ? mapped.path : undefined;
-  useEffect(() => {
-    if (mappedPath !== undefined) selectFile(mappedPath);
-  }, [mappedPath, selectFile]);
   useEffect(() => {
     if (controlledSelectedPath !== undefined)
       setActivePath(controlledSelectedPath);

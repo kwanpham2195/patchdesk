@@ -28,7 +28,7 @@ type Event = keyof typeof labels;
 type ApprovalCapability = "allowed" | "blocked_author" | "unknown";
 
 /** A direct GitHub write: it never creates or edits a pending review. */
-export function SummaryReviewDialog({
+function SummaryReviewDialogContent({
   open,
   busy,
   state,
@@ -77,21 +77,9 @@ export function SummaryReviewDialog({
       : undefined;
 
   useEffect(() => {
-    if (!open) return;
-    setBody("");
-    setEvent("COMMENT");
-    setSubmitting(false);
-    setRecovering(false);
-    setLocalError(undefined);
-    setWriteAnother(false);
-  }, [open]);
-  useEffect(() => {
     if (open && effectiveState === "idle")
       window.setTimeout(() => bodyRef.current?.focus(), 0);
   }, [effectiveState, open]);
-  useEffect(() => {
-    if (state === "confirmed") setWriteAnother(false);
-  }, [receipt?.reviewId, state]);
 
   const submit = async (): Promise<void> => {
     if (
@@ -305,4 +293,11 @@ export function SummaryReviewDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Remounts ephemeral direct-summary state for each dialog-open lifecycle. */
+export function SummaryReviewDialog(
+  props: Parameters<typeof SummaryReviewDialogContent>[0],
+): React.JSX.Element {
+  return <SummaryReviewDialogContent key={`${props.open}:${props.receipt?.reviewId ?? ""}:${props.state}`} {...props} />;
 }

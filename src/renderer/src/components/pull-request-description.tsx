@@ -177,8 +177,8 @@ function renderBlocks(
   tokens: ReadonlyArray<Token>,
   pullRequest: PullRequestRef | undefined,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token, index) => {
-    const key = `${token.type}-${index}`;
+  return tokens.map((token) => {
+    const key = tokenKey(token);
     switch (token.type) {
       case "space":
         return null;
@@ -292,8 +292,8 @@ function renderInline(
   tokens: ReadonlyArray<Token>,
   pullRequest: PullRequestRef | undefined,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token, index) => {
-    const key = `${token.type}-${index}`;
+  return tokens.map((token) => {
+    const key = tokenKey(token);
     switch (token.type) {
       case "text":
       case "escape":
@@ -348,6 +348,11 @@ function renderInline(
         return null;
     }
   });
+}
+
+/** Provides React with the parsed source identity for a Markdown token. */
+function tokenKey(token: Token): string {
+  return `${token.type}-${token.raw}`;
 }
 
 function tokensOf(token: Token): ReadonlyArray<Token> {
@@ -670,16 +675,14 @@ function ClickableMermaid({
 
   if (svg === undefined) {
     return (
-      <div
-        role="img"
-        aria-label="Mermaid diagram"
-        className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
-      >
-        <p className="text-xs text-muted-foreground">
-          {failed
-            ? "Mermaid could not render this diagram."
-            : "Rendering Mermaid diagram…"}
-        </p>
+      <div className="space-y-2 overflow-x-auto rounded-md border bg-background p-3">
+        <div role="img" aria-label="Mermaid diagram">
+          <p className="text-xs text-muted-foreground">
+            {failed
+              ? "Mermaid could not render this diagram."
+              : "Rendering Mermaid diagram…"}
+          </p>
+        </div>
         <details open>
           <summary className="cursor-pointer text-xs text-muted-foreground">
             Mermaid source
@@ -694,39 +697,37 @@ function ClickableMermaid({
 
   return (
     <>
-      <button
-        type="button"
-        className="w-full cursor-zoom-in text-left"
-        onClick={() =>
-          open(
+      <div className="space-y-2 overflow-x-auto rounded-md border bg-background p-3">
+        <button
+          type="button"
+          className="w-full cursor-zoom-in text-left"
+          onClick={() =>
+            open(
+              <div
+                aria-hidden="true"
+                className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:w-[85vw]"
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />,
+            )
+          }
+        >
+          <div role="img" aria-label="Mermaid diagram">
             <div
               aria-hidden="true"
-              className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:w-[85vw]"
+              className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
               dangerouslySetInnerHTML={{ __html: svg }}
-            />,
-          )
-        }
-      >
-        <div
-          role="img"
-          aria-label="Mermaid diagram"
-          className="space-y-2 overflow-x-auto rounded-md border bg-background p-3"
-        >
-          <div
-            aria-hidden="true"
-            className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              Mermaid source
-            </summary>
-            <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
-              <code>{source}</code>
-            </pre>
-          </details>
-        </div>
-      </button>
+            />
+          </div>
+        </button>
+        <details>
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            Mermaid source
+          </summary>
+          <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 text-xs">
+            <code>{source}</code>
+          </pre>
+        </details>
+      </div>
       {lightbox()}
     </>
   );

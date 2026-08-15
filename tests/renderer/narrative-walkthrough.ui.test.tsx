@@ -595,6 +595,16 @@ describe("narrative walkthrough takeover", () => {
     takeover.focus();
     await userEvent.keyboard("{k}");
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
+
+    const editor = document.createElement("textarea");
+    editor.setAttribute("aria-label", "Walkthrough editor");
+    takeover.append(editor);
+    editor.focus();
+    onSelectSection.mockClear();
+    await userEvent.keyboard("{j}");
+    expect(editor).toBe(document.activeElement);
+    expect(onSelectSection).not.toHaveBeenCalled();
+    editor.remove();
   });
 
   it("returns focus to the section heading on Escape", () => {

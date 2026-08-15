@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -7,6 +7,7 @@ import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
+import { PullRequestDescription } from "../components/pull-request-description";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -37,6 +38,21 @@ export function AppFixtureContent({
   readonly hash: string;
   readonly onNavigationStateChange: (state: NavigationState) => void;
 }): React.ReactNode {
+  if (hash === "#mermaid-fixture") {
+    const parsedPullRequest = parsePullRequestInput(
+      "https://github.com/centraldigital/patchdesk/pull/42",
+    );
+    if (parsedPullRequest._tag === "err")
+      throw new Error("Fixture pull request is invalid");
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <PullRequestDescription
+          markdown={"```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```"}
+          pullRequest={parsedPullRequest.value}
+        />
+      </div>
+    );
+  }
   if (hash === "#diff-fixture")
     return (
       <DiffWorkbench
@@ -198,7 +214,7 @@ function WalkthroughFixture({
     ReadonlyArray<string>
   >([]);
   const [supportReviewed, setSupportReviewed] = useState(false);
-  const walkthrough = {
+  const walkthrough = useMemo(() => ({
     snapshot: {
       profileId: "fixture",
       sessionId: "fixture-session",
@@ -271,7 +287,7 @@ function WalkthroughFixture({
         },
       ],
     },
-  };
+  }), []);
   const confirmGeneration = (): void => {
     setDialogOpen(false);
     setGenerateRequests((current) => current + 1);

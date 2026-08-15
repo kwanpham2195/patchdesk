@@ -15,6 +15,8 @@ import {
   type ReadOnlyConversationAnnotation,
 } from "../inline-conversation-mapping";
 
+const EMPTY_ANNOTATIONS: ReadonlyArray<ReadOnlyConversationAnnotation> = [];
+
 export type NarrativeHunk = {
   readonly id: string;
   readonly path: string;
@@ -59,7 +61,7 @@ export function NarrativeWalkthroughDiff({
   allHunks,
   sourceSession,
   preferences,
-  annotations = [],
+  annotations = EMPTY_ANNOTATIONS,
 }: {
   readonly blockId: string;
   readonly patch?: string;
@@ -146,10 +148,7 @@ export function NarrativeWalkthroughDiff({
     >
       <div className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1.5 text-xs">
         <span className="truncate font-mono">
-          {hunks
-            .map((hunk) => hunk.path)
-            .filter((path, index, paths) => paths.indexOf(path) === index)
-            .join(", ")}
+          {[...new Set(hunks.map((hunk) => hunk.path))].join(", ")}
         </span>
         <span className="shrink-0 text-muted-foreground">
           {hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk

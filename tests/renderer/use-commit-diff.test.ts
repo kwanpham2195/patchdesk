@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   useCommitDiff,
@@ -36,6 +36,52 @@ function deferred<T>(): Deferred<T> {
 }
 
 describe("useCommitDiff", () => {
+  it("uses the latest loader for a new selection while ignoring the first result", async () => {
+    const first = deferred<ReturnType<typeof response>>();
+    const second = deferred<ReturnType<typeof response>>();
+    const firstLoad = vi.fn<CommitDiffLoader>(() => first.promise);
+    const secondLoad = vi.fn<CommitDiffLoader>(() => second.promise);
+    const { result, rerender } = renderHook(
+      ({ sha, revision, load }) =>
+        useCommitDiff({
+          selectedSha: sha,
+          revisionKey: revision,
+          loadCommitDiff: load,
+        }),
+      {
+        initialProps: {
+          sha: "a".repeat(40),
+          revision: "head-a",
+          load: firstLoad,
+        },
+      },
+    );
+    expect(result.current).toEqual({ _tag: "Loading", sha: "a".repeat(40) });
+    rerender({
+      sha: "b".repeat(40),
+      revision: "head-a",
+      load: secondLoad,
+    });
+    await act(async () => {
+      first.resolve(response("a".repeat(40)));
+      await first.promise;
+    });
+    expect(result.current).toEqual({ _tag: "Loading", sha: "b".repeat(40) });
+    await act(async () => {
+      second.resolve(response("b".repeat(40)));
+      await second.promise;
+    });
+    await waitFor(() =>
+      expect(result.current).toEqual({
+        _tag: "Ready",
+        projection: response("b".repeat(40)),
+      }),
+    );
+    expect(firstLoad).toHaveBeenCalledTimes(1);
+    expect(secondLoad).toHaveBeenCalledTimes(1);
+    expect(secondLoad).toHaveBeenCalledWith("b".repeat(40));
+  });
+
   it("ignores a late response from a previous commit selection", async () => {
     const first = deferred<ReturnType<typeof response>>();
     const second = deferred<ReturnType<typeof response>>();

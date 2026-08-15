@@ -284,13 +284,15 @@ type ReviewDiffViewProps = {
   readonly conversationActions?: ReviewConversationActions;
 };
 
+const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
+
 function ReviewDiffSurface({
   patch,
   parsedFiles,
   fileStatsByPath,
   selectedPath,
   selectedRange,
-  annotations = [],
+  annotations = EMPTY_ANNOTATIONS,
   preferences,
   collapsedPaths,
   onPreferencesChange,
@@ -869,50 +871,45 @@ function ReviewDiffSurface({
       for (const comment of thread.comments)
         projectionCommentIds.add(comment.id);
     }
-    return renderedAnnotations
-      .filter((annotation) => {
-        const thread = annotation.conversationThread;
-        if (thread === undefined) return true;
-        // A created card is superseded by the authoritative thread with the
-        // same thread or comment id; the projection now owns it.
-        if (annotations.some((projection) => projection === annotation))
-          return true;
-        const targetThreadId =
-          thread.target._tag === "thread" ? thread.target.id : undefined;
-        if (
-          targetThreadId !== undefined &&
-          projectionThreadIds.has(targetThreadId)
-        )
-          return false;
-        if (projectionCommentIds.has(thread.comments[0]?.id ?? ""))
-          return false;
-        return true;
-      })
-      .map((annotation) => {
-        const thread = annotation.conversationThread;
-        if (thread === undefined) return annotation;
-        const targetThreadId =
-          thread.target._tag === "thread" ? thread.target.id : undefined;
-        const state =
-          targetThreadId === undefined
-            ? thread.state
-            : (resolvedThreads.get(targetThreadId) ?? thread.state);
-        const comments = thread.comments
-          .filter((comment) => !deletedCommentIds.has(comment.id))
-          .map((comment) => {
-            const body = editedBodies.get(comment.id);
-            return body === undefined ? comment : { ...comment, body };
-          });
-        if (comments.length === 0) return undefined;
-        return {
-          ...annotation,
-          conversationThread: { ...thread, state, comments },
-        };
-      })
-      .filter(
-        (annotation): annotation is ReviewInlineAnnotation =>
-          annotation !== undefined,
-      );
+    const displayed: Array<ReviewInlineAnnotation> = [];
+    for (const annotation of renderedAnnotations) {
+      const thread = annotation.conversationThread;
+      if (thread === undefined) {
+        displayed.push(annotation);
+        continue;
+      }
+      // A created card is superseded by the authoritative thread with the
+      // same thread or comment id; the projection now owns it.
+      if (annotations.some((projection) => projection === annotation)) {
+        displayed.push(annotation);
+        continue;
+      }
+      const projectionTargetThreadId =
+        thread.target._tag === "thread" ? thread.target.id : undefined;
+      if (
+        projectionTargetThreadId !== undefined &&
+        projectionThreadIds.has(projectionTargetThreadId)
+      )
+        continue;
+      if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) continue;
+      const targetThreadId =
+        thread.target._tag === "thread" ? thread.target.id : undefined;
+      const state =
+        targetThreadId === undefined
+          ? thread.state
+          : (resolvedThreads.get(targetThreadId) ?? thread.state);
+      const comments = thread.comments.flatMap((comment) => {
+        if (deletedCommentIds.has(comment.id)) return [];
+        const body = editedBodies.get(comment.id);
+        return [body === undefined ? comment : { ...comment, body }];
+      });
+      if (comments.length === 0) continue;
+      displayed.push({
+        ...annotation,
+        conversationThread: { ...thread, state, comments },
+      });
+    }
+    return displayed;
   }, [
     annotations,
     deletedCommentIds,
@@ -922,12 +919,11 @@ function ReviewDiffSurface({
   ]);
   const selectedAnnotations = useMemo(
     () =>
-      displayedAnnotations
-        .filter(
-          (annotation) =>
-            selectedPath === undefined || annotation.path === selectedPath,
-        )
-        .map(toDiffLineAnnotation),
+      displayedAnnotations.flatMap((annotation) =>
+        selectedPath === undefined || annotation.path === selectedPath
+          ? [toDiffLineAnnotation(annotation)]
+          : [],
+      ),
     [displayedAnnotations, selectedPath],
   );
   const annotationKey = useMemo(
@@ -996,9 +992,11 @@ function ReviewDiffSurface({
           id: file.name,
           type: "diff",
           fileDiff: file,
-          annotations: displayedAnnotations
-            .filter((annotation) => annotation.path === file.name)
-            .map(toDiffLineAnnotation),
+          annotations: displayedAnnotations.flatMap((annotation) =>
+            annotation.path === file.name
+              ? [toDiffLineAnnotation(annotation)]
+              : [],
+          ),
           collapsed: collapsedPaths.has(file.name),
           // Pierre deliberately reuses a controlled item with the same ID and
           // version. Hydration swaps partial raw-patch metadata for exact
@@ -1052,11 +1050,12 @@ function ReviewDiffSurface({
     if (virtualized || !browserSupportsPierre) return;
     const langs = Array.from(
       new Set(
-        parsedFiles
-          .map((file) => getFiletypeFromFileName(file.name))
-          .filter(
-            (lang): lang is string => lang !== undefined && lang !== "text",
-          ),
+        parsedFiles.flatMap((file) => {
+          const language = getFiletypeFromFileName(file.name);
+          return language === undefined || language === "text"
+            ? []
+            : [language];
+        }),
       ),
     );
     if (langs.length === 0) return;
@@ -2505,6 +2504,8 @@ function useLargeDiffSelection(
 }
 
 type AccessibleLine = {
+  /** Stable source-line identity within one parsed patch. */
+  readonly key: string;
   readonly content: string;
   readonly kind: "Added" | "Deleted" | "Hunk" | "Context";
   readonly path?: string;
@@ -2551,7 +2552,7 @@ function AccessiblePatch({
       tabIndex={0}
     >
       <ol className="min-w-max space-y-0">
-        {lines.map((line, index) => {
+        {lines.map((line) => {
           const lineNumber =
             selectedRange?.side === "old" ? line.oldLine : line.newLine;
           const selected =
@@ -2562,7 +2563,7 @@ function AccessiblePatch({
           const firstSelected = selected && lineNumber === selectedRange?.start;
           return (
             <li
-              key={`${index}:${line.content}`}
+              key={line.key}
               ref={firstSelected ? selectedRef : undefined}
               className={`grid grid-cols-[3.5rem_3.5rem_1fr] gap-2 rounded-sm px-1 ${selected ? "bg-primary/20 ring-1 ring-inset ring-primary/50" : ""}`}
               data-selected-line={selected ? "true" : undefined}
@@ -2637,13 +2638,15 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
   let oldLine: number | undefined;
   let newLine: number | undefined;
   let path: string | undefined;
-  return patch.split("\n").map((content) => {
+  return patch.split("\n").map((content, sourceLine) => {
+    const key = `source-line-${sourceLine}`;
     const file = /^diff --git a\/(.+) b\/(.+)$/.exec(content);
     if (file !== null) {
       path = file[2];
       oldLine = undefined;
       newLine = undefined;
       return {
+        key,
         content,
         kind: "Context",
         ...(path === undefined ? {} : { path }),
@@ -2653,17 +2656,23 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
     if (hunk !== null) {
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
-      return { content, kind: "Hunk", ...(path === undefined ? {} : { path }) };
+      return {
+        key,
+        content,
+        kind: "Hunk",
+        ...(path === undefined ? {} : { path }),
+      };
     }
     if (
       oldLine === undefined ||
       newLine === undefined ||
       content.startsWith("\\ No newline")
     ) {
-      return { content, kind: "Context" };
+      return { key, content, kind: "Context" };
     }
     if (content.startsWith("+") && !content.startsWith("+++")) {
       const line = {
+        key,
         content,
         kind: "Added" as const,
         ...(path === undefined ? {} : { path }),
@@ -2674,6 +2683,7 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
     }
     if (content.startsWith("-") && !content.startsWith("---")) {
       const line = {
+        key,
         content,
         kind: "Deleted" as const,
         ...(path === undefined ? {} : { path }),
@@ -2683,6 +2693,7 @@ function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
       return line;
     }
     const line = {
+      key,
       content,
       kind: "Context" as const,
       ...(path === undefined ? {} : { path }),

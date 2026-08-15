@@ -35,9 +35,9 @@ export function Conversation({
               No conversation yet.
             </p>
           ) : (
-            conversation.entries.map((entry, index) => (
+            conversation.entries.map((entry) => (
               <ConversationTimelineEntry
-                key={`${entry._tag}-${index}`}
+                key={conversationEntryKey(entry)}
                 entry={entry}
               />
             ))
@@ -52,6 +52,21 @@ export function Conversation({
       </div>
     </div>
   );
+}
+
+function conversationEntryKey(
+  entry: WorkbenchResponse["conversation"]["entries"][number],
+): string {
+  switch (entry._tag) {
+    case "PrDescription":
+      throw new Error("Pull request descriptions are not timeline entries");
+    case "IssueComment":
+      return `${entry._tag}-${entry.comment.id}`;
+    case "ReviewSummary":
+      return `${entry._tag}-${entry.review.id}`;
+    case "GeneralThread":
+      return `${entry._tag}-${entry.thread.id}`;
+  }
 }
 
 function ConversationTimelineEntry({
@@ -146,7 +161,7 @@ function GeneralThreadEntry({
       </div>
       {thread.comments.map((comment, index) => (
         <div
-          key={comment.id ?? index}
+          key={comment.id}
           className={index > 0 ? "ml-4 border-l-2 border-border pl-3 mt-2" : ""}
         >
           <div className="flex items-baseline gap-2">
