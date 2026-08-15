@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 
 import { requestJson } from "../api-client";
+import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -87,68 +88,84 @@ function levelClass(level: LogLevel): string {
 
 /** Live tail of the unified main + renderer log stream. */
 export function LogsPanel(): React.JSX.Element {
-  const [entries, setEntries] = useState<ReadonlyArray<LogEntry>>([]);
-  const [afterSeq, setAfterSeq] = useState<number | undefined>(undefined);
+  const [stream, setStream] = useState<{
+    readonly requestId: number;
+    readonly entries: ReadonlyArray<LogEntry>;
+    readonly afterSeq?: number;
+    readonly error?: string;
+  }>({ requestId: 0, entries: [] });
   const [paused, setPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<"all" | LogLevel>("all");
   const [processFilter, setProcessFilter] = useState<"all" | LogProcess>("all");
-  const [error, setError] = useState<string>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-  const afterSeqRef = useRef<number | undefined>(undefined);
-  afterSeqRef.current = afterSeq;
+  const pausedRef = useLatestCommitted(paused);
+  const afterSeqRef = useLatestCommitted(stream.afterSeq);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    const load = async (after: number | undefined): Promise<void> => {
-      try {
-        const query =
-          after === undefined ? "limit=300" : `after=${after}&limit=500`;
-        const value = await requestJson(`/v1/logs?${query}`);
-        if (cancelled || typeof value !== "object" || value === null) return;
-        const record = value as {
-          readonly entries?: unknown;
-          readonly nextAfter?: unknown;
-        };
-        const incoming = Array.isArray(record.entries)
-          ? record.entries.filter(isLogEntry)
-          : [];
-        // The cursor is the last delivered sequence (or the supplied cursor
-        // when nothing arrived); it is sent back unchanged on the next poll.
-        if (typeof record.nextAfter === "number") {
-          setAfterSeq(record.nextAfter);
-        } else if (after !== undefined) {
-          setAfterSeq(after);
-        }
-        setEntries((current) => {
-          const merged =
-            after === undefined ? incoming : [...current, ...incoming];
-          return merged.slice(-MAX_DISPLAYED);
+    const load = (after: number | undefined): void => {
+      const requestId = ++requestIdRef.current;
+      setStream((current) => ({ ...current, requestId }));
+      const query =
+        after === undefined ? "limit=300" : `after=${after}&limit=500`;
+      void requestJson(`/v1/logs?${query}`)
+        .then((value) => {
+          if (cancelled || typeof value !== "object" || value === null) return;
+          const record = value as {
+            readonly entries?: unknown;
+            readonly nextAfter?: unknown;
+          };
+          const incoming = Array.isArray(record.entries)
+            ? record.entries.filter(isLogEntry)
+            : [];
+          // The cursor is the last delivered sequence (or the supplied cursor
+          // when nothing arrived); it is sent back unchanged on the next poll.
+          setStream((current) => {
+            if (current.requestId !== requestId) return current;
+            const merged =
+              after === undefined
+                ? incoming
+                : [...current.entries, ...incoming];
+            const nextAfter =
+              typeof record.nextAfter === "number" ? record.nextAfter : after;
+            return {
+              requestId,
+              entries: merged.slice(-MAX_DISPLAYED),
+              ...(nextAfter === undefined ? {} : { afterSeq: nextAfter }),
+            };
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setStream((current) =>
+            current.requestId === requestId
+              ? {
+                  ...current,
+                  error: "Could not load the log stream. Try again.",
+                }
+              : current,
+          );
         });
-        setError(undefined);
-      } catch {
-        if (!cancelled) setError("Could not load the log stream. Try again.");
-      }
     };
-    void load(undefined);
+    load(undefined);
     const timer = setInterval(() => {
-      if (!pausedRef.current) void load(afterSeqRef.current);
+      if (!pausedRef.current) load(afterSeqRef.current);
     }, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [afterSeqRef, pausedRef]);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (container === null || !atBottomRef.current) return;
     container.scrollTop = container.scrollHeight;
-  }, [entries]);
+  }, [stream.entries]);
 
-  const visible = entries.filter(
+  const visible = stream.entries.filter(
     (entry) =>
       (levelFilter === "all" || entry.level === levelFilter) &&
       (processFilter === "all" || entry.process === processFilter),
@@ -226,10 +243,10 @@ export function LogsPanel(): React.JSX.Element {
             </SelectContent>
           </Select>
         </div>
-        {error === undefined ? null : (
+        {stream.error === undefined ? null : (
           <Alert variant="destructive">
             <AlertTitle>Logs unavailable</AlertTitle>
-            <AlertDescription role="alert">{error}</AlertDescription>
+            <AlertDescription role="alert">{stream.error}</AlertDescription>
           </Alert>
         )}
         <div
@@ -248,7 +265,7 @@ export function LogsPanel(): React.JSX.Element {
         >
           {visible.length === 0 ? (
             <p className="p-2 text-muted-foreground" role="status">
-              {entries.length === 0
+              {stream.entries.length === 0
                 ? "No log entries yet."
                 : "No entries match the filters."}
             </p>

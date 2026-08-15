@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type KeyboardEvent,
@@ -96,6 +98,91 @@ const views: ReadonlyArray<{
   { id: "all_open", label: "All open" },
 ];
 
+type InboxViewState = {
+  readonly view: InboxView;
+  readonly search: string;
+  readonly sort: InboxSort;
+  readonly selectedRepo: string;
+  readonly queueOpen: boolean;
+  readonly inspectorOpen: boolean;
+  readonly selectedKey?: string;
+  readonly savedViews: ReadonlyArray<SavedInboxView>;
+};
+
+type InboxViewAction =
+  | { readonly _tag: "preferencesLoaded"; readonly state: InboxViewState }
+  | { readonly _tag: "viewSelected"; readonly view: InboxView }
+  | { readonly _tag: "savedViewSelected"; readonly view: SavedInboxView }
+  | { readonly _tag: "searchChanged"; readonly search: string }
+  | { readonly _tag: "sortChanged"; readonly sort: InboxSort }
+  | { readonly _tag: "repositoryChanged"; readonly selectedRepo: string }
+  | { readonly _tag: "rowSelected"; readonly selectedKey: string }
+  | { readonly _tag: "queueToggled" }
+  | { readonly _tag: "inspectorToggled" }
+  | { readonly _tag: "savedViewAdded"; readonly view: SavedInboxView }
+  | { readonly _tag: "savedViewRemoved"; readonly viewId: string };
+
+function inboxViewState(
+  preferences: ReturnType<typeof loadInboxViewPreferences>,
+): InboxViewState {
+  return {
+    view: preferences.view,
+    search: preferences.search,
+    sort: preferences.sort,
+    selectedRepo: preferences.selectedRepo,
+    queueOpen: preferences.queueRailOpen,
+    inspectorOpen: preferences.inspectorOpen,
+    ...(preferences.selectedIdentity === undefined
+      ? {}
+      : { selectedKey: preferences.selectedIdentity }),
+    savedViews: preferences.savedViews,
+  };
+}
+
+function inboxViewReducer(
+  state: InboxViewState,
+  action: InboxViewAction,
+): InboxViewState {
+  switch (action._tag) {
+    case "preferencesLoaded":
+      return action.state;
+    case "viewSelected":
+      return { ...state, view: action.view };
+    case "savedViewSelected":
+      return {
+        ...state,
+        view: action.view.view,
+        search: action.view.search,
+        sort: action.view.sort,
+        selectedRepo: action.view.selectedRepo,
+      };
+    case "searchChanged":
+      return { ...state, search: action.search };
+    case "sortChanged":
+      return { ...state, sort: action.sort };
+    case "repositoryChanged":
+      return { ...state, selectedRepo: action.selectedRepo };
+    case "rowSelected":
+      return { ...state, selectedKey: action.selectedKey };
+    case "queueToggled":
+      return { ...state, queueOpen: !state.queueOpen };
+    case "inspectorToggled":
+      return { ...state, inspectorOpen: !state.inspectorOpen };
+    case "savedViewAdded":
+      return {
+        ...state,
+        savedViews: [...state.savedViews, action.view].slice(-20),
+      };
+    case "savedViewRemoved":
+      return {
+        ...state,
+        savedViews: state.savedViews.filter(
+          (view) => view.id !== action.viewId,
+        ),
+      };
+  }
+}
+
 export type ReviewInitialSection = "overview" | "diff" | "checks";
 
 /** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
@@ -139,20 +226,21 @@ export function MaintainerInbox({
     () => loadInboxViewPreferences(profileId),
     [profileId],
   );
-  const [view, setView] = useState<InboxView>(preferences.view);
-  const [search, setSearch] = useState(preferences.search);
-  const [sort, setSort] = useState<InboxSort>(preferences.sort);
-  const [queueOpen, setQueueOpen] = useState(preferences.queueRailOpen);
-  const [inspectorOpen, setInspectorOpen] = useState(preferences.inspectorOpen);
-  const [selectedKey, setSelectedKey] = useState<string | undefined>(
-    preferences.selectedIdentity,
+  const [inboxView, dispatchInboxView] = useReducer(
+    inboxViewReducer,
+    preferences,
+    inboxViewState,
   );
-  const [selectedRepo, setSelectedRepo] = useState<string>(
-    preferences.selectedRepo,
-  );
-  const [savedViews, setSavedViews] = useState<ReadonlyArray<SavedInboxView>>(
-    preferences.savedViews,
-  );
+  const {
+    view,
+    search,
+    sort,
+    selectedRepo,
+    queueOpen,
+    inspectorOpen,
+    selectedKey,
+    savedViews,
+  } = inboxView;
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [savedViewName, setSavedViewName] = useState("");
   const [deleteView, setDeleteView] = useState<SavedInboxView>();
@@ -174,14 +262,10 @@ export function MaintainerInbox({
 
   useEffect(() => {
     const next = loadInboxViewPreferences(profileId);
-    setView(next.view);
-    setSearch(next.search);
-    setSort(next.sort);
-    setSelectedRepo(next.selectedRepo);
-    setQueueOpen(next.queueRailOpen);
-    setInspectorOpen(next.inspectorOpen);
-    setSelectedKey(next.selectedIdentity);
-    setSavedViews(next.savedViews);
+    dispatchInboxView({
+      _tag: "preferencesLoaded",
+      state: inboxViewState(next),
+    });
   }, [profileId]);
 
   const repoItems = useMemo(
@@ -203,23 +287,15 @@ export function MaintainerInbox({
     visibleRows.find((row) => inboxIdentityKey(row) === selectedKey) ??
     visibleRows[0];
 
-  useEffect(() => {
-    if (selected === undefined) return;
-    const key = inboxIdentityKey(selected);
-    if (key === selectedKey) return;
-    setSelectedKey(key);
-    saveInboxViewPreferences(profileId, { selectedIdentity: key });
-  }, [profileId, selected, selectedKey]);
-
-  const selectView = (next: InboxView): void => {
-    setView(next);
-    saveInboxViewPreferences(profileId, { view: next });
-  };
+  const selectView = useCallback(
+    (next: InboxView): void => {
+      dispatchInboxView({ _tag: "viewSelected", view: next });
+      saveInboxViewPreferences(profileId, { view: next });
+    },
+    [profileId],
+  );
   const selectSavedView = (next: SavedInboxView): void => {
-    setView(next.view);
-    setSearch(next.search);
-    setSort(next.sort);
-    setSelectedRepo(next.selectedRepo);
+    dispatchInboxView({ _tag: "savedViewSelected", view: next });
     saveInboxViewPreferences(profileId, {
       view: next.view,
       search: next.search,
@@ -239,7 +315,7 @@ export function MaintainerInbox({
       selectedRepo,
     };
     const updated = [...savedViews, next].slice(-20);
-    setSavedViews(updated);
+    dispatchInboxView({ _tag: "savedViewAdded", view: next });
     saveInboxViewPreferences(profileId, { savedViews: updated });
     setSavedViewName("");
     setSaveViewOpen(false);
@@ -249,35 +325,35 @@ export function MaintainerInbox({
     const updated = savedViews.filter(
       (candidate) => candidate.id !== deleteView.id,
     );
-    setSavedViews(updated);
+    dispatchInboxView({ _tag: "savedViewRemoved", viewId: deleteView.id });
     saveInboxViewPreferences(profileId, { savedViews: updated });
     setDeleteView(undefined);
   };
   const selectRow = (row: InboxRow): void => {
     const key = inboxIdentityKey(row);
-    setSelectedKey(key);
+    dispatchInboxView({ _tag: "rowSelected", selectedKey: key });
     saveInboxViewPreferences(profileId, { selectedIdentity: key });
   };
   const changeSearch = (next: string): void => {
-    setSearch(next);
+    dispatchInboxView({ _tag: "searchChanged", search: next });
     saveInboxViewPreferences(profileId, { search: next });
   };
   const changeSort = (next: InboxSort): void => {
-    setSort(next);
+    dispatchInboxView({ _tag: "sortChanged", sort: next });
     saveInboxViewPreferences(profileId, { sort: next });
   };
   const changeSelectedRepo = (next: string): void => {
-    setSelectedRepo(next);
+    dispatchInboxView({ _tag: "repositoryChanged", selectedRepo: next });
     saveInboxViewPreferences(profileId, { selectedRepo: next });
   };
   const toggleQueue = (): void => {
     const next = !queueOpen;
-    setQueueOpen(next);
+    dispatchInboxView({ _tag: "queueToggled" });
     saveInboxViewPreferences(profileId, { queueRailOpen: next });
   };
   const toggleInspector = (): void => {
     const next = !inspectorOpen;
-    setInspectorOpen(next);
+    dispatchInboxView({ _tag: "inspectorToggled" });
     saveInboxViewPreferences(profileId, { inspectorOpen: next });
   };
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -322,7 +398,7 @@ export function MaintainerInbox({
       window.removeEventListener("patchdesk:inbox-view", onView);
       window.removeEventListener("patchdesk:inbox-action", onAction);
     };
-  }, [onOpenReview, onOpenReviewId, selected]);
+  }, [onOpenReview, onOpenReviewId, selectView, selected]);
 
   const main = (
     <div className="min-w-0">

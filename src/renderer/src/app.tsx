@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -79,6 +80,78 @@ type RouteLoadBoundaryProps = {
   readonly onRetry: () => void;
 };
 
+type WorkspaceState = {
+  readonly profiles: ReadonlyArray<Profile>;
+  readonly dashboard?: Dashboard;
+  readonly inbox?: InboxResponse;
+  readonly screen: DashboardScreenState;
+  readonly refreshing: boolean;
+  readonly refreshFailed: boolean;
+};
+
+type WorkspaceAction =
+  | { readonly _tag: "loading" }
+  | { readonly _tag: "failed"; readonly screen: DashboardScreenState }
+  | {
+      readonly _tag: "loaded";
+      readonly profiles: ReadonlyArray<Profile>;
+      readonly inbox: InboxResponse;
+      readonly dashboard: Dashboard;
+      readonly screen: DashboardScreenState;
+    }
+  | { readonly _tag: "refreshStarted" }
+  | {
+      readonly _tag: "refreshSucceeded";
+      readonly inbox: InboxResponse;
+      readonly dashboard: Dashboard;
+      readonly screen: DashboardScreenState;
+    }
+  | { readonly _tag: "refreshFailed" }
+  | { readonly _tag: "refreshFinished" }
+  | { readonly _tag: "cleared" };
+
+function workspaceReducer(
+  state: WorkspaceState,
+  action: WorkspaceAction,
+): WorkspaceState {
+  switch (action._tag) {
+    case "loading":
+      return { ...state, screen: "loading" };
+    case "failed":
+      return { ...state, screen: action.screen };
+    case "loaded":
+      return {
+        ...state,
+        profiles: action.profiles,
+        inbox: action.inbox,
+        dashboard: action.dashboard,
+        screen: action.screen,
+        refreshFailed: false,
+      };
+    case "refreshStarted":
+      return { ...state, refreshing: true, refreshFailed: false };
+    case "refreshSucceeded":
+      return {
+        ...state,
+        inbox: action.inbox,
+        dashboard: action.dashboard,
+        screen: action.screen,
+        refreshFailed: false,
+      };
+    case "refreshFailed":
+      return { ...state, refreshFailed: true };
+    case "refreshFinished":
+      return { ...state, refreshing: false };
+    case "cleared":
+      return {
+        profiles: state.profiles,
+        refreshing: state.refreshing,
+        refreshFailed: false,
+        screen: "loading",
+      };
+  }
+}
+
 export type ReviewWorkbenchLoader = () => Promise<{
   readonly default: ReviewWorkbenchFlowComponent;
 }>;
@@ -138,15 +211,21 @@ export function App({
         : window.localStorage.getItem("patchdesk.destination"),
     ),
   );
-  const [profiles, setProfiles] = useState<ReadonlyArray<Profile>>([]);
-  const [dashboard, setDashboard] = useState<Dashboard | undefined>();
-  const [inbox, setInbox] = useState<InboxResponse | undefined>();
-  const [inboxRefreshing, setInboxRefreshing] = useState(false);
+  const [workspace, dispatchWorkspace] = useReducer(workspaceReducer, {
+    profiles: [],
+    screen: initialState ?? "loading",
+    refreshing: false,
+    refreshFailed: false,
+  });
+  const {
+    profiles,
+    dashboard,
+    inbox,
+    screen: state,
+    refreshing: inboxRefreshing,
+    refreshFailed: inboxRefreshFailed,
+  } = workspace;
   const [inboxPaused, setInboxPaused] = useState(false);
-  const [inboxRefreshFailed, setInboxRefreshFailed] = useState(false);
-  const [state, setState] = useState<DashboardScreenState>(
-    initialState ?? "loading",
-  );
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsOpener, setSettingsOpener] = useState<
@@ -269,39 +348,45 @@ export function App({
     const generation = ++workspaceGeneration.current;
     inboxRefreshGeneration.current += 1;
     if (typeof window === "undefined" || !("patchdesk" in window)) {
-      setState(initialState ?? "empty");
+      dispatchWorkspace({ _tag: "failed", screen: initialState ?? "empty" });
       return;
     }
-    setState("loading");
+    dispatchWorkspace({ _tag: "loading" });
     let profilePayload: unknown;
     let inboxPayload: unknown;
     try {
       profilePayload = await api("/v1/profiles");
       inboxPayload = await api("/v1/inbox");
     } catch {
-      if (generation === workspaceGeneration.current) setState("error");
+      if (generation === workspaceGeneration.current)
+        dispatchWorkspace({ _tag: "failed", screen: "error" });
       return;
     }
     if (generation !== workspaceGeneration.current) return;
-    if (Array.isArray(profilePayload))
-      setProfiles(profilePayload.filter(isProfile));
+    const nextProfiles = Array.isArray(profilePayload)
+      ? profilePayload.filter(isProfile)
+      : [];
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
-      if (initialState === undefined) setState("empty");
+      if (initialState === undefined)
+        dispatchWorkspace({ _tag: "failed", screen: "empty" });
       return;
     }
     const currentDashboard = dashboardFromInbox(loadedInbox);
-    setInbox(loadedInbox);
-    setInboxRefreshFailed(false);
-    setDashboard(currentDashboard);
+    dispatchWorkspace({
+      _tag: "loaded",
+      profiles: nextProfiles,
+      inbox: loadedInbox,
+      dashboard: currentDashboard,
+      screen: screenStateForDashboard(currentDashboard),
+    });
     activeInboxProfileId.current = currentDashboard.profile.id;
-    setState(screenStateForDashboard(currentDashboard));
   }, [initialState]);
   const refreshInbox = useCallback(async (): Promise<"success" | "failure"> => {
     const profileId = activeInboxProfileId.current;
     if (profileId === undefined) return "failure";
     const generation = ++inboxRefreshGeneration.current;
-    setInboxRefreshing(true);
+    dispatchWorkspace({ _tag: "refreshStarted" });
     setInboxPaused(false);
     try {
       const payload = await api("/v1/inbox");
@@ -310,29 +395,28 @@ export function App({
         throw new Error("Invalid inbox refresh response");
       if (generation !== inboxRefreshGeneration.current) return "success";
       const nextDashboard = dashboardFromInbox(refreshed);
-      setInbox(refreshed);
-      setDashboard(nextDashboard);
-      setInboxRefreshFailed(false);
-      setState(screenStateForDashboard(nextDashboard));
+      dispatchWorkspace({
+        _tag: "refreshSucceeded",
+        inbox: refreshed,
+        dashboard: nextDashboard,
+        screen: screenStateForDashboard(nextDashboard),
+      });
       return "success";
     } catch {
       if (generation === inboxRefreshGeneration.current)
-        setInboxRefreshFailed(true);
+        dispatchWorkspace({ _tag: "refreshFailed" });
       return "failure";
     } finally {
       if (generation === inboxRefreshGeneration.current)
-        setInboxRefreshing(false);
+        dispatchWorkspace({ _tag: "refreshFinished" });
     }
   }, []);
+  const hasDashboard = dashboard !== undefined;
   useEffect(() => {
     if (!fixtureMode) void loadWorkspace();
   }, [fixtureMode, loadWorkspace]);
   useEffect(() => {
-    if (
-      fixtureMode ||
-      destination.kind !== "dashboard" ||
-      dashboard === undefined
-    )
+    if (fixtureMode || destination.kind !== "dashboard" || !hasDashboard)
       return;
     const scheduler = new InboxRefreshScheduler(refreshInbox);
     inboxRefreshScheduler.current = scheduler;
@@ -371,7 +455,13 @@ export function App({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       setInboxPaused(true);
     };
-  }, [dashboard?.profile.id, destination.kind, fixtureMode, refreshInbox]);
+  }, [
+    dashboard?.profile.id,
+    destination.kind,
+    fixtureMode,
+    hasDashboard,
+    refreshInbox,
+  ]);
   useEffect(() => {
     if (fixtureMode) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -502,8 +592,7 @@ export function App({
         onProfileSwitch={async (id) => {
           await api("/v1/profiles/select", { method: "POST", body: { id } });
           setWorkbench(undefined);
-          setDashboard(undefined);
-          setInbox(undefined);
+          dispatchWorkspace({ _tag: "cleared" });
           await loadWorkspace();
         }}
       >
@@ -537,12 +626,9 @@ export function App({
         }}
         onProfileSwitchStart={() => {
           setWorkbench(undefined);
-          setDashboard(undefined);
-          setInbox(undefined);
+          dispatchWorkspace({ _tag: "cleared" });
           activeInboxProfileId.current = undefined;
           inboxRefreshGeneration.current += 1;
-          setInboxRefreshFailed(false);
-          setState("loading");
           setDestination({ kind: "dashboard" });
           window.localStorage.setItem("patchdesk.destination", "dashboard");
         }}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
@@ -64,7 +64,13 @@ import type { InsightFailureCategory } from "../../../domain/insight-record";
 import type { PullRequestRef } from "../../../domain/pull-request";
 
 import { useInsightRun } from "../hooks/use-insight-run";
+import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
+
+const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 function boundedPendingReviewError(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
@@ -221,6 +227,7 @@ export function ReviewWorkbenchFlow({
     },
     [onWorkbenchReplace],
   );
+  const replaceWorkbenchRef = useLatestCommitted(replaceWorkbench);
   // Freshness value the projection had before detection patched it stale, so a
   // later cleared flag can restore writes instead of leaving them blocked.
   const [detectedStaleFreshness, setDetectedStaleFreshness] = useState<
@@ -228,15 +235,12 @@ export function ReviewWorkbenchFlow({
   >(undefined);
   // Latest values live in refs so scheduled detector work uses the current
   // journal and projection without recreating the interval on every write.
-  const workbenchRef = useRef(workbench);
-  workbenchRef.current = workbench;
-  const recentWritesRef = useRef(recentWrites);
-  recentWritesRef.current = recentWrites;
-  const detectedStaleFreshnessRef = useRef(detectedStaleFreshness);
-  detectedStaleFreshnessRef.current = detectedStaleFreshness;
-  const refreshingRef = useRef(refreshing);
-  refreshingRef.current = refreshing;
-  const snapshotKeyRef = useRef(snapshotKey(workbench));
+  const workbenchRef = useLatestCommitted(workbench);
+  const recentWritesRef = useLatestCommitted(recentWrites);
+  const detectedStaleFreshnessRef = useLatestCommitted(detectedStaleFreshness);
+  const refreshingRef = useLatestCommitted(refreshing);
+  const [initialSnapshotKey] = useState(() => snapshotKey(workbench));
+  const snapshotKeyRef = useRef(initialSnapshotKey);
   const generationRef = useRef(0);
   const detectInFlightRef = useRef(false);
   // Direct commands may legitimately overlap; detection pauses only while the
@@ -247,13 +251,20 @@ export function ReviewWorkbenchFlow({
   // on every parent render. Detector work must read the latest callback through
   // a ref instead of depending on the prop, or any parent render would restart
   // the scheduling effect and immediately send another request.
-  const onWorkbenchPatchRef = useRef(onWorkbenchPatch);
-  onWorkbenchPatchRef.current = onWorkbenchPatch;
+  const onWorkbenchPatchRef = useLatestCommitted(onWorkbenchPatch);
   // Synchronous count of explicit refreshes whose network request is still
   // pending. Detection must not start while any refresh (toolbar or
   // post-publication) is in flight; the toolbar-only React state cannot be the
   // protocol guard because publication refresh never sets it.
   const refreshInFlightCountRef = useRef(0);
+  // Unmount invalidates any detector request that is still awaiting the bridge.
+  // The generation check then rejects its late result without touching the
+  // callbacks owned by the closed workbench.
+  useEffect(() => {
+    return () => {
+      generationRef.current += 1;
+    };
+  }, []);
   // Each replaced projection gets a new observation generation; a detector
   // response that began under an older generation can never write stale
   // freshness into the newly refreshed Review.
@@ -302,7 +313,7 @@ export function ReviewWorkbenchFlow({
             next.session.id === current.session.id &&
             next.revision.reviewedHeadSha === current.revision.reviewedHeadSha
           ) {
-            replaceWorkbench(next);
+            replaceWorkbenchRef.current(next);
             setDetectedStaleFreshness(undefined);
           }
         } else if (observation._tag === "RevisionChanged") {
@@ -351,7 +362,13 @@ export function ReviewWorkbenchFlow({
     } finally {
       detectInFlightRef.current = false;
     }
-  }, []);
+  }, [
+    detectedStaleFreshnessRef,
+    onWorkbenchPatchRef,
+    recentWritesRef,
+    replaceWorkbenchRef,
+    workbenchRef,
+  ]);
 
   useEffect(() => {
     void runDetect();
@@ -419,7 +436,7 @@ export function ReviewWorkbenchFlow({
     } finally {
       refreshInFlightCountRef.current -= 1;
     }
-  }, [replaceWorkbench]);
+  }, [replaceWorkbench, workbenchRef]);
 
   const refresh = useCallback(async (): Promise<void> => {
     const wb = workbenchRef.current;
@@ -433,7 +450,7 @@ export function ReviewWorkbenchFlow({
     } finally {
       setRefreshing(false);
     }
-  }, [requestRefresh]);
+  }, [refreshingRef, requestRefresh, workbenchRef]);
 
   const runDirectCommand = useCallback(
     async <T,>(operation: () => Promise<T>): Promise<T> => {
@@ -493,7 +510,7 @@ export function ReviewWorkbenchFlow({
         });
       }
     },
-    [replaceWorkbench, runDirectCommand],
+    [onWorkbenchPatchRef, replaceWorkbench, runDirectCommand, workbenchRef],
   );
   const saveInlineComment = useCallback(
     async (
@@ -817,8 +834,9 @@ export function ReviewWorkbenchFlow({
         // survive until an explicit refresh/reload replaces the represented
         // snapshot; a Submit keeps them because the threads persist remotely.
         if (command._tag === "Start" || command._tag === "AddThread") {
+          const priorThreadIdSet = new Set(priorThreadIds);
           const added = threadIdsOf(projection).filter(
-            (id) => !priorThreadIds.includes(id),
+            (id) => !priorThreadIdSet.has(id),
           );
           if (added.length > 0) {
             setRecentWrites((current) => [
@@ -869,7 +887,7 @@ export function ReviewWorkbenchFlow({
         setPendingReviewBusy(false);
       }
     },
-    [applyPendingReviewProjection, workbench],
+    [applyPendingReviewProjection, onWorkbenchPatch, workbench],
   );
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
@@ -915,21 +933,19 @@ export function ReviewWorkbenchFlow({
     useState<DirectSummaryReviewProjection>(
       workbench.directSummary ?? { state: "idle" },
     );
-  useEffect(() => {
-    setDirectSummaryState(workbench.directSummary ?? { state: "idle" });
-  }, [workbench.directSummary]);
   const observedDirectSummaryRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (directSummaryState.state !== "confirmed") return;
-    const reviewId = directSummaryState.receipt.reviewId;
-    if (observedDirectSummaryRef.current === reviewId) return;
-    observedDirectSummaryRef.current = reviewId;
-    void observeConfirmedDirectSummary(reviewId).catch(() => {
-      // The confirmed receipt stays durable. The scheduled observer retains
-      // the receipt journal and retries metadata adoption without replaying
-      // the GitHub write.
-    });
-  }, [directSummaryState, observeConfirmedDirectSummary]);
+  const visibleDirectSummaryState =
+    workbench.directSummary ?? directSummaryState;
+  const observeDirectSummaryReceipt = useCallback(
+    (reviewId: string): void => {
+      if (observedDirectSummaryRef.current === reviewId) return;
+      observedDirectSummaryRef.current = reviewId;
+      void observeConfirmedDirectSummary(reviewId).catch(() => {
+        // This read-only observer never retries the GitHub write.
+      });
+    },
+    [observeConfirmedDirectSummary],
+  );
   const submitDirectSummary = useCallback(
     async (
       event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
@@ -966,6 +982,7 @@ export function ReviewWorkbenchFlow({
             reviewId: result.receipt.reviewId,
           };
           setRecentWrites((current) => [...current, write]);
+          observeDirectSummaryReceipt(result.receipt.reviewId);
         }
         setDirectSummaryError(undefined);
         return result;
@@ -988,7 +1005,7 @@ export function ReviewWorkbenchFlow({
         setDirectSummaryBusy(false);
       }
     },
-    [runDirectCommand, workbench],
+    [observeDirectSummaryReceipt, runDirectCommand, workbench],
   );
   const recoverDirectSummary =
     useCallback(async (): Promise<DirectSummaryReviewProjection> => {
@@ -1012,6 +1029,7 @@ export function ReviewWorkbenchFlow({
             ...current,
             { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId },
           ]);
+          observeDirectSummaryReceipt(result.receipt.reviewId);
         }
         setDirectSummaryError(undefined);
         return result;
@@ -1023,7 +1041,7 @@ export function ReviewWorkbenchFlow({
       } finally {
         setDirectSummaryBusy(false);
       }
-    }, [runDirectCommand, workbench]);
+    }, [observeDirectSummaryReceipt, runDirectCommand, workbench]);
   const pendingReviewComposer: PendingReviewComposerActions | undefined =
     workbench.pendingReview === undefined
       ? undefined
@@ -1257,7 +1275,7 @@ export function ReviewWorkbenchFlow({
           : { initialState: initialUiState })}
         {...(onUiStateChange === undefined
           ? {}
-          : { onStateChange: onUiStateChange })}
+          : { onPositionCommitted: onUiStateChange })}
         actions={{
           detectUpdates: runDetect,
           refresh,
@@ -1340,14 +1358,17 @@ export function ReviewWorkbenchFlow({
             ? {
                 directSummary: {
                   busy: directSummaryBusy,
-                  state: directSummaryState.state,
+                  state: visibleDirectSummaryState.state,
                   approvalCapability:
                     workbench.directSummaryDecision ?? "unknown",
-                  ...(directSummaryState.state === "confirmed"
-                    ? { receipt: directSummaryState.receipt }
+                  ...(visibleDirectSummaryState.state === "confirmed"
+                    ? { receipt: visibleDirectSummaryState.receipt }
                     : {}),
-                  ...(directSummaryState.state === "recovery_required"
-                    ? { recoveryResolution: directSummaryState.resolution }
+                  ...(visibleDirectSummaryState.state === "recovery_required"
+                    ? {
+                        recoveryResolution:
+                          visibleDirectSummaryState.resolution,
+                      }
                     : {}),
                   onSubmit: submitDirectSummary,
                   onRecover: recoverDirectSummary,
@@ -1400,6 +1421,44 @@ export function ReviewWorkbenchFlow({
 type AnalysisFinding = NonNullable<
   WorkbenchResponse["insights"]["analysis"]["retained"]
 >["value"]["findings"][number];
+type InsightModelOption = {
+  readonly id: string;
+  readonly label: string;
+  readonly reasoning?: ReadonlyArray<InsightReasoning>;
+};
+type InsightRunConfiguration = {
+  readonly catalog?: ReturnType<typeof parseInsightProviderCatalog>;
+  readonly provider: InsightProvider;
+  readonly models: ReadonlyArray<InsightModelOption>;
+  readonly model: string | null;
+  readonly reasoning: InsightReasoning;
+  readonly runDialogType: InsightRunDialogType | null;
+  readonly runDialogAction: "run" | "retry" | "regenerate";
+  readonly catalogError: boolean;
+  readonly codexActivationPending: boolean;
+  readonly codexActivationError: boolean;
+};
+type InsightRunConfigurationAction = {
+  readonly type: "updated";
+  readonly patch: Partial<InsightRunConfiguration>;
+};
+const initialInsightRunConfiguration: InsightRunConfiguration = {
+  provider: "pi",
+  models: [],
+  model: null,
+  reasoning: "medium",
+  runDialogType: null,
+  runDialogAction: "run",
+  catalogError: false,
+  codexActivationPending: false,
+  codexActivationError: false,
+};
+function insightRunConfigurationReducer(
+  state: InsightRunConfiguration,
+  action: InsightRunConfigurationAction,
+): InsightRunConfiguration {
+  return { ...state, ...action.patch };
+}
 function InsightsSlot({
   workbench,
   initialDetail,
@@ -1416,44 +1475,31 @@ function InsightsSlot({
   readonly onFinishWithAnalysisSummary: (summary: string) => void;
 }): React.JSX.Element {
   const navigateToFiles = useReviewWorkbenchNavigation();
-  const [catalog, setCatalog] =
-    useState<ReturnType<typeof parseInsightProviderCatalog>>();
-  const [provider, setProvider] = useState<InsightProvider>("pi");
-  const [models, setModels] = useState<
-    ReadonlyArray<{
-      readonly id: string;
-      readonly label: string;
-      readonly reasoning?: ReadonlyArray<InsightReasoning>;
-    }>
-  >([]);
-  const [preferences, setPreferences] = useState<
+  const [configuration, updateConfiguration] = useReducer(
+    insightRunConfigurationReducer,
+    initialInsightRunConfiguration,
+  );
+  const {
+    catalog,
+    provider,
+    models,
+    model,
+    reasoning,
+    runDialogType,
+    runDialogAction,
+    catalogError,
+    codexActivationPending,
+    codexActivationError,
+  } = configuration;
+  const setConfiguration = (patch: Partial<InsightRunConfiguration>): void =>
+    updateConfiguration({ type: "updated", patch });
+  const preferencesRef = useRef<
     Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
   >({});
-  const [model, setModel] = useState<string | null>(null);
-  const [reasoning, setReasoning] = useState<InsightReasoning>("medium");
-  const [runDialogType, setRunDialogType] =
-    useState<InsightRunDialogType | null>(null);
-  const [runDialogAction, setRunDialogAction] = useState<
-    "run" | "retry" | "regenerate"
-  >("run");
-  const [catalogError, setCatalogError] = useState(false);
-  const [codexActivationPending, setCodexActivationPending] = useState(false);
-  const [codexActivationError, setCodexActivationError] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<
     "overview" | "analysis" | "walkthrough"
   >(initialDetail ?? "analysis");
-  const [reviewedWalkthroughSections, setReviewedWalkthroughSections] =
-    useState<ReadonlyArray<string>>(
-      workbench.insights.walkthrough.progress?.reviewedSectionIds ?? [],
-    );
-  const [supportReviewed, setSupportReviewed] = useState(
-    workbench.insights.walkthrough.progress?.supportReviewed ?? false,
-  );
-  const [currentWalkthroughSection, setCurrentWalkthroughSection] = useState<
-    string | undefined
-  >(workbench.insights.walkthrough.progress?.currentSectionId);
   const [walkthroughFocused, setWalkthroughFocused] = useState(false);
-  const [progressError, setProgressError] = useState(false);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
   const onInsightPatch = useCallback(
@@ -1498,43 +1544,51 @@ function InsightsSlot({
       loadedPreferences.analysis = analysisPreference;
     if (walkthroughPreference !== undefined)
       loadedPreferences.walkthrough = walkthroughPreference;
-    setPreferences(loadedPreferences);
+    preferencesRef.current = loadedPreferences;
     const initialPreference = loadedPreferences[initialDetail ?? "analysis"];
     if (initialPreference !== undefined) {
-      setProvider(initialPreference.provider);
-      setReasoning(initialPreference.reasoning);
-      setModel(initialPreference.model);
+      setConfiguration({
+        provider: initialPreference.provider,
+        reasoning: initialPreference.reasoning,
+        model: initialPreference.model,
+      });
     }
     void requestJson("/v1/insight-providers")
       .then((value) => {
         if (!active) return;
         const parsed = parseInsightProviderCatalog(value);
         if (parsed === undefined) {
-          setCatalog(undefined);
-          setModels([]);
-          setModel(null);
-          setCatalogError(true);
+          setConfiguration({
+            catalog: undefined,
+            models: [],
+            model: null,
+            catalogError: true,
+          });
           return;
         }
-        setCatalog(parsed);
         const piModels = parsed.models.filter(
           (candidate) => candidate.provider === "pi",
         );
-        setModels(piModels);
         const selectedModel =
           initialPreference?.provider === "pi" &&
           piModels.some((candidate) => candidate.id === initialPreference.model)
             ? initialPreference.model
             : (piModels[0]?.id ?? null);
-        setModel(selectedModel);
-        setCatalogError(false);
+        setConfiguration({
+          catalog: parsed,
+          models: piModels,
+          model: selectedModel,
+          catalogError: false,
+        });
       })
       .catch(() => {
         if (!active) return;
-        setCatalog(undefined);
-        setModels([]);
-        setModel(null);
-        setCatalogError(true);
+        setConfiguration({
+          catalog: undefined,
+          models: [],
+          model: null,
+          catalogError: true,
+        });
       });
     return () => {
       active = false;
@@ -1550,29 +1604,31 @@ function InsightsSlot({
     runDialogType ??
     (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
   const changeProvider = (nextProvider: InsightProvider): void => {
-    setProvider(nextProvider);
     const nextModels =
       catalog?.models.filter(
         (candidate) => candidate.provider === nextProvider,
       ) ?? [];
-    setModels(nextModels);
-    const preference = preferences[activePreferenceType];
-    setModel(
-      preference?.provider === nextProvider &&
-        nextModels.some((candidate) => candidate.id === preference.model)
-        ? preference.model
-        : (nextModels[0]?.id ?? null),
-    );
+    const preference = preferencesRef.current[activePreferenceType];
     const first = nextModels[0];
-    setReasoning(
-      preference?.provider === nextProvider
-        ? preference.reasoning
-        : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
-    );
+    setConfiguration({
+      provider: nextProvider,
+      models: nextModels,
+      model:
+        preference?.provider === nextProvider &&
+        nextModels.some((candidate) => candidate.id === preference.model)
+          ? preference.model
+          : (nextModels[0]?.id ?? null),
+      reasoning:
+        preference?.provider === nextProvider
+          ? preference.reasoning
+          : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
+    });
   };
   const activateCodex = (): void => {
-    setCodexActivationPending(true);
-    setCodexActivationError(false);
+    setConfiguration({
+      codexActivationPending: true,
+      codexActivationError: false,
+    });
     void requestJson("/v1/insight-providers/codex/models", {
       method: "POST",
       body: {},
@@ -1580,55 +1636,39 @@ function InsightsSlot({
       .then((value) => {
         const parsed = parseInsightProviderCatalog(value);
         if (parsed === undefined) throw new Error("Invalid Codex catalog");
-        setCatalog((current) =>
-          current === undefined
+        const nextCatalog =
+          catalog === undefined
             ? parsed
             : {
-                ...current,
+                ...catalog,
                 providers: [
-                  ...current.providers.filter(
+                  ...catalog.providers.filter(
                     (candidate) => candidate.id !== "codex-cli-account",
                   ),
                   ...parsed.providers,
                 ],
                 models: [
-                  ...current.models.filter(
+                  ...catalog.models.filter(
                     (candidate) => candidate.provider !== "codex-cli-account",
                   ),
                   ...parsed.models,
                 ],
-              },
-        );
+              };
         const codexModels = parsed.models.filter(
           (candidate) => candidate.provider === "codex-cli-account",
         );
-        setModels(codexModels);
-        setModel(codexModels[0]?.id ?? null);
-        setReasoning(
-          codexModels[0]?.defaultReasoning ??
+        setConfiguration({
+          catalog: nextCatalog,
+          models: codexModels,
+          model: codexModels[0]?.id ?? null,
+          reasoning:
+            codexModels[0]?.defaultReasoning ??
             codexModels[0]?.reasoning[0] ??
             "medium",
-        );
+        });
       })
-      .catch(() => setCodexActivationError(true))
-      .finally(() => setCodexActivationPending(false));
-  };
-  const walkthroughRunId = workbench.insights.walkthrough.retained?.runId;
-  useEffect(() => {
-    setProgressError(false);
-  }, [walkthroughRunId]);
-  const saveWalkthroughProgress = (progress: {
-    readonly reviewedSectionIds: ReadonlyArray<string>;
-    readonly supportReviewed: boolean;
-    readonly currentSectionId?: string;
-  }): void => {
-    if (walkthroughRunId === undefined) return;
-    void requestJson("/v1/reviews/insights/walkthrough/progress", {
-      method: "POST",
-      body: { profileId, reviewId, runId: walkthroughRunId, ...progress },
-    })
-      .then(() => setProgressError(false))
-      .catch(() => setProgressError(true));
+      .catch(() => setConfiguration({ codexActivationError: true }))
+      .finally(() => setConfiguration({ codexActivationPending: false }));
   };
   const reloadWorkbench = async (): Promise<void> => {
     const value = await requestJson("/v1/reviews/load", {
@@ -1681,24 +1721,25 @@ function InsightsSlot({
   };
   const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
     if (selectedInsight === "overview" || catalogError) return;
-    const preference = preferences[selectedInsight];
-    setProvider(preference?.provider ?? "pi");
-    setReasoning(preference?.reasoning ?? "medium");
+    const preference = preferencesRef.current[selectedInsight];
     const nextModels =
       catalog?.models.filter(
         (candidate) => candidate.provider === (preference?.provider ?? "pi"),
       ) ?? [];
-    setModels(nextModels);
-    setModel(
-      preference !== undefined &&
+    setConfiguration({
+      provider: preference?.provider ?? "pi",
+      reasoning: preference?.reasoning ?? "medium",
+      models: nextModels,
+      model:
+        preference !== undefined &&
         nextModels.some((candidate) => candidate.id === preference.model)
-        ? preference.model
-        : (nextModels[0]?.id ?? null),
-    );
-    setRunDialogType(selectedInsight);
-    setRunDialogAction(action);
+          ? preference.model
+          : (nextModels[0]?.id ?? null),
+      runDialogType: selectedInsight,
+      runDialogAction: action,
+    });
   };
-  const closeRunDialog = (): void => setRunDialogType(null);
+  const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
   const confirmRun = (): void => {
     if (model === null || selectedInsight === "overview") return;
     closeRunDialog();
@@ -1708,10 +1749,10 @@ function InsightsSlot({
         model,
         reasoning,
       });
-      setPreferences((current) => ({
-        ...current,
+      preferencesRef.current = {
+        ...preferencesRef.current,
         [selectedInsight]: { provider, model, reasoning },
-      }));
+      };
     });
   };
   const retainedDescription =
@@ -1805,13 +1846,18 @@ function InsightsSlot({
   const retainedWalkthrough =
     selectedInsight === "walkthrough" &&
     workbench.insights.walkthrough.retained !== undefined ? (
-      <NarrativeWalkthrough
+      <WalkthroughProgressReader
+        key={JSON.stringify({
+          sessionId: workbench.session.id,
+          runId: workbench.insights.walkthrough.retained.runId,
+          headSha: workbench.revision.reviewedHeadSha,
+          progress: workbench.insights.walkthrough.progress,
+        })}
         walkthrough={workbench.insights.walkthrough.retained.value}
-        reviewedSectionIds={reviewedWalkthroughSections}
-        supportReviewed={supportReviewed}
-        {...(currentWalkthroughSection === undefined
-          ? {}
-          : { currentSectionId: currentWalkthroughSection })}
+        initialProgress={workbench.insights.walkthrough.progress}
+        profileId={profileId}
+        reviewId={reviewId}
+        runId={workbench.insights.walkthrough.retained.runId}
         {...(workbench.insights.walkthrough.status === "current" &&
         workbench.fullPatch !== undefined
           ? { rawPatch: workbench.fullPatch }
@@ -1824,39 +1870,6 @@ function InsightsSlot({
           : { discussionUnavailable: true })}
         focused={walkthroughFocused}
         onFocusedChange={setWalkthroughFocused}
-        actions={{
-          onMarkSectionReviewed: (sectionId) => {
-            const next = reviewedWalkthroughSections.includes(sectionId)
-              ? reviewedWalkthroughSections
-              : [...reviewedWalkthroughSections, sectionId];
-            setReviewedWalkthroughSections(next);
-            saveWalkthroughProgress({
-              reviewedSectionIds: next,
-              supportReviewed,
-              ...(currentWalkthroughSection === undefined
-                ? {}
-                : { currentSectionId: currentWalkthroughSection }),
-            });
-          },
-          onMarkSupportReviewed: () => {
-            setSupportReviewed(true);
-            saveWalkthroughProgress({
-              reviewedSectionIds: reviewedWalkthroughSections,
-              supportReviewed: true,
-              ...(currentWalkthroughSection === undefined
-                ? {}
-                : { currentSectionId: currentWalkthroughSection }),
-            });
-          },
-          onSelectSection: (sectionId) => {
-            setCurrentWalkthroughSection(sectionId);
-            saveWalkthroughProgress({
-              reviewedSectionIds: reviewedWalkthroughSections,
-              supportReviewed,
-              currentSectionId: sectionId,
-            });
-          },
-        }}
       />
     ) : null;
   const retainedReader = retainedAnalysis ?? retainedWalkthrough;
@@ -1985,11 +1998,6 @@ function InsightsSlot({
                     : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
                 </p>
               ) : null}
-              {progressError ? (
-                <p role="alert" className="py-2 text-sm text-destructive">
-                  Walkthrough progress could not be saved.
-                </p>
-              ) : null}
               {selectedProjection?.artifactStatus === "mismatch" ? (
                 <InsightArtifactMismatch type={selectedInsight} />
               ) : null}
@@ -2061,7 +2069,6 @@ function InsightsSlot({
             if (!open) closeRunDialog();
           }}
           onModelChange={(nextModel) => {
-            setModel(nextModel);
             const selected = models.find(
               (candidate) => candidate.id === nextModel,
             );
@@ -2070,12 +2077,19 @@ function InsightsSlot({
               selected.reasoning !== undefined &&
               !selected.reasoning.includes(reasoning)
             ) {
-              setReasoning(selected.reasoning[0] ?? "medium");
+              setConfiguration({
+                model: nextModel,
+                reasoning: selected.reasoning[0] ?? "medium",
+              });
+              return;
             }
+            setConfiguration({ model: nextModel });
           }}
           onProviderChange={changeProvider}
           onActivateCodex={activateCodex}
-          onReasoningChange={setReasoning}
+          onReasoningChange={(nextReasoning) =>
+            setConfiguration({ reasoning: nextReasoning })
+          }
           onConfirm={confirmRun}
         />
       )}
@@ -2083,13 +2097,95 @@ function InsightsSlot({
   );
 }
 
+type WalkthroughProgressReaderProps = Omit<
+  React.ComponentProps<typeof NarrativeWalkthrough>,
+  "reviewedSectionIds" | "supportReviewed" | "currentSectionId" | "actions"
+> & {
+  readonly initialProgress: WorkbenchResponse["insights"]["walkthrough"]["progress"];
+  readonly profileId: string;
+  readonly reviewId: string;
+  readonly runId: string | undefined;
+};
+function WalkthroughProgressReader({
+  initialProgress,
+  profileId,
+  reviewId,
+  runId,
+  ...props
+}: WalkthroughProgressReaderProps): React.JSX.Element {
+  const [reviewedSectionIds, setReviewedSectionIds] = useState<
+    ReadonlyArray<string>
+  >(initialProgress?.reviewedSectionIds ?? []);
+  const [supportReviewed, setSupportReviewed] = useState(
+    initialProgress?.supportReviewed ?? false,
+  );
+  const [currentSectionId, setCurrentSectionId] = useState<string | undefined>(
+    initialProgress?.currentSectionId,
+  );
+  const [progressError, setProgressError] = useState(false);
+  const save = (progress: {
+    readonly reviewedSectionIds: ReadonlyArray<string>;
+    readonly supportReviewed: boolean;
+    readonly currentSectionId?: string;
+  }): void => {
+    if (runId === undefined) return;
+    void requestJson("/v1/reviews/insights/walkthrough/progress", {
+      method: "POST",
+      body: { profileId, reviewId, runId, ...progress },
+    })
+      .then(() => setProgressError(false))
+      .catch(() => setProgressError(true));
+  };
+  return (
+    <>
+      {progressError ? (
+        <p role="alert" className="py-2 text-sm text-destructive">
+          Walkthrough progress could not be saved.
+        </p>
+      ) : null}
+      <NarrativeWalkthrough
+        {...props}
+        reviewedSectionIds={reviewedSectionIds}
+        supportReviewed={supportReviewed}
+        {...(currentSectionId === undefined ? {} : { currentSectionId })}
+        actions={{
+          onMarkSectionReviewed: (sectionId) => {
+            const next = reviewedSectionIds.includes(sectionId)
+              ? reviewedSectionIds
+              : [...reviewedSectionIds, sectionId];
+            setReviewedSectionIds(next);
+            save({
+              reviewedSectionIds: next,
+              supportReviewed,
+              ...(currentSectionId === undefined ? {} : { currentSectionId }),
+            });
+          },
+          onMarkSupportReviewed: () => {
+            setSupportReviewed(true);
+            save({
+              reviewedSectionIds,
+              supportReviewed: true,
+              ...(currentSectionId === undefined ? {} : { currentSectionId }),
+            });
+          },
+          onSelectSection: (sectionId) => {
+            setCurrentSectionId(sectionId);
+            save({
+              reviewedSectionIds,
+              supportReviewed,
+              currentSectionId: sectionId,
+            });
+          },
+        }}
+      />
+    </>
+  );
+}
+
 function formatInsightTimestamp(value: string): string {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(timestamp);
+  return insightTimestampFormatter.format(timestamp);
 }
 
 function InsightRailButton({

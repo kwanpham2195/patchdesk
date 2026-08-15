@@ -64,7 +64,7 @@ export function SettingsModal({
     initialSection ?? "general",
   );
   const firstOpenRef = useRef(true);
-  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const pendingSwitch = useRef<(() => void) | undefined>(undefined);
   const saveProfileRef = useRef<(() => Promise<boolean>) | undefined>(
@@ -74,12 +74,13 @@ export function SettingsModal({
   const [dirtySavePending, setDirtySavePending] = useState(false);
   const openerRef = useRef<HTMLElement | null>(null);
   const lastOpen = useRef(false);
+  const initialSectionRef = useRef(initialSection);
 
   useEffect(() => {
     if (open && !lastOpen.current) {
       setSection(
-        firstOpenRef.current && initialSection !== undefined
-          ? initialSection
+        firstOpenRef.current && initialSectionRef.current !== undefined
+          ? initialSectionRef.current
           : "general",
       );
       firstOpenRef.current = false;
@@ -93,7 +94,7 @@ export function SettingsModal({
   }, [open, opener]);
 
   const requestClose = (nextOpen: boolean): void => {
-    if (nextOpen || !dirty) {
+    if (nextOpen || !dirtyRef.current) {
       onOpenChange(nextOpen);
       return;
     }
@@ -104,7 +105,7 @@ export function SettingsModal({
     _profileId: string,
     proceed: () => void,
   ): void => {
-    if (!dirty) {
+    if (!dirtyRef.current) {
       proceed();
       return;
     }
@@ -114,7 +115,7 @@ export function SettingsModal({
 
   const discardAndContinue = (): void => {
     discardProfileRef.current?.();
-    setDirty(false);
+    dirtyRef.current = false;
     setDirtyDialogOpen(false);
     const proceed = pendingSwitch.current;
     pendingSwitch.current = undefined;
@@ -126,10 +127,14 @@ export function SettingsModal({
     const save = saveProfileRef.current;
     if (save === undefined || dirtySavePending) return;
     setDirtySavePending(true);
-    const saved = await save();
-    setDirtySavePending(false);
+    let saved = false;
+    try {
+      saved = await save();
+    } finally {
+      setDirtySavePending(false);
+    }
     if (!saved) return;
-    setDirty(false);
+    dirtyRef.current = false;
     setDirtyDialogOpen(false);
     const proceed = pendingSwitch.current;
     pendingSwitch.current = undefined;
@@ -222,7 +227,9 @@ export function SettingsModal({
                   <SettingsFlow
                     {...flowProps}
                     section={section}
-                    onDirtyChange={setDirty}
+                    onProfileDirtyChange={(dirty) => {
+                      dirtyRef.current = dirty;
+                    }}
                     onProfileSwitchRequest={requestProfileSwitch}
                     onCleanupSuccess={(action) => {
                       requestClose(false);

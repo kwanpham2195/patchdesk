@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
@@ -46,6 +53,41 @@ describe("App Review route loading", () => {
     expect(fixtureCalls).toBe(0);
   });
 
+  it("releases the Inbox refresh state after a failed manual refresh", async () => {
+    const user = userEvent.setup();
+    const originalVisibility = Object.getOwnPropertyDescriptor(
+      document,
+      "visibilityState",
+    );
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    const refreshFailure = promise<void>();
+    installDesktop({
+      failInboxRefresh: true,
+      inboxRefreshGate: refreshFailure.promise,
+    });
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    fireEvent.focus(window);
+    const refresh = screen.getByRole("button", {
+      name: "Refresh all watched repositories",
+    });
+    await user.click(refresh);
+    expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
+    refreshFailure.resolve();
+    await waitFor(() =>
+      expect(
+        screen.getByText("GitHub: Cached after refresh failure"),
+      ).toBeTruthy(),
+    );
+    expect((refresh as HTMLButtonElement).disabled).toBe(false);
+    if (originalVisibility === undefined)
+      Reflect.deleteProperty(document, "visibilityState");
+    else Object.defineProperty(document, "visibilityState", originalVisibility);
+  });
   it("loads a restored Review through InboxFlow and keeps route callbacks", async () => {
     const deferred = promise<React.ComponentType<ReviewWorkbenchFlowProps>>();
     let received: ReviewWorkbenchFlowProps | undefined;
@@ -160,30 +202,46 @@ describe("App Review route loading", () => {
   });
 });
 
-function installDesktop(): void {
+function installDesktop(
+  options: {
+    readonly failInboxRefresh?: boolean;
+    readonly inboxRefreshGate?: Promise<void>;
+  } = {},
+): void {
+  let inboxRequests = 0;
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {
-      request: async (input: { readonly path?: string }) => ({
-        ok: true,
-        status: 200,
-        correlationId: "test",
-        body:
-          input.path === "/v1/profiles"
-            ? [
-                {
-                  id: "profile",
-                  label: "Profile",
-                  githubHost: "github.com",
-                  ghAccount: "fixture",
-                },
-              ]
-            : input.path === "/v1/inbox"
-              ? inbox()
-              : input.path === "/v1/reviews/load"
-                ? projection()
-                : {},
-      }),
+      request: async (input: { readonly path?: string }) => {
+        if (input.path === "/v1/inbox") {
+          inboxRequests += 1;
+          if (options.failInboxRefresh && inboxRequests > 1) {
+            if (options.inboxRefreshGate !== undefined)
+              await options.inboxRefreshGate;
+            throw new Error("refresh failed");
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          correlationId: "test",
+          body:
+            input.path === "/v1/profiles"
+              ? [
+                  {
+                    id: "profile",
+                    label: "Profile",
+                    githubHost: "github.com",
+                    ghAccount: "fixture",
+                  },
+                ]
+              : input.path === "/v1/inbox"
+                ? inbox()
+                : input.path === "/v1/reviews/load"
+                  ? projection()
+                  : {},
+        };
+      },
       onNavigate: () => () => undefined,
     },
   });

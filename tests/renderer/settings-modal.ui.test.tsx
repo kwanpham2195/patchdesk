@@ -264,6 +264,33 @@ describe("SettingsModal", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("keeps a failed profile save retryable before a later save closes", async () => {
+    const request = installDesktopApi({ profileSaveFailures: 1 });
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    renderModal(onOpenChange);
+    await user.click(screen.getByRole("tab", { name: "Workspace" }));
+    await user.type(screen.getByLabelText("Label"), " changed");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
+      ),
+    );
+    expect(
+      (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(screen.queryByText("Saving…")).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it("requires an explicit dirty-draft choice before closing", async () => {
     installDesktopApi();
     const user = userEvent.setup();
@@ -430,8 +457,10 @@ function installDesktopApi(
   options: {
     readonly clearLocalDataFails?: boolean;
     readonly models?: unknown;
+    readonly profileSaveFailures?: number;
   } = {},
 ): ReturnType<typeof vi.fn> {
+  let profileSaveFailures = options.profileSaveFailures ?? 0;
   const request = vi.fn(
     async (input: {
       readonly path?: string;
@@ -444,6 +473,14 @@ function installDesktopApi(
       if (input.path === "/v1/environment") return success({});
       if (input.path === "/v1/insight-providers")
         return success(options.models ?? {});
+      if (
+        input.path === "/v1/profiles" &&
+        input.method === "PUT" &&
+        profileSaveFailures > 0
+      ) {
+        profileSaveFailures -= 1;
+        return failure({ error: "profile_save_failed" });
+      }
       if (
         input.path === "/v1/storage/clear-local-data" &&
         options.clearLocalDataFails === true

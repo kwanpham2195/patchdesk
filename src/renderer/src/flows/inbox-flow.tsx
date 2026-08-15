@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type ReviewInitialSection,
@@ -69,19 +69,58 @@ export function InboxFlow({
 }): React.JSX.Element {
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
+  const dashboardProfileId = dashboard?.profile.id;
+  const openStoredReview = useCallback(
+    async (
+      profileId: string,
+      reference: { readonly reviewId: string },
+      isActive: () => boolean = () => true,
+    ): Promise<void> => {
+      try {
+        const value = await requestJson("/v1/reviews/load", {
+          method: "POST",
+          body: { profileId, ...reference },
+        });
+        const parsed = parseWorkbenchResponse(value);
+        if (parsed === undefined) {
+          if (isActive())
+            setOpenError(
+              "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
+            );
+          return;
+        }
+        if (!isActive()) return;
+        onOpenWorkbench(parsed as unknown as WorkbenchPayload);
+      } catch (cause: unknown) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        setOpenError(`Could not open the saved review. ${detail}`);
+      }
+    },
+    [onOpenWorkbench],
+  );
+  const openStoredReviewById = useCallback(
+    async (
+      profileId: string,
+      reviewId: string,
+      isActive: () => boolean = () => true,
+    ): Promise<void> => {
+      await openStoredReview(profileId, { reviewId }, isActive);
+    },
+    [openStoredReview],
+  );
   useEffect(() => {
     if (
       destination !== "workbench" ||
-      dashboard === undefined ||
+      dashboardProfileId === undefined ||
       reviewId === undefined
     )
       return;
     let active = true;
-    void openStoredReviewById(dashboard.profile.id, reviewId, () => active);
+    void openStoredReviewById(dashboardProfileId, reviewId, () => active);
     return () => {
       active = false;
     };
-  }, [dashboard?.profile.id, destination, reviewId]);
+  }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
 
   type PrRef = {
     readonly host?: string;
@@ -119,40 +158,6 @@ export function InboxFlow({
       );
     }
   };
-
-  async function openStoredReview(
-    profileId: string,
-    reference: { readonly reviewId: string },
-    isActive: () => boolean = () => true,
-  ): Promise<void> {
-    try {
-      const value = await requestJson("/v1/reviews/load", {
-        method: "POST",
-        body: { profileId, ...reference },
-      });
-      const parsed = parseWorkbenchResponse(value);
-      if (parsed === undefined) {
-        if (isActive())
-          setOpenError(
-            "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
-          );
-        return;
-      }
-      if (!isActive()) return;
-      onOpenWorkbench(parsed as unknown as WorkbenchPayload);
-    } catch (cause: unknown) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      setOpenError(`Could not open the saved review. ${detail}`);
-    }
-  }
-
-  async function openStoredReviewById(
-    profileId: string,
-    reviewId: string,
-    isActive: () => boolean = () => true,
-  ): Promise<void> {
-    await openStoredReview(profileId, { reviewId }, isActive);
-  }
 
   return inbox !== undefined && dashboard !== undefined ? (
     <InboxScreen
@@ -562,48 +567,52 @@ function Outcome({
     );
   return (
     <section className="mt-6 space-y-2">
-      {repos
-        .filter(
-          (repo) => repo.state !== "ready" && repo.state !== "no_open_prs",
-        )
-        .map(({ repo, state: outcome }) => (
-          <Alert
-            key={key(repo)}
-            variant={
-              outcome === "github_auth" || outcome === "github_read"
-                ? "destructive"
-                : "default"
-            }
-          >
-            <AlertTitle>
-              {repo.owner}/{repo.repo}
-            </AlertTitle>
-            <AlertDescription>
-              {outcome === "github_auth"
-                ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local review records remain available."
-                : outcome === "github_read"
-                  ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                  : outcome}
-              {outcome === "github_read" ? (
-                <div>
-                  <Button className="mt-3" variant="outline" onClick={onRetry}>
-                    Retry GitHub read
-                  </Button>
-                </div>
-              ) : outcome === "github_auth" ? (
-                <div>
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    onClick={onSettings}
-                  >
-                    Open Settings for GitHub access
-                  </Button>
-                </div>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-        ))}
+      {repos.flatMap(({ repo, state: outcome }) =>
+        outcome === "ready" || outcome === "no_open_prs"
+          ? []
+          : [
+              <Alert
+                key={key(repo)}
+                variant={
+                  outcome === "github_auth" || outcome === "github_read"
+                    ? "destructive"
+                    : "default"
+                }
+              >
+                <AlertTitle>
+                  {repo.owner}/{repo.repo}
+                </AlertTitle>
+                <AlertDescription>
+                  {outcome === "github_auth"
+                    ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local review records remain available."
+                    : outcome === "github_read"
+                      ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
+                      : outcome}
+                  {outcome === "github_read" ? (
+                    <div>
+                      <Button
+                        className="mt-3"
+                        variant="outline"
+                        onClick={onRetry}
+                      >
+                        Retry GitHub read
+                      </Button>
+                    </div>
+                  ) : outcome === "github_auth" ? (
+                    <div>
+                      <Button
+                        className="mt-3"
+                        variant="outline"
+                        onClick={onSettings}
+                      >
+                        Open Settings for GitHub access
+                      </Button>
+                    </div>
+                  ) : null}
+                </AlertDescription>
+              </Alert>,
+            ],
+      )}
     </section>
   );
 }

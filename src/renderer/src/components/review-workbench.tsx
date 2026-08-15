@@ -2,11 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: "auto",
+});
 import {
   AlertTriangle,
   CheckCircle2,
@@ -263,14 +266,14 @@ export function ReviewWorkbench({
   actions,
   slots,
   initialState,
-  onStateChange,
+  onPositionCommitted,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
-  /** Reports the current in-screen position so reloads can restore it. */
-  readonly onStateChange?: (state: {
+  /** Reports a visible navigation command so reloads can restore it. */
+  readonly onPositionCommitted?: (state: {
     readonly activeTab: "conversation" | "diff" | "insights";
     readonly section: ReviewNavigatorSection;
     readonly selectedPath?: string;
@@ -320,27 +323,35 @@ export function ReviewWorkbench({
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     initialState?.selectedPath,
   );
-  useEffect(() => {
-    // Only file selections restore cleanly; directory selections (trailing slash)
-    // are transient tree state and must not be persisted across reloads.
-    const persistedPath =
-      selectedPath === undefined || selectedPath.endsWith("/")
-        ? undefined
-        : selectedPath;
-    onStateChange?.({
-      activeTab,
-      section,
-      ...(persistedPath === undefined ? {} : { selectedPath: persistedPath }),
-    });
-  }, [activeTab, onStateChange, section, selectedPath]);
   const [activePath, setActivePath] = useState<string | undefined>(
     initialState?.selectedPath,
   );
   const [selectedCommitSha, setSelectedCommitSha] = useState<
     string | undefined
   >(initialState?.selectedCommitSha);
+  const commitWorkbenchPosition = useCallback(
+    (next: {
+      readonly activeTab: "conversation" | "diff" | "insights";
+      readonly section: ReviewNavigatorSection;
+      readonly selectedPath?: string;
+    }): void => {
+      setActiveTab(next.activeTab);
+      setSection(next.section);
+      setSelectedPath(next.selectedPath);
+      onPositionCommitted?.({
+        activeTab: next.activeTab,
+        section: next.section,
+        ...(next.selectedPath === undefined || next.selectedPath.endsWith("/")
+          ? {}
+          : { selectedPath: next.selectedPath }),
+      });
+    },
+    [onPositionCommitted],
+  );
   const feedbackRegionRef = useRef<HTMLDivElement>(null);
-  const initializedRevision = useRef(model.revision.reviewedHeadSha);
+  const [previousRevision, setPreviousRevision] = useState(
+    model.revision.reviewedHeadSha,
+  );
   const retainedAnalysis = model.insights.analysis.retained;
   const analysisIsCurrent =
     model.insights.analysis.status === "current" &&
@@ -355,14 +366,16 @@ export function ReviewWorkbench({
     selectedCommitSha === undefined
       ? undefined
       : model.commits.find((commit) => commit.sha === selectedCommitSha);
-  const loadCommit = useCallback((sha: string): void => {
-    setSection("commits");
-    setSelectedCommitSha(sha);
-  }, []);
+  const loadCommit = useCallback(
+    (sha: string): void => {
+      commitWorkbenchPosition({ activeTab: "diff", section: "commits" });
+      setSelectedCommitSha(sha);
+    },
+    [commitWorkbenchPosition],
+  );
   const selectSection = useCallback(
     (next: ReviewNavigatorSection): void => {
-      setActiveTab("diff");
-      setSection(next);
+      commitWorkbenchPosition({ activeTab: "diff", section: next });
       if (next !== "commits") {
         setSelectedCommitSha(undefined);
       }
@@ -373,7 +386,7 @@ export function ReviewWorkbench({
       )
         loadCommit(model.commits[0].sha);
     },
-    [loadCommit, model.commits, selectedCommitSha],
+    [commitWorkbenchPosition, loadCommit, model.commits, selectedCommitSha],
   );
   const selectCommit = useCallback(
     (sha: string): void => {
@@ -381,22 +394,18 @@ export function ReviewWorkbench({
     },
     [loadCommit],
   );
-  useEffect(() => {
-    if (initializedRevision.current === model.revision.reviewedHeadSha) return;
-    initializedRevision.current = model.revision.reviewedHeadSha;
+  if (previousRevision !== model.revision.reviewedHeadSha) {
+    setPreviousRevision(model.revision.reviewedHeadSha);
     setSelectedCommitSha(undefined);
     setSelectedPath(undefined);
     setActivePath(undefined);
     setSection("files");
     setActiveTab("conversation");
-  }, [model.revision.reviewedHeadSha]);
+  }
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
-      setPreferences((current) => {
-        const next = { ...current, ...update };
-        saveReviewViewPreferences(model.session.key.profileId, update);
-        return next;
-      });
+      setPreferences((current) => ({ ...current, ...update }));
+      saveReviewViewPreferences(model.session.key.profileId, update);
     },
     [model.session.key.profileId],
   );
@@ -601,10 +610,9 @@ export function ReviewWorkbench({
         };
 
   const navigateToFiles = useCallback((): void => {
-    setActiveTab("diff");
-    setSection("files");
+    commitWorkbenchPosition({ activeTab: "diff", section: "files" });
     setSelectedCommitSha(undefined);
-  }, []);
+  }, [commitWorkbenchPosition]);
   const focusPublishedFeedback = useCallback((): void => {
     const feedbackRegion = feedbackRegionRef.current;
     const region =
@@ -687,7 +695,9 @@ export function ReviewWorkbench({
                 {actions.pendingReview === undefined || terminal ? null : (
                   <PendingReviewHeaderAction
                     pendingReview={actions.pendingReview}
-                    onNavigateToDiff={() => setActiveTab("diff")}
+                    onNavigateToDiff={() =>
+                      commitWorkbenchPosition({ activeTab: "diff", section })
+                    }
                     onOpenSummary={() => setSummaryDialogOpen(true)}
                     summaryAvailable={
                       actions.directSummary !== undefined &&
@@ -741,19 +751,28 @@ export function ReviewWorkbench({
           >
             <TabButton
               active={activeTab === "conversation"}
-              onClick={() => setActiveTab("conversation")}
+              onClick={() =>
+                commitWorkbenchPosition({ activeTab: "conversation", section })
+              }
             >
               Conversation
             </TabButton>
             <TabButton
               active={activeTab === "diff"}
-              onClick={() => setActiveTab("diff")}
+              onClick={() =>
+                commitWorkbenchPosition({ activeTab: "diff", section })
+              }
             >
               Diff
             </TabButton>
             <TabButton
               active={activeTab === "insights"}
-              onClick={() => setActiveTab("insights")}
+              onClick={() =>
+                commitWorkbenchPosition({
+                  activeTab: "insights",
+                  section: "files",
+                })
+              }
             >
               Insights
             </TabButton>
@@ -794,8 +813,11 @@ export function ReviewWorkbench({
                           : { selectedCommitSha })}
                         onSectionChange={selectSection}
                         onFileSelect={(path) => {
-                          setSection("files");
-                          setSelectedPath(path);
+                          commitWorkbenchPosition({
+                            activeTab: "diff",
+                            section: "files",
+                            selectedPath: path,
+                          });
                           setActivePath(path);
                         }}
                         onCommitSelect={selectCommit}
@@ -855,7 +877,11 @@ export function ReviewWorkbench({
                               : {
                                   controlledSelectedPath: selectedPath,
                                   onSelectedPathChange: (path: string) => {
-                                    setSelectedPath(path);
+                                    commitWorkbenchPosition({
+                                      activeTab: "diff",
+                                      section,
+                                      selectedPath: path,
+                                    });
                                     setActivePath(path);
                                   },
                                 })}
@@ -1190,11 +1216,10 @@ function formatRelativeTime(value: string): string {
     ["hour", 3_600],
     ["minute", 60],
   ];
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   for (const [unit, divisor] of units)
     if (Math.abs(seconds) >= divisor)
-      return formatter.format(Math.round(seconds / divisor), unit);
-  return formatter.format(seconds, "second");
+      return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
+  return relativeTimeFormatter.format(seconds, "second");
 }
 
 const checksColors: Record<string, string> = {

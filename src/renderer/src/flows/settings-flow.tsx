@@ -65,9 +65,14 @@ type ProfileDraft = {
   readonly label: string;
   readonly githubHost: string;
   readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<string>;
-  readonly ownerFilters: ReadonlyArray<string>;
-  readonly rulePaths: ReadonlyArray<string>;
+  readonly workspaceRoots: ReadonlyArray<ProfileListEntry>;
+  readonly ownerFilters: ReadonlyArray<ProfileListEntry>;
+  readonly rulePaths: ReadonlyArray<ProfileListEntry>;
+};
+
+type ProfileListEntry = {
+  readonly id: string;
+  readonly value: string;
 };
 
 type ActivityEvent = {
@@ -79,6 +84,18 @@ type ActivityEvent = {
   readonly detail?: string;
 };
 
+type CleanupState = {
+  readonly requestId: number;
+  readonly action?: "cache" | "local";
+  readonly pending: boolean;
+  readonly error?: string;
+};
+
+type ActivityErrorState = {
+  readonly generation: number;
+  readonly message?: string;
+};
+
 type SettingsFlowProps = {
   readonly dashboard?: Dashboard;
   readonly appearance: AppearancePreference;
@@ -88,7 +105,7 @@ type SettingsFlowProps = {
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly section?: SettingsSection;
-  readonly onDirtyChange?: (dirty: boolean) => void;
+  readonly onProfileDirtyChange?: (dirty: boolean) => void;
   readonly onProfileSwitchRequest?: (
     profileId: string,
     proceed: () => void,
@@ -109,7 +126,7 @@ export function SettingsFlow({
   profiles,
   onWorkspaceReload,
   section = "general",
-  onDirtyChange,
+  onProfileDirtyChange,
   onProfileSwitchRequest,
   onCleanupSuccess,
   onSaveProfileReady,
@@ -122,12 +139,16 @@ export function SettingsFlow({
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string>();
   const [savingProfile, setSavingProfile] = useState(false);
-  const [cleanupAction, setCleanupAction] = useState<"cache" | "local">();
-  const [cleanupPending, setCleanupPending] = useState(false);
-  const [cleanupError, setCleanupError] = useState<string>();
+  const [cleanup, setCleanup] = useState<CleanupState>({
+    requestId: 0,
+    pending: false,
+  });
   const [activity, setActivity] = useState<ReadonlyArray<ActivityEvent>>();
-  const [activityError, setActivityError] = useState<string>();
+  const [activityLoadState, setActivityLoadState] =
+    useState<ActivityErrorState>({ generation: 0 });
   const cleanupAvailable = dashboard?.profile.id !== undefined;
+  const activityLoadGeneration = useRef(0);
+  const cleanupRequestId = useRef(0);
   const profileBaseline = useRef(profileDraft);
   const pendingSavedProfile = useRef<
     { readonly id: string; readonly label: string } | undefined
@@ -136,13 +157,10 @@ export function SettingsFlow({
   const updateProfileDraft = (update: SetStateAction<ProfileDraft>): void => {
     profileDraftGeneration.current += 1;
     setProfileDraft(update);
+    onProfileDirtyChange?.(true);
   };
   const profileDirty =
     JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
-
-  useEffect(() => {
-    onDirtyChange?.(profileDirty);
-  }, [onDirtyChange, profileDirty]);
 
   useEffect(() => {
     if (dashboard === undefined) return;
@@ -201,9 +219,9 @@ export function SettingsFlow({
       profileBaseline.current = next;
       if (profileDraftGeneration.current === draftGeneration) {
         setProfileDraft(next);
-        onDirtyChange?.(false);
+        onProfileDirtyChange?.(false);
       } else {
-        onDirtyChange?.(true);
+        onProfileDirtyChange?.(true);
       }
       setCreatingProfile(false);
       await onWorkspaceReload();
@@ -229,7 +247,7 @@ export function SettingsFlow({
     setProfileDraft(baseline);
     setCreatingProfile(false);
     setProfileError(undefined);
-    onDirtyChange?.(false);
+    onProfileDirtyChange?.(false);
   };
 
   useEffect(() => {
@@ -254,13 +272,14 @@ export function SettingsFlow({
       if (profileDraftGeneration.current === draftGeneration) {
         profileBaseline.current = next;
         setProfileDraft(next);
+        onProfileDirtyChange?.(false);
       }
       await onWorkspaceReload();
     } catch (cause: unknown) {
       if (profileDraftGeneration.current === draftGeneration) {
         profileBaseline.current = previousBaseline;
         setProfileDraft(previousDraft);
-        onDirtyChange?.(
+        onProfileDirtyChange?.(
           JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline),
         );
       }
@@ -282,13 +301,13 @@ export function SettingsFlow({
 
   const updateProfileList = (
     field: ProfileListField,
-    index: number,
+    entryId: string,
     value: string,
   ): void => {
     updateProfileDraft((current) => ({
       ...current,
-      [field]: current[field].map((entry, entryIndex) =>
-        entryIndex === index ? value : entry,
+      [field]: current[field].map((entry) =>
+        entry.id === entryId ? { ...entry, value } : entry,
       ),
     }));
   };
@@ -296,24 +315,28 @@ export function SettingsFlow({
   const addProfileListEntry = (field: ProfileListField): void => {
     updateProfileDraft((current) => ({
       ...current,
-      [field]: [...current[field], ""],
+      [field]: [...current[field], profileListEntry("")],
     }));
   };
 
   const removeProfileListEntry = (
     field: ProfileListField,
-    index: number,
+    entryId: string,
   ): void => {
     updateProfileDraft((current) => ({
       ...current,
-      [field]: current[field].filter((_, entryIndex) => entryIndex !== index),
+      [field]: current[field].filter((entry) => entry.id !== entryId),
     }));
   };
 
-  const chooseWorkspaceRoot = async (index: number): Promise<void> => {
-    const selected = await selectDirectory(profileDraft.workspaceRoots[index]);
+  const chooseWorkspaceRoot = async (entryId: string): Promise<void> => {
+    const entry = profileDraft.workspaceRoots.find(
+      (candidate) => candidate.id === entryId,
+    );
+    if (entry === undefined) return;
+    const selected = await selectDirectory(entry.value);
     if (selected === undefined) return;
-    updateProfileList("workspaceRoots", index, selected);
+    updateProfileList("workspaceRoots", entryId, selected);
   };
 
   const startNewProfile = (): void => {
@@ -325,18 +348,20 @@ export function SettingsFlow({
   };
 
   const runCleanup = async (): Promise<void> => {
-    if (cleanupAction === undefined) return;
+    const action = cleanup.action;
+    if (action === undefined) return;
     if (dashboard?.profile.id === undefined) {
-      setCleanupError(
-        "Choose a workspace profile before clearing its local data.",
-      );
+      setCleanup((current) => ({
+        ...current,
+        error: "Choose a workspace profile before clearing its local data.",
+      }));
       return;
     }
-    setCleanupPending(true);
-    setCleanupError(undefined);
+    const requestId = ++cleanupRequestId.current;
+    setCleanup({ requestId, action, pending: true });
     try {
       await requestJson(
-        cleanupAction === "cache"
+        action === "cache"
           ? "/v1/storage/cache/clear"
           : "/v1/storage/clear-local-data",
         {
@@ -345,22 +370,30 @@ export function SettingsFlow({
         },
       );
       await onWorkspaceReload();
-      setCleanupAction(undefined);
-      onCleanupSuccess?.(cleanupAction);
-    } catch {
-      setCleanupError(
-        cleanupAction === "cache"
-          ? "Could not clear cache. Try again."
-          : "Could not clear local review data. Try again.",
+      if (cleanupRequestId.current !== requestId) return;
+      setCleanup((current) =>
+        current.requestId === requestId
+          ? { requestId, pending: false }
+          : current,
       );
-    } finally {
-      setCleanupPending(false);
+      onCleanupSuccess?.(action);
+    } catch {
+      const error =
+        action === "cache"
+          ? "Could not clear cache. Try again."
+          : "Could not clear local review data. Try again.";
+      setCleanup((current) =>
+        current.requestId === requestId
+          ? { requestId, action, pending: false, error }
+          : current,
+      );
     }
   };
 
   const loadActivity = async (): Promise<void> => {
     if (dashboard?.profile.id === undefined) return;
-    setActivityError(undefined);
+    const generation = ++activityLoadGeneration.current;
+    setActivityLoadState({ generation });
     try {
       const value = await requestJson(
         `/v1/diagnostics?profileId=${encodeURIComponent(dashboard.profile.id)}`,
@@ -368,10 +401,15 @@ export function SettingsFlow({
       if (!record(value) || !Array.isArray(value.events))
         throw new Error("invalid_activity");
       const events = value.events.filter(isActivityEvent).slice(-40).reverse();
+      if (generation !== activityLoadGeneration.current) return;
       setActivity(events);
     } catch {
+      if (generation !== activityLoadGeneration.current) return;
       setActivity(undefined);
-      setActivityError("Could not load local activity. Try again.");
+      setActivityLoadState({
+        generation,
+        message: "Could not load local activity. Try again.",
+      });
     }
   };
 
@@ -532,8 +570,8 @@ export function SettingsFlow({
                 onChange={updateProfileList}
                 onAdd={addProfileListEntry}
                 onRemove={removeProfileListEntry}
-                onChoose={(index) => {
-                  void chooseWorkspaceRoot(index);
+                onChoose={(entryId) => {
+                  void chooseWorkspaceRoot(entryId);
                 }}
               />
               <ProfileListEditor
@@ -605,8 +643,11 @@ export function SettingsFlow({
                 variant="outline"
                 disabled={!cleanupAvailable}
                 onClick={() => {
-                  setCleanupError(undefined);
-                  setCleanupAction("cache");
+                  setCleanup((current) => ({
+                    requestId: current.requestId,
+                    action: "cache",
+                    pending: false,
+                  }));
                 }}
               >
                 Clear cache
@@ -616,17 +657,22 @@ export function SettingsFlow({
                 disabled={!cleanupAvailable}
                 data-testid="clear-local-data-button"
                 onClick={() => {
-                  setCleanupError(undefined);
-                  setCleanupAction("local");
+                  setCleanup((current) => ({
+                    requestId: current.requestId,
+                    action: "local",
+                    pending: false,
+                  }));
                 }}
               >
                 Clear local review data
               </Button>
             </div>
-            {cleanupError === undefined ? null : (
+            {cleanup.error === undefined ? null : (
               <Alert variant="destructive">
                 <AlertTitle>Cleanup failed</AlertTitle>
-                <AlertDescription role="alert">{cleanupError}</AlertDescription>
+                <AlertDescription role="alert">
+                  {cleanup.error}
+                </AlertDescription>
               </Alert>
             )}
           </CardContent>
@@ -649,11 +695,11 @@ export function SettingsFlow({
             >
               Load activity
             </Button>
-            {activityError === undefined ? null : (
+            {activityLoadState.message === undefined ? null : (
               <Alert variant="destructive">
                 <AlertTitle>Activity unavailable</AlertTitle>
                 <AlertDescription role="alert">
-                  {activityError}
+                  {activityLoadState.message}
                 </AlertDescription>
               </Alert>
             )}
@@ -666,9 +712,9 @@ export function SettingsFlow({
                 className="flex flex-col gap-2"
                 aria-label="Review activity log"
               >
-                {activity.map((event, index) => (
+                {activity.map((event) => (
                   <li
-                    key={`${event.at}-${event.phase}-${index}`}
+                    key={`${event.at}-${event.category}-${event.phase}-${event.detail ?? ""}`}
                     className="rounded-md border p-3 text-sm"
                   >
                     <p className="font-medium">{activityLabel(event.phase)}</p>
@@ -691,11 +737,15 @@ export function SettingsFlow({
           </CardContent>
         </Card>
         <CleanupConfirmation
-          action={cleanupAction}
-          pending={cleanupPending}
-          error={cleanupError}
+          action={cleanup.action}
+          pending={cleanup.pending}
+          error={cleanup.error}
           onCancel={() => {
-            if (!cleanupPending) setCleanupAction(undefined);
+            if (!cleanup.pending)
+              setCleanup((current) => ({
+                requestId: current.requestId,
+                pending: false,
+              }));
           }}
           onConfirm={() => {
             void runCleanup();
@@ -842,9 +892,11 @@ function ReviewPreferences({
           }
           return;
         }
-        const piModels = catalog.models
-          .filter((candidate) => candidate.provider === "pi")
-          .map((candidate) => ({ id: candidate.id, label: candidate.label }));
+        const piModels = catalog.models.flatMap((candidate) =>
+          candidate.provider === "pi"
+            ? [{ id: candidate.id, label: candidate.label }]
+            : [],
+        );
         const model = selectedModel(piModels, piModels[0]?.id, saved.model);
         setModels(piModels);
         const next = {
@@ -1050,16 +1102,29 @@ function CleanupConfirmation({
 
 type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
 
+function profileListEntry(value: string): ProfileListEntry {
+  return { id: crypto.randomUUID(), value };
+}
+
+function profileListEntries(
+  values: ReadonlyArray<string>,
+): ReadonlyArray<ProfileListEntry> {
+  return values.map(profileListEntry);
+}
+
 function profileDraftFor(profile: Profile | undefined): ProfileDraft {
   return {
     id: profile?.id ?? "",
     label: profile?.label ?? "",
     githubHost: profile?.githubHost ?? "github.com",
     ghAccount: profile?.ghAccount ?? "",
-    workspaceRoots:
+    workspaceRoots: profileListEntries(
       profile === undefined ? [""] : (profile.workspaceRoots ?? []),
-    ownerFilters: profile === undefined ? [""] : (profile.ownerFilters ?? []),
-    rulePaths: profile?.rulePaths ?? [],
+    ),
+    ownerFilters: profileListEntries(
+      profile === undefined ? [""] : (profile.ownerFilters ?? []),
+    ),
+    rulePaths: profileListEntries(profile?.rulePaths ?? []),
   };
 }
 
@@ -1072,7 +1137,12 @@ function profileDraftFromNormalized(profile: {
   readonly ownerFilters: ReadonlyArray<string>;
   readonly rulePaths: ReadonlyArray<string>;
 }): ProfileDraft {
-  return { ...profile };
+  return {
+    ...profile,
+    workspaceRoots: profileListEntries(profile.workspaceRoots),
+    ownerFilters: profileListEntries(profile.ownerFilters),
+    rulePaths: profileListEntries(profile.rulePaths),
+  };
 }
 
 function normalizeProfileDraft(draft: ProfileDraft):
@@ -1086,11 +1156,20 @@ function normalizeProfileDraft(draft: ProfileDraft):
       readonly rulePaths: ReadonlyArray<string>;
     }
   | string {
-  const workspaceRoots = trimEntries(draft.workspaceRoots, "Workspace roots");
+  const workspaceRoots = trimEntries(
+    draft.workspaceRoots.map((entry) => entry.value),
+    "Workspace roots",
+  );
   if (typeof workspaceRoots === "string") return workspaceRoots;
-  const ownerFilters = trimEntries(draft.ownerFilters, "Owner filters");
+  const ownerFilters = trimEntries(
+    draft.ownerFilters.map((entry) => entry.value),
+    "Owner filters",
+  );
   if (typeof ownerFilters === "string") return ownerFilters;
-  const rulePaths = trimEntries(draft.rulePaths, "Rule paths");
+  const rulePaths = trimEntries(
+    draft.rulePaths.map((entry) => entry.value),
+    "Rule paths",
+  );
   if (typeof rulePaths === "string") return rulePaths;
   return {
     id: draft.id.trim(),
@@ -1125,16 +1204,16 @@ function ProfileListEditor({
 }: {
   readonly label: string;
   readonly field: ProfileListField;
-  readonly entries: ReadonlyArray<string>;
+  readonly entries: ReadonlyArray<ProfileListEntry>;
   readonly placeholder: string;
   readonly onChange: (
     field: ProfileListField,
-    index: number,
+    entryId: string,
     value: string,
   ) => void;
   readonly onAdd: (field: ProfileListField) => void;
-  readonly onRemove: (field: ProfileListField, index: number) => void;
-  readonly onChoose?: (index: number) => void;
+  readonly onRemove: (field: ProfileListField, entryId: string) => void;
+  readonly onChoose?: (entryId: string) => void;
 }): React.JSX.Element {
   const singular = label.slice(0, -1).toLowerCase();
   return (
@@ -1142,22 +1221,21 @@ function ProfileListEditor({
       <legend className="text-sm font-medium">{label}</legend>
       <div className="flex flex-col gap-2 rounded-lg border p-2">
         {entries.map((entry, index) => (
-          <div
-            key={`${field}-${index + 1}`}
-            className="flex min-w-0 items-center gap-2"
-          >
+          <div key={entry.id} className="flex min-w-0 items-center gap-2">
             <Input
               aria-label={`${singular} ${index + 1}`}
-              value={entry}
+              value={entry.value}
               placeholder={placeholder}
-              onChange={(event) => onChange(field, index, event.target.value)}
+              onChange={(event) =>
+                onChange(field, entry.id, event.target.value)
+              }
             />
             {onChoose === undefined ? null : (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => onChoose(index)}
+                onClick={() => onChoose(entry.id)}
               >
                 <FolderOpen data-icon="inline-start" />
                 Choose folder
@@ -1171,7 +1249,7 @@ function ProfileListEditor({
                     size="icon-sm"
                     variant="outline"
                     aria-label={`Remove ${singular} ${index + 1}`}
-                    onClick={() => onRemove(field, index)}
+                    onClick={() => onRemove(field, entry.id)}
                   />
                 }
               >

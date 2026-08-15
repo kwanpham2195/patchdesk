@@ -82,7 +82,8 @@ export function AppShell({
   const [commandOpen, setCommandOpen] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
-  const focusedDestination = useRef(destinationKey(destination));
+  const [initialDestinationKey] = useState(() => destinationKey(destination));
+  const focusedDestination = useRef(initialDestinationKey);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

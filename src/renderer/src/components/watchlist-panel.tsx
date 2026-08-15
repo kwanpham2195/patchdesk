@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { requestJson } from "../api-client";
@@ -28,6 +28,8 @@ type DiscoveryEntry = {
   readonly repo: string;
   readonly localPath: string;
 };
+
+const EMPTY_WORKSPACE_ROOTS: ReadonlyArray<string> = [];
 
 function entryKey(entry: DiscoveryEntry): string {
   return `${entry.host}/${entry.owner}/${entry.repo}`;
@@ -77,7 +79,7 @@ export function WatchlistPanel({
   const [error, setError] = useState<string>();
   const [feedback, setFeedback] = useState<string>();
 
-  const workspaceRoots = profile.workspaceRoots ?? [];
+  const workspaceRoots = profile.workspaceRoots ?? EMPTY_WORKSPACE_ROOTS;
 
   useEffect(() => {
     const watchedKeys = new Set(
@@ -110,7 +112,7 @@ export function WatchlistPanel({
     [merged, workspaceRoots],
   );
 
-  const discover = async (): Promise<void> => {
+  const discover = useCallback(async (): Promise<void> => {
     setPending("discover");
     setError(undefined);
     try {
@@ -145,11 +147,11 @@ export function WatchlistPanel({
     } finally {
       setPending(undefined);
     }
-  };
+  }, [profile.repos]);
 
   useEffect(() => {
     void discover();
-  }, []);
+  }, [discover]);
 
   const toggleRepo = async (
     entry: DiscoveryEntry,

@@ -10,6 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: "auto",
+});
+
 export type ReviewNavigatorSection = "files" | "commits";
 
 type ReviewNavigatorProps = {
@@ -165,9 +169,8 @@ function formatCommitDate(value: string): string {
     ["hour", 3_600],
     ["minute", 60],
   ];
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   for (const [unit, divisor] of units)
     if (Math.abs(seconds) >= divisor)
-      return formatter.format(Math.round(seconds / divisor), unit);
-  return formatter.format(seconds, "second");
+      return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
+  return relativeTimeFormatter.format(seconds, "second");
 }

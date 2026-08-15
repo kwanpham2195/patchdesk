@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -82,7 +83,7 @@ function mount(
 ) {
   const replace = callbacks.replace ?? vi.fn();
   const patch = callbacks.patch ?? vi.fn();
-  render(
+  const view = render(
     <ReviewWorkbenchFlow
       workbench={workbench}
       onWorkbenchReplace={replace}
@@ -91,7 +92,7 @@ function mount(
       onNavigate={vi.fn()}
     />,
   );
-  return { replace, patch };
+  return { replace, patch, view };
 }
 
 function bridge(
@@ -542,6 +543,117 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     ).toBe(false);
   });
 
+  it("rejects a detector response from a replaced snapshot", async () => {
+    let resolveDetection!: (value: unknown) => void;
+    const detection = new Promise<unknown>((resolve) => {
+      resolveDetection = resolve;
+    });
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates") return detection;
+      throw new Error(input.path);
+    });
+    const patch = vi.fn();
+    const replace = vi.fn();
+    const rendered = mount(projection(), { patch, replace });
+    const newer = projection({
+      session: { ...projection().session, id: "session-b" },
+    });
+    rendered.view.rerender(
+      <ReviewWorkbenchFlow
+        workbench={newer}
+        onWorkbenchReplace={replace}
+        onWorkbenchPatch={patch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      resolveDetection({ _tag: "RevisionChanged" });
+      await detection;
+    });
+    expect(patch).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("coalesces focus and visibility events while detection is active", async () => {
+    vi.useFakeTimers();
+    try {
+      const detection = new Promise<unknown>(() => undefined);
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        throw new Error(input.path);
+      });
+      mount(projection());
+      fireEvent.focus(window);
+      fireEvent(document, new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(500);
+      expect(
+        request.mock.calls.filter(
+          ([input]) =>
+            (input as { readonly path: string }).path ===
+            "/v1/reviews/detect-updates",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("delivers a same-generation result to the latest committed callback", async () => {
+    let resolveDetection!: (value: unknown) => void;
+    const detection = new Promise<unknown>((resolve) => {
+      resolveDetection = resolve;
+    });
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates") return detection;
+      throw new Error(input.path);
+    });
+    const firstPatch = vi.fn();
+    const secondPatch = vi.fn();
+    const rendered = mount(projection(), { patch: firstPatch });
+    rendered.view.rerender(
+      <ReviewWorkbenchFlow
+        workbench={projection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={secondPatch}
+        onNavigationStateChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      resolveDetection({ _tag: "RevisionChanged" });
+      await detection;
+    });
+    expect(firstPatch).not.toHaveBeenCalled();
+    expect(secondPatch).toHaveBeenCalledWith({
+      revision: { ...projection().revision, freshness: "updates_available" },
+    });
+  });
+
+  it("clears scheduled detection and ignores its late response after unmount", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetection!: (value: unknown) => void;
+      const detection = new Promise<unknown>((resolve) => {
+        resolveDetection = resolve;
+      });
+      bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        throw new Error(input.path);
+      });
+      const patch = vi.fn();
+      const { view } = mount(projection(), { patch });
+      view.unmount();
+      await vi.advanceTimersByTimeAsync(90_000);
+      await act(async () => {
+        resolveDetection({ _tag: "RevisionChanged" });
+        await detection;
+      });
+      expect(patch).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("pauses detection until all overlapping direct commands complete", async () => {
     vi.useFakeTimers();
     try {
