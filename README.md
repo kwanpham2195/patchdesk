@@ -53,6 +53,7 @@ See [AGENTS.md](AGENTS.md) for the ordered full gate and live-app checks.
 ## Documentation
 
 - [Architecture](docs/architecture.md) describes the high-level architecture.
+- [Test cases](docs/test-cases.md) lists the canonical automated and manual checks per flow.
 - [CONTEXT.md](CONTEXT.md) is the glossary of domain terms.
 - [docs/adr/](docs/adr/) holds the architecture decision records.
 

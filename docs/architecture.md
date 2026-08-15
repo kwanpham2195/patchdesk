@@ -298,6 +298,8 @@ Patchdesk is a desktop process; understanding what happens inside it matters for
 
 ### Testing
 
+The canonical test cases for each flow, automated and manual, live in [test-cases.md](./test-cases.md).
+
 The system has four test boundaries, mirroring the production layers.
 
 The innermost boundary is `src/domain`.
