@@ -17,6 +17,7 @@ import {
   type DesktopNavigationState,
 } from "./desktop-close-guard";
 import { preloadScriptPath } from "./electron-paths";
+import { rendererOrigin as parseRendererOrigin } from "./renderer-origin";
 import {
   installWebContentsSecurity,
   normalizeExternalHosts,
@@ -683,8 +684,7 @@ async function guardDesktopExit(intent: "window" | "quit"): Promise<void> {
 }
 
 function getRendererOrigin(): string {
-  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-  return rendererUrl === undefined ? "null" : new URL(rendererUrl).origin;
+  return parseRendererOrigin(process.env.ELECTRON_RENDERER_URL);
 }
 
 function terminateAfterServerStops(): void {

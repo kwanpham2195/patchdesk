@@ -1,8 +1,9 @@
 import {
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent,
   type PointerEvent,
 } from "react";
 import { Minus, Plus, Maximize2, X } from "lucide-react";
@@ -27,19 +28,46 @@ export function MarkdownLightbox({
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly children: React.ReactNode;
+  readonly children?: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <MarkdownLightboxContent
+      key={open ? "open" : "closed"}
+      open={open}
+      onClose={onClose}
+    >
+      {children}
+    </MarkdownLightboxContent>
+  );
+}
+
+function MarkdownLightboxContent({
+  open,
+  onClose,
+  children,
+}: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly children?: React.ReactNode;
 }): React.JSX.Element | null {
   const [scale, setScale] = useState(1);
   const [fitToScreen, setFitToScreen] = useState(true);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef<PanStart | undefined>(undefined);
+  const openerRef = useRef<HTMLElement | null>(null);
 
-  // Reset state when opening
-  useEffect(() => {
-    if (open) {
-      setScale(1);
-      setFitToScreen(true);
-    }
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null) return;
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+      openerRef.current?.focus();
+      openerRef.current = null;
+    };
   }, [open]);
 
   const zoomIn = useCallback(() => {
@@ -89,44 +117,34 @@ export function MarkdownLightbox({
     panStartRef.current = undefined;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key === "+" || event.key === "=") {
-        zoomIn();
-        return;
-      }
-      if (event.key === "-") {
-        zoomOut();
-        return;
-      }
-      if (event.key === "0") {
-        reset();
-        return;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, zoomIn, zoomOut, reset]);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDialogElement>): void => {
+      if (event.key === "+" || event.key === "=") zoomIn();
+      else if (event.key === "-") zoomOut();
+      else if (event.key === "0") reset();
+    },
+    [reset, zoomIn, zoomOut],
+  );
 
   if (!open) return null;
 
   return (
-    <div
-      role="dialog"
+    <dialog
+      ref={dialogRef}
       aria-label="Image viewer"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/98 backdrop-blur-sm"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+      className="fixed inset-0 z-50 m-0 flex h-screen max-h-none w-screen max-w-none flex-col items-center justify-center border-0 bg-background/98 p-0 backdrop-blur-sm backdrop:bg-transparent"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
+      onKeyDown={handleKeyDown}
     >
-      {/* Toolbar */}
+      <button
+        type="button"
+        aria-label="Close image viewer backdrop"
+        className="absolute inset-0 z-0 cursor-default border-0 bg-transparent p-0"
+        onClick={onClose}
+      />
       <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
         <Button
           size="icon-sm"
@@ -171,15 +189,14 @@ export function MarkdownLightbox({
         </Button>
       </div>
 
-      {/* Content */}
       <div
         ref={viewportRef}
         role="region"
         aria-label="Zoomable content"
         className={
           fitToScreen
-            ? "flex max-h-[90vh] max-w-[90vw] items-center justify-center overflow-auto"
-            : "h-[90vh] w-[90vw] cursor-grab overflow-auto touch-none active:cursor-grabbing"
+            ? "relative z-10 flex max-h-[90vh] max-w-[90vw] items-center justify-center overflow-auto"
+            : "relative z-10 h-[90vh] w-[90vw] cursor-grab overflow-auto touch-none active:cursor-grabbing"
         }
         onPointerDown={startPan}
         onPointerMove={pan}
@@ -193,6 +210,6 @@ export function MarkdownLightbox({
           {children}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

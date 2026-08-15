@@ -271,6 +271,7 @@ test("forced colors and reduced motion preserve the workbench interaction surfac
   page,
 }) => {
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
   const overview = page.getByRole("button", { name: "PR overview" });
   await overview.focus();
@@ -280,6 +281,45 @@ test("forced colors and reduced motion preserve the workbench interaction surfac
   );
   expect(outline).not.toBe("none");
   expect(await seriousProductViolations(page)).toEqual([]);
+});
+
+test("rendered Mermaid controls stay independently keyboard accessible", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#mermaid-fixture`);
+  const diagram = page.getByRole("button", { name: "Mermaid diagram" });
+  const source = page.getByText("Mermaid source", { exact: true });
+  await expect(diagram).toBeVisible();
+  await expect(source).toBeVisible();
+
+  await source.focus();
+  await expect(source).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() =>
+      source.evaluate(
+        (element) => (element.parentElement as HTMLDetailsElement).open,
+      ),
+    )
+    .toBe(true);
+  await expect(page.getByRole("dialog", { name: "Image viewer" })).toHaveCount(
+    0,
+  );
+  expect(await seriousProductViolations(page)).toEqual([]);
+
+  await diagram.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Image viewer" });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((element) => element.tagName)).toBe("DIALOG");
+  expect(
+    await dialog.evaluate((element) => (element as HTMLDialogElement).open),
+  ).toBe(true);
+  expect(await seriousProductViolations(page)).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(diagram).toBeFocused();
 });
 
 test("400 percent zoom equivalent keeps constrained review controls reachable", async ({
@@ -313,6 +353,7 @@ async function serve(): Promise<Server> {
       return;
     }
     try {
+      const contents = await readFile(file);
       response
         .writeHead(200, {
           "Content-Type":
@@ -322,7 +363,7 @@ async function serve(): Promise<Server> {
                 ? "text/css"
                 : "text/html",
         })
-        .end(await readFile(file));
+        .end(contents);
     } catch {
       response.writeHead(404).end();
     }

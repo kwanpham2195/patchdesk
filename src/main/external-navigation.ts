@@ -10,9 +10,12 @@ export function normalizeExternalHosts(
   hosts: ReadonlyArray<string>,
 ): ReadonlySet<string> {
   return new Set(
-    hosts
-      .map((host) => host.trim().toLowerCase().replace(/\.$/, ""))
-      .filter((host) => /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host)),
+    hosts.flatMap((host) => {
+      const normalized = host.trim().toLowerCase().replace(/\.$/, "");
+      return /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(normalized)
+        ? [normalized]
+        : [];
+    }),
   );
 }
 

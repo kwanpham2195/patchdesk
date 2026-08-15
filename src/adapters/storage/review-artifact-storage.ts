@@ -403,11 +403,11 @@ export class ReviewArtifactStorage {
     const children = await this.cacheChildren(profileId);
     if (children._tag === "err") return children;
     const root = this.paths.worktreeRootDirectory(profileId);
-    let total = 0;
-    for (const entry of children.value) {
-      total += await measureBytes(join(root, entry));
-    }
-    return ok(total);
+    const limit = createIoLimiter(8);
+    const sizes = await Promise.all(
+      children.value.map((entry) => measureBytes(join(root, entry), limit)),
+    );
+    return ok(sizes.reduce((total, size) => total + size, 0));
   }
 
   /**
@@ -455,20 +455,25 @@ export class ReviewArtifactStorage {
       if (isNotFound(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
-    const result: string[] = [];
-    for (const entry of entries) {
-      if (entry === ".quarantine" || entry === ".trash") continue;
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry)) continue;
-      const child = join(root, entry);
+    const candidates = entries.filter(
+      (entry) =>
+        entry !== ".quarantine" &&
+        entry !== ".trash" &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry),
+    );
+    const inspected = await mapConcurrent(candidates, 8, async (entry) => {
       try {
-        const info = await lstat(child);
-        if (info.isSymbolicLink()) continue;
-        result.push(entry);
+        return (await lstat(join(root, entry))).isSymbolicLink()
+          ? undefined
+          : entry;
       } catch {
-        // best-effort; a missing child should not fail the listing.
+        // Best-effort: a child removed during discovery is not a listing failure.
+        return undefined;
       }
-    }
-    return ok(result);
+    });
+    return ok(
+      inspected.flatMap((entry) => (entry === undefined ? [] : [entry])),
+    );
   }
 
   /**
@@ -590,18 +595,60 @@ function isNotFound(cause: unknown): boolean {
   );
 }
 
-async function measureBytes(path: string): Promise<number> {
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    const index = next++;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
+}
+
+type LimitedIo = <T>(work: () => Promise<T>) => Promise<T>;
+
+function createIoLimiter(concurrency: number): LimitedIo {
+  let active = 0;
+  const queued: Array<() => void> = [];
+  const release = (): void => {
+    active -= 1;
+    queued.shift()?.();
+  };
+  return <T>(work: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const start = (): void => {
+        active += 1;
+        void work().then(resolve, reject).finally(release);
+      };
+      if (active < concurrency) start();
+      else queued.push(start);
+    });
+}
+
+async function measureBytes(path: string, limit: LimitedIo): Promise<number> {
   try {
-    const info = await lstat(path);
+    const info = await limit(() => lstat(path));
     if (info.isSymbolicLink()) return 0;
     if (!info.isDirectory()) return info.size;
-    const entries = await readdir(path, { withFileTypes: true });
-    let total = 0;
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      total += await measureBytes(join(path, entry.name));
-    }
-    return total;
+    const entries = await limit(() => readdir(path, { withFileTypes: true }));
+    const sizes = await Promise.all(
+      entries.flatMap((entry) =>
+        entry.isSymbolicLink()
+          ? []
+          : [measureBytes(join(path, entry.name), limit)],
+      ),
+    );
+    return sizes.reduce((total, size) => total + size, 0);
   } catch {
     return 0;
   }

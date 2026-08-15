@@ -98,10 +98,11 @@ export class MergeOperationStore {
         if (operation.error.reason === "not_found") continue;
         return operation;
       }
+      const state = operation.value.state._tag;
       if (
-        operation.value.state._tag === "Requested" ||
-        operation.value.state._tag === "OutcomeUnknown" ||
-        operation.value.state._tag === "Confirmed"
+        state === "Requested" ||
+        state === "OutcomeUnknown" ||
+        state === "Confirmed"
       )
         pending.push(operation.value);
     }

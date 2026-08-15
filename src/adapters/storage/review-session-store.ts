@@ -138,17 +138,35 @@ export class ReviewSessionStore {
       if (isMissing(cause)) return ok({ sessions: [], invalidEntries: [] });
       return storageListFailure();
     }
-    const sessions: ReviewSession[] = [];
-    const invalidEntries: InvalidSessionEntry[] = [];
-    for (const entry of entries) {
+    const candidates = entries.flatMap((entry, index) => {
+      if (entry === ".quarantine" || entry === "diagnostics.jsonl") return [];
+      const sessionId = parseReviewSessionId(entry);
+      return sessionId._tag === "ok"
+        ? [{ entry, index, sessionId: sessionId.value }]
+        : [];
+    });
+    const loadedSessions = await mapConcurrent(
+      candidates,
+      8,
+      async (candidate) => ({
+        candidate,
+        loaded: await this.load(profileId, candidate.sessionId),
+      }),
+    );
+    const loadedByIndex = new Map(
+      loadedSessions.map(({ candidate, loaded }) => [candidate.index, loaded]),
+    );
+    const sessions: Array<ReviewSession> = [];
+    const invalidEntries: Array<InvalidSessionEntry> = [];
+    for (const [index, entry] of entries.entries()) {
       if (entry === ".quarantine" || entry === "diagnostics.jsonl") continue;
       const sessionId = parseReviewSessionId(entry);
       if (sessionId._tag === "err") {
         invalidEntries.push({ entryName: entry });
         continue;
       }
-      const loaded = await this.load(profileId, sessionId.value);
-      if (loaded._tag === "ok") sessions.push(loaded.value);
+      const loaded = loadedByIndex.get(index);
+      if (loaded?._tag === "ok") sessions.push(loaded.value);
       else
         invalidEntries.push({ entryName: entry, sessionId: sessionId.value });
     }
@@ -183,6 +201,27 @@ export class ReviewSessionStore {
       if (this.saveLocks.get(key) === current) this.saveLocks.delete(key);
     }
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }
 
 /** Parses one current schema-5 session and rejects all removed authority fields. */

@@ -82,11 +82,10 @@ export class LocalPiRuntimeModelCatalog implements PiRuntimeModelCatalog {
               (model) => model !== preferences.defaultModel,
             ),
           ];
-    const configuredProviders = new Set(
-      providerCatalog.value.providers
-        .filter((provider) => provider.configured)
-        .map((provider) => provider.id),
-    );
+    const configuredProviders = new Set<string>();
+    for (const provider of providerCatalog.value.providers) {
+      if (provider.configured) configuredProviders.add(provider.id);
+    }
     const models = projectModels(preferred, configuredProviders);
     const defaultModel = canonicalModelId(preferences.defaultModel);
     return snapshot(
@@ -148,17 +147,18 @@ function projectModels(
   // Pi settings are preferences, not an inclusion gate. The installed pi-ai catalog is
   // authoritative for the complete static model set; only configured allowlisted providers
   // survive the final projection.
-  const catalog = PI_AI_CATALOG.filter(({ provider }) =>
-    providerCatalog().some((definition) => definition.id === provider),
-  )
-    .flatMap(({ models }) => models)
-    .map((model) => ({
-      id: canonicalModelId(`${model.provider}/${model.id}`),
-      label: `${model.provider}/${model.id}`,
-    }))
-    .filter(
-      (model): model is { id: string; label: string } => model.id !== undefined,
-    );
+  const catalog: Array<{ readonly id: string; readonly label: string }> = [];
+  for (const definition of PI_AI_CATALOG) {
+    if (
+      !providerCatalog().some((provider) => provider.id === definition.provider)
+    )
+      continue;
+    for (const model of definition.models) {
+      const id = canonicalModelId(`${model.provider}/${model.id}`);
+      if (id !== undefined)
+        catalog.push({ id, label: `${model.provider}/${model.id}` });
+    }
+  }
   const eligible = catalog.filter((model) =>
     configuredProviders.has(model.id.slice(0, model.id.indexOf("/"))),
   );

@@ -122,17 +122,23 @@ export class ReviewObservationJournalStore {
       if (isMissing(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
-    const ids: ReviewId[] = [];
-    for (const entry of entries) {
+    const reviewIds = entries.flatMap((entry) => {
       const reviewId = parseReviewId(entry);
-      if (reviewId._tag === "err") continue;
-      const journal = await readJsonFile(
-        this.paths.reviewObservationJournalFile(profileId, reviewId.value),
-      );
-      if (journal._tag === "ok" || journal.error.reason !== "not_found")
-        ids.push(reviewId.value);
-    }
-    return ok(ids);
+      return reviewId._tag === "ok" ? [reviewId.value] : [];
+    });
+    const journals = await mapConcurrent(reviewIds, 8, (reviewId) =>
+      readJsonFile(
+        this.paths.reviewObservationJournalFile(profileId, reviewId),
+      ),
+    );
+    return ok(
+      reviewIds.flatMap((reviewId, index) => {
+        const journal = journals[index];
+        return journal?._tag === "ok" || journal?.error.reason !== "not_found"
+          ? [reviewId]
+          : [];
+      }),
+    );
   }
 
   /** Remove a completed journal only after both durable transitions are exact. */
@@ -149,6 +155,26 @@ export class ReviewObservationJournalStore {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> {
+  const values: Array<R> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    const index = next++;
+    const item = items[index];
+    if (item === undefined) return;
+    values[index] = await map(item);
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values;
 }
 
 /** Parse a persisted journal before any recovery code can replay it. */

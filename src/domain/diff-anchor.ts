@@ -46,12 +46,10 @@ export function fingerprintPatchAnchor(
     selectedLines: selected.map((line) => line.text),
     before: lines
       .slice(Math.max(0, start - contextLines), start)
-      .filter((line) => line.hunk === hunk)
-      .map((line) => line.text),
+      .flatMap((line) => (line.hunk === hunk ? [line.text] : [])),
     after: lines
       .slice(end + 1, end + contextLines + 1)
-      .filter((line) => line.hunk === hunk)
-      .map((line) => line.text),
+      .flatMap((line) => (line.hunk === hunk ? [line.text] : [])),
   };
 }
 
