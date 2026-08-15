@@ -27,6 +27,10 @@ Verification commands:
 
 For desktop or renderer changes, run those commands in that order. Package and smoke-test only when package-specific proof is requested.
 
+The pre-commit hook runs a blocking React Doctor scan on staged files
+(`pnpm precommit`). If it blocks a commit, fix the reported warning; do not
+disable or retune the rule to make the commit pass.
+
 For live verification of the running app, use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) — never substitute a build, unit test, or static inspection for live app checks, and keep live checks read-only.
 
 ## Code and Testing Conventions
