@@ -23,7 +23,7 @@
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
     "doctor": "react-doctor --scope full",
-    "precommit": "react-doctor --scope files --base HEAD --include-untracked --blocking none --yes",
+    "precommit": "react-doctor --staged --blocking warning --yes",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "prepare": "husky"
