@@ -306,5 +306,10 @@ function FinishReviewDialogContent({
 export function FinishReviewDialog(
   props: Parameters<typeof FinishReviewDialogContent>[0],
 ): React.JSX.Element {
-  return <FinishReviewDialogContent key={`${props.open}:${props.initialSummary ?? ""}`} {...props} />;
+  return (
+    <FinishReviewDialogContent
+      key={`${props.open}:${props.initialSummary ?? ""}`}
+      {...props}
+    />
+  );
 }

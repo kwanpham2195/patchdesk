@@ -6,6 +6,7 @@
   "sortPackageJson": false,
   "ignorePatterns": [
     "resources/branding/**/*.svg",
-    ".agents/research/2026-08-14-react-doctor-delta/*.json"
+    ".agents/research/2026-08-14-react-doctor-delta/*.json",
+    ".agents/research/2026-08-15-react-doctor-bugs/*.json"
   ]
 }

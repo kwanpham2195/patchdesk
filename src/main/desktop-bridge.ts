@@ -267,9 +267,13 @@ export function installDesktopRequestBridge(
   );
 }
 
-async function readBridgeResponseBody(response: Response, maxResponseBytes: number): Promise<unknown> {
+async function readBridgeResponseBody(
+  response: Response,
+  maxResponseBytes: number,
+): Promise<unknown> {
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > maxResponseBytes) return { error: "response_too_large" };
+  if (bytes.byteLength > maxResponseBytes)
+    return { error: "response_too_large" };
   const text = new TextDecoder().decode(bytes);
   return text.length === 0 ? undefined : parseJson(text);
 }

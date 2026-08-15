@@ -214,80 +214,83 @@ function WalkthroughFixture({
     ReadonlyArray<string>
   >([]);
   const [supportReviewed, setSupportReviewed] = useState(false);
-  const walkthrough = useMemo(() => ({
-    snapshot: {
-      profileId: "fixture",
-      sessionId: "fixture-session",
-      headSha: "abcdef1234567890abcdef1234567890abcdef12",
-      patchHash: "b".repeat(64),
-    },
-    citationStatus: "verified" as const,
-    title: "Walkthrough fixture",
-    focus: "The focused review path remains separate from Files mode.",
-    chapters: [
-      {
-        id: "chapter-1",
-        title: "Read first",
-        sections: [
+  const walkthrough = useMemo(
+    () => ({
+      snapshot: {
+        profileId: "fixture",
+        sessionId: "fixture-session",
+        headSha: "abcdef1234567890abcdef1234567890abcdef12",
+        patchHash: "b".repeat(64),
+      },
+      citationStatus: "verified" as const,
+      title: "Walkthrough fixture",
+      focus: "The focused review path remains separate from Files mode.",
+      chapters: [
+        {
+          id: "chapter-1",
+          title: "Read first",
+          sections: [
+            {
+              id: "section-1",
+              title: "Keep the review local",
+              prose:
+                "This fixture proves a manual walkthrough without starting an Analysis run.",
+              hunkIds: ["h1"],
+              hunks: [
+                {
+                  id: "h1",
+                  path: "src/a.ts",
+                  header: "@@ -1 +1 @@",
+                  raw: "@@ -1 +1 @@\\n-old\\n+new",
+                  oldStart: 1,
+                  oldLines: 1,
+                  newStart: 1,
+                  newLines: 1,
+                },
+              ],
+            },
+            {
+              id: "section-2",
+              title: "Follow the changed path",
+              prose:
+                "The chapter rail keeps the next section available without leaving the saved Files surface.",
+              hunkIds: ["h2"],
+              hunks: [
+                {
+                  id: "h2",
+                  path: "src/b.ts",
+                  header: "@@ -1 +1 @@",
+                  raw: "@@ -1 +1 @@\\n-old\\n+new",
+                  oldStart: 1,
+                  oldLines: 1,
+                  newStart: 1,
+                  newLines: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      support: {
+        id: "support" as const,
+        title: "Support" as const,
+        hunkIds: ["h3"],
+        hunks: [
           {
-            id: "section-1",
-            title: "Keep the review local",
-            prose:
-              "This fixture proves a manual walkthrough without starting an Analysis run.",
-            hunkIds: ["h1"],
-            hunks: [
-              {
-                id: "h1",
-                path: "src/a.ts",
-                header: "@@ -1 +1 @@",
-                raw: "@@ -1 +1 @@\\n-old\\n+new",
-                oldStart: 1,
-                oldLines: 1,
-                newStart: 1,
-                newLines: 1,
-              },
-            ],
-          },
-          {
-            id: "section-2",
-            title: "Follow the changed path",
-            prose:
-              "The chapter rail keeps the next section available without leaving the saved Files surface.",
-            hunkIds: ["h2"],
-            hunks: [
-              {
-                id: "h2",
-                path: "src/b.ts",
-                header: "@@ -1 +1 @@",
-                raw: "@@ -1 +1 @@\\n-old\\n+new",
-                oldStart: 1,
-                oldLines: 1,
-                newStart: 1,
-                newLines: 1,
-              },
-            ],
+            id: "h3",
+            path: "src/c.ts",
+            header: "@@ -1 +1 @@",
+            raw: "@@ -1 +1 @@\\n-old\\n+new",
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
           },
         ],
       },
-    ],
-    support: {
-      id: "support" as const,
-      title: "Support" as const,
-      hunkIds: ["h3"],
-      hunks: [
-        {
-          id: "h3",
-          path: "src/c.ts",
-          header: "@@ -1 +1 @@",
-          raw: "@@ -1 +1 @@\\n-old\\n+new",
-          oldStart: 1,
-          oldLines: 1,
-          newStart: 1,
-          newLines: 1,
-        },
-      ],
-    },
-  }), []);
+    }),
+    [],
+  );
   const confirmGeneration = (): void => {
     setDialogOpen(false);
     setGenerateRequests((current) => current + 1);

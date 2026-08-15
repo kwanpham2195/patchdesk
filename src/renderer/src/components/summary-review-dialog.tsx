@@ -299,5 +299,10 @@ function SummaryReviewDialogContent({
 export function SummaryReviewDialog(
   props: Parameters<typeof SummaryReviewDialogContent>[0],
 ): React.JSX.Element {
-  return <SummaryReviewDialogContent key={`${props.open}:${props.receipt?.reviewId ?? ""}:${props.state}`} {...props} />;
+  return (
+    <SummaryReviewDialogContent
+      key={`${props.open}:${props.receipt?.reviewId ?? ""}:${props.state}`}
+      {...props}
+    />
+  );
 }
