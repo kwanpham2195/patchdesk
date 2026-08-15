@@ -134,6 +134,57 @@ describe("ReviewRemoteStore", () => {
     ).resolves.toEqual({ _tag: "ok", value: withComment });
   });
 
+  it("accepts conversation IssueComment entries with review-attached nodeId", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withNodeId: ReviewRemoteSnapshot = {
+      ...snapshot,
+      conversation: {
+        prDescription: "",
+        entries: [
+          {
+            _tag: "IssueComment" as const,
+            comment: {
+              id: "3783272017",
+              nodeId: "PRRC_kwDOOxMYd87hgCZR",
+              reviewId: "4936696628",
+              author: "chanakan-art",
+              body: "inline finding",
+              createdAt: "2026-08-14T11:26:55.000Z" as never,
+              viewerDidAuthor: false,
+              canEdit: false,
+              canDelete: false,
+              location: {
+                path: "migrations/29.up.sql" as never,
+                line: 44,
+                diffSide: "new" as const,
+              },
+            },
+          },
+        ],
+        complete: true,
+      },
+    };
+    const parsed = parseReviewRemoteSnapshot(withNodeId);
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag === "err") return;
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withNodeId,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withNodeId });
+  });
+
   it("writes and loads a strict content-addressed snapshot", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

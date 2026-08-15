@@ -279,6 +279,7 @@ const publishedFeedbackSchema = v.strictObject({
 const conversationIssueCommentSchema = v.strictObject({
   ...commentSchema.entries,
   reviewId: v.optional(v.string()),
+  nodeId: v.optional(v.string()),
   canEdit: v.optional(v.boolean()),
   canDelete: v.optional(v.boolean()),
 });
@@ -682,6 +683,9 @@ function parseConversation(
         ...(entry.comment.reviewId === undefined
           ? {}
           : { reviewId: entry.comment.reviewId }),
+        ...(entry.comment.nodeId === undefined
+          ? {}
+          : { nodeId: entry.comment.nodeId }),
         ...(entry.comment.canEdit === undefined
           ? {}
           : { canEdit: entry.comment.canEdit }),

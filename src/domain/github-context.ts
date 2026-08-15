@@ -190,9 +190,10 @@ export type ConversationEntry =
       readonly thread: GitHubConversationThread;
     };
 
-/** Timeline issue comment; review-attached comments also expose their review and editability. */
+/** Timeline issue comment; review-attached comments also expose their review, node, and editability. */
 export type ConversationIssueComment = GitHubComment & {
   readonly reviewId?: string;
+  readonly nodeId?: string;
   readonly canEdit?: boolean;
   readonly canDelete?: boolean;
 };
