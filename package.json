@@ -25,7 +25,8 @@
     "doctor": "react-doctor --scope full",
     "precommit": "react-doctor --scope files --base HEAD --include-untracked --blocking none --yes",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "prepare": "husky"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -62,6 +63,7 @@
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "husky": "^9.1.7",
     "jsdom": "^26.1.0",
     "oxfmt": "0.63.0",
     "oxlint": "1.78.0",
