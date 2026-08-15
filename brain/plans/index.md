@@ -1,3 +1,3 @@
 # Plans
 
-- [[codebase/plan-portfolio-execution]]
+No active execution plans.
