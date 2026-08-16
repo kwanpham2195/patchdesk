@@ -159,6 +159,7 @@ const providerCatalog = {
 
 function withAnalysis(
   findingState: "actionable" | "pending_review",
+  mappingStatus: "mapped" | "invalid_line" = "mapped",
 ): WorkbenchResponse {
   return projection({
     insights: {
@@ -170,7 +171,13 @@ function withAnalysis(
           sessionId: "session-a",
           headSha: sha,
           generatedAt: "2026-08-01T00:00:00.000Z",
-          value: analysisResult,
+          value: {
+            ...analysisResult,
+            findings: analysisResult.findings.map((finding) => ({
+              ...finding,
+              mappingStatus,
+            })),
+          },
         },
       },
       walkthrough: { status: "not_generated" },
@@ -448,6 +455,20 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       ),
     );
     expect(patch).toHaveBeenCalledWith({ pendingReview: nextPending });
+  });
+
+  it("hides Add to review for a Finding whose location is not on the diff", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    mount(withAnalysis("actionable", "invalid_line"));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await screen.findByText("Missing boundary check");
+    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
   it("locks a Finding after its exact pending-review receipt is projected", async () => {

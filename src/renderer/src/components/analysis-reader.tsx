@@ -345,6 +345,7 @@ function AnalysisFindingRow({
           </Badge>
           {disposition === "open" &&
           reviewStatus === "actionable" &&
+          finding.mappingStatus === "mapped" &&
           onAddFinding !== undefined ? (
             <Button
               size="xs"
