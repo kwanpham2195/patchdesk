@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -301,6 +302,21 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
     model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
+  // The desktop close guard blocks quitting while a GitHub write is in
+  // flight; report write_pending on busy transitions (and clear afterwards).
+  const writePending =
+    actions.pendingReview?.busy === true || actions.directSummary?.busy === true;
+  const reportedWritePending = useRef(writePending);
+  const reportNavigationStateRef = useRef(actions.reportNavigationState);
+  useEffect(() => {
+    reportNavigationStateRef.current = actions.reportNavigationState;
+    if (reportedWritePending.current === writePending) return;
+    reportedWritePending.current = writePending;
+    reportNavigationStateRef.current(
+      writePending ? "write_pending" : "clear",
+    );
+  });
+
   const [overviewOpen, setOverviewOpen] = useState(
     initialState?.overviewOpen ?? false,
   );

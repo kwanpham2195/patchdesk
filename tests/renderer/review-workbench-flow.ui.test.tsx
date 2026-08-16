@@ -80,6 +80,7 @@ function mount(
   callbacks: Partial<
     Record<"replace" | "patch", ReturnType<typeof vi.fn>>
   > = {},
+  onNavigationStateChange: ReturnType<typeof vi.fn> = vi.fn(),
 ) {
   const replace = callbacks.replace ?? vi.fn();
   const patch = callbacks.patch ?? vi.fn();
@@ -88,7 +89,7 @@ function mount(
       workbench={workbench}
       onWorkbenchReplace={replace}
       onWorkbenchPatch={patch}
-      onNavigationStateChange={vi.fn()}
+      onNavigationStateChange={onNavigationStateChange}
       onNavigate={vi.fn()}
     />,
   );
@@ -469,6 +470,39 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     await user.click(screen.getByRole("button", { name: "Insights" }));
     await screen.findByText("Missing boundary check");
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
+  });
+
+  it("reports write_pending while a pending-review command is in flight", async () => {
+    const navigation = vi.fn();
+    let release: (value: unknown) => void = () => undefined;
+    const gate = new Promise((done) => {
+      release = done;
+    });
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      if (input.path === "/v1/reviews/pending-review/command")
+        return await gate;
+      throw new Error(input.path);
+    });
+    mount(withAnalysis("actionable"), {}, navigation);
+    const user = userEvent.setup();
+    const composer = await openAddedLineComposer(user);
+    await user.type(
+      within(composer).getByRole("textbox", { name: "Inline comment" }),
+      "Hanging write",
+    );
+    await user.click(
+      within(composer).getByRole("button", { name: "Start a review" }),
+    );
+    await waitFor(() =>
+      expect(navigation).toHaveBeenCalledWith("write_pending"),
+    );
+    release({ pendingReview: pending("pending") });
+    await waitFor(() =>
+      expect(navigation).toHaveBeenCalledWith("clear"),
+    );
   });
 
   it("locks a Finding after its exact pending-review receipt is projected", async () => {
