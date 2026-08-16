@@ -203,6 +203,29 @@ describe("ReviewWorkbenchProjectionService", () => {
     });
   });
 
+  it("ignores a corrupt Insight record and projects the Review as not generated", async () => {
+    const value = fixture();
+    value.insights.loadTyped.mockResolvedValueOnce(
+      err({ reason: "invalid_stored_value" } as never),
+    );
+    const result = await value.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        insights: {
+          analysis: { status: "not_generated" },
+          walkthrough: { status: "not_generated" },
+        },
+      },
+    });
+  });
+
   it("fails closed when the Review authority is missing or bound to another Session", async () => {
     const absent = fixture();
     absent.reviews.load.mockResolvedValueOnce(

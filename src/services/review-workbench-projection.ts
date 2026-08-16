@@ -387,9 +387,19 @@ export class ReviewWorkbenchProjectionService {
       ),
       this.loadWalkthroughRecord(session),
     ]);
-    if (analysis._tag === "err" && analysis.error.reason !== "not_found")
+    // A corrupt or schema-drifted Insight record is ignored: the Review still
+    // opens and the Insight reads as not generated, so a re-run heals it.
+    if (
+      analysis._tag === "err" &&
+      analysis.error.reason !== "not_found" &&
+      analysis.error.reason !== "invalid_stored_value"
+    )
       return err({ _tag: "SessionStorageUnavailable" });
-    if (walkthrough._tag === "err" && walkthrough.error.reason !== "not_found")
+    if (
+      walkthrough._tag === "err" &&
+      walkthrough.error.reason !== "not_found" &&
+      walkthrough.error.reason !== "invalid_stored_value"
+    )
       return err({ _tag: "SessionStorageUnavailable" });
     const analysisArtifact =
       analysis._tag === "ok" && analysis.value.retained !== undefined
@@ -460,7 +470,9 @@ export class ReviewWorkbenchProjectionService {
         readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
         readonly artifactStatus?: InsightArtifactStatus;
       },
-      { readonly reason: "not_found" | "storage" }
+      {
+        readonly reason: "not_found" | "invalid_stored_value" | "storage";
+      }
     >
   > {
     const loaded = await this.insights.load(
@@ -469,9 +481,11 @@ export class ReviewWorkbenchProjectionService {
       "walkthrough",
     );
     if (loaded._tag === "err") {
-      return loaded.error.reason === "not_found"
-        ? err({ reason: "not_found" })
-        : err({ reason: "storage" });
+      if (loaded.error.reason === "not_found")
+        return err({ reason: "not_found" });
+      if (loaded.error.reason === "invalid_stored_value")
+        return err({ reason: "invalid_stored_value" });
+      return err({ reason: "storage" });
     }
     if (loaded.value.retained === undefined) {
       return ok({
@@ -481,13 +495,15 @@ export class ReviewWorkbenchProjectionService {
       });
     }
     const base = parseRetainedBase(loaded.value.retained);
-    if (base._tag === "err") return err({ reason: "storage" });
+    if (base._tag === "err") return err({ reason: "invalid_stored_value" });
     const fallback = (): Result<
       {
         readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
         readonly artifactStatus: InsightArtifactStatus;
       },
-      { readonly reason: "not_found" | "storage" }
+      {
+        readonly reason: "not_found" | "invalid_stored_value" | "storage";
+      }
     > => {
       const value = readableWalkthroughWithoutArtifact(
         readObjectField(loaded.value.retained, "value"),
