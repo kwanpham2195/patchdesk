@@ -259,6 +259,11 @@ export type LocalApiConfiguration = {
     Partial<
       Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">
     >;
+  /**
+   * Enables the automatic retention sweep after startup and every 24 hours.
+   * Main-process-only; local integration tests keep it off.
+   */
+  readonly retentionSweep?: boolean;
 };
 
 /** A running local API that owns its HTTP server lifecycle. */
@@ -1020,6 +1025,13 @@ export async function startLocalApiServer(
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);
 
+  scheduleRetentionSweeps(
+    configuredProfiles.value,
+    storageManagement,
+    configuration.retentionSweep ?? false,
+    configuration.diagnostics,
+  );
+
   return {
     _tag: "started",
     server: {
@@ -1030,6 +1042,44 @@ export async function startLocalApiServer(
       },
     },
   };
+}
+
+/** Retention sweep interval once per 24 hours while the app runs. */
+export const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Runs the retention sweep once immediately after the local API starts and
+ * again once per 24 hours. Fire-and-forget: failures never surface to the
+ * caller, and an unref'd timer never holds the app or tests open.
+ */
+function scheduleRetentionSweeps(
+  profiles: ReadonlyArray<{ readonly id: WorkspaceProfileId }>,
+  storageManagement: StorageManagementService,
+  enabled: boolean,
+  diagnostics: Pick<ReviewDiagnosticService, "record"> | undefined,
+): void {
+  if (!enabled) return;
+  const run = (): void => {
+    for (const profile of profiles) {
+      void storageManagement
+        .sweepRetained(profile.id)
+        .then((result) => {
+          if (result._tag === "err") {
+            void diagnostics?.record({
+              profileId: profile.id,
+              category: "cleanup",
+              phase: "retention_sweep",
+              retryable: true,
+              detail: "profile sweep failed",
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  };
+  run();
+  const timer = setInterval(run, RETENTION_SWEEP_INTERVAL_MS);
+  timer.unref();
 }
 
 const rendererLogEntrySchema = strictObject({

@@ -1,6 +1,6 @@
 # Retain only live reviews and recent history
 
-> **Status: Proposed.** Pending implementation of the retention sweep (`.agents/specs/2026-08-16-retention-sweep/`).
+> **Status: Accepted.** Implemented with the retention sweep (`.agents/PLANS/2026-08-16-retention-sweep.md`).
 
 Patchdesk bounds local disk usage with an automatic retention sweep. The sweep runs after the local API starts and once per 24 hours while the app runs. It removes only data that the pull request authority can rebuild.
 

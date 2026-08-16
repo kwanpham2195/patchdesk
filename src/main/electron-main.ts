@@ -128,6 +128,7 @@ const desktopLifecycle = createDesktopLifecycle({
         ),
         insightProviders,
         lifecycleGate,
+        retentionSweep: true,
         reviewOperations,
         diagnostics,
         logs,

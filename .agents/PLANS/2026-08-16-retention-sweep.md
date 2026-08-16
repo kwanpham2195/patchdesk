@@ -2,7 +2,7 @@
 created_at: 2026-08-16
 repos:
   - patchdesk
-status: draft
+status: implemented
 ---
 
 # Tech Spec: Automatic storage retention sweep

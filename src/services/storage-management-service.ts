@@ -49,6 +49,9 @@ export type StorageDeleteQuarantinedInput = {
   readonly entryName: string;
 };
 export type StorageClearCacheInput = { readonly profileId: WorkspaceProfileId };
+export const RETAIN_TERMINAL_SESSIONS_MS = 14 * 24 * 60 * 60 * 1000;
+export const RETAIN_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export type StorageManagementFailure =
   | { readonly _tag: "ProfileNotFound" }
   | { readonly _tag: "ProfileUnavailable" }
@@ -103,9 +106,9 @@ export class StorageManagementService {
       return err({ _tag: "StorageUnavailable" });
     const projected: StorageSessionProjection[] = [];
     for (const session of sessions.value) {
-      const protectedSession = await this.isProtected(profileId, session);
-      if (protectedSession._tag === "err") return protectedSession;
-      projected.push(projectSession(session, !protectedSession.value));
+      const running = await this.isRunningState(profileId, session);
+      if (running._tag === "err") return running;
+      projected.push(projectSession(session, !running.value));
     }
     return ok({
       sessions: projected,
@@ -127,12 +130,9 @@ export class StorageManagementService {
           ? { _tag: "SessionNotFound" }
           : { _tag: "StorageUnavailable" },
       );
-    const protectedSession = await this.isProtected(
-      input.profileId,
-      session.value,
-    );
-    if (protectedSession._tag === "err") return protectedSession;
-    if (protectedSession.value) return err({ _tag: "SessionProtected" });
+    const running = await this.isRunningState(input.profileId, session.value);
+    if (running._tag === "err") return running;
+    if (running.value) return err({ _tag: "SessionProtected" });
     const removed = await this.deps.artifacts.removeSession(
       input.profileId,
       session.value.id,
@@ -184,9 +184,9 @@ export class StorageManagementService {
           return err({ _tag: "StorageUnavailable" });
       }
       for (const session of scanned.value.sessions) {
-        const protectedSession = await this.isProtected(profileId, session);
-        if (protectedSession._tag === "err") return protectedSession;
-        if (protectedSession.value) continue;
+        const running = await this.isRunningState(profileId, session);
+        if (running._tag === "err") return running;
+        if (running.value) continue;
         const removed = await this.deps.artifacts.removeSession(
           profileId,
           session.id,
@@ -213,7 +213,8 @@ export class StorageManagementService {
     });
   }
 
-  private async isProtected(
+  /** True while the session is actively in motion and must never be removed. */
+  private async isRunningState(
     profileId: WorkspaceProfileId,
     session: ReviewSession,
   ): Promise<Result<boolean, StorageManagementFailure>> {
@@ -238,7 +239,11 @@ export class StorageManagementService {
       )
     )
       return err({ _tag: "StorageUnavailable" });
-    if (review._tag === "ok" && review.value.currentSessionId === session.id)
+    if (
+      review._tag === "ok" &&
+      review.value.status._tag === "Open" &&
+      review.value.currentSessionId === session.id
+    )
       return ok(true);
     if (
       (analysis._tag === "ok" &&
@@ -256,6 +261,163 @@ export class StorageManagementService {
       return ok(true);
     return ok(merge._tag === "ok" && merge.value.state._tag !== "Rejected");
   }
+
+  /**
+   * Remove terminal and orphaned sessions plus stale quarantine entries.
+   * Fire-and-forget: per-item failures are recorded as diagnostics and the
+   * sweep continues; it never fails startup or review loading.
+   */
+  async sweepRetained(
+    profileId: WorkspaceProfileId,
+    now?: IsoTimestamp,
+  ): Promise<Result<undefined, StorageManagementFailure>> {
+    const at = now ?? this.deps.now();
+    return await this.lifecycleGate.withProfileLock(profileId, async () => {
+      const scanned = await this.deps.sessions.listSessions(profileId);
+      if (scanned._tag === "err") return err({ _tag: "StorageUnavailable" });
+      const sessionOutcomes = await Promise.allSettled(
+        scanned.value.map((session) =>
+          this.sweepOneSession(profileId, session, at),
+        ),
+      );
+      const removedSessions = countFulfilled(sessionOutcomes);
+      const quarantined = await this.deps.artifacts.listQuarantined(profileId);
+      if (quarantined._tag === "err")
+        return err({ _tag: "StorageUnavailable" });
+      const quarantineOutcomes = await Promise.allSettled(
+        quarantined.value.map((entry) =>
+          this.sweepOneQuarantine(profileId, entry, at),
+        ),
+      );
+      const removedQuarantined = countFulfilled(quarantineOutcomes);
+      await this.recordSweepDiagnostic(
+        profileId,
+        undefined,
+        `sweep complete: ${removedSessions} sessions, ${removedQuarantined} quarantine entries removed`,
+      );
+      return ok(undefined);
+    });
+  }
+
+  /**
+   * Decide and remove one session when it is terminal or orphaned and old.
+   * Returns true when removed; every failure is recorded and never thrown.
+   */
+  private async sweepOneSession(
+    profileId: WorkspaceProfileId,
+    session: ReviewSession,
+    at: IsoTimestamp,
+  ): Promise<boolean> {
+    const running = await this.isRunningState(profileId, session);
+    if (running._tag === "err") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        session.id,
+        "running-state check failed",
+      );
+      return false;
+    }
+    if (running.value) return false;
+    const review = await this.deps.reviews.load(
+      profileId,
+      createReviewId(session.key),
+    );
+    if (review._tag === "err" && review.error.reason !== "not_found") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        session.id,
+        "review load failed",
+      );
+      return false;
+    }
+    const orphaned = review._tag === "err";
+    const terminalAndOld =
+      review._tag === "ok" &&
+      review.value.status._tag === "Terminal" &&
+      isOlderThan(session.updatedAt, at, RETAIN_TERMINAL_SESSIONS_MS);
+    if (!orphaned && !terminalAndOld) return false;
+    const removed = await this.deps.artifacts.removeSession(
+      profileId,
+      session.id,
+    );
+    if (removed._tag === "err") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        session.id,
+        "session removal failed",
+      );
+      return false;
+    }
+    await this.recordSweepDiagnostic(
+      profileId,
+      session.id,
+      orphaned ? "discarded orphaned session" : "discarded terminal session",
+    );
+    return true;
+  }
+
+  /**
+   * Remove one stale quarantine entry when it is older than the retention
+   * window. Returns true when removed; failures are recorded, never thrown.
+   */
+  private async sweepOneQuarantine(
+    profileId: WorkspaceProfileId,
+    entry: { readonly entryName: string; readonly quarantinedAt: string },
+    at: IsoTimestamp,
+  ): Promise<boolean> {
+    if (!isOlderThan(entry.quarantinedAt, at, RETAIN_QUARANTINE_MS))
+      return false;
+    const removed = await this.deps.artifacts.removeQuarantined(
+      profileId,
+      entry.entryName,
+    );
+    if (removed._tag === "err") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        undefined,
+        `quarantine removal failed: ${entry.entryName}`,
+      );
+      return false;
+    }
+    await this.recordSweepDiagnostic(
+      profileId,
+      undefined,
+      `discarded quarantine entry: ${entry.entryName}`,
+    );
+    return true;
+  }
+
+  private async recordSweepDiagnostic(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId | undefined,
+    detail: string,
+  ): Promise<void> {
+    if (this.deps.diagnostics === undefined) return;
+    await this.deps.diagnostics.record({
+      profileId,
+      category: "cleanup",
+      phase: "retention_sweep",
+      ...(sessionId === undefined ? {} : { sessionId }),
+      retryable: false,
+      detail,
+    });
+  }
+}
+
+function isOlderThan(
+  timestamp: string,
+  now: IsoTimestamp,
+  windowMs: number,
+): boolean {
+  return Date.parse(timestamp) < Date.parse(now) - windowMs;
+}
+
+function countFulfilled(
+  outcomes: ReadonlyArray<PromiseSettledResult<boolean>>,
+): number {
+  return outcomes.filter(
+    (outcome) => outcome.status === "fulfilled" && outcome.value,
+  ).length;
 }
 
 function projectSession(

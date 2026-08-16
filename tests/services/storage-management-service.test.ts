@@ -50,11 +50,20 @@ afterEach(
 async function fixture(
   options: {
     readonly review?: unknown;
+    readonly reviewLoader?: (reviewId: string) => Result<unknown, unknown>;
     readonly analysis?: unknown;
     readonly walkthrough?: unknown;
     readonly merge?: unknown;
     readonly pending?: unknown;
     readonly direct?: unknown;
+    readonly sessions?: ReadonlyArray<ReviewSession>;
+    readonly quarantined?: ReadonlyArray<{
+      readonly entryName: string;
+      readonly quarantinedAt: string;
+    }>;
+    readonly removeSessionErrors?: number;
+    readonly removeQuarantinedErrors?: number;
+    readonly diagnostics?: unknown;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-storage-management-"));
@@ -69,10 +78,35 @@ async function fixture(
       ? {}
       : { directSummaryReview: options.direct }),
   };
+  let removeSessionErrors = options.removeSessionErrors ?? 0;
   const removeSession = vi.fn(
     async (profile: unknown, sessionIdValue: unknown) => {
       void profile;
       void sessionIdValue;
+      if (removeSessionErrors > 0) {
+        removeSessionErrors -= 1;
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        } as never);
+      }
+      return ok(undefined);
+    },
+  );
+  let removeQuarantinedErrors = options.removeQuarantinedErrors ?? 0;
+  const removeQuarantined = vi.fn(
+    async (profile: unknown, entryNameValue: unknown) => {
+      void profile;
+      void entryNameValue;
+      if (removeQuarantinedErrors > 0) {
+        removeQuarantinedErrors -= 1;
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        } as never);
+      }
       return ok(undefined);
     },
   );
@@ -84,7 +118,7 @@ async function fixture(
     },
     sessions: {
       async listSessions() {
-        return ok([retained]);
+        return ok(options.sessions ?? [retained]);
       },
       async load() {
         return ok(retained);
@@ -94,7 +128,9 @@ async function fixture(
       },
     },
     reviews: {
-      async load() {
+      async load(_profile: unknown, reviewId: unknown) {
+        if (options.reviewLoader !== undefined)
+          return options.reviewLoader(String(reviewId));
         return options.review === undefined
           ? err({ reason: "not_found" } as never)
           : ok(options.review as never);
@@ -118,13 +154,16 @@ async function fixture(
     },
     artifacts: {
       async listQuarantined() {
-        return ok([]);
+        return ok(options.quarantined ?? []);
       },
       async cacheBytes() {
         return ok(0);
       },
       async removeSession(profile: unknown, session: unknown) {
         return await removeSession(profile, session);
+      },
+      async removeQuarantined(profile: unknown, entryName: unknown) {
+        return await removeQuarantined(profile, entryName);
       },
       async cacheChildren() {
         return ok([]);
@@ -142,8 +181,11 @@ async function fixture(
     paths,
     git: {},
     now: () => at,
+    ...(options.diagnostics === undefined
+      ? {}
+      : { diagnostics: options.diagnostics }),
   } as never);
-  return { service, removeSession, paths };
+  return { service, removeSession, removeQuarantined, paths };
 }
 
 describe("StorageManagementService", () => {
@@ -161,8 +203,11 @@ describe("StorageManagementService", () => {
 
   it.each([
     [
-      "current Review",
-      { currentSessionId: sessionId },
+      "current Open Review",
+      {
+        currentSessionId: sessionId,
+        status: { _tag: "Open" },
+      },
       undefined,
       undefined,
       undefined,
@@ -222,5 +267,172 @@ describe("StorageManagementService", () => {
       value.service.discard({ profileId, sessionId }),
     ).resolves.toEqual({ _tag: "err", error: { _tag: "SessionProtected" } });
     expect(value.removeSession).not.toHaveBeenCalled();
+  });
+
+  describe("sweepRetained", () => {
+    const terminalReview = {
+      currentSessionId: sessionId,
+      status: { _tag: "Terminal", state: "merged" },
+    };
+    const oldSession = {
+      ...session,
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    } as unknown as ReviewSession;
+
+    it("removes a terminal session older than 14 days with its worktree", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
+    });
+
+    it("keeps a terminal session younger than 14 days", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [session],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps the current session of an open review", async () => {
+      const value = await fixture({
+        review: { currentSessionId: sessionId, status: { _tag: "Open" } },
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a session with an active preparation journal", async () => {
+      const value = await fixture({ sessions: [oldSession] });
+      await expect(
+        ReviewPreparationJournal.begin(value.paths, profileId, sessionId),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a session with an active insight run", async () => {
+      const value = await fixture({
+        analysis: { activeRun: { revision: { sessionId } } },
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a session with a write in flight", async () => {
+      const value = await fixture({
+        sessions: [
+          {
+            ...oldSession,
+            pendingReview: { _tag: "WriteInFlight" },
+          } as unknown as ReviewSession,
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("removes an orphaned session older than 14 days", async () => {
+      const value = await fixture({ sessions: [oldSession] });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
+    });
+
+    it("removes a quarantine entry older than 30 days", async () => {
+      const value = await fixture({
+        quarantined: [
+          {
+            entryName: "x",
+            quarantinedAt: "2026-07-01T00:00:00.000Z",
+          },
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeQuarantined).toHaveBeenCalledWith(profileId, "x");
+    });
+
+    it("keeps a quarantine entry younger than 30 days", async () => {
+      const value = await fixture({
+        quarantined: [
+          {
+            entryName: "x",
+            quarantinedAt: "2026-07-25T00:00:00.000Z",
+          },
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeQuarantined).not.toHaveBeenCalled();
+    });
+
+    it("keeps sweeping past per-item storage errors", async () => {
+      const second = createReviewSessionId({
+        profileId,
+        host: "github.com" as never,
+        owner: "centraldigital" as never,
+        repo: "patchdesk" as never,
+        prNumber: 43 as never,
+        headSha: "b".repeat(40) as never,
+      });
+      const value = await fixture({
+        removeSessionErrors: 1,
+        sessions: [
+          oldSession,
+          {
+            ...session,
+            id: second,
+            key: { ...session.key, prNumber: 43, headSha: "b".repeat(40) },
+            updatedAt: "2026-07-01T00:00:00.000Z",
+          } as unknown as ReviewSession,
+        ],
+        reviewLoader: () =>
+          ok({ status: { _tag: "Terminal", state: "merged" } } as never),
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).toHaveBeenCalledTimes(2);
+    });
+
+    it("records a cleanup diagnostic for discarded sessions", async () => {
+      const record = vi.fn(async () => ok(undefined));
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+        diagnostics: { record },
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "cleanup",
+          phase: "retention_sweep",
+          sessionId,
+        }),
+      );
+    });
   });
 });
