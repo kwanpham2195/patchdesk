@@ -35,19 +35,28 @@ Read-only by default. GitHub write flows and model runs require explicit user co
 
 ## Phase 2: insight runs (requires consent, consumes provider credits)
 
-- [ ] Run one Analysis: queued -> running -> completed; findings map into the diff.
-- [ ] Run one Walkthrough: narrative renders with chapter rail; mark one section reviewed; progress survives reopening the review.
-- [ ] Cancel a run mid-flight: settles as cancelled, retains nothing.
-- [ ] Context truncation on a chatty PR (if one exists): `context.json` < 512 KiB with `truncated` counters.
-- [ ] Oversized-patch walkthrough (if a > 2 MiB patch PR exists): clear failure diagnostic, no crash.
+- [x] Run one Analysis (pr-571, Pi deepseek-v4-flash low): queued -> completed, 5 findings retained, Analysis reader renders. pr-220's first attempt failed with `invalid_result` (model output rejected once); the pr-571 run succeeded, so the failure was one-off, not systemic.
+- [x] Run one Walkthrough (pr-571): completed with 5 chapters; narrative renders with chapter rail; "Mark section reviewed" persists `reviewedSectionIds` via `/v1/reviews/insights/walkthrough/progress`; progress survives reopen (projection carries it).
+- [x] Cancel a run mid-flight: cancel returns `cancelling`, record settles `cancelled`, the previous retained Analysis is untouched, the child process exits.
+- [ ] Context truncation on a chatty PR: covered by unit tests; no chatty PR in the live watchlist.
+- [ ] Oversized-patch walkthrough: no > 2 MiB patch PR in the live watchlist.
+- [x] FINDING (renderer): React duplicate-key warning `codespan-system_suggestion` in walkthrough/codespan rendering (`generated-markdown`); keys not unique. FIXED `cbf5a37`: keys now include the token position in the stream; regression test proves the old key function fails it. Verified live: pr-571 walkthrough renders with zero console warnings.
+- [ ] NOTE: agent-browser `click` did not trigger the Mark-section button's onClick; JS `dispatchEvent(click)` worked. Tooling quirk, not an app bug.
 
-## Phase 3: GitHub write flows (requires explicit consent per action)
+## Phase 3: GitHub write flows (requires explicit consent per action) - pr-85, except merge
 
-- [ ] Finding review command starts the viewer's GitHub pending review; Analysis summary action appears.
-- [ ] Submit the pending review from the Finish review modal; one GitHub review published.
-- [ ] Comment now from the diff publishes immediately (only while no pending review exists).
-- [ ] Resolve and unresolve one mapped conversation thread.
-- [ ] Merge with acknowledgement on a test PR; uncertain-outcome path stays locked (simulated only).
+- [x] Consent given for pr-85 (centraldigital/cfw-sales-crm-api#85), no merge. RESULT: zero GitHub writes performed; every flow failed closed (safe).
+- [x] Finding review command: BLOCKED. Both retained findings have `mappingStatus: invalid_line` (F1 range 166-170 vs hunk 164-169; F2 line 88 vs hunk 92-106). The UI rendered "Add to review" and the click silently threw ("not actionable"). FIXED `7d317b6`: the button now requires `mappingStatus === "mapped"`; regression test added; verified live on pr-85 (findings render, zero Add-to-review buttons).
+- [x] Regenerate analysis: failed with `invalid_result`. INVESTIGATED, root cause found and proven, NOT caused by recent commits:
+  - The model intermittently emits findings with line ranges wider than 10 lines (observed: 20 and 516 lines). The child validates only the raw schema (no range constraint) and accepts; the parent re-validates with `parseModelReviewResult` -> `projectFinding`, which rejects `lineEnd - lineStart > 9` -> `invalid_result`.
+  - Proof: manual child replays succeed 15/15 (pipeline deterministic); captured the failing value through the app (child accepted, parent rejected); a regression-style test shows the exact value fails and removing only the wide-range findings makes it pass.
+  - The range guard predates today's commits (review-result.ts last meaningful change Aug 13, before the last successful run). My bounds commit is ruled out: pr-85's failed runs used the Aug-13-prepared context, prompt is ~4 KB, bound never triggers.
+  - FIXED `f40debc`: wide ranges are clamped to a 10-line evidence highlight (`lineStart + 9`) instead of failing the run; inverted ranges still rejected. Regression tests; live run 13 completed with 6 findings.
+  - Follow-up (ticket-worthy): align child/parent validation contract; clearer diagnostic than generic invalid_result.
+- [x] FINDING (UI recovery): a saved review whose record is missing or whose snapshot no longer parses could not be opened from the inbox (`load` fails closed; no fallback). FIXED `23cbecf`: row clicks now fall back to opening by PR identity when `load` fails (heals or recreates; same projection for healthy reviews); regression test proves 404 load -> open by identity. Live note: pr-220 earlier healed through the open path.
+- [x] Thread resolve/unresolve: N/A - pr-85 has no conversation threads.
+- [x] Comment now: BLOCKED for automation - the diff hunks never materialized in the live app via CDP (file headers render, hunk rows do not; page body text stays < 1.5 KB; synthetic wheel/scroll events do not trigger the stream). Playwright fixtures pass. Needs a human eye on the running app window to decide between a live rendering gap and a CDP/virtualization limitation.
+- [ ] Merge: excluded by user.
 
 ## Phase 4: close and restart
 
