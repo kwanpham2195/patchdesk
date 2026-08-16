@@ -70,10 +70,53 @@ export function InboxFlow({
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
   const dashboardProfileId = dashboard?.profile.id;
+
+  type PrRef = {
+    readonly host?: string;
+    readonly owner: string;
+    readonly repo: string;
+    readonly number: number;
+  };
+
+  const openPullRequest = useCallback(
+    async (
+      pr: PrRef,
+      initialSection?: ReviewInitialSection,
+      profileId = dashboard?.profile.id,
+    ): Promise<void> => {
+      setOpenedPr(undefined);
+      setOpenError(undefined);
+      try {
+        const value = await requestJson("/v1/reviews/open", {
+          method: "POST",
+          body: {
+            profileId,
+            host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
+            owner: pr.owner,
+            repo: pr.repo,
+            number: pr.number,
+          },
+        });
+        const parsed = parseWorkbenchResponse(value);
+        if (parsed === undefined)
+          throw new Error("Invalid workbench projection");
+        setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
+        onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
+      } catch (cause: unknown) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        setOpenError(
+          `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
+        );
+      }
+    },
+    [dashboard?.profile.githubHost, dashboard?.profile.id, onOpenWorkbench],
+  );
+
   const openStoredReview = useCallback(
     async (
       profileId: string,
       reference: { readonly reviewId: string },
+      identity?: PrRef,
       isActive: () => boolean = () => true,
     ): Promise<void> => {
       try {
@@ -92,19 +135,27 @@ export function InboxFlow({
         if (!isActive()) return;
         onOpenWorkbench(parsed as unknown as WorkbenchPayload);
       } catch (cause: unknown) {
+        // The stored review cannot be loaded: its record is missing or its
+        // snapshot no longer parses. Opening by PR identity heals or recreates
+        // it, and returns the same projection for a healthy review.
+        if (identity !== undefined) {
+          await openPullRequest(identity);
+          return;
+        }
         const detail = cause instanceof Error ? cause.message : String(cause);
         setOpenError(`Could not open the saved review. ${detail}`);
       }
     },
-    [onOpenWorkbench],
+    [onOpenWorkbench, openPullRequest],
   );
   const openStoredReviewById = useCallback(
     async (
       profileId: string,
       reviewId: string,
+      identity?: PrRef,
       isActive: () => boolean = () => true,
     ): Promise<void> => {
-      await openStoredReview(profileId, { reviewId }, isActive);
+      await openStoredReview(profileId, { reviewId }, identity, isActive);
     },
     [openStoredReview],
   );
@@ -116,48 +167,17 @@ export function InboxFlow({
     )
       return;
     let active = true;
-    void openStoredReviewById(dashboardProfileId, reviewId, () => active);
+    void openStoredReviewById(
+      dashboardProfileId,
+      reviewId,
+      undefined,
+      () => active,
+    );
     return () => {
       active = false;
     };
   }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
 
-  type PrRef = {
-    readonly host?: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly number: number;
-  };
-
-  const openPullRequest = async (
-    pr: PrRef,
-    initialSection?: ReviewInitialSection,
-    profileId = dashboard?.profile.id,
-  ): Promise<void> => {
-    setOpenedPr(undefined);
-    setOpenError(undefined);
-    try {
-      const value = await requestJson("/v1/reviews/open", {
-        method: "POST",
-        body: {
-          profileId,
-          host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
-          owner: pr.owner,
-          repo: pr.repo,
-          number: pr.number,
-        },
-      });
-      const parsed = parseWorkbenchResponse(value);
-      if (parsed === undefined) throw new Error("Invalid workbench projection");
-      setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-      onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
-    } catch (cause: unknown) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      setOpenError(
-        `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
-      );
-    }
-  };
 
   return inbox !== undefined && dashboard !== undefined ? (
     <InboxScreen
@@ -172,9 +192,18 @@ export function InboxFlow({
       onOpenReview={(row, initialSection) =>
         void openPullRequest(row.identity, initialSection)
       }
-      onOpenReviewId={(savedReviewId) =>
-        void openStoredReviewById(dashboard.profile.id, savedReviewId)
-      }
+      onOpenReviewId={(savedReviewId) => {
+        const row = inbox.inbox.rows.find(
+          (candidate) =>
+            candidate.recommendedAction.kind !== "run_review" &&
+            candidate.recommendedAction.reviewId === savedReviewId,
+        );
+        void openStoredReviewById(
+          dashboard.profile.id,
+          savedReviewId,
+          row?.identity,
+        );
+      }}
     />
   ) : (
     <Pending
