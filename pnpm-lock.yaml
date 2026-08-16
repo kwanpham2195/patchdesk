@@ -70,6 +70,9 @@ devDependencies:
   '@axe-core/playwright':
     specifier: ^4.12.1
     version: 4.12.1(playwright-core@1.61.1)
+  '@oxlint/plugins':
+    specifier: 1.78.0
+    version: 1.78.0
   '@swc/core':
     specifier: ^1.15.3
     version: 1.15.43
@@ -2562,6 +2565,11 @@ packages:
     requiresBuild: true
     dev: true
     optional: true
+
+  /@oxlint/plugins@1.78.0:
+    resolution: {integrity: sha512-Ypt8KeRYw+4jUtlPirfcHWMrn5ms12VrrFPD+Mds477/7tJxG1Kcz2Yrg2nVcTQEUx/GdlhS+BUg1kmxNm04Ug==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+    dev: true
 
   /@peculiar/asn1-schema@2.8.0:
     resolution: {integrity: sha512-7YT0U/ze0tF2QOBbE15gKZwy5tvgGyLRiRHLzhlbOpf7BT032oBSd0haZqXn5W6l26WLlu3dyxzjM+2638/z2Q==}

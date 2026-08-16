@@ -8,6 +8,7 @@
   "main": "./out/main/electron-main.js",
   "scripts": {
     "lint": "oxlint --deny-warnings",
+    "lint:staged": "node scripts/lint-staged.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --run dashboard.ui",
@@ -23,7 +24,7 @@
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
     "doctor": "react-doctor --scope full",
-    "precommit": "react-doctor --staged --blocking warning --yes",
+    "precommit": "react-doctor --staged --blocking warning --yes && node scripts/lint-staged.mjs",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "prepare": "husky"
@@ -52,6 +53,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
+    "@oxlint/plugins": "1.78.0",
     "@swc/core": "^1.15.3",
     "@tailwindcss/vite": "^4.1.12",
     "@testing-library/react": "^16.3.0",

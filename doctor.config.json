@@ -1,7 +1,14 @@
 {
   "$schema": "https://react.doctor/schema/config.json",
   "ignore": {
-    "files": ["out/**", "release/**", "test-results/**", "runtime/flue/**"],
+    "files": [
+      "out/**",
+      "release/**",
+      "test-results/**",
+      "runtime/flue/**",
+      "tools/oxlint/anti-slop/**",
+      ".agents/skills/install-anti-slop/**"
+    ],
     "overrides": [
       {
         "files": ["scripts/**/*.mjs"],
