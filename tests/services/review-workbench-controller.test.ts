@@ -241,6 +241,42 @@ describe("ReviewWorkbenchController", () => {
     expect(value.preparation.prepare).toHaveBeenCalledOnce();
   });
 
+  it("quarantines a corrupt Review record and rebuilds the Review fresh", async () => {
+    const artifacts = {
+      quarantineIfPresent: vi.fn(),
+      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
+    };
+    const reviews = {
+      load: vi
+        .fn()
+        .mockResolvedValueOnce(
+          err({
+            _tag: "StorageFailure" as const,
+            operation: "read" as const,
+            reason: "invalid_stored_value" as const,
+          }),
+        )
+        .mockResolvedValue(ok(review)),
+      save: vi.fn(async () => ok(undefined)),
+    };
+    const value = fixture({ reviews, artifacts });
+
+    await expect(
+      value.controller.open({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(artifacts.quarantineReview).toHaveBeenCalledWith(
+      profileId,
+      reviewId,
+    );
+    expect(value.preparation.prepare).toHaveBeenCalledOnce();
+  });
+
   it("fails closed instead of resetting state after a transient storage error", async () => {
     const artifacts = {
       quarantineIfPresent: vi.fn(),

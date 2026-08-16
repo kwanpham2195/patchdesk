@@ -143,8 +143,19 @@ export class ReviewWorkbenchController {
       profileId.value,
       reviewId,
     );
-    if (existing._tag === "err" && existing.error.reason !== "not_found")
-      return err({ reason: "storage" });
+    if (existing._tag === "err") {
+      if (existing.error.reason === "invalid_stored_value") {
+        // A corrupt Review record is moved aside and the Review is rebuilt
+        // from the pull request; corrupt local data never blocks opening.
+        const quarantined = await this.lifecycle.artifacts.quarantineReview(
+          profileId.value,
+          reviewId,
+        );
+        if (quarantined._tag === "err") return err({ reason: "storage" });
+      } else if (existing.error.reason !== "not_found") {
+        return err({ reason: "storage" });
+      }
+    }
     if (existing._tag === "ok") {
       const currentSession = await this.lifecycle.sessions.load(
         profileId.value,
