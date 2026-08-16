@@ -60,9 +60,11 @@ Read-only by default. GitHub write flows and model runs require explicit user co
 
 ## Phase 4: close and restart
 
-- [ ] Dirty draft blocks close with the confirm dialog; discard keeps saved history.
-- [ ] Second instance focuses the first.
-- [ ] Corrupt one `review.json`: quarantined on next open, app refuses to load it.
+- [x] Close guard: FINDING + FIX. The guard never engages in the real app: the renderer never reports a non-clear state. `write_pending` reporting was lost in the unified-workbench refactor (old `completed-review-workbench` called `reportNavigationState` on write transitions; the new `review-workbench.tsx` declares the prop but never calls it). `dirty_draft` was never wired in any version. FIXED `247f5a7` for `write_pending` (reported while `pendingReview.busy || directSummary.busy`; regression test proves write_pending -> clear across a hanging command). `dirty_draft` remains unwired: draft presence lives inside `review-diff-view`, needs state lifting (follow-up ticket).
+- [x] Clear-state close allows: verified live (window.close() closes the window).
+- [x] Second instance: second launch exits via the single-instance lock; no duplicate app. Window recreation on second-instance while windowless could not be verified (dev-environment flakiness).
+- [ ] Corrupt one `review.json`: quarantined on next open. NOT RUN live; the `invalid_stored_value` -> quarantine path is unit-tested in `review-recovery-service`/`review-session-preparation`. Run when convenient.
+- [x] FINDING (tooling debt): the pre-commit react-doctor gate scans whole staged files and blocks ANY change to the 8 giant components (>300 lines; `review-workbench.tsx`, `review-workbench-flow.tsx` x2, `review-diff-view.tsx`, `maintainer-inbox.tsx`, `app.tsx`, `narrative-walkthrough.tsx`, `settings-flow.tsx`). Full-scan score is 76/100 "Needs work" (18 warnings). `247f5a7` was committed with `--no-verify` after explicit user approval. Follow-up: refactor giants or revisit the gate; without it, every future fix in those files stalls.
 
 ## Evidence
 
