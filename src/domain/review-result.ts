@@ -354,12 +354,14 @@ function projectFinding(
     finding.lineEnd < finding.lineStart
   )
     return err({ _tag: "InvalidModelReviewResult" });
-  if (
+  // The evidence highlight is bounded even when the model cites a wide range;
+  // a wide range is a display bound, never a reason to fail the whole run.
+  const lineEnd =
     finding.lineStart !== undefined &&
     finding.lineEnd !== undefined &&
     finding.lineEnd - finding.lineStart > 9
-  )
-    return err({ _tag: "InvalidModelReviewResult" });
+      ? finding.lineStart + 9
+      : finding.lineEnd;
 
   return ok({
     id: id.value,
@@ -369,7 +371,7 @@ function projectFinding(
     ...(finding.lineStart === undefined
       ? {}
       : { lineStart: finding.lineStart }),
-    ...(finding.lineEnd === undefined ? {} : { lineEnd: finding.lineEnd }),
+    ...(lineEnd === undefined ? {} : { lineEnd }),
     ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }),
     explanation: finding.explanation,
     ...(finding.suggestedComment === undefined
