@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GeneratedMarkdown } from "../../src/renderer/src/components/generated-markdown";
 
@@ -29,6 +29,26 @@ describe("GeneratedMarkdown", () => {
     expect(container.querySelector("pre code")?.textContent).toContain(
       "space_type === value",
     );
+  });
+
+  it("renders repeated identical tokens without duplicate-key warnings", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(
+      <GeneratedMarkdown
+        markdown={[
+          "Compare `system_suggestion` with `system_suggestion`.",
+          "",
+          "- `same` then `same`",
+        ].join("\n")}
+      />,
+    );
+
+    expect(container.querySelectorAll("code")).toHaveLength(4);
+    const warnings = error.mock.calls.filter(([message]) =>
+      String(message).includes("same key"),
+    );
+    expect(warnings).toHaveLength(0);
+    error.mockRestore();
   });
 
   it("does not activate links, images, or raw HTML", () => {

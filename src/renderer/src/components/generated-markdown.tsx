@@ -47,8 +47,8 @@ function lexSafely(markdown: string): TokensList {
 function renderBlocks(
   tokens: ReadonlyArray<Token>,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token) => {
-    const key = tokenKey(token);
+  return tokens.map((token, index) => {
+    const key = tokenKey(token, index);
     switch (token.type) {
       case "space":
         return null;
@@ -149,8 +149,8 @@ function renderBlocks(
 function renderInline(
   tokens: ReadonlyArray<Token>,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token) => {
-    const key = tokenKey(token);
+  return tokens.map((token, index) => {
+    const key = tokenKey(token, index);
     switch (token.type) {
       case "text":
       case "escape":
@@ -184,9 +184,11 @@ function renderInline(
   });
 }
 
-/** Provides React with the parsed source identity for a Markdown token. */
-function tokenKey(token: Token): string {
-  return `${token.type}-${token.raw}`;
+// Keys must be unique among siblings; repeated token text (e.g. two identical
+// codespans) would otherwise collide, so the position in the stream is part
+// of the key.
+function tokenKey(token: Token, index: number): string {
+  return `${token.type}-${index}`;
 }
 
 function tokensOf(token: Token): ReadonlyArray<Token> {
