@@ -357,6 +357,71 @@ describe("StorageManagementService", () => {
       expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
     });
 
+    it("keeps an orphaned session younger than 14 days", async () => {
+      const value = await fixture({ sessions: [session] });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a session exactly 14 days old", async () => {
+      const value = await fixture({
+        sessions: [
+          {
+            ...session,
+            updatedAt: "2026-07-18T00:00:00.000Z",
+          } as unknown as ReviewSession,
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a quarantine entry exactly 30 days old", async () => {
+      const value = await fixture({
+        quarantined: [
+          {
+            entryName: "x",
+            quarantinedAt: "2026-07-02T00:00:00.000Z",
+          },
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeQuarantined).not.toHaveBeenCalled();
+    });
+
+    it("continues past a running-state check failure", async () => {
+      const value = await fixture({
+        sessions: [oldSession],
+        reviewLoader: () => err({ reason: "io" } as never),
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("continues past a quarantine removal failure", async () => {
+      const value = await fixture({
+        removeQuarantinedErrors: 1,
+        quarantined: [
+          {
+            entryName: "x",
+            quarantinedAt: "2026-07-01T00:00:00.000Z",
+          },
+        ],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.removeQuarantined).toHaveBeenCalledWith(profileId, "x");
+    });
+
     it("removes a quarantine entry older than 30 days", async () => {
       const value = await fixture({
         quarantined: [
@@ -431,6 +496,33 @@ describe("StorageManagementService", () => {
           category: "cleanup",
           phase: "retention_sweep",
           sessionId,
+        }),
+      );
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "cleanup",
+          phase: "retention_sweep",
+          detail: expect.stringContaining("sweep complete"),
+        }),
+      );
+    });
+
+    it("records retryable failures", async () => {
+      const record = vi.fn(async () => ok(undefined));
+      const value = await fixture({
+        removeSessionErrors: 1,
+        sessions: [oldSession],
+        diagnostics: { record },
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "cleanup",
+          phase: "retention_sweep",
+          sessionId,
+          retryable: true,
         }),
       );
     });

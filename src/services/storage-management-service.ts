@@ -273,23 +273,20 @@ export class StorageManagementService {
   ): Promise<Result<undefined, StorageManagementFailure>> {
     const at = now ?? this.deps.now();
     return await this.lifecycleGate.withProfileLock(profileId, async () => {
-      const scanned = await this.deps.sessions.listSessions(profileId);
-      if (scanned._tag === "err") return err({ _tag: "StorageUnavailable" });
-      const sessionOutcomes = await Promise.allSettled(
-        scanned.value.map((session) =>
+      const [scanned, quarantined] = await Promise.all([
+        this.deps.sessions.listSessions(profileId),
+        this.deps.artifacts.listQuarantined(profileId),
+      ]);
+      if (scanned._tag === "err" || quarantined._tag === "err")
+        return err({ _tag: "StorageUnavailable" });
+      const [removedSessions, removedQuarantined] = await Promise.all([
+        mapSettled(scanned.value, SWEEP_CONCURRENCY, (session) =>
           this.sweepOneSession(profileId, session, at),
         ),
-      );
-      const removedSessions = countFulfilled(sessionOutcomes);
-      const quarantined = await this.deps.artifacts.listQuarantined(profileId);
-      if (quarantined._tag === "err")
-        return err({ _tag: "StorageUnavailable" });
-      const quarantineOutcomes = await Promise.allSettled(
-        quarantined.value.map((entry) =>
+        mapSettled(quarantined.value, SWEEP_CONCURRENCY, (entry) =>
           this.sweepOneQuarantine(profileId, entry, at),
         ),
-      );
-      const removedQuarantined = countFulfilled(quarantineOutcomes);
+      ]);
       await this.recordSweepDiagnostic(
         profileId,
         undefined,
@@ -314,6 +311,7 @@ export class StorageManagementService {
         profileId,
         session.id,
         "running-state check failed",
+        true,
       );
       return false;
     }
@@ -327,10 +325,13 @@ export class StorageManagementService {
         profileId,
         session.id,
         "review load failed",
+        true,
       );
       return false;
     }
-    const orphaned = review._tag === "err";
+    const orphaned =
+      review._tag === "err" &&
+      isOlderThan(session.updatedAt, at, RETAIN_TERMINAL_SESSIONS_MS);
     const terminalAndOld =
       review._tag === "ok" &&
       review.value.status._tag === "Terminal" &&
@@ -345,6 +346,7 @@ export class StorageManagementService {
         profileId,
         session.id,
         "session removal failed",
+        true,
       );
       return false;
     }
@@ -376,6 +378,7 @@ export class StorageManagementService {
         profileId,
         undefined,
         `quarantine removal failed: ${entry.entryName}`,
+        true,
       );
       return false;
     }
@@ -391,6 +394,7 @@ export class StorageManagementService {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId | undefined,
     detail: string,
+    retryable = false,
   ): Promise<void> {
     if (this.deps.diagnostics === undefined) return;
     await this.deps.diagnostics.record({
@@ -398,7 +402,7 @@ export class StorageManagementService {
       category: "cleanup",
       phase: "retention_sweep",
       ...(sessionId === undefined ? {} : { sessionId }),
-      retryable: false,
+      retryable,
       detail,
     });
   }
@@ -412,13 +416,33 @@ function isOlderThan(
   return Date.parse(timestamp) < Date.parse(now) - windowMs;
 }
 
-function countFulfilled(
-  outcomes: ReadonlyArray<PromiseSettledResult<boolean>>,
-): number {
-  return outcomes.filter(
-    (outcome) => outcome.status === "fulfilled" && outcome.value,
-  ).length;
+/** Bounded parallel map; per-item rejections count as false, never throw. */
+async function mapSettled<T>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  map: (item: T) => Promise<boolean>,
+): Promise<number> {
+  const values: Array<boolean> = [];
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const item = items[index];
+    if (item === undefined) return;
+    try {
+      values[index] = await map(item);
+    } catch {
+      values[index] = false;
+    }
+    return worker();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return values.filter((value) => value).length;
 }
+
+const SWEEP_CONCURRENCY = 8;
 
 function projectSession(
   session: ReviewSession,

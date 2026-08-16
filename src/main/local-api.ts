@@ -1029,7 +1029,7 @@ export async function startLocalApiServer(
     configuredProfiles.value,
     storageManagement,
     configuration.retentionSweep ?? false,
-    configuration.diagnostics,
+    diagnostics,
   );
 
   return {
