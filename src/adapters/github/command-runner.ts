@@ -93,18 +93,30 @@ export class CommandRunner {
   }
 }
 
-class NodeCommandExecutor implements CommandExecutor {
+/**
+ * Spawns real OS processes. `discover` and `spawnProcess` are constructor-injectable
+ * so tests can supply a faithful fake seam instead of mocking `node:child_process`
+ * or the executable-discovery module.
+ */
+export class NodeCommandExecutor implements CommandExecutor {
+  constructor(
+    private readonly discover: (
+      executable: string,
+    ) => Promise<string | undefined> = discoverExecutable,
+    private readonly spawnProcess: typeof spawn = spawn,
+  ) {}
+
   async execute(input: CommandRequest): Promise<CommandExecution> {
     const executable = input.argv[0];
     if (executable === undefined) return { _tag: "Unavailable" };
-    const resolvedExecutable = await discoverExecutable(executable);
+    const resolvedExecutable = await this.discover(executable);
     if (resolvedExecutable === undefined || input.signal?.aborted) {
       return { _tag: "Unavailable" };
     }
 
     return new Promise((resolve) => {
       const cwdField = input.cwd === undefined ? {} : { cwd: input.cwd };
-      const child = spawn(resolvedExecutable, input.argv.slice(1), {
+      const child = this.spawnProcess(resolvedExecutable, input.argv.slice(1), {
         ...cwdField,
         shell: false,
         detached: process.platform !== "win32",
@@ -190,7 +202,6 @@ function classifyExecution(
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
   if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
   if (execution.exitCode === 0) return undefined;
-  if (isForbiddenFailure(execution.stderr)) return { _tag: "CommandForbidden" };
   if (isAuthenticationFailure(execution.stderr)) {
     return { _tag: "CommandAuthenticationRequired" };
   }
@@ -200,8 +211,12 @@ function classifyExecution(
   }
   if (isUnsupportedFailure(execution.stderr))
     return { _tag: "CommandUnsupported" };
+  // GitHub's primary rate limit responds with HTTP 403, which also matches
+  // isForbiddenFailure's bare `\b403\b`; check rate-limit wording first so a
+  // 403 rate-limit response classifies as CommandRateLimited, not CommandForbidden.
   if (isRateLimitFailure(execution.stderr))
     return { _tag: "CommandRateLimited" };
+  if (isForbiddenFailure(execution.stderr)) return { _tag: "CommandForbidden" };
   if (isRuntimeFailure(execution.stderr))
     return { _tag: "CommandRuntimeUnavailable" };
   return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
