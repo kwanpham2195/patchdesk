@@ -74,6 +74,23 @@ const logs = new AppLogService(PatchdeskPaths.default(), {
   stdoutMirror:
     !app.isPackaged || process.argv.includes("--patchdesk-tail-logs"),
 });
+/**
+ * Fired by CommandRunner when a nonzero-exit failure matches neither a
+ * structured signal nor any regex predicate — a genuinely unclassified
+ * failure worth a human noticing (gh wording drift, a new failure shape).
+ * AppLogService.write already masks credential shapes and bounds message
+ * length; no separate redaction path is built here.
+ */
+function logUnclassifiedCommandFailure(stderr: string): void {
+  logs.write({
+    process: "main",
+    level: "warn",
+    topic: "command-runner",
+    message: "unclassified command failure",
+    meta: { stderr },
+  });
+}
+
 const diagnostics = new ReviewDiagnosticService(
   PatchdeskPaths.default(),
   () => new Date().toISOString(),
@@ -200,7 +217,7 @@ function createInsightCoordinator(
     runtime === undefined
       ? undefined
       : new FlueInsightChildInvoker(
-          new CommandRunner(),
+          new CommandRunner(undefined, logUnclassifiedCommandFailure),
           runtime.root,
           process.execPath,
           runtime.runnerPath,
@@ -208,7 +225,10 @@ function createInsightCoordinator(
   const readHead = async (
     worktreePath: string,
   ): Promise<string | undefined> => {
-    const output = await new CommandRunner().runText({
+    const output = await new CommandRunner(
+      undefined,
+      logUnclassifiedCommandFailure,
+    ).runText({
       argv: ["git", "-C", worktreePath, "rev-parse", "HEAD"],
       cwd: worktreePath,
       timeoutMs: 10_000,

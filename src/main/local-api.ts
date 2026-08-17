@@ -294,7 +294,19 @@ export async function startLocalApiServer(
   const logs = configuration.logs ?? new AppLogService(paths);
   app.use("*", logLocalApiRequests(logs));
   app.get("/health", (context) => context.json({ status: "ok" }));
-  const commands = new CommandRunner();
+  const commands = new CommandRunner(undefined, (stderr) => {
+    // Fires only when a nonzero-exit command failure matched neither a
+    // structured signal nor any regex predicate — genuine gh-wording drift
+    // worth a human noticing. AppLogService.write already masks credential
+    // shapes and bounds message length.
+    logs.write({
+      process: "main",
+      level: "warn",
+      topic: "command-runner",
+      message: "unclassified command failure",
+      meta: { stderr },
+    });
+  });
   const github = configuration.github ?? new GitHubAdapter(commands);
   const readOnlyGit = {
     async run(argv: ReadonlyArray<string>) {
