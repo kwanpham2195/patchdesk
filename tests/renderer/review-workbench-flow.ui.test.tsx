@@ -17,9 +17,41 @@ import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workben
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
 
+// A deferred test-control Promise resolver: each call site resolves it with
+// a differently-shaped mocked observation/detection payload, so `unknown`
+// here is the honest type, not an unparsed I/O boundary value.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above
+type DeferredResolve = (value: unknown) => void;
+
+// `request.mock.calls` entries are `[requestInput, ...]` where the mocked
+// `bridge()` is always invoked with `{ path, body? }`; these narrow the
+// otherwise-untyped mock-call argument to read the fields most assertions
+// below need. `body` stays `unknown` on the way out because each test's
+// mocked request carries a differently-shaped body; that is fixture data
+// this generic test helper cannot name, not an unparsed I/O boundary value.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above
+function callPath(input: unknown): string | undefined {
+  // SAFETY: `bridge()`'s mock request is always invoked with an object
+  // carrying at least a `path` string; this narrows the untyped mock-call
+  // argument to read it.
+  return (input as { readonly path?: string } | undefined)?.path;
+}
+function callBody(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above callPath
+  input: unknown,
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above callPath
+): unknown {
+  // SAFETY: same invariant as `callPath` above; `body` is whatever the
+  // calling code constructed for that request.
+  return (input as { readonly body?: unknown } | undefined)?.body;
+}
+
 function projection(
   overrides: Partial<WorkbenchResponse> = {},
 ): WorkbenchResponse {
+  // SAFETY: this literal matches the `WorkbenchResponse` wire shape the
+  // flow under test parses via `parseWorkbenchResponse`; it is fixture
+  // data, not a runtime-decoded value.
   return {
     state: "review",
     review: { id: "review-42", status: "open" },
@@ -39,6 +71,8 @@ function projection(
       currentHeadSha: sha,
       freshness: "fresh",
       refreshedAt: "2026-08-01T00:00:00.000Z",
+      // SAFETY: `patchHash` is a branded hex-digest fixture; `as never`
+      // widens the plain fixture string into the branded PatchHash type.
       patchHash: patchHash as never,
     },
     fullPatch:
@@ -96,12 +130,17 @@ function mount(
   return { replace, patch, view };
 }
 
-function bridge(
-  handler: (input: {
-    readonly path: string;
-    readonly body?: unknown;
-  }) => Promise<unknown> | unknown,
-) {
+// This generic mocked bridge harness intentionally has no fixed response
+// shape: each test's own `handler` decides the JSON per request path, so
+// the echoed value is legitimately whatever that test needs it to be, not
+// a domain type this file could name.
+type BridgeHandler = (input: {
+  readonly path: string;
+  readonly body?: unknown;
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
+}) => Promise<unknown> | unknown;
+
+function bridge(handler: BridgeHandler) {
   const request = vi.fn(
     async (input: { readonly path: string; readonly body?: unknown }) => {
       const body = await handler(input);
@@ -162,6 +201,9 @@ function withAnalysis(
   findingState: "actionable" | "pending_review",
   mappingStatus: "mapped" | "invalid_line" = "mapped",
 ): WorkbenchResponse {
+  // SAFETY: `analysisReviewActions`/`pendingReview` here are wider fixture
+  // shapes than the strict unions `projection()`'s parameter type expects;
+  // this is fixture data, not a runtime-decoded value.
   return projection({
     insights: {
       analysis: {
@@ -291,7 +333,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   it.each(["Reconciled", "RevisionChanged", "Unavailable", "Terminal"])(
     "does not apply a stale direct-summary %s observation after Refresh",
     async (outcome) => {
-      let observe!: (value: unknown) => void;
+      let observe!: DeferredResolve;
       const deferred = new Promise((resolve) => {
         observe = resolve;
       });
@@ -314,6 +356,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         if (input.path === "/v1/reviews/refresh") return refreshed;
         throw new Error(input.path);
       });
+      // SAFETY: `pending("none")` returns a wider fixture shape than the
+      // strict `pendingReview` union; this is test fixture data, not a
+      // runtime-decoded value.
       const { replace, patch } = mount(
         projection({ pendingReview: pending("none") as never }),
       );
@@ -365,7 +410,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   );
 
   it("keeps a confirmed direct-summary receipt visible before deferred observation", async () => {
-    let observe!: (value: unknown) => void;
+    let observe!: DeferredResolve;
     const request = bridge(async (input) => {
       if (input.path === "/v1/reviews/detect-updates")
         return new Promise((resolve) => {
@@ -380,6 +425,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         };
       throw new Error(input.path);
     });
+    // SAFETY: `pending("none")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
     mount(projection({ pendingReview: pending("none") as never }));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Start a review" }));
@@ -418,6 +466,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         return { pendingReview: nextPending };
       throw new Error(input.path);
     });
+    // SAFETY: `pending("none")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
     const { patch } = mount(
       projection({ pendingReview: pending("none") as never }),
     );
@@ -474,7 +525,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
   it("reports write_pending while a pending-review command is in flight", async () => {
     const navigation = vi.fn();
-    let release: (value: unknown) => void = () => undefined;
+    let release: DeferredResolve = () => undefined;
     const gate = new Promise((done) => {
       release = done;
     });
@@ -527,7 +578,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith(projected));
     const commandCall = request.mock.calls.find(
       ([input]) =>
-        (input as { readonly path: string }).path ===
+        callPath(input) ===
         "/v1/reviews/pending-review/command",
     );
     expect(commandCall?.[0]).toMatchObject({
@@ -550,7 +601,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(
       request.mock.calls.filter(
         ([input]) =>
-          (input as { readonly path: string }).path ===
+          callPath(input) ===
           "/v1/reviews/pending-review/command",
       ),
     ).toHaveLength(1);
@@ -576,6 +627,8 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       await screen.findByRole("button", { name: "Finish review" }),
     );
 
+    // SAFETY: the "Final review summary" textbox role is only rendered by a
+    // real <textarea>, so this narrows the generic HTMLElement accessor.
     const summary = screen.getByRole("textbox", {
       name: "Final review summary",
     }) as HTMLTextAreaElement;
@@ -592,14 +645,14 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(
       request.mock.calls.some(
         ([input]) =>
-          (input as { readonly path: string }).path ===
+          callPath(input) ===
           "/v1/reviews/pending-review/command",
       ),
     ).toBe(false);
   });
 
   it("rejects a detector response from a replaced snapshot", async () => {
-    let resolveDetection!: (value: unknown) => void;
+    let resolveDetection!: DeferredResolve;
     const detection = new Promise<unknown>((resolve) => {
       resolveDetection = resolve;
     });
@@ -645,7 +698,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       expect(
         request.mock.calls.filter(
           ([input]) =>
-            (input as { readonly path: string }).path ===
+            callPath(input) ===
             "/v1/reviews/detect-updates",
         ),
       ).toHaveLength(1);
@@ -655,7 +708,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   });
 
   it("delivers a same-generation result to the latest committed callback", async () => {
-    let resolveDetection!: (value: unknown) => void;
+    let resolveDetection!: DeferredResolve;
     const detection = new Promise<unknown>((resolve) => {
       resolveDetection = resolve;
     });
@@ -688,7 +741,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   it("clears scheduled detection and ignores its late response after unmount", async () => {
     vi.useFakeTimers();
     try {
-      let resolveDetection!: (value: unknown) => void;
+      let resolveDetection!: DeferredResolve;
       const detection = new Promise<unknown>((resolve) => {
         resolveDetection = resolve;
       });
@@ -712,7 +765,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   it("pauses detection until all overlapping direct commands complete", async () => {
     vi.useFakeTimers();
     try {
-      const commands: Array<(value: unknown) => void> = [];
+      const commands: Array<DeferredResolve> = [];
       const request = bridge(async (input) => {
         if (input.path === "/v1/reviews/detect-updates")
           return { updatesAvailable: false };
@@ -724,7 +777,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       const detectCount = (): number =>
         request.mock.calls.filter(
           ([input]) =>
-            (input as { readonly path: string }).path ===
+            callPath(input) ===
             "/v1/reviews/detect-updates",
         ).length;
       await vi.advanceTimersByTimeAsync(0);
@@ -800,24 +853,128 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
       await vi.advanceTimersByTimeAsync(90_000);
       expect(
-        request.mock.calls.some(
-          ([input]) =>
-            (
-              input as {
-                readonly path: string;
-                readonly body?: { readonly recentWrites?: unknown };
-              }
-            ).path === "/v1/reviews/detect-updates" &&
-            (input as { readonly body?: { readonly recentWrites?: unknown } })
-              .body?.recentWrites !== undefined,
-        ),
+        request.mock.calls.some(([input]) => {
+          // SAFETY: `callBody` already narrows to `{ body?: unknown }`; a
+          // second narrow here only reads its optional `recentWrites` key.
+          const body = callBody(input) as
+            | { readonly recentWrites?: unknown }
+            | undefined;
+          return (
+            callPath(input) === "/v1/reviews/detect-updates" &&
+            body?.recentWrites !== undefined
+          );
+        }),
       ).toBe(false);
     } finally {
       vi.useRealTimers();
     }
   });
 
+  it("journals a Reply issued from the Conversation tab so detect-updates carries it forward", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { updatesAvailable: false };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return { _tag: "ReplyCreated", commentId: "comment-general-1" };
+        throw new Error(input.path);
+      });
+      // SAFETY: this `conversation` override matches the `GeneralThread`
+      // wire shape the flow parses via `parseWorkbenchResponse`; it is
+      // fixture data, not a runtime-decoded value.
+      mount(
+        projection({
+          conversation: {
+            prDescription: "",
+            entries: [
+              {
+                _tag: "GeneralThread",
+                thread: {
+                  id: "thread-general-1",
+                  state: "open",
+                  complete: true,
+                  comments: [
+                    {
+                      id: "c-general-1",
+                      author: "reviewer",
+                      body: "A general PR comment.",
+                      createdAt: "2026-08-01T00:00:00.000Z",
+                      viewerDidAuthor: true,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        } as never),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      // The Conversation tab is not the default tab; select it explicitly.
+      fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Reply" }), {
+        target: { value: "A general reply" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(
+        request.mock.calls.some(([input]) => {
+          // SAFETY: `bridge()`'s mock request is always invoked with an
+          // object shaped `{ path, body? }`; this narrows the untyped
+          // mock-call argument to read the direct-command fields this
+          // assertion needs.
+          const typed = input as {
+            readonly path: string;
+            readonly body?: {
+              readonly command?: {
+                readonly _tag?: string;
+                readonly threadId?: string;
+              };
+            };
+          };
+          return (
+            typed.path === "/v1/reviews/inline-conversations/command" &&
+            typed.body?.command?._tag === "Reply" &&
+            typed.body.command.threadId === "thread-general-1"
+          );
+        }),
+      ).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(
+        request.mock.calls.some(([input]) => {
+          // SAFETY: same invariant as the `typed` narrow above; this reads
+          // the `recentWrites` journal field a detect-updates request body
+          // may carry.
+          const typed = input as {
+            readonly path: string;
+            readonly body?: {
+              readonly recentWrites?: ReadonlyArray<{
+                readonly _tag?: string;
+                readonly commentId?: string;
+              }>;
+            };
+          };
+          return (
+            typed.path === "/v1/reviews/detect-updates" &&
+            (typed.body?.recentWrites ?? []).some(
+              (write) =>
+                write._tag === "Comment" &&
+                write.commentId === "comment-general-1",
+            )
+          );
+        }),
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("locks unavailable pending state until explicit recovery reloads the Review", async () => {
+    // SAFETY: `pending(...)` returns a wider fixture shape than the strict
+    // `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
     const reloaded = projection({ pendingReview: pending("none") as never });
     const request = bridge(async (input) =>
       input.path === "/v1/reviews/detect-updates"
@@ -828,6 +985,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
             ? reloaded
             : Promise.reject(new Error(input.path)),
     );
+    // SAFETY: `pending(...)` returns a wider fixture shape than the strict
+    // `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
     const { replace } = mount(
       projection({ pendingReview: pending("unavailable") as never }),
     );
@@ -848,6 +1008,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
   it("hides Review writes after a terminal remote state", () => {
     bridge(async () => ({ updatesAvailable: false }));
+    // SAFETY: `pending(...)` returns a wider fixture shape than the strict
+    // `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
     mount(
       projection({
         review: { id: "review-42", status: "merged" },
@@ -864,6 +1027,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   });
 
   it("uses merge recovery alone for an uncertain merge", async () => {
+    // SAFETY: `mergeReasons` here is a wider fixture shape than the strict
+    // union `projection()`'s parameter type expects; this is fixture data,
+    // not a runtime-decoded value.
     const uncertain = projection({
       mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
       mergeReasons: [
@@ -895,7 +1061,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     );
     expect(
       request.mock.calls.filter(
-        ([call]) => (call as { path: string }).path === "/v1/reviews/merge",
+        ([call]) => callPath(call) === "/v1/reviews/merge",
       ),
     ).toHaveLength(1);
   });

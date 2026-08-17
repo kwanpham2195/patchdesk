@@ -50,6 +50,10 @@ import type {
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
 } from "./review-diff-view";
+import type {
+  ConversationThreadCardData,
+  ReviewConversationActions,
+} from "./conversation-thread-card";
 import {
   CanonicalReviewOverviewSheet,
   type CanonicalReviewOverview,
@@ -78,6 +82,97 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+
+/** Mutable draft of `ConversationThreadCardData`, built in statements so
+ * each optional callback is added only when its action is wired, instead of
+ * a conditional empty-object spread. */
+type MutableConversationThreadCardData = {
+  -readonly [K in keyof ConversationThreadCardData]: ConversationThreadCardData[K];
+};
+/** Mutable draft of `ReviewConversationActions`. */
+type MutableReviewConversationActions = {
+  -readonly [K in keyof ReviewConversationActions]: ReviewConversationActions[K];
+};
+/** The subset of `Conversation`'s props built conditionally, so the
+ * `conversationActions` prop is only added (never spread from a conditional
+ * empty object) when at least one direct-conversation action is wired. */
+type ConversationTabProps = {
+  conversationActions?: ReviewConversationActions;
+};
+
+/** Mutable draft of `CanonicalReviewOverview`, built in statements so each
+ * optional field is added only when it has a value, instead of a
+ * conditional empty-object spread. */
+type MutableCanonicalReviewOverview = {
+  -readonly [K in keyof CanonicalReviewOverview]: CanonicalReviewOverview[K];
+};
+/** Mutable draft of `CanonicalReviewOverview["revision"]`. */
+type MutableCanonicalReviewOverviewRevision = {
+  baseBranch?: string;
+  headBranch?: string;
+  reviewedHeadSha: string;
+  currentHeadSha?: string;
+  freshness: "fresh" | "updates_available" | "unavailable" | "not_refreshed";
+  refreshedAt: string;
+  commitCount?: number;
+  fileCount?: number;
+};
+
+/** Direct conversation actions for both `<Conversation>` (the Conversation
+ * tab) and the diff view, derived from the same underlying `actions` so
+ * Reply/Resolve/Edit/Delete wiring never drifts between the two surfaces.
+ * The diff view additionally only wires them when `selectedCommitSha` is
+ * unset (viewing the full Review diff, not one commit's slice); the
+ * Conversation tab is independent of that selection. */
+type DirectConversationActionProps = {
+  readonly conversationTabProps: ConversationTabProps;
+  readonly diffConversationActions: MutableReviewConversationActions | undefined;
+};
+function directConversationActionProps(
+  actions: Pick<
+    ReviewWorkbenchActions,
+    "setThreadState" | "replyToThread" | "editComment" | "deleteComment"
+  >,
+  selectedCommitSha: string | undefined,
+): DirectConversationActionProps {
+  const hasAnyAction =
+    actions.setThreadState !== undefined ||
+    actions.replyToThread !== undefined ||
+    actions.editComment !== undefined ||
+    actions.deleteComment !== undefined;
+  const conversationActionsForTab: MutableReviewConversationActions | undefined =
+    hasAnyAction ? {} : undefined;
+  if (conversationActionsForTab !== undefined) {
+    if (actions.setThreadState !== undefined)
+      conversationActionsForTab.setThreadState = actions.setThreadState;
+    if (actions.replyToThread !== undefined)
+      conversationActionsForTab.replyToThread = actions.replyToThread;
+    if (actions.editComment !== undefined)
+      conversationActionsForTab.editComment = actions.editComment;
+    if (actions.deleteComment !== undefined)
+      conversationActionsForTab.deleteComment = actions.deleteComment;
+  }
+  // `exactOptionalPropertyTypes` treats `conversationActions={undefined}` as
+  // distinct from omitting the prop, so the prop itself is only added here
+  // (never spread from a conditional empty-object).
+  const conversationTabProps: ConversationTabProps = {};
+  if (conversationActionsForTab !== undefined)
+    conversationTabProps.conversationActions = conversationActionsForTab;
+
+  const diffConversationActions: MutableReviewConversationActions | undefined =
+    selectedCommitSha === undefined && hasAnyAction ? {} : undefined;
+  if (diffConversationActions !== undefined) {
+    if (actions.setThreadState !== undefined)
+      diffConversationActions.setThreadState = actions.setThreadState;
+    if (actions.replyToThread !== undefined)
+      diffConversationActions.replyToThread = actions.replyToThread;
+    if (actions.editComment !== undefined)
+      diffConversationActions.editComment = actions.editComment;
+    if (actions.deleteComment !== undefined)
+      diffConversationActions.deleteComment = actions.deleteComment;
+  }
+  return { conversationTabProps, diffConversationActions };
+}
 
 function pullRequestExternalRef(
   model: WorkbenchResponse,
@@ -158,14 +253,16 @@ function createCommitCommentAuthoring(
         side: mapped.side,
       };
       const fingerprint = fingerprintPatchAnchor(fullPatch, anchor);
-      await base.onSave({
+      const payload = {
         ...input,
         path: mapped.path,
         startLine,
         line: mapped.line,
         side: mapped.side,
-        ...(fingerprint === undefined ? {} : { fingerprint }),
-      });
+      };
+      await base.onSave(
+        fingerprint === undefined ? payload : { ...payload, fingerprint },
+      );
     },
   };
 }
@@ -262,6 +359,12 @@ export function useReviewWorkbenchNavigation(): (() => void) | undefined {
 }
 
 /** Renders the canonical Review projection. Optional work stays in typed slots. */
+// Pre-existing giant component (~850 lines before this change;
+// `react-doctor --scope changed --base main` reports zero new issues here).
+// Splitting it is the renderer god-file refactor the project's own plans
+// explicitly defer to dedicated, separately-scoped work, not a fix this
+// small feature change should take on.
+// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function ReviewWorkbench({
   model,
   actions,
@@ -354,13 +457,12 @@ export function ReviewWorkbench({
       setActiveTab(next.activeTab);
       setSection(next.section);
       setSelectedPath(next.selectedPath);
-      onPositionCommitted?.({
-        activeTab: next.activeTab,
-        section: next.section,
-        ...(next.selectedPath === undefined || next.selectedPath.endsWith("/")
-          ? {}
-          : { selectedPath: next.selectedPath }),
-      });
+      const position = { activeTab: next.activeTab, section: next.section };
+      onPositionCommitted?.(
+        next.selectedPath === undefined || next.selectedPath.endsWith("/")
+          ? position
+          : { ...position, selectedPath: next.selectedPath },
+      );
     },
     [onPositionCommitted],
   );
@@ -425,13 +527,15 @@ export function ReviewWorkbench({
     },
     [model.session.key.profileId],
   );
-  const commitDiffState = useCommitDiff({
-    ...(selectedCommitSha === undefined
-      ? {}
-      : { selectedSha: selectedCommitSha }),
+  const commitDiffOptions = {
     revisionKey: model.revision.reviewedHeadSha,
     loadCommitDiff: actions.loadCommitDiff,
-  });
+  };
+  const commitDiffState = useCommitDiff(
+    selectedCommitSha === undefined
+      ? commitDiffOptions
+      : { ...commitDiffOptions, selectedSha: selectedCommitSha },
+  );
   const commitCommentAuthoring = useMemo(
     () =>
       selectedCommitSha === undefined || model.fullPatch === undefined
@@ -459,6 +563,21 @@ export function ReviewWorkbench({
         // through an id the mutation layer accepts.
         const parsedThreadId = parseGitHubThreadId(thread.id);
         if (parsedThreadId._tag === "err") return [];
+        const conversationThread: MutableConversationThreadCardData = {
+          target: { _tag: "thread" as const, id: parsedThreadId.value },
+          state: thread.state,
+          comments: thread.comments,
+        };
+        if (thread.complete !== undefined)
+          conversationThread.complete = thread.complete;
+        if (actions.setThreadState !== undefined)
+          conversationThread.onSetState = actions.setThreadState;
+        if (actions.replyToThread !== undefined)
+          conversationThread.onReply = actions.replyToThread;
+        if (actions.editComment !== undefined)
+          conversationThread.onEditComment = actions.editComment;
+        if (actions.deleteComment !== undefined)
+          conversationThread.onDeleteComment = actions.deleteComment;
         return [
           {
             id: `conversation:${thread.id}`,
@@ -469,26 +588,7 @@ export function ReviewWorkbench({
             severity: "conversation",
             title: "Conversation",
             explanation: "",
-            conversationThread: {
-              target: { _tag: "thread" as const, id: parsedThreadId.value },
-              state: thread.state,
-              ...(thread.complete === undefined
-                ? {}
-                : { complete: thread.complete }),
-              comments: thread.comments,
-              ...(actions.setThreadState === undefined
-                ? {}
-                : { onSetState: actions.setThreadState }),
-              ...(actions.replyToThread === undefined
-                ? {}
-                : { onReply: actions.replyToThread }),
-              ...(actions.editComment === undefined
-                ? {}
-                : { onEditComment: actions.editComment }),
-              ...(actions.deleteComment === undefined
-                ? {}
-                : { onDeleteComment: actions.deleteComment }),
-            },
+            conversationThread,
           },
         ];
       });
@@ -567,53 +667,45 @@ export function ReviewWorkbench({
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const externalPullRequest = pullRequestExternalRef(model);
-  const overview: CanonicalReviewOverview = {
+  const overviewRevision: MutableCanonicalReviewOverviewRevision = {
+    reviewedHeadSha: model.revision.reviewedHeadSha,
+    freshness: model.revision.freshness,
+    refreshedAt: model.revision.refreshedAt,
+    commitCount: model.commits.length,
+  };
+  if (model.pullRequest !== undefined) {
+    overviewRevision.baseBranch = model.pullRequest.baseBranch;
+    overviewRevision.headBranch = model.pullRequest.headBranch;
+  }
+  if (model.revision.currentHeadSha !== undefined)
+    overviewRevision.currentHeadSha = model.revision.currentHeadSha;
+  if (model.pullRequest?.changedFileCount !== undefined)
+    overviewRevision.fileCount = model.pullRequest.changedFileCount;
+  const overview: MutableCanonicalReviewOverview = {
     repository,
     prNumber: model.session.key.prNumber,
     title,
-    ...(model.pullRequest?.description === undefined
-      ? {}
-      : { description: model.pullRequest.description }),
     summary:
       retainedAnalysis?.value.summary ??
       "No retained Analysis is available for this snapshot.",
-    // The validated projection is structurally identical to the domain shapes;
-    // valibot's optional fields carry an explicit undefined that the strict
-    // domain types reject, so the overview adopts them at this renderer seam.
-    // GitHubThreadId is a branded string the projection schema cannot produce,
-    // so comments need the explicit double cast; runtime validation already ran.
+    // SAFETY: the validated projection is structurally identical to the
+    // domain shapes; valibot's optional fields carry an explicit undefined
+    // that the strict domain types reject, so the overview adopts them at
+    // this renderer seam. Runtime validation already ran on `model.checks`.
     checks: model.checks as CheckSummary,
     mergeReadiness: model.mergeReadiness,
     mergeReasons: model.mergeReasons ?? [],
-    ...(externalPullRequest === undefined
-      ? {}
-      : { pullRequest: externalPullRequest }),
-    revision: {
-      ...(model.pullRequest === undefined
-        ? {}
-        : {
-            baseBranch: model.pullRequest.baseBranch,
-            headBranch: model.pullRequest.headBranch,
-          }),
-      reviewedHeadSha: model.revision.reviewedHeadSha,
-      ...(model.revision.currentHeadSha === undefined
-        ? {}
-        : { currentHeadSha: model.revision.currentHeadSha }),
-      freshness: model.revision.freshness,
-      refreshedAt: model.revision.refreshedAt,
-      commitCount: model.commits.length,
-      ...(model.pullRequest?.changedFileCount === undefined
-        ? {}
-        : { fileCount: model.pullRequest.changedFileCount }),
-    },
+    revision: overviewRevision,
     insights: {
       analysis: { status: model.insights.analysis.status },
       walkthrough: { status: model.insights.walkthrough.status },
     },
-    ...(model.review.status === "open"
-      ? {}
-      : { terminalState: model.review.status }),
   };
+  if (model.pullRequest?.description !== undefined)
+    overview.description = model.pullRequest.description;
+  if (externalPullRequest !== undefined)
+    overview.pullRequest = externalPullRequest;
+  if (model.review.status !== "open") overview.terminalState = model.review.status;
   const commitHeader =
     selectedCommit === undefined || commitDiff === undefined
       ? undefined
@@ -643,6 +735,9 @@ export function ReviewWorkbench({
     region.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     region.focus({ preventScroll: true });
   }, []);
+
+  const { conversationTabProps, diffConversationActions } =
+    directConversationActionProps(actions, selectedCommitSha);
 
   return (
     <ReviewWorkbenchNavigationContext.Provider value={navigateToFiles}>
@@ -799,7 +894,10 @@ export function ReviewWorkbench({
             data-review-workbench-content
           >
             {activeTab === "conversation" ? (
-              <Conversation conversation={model.conversation} />
+              <Conversation
+                conversation={model.conversation}
+                {...conversationTabProps}
+              />
             ) : activeTab === "diff" ? (
               <div className="min-h-0 flex-1 overflow-hidden">
                 {model.fullPatch === undefined ? (
@@ -929,35 +1027,9 @@ export function ReviewWorkbench({
                                   pendingReviewComposer:
                                     actions.pendingReviewComposer,
                                 })}
-                            {...(selectedCommitSha === undefined &&
-                            (actions.setThreadState !== undefined ||
-                              actions.replyToThread !== undefined ||
-                              actions.editComment !== undefined ||
-                              actions.deleteComment !== undefined)
-                              ? {
-                                  conversationActions: {
-                                    ...(actions.setThreadState === undefined
-                                      ? {}
-                                      : {
-                                          setThreadState:
-                                            actions.setThreadState,
-                                        }),
-                                    ...(actions.replyToThread === undefined
-                                      ? {}
-                                      : {
-                                          replyToThread: actions.replyToThread,
-                                        }),
-                                    ...(actions.editComment === undefined
-                                      ? {}
-                                      : { editComment: actions.editComment }),
-                                    ...(actions.deleteComment === undefined
-                                      ? {}
-                                      : {
-                                          deleteComment: actions.deleteComment,
-                                        }),
-                                  },
-                                }
-                              : {})}
+                            {...(diffConversationActions === undefined
+                              ? {}
+                              : { conversationActions: diffConversationActions })}
                             hideFileNavigation
                             surfaceAction={undefined}
                             {...(commitHeader === undefined
@@ -1238,16 +1310,17 @@ function formatRelativeTime(value: string): string {
   return relativeTimeFormatter.format(seconds, "second");
 }
 
-const checksColors: Record<string, string> = {
-  passing: "border-green-300 bg-green-50 text-green-800",
-  failing: "border-red-300 bg-red-50 text-red-800",
-  pending: "border-amber-300 bg-amber-50 text-amber-800",
-};
 function checksPillColor(overall: string): string {
-  return (
-    checksColors[overall] ??
-    "border-muted-foreground/20 bg-muted/30 text-muted-foreground"
-  );
+  switch (overall) {
+    case "passing":
+      return "border-green-300 bg-green-50 text-green-800";
+    case "failing":
+      return "border-red-300 bg-red-50 text-red-800";
+    case "pending":
+      return "border-amber-300 bg-amber-50 text-amber-800";
+    default:
+      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
+  }
 }
 function checksIcon(overall: string): React.JSX.Element {
   switch (overall) {
@@ -1262,16 +1335,17 @@ function checksIcon(overall: string): React.JSX.Element {
   }
 }
 
-const mergeColors: Record<string, string> = {
-  Ready: "border-green-300 bg-green-50 text-green-800",
-  NeedsAcknowledgement: "border-amber-300 bg-amber-50 text-amber-800",
-  Blocked: "border-red-300 bg-red-50 text-red-800",
-};
 function mergePillColor(tag: string): string {
-  return (
-    mergeColors[tag] ??
-    "border-muted-foreground/20 bg-muted/30 text-muted-foreground"
-  );
+  switch (tag) {
+    case "Ready":
+      return "border-green-300 bg-green-50 text-green-800";
+    case "NeedsAcknowledgement":
+      return "border-amber-300 bg-amber-50 text-amber-800";
+    case "Blocked":
+      return "border-red-300 bg-red-50 text-red-800";
+    default:
+      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
+  }
 }
 function mergeIcon(tag: string): React.JSX.Element {
   switch (tag) {

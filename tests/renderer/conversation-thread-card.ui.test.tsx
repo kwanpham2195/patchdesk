@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConversationThreadCard } from "../../src/renderer/src/components/review-diff-view";
+import { ConversationThreadCard } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 
 afterEach(() => cleanup());
@@ -199,6 +199,8 @@ describe("ConversationThreadCard", () => {
     if (editor === undefined) throw new Error("Expected a reply edit editor");
     await user.clear(editor);
     await user.type(editor, "Edited reply");
+    // SAFETY: the reply row's edit mode above already asserted a "Save"
+    // button renders, so this list is non-empty and `.at(-1)` is defined.
     await user.click(
       screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement,
     );
