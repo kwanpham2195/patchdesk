@@ -19,7 +19,8 @@ Before starting any task, make sure the dev log tails are live in herdr:
 
 Verification commands:
 
-- `pnpm lint`: Oxlint with no warnings.
+- `pnpm lint`: Oxlint; still red during the anti-slop migration (see below).
+- `pnpm lint:staged`: oxlint --fix over staged files only; the commit gate.
 - `pnpm typecheck`: TypeScript checks.
 - `pnpm test -- --run`: Vitest unit and integration suite.
 - `pnpm build`: builds the main process, preload, and renderer.
@@ -27,11 +28,28 @@ Verification commands:
 
 For desktop or renderer changes, run those commands in that order. Package and smoke-test only when package-specific proof is requested.
 
-The pre-commit hook runs a blocking React Doctor scan on staged files
-(`pnpm precommit`). If it blocks a commit, fix the reported warning; do not
-disable or retune the rule to make the commit pass.
+The pre-commit hook (`pnpm precommit`) runs a blocking React Doctor scan on
+staged files, then `pnpm lint:staged` (oxlint --fix over staged files). If it
+blocks, fix the reported finding; do not disable or retune rules to make the
+commit pass. Anti-slop rules are not auto-fixable: fix the file's findings,
+then re-stage. `doctor.config.json` ignores the vendored plugin and installed
+skills from the React Doctor scan.
 
 For live verification of the running app, use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) — never substitute a build, unit test, or static inspection for live app checks, and keep live checks read-only.
+
+## Anti-slop migration
+
+Vendored at `tools/oxlint/anti-slop/` (15 rules; `@oxlint/plugins` devDep),
+enabled at "error" in `.oxlintrc.json`. Migration plan and rule-by-rule
+progress: `.agents/PLANS/2026-08-16-anti-slop-migration.md`. Reinstall/update
+from the bundled skill at `.agents/skills/install-anti-slop/` (upstream
+dmmulroy/anti-slop).
+
+Policy: fix findings honestly; never launder types to pass lint (no `as
+unknown` tricks, no faked SAFETY comments, no severity weakening). Genuine I/O
+boundaries keep `unknown` via targeted per-file overrides in `.oxlintrc.json`
+with a comment stating the boundary contract. Prefer `satisfies`, inference,
+and boundary parsing when resolving findings.
 
 ## Code and Testing Conventions
 
