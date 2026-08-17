@@ -84,6 +84,8 @@ export class CommandRunner {
     if (text._tag === "err") return text;
 
     try {
+      // SAFETY: JSON.parse's return type is `any`; this cast only narrows it to
+      // `unknown` so callers must validate the shape before trusting it.
       return ok(JSON.parse(text.value) as unknown);
     } catch {
       return err({ _tag: "CommandInvalidJson" });
@@ -101,8 +103,9 @@ class NodeCommandExecutor implements CommandExecutor {
     }
 
     return new Promise((resolve) => {
+      const cwdField = input.cwd === undefined ? {} : { cwd: input.cwd };
       const child = spawn(resolvedExecutable, input.argv.slice(1), {
-        ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+        ...cwdField,
         shell: false,
         detached: process.platform !== "win32",
         env:
