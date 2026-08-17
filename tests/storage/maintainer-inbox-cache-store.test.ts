@@ -156,6 +156,11 @@ describe("maintainer inbox cache store", () => {
   it("rejects credential-like data before writing the cache", async () => {
     const { store, profileId } = await fixtureStore();
     expect(
+      // SAFETY: test fixture deliberately adds a `note` field outside
+      // MaintainerInboxCache's declared shape to prove save() rejects a
+      // credential-like value even when it rides along on an otherwise
+      // valid cache payload; `as never` only bypasses the compile-time
+      // shape check for this intentionally-invalid fixture.
       await store.save(profileId, {
         schemaVersion: 1,
         refreshedAt: updatedAt,
