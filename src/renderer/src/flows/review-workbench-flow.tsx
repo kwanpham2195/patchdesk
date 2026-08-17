@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import * as v from "valibot";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
@@ -70,6 +71,11 @@ import { projectReadOnlyConversationAnnotations } from "../inline-conversation-m
 const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
+});
+
+/** Shallow envelope shape for a command response that may carry a pending-review projection; the nested field's own deep validation happens in `parsePendingReviewProjection`. */
+const pendingReviewEnvelopeSchema = v.looseObject({
+  pendingReview: v.optional(v.unknown()),
 });
 
 function boundedPendingReviewError(cause: unknown): string {
@@ -194,6 +200,14 @@ export type ReviewWorkbenchFlowProps = {
 };
 
 /** Owns loopback calls and replacement of the one canonical Review projection. */
+// Pre-existing giant component (over 1250 lines before this change; verified
+// via an isolated `--staged` scan of main's unmodified file, which still
+// flags it, and `react-doctor --scope changed` against this plan's full diff,
+// which reports zero new issues here). Splitting it is the renderer god-file
+// refactor the project's own plans explicitly defer to dedicated,
+// separately-scoped work (see the plans' "Findings Considered And Rejected"
+// notes on `review-workbench-flow.tsx`), not a fix this plan should take on.
+// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function ReviewWorkbenchFlow({
   workbench,
   initialSection,
@@ -290,13 +304,16 @@ export function ReviewWorkbenchFlow({
     const key = snapshotKey(wb);
     try {
       const journal = recentWritesRef.current;
+      const detectUpdatesBody = {
+        profileId: wb.session.key.profileId,
+        reviewId: wb.review.id,
+      };
       const value = await requestJson("/v1/reviews/detect-updates", {
         method: "POST",
-        body: {
-          profileId: wb.session.key.profileId,
-          reviewId: wb.review.id,
-          ...(journal.length === 0 ? {} : { recentWrites: journal }),
-        },
+        body:
+          journal.length === 0
+            ? detectUpdatesBody
+            : { ...detectUpdatesBody, recentWrites: journal },
       });
       // A detector that began before an explicit refresh replaced the
       // projection must not reapply its result to the new snapshot.
@@ -545,15 +562,15 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseDirectConversationReceipt(value);
       if (receipt?._tag === "CommentCreated") {
+        const commentWrite = {
+          _tag: "Comment" as const,
+          commentId: receipt.commentId,
+        };
         setRecentWrites((current) => [
           ...current,
-          {
-            _tag: "Comment",
-            commentId: receipt.commentId,
-            ...(receipt.reviewId === undefined
-              ? {}
-              : { reviewId: receipt.reviewId }),
-          },
+          receipt.reviewId === undefined
+            ? commentWrite
+            : { ...commentWrite, reviewId: receipt.reviewId },
         ]);
         return { commentId: receipt.commentId };
       }
@@ -628,15 +645,15 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseDirectConversationReceipt(value);
       if (receipt?._tag === "ReplyCreated") {
+        const commentWrite = {
+          _tag: "Comment" as const,
+          commentId: receipt.commentId,
+        };
         setRecentWrites((current) => [
           ...current,
-          {
-            _tag: "Comment",
-            commentId: receipt.commentId,
-            ...(receipt.reviewId === undefined
-              ? {}
-              : { reviewId: receipt.reviewId }),
-          },
+          receipt.reviewId === undefined
+            ? commentWrite
+            : { ...commentWrite, reviewId: receipt.reviewId },
         ]);
         return receipt.commentId;
       }
@@ -728,11 +745,11 @@ export function ReviewWorkbenchFlow({
     string | undefined
   >(undefined);
   const applyPendingReviewProjection = useCallback(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this callback is itself the JSON I/O boundary parser shared by every command response that may carry a pending-review projection; there is no earlier boundary to run it at.
     (value: unknown): PendingReviewProjection | undefined => {
+      const envelope = v.safeParse(pendingReviewEnvelopeSchema, value);
       const projection = parsePendingReviewProjection(
-        typeof value === "object" && value !== null
-          ? (value as Record<string, unknown>)["pendingReview"]
-          : undefined,
+        envelope.success ? envelope.output.pendingReview : undefined,
       );
       if (projection !== undefined)
         onWorkbenchPatch({ pendingReview: projection });
@@ -783,50 +800,45 @@ export function ReviewWorkbenchFlow({
           headSha: workbench.revision.reviewedHeadSha,
           patchHash,
         };
-        const value =
+        const requestCommand =
           command._tag === "Discard"
-            ? await requestJson("/v1/reviews/pending-review/command", {
-                method: "POST",
-                body: {
-                  profileId: workbench.session.key.profileId,
-                  reviewId: workbench.review.id,
-                  command: {
-                    _tag: "Discard",
-                    expected,
-                    confirmation: command.confirmation,
-                  },
-                },
-              })
+            ? {
+                _tag: "Discard" as const,
+                expected,
+                confirmation: command.confirmation,
+              }
             : command._tag === "Submit"
-              ? await requestJson("/v1/reviews/pending-review/command", {
-                  method: "POST",
-                  body: {
-                    profileId: workbench.session.key.profileId,
-                    reviewId: workbench.review.id,
-                    command: {
-                      _tag: "Submit",
-                      expected,
-                      event: command.event,
-                      summaryBody: command.summaryBody,
-                    },
-                  },
-                })
-              : await requestJson("/v1/reviews/pending-review/command", {
-                  method: "POST",
-                  body: {
-                    profileId: workbench.session.key.profileId,
-                    reviewId: workbench.review.id,
-                    command: {
-                      _tag: command._tag,
-                      expected,
-                      ...(command._tag === "AddThread"
-                        ? { pendingReviewNodeId: command.pendingReviewNodeId }
-                        : {}),
-                      anchor: command.anchor,
-                      body: command.body,
-                    },
-                  },
-                });
+              ? {
+                  _tag: "Submit" as const,
+                  expected,
+                  event: command.event,
+                  summaryBody: command.summaryBody,
+                }
+              : command._tag === "AddThread"
+                ? {
+                    _tag: "AddThread" as const,
+                    expected,
+                    anchor: command.anchor,
+                    body: command.body,
+                    pendingReviewNodeId: command.pendingReviewNodeId,
+                  }
+                : {
+                    _tag: "Start" as const,
+                    expected,
+                    anchor: command.anchor,
+                    body: command.body,
+                  };
+        const value = await requestJson(
+          "/v1/reviews/pending-review/command",
+          {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+              command: requestCommand,
+            },
+          },
+        );
         const projection = applyPendingReviewProjection(value);
         setFinishDialogError(undefined);
         // Journal the exact pending-thread mutations so the detector never reads
@@ -1052,12 +1064,7 @@ export function ReviewWorkbenchFlow({
                   state: "pending" as const,
                   nodeId: workbench.pendingReview.review.nodeId,
                 }
-              : {
-                  state: workbench.pendingReview.state as
-                    | "none"
-                    | "unavailable"
-                    | "recovery_required",
-                },
+              : { state: workbench.pendingReview.state },
           busy: pendingReviewBusy,
           onStartReview: async (anchor, body) => {
             await runPendingReviewCommand({ _tag: "Start", anchor, body });
@@ -1083,18 +1090,18 @@ export function ReviewWorkbenchFlow({
         }
       : undefined;
   const externalPullRequest = pullRequestExternalRef(workbench);
-  const mergeAction: PullRequestOverviewMerge | undefined =
+  const mergeActionBase =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
     workbench.revision.patchHash !== undefined
       ? {
+          // SAFETY: the workbench projection's `mergeReadiness` is the wire
+          // serialization of a domain `MergeReadiness` value that only ever
+          // originates from `evaluateMergeReadiness`; the wire schema widens
+          // `blockers`/`warnings` to `string[]` for forward-compatible
+          // parsing, but the emitted values are always drawn from
+          // `MergeReadiness`'s literal unions.
           readiness: workbench.mergeReadiness as MergeReadiness,
-          ...(workbench.mergeReasons === undefined
-            ? {}
-            : { mergeReasons: workbench.mergeReasons }),
-          ...(externalPullRequest === undefined
-            ? {}
-            : { pullRequest: externalPullRequest }),
           context: {
             repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`,
             prNumber: workbench.session.key.prNumber,
@@ -1159,6 +1166,14 @@ export function ReviewWorkbenchFlow({
           },
         }
       : undefined;
+  const mergeActionWithReasons =
+    mergeActionBase === undefined || workbench.mergeReasons === undefined
+      ? mergeActionBase
+      : { ...mergeActionBase, mergeReasons: workbench.mergeReasons };
+  const mergeAction: PullRequestOverviewMerge | undefined =
+    mergeActionWithReasons === undefined || externalPullRequest === undefined
+      ? mergeActionWithReasons
+      : { ...mergeActionWithReasons, pullRequest: externalPullRequest };
   const addFindingToPendingReview = useCallback(
     async (finding: AnalysisFinding): Promise<void> => {
       const runId = workbench.insights.analysis.retained?.runId;
@@ -1177,18 +1192,21 @@ export function ReviewWorkbenchFlow({
         throw new Error(
           "This Finding is not actionable on the current Review.",
         );
+      const findingLocationBase = {
+        file: finding.file,
+        lineStart: finding.lineStart,
+      };
+      const findingLocationWithEnd =
+        finding.lineEnd === undefined
+          ? findingLocationBase
+          : { ...findingLocationBase, lineEnd: finding.lineEnd };
+      const findingLocation =
+        finding.diffSide === undefined
+          ? findingLocationWithEnd
+          : { ...findingLocationWithEnd, diffSide: finding.diffSide };
       const mapped = mapFindingLocation(
         parseUnifiedPatch(workbench.fullPatch),
-        {
-          file: finding.file,
-          lineStart: finding.lineStart,
-          ...(finding.lineEnd === undefined
-            ? {}
-            : { lineEnd: finding.lineEnd }),
-          ...(finding.diffSide === undefined
-            ? {}
-            : { diffSide: finding.diffSide }),
-        },
+        findingLocation,
       );
       const path =
         mapped.path === undefined
@@ -1266,6 +1284,153 @@ export function ReviewWorkbenchFlow({
     [replaceWorkbench, workbench],
   );
 
+  const pendingReviewPanelBase = {
+    projection: workbench.pendingReview,
+    busy: pendingReviewBusy,
+    finishDialogOpen,
+    onOpenFinishDialog: () => {
+      setFinishDialogInitialSummary(undefined);
+      setFinishDialogOpen(true);
+    },
+    onCloseFinishDialog: () => {
+      setFinishDialogOpen(false);
+      setFinishDialogInitialSummary(undefined);
+    },
+    onSubmit: async (
+      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      summaryBody: string,
+    ): Promise<void> => {
+      try {
+        await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
+        setFinishDialogOpen(false);
+      } catch (cause) {
+        setFinishDialogError(boundedPendingReviewError(cause));
+      }
+    },
+    onDiscard: async (): Promise<void> => {
+      try {
+        await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
+        setFinishDialogOpen(false);
+      } catch (cause) {
+        setFinishDialogError(boundedPendingReviewError(cause));
+      }
+    },
+    onCheckGitHubAgain: checkGitHubAgain,
+  };
+  const pendingReviewPanelWithSummary =
+    finishDialogInitialSummary === undefined
+      ? pendingReviewPanelBase
+      : { ...pendingReviewPanelBase, finishDialogInitialSummary };
+  const pendingReviewPanelWithRecoveryError =
+    finishDialogError === undefined
+      ? pendingReviewPanelWithSummary
+      : {
+          ...pendingReviewPanelWithSummary,
+          recoveryError: finishDialogError,
+          finishDialogError,
+        };
+  const pendingReviewPanel =
+    pendingReviewComposer === undefined
+      ? undefined
+      : pendingReviewPanelWithRecoveryError;
+
+  const directSummaryPanelBase = {
+    busy: directSummaryBusy,
+    state: visibleDirectSummaryState.state,
+    approvalCapability: workbench.directSummaryDecision ?? "unknown",
+    onSubmit: submitDirectSummary,
+    onRecover: recoverDirectSummary,
+  };
+  const directSummaryPanelWithReceipt =
+    visibleDirectSummaryState.state === "confirmed"
+      ? {
+          ...directSummaryPanelBase,
+          receipt: visibleDirectSummaryState.receipt,
+        }
+      : directSummaryPanelBase;
+  const directSummaryPanelWithRecovery =
+    visibleDirectSummaryState.state === "recovery_required"
+      ? {
+          ...directSummaryPanelWithReceipt,
+          recoveryResolution: visibleDirectSummaryState.resolution,
+        }
+      : directSummaryPanelWithReceipt;
+  const directSummaryPanelWithError =
+    directSummaryError === undefined
+      ? directSummaryPanelWithRecovery
+      : { ...directSummaryPanelWithRecovery, error: directSummaryError };
+  const directSummaryPanel =
+    workbench.pendingReview?.state === "none"
+      ? directSummaryPanelWithError
+      : undefined;
+
+  const conversationActions = canWriteDirectConversation
+    ? { setThreadState, replyToThread, editComment, deleteComment }
+    : undefined;
+
+  const workbenchActionsBase = {
+    detectUpdates: runDetect,
+    refresh,
+    loadCommitDiff: async (
+      commitSha: string,
+    ): Promise<CommitDiffResponse> => {
+      const value = await requestJson("/v1/reviews/commit-diff", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          commitSha,
+        },
+      });
+      const parsed = parseCommitDiffResponse(value);
+      if (parsed === undefined)
+        throw new Error("Invalid commit diff response");
+      return parsed;
+    },
+    reportNavigationState: onNavigationStateChange,
+  };
+  const workbenchActionsWithRefreshing =
+    refreshing === true
+      ? { ...workbenchActionsBase, refreshing: true as const }
+      : workbenchActionsBase;
+  const workbenchActionsWithRefreshError =
+    refreshError === true
+      ? { ...workbenchActionsWithRefreshing, refreshError: true as const }
+      : workbenchActionsWithRefreshing;
+  const workbenchActionsWithMerge =
+    mergeAction === undefined
+      ? workbenchActionsWithRefreshError
+      : { ...workbenchActionsWithRefreshError, merge: mergeAction };
+  const workbenchActionsWithLocalCommentAuthoring =
+    localCommentAuthoring === undefined
+      ? workbenchActionsWithMerge
+      : { ...workbenchActionsWithMerge, localCommentAuthoring };
+  const workbenchActionsWithPendingReviewComposer =
+    pendingReviewComposer === undefined
+      ? workbenchActionsWithLocalCommentAuthoring
+      : {
+          ...workbenchActionsWithLocalCommentAuthoring,
+          pendingReviewComposer,
+        };
+  const workbenchActionsWithPendingReviewPanel =
+    pendingReviewPanel === undefined
+      ? workbenchActionsWithPendingReviewComposer
+      : {
+          ...workbenchActionsWithPendingReviewComposer,
+          pendingReview: pendingReviewPanel,
+        };
+  const workbenchActionsWithDirectSummaryPanel =
+    directSummaryPanel === undefined
+      ? workbenchActionsWithPendingReviewPanel
+      : {
+          ...workbenchActionsWithPendingReviewPanel,
+          directSummary: directSummaryPanel,
+        };
+  const workbenchActions =
+    conversationActions === undefined
+      ? workbenchActionsWithDirectSummaryPanel
+      : { ...workbenchActionsWithDirectSummaryPanel, ...conversationActions };
+
   return (
     <>
       <ReviewWorkbench
@@ -1276,113 +1441,7 @@ export function ReviewWorkbenchFlow({
         {...(onUiStateChange === undefined
           ? {}
           : { onPositionCommitted: onUiStateChange })}
-        actions={{
-          detectUpdates: runDetect,
-          refresh,
-          ...(refreshing === true ? { refreshing: true } : {}),
-          ...(refreshError === true ? { refreshError: true } : {}),
-          ...(mergeAction === undefined ? {} : { merge: mergeAction }),
-          loadCommitDiff: async (
-            commitSha: string,
-          ): Promise<CommitDiffResponse> => {
-            const value = await requestJson("/v1/reviews/commit-diff", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-                commitSha,
-              },
-            });
-            const parsed = parseCommitDiffResponse(value);
-            if (parsed === undefined)
-              throw new Error("Invalid commit diff response");
-            return parsed;
-          },
-          ...(localCommentAuthoring === undefined
-            ? {}
-            : { localCommentAuthoring }),
-          ...(pendingReviewComposer === undefined
-            ? {}
-            : { pendingReviewComposer }),
-          ...(pendingReviewComposer === undefined
-            ? {}
-            : {
-                pendingReview: {
-                  projection: workbench.pendingReview,
-                  busy: pendingReviewBusy,
-                  finishDialogOpen,
-                  ...(finishDialogInitialSummary === undefined
-                    ? {}
-                    : { finishDialogInitialSummary }),
-                  onOpenFinishDialog: () => {
-                    setFinishDialogInitialSummary(undefined);
-                    setFinishDialogOpen(true);
-                  },
-                  onCloseFinishDialog: () => {
-                    setFinishDialogOpen(false);
-                    setFinishDialogInitialSummary(undefined);
-                  },
-                  onSubmit: async (event, summaryBody) => {
-                    try {
-                      await runPendingReviewCommand({
-                        _tag: "Submit",
-                        event,
-                        summaryBody,
-                      });
-                      setFinishDialogOpen(false);
-                    } catch (cause) {
-                      setFinishDialogError(boundedPendingReviewError(cause));
-                    }
-                  },
-                  onDiscard: async () => {
-                    try {
-                      await runPendingReviewCommand({
-                        _tag: "Discard",
-                        confirmation: true,
-                      });
-                      setFinishDialogOpen(false);
-                    } catch (cause) {
-                      setFinishDialogError(boundedPendingReviewError(cause));
-                    }
-                  },
-                  onCheckGitHubAgain: checkGitHubAgain,
-                  ...(finishDialogError === undefined
-                    ? {}
-                    : { recoveryError: finishDialogError }),
-                  ...(finishDialogError === undefined
-                    ? {}
-                    : { finishDialogError }),
-                },
-              }),
-          ...(workbench.pendingReview?.state === "none"
-            ? {
-                directSummary: {
-                  busy: directSummaryBusy,
-                  state: visibleDirectSummaryState.state,
-                  approvalCapability:
-                    workbench.directSummaryDecision ?? "unknown",
-                  ...(visibleDirectSummaryState.state === "confirmed"
-                    ? { receipt: visibleDirectSummaryState.receipt }
-                    : {}),
-                  ...(visibleDirectSummaryState.state === "recovery_required"
-                    ? {
-                        recoveryResolution:
-                          visibleDirectSummaryState.resolution,
-                      }
-                    : {}),
-                  onSubmit: submitDirectSummary,
-                  onRecover: recoverDirectSummary,
-                  ...(directSummaryError === undefined
-                    ? {}
-                    : { error: directSummaryError }),
-                },
-              }
-            : {}),
-          ...(canWriteDirectConversation
-            ? { setThreadState, replyToThread, editComment, deleteComment }
-            : {}),
-          reportNavigationState: onNavigationStateChange,
-        }}
+        actions={workbenchActions}
         slots={{
           insights: (
             <InsightsSlot
@@ -1459,6 +1518,10 @@ function insightRunConfigurationReducer(
 ): InsightRunConfiguration {
   return { ...state, ...action.patch };
 }
+// Pre-existing giant component (over 640 lines before this change, unrelated
+// to this plan's diff — see the disable comment on `ReviewWorkbenchFlow`
+// above for the same verification and rationale).
+// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 function InsightsSlot({
   workbench,
   initialDetail,
@@ -2154,19 +2217,21 @@ function WalkthroughProgressReader({
               ? reviewedSectionIds
               : [...reviewedSectionIds, sectionId];
             setReviewedSectionIds(next);
-            save({
-              reviewedSectionIds: next,
-              supportReviewed,
-              ...(currentSectionId === undefined ? {} : { currentSectionId }),
-            });
+            const saved = { reviewedSectionIds: next, supportReviewed };
+            save(
+              currentSectionId === undefined
+                ? saved
+                : { ...saved, currentSectionId },
+            );
           },
           onMarkSupportReviewed: () => {
             setSupportReviewed(true);
-            save({
-              reviewedSectionIds,
-              supportReviewed: true,
-              ...(currentSectionId === undefined ? {} : { currentSectionId }),
-            });
+            const saved = { reviewedSectionIds, supportReviewed: true };
+            save(
+              currentSectionId === undefined
+                ? saved
+                : { ...saved, currentSectionId },
+            );
           },
           onSelectSection: (sectionId) => {
             setCurrentSectionId(sectionId);
@@ -2597,43 +2662,78 @@ type DirectConversationReceipt =
   | { readonly _tag: "CommentEdited"; readonly commentId: string }
   | { readonly _tag: "CommentDeleted"; readonly commentId: string };
 
+/** Mutable builder shape for `DirectConversationReceipt`'s `CommentCreated` variant; frozen into the readonly contract on return. */
+type MutableCommentCreatedReceipt = {
+  _tag: "CommentCreated";
+  commentId: string;
+  reviewId?: string;
+};
+/** Mutable builder shape for `DirectConversationReceipt`'s `ReplyCreated` variant; frozen into the readonly contract on return. */
+type MutableReplyCreatedReceipt = {
+  _tag: "ReplyCreated";
+  commentId: string;
+  reviewId?: string;
+};
+
+const directConversationReceiptSchema = v.variant("_tag", [
+  v.looseObject({
+    _tag: v.literal("CommentCreated"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+    reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  }),
+  v.looseObject({
+    _tag: v.literal("ReplyCreated"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+    reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  }),
+  v.looseObject({
+    _tag: v.literal("ThreadStateChanged"),
+    threadId: v.string(),
+    state: v.picklist(["open", "resolved"]),
+  }),
+  v.looseObject({
+    _tag: v.literal("CommentEdited"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.looseObject({
+    _tag: v.literal("CommentDeleted"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+  }),
+]);
+
 function parseDirectConversationReceipt(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the direct-conversation command response; there is no earlier boundary to run it at.
   value: unknown,
 ): DirectConversationReceipt | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const record = value as Record<string, unknown>;
-  const tag = record._tag;
-  if (tag === "CommentCreated" || tag === "ReplyCreated") {
-    if (typeof record.commentId !== "string" || record.commentId.length === 0)
-      return undefined;
-    if (
-      record.reviewId !== undefined &&
-      (typeof record.reviewId !== "string" || record.reviewId.length === 0)
-    )
-      return undefined;
-    return {
-      _tag: tag,
-      commentId: record.commentId,
-      ...(record.reviewId === undefined ? {} : { reviewId: record.reviewId }),
+  const parsed = v.safeParse(directConversationReceiptSchema, value);
+  if (!parsed.success) return undefined;
+  const output = parsed.output;
+  if (output._tag === "ThreadStateChanged") {
+    const threadId = parseGitHubThreadId(output.threadId);
+    return threadId._tag === "err"
+      ? undefined
+      : {
+          _tag: "ThreadStateChanged",
+          threadId: threadId.value,
+          state: output.state,
+        };
+  }
+  if (output._tag === "CommentEdited" || output._tag === "CommentDeleted")
+    return { _tag: output._tag, commentId: output.commentId };
+  if (output._tag === "ReplyCreated") {
+    const receipt: MutableReplyCreatedReceipt = {
+      _tag: "ReplyCreated",
+      commentId: output.commentId,
     };
+    if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
+    return receipt;
   }
-  if (tag === "ThreadStateChanged") {
-    if (record.state !== "open" && record.state !== "resolved")
-      return undefined;
-    const parsedThreadId = parseGitHubThreadId(record.threadId);
-    if (parsedThreadId._tag === "err") return undefined;
-    return {
-      _tag: "ThreadStateChanged",
-      threadId: parsedThreadId.value,
-      state: record.state,
-    };
-  }
-  if (tag === "CommentEdited" || tag === "CommentDeleted") {
-    if (typeof record.commentId !== "string" || record.commentId.length === 0)
-      return undefined;
-    return { _tag: tag, commentId: record.commentId };
-  }
-  return undefined;
+  const receipt: MutableCommentCreatedReceipt = {
+    _tag: "CommentCreated",
+    commentId: output.commentId,
+  };
+  if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
+  return receipt;
 }
 
 function insightStatusLabel(status: string): string {
@@ -2662,18 +2762,31 @@ function snapshotKey(workbench: WorkbenchResponse): string {
   return `${workbench.review.id}:${workbench.session.id}:${workbench.revision.reviewedHeadSha}:${workbench.revision.refreshedAt}`;
 }
 
+const detectionSchema = v.looseObject({ updatesAvailable: v.boolean() });
+
 function isDetection(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this predicate is itself the JSON I/O boundary parser for the detect-updates response; there is no earlier boundary to run it at.
   value: unknown,
 ): value is { readonly updatesAvailable: boolean } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "updatesAvailable" in value &&
-    typeof value.updatesAvailable === "boolean"
-  );
+  return v.safeParse(detectionSchema, value).success;
 }
 
+const reviewObservationSchema = v.variant("_tag", [
+  v.looseObject({ _tag: v.literal("Unchanged") }),
+  v.looseObject({ _tag: v.literal("RevisionChanged") }),
+  v.looseObject({ _tag: v.literal("Unavailable") }),
+  v.looseObject({
+    _tag: v.literal("Reconciled"),
+    projection: v.optional(v.unknown()),
+  }),
+  v.looseObject({
+    _tag: v.literal("Terminal"),
+    status: v.picklist(["merged", "closed"]),
+  }),
+]);
+
 function isReviewObservation(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the review-observation response; there is no earlier boundary to run it at.
   value: unknown,
 ):
   | { readonly _tag: "Unchanged" }
@@ -2682,24 +2795,6 @@ function isReviewObservation(
   | { readonly _tag: "Unavailable" }
   | { readonly _tag: "Terminal"; readonly status: "merged" | "closed" }
   | undefined {
-  if (typeof value !== "object" || value === null || !("_tag" in value))
-    return undefined;
-  if (
-    value._tag === "Unchanged" ||
-    value._tag === "RevisionChanged" ||
-    value._tag === "Unavailable"
-  )
-    return { _tag: value._tag };
-  if (value._tag === "Reconciled")
-    return {
-      _tag: "Reconciled",
-      ...("projection" in value ? { projection: value.projection } : {}),
-    };
-  if (
-    value._tag === "Terminal" &&
-    "status" in value &&
-    (value.status === "merged" || value.status === "closed")
-  )
-    return { _tag: "Terminal", status: value.status };
-  return undefined;
+  const parsed = v.safeParse(reviewObservationSchema, value);
+  return parsed.success ? parsed.output : undefined;
 }

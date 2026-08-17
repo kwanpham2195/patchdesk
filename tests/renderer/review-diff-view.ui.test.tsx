@@ -2,21 +2,27 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
 
-import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
+import {
+  ReviewDiffView,
+  type PendingReviewComposerActions,
+} from "../../src/renderer/src/components/review-diff-view";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
+import type * as PierreDiffs from "@pierre/diffs";
 
 const must = <T,>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("fixture");
 };
 
+// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real.
 vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
+  const actual = await importOriginal<typeof PierreDiffs>();
   return {
     ...actual,
     preloadHighlighter: vi.fn(async () => undefined),
@@ -130,7 +136,7 @@ describe("review diff hydration", () => {
       );
     } finally {
       if (styleSheet === undefined)
-        delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+        Reflect.deleteProperty(window, "CSSStyleSheet");
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
     }
   });
@@ -191,6 +197,9 @@ describe("review diff hydration", () => {
       expect(
         screen.getByText("Thanks — threaded replies are UI-only for now."),
       ).toBeTruthy();
+      // SAFETY: every "Add reply…"/"Resolve"/"Delete" control in this tree is
+      // the shadcn/ui `Button`, which always renders a native `<button>`, so
+      // `getByRole("button", ...)` resolving here is an `HTMLButtonElement`.
       expect(
         (
           screen.getByRole("button", {
@@ -198,10 +207,12 @@ describe("review diff hydration", () => {
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
+      // SAFETY: see above — the "Resolve" control is the same shadcn/ui `Button`.
       expect(
         (screen.getByRole("button", { name: "Resolve" }) as HTMLButtonElement)
           .disabled,
       ).toBe(true);
+      // SAFETY: see above — the "Delete" control is the same shadcn/ui `Button`.
       expect(
         (screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement)
           .disabled,
@@ -520,11 +531,13 @@ describe("pending-review composer lifecycle", () => {
       await run();
     } finally {
       if (styleSheet === undefined)
-        delete (window as unknown as { CSSStyleSheet?: unknown }).CSSStyleSheet;
+        Reflect.deleteProperty(window, "CSSStyleSheet");
       else Object.defineProperty(window, "CSSStyleSheet", styleSheet);
     }
   };
-  const renderDiff = (overrides: Record<string, unknown> = {}) => {
+  const renderDiff = (
+    overrides: Partial<ComponentProps<typeof ReviewDiffView>> = {},
+  ) => {
     const parsed = parseReviewDiff(patch);
     return render(
       <ReviewDiffView
@@ -581,7 +594,9 @@ describe("pending-review composer lifecycle", () => {
       body,
     );
   };
-  const composerActions = (overrides: Record<string, unknown> = {}) => ({
+  const composerActions = (
+    overrides: Partial<PendingReviewComposerActions> = {},
+  ): PendingReviewComposerActions => ({
     state: { state: "none" },
     busy: false,
     onStartReview: vi.fn(async () => undefined),
