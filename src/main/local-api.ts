@@ -29,6 +29,7 @@ import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+import { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
@@ -330,6 +331,7 @@ export async function startLocalApiServer(
   const reviews = new ReviewStore(paths);
   const remoteReviews = new ReviewRemoteStore(paths);
   const observationJournals = new ReviewObservationJournalStore(paths);
+  const recentWriteJournals = new RecentWriteJournalStore(paths);
   const reviewWriteGate = new ReviewWriteGate(
     profiles,
     reviews,
@@ -430,6 +432,10 @@ export async function startLocalApiServer(
     reviewWriteGate,
     github,
     reviewOperations,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
+    () => new Date().toISOString() as never,
+    recentWriteJournals,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
     ? github
@@ -445,6 +451,7 @@ export async function startLocalApiServer(
           // callback fills.
           () => new Date().toISOString() as never,
           reviewOperations,
+          recentWriteJournals,
         )
       : undefined;
   if (pendingReviewGateway === undefined || pendingReviews === undefined)
@@ -464,6 +471,7 @@ export async function startLocalApiServer(
           // callback fills.
           () => new Date().toISOString() as never,
           reviewOperations,
+          recentWriteJournals,
         )
       : undefined;
   const reviewRefresh = new ReviewRefreshService({
@@ -478,6 +486,7 @@ export async function startLocalApiServer(
     now: () => new Date().toISOString() as never,
     operationCoordinator: reviewOperations,
     pendingReview: pendingReviews,
+    recentWrites: recentWriteJournals,
     project: ({
       profileId,
       sessionId,
@@ -500,6 +509,7 @@ export async function startLocalApiServer(
     sessions,
     remote: remoteReviews,
     journals: observationJournals,
+    recentWrites: recentWriteJournals,
     github: pendingReviewGateway,
     pendingReview: pendingReviews,
     coordinator: reviewOperations,
@@ -574,6 +584,7 @@ export async function startLocalApiServer(
       artifacts: storageArtifacts,
       remote: remoteReviews,
       journals: observationJournals,
+      recentWrites: recentWriteJournals,
       coordinator: reviewOperations,
       refresh: reviewRefresh,
       observation: reviewObservation,

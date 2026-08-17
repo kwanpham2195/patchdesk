@@ -3,6 +3,7 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
+import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
   adoptObservedPendingReview,
@@ -42,6 +43,7 @@ import type {
   GitHubComments,
   GitHubPublishedFeedback,
 } from "../domain/github-context";
+import type { RecentReviewWrite } from "./review-refresh-service";
 
 export type StartPendingReviewInput = {
   readonly profileId: WorkspaceProfileId;
@@ -143,6 +145,7 @@ export class PendingReviewService {
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
     private readonly writeCoordinator: ReviewOperationCoordinator,
+    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
   ) {}
 
   /**
@@ -335,16 +338,25 @@ export class PendingReviewService {
           input.finding === undefined
             ? { _tag: "Start", requestId }
             : { _tag: "Start", requestId, finding: input.finding };
-        return this.executeWrite(session, state, operation, async () => {
-          const created = await this.github.startPendingReviewWithThread({
-            profile,
-            pr: sessionPr(session),
-            headSha: session.key.headSha,
-            anchor: input.anchor,
-            body: input.body,
-          });
-          return created._tag === "ok" ? ok(created.value) : err(created.error);
-        });
+        return this.executeWrite(
+          input.profileId,
+          input.reviewId,
+          session,
+          state,
+          operation,
+          async () => {
+            const created = await this.github.startPendingReviewWithThread({
+              profile,
+              pr: sessionPr(session),
+              headSha: session.key.headSha,
+              anchor: input.anchor,
+              body: input.body,
+            });
+            return created._tag === "ok"
+              ? ok(created.value)
+              : err(created.error);
+          },
+        );
       },
     );
   }
@@ -388,18 +400,25 @@ export class PendingReviewService {
                 anchor: input.anchor,
                 finding: input.finding,
               };
-        return this.executeWrite(session, state, operation, async () => {
-          const appended = await this.github.addPendingReviewThread({
-            profile,
-            pr: sessionPr(session),
-            reviewId: input.pendingReviewNodeId,
-            anchor: input.anchor,
-            body: input.body,
-          });
-          return appended._tag === "ok"
-            ? ok(appended.value)
-            : err(appended.error);
-        });
+        return this.executeWrite(
+          input.profileId,
+          input.reviewId,
+          session,
+          state,
+          operation,
+          async () => {
+            const appended = await this.github.addPendingReviewThread({
+              profile,
+              pr: sessionPr(session),
+              reviewId: input.pendingReviewNodeId,
+              anchor: input.anchor,
+              body: input.body,
+            });
+            return appended._tag === "ok"
+              ? ok(appended.value)
+              : err(appended.error);
+          },
+        );
       },
     );
   }
@@ -421,18 +440,27 @@ export class PendingReviewService {
           reviewId: state.review.restId,
           event: input.event,
         };
-        return this.executeWrite(session, state, operation, async () => {
-          const submitted = await this.github.submitPendingReview({
-            profile,
-            pr: sessionPr(session),
-            reviewId: state.review.restId,
-            event: input.event,
-            summaryBody: input.summaryBody,
-          });
-          // A confirmed submit removes the pending owner; the submitted feedback
-          // becomes visible through the next explicit refresh.
-          return submitted._tag === "ok" ? ok(undefined) : err(submitted.error);
-        });
+        return this.executeWrite(
+          input.profileId,
+          input.reviewId,
+          session,
+          state,
+          operation,
+          async () => {
+            const submitted = await this.github.submitPendingReview({
+              profile,
+              pr: sessionPr(session),
+              reviewId: state.review.restId,
+              event: input.event,
+              summaryBody: input.summaryBody,
+            });
+            // A confirmed submit removes the pending owner; the submitted
+            // feedback becomes visible through the next explicit refresh.
+            return submitted._tag === "ok"
+              ? ok(undefined)
+              : err(submitted.error);
+          },
+        );
       },
     );
   }
@@ -454,17 +482,26 @@ export class PendingReviewService {
           requestId: createPendingReviewRequestId(this.now()),
           reviewId: state.review.restId,
         };
-        return this.executeWrite(session, state, operation, async () => {
-          // dbacd62-proven contract: the normal DELETE response is the confirmed
-          // absence receipt; a timeout or lost response is an unavailable
-          // outcome and is never retried automatically.
-          const discarded = await this.github.discardPendingReview({
-            profile,
-            pr: sessionPr(session),
-            reviewId: state.review.restId,
-          });
-          return discarded._tag === "ok" ? ok(undefined) : err(discarded.error);
-        });
+        return this.executeWrite(
+          input.profileId,
+          input.reviewId,
+          session,
+          state,
+          operation,
+          async () => {
+            // dbacd62-proven contract: the normal DELETE response is the
+            // confirmed absence receipt; a timeout or lost response is an
+            // unavailable outcome and is never retried automatically.
+            const discarded = await this.github.discardPendingReview({
+              profile,
+              pr: sessionPr(session),
+              reviewId: state.review.restId,
+            });
+            return discarded._tag === "ok"
+              ? ok(undefined)
+              : err(discarded.error);
+          },
+        );
       },
     );
   }
@@ -504,6 +541,8 @@ export class PendingReviewService {
   }
 
   private async executeWrite(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
     session: ReviewSession,
     state: PendingReviewState,
     operation: PendingReviewOperation,
@@ -577,6 +616,21 @@ export class PendingReviewService {
       const unknown = markPendingReviewOutcomeUnknown(begun.value);
       if (unknown._tag === "ok") await this.persist(session, unknown.value);
       return err("outcome_unknown");
+    }
+    // Best effort: the GitHub write already succeeded, so a durable journal
+    // failure here must not fail the confirmed command. Sequential by
+    // necessity, not oversight: RecentWriteJournalStore.append() does an
+    // unsynchronized read-modify-write per call, so running these in
+    // parallel (e.g. via Promise.all) would race against itself and could
+    // silently drop entries when Discard journals more than one thread.
+    for (const entry of journalEntriesFor(
+      operation,
+      state,
+      written.value,
+      confirmed.value,
+    )) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- parallelizing these would race the store's read-modify-write and drop entries
+      await this.recentWrites.append(profileId, reviewId, entry, this.now());
     }
     const {
       findingReviewReceipts: _previousReceipts,
@@ -758,6 +812,41 @@ function reconcileObservedFindingReceipts(input: {
     }
   }
   return next;
+}
+
+/**
+ * The typed own-write journal entries one confirmed pending-review write
+ * proves. Start/AddThread journal the thread the adapter reports it created
+ * (`createdThreadId`, never guessed locally). A confirmed Discard that
+ * resolved to `None` journals each thread the pre-operation Pending draft
+ * held, mirroring the renderer's `threadIdsOf()` derivation. Submit is
+ * intentionally not journaled: no `RecentReviewWrite` variant represents
+ * "pending threads became a published review".
+ */
+function journalEntriesFor(
+  operation: PendingReviewOperation,
+  priorState: PendingReviewState,
+  written: PendingReviewThreadWrite | ViewerPendingReview | undefined,
+  confirmed: PendingReviewState,
+): ReadonlyArray<RecentReviewWrite> {
+  if (
+    (operation._tag === "Start" || operation._tag === "AddThread") &&
+    written !== undefined &&
+    "createdThreadId" in written
+  ) {
+    return [{ _tag: "PendingThread", threadId: written.createdThreadId }];
+  }
+  if (
+    operation._tag === "Discard" &&
+    confirmed._tag === "None" &&
+    priorState._tag === "Pending"
+  ) {
+    return priorState.review.comments.map((comment) => ({
+      _tag: "PendingThread" as const,
+      threadId: comment.threadId,
+    }));
+  }
+  return [];
 }
 
 function nextFindingReceipts(

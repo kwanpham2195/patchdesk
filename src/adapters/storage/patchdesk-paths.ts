@@ -116,6 +116,17 @@ export class PatchdeskPaths {
     );
   }
 
+  /**
+   * Durable own-write journal: distinct from `reviewObservationJournalFile`,
+   * which is the crash-safe candidate->session->review transition record.
+   */
+  recentWriteJournalFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(this.reviewDirectory(profileId, reviewId), "recent-writes.json");
+  }
+
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");
   }

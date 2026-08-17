@@ -156,6 +156,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -241,6 +242,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -327,6 +329,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -416,6 +419,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -497,6 +501,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -605,6 +610,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -693,6 +699,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ok(projection),
@@ -772,6 +779,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ({
@@ -861,6 +869,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -958,6 +967,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1043,6 +1053,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1190,6 +1201,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1313,6 +1325,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1440,6 +1453,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1550,6 +1564,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1558,6 +1573,138 @@ describe("ReviewRefreshService", () => {
         profileId,
         reviewId: review.id,
         recentWrites: [{ _tag: "Comment", commentId: ownComment.id }],
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        updatesAvailable: false,
+        detectedAt: "2026-08-01T00:10:00.000Z",
+      },
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("unions the durable own-write journal into detect() so a renderer reload does not read the maintainer's own comment as a remote update", async () => {
+    // Defense in depth (Current State: detect() is unreachable in production
+    // today): the same reload scenario as the test above, but the write is
+    // proven only by the durable journal, not the request. This is the
+    // literal scenario the original brief described, now correctly targeting
+    // code that would already behave correctly if ever reconnected to a live
+    // route.
+    const commentAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
+    const ownThread = must(parseGitHubThreadId("t-durable"));
+    const ownComment = {
+      id: "c-own-durable",
+      author: "pmquan2",
+      body: "own",
+      createdAt: commentAt,
+      updatedAt: commentAt,
+      url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r2",
+      location: {
+        path: must(parseRepoRelativePath("a.go")),
+        line: 1,
+        lineEnd: 1,
+        diffSide: "new" as const,
+      },
+    };
+    const changed = {
+      ...snapshot,
+      comments: {
+        threads: [
+          { id: ownThread, state: "open" as const, comments: [ownComment] },
+        ],
+        complete: true,
+      },
+    };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: {
+        async load() {
+          // SAFETY: detect()'s same-head path used by this test only reads
+          // `profile` to forward it into GitHub reads, all stubbed below.
+          return ok({} as never);
+        },
+      },
+      reviews: {
+        async load() {
+          return ok(review);
+        },
+        save,
+      },
+      sessions: {
+        async load() {
+          // SAFETY: detect() on this path only reads `key`/`id`, both present.
+          return ok({ key: { ...identity, headSha }, id: sessionId } as never);
+        },
+        async save() {
+          return ok(undefined);
+        },
+      },
+      remote: {
+        async load() {
+          return ok(snapshot);
+        },
+        async saveCandidate() {
+          return ok({ snapshotHash: hashSnapshot(snapshot) });
+        },
+      },
+      github: {
+        async getPullRequest() {
+          return ok(snapshot.pullRequest);
+        },
+        async getPullRequestChecks() {
+          return ok(snapshot.checks);
+        },
+        async getPullRequestComments() {
+          return ok(changed.comments);
+        },
+        async getPullRequestCommits() {
+          return ok([]);
+        },
+        async loadConversation() {
+          return ok(snapshot.conversation);
+        },
+        async getMergePolicy() {
+          // SAFETY: mergePolicy is optional evidence; detect() tolerates an
+          // empty/unavailable read on the same-head path this test exercises.
+          return ok({} as never);
+        },
+      },
+      preparation: {
+        async prepare() {
+          // SAFETY: prepare() is never invoked on the same-head detect() path.
+          return ok({} as never);
+        },
+      },
+      pendingReview: {
+        async reconcileWithinReviewLock() {
+          return ok({
+            // SAFETY: this reconciled session is not read by detect(); only
+            // `state`/`unavailable` feed the (unused here) refresh projection.
+            session: {} as never,
+            state: { _tag: "None" } as const,
+            unavailable: false,
+          });
+        },
+      },
+      operationCoordinator: new ReviewOperationCoordinator(),
+      // The write was durably journaled at write-confirmation time; the
+      // renderer's in-memory journal (the request body) is empty, exactly
+      // like the first poll after a reload.
+      recentWrites: {
+        load: async () =>
+          ok([{ _tag: "Comment" as const, commentId: ownComment.id }]),
+        clear: async () => ok(undefined),
+      },
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying
+      // the branded IsoTimestamp contract `now` is expected to return.
+      now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(
+      service.detect({
+        profileId,
+        reviewId: review.id,
+        recentWrites: [],
       }),
     ).resolves.toEqual({
       _tag: "ok",
@@ -1667,6 +1814,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1792,6 +1940,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -1928,6 +2077,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -2078,6 +2228,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -2199,6 +2350,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -2347,6 +2499,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -2472,6 +2625,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
@@ -2597,6 +2751,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
       // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });

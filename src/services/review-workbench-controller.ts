@@ -14,6 +14,7 @@ import { createReview } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { StorageFailure } from "../adapters/storage/json-file";
@@ -70,6 +71,7 @@ export class ReviewWorkbenchController {
       >;
       readonly remote: Pick<ReviewRemoteStore, "load">;
       readonly journals: Pick<ReviewObservationJournalStore, "load">;
+      readonly recentWrites: Pick<RecentWriteJournalStore, "load">;
       readonly refresh: ReviewRefreshService;
       readonly observation: Pick<
         ReviewObservationService,
@@ -481,7 +483,19 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    return input.recentWrites === undefined
+    // A renderer reload or app restart starts with an empty in-memory
+    // journal; the durable journal survives that and is unioned in so the
+    // maintainer's own just-made write is never read as absent. A durable
+    // load failure fails open onto the request-supplied array alone.
+    const durable = await this.lifecycle.recentWrites.load(
+      input.profileId,
+      input.reviewId,
+    );
+    const recentWrites = unionRecentWrites(
+      durable._tag === "ok" ? durable.value : [],
+      input.recentWrites ?? [],
+    );
+    return recentWrites.length === 0
       ? this.lifecycle.observation.observe({
           profileId: input.profileId,
           reviewId: input.reviewId,
@@ -489,7 +503,7 @@ export class ReviewWorkbenchController {
       : this.lifecycle.observation.observe({
           profileId: input.profileId,
           reviewId: input.reviewId,
-          recentWrites: input.recentWrites,
+          recentWrites,
         });
   }
 
@@ -571,4 +585,37 @@ function isRestartableStorageFailure(failure: StorageFailure): boolean {
     failure.reason === "invalid_json" ||
     failure.reason === "invalid_stored_value"
   );
+}
+
+/**
+ * Combine the durable own-write journal with the renderer's optimistic
+ * in-memory array. Duplicates are harmless to `containsRecentWrites`'s
+ * set-based logic, but de-duplicating keeps the union from growing needlessly.
+ */
+function unionRecentWrites(
+  durable: ReadonlyArray<RecentReviewWrite>,
+  requested: ReadonlyArray<RecentReviewWrite>,
+): ReadonlyArray<RecentReviewWrite> {
+  const seen = new Set<string>();
+  const union: Array<RecentReviewWrite> = [];
+  for (const entry of [...durable, ...requested]) {
+    const key = recentWriteDedupeKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    union.push(entry);
+  }
+  return union;
+}
+
+function recentWriteDedupeKey(entry: RecentReviewWrite): string {
+  switch (entry._tag) {
+    case "Comment":
+      return `Comment:${entry.commentId}`;
+    case "ThreadState":
+      return `ThreadState:${entry.threadId}:${entry.state}`;
+    case "PendingThread":
+      return `PendingThread:${entry.threadId}`;
+    case "DirectSummaryReview":
+      return `DirectSummaryReview:${entry.reviewId}`;
+  }
 }

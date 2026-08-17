@@ -91,6 +91,7 @@ function fixture(
     ...overrides,
   };
   const coordinator = new ReviewOperationCoordinator();
+  const recentWrites = { append: vi.fn(async () => ok(undefined)) };
   // SAFETY: these fixture mocks implement only the Pick<...> subset each
   // dependency interface requires; the service never calls their other members.
   return {
@@ -100,9 +101,11 @@ function fixture(
       github as never,
       () => now,
       coordinator,
+      recentWrites,
     ),
     github,
     coordinator,
+    recentWrites,
     saves,
     current: () => stored,
   };

@@ -46,6 +46,10 @@ const makeGate = () => ({
 });
 
 const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
+// SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
+// branded IsoTimestamp contract the service's `now` dependency expects.
+const now = () => "2026-01-01T00:00:00.000Z" as never;
+const makeRecentWrites = () => ({ append: vi.fn(async () => ok(undefined)) });
 
 function command(
   overrides: Partial<DirectConversationCommand>,
@@ -95,6 +99,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -115,6 +121,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ setReviewThreadState, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -142,6 +150,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -166,6 +176,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ getPullRequestComments, createThreadReply }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -195,6 +207,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ updateThreadComment, getReviewCommentTarget }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -219,6 +233,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ updateThreadComment, getReviewCommentTarget }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -246,6 +262,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply }) as never,
       coordinator,
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -268,6 +286,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway() as never,
       coordinator,
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -290,6 +310,8 @@ describe("InlineConversationService", () => {
       // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply }) as never,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,
@@ -383,6 +405,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
       gate,
       adapter,
       new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
     );
     const result = await service.execute({
       profileId,

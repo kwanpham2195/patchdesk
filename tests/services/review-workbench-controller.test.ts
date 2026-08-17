@@ -90,6 +90,7 @@ function fixture(
     },
     remote: { load: vi.fn(async () => ok(snapshot)) },
     journals: { load: vi.fn(async () => ok(undefined)) },
+    recentWrites: { load: vi.fn(async () => ok([])) },
     refresh: { refresh: vi.fn(async () => ok(projection)) },
     observation: {
       recover: vi.fn(async () => ok(undefined)),
@@ -363,6 +364,67 @@ describe("ReviewWorkbenchController", () => {
     expect(value.lifecycle.observation.observe).toHaveBeenCalledWith({
       profileId,
       reviewId,
+    });
+  });
+
+  it("unions the durable own-write journal into detectUpdates so a renderer reload does not drop the maintainer's own recent write", async () => {
+    // Simulates the eventual-consistency lag where GitHub's read has not yet
+    // caught up with a just-made write: observation would omit the comment
+    // and only skip pushing a projection if it can see the journaled write.
+    const observe = vi.fn(
+      async (observeInput: {
+        readonly recentWrites?: ReadonlyArray<unknown>;
+      }) =>
+        ok(
+          observeInput.recentWrites !== undefined &&
+            observeInput.recentWrites.length > 0
+            ? { _tag: "Reconciled", detectedAt: at }
+            : { _tag: "Reconciled", detectedAt: at, projection },
+        ),
+    );
+    const recentWrites = {
+      load: vi.fn(async () =>
+        ok([{ _tag: "Comment" as const, commentId: "not-visible-yet" }]),
+      ),
+    };
+    const value = fixture({
+      recentWrites,
+      observation: { recover: vi.fn(), observe },
+    });
+    // A renderer reload starts with an empty in-memory journal: no
+    // recentWrites is sent on the request.
+    await expect(
+      value.controller.detectUpdates({ profileId, reviewId }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "Reconciled", detectedAt: at },
+    });
+    expect(recentWrites.load).toHaveBeenCalledWith(profileId, reviewId);
+    expect(observe).toHaveBeenCalledWith({
+      profileId,
+      reviewId,
+      recentWrites: [{ _tag: "Comment", commentId: "not-visible-yet" }],
+    });
+  });
+
+  it("negative control: without a durable journal entry, an empty request-supplied journal still yields a projection", async () => {
+    const observe = vi.fn(
+      async (observeInput: {
+        readonly recentWrites?: ReadonlyArray<unknown>;
+      }) =>
+        ok(
+          observeInput.recentWrites !== undefined &&
+            observeInput.recentWrites.length > 0
+            ? { _tag: "Reconciled", detectedAt: at }
+            : { _tag: "Reconciled", detectedAt: at, projection },
+        ),
+    );
+    const value = fixture({ observation: { recover: vi.fn(), observe } });
+    await expect(
+      value.controller.detectUpdates({ profileId, reviewId }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "Reconciled", detectedAt: at, projection },
     });
   });
 

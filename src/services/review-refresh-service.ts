@@ -1,5 +1,6 @@
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
@@ -114,6 +115,7 @@ export type ReviewRefreshDependencies = {
     PendingReviewService,
     "reconcileWithinReviewLock"
   >;
+  readonly recentWrites: Pick<RecentWriteJournalStore, "load" | "clear">;
   readonly operationCoordinator: ReviewOperationCoordinator;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
@@ -143,6 +145,20 @@ export class ReviewRefreshService {
       input.reviewId,
       async () => {
         const detectedAt = this.dependencies.now();
+        // Defense in depth: this method is unreachable in production today
+        // (the live detect-updates route runs ReviewObservationService), but
+        // it shares the own-write journal's shape, so a renderer reload's
+        // empty request-supplied array is unioned with the durable journal
+        // here too. A durable load failure fails open onto the
+        // request-supplied array alone.
+        const durable = await this.dependencies.recentWrites.load(
+          input.profileId,
+          input.reviewId,
+        );
+        const recentWrites = unionRecentWrites(
+          durable._tag === "ok" ? durable.value : [],
+          input.recentWrites ?? [],
+        );
         const loaded = await this.loadReview(input.profileId, input.reviewId);
         if (loaded._tag === "err") return loaded;
         const { review, profile } = loaded.value;
@@ -227,7 +243,7 @@ export class ReviewRefreshService {
                   toMergeEvidence(mergePolicy.value),
               }
             : candidateWithFeedback;
-        const journal = input.recentWrites ?? [];
+        const journal = recentWrites;
         const commentPair = withoutRecentWrites(
           candidate.comments,
           represented.value.comments,
@@ -598,6 +614,13 @@ export class ReviewRefreshService {
           review.updatedAt,
         );
         if (savedReview._tag === "err") return err({ reason: "storage" });
+        // Best effort: an explicit refresh always fully re-baselines
+        // representedRemote, so the own-write journal has nothing left to
+        // protect. A clear failure must not fail the refresh itself.
+        await this.dependencies.recentWrites.clear(
+          input.profileId,
+          input.reviewId,
+        );
         if (this.dependencies.project === undefined)
           return ok({ review: authoritative, sessionId, snapshot: candidate });
         // Explicit refresh reconciles the viewer's pending review; a failed read
@@ -954,6 +977,39 @@ function toMergeEvidence(
   return policyEvidence === undefined
     ? evidenceBase
     : { ...evidenceBase, policy: policyEvidence };
+}
+
+/**
+ * Combine the durable own-write journal with the caller-supplied array.
+ * Duplicates are harmless to `withoutRecentWrites`/`withoutJournaledFeedback`'s
+ * set-based logic, but de-duplicating keeps the union from growing needlessly.
+ */
+function unionRecentWrites(
+  durable: ReadonlyArray<RecentReviewWrite>,
+  requested: ReadonlyArray<RecentReviewWrite>,
+): ReadonlyArray<RecentReviewWrite> {
+  const seen = new Set<string>();
+  const union: Array<RecentReviewWrite> = [];
+  for (const entry of [...durable, ...requested]) {
+    const key = recentWriteDedupeKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    union.push(entry);
+  }
+  return union;
+}
+
+function recentWriteDedupeKey(entry: RecentReviewWrite): string {
+  switch (entry._tag) {
+    case "Comment":
+      return `Comment:${entry.commentId}`;
+    case "ThreadState":
+      return `ThreadState:${entry.threadId}:${entry.state}`;
+    case "PendingThread":
+      return `PendingThread:${entry.threadId}`;
+    case "DirectSummaryReview":
+      return `DirectSummaryReview:${entry.reviewId}`;
+  }
 }
 
 function ref(review: Review): PullRequestRef {

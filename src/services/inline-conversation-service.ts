@@ -2,9 +2,11 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
+import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubReviewCoordinates } from "../domain/patch";
 import {
   parseGitHubThreadId,
+  type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -13,6 +15,7 @@ import type {
   ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { RecentReviewWrite } from "./review-refresh-service";
 import { err, ok, type Result } from "../domain/result";
 
 export type DirectConversationCommand =
@@ -101,6 +104,8 @@ export class InlineConversationService {
     private readonly gate: Pick<ReviewWriteGate, "requireFresh">,
     private readonly github: Gateway,
     private readonly writeCoordinator: ReviewOperationCoordinator,
+    private readonly now: () => IsoTimestamp,
+    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
   ) {}
 
   async execute(input: {
@@ -114,7 +119,21 @@ export class InlineConversationService {
     if (!this.writeCoordinator.acquire(key))
       return err("review_write_in_progress");
     try {
-      return await this.executeUnlocked(input);
+      const result = await this.executeUnlocked(input);
+      if (result._tag === "ok") {
+        const entry = journalEntryFor(result.value);
+        if (entry !== undefined) {
+          // Best effort: the GitHub write already succeeded, so a durable
+          // journal failure here must not fail the confirmed command.
+          await this.recentWrites.append(
+            input.profileId,
+            input.reviewId,
+            entry,
+            this.now(),
+          );
+        }
+      }
+      return result;
     } finally {
       this.writeCoordinator.release(key);
     }
@@ -293,6 +312,37 @@ export class InlineConversationService {
     return target.value.viewerDidAuthor === true
       ? ok(undefined)
       : err("permission_denied");
+  }
+}
+
+/**
+ * Map one confirmed write receipt to the typed own-write journal entry it
+ * proves. `ThreadStateChanged`'s receipt carries a plain string threadId, not
+ * the already-branded `GitHubThreadId` the domain type requires, so it is
+ * re-parsed here rather than assumed valid.
+ */
+function journalEntryFor(
+  receipt: DirectConversationReceipt,
+): RecentReviewWrite | undefined {
+  switch (receipt._tag) {
+    case "CommentCreated":
+    case "ReplyCreated":
+      return receipt.reviewId === undefined
+        ? { _tag: "Comment", commentId: receipt.commentId }
+        : {
+            _tag: "Comment",
+            commentId: receipt.commentId,
+            reviewId: receipt.reviewId,
+          };
+    case "ThreadStateChanged": {
+      const threadId = parseGitHubThreadId(receipt.threadId);
+      return threadId._tag === "err"
+        ? undefined
+        : { _tag: "ThreadState", threadId: threadId.value, state: receipt.state };
+    }
+    case "CommentEdited":
+    case "CommentDeleted":
+      return { _tag: "Comment", commentId: receipt.commentId };
   }
 }
 

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
 import { ReviewObservationJournalStore } from "../../src/adapters/storage/review-observation-journal-store";
 import {
   ReviewRemoteStore,
@@ -176,6 +177,7 @@ async function fixture(
   const github = fakeGitHub({ terminal: options.terminal === true });
   let failed = options.failReviewSave === true;
   const journals = new ReviewObservationJournalStore(paths);
+  const recentWrites = new RecentWriteJournalStore(paths);
   let removeFailed = options.failJournalRemove === true;
   const observationDependencies = {
     profiles,
@@ -248,6 +250,7 @@ async function fixture(
         };
       },
     },
+    recentWrites,
     coordinator: new ReviewOperationCoordinator(),
     now: () => observedAt,
   };
@@ -271,6 +274,7 @@ async function fixture(
     session: storedSession,
     observation,
     journals,
+    recentWrites,
   };
 }
 
@@ -452,6 +456,7 @@ describe("ReviewObservationService", () => {
       sessions: value.sessions,
       remote: value.remote,
       journals: new ReviewObservationJournalStore(value.paths),
+      recentWrites: new RecentWriteJournalStore(value.paths),
       github: fakeGitHub({ terminal: false }),
       pendingReview: {
         adoptObservedState() {
@@ -493,6 +498,7 @@ describe("ReviewObservationService", () => {
       sessions: value.sessions,
       remote: value.remote,
       journals: value.journals,
+      recentWrites: value.recentWrites,
       github: fakeGitHub({ terminal: false }),
       pendingReview: {
         adoptObservedState() {

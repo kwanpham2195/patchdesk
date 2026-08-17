@@ -150,6 +150,7 @@ function fixture(
     ...overrides,
   };
   const coordinator = new ReviewOperationCoordinator();
+  const recentWrites = { append: vi.fn(async () => ok(undefined)) };
   return {
     service: new PendingReviewService(
       // SAFETY: this fixture mock implements only the Pick<...> subset the
@@ -163,11 +164,13 @@ function fixture(
       github as never,
       () => now,
       coordinator,
+      recentWrites,
     ),
     store,
     gate,
     github,
     coordinator,
+    recentWrites,
     saves,
     current: () => stored,
   };

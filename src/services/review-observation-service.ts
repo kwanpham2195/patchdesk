@@ -3,6 +3,7 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type {
   ReviewObservationJournal,
   ReviewObservationJournalStore,
@@ -98,6 +99,7 @@ export type ReviewObservationDependencies = {
     ReviewObservationJournalStore,
     "load" | "save" | "remove"
   >;
+  readonly recentWrites: Pick<RecentWriteJournalStore, "prune" | "clear">;
   readonly github: ObservationGitHub;
   readonly pendingReview: Pick<PendingReviewService, "adoptObservedState">;
   readonly coordinator: ReviewOperationCoordinator;
@@ -163,6 +165,9 @@ export class ReviewObservationService {
     const { profile, review, session, represented } = loaded.value;
     const detectedAt = this.dependencies.now();
     if (review.status._tag === "Terminal") {
+      // Best effort: no further reconciliation will read the journal once a
+      // review is terminal; a clear failure must not fail this observation.
+      await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
       return ok({
         _tag: "Terminal",
         status: review.status.state,
@@ -189,9 +194,11 @@ export class ReviewObservationService {
         terminal,
         review.updatedAt,
       );
-      return saved._tag === "ok"
-        ? ok({ _tag: "Terminal", status: state, detectedAt })
-        : err({ reason: "storage" });
+      if (saved._tag === "err") return err({ reason: "storage" });
+      // Best effort: no further reconciliation will read the journal once a
+      // review is terminal; a clear failure must not fail this observation.
+      await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
+      return ok({ _tag: "Terminal", status: state, detectedAt });
     }
 
     const identity = new GitHubRevisionIdentityReader(this.dependencies.github);
@@ -441,6 +448,13 @@ export class ReviewObservationService {
         "reconciliation_incomplete",
       );
     }
+    // Best effort: drop own-write journal entries this exact candidate
+    // already represents; a prune failure must not fail this observation.
+    await this.dependencies.recentWrites.prune(
+      input.profileId,
+      input.reviewId,
+      (entry) => containsRecentWrites(candidate, [entry]),
+    );
 
     // A successful snapshot transition does not itself prove GitHub has made
     // a just-confirmed write visible. Keep the renderer's typed write journal
