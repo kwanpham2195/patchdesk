@@ -2,13 +2,9 @@
 
 ## Project Structure
 
-Patchdesk is a local-first Electron workbench for pull-request review. `src/domain/` holds types and invariants, `src/services/` orchestration, and `src/adapters/` I/O. Electron code is in `src/main/`; React is in `src/renderer/src/`. Pi Insights run in the isolated `runtime/flue/` Flue 2 one-shot child; Patchdesk remains the lifecycle, validation, and GitHub authority.
-
-Tests mirror those boundaries under `tests/`. Browser coverage is in `tests/browser/`; renderer tests are in `tests/renderer/`. Shared fixtures live in `fixtures/flue/` and `fixtures/github/`; assets are in `resources/`.
+Patchdesk is a local-first Electron workbench for pull-request review. `src/domain/` holds types and invariants, `src/services/` orchestration, `src/adapters/` I/O. Electron code is in `src/main/`; React is in `src/renderer/src/`. Pi Insights run in the isolated `runtime/flue/` Flue 2 one-shot child; Patchdesk remains the lifecycle, validation, and GitHub authority. Tests mirror those boundaries under `tests/`; browser coverage is in `tests/browser/`, renderer tests in `tests/renderer/`. See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the full picture.
 
 ## Development and Verification
-
-Use pnpm 8.8.0. Run development in a Herdr tab with `pnpm dev`.
 
 Before starting any task, make sure the dev log tails are live in herdr:
 
@@ -17,39 +13,17 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - If either pane is gone or idle, start/restart it before doing the work.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code. A stale main process shows as repeated `400 invalid_input` on `/v1/reviews/detect-updates` (old route schema vs new typed journal). Restart via the herdr dev tab (Ctrl-C, then `pnpm dev -- --remote-debugging-port=9233`).
 
-Verification commands:
+Verification commands live in `README.md`. For desktop or renderer changes run the full gate in order (typecheck, tests, build, browser checks); package and smoke-test only when package-specific proof is requested.
 
-- `pnpm lint`: Oxlint; still red during the anti-slop migration (see below).
-- `pnpm lint:staged`: oxlint --fix over staged files only; the commit gate.
-- `pnpm typecheck`: TypeScript checks.
-- `pnpm test -- --run`: Vitest unit and integration suite.
-- `pnpm build`: builds the main process, preload, and renderer.
-- `pnpm exec playwright test`: browser tests.
-
-For desktop or renderer changes, run those commands in that order. Package and smoke-test only when package-specific proof is requested.
-
-The pre-commit hook (`pnpm precommit`) runs a blocking React Doctor scan on
-staged files, then `pnpm lint:staged` (oxlint --fix over staged files). If it
-blocks, fix the reported finding; do not disable or retune rules to make the
-commit pass. Anti-slop rules are not auto-fixable: fix the file's findings,
-then re-stage. `doctor.config.json` ignores the vendored plugin and installed
-skills from the React Doctor scan.
+The pre-commit hook (`pnpm precommit`) runs a blocking React Doctor scan on staged files, then `pnpm lint:staged` (oxlint --fix over staged files). If it blocks, fix the reported finding; do not disable or retune rules to make the commit pass. Anti-slop rules are not auto-fixable: fix the file's findings, then re-stage. `doctor.config.json` ignores the vendored plugin and installed skills from the React Doctor scan.
 
 For live verification of the running app, use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) — never substitute a build, unit test, or static inspection for live app checks, and keep live checks read-only.
 
 ## Anti-slop migration
 
-Vendored at `tools/oxlint/anti-slop/` (15 rules; `@oxlint/plugins` devDep),
-enabled at "error" in `.oxlintrc.json`. Migration plan and rule-by-rule
-progress: `.agents/PLANS/2026-08-16-anti-slop-migration.md`. Reinstall/update
-from the bundled skill at `.agents/skills/install-anti-slop/` (upstream
-dmmulroy/anti-slop).
+Vendored at `tools/oxlint/anti-slop/` (15 rules; `@oxlint/plugins` devDep), enabled at "error" in `.oxlintrc.json`. Migration plan and rule-by-rule progress: `.agents/PLANS/2026-08-16-anti-slop-migration.md`. Reinstall/update from the bundled skill at `.agents/skills/install-anti-slop/` (upstream dmmulroy/anti-slop).
 
-Policy: fix findings honestly; never launder types to pass lint (no `as
-unknown` tricks, no faked SAFETY comments, no severity weakening). Genuine I/O
-boundaries keep `unknown` via targeted per-file overrides in `.oxlintrc.json`
-with a comment stating the boundary contract. Prefer `satisfies`, inference,
-and boundary parsing when resolving findings.
+Policy: fix findings honestly; never launder types to pass lint (no `as unknown` tricks, no faked SAFETY comments, no severity weakening). Genuine I/O boundaries keep `unknown` via targeted per-file overrides in `.oxlintrc.json` with a comment stating the boundary contract. Prefer `satisfies`, inference, and boundary parsing when resolving findings.
 
 ## Code and Testing Conventions
 
@@ -71,9 +45,9 @@ Add regression tests for bugs when practical. Keep fixtures only when active pro
 
 ## Architecture and Safety
 
-- Keep the renderer sandboxed: do not weaken Electron’s Node isolation or web security.
-- The loopback API requires its per-launch capability. GitHub writes require an explicit current UI action. Merge and Published feedback deletion or dismissal also require explicit confirmation.
-- Do not persist credentials in profiles.
+The safety statement in `README.md` describes the sandbox and write-authority model. Agent rules on top of it:
+
+- The loopback API requires its per-launch capability. GitHub writes require an explicit current UI action. Merge and Published feedback deletion or dismissal require explicit confirmation.
 - Provider support uses built-in environment API-key or ambient machine-credential providers, plus the Codex CLI account provider defined by ADR-0016; exclude all other OAuth-only providers and Cloudflare Workers bindings from selectable catalogs. Codex may use verified sandboxed read-only inspection tools only in Patchdesk's immutable represented-review worktree; deny writes, file changes, network/permission escalation, and unverified requests. Keep availability checks main-process-only and redacted; never probe providers, read a full environment, execute custom-provider configuration, or expose/persist credential values. Flue 2 runs only as a Patchdesk-owned one-shot child with no sandbox, MCP, subagents, filesystem tools, or GitHub authority.
 - Cleanup may remove only non-running review sessions.
 
