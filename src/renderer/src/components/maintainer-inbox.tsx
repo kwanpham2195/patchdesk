@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  CircleDashed,
+  CircleSlash,
   Clock3,
   Filter,
   GitPullRequest,
@@ -26,6 +28,7 @@ import {
 import type { InboxRow, InboxView } from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
 import { inboxIdentityKey } from "@/renderer-contracts";
+import { inboxQueues } from "@/inbox-queues";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
@@ -84,20 +87,6 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const views: ReadonlyArray<{
-  readonly id: InboxView;
-  readonly label: string;
-  readonly category?: string;
-}> = [
-  { id: "my_inbox", label: "My inbox" },
-  { id: "updated", label: "Updated", category: "updated_since_review" },
-  { id: "needs_review", label: "Needs review", category: "needs_review" },
-  { id: "waiting", label: "Waiting", category: "waiting_for_author" },
-  { id: "checks_failing", label: "Checks failing", category: "checks_failing" },
-  { id: "ready_to_merge", label: "Ready to merge", category: "ready_to_merge" },
-  { id: "all_open", label: "All open" },
-];
-
 type InboxViewState = {
   readonly view: InboxView;
   readonly search: string;
@@ -125,18 +114,18 @@ type InboxViewAction =
 function inboxViewState(
   preferences: ReturnType<typeof loadInboxViewPreferences>,
 ): InboxViewState {
-  return {
+  const state: InboxViewState = {
     view: preferences.view,
     search: preferences.search,
     sort: preferences.sort,
     selectedRepo: preferences.selectedRepo,
     queueOpen: preferences.queueRailOpen,
     inspectorOpen: preferences.inspectorOpen,
-    ...(preferences.selectedIdentity === undefined
-      ? {}
-      : { selectedKey: preferences.selectedIdentity }),
     savedViews: preferences.savedViews,
   };
+  return preferences.selectedIdentity === undefined
+    ? state
+    : { ...state, selectedKey: preferences.selectedIdentity };
 }
 
 function inboxViewReducer(
@@ -185,19 +174,7 @@ function inboxViewReducer(
 
 export type ReviewInitialSection = "overview" | "diff" | "checks";
 
-/** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
-export function MaintainerInbox({
-  profileId,
-  profileLabel,
-  rows,
-  repos,
-  freshness,
-  snapshot,
-  refreshStatus,
-  onRefresh,
-  onOpenReview,
-  onOpenReviewId,
-}: {
+type MaintainerInboxProps = {
   readonly profileId: string;
   readonly profileLabel: string;
   readonly rows: ReadonlyArray<InboxRow>;
@@ -221,7 +198,21 @@ export function MaintainerInbox({
     initialSection?: ReviewInitialSection,
   ) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
-}): React.JSX.Element {
+};
+
+/** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
+export function MaintainerInbox({
+  profileId,
+  profileLabel,
+  rows,
+  repos,
+  freshness,
+  snapshot,
+  refreshStatus,
+  onRefresh,
+  onOpenReview,
+  onOpenReviewId,
+}: MaintainerInboxProps): React.JSX.Element {
   const preferences = useMemo(
     () => loadInboxViewPreferences(profileId),
     [profileId],
@@ -248,12 +239,8 @@ export function MaintainerInbox({
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    )
-      return;
-    const query = window.matchMedia("(max-width: 1279px)");
+    const query = narrowViewportQuery();
+    if (query === undefined) return;
     const update = (): void => setNarrow(query.matches);
     update();
     query.addEventListener("change", update);
@@ -282,6 +269,15 @@ export function MaintainerInbox({
   const visibleRows = useMemo(
     () => sortRows(filterRows(rows, view, search, selectedRepo), sort),
     [rows, search, sort, view, selectedRepo],
+  );
+  // The repository reads as noise when every visible row shares it, so rows
+  // only carry it while the view actually spans more than one repository.
+  const multipleRepositories = useMemo(
+    () =>
+      new Set(
+        visibleRows.map((row) => `${row.identity.owner}/${row.identity.repo}`),
+      ).size > 1,
+    [visibleRows],
   );
   const selected =
     visibleRows.find((row) => inboxIdentityKey(row) === selectedKey) ??
@@ -384,9 +380,9 @@ export function MaintainerInbox({
   };
 
   useEffect(() => {
-    const onView = (event: Event): void => {
-      const view = (event as CustomEvent<unknown>).detail;
-      if (isInboxView(view)) selectView(view);
+    const onView = (event: CustomEvent<string>): void => {
+      const next = resolveInboxView(event.detail);
+      if (next !== undefined) selectView(next);
     };
     const onAction = (): void => {
       if (selected !== undefined)
@@ -402,169 +398,36 @@ export function MaintainerInbox({
 
   const main = (
     <div className="min-w-0">
-      <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
-        <div className="min-w-0">
-          <p className="text-[11px] leading-4 text-muted-foreground">
-            {profileLabel}
-          </p>
-          <h1 className="mt-0.5 text-[17px] leading-5 font-semibold tracking-tight">
-            Maintainer inbox
-          </h1>
-          <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-            Open pull requests that need your next decision.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <InboxFreshness
-            status={refreshStatus}
-            {...(snapshot === undefined ? {} : { snapshot })}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            onClick={onRefresh}
-            disabled={refreshStatus === "Refreshing"}
-            aria-label={
-              refreshStatus === "Refreshing"
-                ? "Refresh all — refresh already running"
-                : "Refresh all watched repositories"
-            }
-          >
-            {refreshStatus === "Refreshing" ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Clock3 />
-            )}
-            Refresh all
-          </Button>
-        </div>
-      </header>
-      <section
-        className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
-        aria-label="Inbox filters"
-      >
-        <Button
-          className="min-[1280px]:hidden"
-          size="sm"
-          variant="outline"
-          onClick={toggleQueue}
-          aria-expanded={queueOpen}
-        >
-          <Filter /> Queues
-        </Button>
-        <InputGroup className="h-8 min-w-40 flex-1">
-          <InputGroupAddon className="pl-2 [&>svg]:size-3.5">
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(event) => changeSearch(event.target.value)}
-            className="h-8 text-xs"
-            placeholder="Filter pull requests"
-            aria-label="Filter pull requests"
-          />
-        </InputGroup>
-        {repos !== undefined && repos.length > 0 ? (
-          <Select
-            items={repoItems}
-            value={selectedRepo}
-            onValueChange={(value) => changeSelectedRepo(value ?? "")}
-          >
-            <SelectTrigger
-              size="sm"
-              className="min-w-32 max-w-44 text-xs"
-              aria-label="Filter by repository"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {repoItems.map((item) => (
-                <SelectItem
-                  key={item.value}
-                  value={item.value}
-                  className="text-xs"
-                >
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
-        <Select
-          value={sort}
-          onValueChange={(value) => changeSort(value as InboxSort)}
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-28 text-xs"
-            aria-label="Sort pull requests"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="priority" className="text-xs">
-              Priority
-            </SelectItem>
-            <SelectItem value="updated" className="text-xs">
-              Last updated
-            </SelectItem>
-            <SelectItem value="repository" className="text-xs">
-              Repository
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-[11px] tabular-nums text-muted-foreground">
-          {visibleRows.length} open
-        </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={toggleInspector}
-          aria-label={
-            inspectorOpen ? "Hide review details" : "Show review details"
-          }
-          aria-expanded={inspectorOpen}
-        >
-          {inspectorOpen ? <ChevronRight /> : <ChevronLeft />}
-        </Button>
-      </section>
-      <div
-        aria-hidden="true"
-        className="hidden grid-cols-[minmax(0,1fr)_8rem_2.5rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
-      >
-        <span>Pull request</span>
-        <span>Review state</span>
-        <span className="text-right">Updated</span>
-      </div>
-      <div
-        ref={listRef}
-        role="listbox"
-        aria-label="Pull requests"
-        tabIndex={0}
+      <InboxHeader
+        profileLabel={profileLabel}
+        refreshStatus={refreshStatus}
+        {...(snapshot === undefined ? {} : { snapshot })}
+        onRefresh={onRefresh}
+      />
+      <InboxFiltersBar
+        queueOpen={queueOpen}
+        onToggleQueue={toggleQueue}
+        search={search}
+        onSearchChange={changeSearch}
+        {...(repos === undefined ? {} : { repos })}
+        repoItems={repoItems}
+        selectedRepo={selectedRepo}
+        onRepositoryChange={changeSelectedRepo}
+        sort={sort}
+        onSortChange={changeSort}
+        visibleCount={visibleRows.length}
+        inspectorOpen={inspectorOpen}
+        onToggleInspector={toggleInspector}
+      />
+      <InboxRowsPanel
+        listRef={listRef}
+        visibleRows={visibleRows}
+        selected={selected}
+        multipleRepositories={multipleRepositories}
         onKeyDown={onListKeyDown}
-        className="divide-y outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {visibleRows.map((row) => {
-          const key = inboxIdentityKey(row);
-          const active =
-            selected !== undefined && key === inboxIdentityKey(selected);
-          return (
-            <InboxRowItem
-              key={key}
-              row={row}
-              selected={active}
-              onSelect={() => selectRow(row)}
-              onAction={() => requestAction(row, onOpenReview, onOpenReviewId)}
-            />
-          );
-        })}
-        {visibleRows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            No open pull requests match this view.
-          </div>
-        ) : null}
-      </div>
+        onSelectRow={selectRow}
+        onActionRow={(row) => requestAction(row, onOpenReview, onOpenReviewId)}
+      />
     </div>
   );
 
@@ -598,6 +461,307 @@ export function MaintainerInbox({
       <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">
         {main}
       </ScrollArea>
+      <ReviewDetailsPanel
+        inspectorOpen={inspectorOpen}
+        narrow={narrow}
+        selected={selected}
+        freshness={freshness}
+        onToggleInspector={toggleInspector}
+        onAction={() =>
+          selected === undefined
+            ? undefined
+            : requestAction(selected, onOpenReview, onOpenReviewId)
+        }
+      />
+      <SaveViewDialog
+        open={saveViewOpen}
+        onOpenChange={setSaveViewOpen}
+        profileLabel={profileLabel}
+        name={savedViewName}
+        onNameChange={setSavedViewName}
+        onSave={saveCurrentView}
+      />
+      <DeleteViewAlertDialog
+        deleteView={deleteView}
+        onOpenChange={(open) => {
+          if (!open) setDeleteView(undefined);
+        }}
+        onConfirm={removeSavedView}
+      />
+    </div>
+  );
+}
+
+function InboxHeader({
+  profileLabel,
+  refreshStatus,
+  snapshot,
+  onRefresh,
+}: {
+  readonly profileLabel: string;
+  readonly refreshStatus:
+    | "Refreshing"
+    | "Current"
+    | "Aged"
+    | "Partial"
+    | "Cached after refresh failure"
+    | "Unavailable"
+    | "Paused";
+  readonly snapshot?: {
+    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly refreshedAt?: string | undefined;
+  };
+  readonly onRefresh: () => void;
+}): React.JSX.Element {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
+      <div className="min-w-0">
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          {profileLabel}
+        </p>
+        <h1 className="mt-0.5 text-[17px] leading-5 font-semibold tracking-tight">
+          Maintainer inbox
+        </h1>
+        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
+          Open pull requests that need your next decision.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <InboxFreshness
+          status={refreshStatus}
+          {...(snapshot === undefined ? {} : { snapshot })}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs"
+          onClick={onRefresh}
+          disabled={refreshStatus === "Refreshing"}
+          aria-label={
+            refreshStatus === "Refreshing"
+              ? "Refresh all — refresh already running"
+              : "Refresh all watched repositories"
+          }
+        >
+          {refreshStatus === "Refreshing" ? (
+            <LoaderCircle className="animate-spin" />
+          ) : (
+            <Clock3 />
+          )}
+          Refresh all
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function InboxFiltersBar({
+  queueOpen,
+  onToggleQueue,
+  search,
+  onSearchChange,
+  repos,
+  repoItems,
+  selectedRepo,
+  onRepositoryChange,
+  sort,
+  onSortChange,
+  visibleCount,
+  inspectorOpen,
+  onToggleInspector,
+}: {
+  readonly queueOpen: boolean;
+  readonly onToggleQueue: () => void;
+  readonly search: string;
+  readonly onSearchChange: (value: string) => void;
+  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
+  readonly repoItems: ReadonlyArray<{ label: string; value: string }>;
+  readonly selectedRepo: string;
+  readonly onRepositoryChange: (value: string) => void;
+  readonly sort: InboxSort;
+  readonly onSortChange: (value: InboxSort) => void;
+  readonly visibleCount: number;
+  readonly inspectorOpen: boolean;
+  readonly onToggleInspector: () => void;
+}): React.JSX.Element {
+  return (
+    <section
+      className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
+      aria-label="Inbox filters"
+    >
+      <Button
+        className="min-[1280px]:hidden"
+        size="sm"
+        variant="outline"
+        onClick={onToggleQueue}
+        aria-expanded={queueOpen}
+      >
+        <Filter /> Queues
+      </Button>
+      <InputGroup className="h-8 min-w-40 flex-1">
+        <InputGroupAddon className="pl-2 [&>svg]:size-3.5">
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          className="h-8 text-xs"
+          placeholder="Filter pull requests"
+          aria-label="Filter pull requests"
+        />
+      </InputGroup>
+      {repos !== undefined && repos.length > 0 ? (
+        <Select
+          items={repoItems}
+          value={selectedRepo}
+          onValueChange={(value) => onRepositoryChange(value ?? "")}
+        >
+          <SelectTrigger
+            size="sm"
+            className="min-w-32 max-w-44 text-xs"
+            aria-label="Filter by repository"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {repoItems.map((item) => (
+              <SelectItem
+                key={item.value}
+                value={item.value}
+                className="text-xs"
+              >
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+      <Select
+        value={sort}
+        onValueChange={(value) => {
+          const next = inboxSortFrom(value);
+          if (next !== undefined) onSortChange(next);
+        }}
+      >
+        <SelectTrigger
+          size="sm"
+          className="min-w-28 text-xs"
+          aria-label="Sort pull requests"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="priority" className="text-xs">
+            Priority
+          </SelectItem>
+          <SelectItem value="updated" className="text-xs">
+            Last updated
+          </SelectItem>
+          <SelectItem value="repository" className="text-xs">
+            Repository
+          </SelectItem>
+          <SelectItem value="size" className="text-xs">
+            Change size
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <span className="text-[11px] tabular-nums text-muted-foreground">
+        {visibleCount} open
+      </span>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={onToggleInspector}
+        aria-label={
+          inspectorOpen ? "Hide review details" : "Show review details"
+        }
+        aria-expanded={inspectorOpen}
+      >
+        {inspectorOpen ? <ChevronRight /> : <ChevronLeft />}
+      </Button>
+    </section>
+  );
+}
+
+function InboxRowsPanel({
+  listRef,
+  visibleRows,
+  selected,
+  multipleRepositories,
+  onKeyDown,
+  onSelectRow,
+  onActionRow,
+}: {
+  readonly listRef: React.RefObject<HTMLDivElement | null>;
+  readonly visibleRows: ReadonlyArray<InboxRow>;
+  readonly selected: InboxRow | undefined;
+  readonly multipleRepositories: boolean;
+  readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  readonly onSelectRow: (row: InboxRow) => void;
+  readonly onActionRow: (row: InboxRow) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        className="hidden grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+      >
+        <span>Pull request</span>
+        <span>Author</span>
+        <span>Changes</span>
+        <span>CI</span>
+        <span className="text-right">Updated</span>
+      </div>
+      <div
+        ref={listRef}
+        role="listbox"
+        aria-label="Pull requests"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        className="divide-y outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {visibleRows.map((row) => {
+          const key = inboxIdentityKey(row);
+          const active =
+            selected !== undefined && key === inboxIdentityKey(selected);
+          return (
+            <InboxRowItem
+              key={key}
+              row={row}
+              selected={active}
+              showRepository={multipleRepositories}
+              onSelect={() => onSelectRow(row)}
+              onAction={() => onActionRow(row)}
+            />
+          );
+        })}
+        {visibleRows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No open pull requests match this view.
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function ReviewDetailsPanel({
+  inspectorOpen,
+  narrow,
+  selected,
+  freshness,
+  onToggleInspector,
+  onAction,
+}: {
+  readonly inspectorOpen: boolean;
+  readonly narrow: boolean;
+  readonly selected: InboxRow | undefined;
+  readonly freshness: "fresh" | "cached";
+  readonly onToggleInspector: () => void;
+  readonly onAction: () => void;
+}): React.JSX.Element {
+  return (
+    <>
       <aside
         className={cn(
           "hidden min-w-0 overflow-hidden border-l min-[1280px]:block",
@@ -609,18 +773,14 @@ export function MaintainerInbox({
           <Inspector
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
-            onAction={() =>
-              selected === undefined
-                ? undefined
-                : requestAction(selected, onOpenReview, onOpenReviewId)
-            }
+            onAction={onAction}
           />
         </ScrollArea>
       </aside>
       <Sheet
         open={narrow && inspectorOpen && selected !== undefined}
         onOpenChange={(open) => {
-          if (!open && narrow) toggleInspector();
+          if (!open && narrow) onToggleInspector();
         }}
       >
         <SheetContent
@@ -636,66 +796,86 @@ export function MaintainerInbox({
           <Inspector
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
-            onAction={() =>
-              selected === undefined
-                ? undefined
-                : requestAction(selected, onOpenReview, onOpenReviewId)
-            }
+            onAction={onAction}
           />
         </SheetContent>
       </Sheet>
-      <Dialog open={saveViewOpen} onOpenChange={setSaveViewOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save current view</DialogTitle>
-            <DialogDescription>
-              Save the queue, filter, and sort locally for {profileLabel}.
-            </DialogDescription>
-          </DialogHeader>
-          <Label htmlFor="saved-view-name">View name</Label>
-          <Input
-            id="saved-view-name"
-            value={savedViewName}
-            onChange={(event) => setSavedViewName(event.target.value)}
-            placeholder="e.g. Waiting on customer"
-            autoFocus
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSaveViewOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={saveCurrentView}
-              disabled={savedViewName.trim().length === 0}
-            >
-              <Save /> Save view
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <AlertDialog
-        open={deleteView !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setDeleteView(undefined);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete saved view?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes only the local shortcut. Pull requests and reviews
-              are unchanged.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={removeSavedView}>
-              Delete view
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </>
+  );
+}
+
+function SaveViewDialog({
+  open,
+  onOpenChange,
+  profileLabel,
+  name,
+  onNameChange,
+  onSave,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly profileLabel: string;
+  readonly name: string;
+  readonly onNameChange: (value: string) => void;
+  readonly onSave: () => void;
+}): React.JSX.Element {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Save current view</DialogTitle>
+          <DialogDescription>
+            Save the queue, filter, and sort locally for {profileLabel}.
+          </DialogDescription>
+        </DialogHeader>
+        <Label htmlFor="saved-view-name">View name</Label>
+        <Input
+          id="saved-view-name"
+          value={name}
+          onChange={(event) => onNameChange(event.target.value)}
+          placeholder="e.g. Waiting on customer"
+          autoFocus
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={onSave} disabled={name.trim().length === 0}>
+            <Save /> Save view
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteViewAlertDialog({
+  deleteView,
+  onOpenChange,
+  onConfirm,
+}: {
+  readonly deleteView: SavedInboxView | undefined;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onConfirm: () => void;
+}): React.JSX.Element {
+  return (
+    <AlertDialog open={deleteView !== undefined} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete saved view?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This removes only the local shortcut. Pull requests and reviews are
+            unchanged.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+            Delete view
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -787,7 +967,7 @@ function QueueRail({
         className="flex gap-0.5 overflow-x-auto px-2 pb-1.5 min-[1280px]:flex-col"
         aria-label="Inbox views"
       >
-        {views.map((item) => (
+        {inboxQueues.map((item) => (
           <Button
             key={item.id}
             variant={view === item.id ? "secondary" : "ghost"}
@@ -864,11 +1044,13 @@ function QueueRail({
 function InboxRowItem({
   row,
   selected,
+  showRepository,
   onSelect,
   onAction,
 }: {
   readonly row: InboxRow;
   readonly selected: boolean;
+  readonly showRepository: boolean;
   readonly onSelect: () => void;
   readonly onAction: () => void;
 }): React.JSX.Element {
@@ -888,7 +1070,7 @@ function InboxRowItem({
         selected && "border-l-primary bg-primary/8",
       )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(0,1fr)_8rem_2.5rem]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem]">
         <div className="flex min-w-0 items-start gap-2">
           <GitPullRequest className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
@@ -905,35 +1087,35 @@ function InboxRowItem({
                 </Badge>
               ) : null}
             </div>
-            <p
-              className="truncate text-[11px] leading-4 text-muted-foreground"
-              title={`${row.identity.owner}/${row.identity.repo}`}
-            >
-              {row.identity.owner}/{row.identity.repo}
-              <span className="hidden min-[1440px]:inline">
-                {" "}
-                · {row.author}
-              </span>
-            </p>
+            {showRepository ? (
+              <p
+                className="truncate text-[11px] leading-4 text-muted-foreground"
+                title={`${row.identity.owner}/${row.identity.repo}`}
+              >
+                {row.identity.owner}/{row.identity.repo}
+              </p>
+            ) : null}
           </div>
         </div>
-        <div className="hidden min-w-0 min-[1280px]:flex min-[1280px]:items-center min-[1280px]:gap-1.5">
-          <CheckBadge overall={row.checks.overall} />
-          <span
-            className="truncate text-[11px] text-muted-foreground"
-            title={reasonText(row)}
-          >
-            <Reason row={row} />
-          </span>
-        </div>
+        <span
+          className="hidden truncate text-[11px] text-muted-foreground min-[1280px]:block"
+          title={row.author}
+        >
+          {row.author}
+        </span>
+        <span className="hidden min-[1280px]:block">
+          <ChangeSize stats={row.changeStats} />
+        </span>
+        <span className="hidden min-[1280px]:block">
+          <CheckIcon overall={row.checks.overall} />
+        </span>
         <span className="text-right text-[11px] leading-5 text-muted-foreground">
           {relativeTime(row.updatedAt)}
         </span>
-        <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground min-[1280px]:hidden">
-          <CheckBadge overall={row.checks.overall} />
-          <span>
-            <Reason row={row} />
-          </span>
+        <div className="col-span-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground min-[1280px]:hidden">
+          <CheckIcon overall={row.checks.overall} />
+          <span className="truncate">{row.author}</span>
+          <ChangeSize stats={row.changeStats} />
         </div>
       </div>
     </button>
@@ -982,7 +1164,7 @@ function Inspector({
         />
         <Detail label="Current head" value={shortSha(row.currentHeadSha)} />
         <Detail label="Checks" value={row.checks.overall} />
-        <Detail label="Changes" value={changeStats(row)} />
+        <Detail label="Changes" value={changeStatsText(row.changeStats)} />
         {row.latestReview === undefined ? (
           <Detail label="Last review" value="Not reviewed" />
         ) : (
@@ -1053,38 +1235,74 @@ function Detail({
     </div>
   );
 }
-function CheckBadge({
+/** Check status as a single glyph, with the state kept for assistive technology. */
+function CheckIcon({
   overall,
 }: {
   readonly overall: InboxRow["checks"]["overall"];
 }): React.JSX.Element {
-  const variant =
-    overall === "failing"
-      ? "destructive"
-      : overall === "passing"
-        ? "secondary"
-        : "outline";
+  const icon =
+    overall === "passing" ? (
+      <CheckCircle2 className="size-3.5 text-emerald-700 dark:text-emerald-400" />
+    ) : overall === "failing" ? (
+      <CircleAlert className="size-3.5 text-rose-700 dark:text-rose-400" />
+    ) : overall === "pending" ? (
+      <Clock3 className="size-3.5 text-muted-foreground" />
+    ) : overall === "skipped" ? (
+      <CircleSlash className="size-3.5 text-muted-foreground" />
+    ) : (
+      <CircleDashed className="size-3.5 text-muted-foreground" />
+    );
   return (
-    <Badge variant={variant} className="h-4 px-1 text-[10px]">
-      {overall}
-    </Badge>
+    <span className="inline-flex items-center" title={`Checks ${overall}`}>
+      {icon}
+      <span className="sr-only">Checks {overall}</span>
+    </span>
   );
 }
-function Reason({ row }: { readonly row: InboxRow }): React.JSX.Element {
-  if (row.categories.includes("updated_since_review"))
-    return <span>Updated since review</span>;
-  if (row.categories.includes("needs_review"))
-    return <span>Review requested</span>;
-  if (row.categories.includes("checks_failing"))
-    return <span className="text-destructive">Checks failing</span>;
-  return <span>{inboxActionLabel(row.recommendedAction.kind)}</span>;
+
+/** Change size with the workbench diff colors, so scale reads before the title does. */
+function ChangeSize({
+  stats,
+}: {
+  readonly stats: InboxRow["changeStats"];
+}): React.JSX.Element {
+  const { additions, deletions, changedFiles } = stats;
+  if (
+    additions === undefined &&
+    deletions === undefined &&
+    changedFiles === undefined
+  )
+    return <span className="text-[11px] text-muted-foreground">—</span>;
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[11px] tabular-nums"
+      title={changeStatsText(stats)}
+    >
+      {changedFiles === undefined ? null : (
+        <span className="text-muted-foreground">
+          {changedFiles} {changedFiles === 1 ? "file" : "files"}
+        </span>
+      )}
+      {additions === undefined ? null : (
+        <span className="text-emerald-700 dark:text-emerald-400">
+          +{compactCount(additions)}
+        </span>
+      )}
+      {deletions === undefined ? null : (
+        <span className="text-rose-700 dark:text-rose-400">
+          -{compactCount(deletions)}
+        </span>
+      )}
+    </span>
+  );
 }
-function reasonText(row: InboxRow): string {
-  if (row.categories.includes("updated_since_review"))
-    return "Updated since review";
-  if (row.categories.includes("needs_review")) return "Review requested";
-  if (row.categories.includes("checks_failing")) return "Checks failing";
-  return inboxActionLabel(row.recommendedAction.kind);
+
+/** Keeps large line counts inside the column; the title attribute carries the exact value. */
+function compactCount(value: number): string {
+  if (value < 1_000) return String(value);
+  if (value < 1_000_000) return `${Math.round(value / 100) / 10}k`;
+  return `${Math.round(value / 100_000) / 10}M`;
 }
 function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
   switch (kind) {
@@ -1173,10 +1391,17 @@ function sortRows(
       ? right.updatedAt.localeCompare(left.updatedAt)
       : sort === "repository"
         ? inboxIdentityKey(left).localeCompare(inboxIdentityKey(right))
-        : priority(left) - priority(right) ||
-          right.updatedAt.localeCompare(left.updatedAt) ||
-          inboxIdentityKey(left).localeCompare(inboxIdentityKey(right)),
+        : sort === "size"
+          ? changedLines(right) - changedLines(left) ||
+            right.updatedAt.localeCompare(left.updatedAt)
+          : priority(left) - priority(right) ||
+            right.updatedAt.localeCompare(left.updatedAt) ||
+            inboxIdentityKey(left).localeCompare(inboxIdentityKey(right)),
   );
+}
+function changedLines(row: InboxRow): number {
+  const { additions, deletions } = row.changeStats;
+  return (additions ?? 0) + (deletions ?? 0);
 }
 function priority(row: InboxRow): number {
   if (row.categories.includes("saved_review")) return 0;
@@ -1211,8 +1436,8 @@ function actionIcon(
 function shortSha(value: string): string {
   return value.slice(0, 12);
 }
-function changeStats(row: InboxRow): string {
-  const { additions, deletions, changedFiles } = row.changeStats;
+function changeStatsText(stats: InboxRow["changeStats"]): string {
+  const { additions, deletions, changedFiles } = stats;
   const parts = [
     changedFiles === undefined ? undefined : `${changedFiles} files`,
     additions === undefined ? undefined : `+${additions}`,
@@ -1228,21 +1453,23 @@ function relativeTime(iso: string): string {
   if (minutes < 1_440) return `${Math.round(minutes / 60)}h`;
   return `${Math.round(minutes / 1_440)}d`;
 }
-function isNarrowViewport(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(max-width: 1279px)").matches
-  );
+// `window` or `window.matchMedia` may be absent when this runs under
+// node/jsdom test environments, so every caller reaches this indirectly.
+function narrowViewportQuery(): MediaQueryList | undefined {
+  return globalThis.window?.matchMedia?.("(max-width: 1279px)");
 }
-function isInboxView(value: unknown): value is InboxView {
-  return (
-    value === "my_inbox" ||
-    value === "updated" ||
-    value === "needs_review" ||
-    value === "waiting" ||
-    value === "checks_failing" ||
-    value === "ready_to_merge" ||
-    value === "all_open"
-  );
+function isNarrowViewport(): boolean {
+  return narrowViewportQuery()?.matches ?? false;
+}
+const inboxSorts: ReadonlyArray<InboxSort> = [
+  "priority",
+  "updated",
+  "repository",
+  "size",
+];
+function inboxSortFrom(value: string | null): InboxSort | undefined {
+  return inboxSorts.find((sort) => sort === value);
+}
+function resolveInboxView(value: string): InboxView | undefined {
+  return inboxQueues.find((queue) => queue.id === value)?.id;
 }

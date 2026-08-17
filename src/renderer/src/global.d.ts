@@ -4,6 +4,10 @@ declare global {
   interface Window {
     readonly patchdesk: PatchdeskDesktopApi;
   }
+  interface WindowEventMap {
+    "patchdesk:inbox-view": CustomEvent<string>;
+    "patchdesk:inbox-action": Event;
+  }
 }
 
 export {};

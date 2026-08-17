@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
 import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
 const row: InboxRow = {
@@ -47,5 +47,57 @@ describe("MaintainerInbox", () => {
     );
     fireEvent.click(screen.getByRole("option"));
     expect(open).toHaveBeenCalledWith("review-1");
+  });
+
+  it("carries the repository only while the view spans more than one", () => {
+    const sized: InboxRow = {
+      ...row,
+      changeStats: { changedFiles: 28, additions: 361_006, deletions: 17 },
+    };
+    const other: InboxRow = {
+      ...row,
+      identity: { ...row.identity, repo: "other", number: 2 },
+    };
+    const { container, rerender } = render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[sized]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const [only] = within(container).getAllByRole("option");
+    if (only === undefined) throw new Error("expected one inbox row");
+    expect(within(only).queryByTitle("owner/repo")).toBeNull();
+    // The row renders one change-size cell per breakpoint; only one is visible.
+    expect(
+      within(only).getAllByTitle("28 files · +361006 · -17").length,
+    ).toBeGreaterThan(0);
+    expect(within(only).getAllByText("+361k").length).toBeGreaterThan(0);
+
+    rerender(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[sized, other]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const repositories = within(container)
+      .getAllByRole("option")
+      .map((node) =>
+        node.querySelector("[title^='owner/']")?.getAttribute("title"),
+      );
+    expect(new Set(repositories)).toEqual(
+      new Set(["owner/repo", "owner/other"]),
+    );
   });
 });
