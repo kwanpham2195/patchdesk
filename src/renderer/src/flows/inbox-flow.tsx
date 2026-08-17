@@ -3,6 +3,7 @@ import {
   MaintainerInbox,
   type ReviewInitialSection,
 } from "../components/maintainer-inbox";
+import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -101,7 +102,7 @@ export function InboxFlow({
         if (parsed === undefined)
           throw new Error("Invalid workbench projection");
         setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-        onOpenWorkbench(parsed as unknown as WorkbenchPayload, initialSection);
+        onOpenWorkbench(parsed, initialSection);
       } catch (cause: unknown) {
         const detail = cause instanceof Error ? cause.message : String(cause);
         setOpenError(
@@ -133,7 +134,7 @@ export function InboxFlow({
           return;
         }
         if (!isActive()) return;
-        onOpenWorkbench(parsed as unknown as WorkbenchPayload);
+        onOpenWorkbench(parsed);
       } catch (cause: unknown) {
         // The stored review cannot be loaded: its record is missing or its
         // snapshot no longer parses. Opening by PR identity heals or recreates
@@ -178,8 +179,23 @@ export function InboxFlow({
     };
   }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
 
+  if (inbox === undefined || dashboard === undefined)
+    return state === "loading" ? (
+      <MaintainerInboxSkeleton />
+    ) : (
+      <Pending
+        state={state}
+        {...(dashboard === undefined ? {} : { dashboard })}
+        {...(inbox === undefined ? {} : { inbox })}
+        {...(openedPr === undefined ? {} : { openedPr })}
+        {...(openError === undefined ? {} : { openError })}
+        onOpenRow={(pr) => void openPullRequest(pr)}
+        onRefresh={onRefresh}
+        onSettings={onSettings}
+      />
+    );
 
-  return inbox !== undefined && dashboard !== undefined ? (
+  return (
     <InboxScreen
       state={state}
       inbox={inbox}
@@ -204,17 +220,6 @@ export function InboxFlow({
           row?.identity,
         );
       }}
-    />
-  ) : (
-    <Pending
-      state={state}
-      {...(dashboard === undefined ? {} : { dashboard })}
-      {...(inbox === undefined ? {} : { inbox })}
-      {...(openedPr === undefined ? {} : { openedPr })}
-      {...(openError === undefined ? {} : { openError })}
-      onOpenRow={(pr) => void openPullRequest(pr)}
-      onRefresh={onRefresh}
-      onSettings={onSettings}
     />
   );
 }
