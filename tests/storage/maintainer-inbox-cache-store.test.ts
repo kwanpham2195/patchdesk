@@ -109,6 +109,31 @@ describe("maintainer inbox cache store", () => {
     expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
   });
 
+  it("round-trips a github_forbidden repository state (plan 009 picklist lockstep regression)", async () => {
+    const { store, profileId } = await fixtureStore();
+    const cache = {
+      schemaVersion: 1 as const,
+      refreshedAt: updatedAt,
+      rows: [],
+      repositories: [
+        {
+          identity: {
+            host: must(parseGitHubHost("github.com")),
+            owner: must(parseGitHubOwner("OmisePayments")),
+            repo: must(parseGitHubRepoName("dynamic-onboarding-service")),
+          },
+          state: "github_forbidden" as const,
+          complete: false,
+        },
+      ],
+    };
+    expect(await store.save(profileId, cache)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+  });
+
   it("upgrades a cached failed-check action to a review action", () => {
     const parsed = parseMaintainerInboxCache({
       schemaVersion: 1,

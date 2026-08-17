@@ -153,6 +153,50 @@ describe("MaintainerInboxService rate-limited reads", () => {
   });
 });
 
+describe("MaintainerInboxService forbidden reads (plan 009)", () => {
+  it("maps a GitHubForbidden read failure to the github_forbidden state and carries forbiddenReason", async () => {
+    // SAFETY: test fixture narrows a partial mock (only the members
+    // MaintainerInboxService actually calls) to its stricter collaborator
+    // and profile types.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async () =>
+          err({
+            _tag: "GitHubForbidden",
+            operation: "list_maintainer_prs",
+            reason: "ip_allow_list",
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+    // SAFETY: test fixture narrows a partial profile mock to
+    // WorkspaceProfileConfig; only the fields the service reads are set.
+    await expect(
+      service.list({
+        id: "cfw",
+        ghAccount: "fixture",
+        repos: [
+          { host: "github.com", owner: "OmisePayments", repo: "dynamic-onboarding-service" },
+        ],
+      } as never),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        repositories: [
+          { state: "github_forbidden", forbiddenReason: "ip_allow_list" },
+        ],
+      },
+    });
+  });
+});
+
 describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to

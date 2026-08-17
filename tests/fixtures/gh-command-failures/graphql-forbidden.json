@@ -7,5 +7,6 @@
   "stdout": "{\"errors\":[{\"type\":\"FORBIDDEN\",\"path\":[\"repository\"],\"locations\":[{\"line\":1,\"column\":9}],\"message\":\"Resource not accessible by integration\"}]}",
   "stderr": "gh: Resource not accessible by integration",
   "expectedTag": "CommandForbidden",
-  "note": "Unreproduced-but-documented per plan 007 STOP conditions; marked synthetic, not silently treated as verified."
+  "expectedReason": "unknown",
+  "note": "Unreproduced-but-documented per plan 007 STOP conditions; marked synthetic, not silently treated as verified. No extensions object at all in this fixture's body, so samlFailure is undefined, and the message has no IP-allow-list wording — plan 009's forbidden-reason classifier attributes it 'unknown'."
 }

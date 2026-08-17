@@ -37,6 +37,7 @@ export type InboxCacheRepository = {
     | "github_auth"
     | "github_read"
     | "github_rate_limited"
+    | "github_forbidden"
     | "no_open_prs";
   readonly complete: boolean;
 };
@@ -166,6 +167,7 @@ const cacheSchema = v.strictObject({
         "github_auth",
         "github_read",
         "github_rate_limited",
+        "github_forbidden",
         "no_open_prs",
       ]),
       complete: v.boolean(),

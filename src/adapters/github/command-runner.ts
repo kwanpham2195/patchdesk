@@ -44,12 +44,25 @@ export interface CommandExecutor {
   execute(input: CommandRequest): Promise<CommandExecution>;
 }
 
+/**
+ * Closed set of reasons GitHub can refuse a request as forbidden. Kept
+ * small and closed deliberately: the renderer receives a member of this
+ * enum, never GitHub's raw message text (see plan 009's Why This Matters —
+ * GitHubReadFailure never leaks stdout/stderr to the renderer, and this
+ * type preserves that property for forbidden reads).
+ */
+export type ForbiddenReason =
+  | "ip_allow_list"
+  | "saml"
+  | "insufficient_scopes"
+  | "unknown";
+
 /** Safe, product-facing classifications for command execution failures. */
 export type CommandFailure =
   | { readonly _tag: "CommandTimedOut" }
   | { readonly _tag: "CommandUnavailable" }
   | { readonly _tag: "CommandAuthenticationRequired" }
-  | { readonly _tag: "CommandForbidden" }
+  | { readonly _tag: "CommandForbidden"; readonly reason: ForbiddenReason }
   | { readonly _tag: "CommandNotFound" }
   | { readonly _tag: "CommandUnsupported" }
   | { readonly _tag: "CommandPendingReview" }
@@ -286,10 +299,18 @@ const restErrorBodySchema = v.looseObject({
 /**
  * Loose for the same reason: only the fields this classifier reads from a
  * `gh api graphql` error entry (see Decision Before Editing #3 in plan 007).
+ * `message` and `extensions.saml_failure` were added by plan 009 to
+ * attribute a FORBIDDEN error to a specific ForbiddenReason.
  */
 const graphqlErrorEntrySchema = v.looseObject({
   type: v.optional(v.string()),
-  extensions: v.optional(v.looseObject({ code: v.optional(v.string()) })),
+  message: v.optional(v.string()),
+  extensions: v.optional(
+    v.looseObject({
+      code: v.optional(v.string()),
+      saml_failure: v.optional(v.boolean()),
+    }),
+  ),
 });
 const graphqlErrorBodySchema = v.looseObject({
   errors: v.optional(v.array(graphqlErrorEntrySchema)),
@@ -351,7 +372,7 @@ function classifyRestStatus(
     case 403:
       return isRateLimitFailure(message)
         ? { _tag: "CommandRateLimited" }
-        : { _tag: "CommandForbidden" };
+        : { _tag: "CommandForbidden", reason: classifyForbiddenReason(message) };
     case 404:
       return { _tag: "CommandNotFound" };
     case 405:
@@ -369,7 +390,12 @@ function classifyRestStatus(
   }
 }
 
-type GraphqlErrorSignal = { readonly type?: string; readonly code?: string };
+type GraphqlErrorSignal = {
+  readonly type?: string;
+  readonly code?: string;
+  readonly message?: string;
+  readonly samlFailure?: boolean;
+};
 
 /**
  * `gh api graphql` failures carry no HTTP status anywhere (live-verified: no
@@ -390,17 +416,24 @@ function extractGraphqlErrorSignal(
   if (first === undefined) return undefined;
   const type = first.type;
   const code = first.extensions?.code;
+  const message = first.message;
+  const samlFailure = first.extensions?.saml_failure;
   if (type === undefined && code === undefined) return undefined;
   const typeField = type === undefined ? {} : { type };
   const codeField = code === undefined ? {} : { code };
-  return { ...typeField, ...codeField };
+  const messageField = message === undefined ? {} : { message };
+  const samlFailureField =
+    samlFailure === undefined ? {} : { samlFailure };
+  return { ...typeField, ...codeField, ...messageField, ...samlFailureField };
 }
 
 /**
  * Maps only the `errors[].type` values this investigation could either
- * live-verify or find documented in GitHub's public GraphQL error-type enum
- * (NOT_FOUND, INSUFFICIENT_SCOPES: live-verified this session; FORBIDDEN:
- * documented, not reproduced — see graphql-forbidden.json). UNPROCESSABLE,
+ * live-verify or find documented in GitHub's public GraphQL error-type enum.
+ * NOT_FOUND and INSUFFICIENT_SCOPES are live-verified (plan 007). FORBIDDEN
+ * is also live-reproduced (plan 009 — an IP-allow-list-blocked read, see
+ * graphql-forbidden-ip-allow-list.json); classifyForbiddenReason further
+ * attributes it to a specific closed ForbiddenReason. UNPROCESSABLE,
  * INTERNAL, and SERVICE_UNAVAILABLE were never observed or confirmed, so
  * they intentionally fall through to the regex fallback rather than being
  * guessed at.
@@ -409,8 +442,14 @@ function classifyGraphqlSignal(
   signal: GraphqlErrorSignal,
 ): CommandFailure | undefined {
   if (signal.type === "NOT_FOUND") return { _tag: "CommandNotFound" };
-  if (signal.type === "FORBIDDEN" || signal.type === "INSUFFICIENT_SCOPES") {
-    return { _tag: "CommandForbidden" };
+  if (signal.type === "INSUFFICIENT_SCOPES") {
+    return { _tag: "CommandForbidden", reason: "insufficient_scopes" };
+  }
+  if (signal.type === "FORBIDDEN") {
+    return {
+      _tag: "CommandForbidden",
+      reason: classifyForbiddenReason(signal.message ?? "", signal.samlFailure),
+    };
   }
   return undefined;
 }
@@ -453,7 +492,9 @@ function classifyByStderrPattern(stderr: string): CommandFailure | undefined {
   // isForbiddenFailure's bare `\b403\b`; check rate-limit wording first so a
   // 403 rate-limit response classifies as CommandRateLimited, not CommandForbidden.
   if (isRateLimitFailure(stderr)) return { _tag: "CommandRateLimited" };
-  if (isForbiddenFailure(stderr)) return { _tag: "CommandForbidden" };
+  if (isForbiddenFailure(stderr)) {
+    return { _tag: "CommandForbidden", reason: classifyForbiddenReason(stderr) };
+  }
   if (isRuntimeFailure(stderr)) return { _tag: "CommandRuntimeUnavailable" };
   return undefined;
 }
@@ -478,6 +519,25 @@ function isAuthenticationFailure(stderr: string): boolean {
 
 function isForbiddenFailure(stderr: string): boolean {
   return /(?:\b403\b|forbidden|resource not accessible)/i.test(stderr);
+}
+
+/**
+ * Determines *why* GitHub refused a request as forbidden. `samlFailure`
+ * (GraphQL's structured `extensions.saml_failure` flag) takes precedence
+ * when available and does not depend on message wording. `ip_allow_list`
+ * is message-pattern matching — GitHub does not expose IP-allow-list as a
+ * distinct structured signal — so it is a last resort requiring a fixture
+ * per plan 007's discipline (see tests/fixtures/gh-command-failures/).
+ * `insufficient_scopes` is set by the caller (GraphQL only, from
+ * errors[].type) and never reaches this function.
+ */
+function classifyForbiddenReason(
+  message: string,
+  samlFailure?: boolean,
+): ForbiddenReason {
+  if (samlFailure === true) return "saml";
+  if (/ip allow list/i.test(message)) return "ip_allow_list";
+  return "unknown";
 }
 
 function isNotFoundFailure(stderr: string): boolean {

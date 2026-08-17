@@ -1,3 +1,4 @@
+import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type {
   InboxCacheRepository,
@@ -25,6 +26,7 @@ export type MaintainerInboxRepository = {
   readonly state: InboxCacheRepository["state"];
   readonly complete: boolean;
   readonly resumeAt?: IsoTimestamp;
+  readonly forbiddenReason?: ForbiddenReason;
 };
 
 export type MaintainerInbox = {
@@ -131,15 +133,27 @@ export class MaintainerInboxService {
           ? ("github_auth" as const)
           : listed.error._tag === "GitHubRateLimited"
             ? ("github_rate_limited" as const)
-            : ("github_read" as const);
+            : listed.error._tag === "GitHubForbidden"
+              ? ("github_forbidden" as const)
+              : ("github_read" as const);
       const resumeAtField =
         listed.error._tag === "GitHubRateLimited" &&
         listed.error.resumeAt !== undefined
           ? { resumeAt: listed.error.resumeAt }
           : {};
+      const forbiddenReasonField =
+        listed.error._tag === "GitHubForbidden"
+          ? { forbiddenReason: listed.error.reason }
+          : {};
       return {
         rows: [],
-        repository: { repo, state, complete: false, ...resumeAtField },
+        repository: {
+          repo,
+          state,
+          complete: false,
+          ...resumeAtField,
+          ...forbiddenReasonField,
+        },
       };
     }
     const rows = await Promise.all(

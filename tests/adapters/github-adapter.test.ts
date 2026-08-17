@@ -1230,6 +1230,34 @@ describe("GitHubAdapter read boundary", () => {
     });
   });
 
+  it("classifies the live OmisePayments IP-allow-list GraphQL FORBIDDEN failure as GitHubForbidden/ip_allow_list (plan 009)", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout:
+          '{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-17T12:00:00Z"},"repository":null},"errors":[{"type":"FORBIDDEN","path":["repository"],"extensions":{"saml_failure":false},"locations":[{"line":2,"column":3}],"message":"Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource."}]}',
+        stderr:
+          "gh: Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "GitHubForbidden",
+        operation: "list_maintainer_prs",
+        reason: "ip_allow_list",
+      },
+    });
+  });
+
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
     const [listOpenPrs, getPr, getComments, getChecks, getStatuses, getDiff] =
       await Promise.all([

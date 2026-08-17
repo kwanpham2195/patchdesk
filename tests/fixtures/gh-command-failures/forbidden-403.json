@@ -7,5 +7,6 @@
   "stdout": "{\"message\":\"Resource not accessible by integration\",\"documentation_url\":\"https://docs.github.com/rest\",\"status\":\"403\"}",
   "stderr": "gh: Resource not accessible by integration (HTTP 403)",
   "expectedTag": "CommandForbidden",
-  "note": "A genuine 403 with no rate-limit wording must still classify CommandForbidden, proving the message-content disambiguation in the structured REST layer doesn't over-match rate-limit-403.json's fixture."
+  "expectedReason": "unknown",
+  "note": "A genuine 403 with no rate-limit wording must still classify CommandForbidden, proving the message-content disambiguation in the structured REST layer doesn't over-match rate-limit-403.json's fixture. The message has no IP-allow-list wording, so plan 009's forbidden-reason classifier attributes it 'unknown', not a guess."
 }

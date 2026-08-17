@@ -1,0 +1,12 @@
+{
+  "capturedWith": "gh (exact --version not recorded at capture time; captured from a live production failure, not this planning session's probing)",
+  "capturedAt": "2026-08-17",
+  "command": "gh api graphql (maintainer-inbox poll against OmisePayments/dynamic-onboarding-service; org has an IP allow list enabled and the machine's IP was not on it)",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "{\"data\":{\"rateLimit\":{\"limit\":5000,\"remaining\":4999,\"resetAt\":\"2026-08-17T12:00:00Z\"},\"repository\":null},\"errors\":[{\"type\":\"FORBIDDEN\",\"path\":[\"repository\"],\"extensions\":{\"saml_failure\":false},\"locations\":[{\"line\":2,\"column\":3}],\"message\":\"Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.\"}]}",
+  "stderr": "gh: Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.",
+  "expectedTag": "CommandForbidden",
+  "expectedReason": "ip_allow_list",
+  "note": "This is the exact defect plan 009 exists to fix, captured live from a real maintainer's Inbox failure. The rateLimit and locations field values were elided ({...}) in the original incident report; this fixture reconstructs plausible placeholder values for those two fields only, since they do not affect classification. errors[0].type, errors[0].extensions.saml_failure, and errors[0].message are reproduced verbatim from the incident and are what this fixture actually tests."
+}

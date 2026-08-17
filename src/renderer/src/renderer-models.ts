@@ -28,6 +28,7 @@ export type RepoOutcome = {
   readonly repo: Repo;
   readonly state: string;
   readonly resumeAt?: string;
+  readonly forbiddenReason?: string;
 };
 
 export type PrRow = {

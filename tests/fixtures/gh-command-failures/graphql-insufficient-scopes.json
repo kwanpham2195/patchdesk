@@ -7,5 +7,6 @@
   "stdout": "{\"errors\":[{\"type\":\"INSUFFICIENT_SCOPES\",\"locations\":[{\"line\":1,\"column\":41}],\"message\":\"Your token has not been granted the required scopes to execute this query. The 'requiresTwoFactorAuthentication' field requires one of the following scopes: ['admin:org'], but your token has only been granted the: ['gist', 'read:org', 'repo', 'workflow'] scopes. Please modify your token's scopes at: https://github.com/settings/tokens.\"}]}",
   "stderr": "gh: Your token has not been granted the required scopes to execute this query. The 'requiresTwoFactorAuthentication' field requires one of the following scopes: ['admin:org'], but your token has only been granted the: ['gist', 'read:org', 'repo', 'workflow'] scopes. Please modify your token's scopes at: https://github.com/settings/tokens.",
   "expectedTag": "CommandForbidden",
+  "expectedReason": "insufficient_scopes",
   "note": "Live-reproduced during plan 007 execution (not predicted by the original plan text, which only anticipated NOT_FOUND/FORBIDDEN/UNPROCESSABLE/INTERNAL/SERVICE_UNAVAILABLE). errors[0].type === \"INSUFFICIENT_SCOPES\" is a real GitHub GraphQL error type for an authorization/permission problem; mapped to CommandForbidden alongside FORBIDDEN."
 }

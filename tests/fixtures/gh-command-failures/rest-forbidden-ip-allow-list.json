@@ -1,0 +1,12 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — modeled on the live-verified GraphQL IP-allow-list wording (graphql-forbidden-ip-allow-list.json); not independently reproduced over a REST gh api call this session.",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.\",\"documentation_url\":\"https://docs.github.com/rest\",\"status\":\"403\"}",
+  "stderr": "gh: Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource. (HTTP 403)",
+  "expectedTag": "CommandForbidden",
+  "expectedReason": "ip_allow_list",
+  "note": "Proves the shared forbidden-reason classifier fires identically from the REST structured-signal path, not just the GraphQL path. GitHub's REST API is documented to return the same IP-allow-list message text as GraphQL for this condition, but that has not been independently live-verified over REST in this session."
+}

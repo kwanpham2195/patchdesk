@@ -4,6 +4,7 @@ import type {
   CommandFailure,
   CommandRequest,
   CommandRunner,
+  ForbiddenReason,
 } from "./command-runner";
 import {
   GitHubCliCredentials,
@@ -512,6 +513,11 @@ export type GitHubReadFailure =
       readonly _tag: "GitHubRateLimited";
       readonly operation: GitHubReadOperation;
       readonly resumeAt?: IsoTimestamp;
+    }
+  | {
+      readonly _tag: "GitHubForbidden";
+      readonly operation: GitHubReadOperation;
+      readonly reason: ForbiddenReason;
     };
 
 export type GitHubReadOperation =
@@ -623,6 +629,9 @@ export class GitHubAdapter
       const resumeAtField =
         cached === undefined ? {} : { resumeAt: cached.resetAt };
       return err({ _tag: "GitHubRateLimited", operation, ...resumeAtField });
+    }
+    if (failure._tag === "CommandForbidden") {
+      return err({ _tag: "GitHubForbidden", operation, reason: failure.reason });
     }
     return err({ _tag: "GitHubReadFailed", operation });
   }

@@ -1012,6 +1012,10 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       repos: inbox.inbox.repositories.map((outcome) => {
         const resumeAtField =
           outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+        const forbiddenReasonField =
+          outcome.forbiddenReason === undefined
+            ? {}
+            : { forbiddenReason: outcome.forbiddenReason };
         return {
           repo: {
             host: outcome.repo.host,
@@ -1020,6 +1024,7 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
           },
           state: outcome.state,
           ...resumeAtField,
+          ...forbiddenReasonField,
         };
       }),
     },
@@ -1056,7 +1061,8 @@ function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
   if (
     outcomes.includes("github_auth") ||
     outcomes.includes("github_read") ||
-    outcomes.includes("github_rate_limited")
+    outcomes.includes("github_rate_limited") ||
+    outcomes.includes("github_forbidden")
   )
     return "error";
   if (outcomes.includes("no_open_prs") && dashboard.dashboard.rows.length === 0)

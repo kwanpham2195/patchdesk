@@ -264,3 +264,83 @@ describe("InboxFlow rate-limited repo outcome", () => {
     expect(alert?.querySelector("button")).toBeNull();
   });
 });
+
+describe("InboxFlow forbidden repo outcome (plan 009)", () => {
+  it("names the org, states the IP allow list condition, and renders no retry button — the exact live OmisePayments defect", () => {
+    const forbiddenDashboard: Dashboard = {
+      ...dashboard,
+      dashboard: {
+        rows: [],
+        repos: [
+          {
+            repo: {
+              host: "github.com",
+              owner: "OmisePayments",
+              repo: "dynamic-onboarding-service",
+            },
+            state: "github_forbidden",
+            forbiddenReason: "ip_allow_list",
+          },
+        ],
+      },
+    };
+    render(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={forbiddenDashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={inbox as never}
+        state="error"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    const alert = screen
+      .getAllByRole("alert")
+      .find((candidate) =>
+        candidate.textContent?.includes(
+          "OmisePayments/dynamic-onboarding-service",
+        ),
+      );
+    expect(alert).not.toBeUndefined();
+    expect(alert?.textContent).toContain("OmisePayments");
+    expect(alert?.textContent).toContain("IP allow list");
+    expect(alert?.querySelector("button")).toBeNull();
+  });
+
+  it("renders the unknown fallback copy and still shows no retry button when forbiddenReason is absent", () => {
+    const forbiddenDashboard: Dashboard = {
+      ...dashboard,
+      dashboard: {
+        rows: [],
+        repos: [
+          {
+            repo: { host: "github.com", owner: "owner", repo: "repo" },
+            state: "github_forbidden",
+          },
+        ],
+      },
+    };
+    render(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={forbiddenDashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={inbox as never}
+        state="error"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    const alert = screen
+      .getAllByRole("alert")
+      .find((candidate) => candidate.textContent?.includes("owner/repo"));
+    expect(alert).not.toBeUndefined();
+    expect(alert?.textContent).toContain("did not say why");
+    expect(alert?.querySelector("button")).toBeNull();
+  });
+});

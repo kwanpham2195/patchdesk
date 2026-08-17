@@ -7,5 +7,6 @@
   "stdout": "",
   "stderr": "gh: Resource not accessible by integration",
   "expectedTag": "CommandForbidden",
-  "note": "No JSON stdout and no trailing (HTTP nnn) in stderr, so the structured REST layer cannot fire; isForbiddenFailure's 'resource not accessible' phrase must still classify this as CommandForbidden."
+  "expectedReason": "unknown",
+  "note": "No JSON stdout and no trailing (HTTP nnn) in stderr, so the structured REST layer cannot fire; isForbiddenFailure's 'resource not accessible' phrase must still classify this as CommandForbidden. No IP-allow-list wording, so plan 009's forbidden-reason classifier attributes it 'unknown'."
 }

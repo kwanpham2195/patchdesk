@@ -36,6 +36,7 @@ type Fixture = {
   readonly stdout: string;
   readonly stderr: string;
   readonly expectedTag: CommandFailure["_tag"];
+  readonly expectedReason?: string;
   readonly note: string;
 };
 
@@ -90,6 +91,9 @@ describe("CommandRunner classifyExecution — fixture corpus", () => {
       const fixture = loadFixture(name);
       const failure = await classify(fixture);
       expect(failure._tag).toBe(fixture.expectedTag);
+      if (fixture.expectedReason !== undefined) {
+        expect(failure).toMatchObject({ reason: fixture.expectedReason });
+      }
     });
   }
 });
@@ -103,6 +107,42 @@ describe("CommandRunner classifyExecution — named regressions (plan 007 Why Th
   it("classifies an invalid/expired token (401 Bad credentials) as CommandAuthenticationRequired", async () => {
     const failure = await classify(loadFixture("bad-credentials-401.json"));
     expect(failure).toEqual({ _tag: "CommandAuthenticationRequired" });
+  });
+});
+
+describe("CommandRunner classifyExecution — forbidden reasons (plan 009)", () => {
+  it("classifies the live OmisePayments IP-allow-list failure as CommandForbidden/ip_allow_list", async () => {
+    const failure = await classify(
+      loadFixture("graphql-forbidden-ip-allow-list.json"),
+    );
+    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "ip_allow_list" });
+  });
+
+  it("classifies a saml_failure:true GraphQL response as CommandForbidden/saml regardless of message wording", async () => {
+    const failure = await classify(loadFixture("graphql-forbidden-saml.json"));
+    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "saml" });
+  });
+
+  it("classifies INSUFFICIENT_SCOPES as CommandForbidden/insufficient_scopes", async () => {
+    const failure = await classify(
+      loadFixture("graphql-insufficient-scopes.json"),
+    );
+    expect(failure).toEqual({
+      _tag: "CommandForbidden",
+      reason: "insufficient_scopes",
+    });
+  });
+
+  it("classifies an unattributed forbidden as CommandForbidden/unknown, not a guess", async () => {
+    const failure = await classify(loadFixture("graphql-forbidden.json"));
+    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "unknown" });
+  });
+
+  it("classifies the REST IP-allow-list shape the same as the GraphQL one", async () => {
+    const failure = await classify(
+      loadFixture("rest-forbidden-ip-allow-list.json"),
+    );
+    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "ip_allow_list" });
   });
 });
 

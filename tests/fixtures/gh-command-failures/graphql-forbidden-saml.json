@@ -1,0 +1,12 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — SAML SSO enforcement was not reproduced live this session (requires an org with SAML SSO enabled and a token not yet authorized for it). extensions.saml_failure: true is GitHub's documented structured signal for this condition; the message text below is modeled on GitHub's publicly documented SAML-enforcement error and should be re-verified against a live capture before being trusted for exact wording.",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"data\":{\"repository\":null},\"errors\":[{\"type\":\"FORBIDDEN\",\"path\":[\"repository\"],\"extensions\":{\"saml_failure\":true},\"locations\":[{\"line\":2,\"column\":3}],\"message\":\"Resource protected by organization SAML enforcement. You must grant your personal token access to this organization.\"}]}",
+  "stderr": "gh: Resource protected by organization SAML enforcement. You must grant your personal token access to this organization.",
+  "expectedTag": "CommandForbidden",
+  "expectedReason": "saml",
+  "note": "Classification for this fixture depends only on errors[0].extensions.saml_failure === true, a structured boolean — not on the message wording, which is the less certain part of this fixture. Do not add message-pattern matching keyed on this fixture's exact prose without a live capture confirming it."
+}

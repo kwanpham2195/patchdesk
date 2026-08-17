@@ -108,6 +108,9 @@ const repoOutcomeSchema = v.object({
   }),
   state: v.pipe(v.string(), v.minLength(1)),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+  forbiddenReason: v.optional(
+    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
+  ),
 });
 
 const inboxResponseSchema = v.strictObject({
