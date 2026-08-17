@@ -80,25 +80,28 @@ const diagnostics = new ReviewDiagnosticService(
   undefined,
   {
     mirror: (event) => {
+      const durationMsField =
+        event.durationMs === undefined
+          ? {}
+          : { durationMs: event.durationMs };
+      const meta = {
+        category: event.category,
+        retryable: event.retryable,
+        incidentId: event.incidentId,
+        ...durationMsField,
+      };
+      const profileIdField =
+        event.profileId === undefined ? {} : { profileId: event.profileId };
+      const sessionIdField =
+        event.sessionId === undefined ? {} : { sessionId: event.sessionId };
       logs.write({
         process: "main",
         level: event.retryable ? "warn" : "info",
         topic: "diagnostics",
         message: event.phase,
-        meta: {
-          category: event.category,
-          retryable: event.retryable,
-          ...(event.durationMs === undefined
-            ? {}
-            : { durationMs: event.durationMs }),
-          incidentId: event.incidentId,
-        },
-        ...(event.profileId === undefined
-          ? {}
-          : { profileId: event.profileId }),
-        ...(event.sessionId === undefined
-          ? {}
-          : { sessionId: event.sessionId }),
+        meta,
+        ...profileIdField,
+        ...sessionIdField,
       });
     },
   },
@@ -108,12 +111,13 @@ const desktopLifecycle = createDesktopLifecycle({
     async start() {
       const insightProviders =
         createInsightProviderCatalog(runtimeModelCatalog);
+      // Never trust the development server origin from a packaged application.
+      const developmentOriginField = app.isPackaged
+        ? {}
+        : { developmentOrigin: "http://localhost:5173" };
       const startup = await startLocalApiServer({
         allowedOrigin: rendererOrigin,
-        // Never trust the development server origin from a packaged application.
-        ...(!app.isPackaged
-          ? { developmentOrigin: "http://localhost:5173" }
-          : {}),
+        ...developmentOriginField,
         capability: createAppCapability(),
         appMetadata: {
           productName: app.name,
@@ -355,6 +359,7 @@ process.on("uncaughtException", (cause: unknown) => {
   // Record before dying; the previous behavior was an untracked crash.
   void logs.flush().finally(() => app.exit(1));
 });
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node's unhandledRejection reason is inherently untyped (a rejected promise can reject with any value); this is the boundary, forwarded straight to logs.write's own sanitizer.
 process.on("unhandledRejection", (reason: unknown) => {
   logs.write({
     process: "main",
@@ -511,12 +516,14 @@ async function createWorkbenchWindow(
         );
       },
       async selectDirectory(input) {
+        const defaultPathField =
+          input.defaultPath === undefined
+            ? {}
+            : { defaultPath: input.defaultPath };
         const result = await dialog.showOpenDialog(window, {
           title: "Choose local repository folder",
           properties: ["openDirectory", "createDirectory"],
-          ...(input.defaultPath === undefined
-            ? {}
-            : { defaultPath: input.defaultPath }),
+          ...defaultPathField,
         });
         return result.canceled ? undefined : result.filePaths[0];
       },
