@@ -29,7 +29,6 @@ import type { GitHubWriteFailure } from "../../domain/github-write";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
 import {
   missing,
-  samePullRequest,
   type AuthenticatedGitHubAccount,
   type BranchProtectionEvidence,
   type FetchedDiffRefs,
@@ -45,6 +44,7 @@ import {
   type PendingReviewComment,
   type RepositoryPermissionEvidence,
 } from "./github-adapter";
+import { samePullRequest } from "./github-wire-projections";
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
 export class FakeGitHubAdapter
