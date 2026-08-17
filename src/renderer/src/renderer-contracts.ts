@@ -141,6 +141,7 @@ const inboxResponseSchema = v.strictObject({
           "current",
           "partial",
           "failed_cached",
+          "stale_cached",
           "unavailable",
         ]),
         refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),

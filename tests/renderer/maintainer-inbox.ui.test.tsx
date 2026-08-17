@@ -100,4 +100,46 @@ describe("MaintainerInbox", () => {
       new Set(["owner/repo", "owner/other"]),
     );
   });
+
+  it("shows a blocking banner naming the elapsed age when the cache is stale", () => {
+    const { container } = render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="cached"
+        refreshStatus="Stale"
+        snapshot={{
+          state: "stale_cached",
+          refreshedAt: "2020-01-01T00:00:00.000Z",
+        }}
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(
+      within(container).getByText(/Priority order may be unreliable/),
+    ).toBeTruthy();
+  });
+
+  it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {
+    const { container } = render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="cached"
+        refreshStatus="Cached after refresh failure"
+        snapshot={{
+          state: "failed_cached",
+          refreshedAt: "2020-01-01T00:00:00.000Z",
+        }}
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(within(container).getByText(/Updated .* ago/)).toBeTruthy();
+  });
 });

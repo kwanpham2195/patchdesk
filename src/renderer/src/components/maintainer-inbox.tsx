@@ -35,6 +35,8 @@ import {
   type InboxSort,
   type SavedInboxView,
 } from "@/inbox-view-preferences";
+import { formatInboxAge } from "@/inbox-refresh-scheduler";
+import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -181,7 +184,12 @@ type MaintainerInboxProps = {
   readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
   readonly freshness: "fresh" | "cached";
   readonly snapshot?: {
-    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly state:
+      | "current"
+      | "partial"
+      | "failed_cached"
+      | "stale_cached"
+      | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
   readonly refreshStatus:
@@ -190,6 +198,7 @@ type MaintainerInboxProps = {
     | "Aged"
     | "Partial"
     | "Cached after refresh failure"
+    | "Stale"
     | "Unavailable"
     | "Paused";
   readonly onRefresh: () => void;
@@ -404,6 +413,9 @@ export function MaintainerInbox({
         {...(snapshot === undefined ? {} : { snapshot })}
         onRefresh={onRefresh}
       />
+      {refreshStatus === "Stale" && snapshot?.refreshedAt !== undefined ? (
+        <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
+      ) : null}
       <InboxFiltersBar
         queueOpen={queueOpen}
         onToggleQueue={toggleQueue}
@@ -492,6 +504,27 @@ export function MaintainerInbox({
   );
 }
 
+/** Blocking notice for the hard-refuse cache tier: names the elapsed age and
+ * defers the corrective action to the GitHub-auth notice already on screen. */
+function StaleInboxBanner({
+  refreshedAt,
+}: {
+  readonly refreshedAt: string;
+}): React.JSX.Element {
+  return (
+    <Alert variant="destructive" className="mx-3 mt-2">
+      <AlertTitle>Priority order may be unreliable</AlertTitle>
+      <AlertDescription>
+        This queue reflects a snapshot from{" "}
+        {formatInboxAge(Date.now() - Date.parse(refreshedAt))}. GitHub
+        sign-in could not be verified since then, so ordering, checks, and
+        review state below are not current. See the GitHub authentication
+        notice above to reconnect.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function InboxHeader({
   profileLabel,
   refreshStatus,
@@ -505,10 +538,16 @@ function InboxHeader({
     | "Aged"
     | "Partial"
     | "Cached after refresh failure"
+    | "Stale"
     | "Unavailable"
     | "Paused";
   readonly snapshot?: {
-    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly state:
+      | "current"
+      | "partial"
+      | "failed_cached"
+      | "stale_cached"
+      | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
   readonly onRefresh: () => void;
@@ -884,7 +923,12 @@ function InboxFreshness({
   status,
 }: {
   readonly snapshot?: {
-    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly state:
+      | "current"
+      | "partial"
+      | "failed_cached"
+      | "stale_cached"
+      | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
   readonly status:
@@ -893,18 +937,35 @@ function InboxFreshness({
     | "Aged"
     | "Partial"
     | "Cached after refresh failure"
+    | "Stale"
     | "Unavailable"
     | "Paused";
 }): React.JSX.Element {
   const stable = status === "Current";
+  const ageMs =
+    snapshot?.refreshedAt === undefined
+      ? undefined
+      : Date.now() - Date.parse(snapshot.refreshedAt);
+  const degraded = ageMs !== undefined && isInboxCacheDegraded(ageMs);
+  const variant = status === "Stale" ? "destructive" : stable ? "secondary" : "outline";
   return (
-    <Badge
-      variant={stable ? "secondary" : "outline"}
-      className="h-5 max-w-full px-1.5 text-[10px]"
-      title={snapshot?.refreshedAt}
-    >
-      GitHub: {status}
-    </Badge>
+    <div className="flex items-center gap-1.5">
+      <Badge
+        variant={variant}
+        className={cn(
+          "h-5 max-w-full px-1.5 text-[10px]",
+          degraded && status !== "Stale" && "border-amber-500/40 text-amber-600 dark:text-amber-400",
+        )}
+        title={snapshot?.refreshedAt}
+      >
+        GitHub: {status}
+      </Badge>
+      {!stable && status !== "Refreshing" && status !== "Paused" && ageMs !== undefined ? (
+        <span className="text-[10px] text-muted-foreground">
+          Updated {formatInboxAge(ageMs)}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

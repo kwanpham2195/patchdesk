@@ -18,6 +18,7 @@ import type {
   WorkspaceProfileConfig,
   WatchedRepoConfig,
 } from "../domain/workspace-profile";
+import { isInboxCacheStale } from "../domain/inbox-freshness-policy";
 
 export type MaintainerInboxRepository = {
   readonly repo: WatchedRepoConfig;
@@ -31,7 +32,12 @@ export type MaintainerInbox = {
   readonly refreshedAt?: IsoTimestamp;
   readonly dataFreshness: "fresh" | "cached";
   readonly snapshot: {
-    readonly state: "current" | "partial" | "failed_cached" | "unavailable";
+    readonly state:
+      | "current"
+      | "partial"
+      | "failed_cached"
+      | "stale_cached"
+      | "unavailable";
     readonly refreshedAt?: IsoTimestamp;
   };
   readonly directEntryAvailable: true;
@@ -158,7 +164,12 @@ export class MaintainerInboxService {
     profile: WorkspaceProfileConfig,
   ): Promise<Result<MaintainerInbox, never>> {
     const cached = await this.cache.read(profile.id);
-    if (cached._tag === "ok")
+    if (cached._tag === "ok") {
+      const ageMs =
+        Date.parse(this.clock.now()) - Date.parse(cached.value.refreshedAt);
+      const snapshotState = isInboxCacheStale(ageMs)
+        ? "stale_cached"
+        : "failed_cached";
       // SAFETY: parseMaintainerInboxCache validates refreshedAt with
       // parseIsoTimestamp before cache.read() resolves "ok", even though
       // MaintainerInboxCache types the field as a plain string.
@@ -178,11 +189,12 @@ export class MaintainerInboxService {
         refreshedAt: cached.value.refreshedAt as IsoTimestamp,
         dataFreshness: "cached",
         snapshot: {
-          state: "failed_cached",
+          state: snapshotState,
           refreshedAt: cached.value.refreshedAt as IsoTimestamp,
         },
         directEntryAvailable: true,
       });
+    }
     return ok({
       rows: [],
       repositories: profile.repos.map((repo) => ({
