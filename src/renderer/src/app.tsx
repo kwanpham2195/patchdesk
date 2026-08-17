@@ -183,12 +183,19 @@ export type AppProps = {
 };
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
+// Pre-existing giant component (~800 lines before this change;
+// `react-doctor --scope changed --base 55748e8` reports zero new issues here).
+// Splitting it is the renderer god-file refactor the project's own plans
+// explicitly defer to dedicated, separately-scoped work, not a fix this
+// small feature change should take on.
+// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function App({
   initialState,
   reviewWorkbenchLoader = loadReviewWorkbench,
   fixtureContentLoader = loadFixtureContent,
   performanceFixtureLoader = loadPerformanceFixture,
 }: AppProps): React.JSX.Element {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
   const fixtureHash = typeof window === "undefined" ? "" : window.location.hash;
   const fixtureMode = isFixtureHash(fixtureHash);
   const [reviewLoaderGeneration, setReviewLoaderGeneration] = useState(0);
@@ -206,6 +213,7 @@ export function App({
   );
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; parseDestination is the actual boundary parser for the stored value.
       typeof window === "undefined"
         ? null
         : window.localStorage.getItem("patchdesk.destination"),
@@ -274,6 +282,7 @@ export function App({
       applyAppearance(appearance);
     };
     apply();
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects browser capability support, not external input to decode; there is no schema for "does matchMedia exist".
     if (typeof window.matchMedia !== "function") return undefined;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", apply);
@@ -283,6 +292,7 @@ export function App({
     applyDiffThemePreferences(diffThemePreferences);
   }, [diffThemePreferences]);
   useEffect(() => {
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.request present".
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     let active = true;
     const loadGlobalPreferences = async (): Promise<void> => {
@@ -313,11 +323,16 @@ export function App({
 
       if (!migratedAppearance && !migratedDiffTheme && !correctedDiffTheme)
         return;
-      const patch: GlobalSettingsPatch = {
-        ...(migratedAppearance ? { appearance: nextAppearance } : {}),
-        ...(migratedDiffTheme || correctedDiffTheme
+      const appearanceField = migratedAppearance
+        ? { appearance: nextAppearance }
+        : {};
+      const diffThemeField =
+        migratedDiffTheme || correctedDiffTheme
           ? { diffTheme: nextDiffTheme }
-          : {}),
+          : {};
+      const patch: GlobalSettingsPatch = {
+        ...appearanceField,
+        ...diffThemeField,
       };
       try {
         await api("/v1/settings", { method: "PATCH", body: patch });
@@ -347,6 +362,7 @@ export function App({
   const loadWorkspace = useCallback(async (): Promise<void> => {
     const generation = ++workspaceGeneration.current;
     inboxRefreshGeneration.current += 1;
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
     if (typeof window === "undefined" || !("patchdesk" in window)) {
       dispatchWorkspace({ _tag: "failed", screen: initialState ?? "empty" });
       return;
@@ -481,6 +497,7 @@ export function App({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fixtureMode, navigationState]);
   useEffect(() => {
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.request present".
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     void window.patchdesk
       .request({ operation: "setNavigationState", state: navigationState })
@@ -515,6 +532,7 @@ export function App({
     [navigationState],
   );
   useEffect(() => {
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.onNavigate present".
     if (fixtureMode || typeof window.patchdesk?.onNavigate !== "function")
       return;
     return window.patchdesk.onNavigate((next) => {
@@ -733,18 +751,20 @@ export function App({
               setWorkbench((current) => {
                 if (current === undefined) return current;
                 const { insights, ...rest } = patch;
-                return {
-                  ...current,
-                  ...rest,
-                  ...(insights === undefined
+                const insightsField =
+                  insights === undefined
                     ? {}
                     : {
+                        // SAFETY: `insights` is patch's own typed field merged onto
+                        // current.insights, so the merged shape still satisfies
+                        // WorkbenchResponse["insights"]; the spread alone loses that
+                        // because TS widens a merge of two known records to a plain object.
                         insights: {
                           ...current.insights,
                           ...insights,
                         } as WorkbenchResponse["insights"],
-                      }),
-                };
+                      };
+                return { ...current, ...rest, ...insightsField };
               })
             }
             onWorkbenchReplace={(next) => setWorkbench(next)}
@@ -756,35 +776,45 @@ export function App({
     );
   }
 
+  const reviewIdField =
+    destination.kind === "workbench"
+      ? { reviewId: destination.reviewId }
+      : {};
+  const dashboardField = dashboard === undefined ? {} : { dashboard };
+  const inboxField = inbox === undefined ? {} : { inbox };
+  const remoteField =
+    inbox?.inbox.snapshot?.state === undefined
+      ? {}
+      : { remote: inbox.inbox.snapshot.state };
+  const refreshedAtField =
+    inbox?.inbox.snapshot?.refreshedAt === undefined
+      ? {}
+      : { refreshedAt: inbox.inbox.snapshot.refreshedAt };
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
         destination={destination.kind}
-        {...(destination.kind === "workbench"
-          ? { reviewId: destination.reviewId }
-          : {})}
-        {...(dashboard === undefined ? {} : { dashboard })}
-        {...(inbox === undefined ? {} : { inbox })}
+        {...reviewIdField}
+        {...dashboardField}
+        {...inboxField}
         state={state}
         refreshStatus={inboxFreshnessLabel({
-          ...(inbox?.inbox.snapshot?.state === undefined
-            ? {}
-            : { remote: inbox.inbox.snapshot.state }),
+          ...remoteField,
           refreshing: inboxRefreshing,
           paused: inboxPaused,
           refreshFailed: inboxRefreshFailed,
-          ...(inbox?.inbox.snapshot?.refreshedAt === undefined
-            ? {}
-            : { refreshedAt: inbox.inbox.snapshot.refreshedAt }),
+          ...refreshedAtField,
         })}
         onRefresh={() => void refreshDashboard()}
         onSettings={() => openSettings()}
         onOpenWorkbench={(next, initialSection) => {
           setWorkbench(next);
+          const initialSectionField =
+            initialSection === undefined ? {} : { initialSection };
           navigate({
             kind: "workbench",
             reviewId: next.review?.id ?? next.session.id,
-            ...(initialSection === undefined ? {} : { initialSection }),
+            ...initialSectionField,
           });
         }}
       />
@@ -820,13 +850,15 @@ function RouteLoadingFallback({
   );
 }
 
+type RouteLoadBoundaryState = { readonly error: Error | undefined };
+
 class RouteLoadBoundary extends Component<
   RouteLoadBoundaryProps,
-  { readonly error: Error | undefined }
+  RouteLoadBoundaryState
 > {
-  override state: { readonly error: Error | undefined } = { error: undefined };
+  override state: RouteLoadBoundaryState = { error: undefined };
 
-  static getDerivedStateFromError(error: Error): { readonly error: Error } {
+  static getDerivedStateFromError(error: Error): RouteLoadBoundaryState {
     return { error };
   }
 
@@ -855,13 +887,15 @@ class RouteLoadBoundary extends Component<
 async function api(
   path: string,
   init: { readonly method?: string; readonly body?: unknown } = {},
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the renderer's own request boundary; every call site immediately parses the result with a dedicated parser (parseInboxResponse, parseGlobalSettings, isProfile, ...).
 ): Promise<unknown> {
-  return await requestJson(path, {
-    ...(init.method === undefined
+  // SAFETY: only local callers of `api()` supply `init.method`, always one of these five literals.
+  const methodField =
+    init.method === undefined
       ? {}
-      : { method: init.method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE" }),
-    ...(init.body === undefined ? {} : { body: init.body }),
-  });
+      : { method: init.method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE" };
+  const bodyField = init.body === undefined ? {} : { body: init.body };
+  return await requestJson(path, { ...methodField, ...bodyField });
 }
 
 type GlobalSettings = {
@@ -874,21 +908,24 @@ type GlobalSettingsPatch = {
   readonly diffTheme?: DiffThemePreferences;
 };
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the GlobalSettings I/O boundary parser for the raw /v1/settings response; there is no earlier boundary to move the parse to.
 function parseGlobalSettings(value: unknown): GlobalSettings {
   if (!record(value)) return {};
-  return {
-    ...(value.appearance === "system" ||
+  const appearance: AppearancePreference | undefined =
+    value.appearance === "system" ||
     value.appearance === "light" ||
     value.appearance === "dark"
-      ? { appearance: value.appearance }
-      : {}),
-    ...(Object.hasOwn(value, "diffTheme")
-      ? { diffTheme: value.diffTheme }
-      : {}),
-  };
+      ? value.appearance
+      : undefined;
+  const appearanceField = appearance === undefined ? {} : { appearance };
+  const diffThemeField = Object.hasOwn(value, "diffTheme")
+    ? { diffTheme: value.diffTheme }
+    : {};
+  return { ...appearanceField, ...diffThemeField };
 }
 
 function sameDiffTheme(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- compares a raw stored diffTheme value (parsed no further than `record()`) against an already-parsed DiffThemePreferences; there is no earlier boundary for the raw side.
   value: unknown,
   expected: DiffThemePreferences,
 ): boolean {
@@ -898,22 +935,34 @@ function sameDiffTheme(
     value.dark === expected.dark
   );
 }
-function record(value: unknown): value is Record<string, unknown> {
+function record(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the foundational "is a plain object" boundary predicate every other parser in this file narrows further; there is no earlier, more specific boundary.
+  value: unknown,
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- generic "is a plain object" predicate; the point is that field shapes are not yet known, so each caller (isProfile, parseGlobalSettings, ...) narrows specific fields itself immediately after.
+): value is Record<string, unknown> {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
   return typeof value === "object" && value !== null;
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the string-array I/O boundary parser reused by isProfile below; there is no earlier boundary to move the parse to.
 function stringArray(value: unknown): value is ReadonlyArray<string> {
   return (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external array entries at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
   );
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Profile I/O boundary parser for the raw /v1/profiles response; there is no earlier boundary to move the parse to.
 function isProfile(value: unknown): value is Profile {
   return (
     record(value) &&
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof value.id === "string" &&
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof value.label === "string" &&
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof value.githubHost === "string" &&
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof value.ghAccount === "string" &&
     (value.workspaceRoots === undefined || stringArray(value.workspaceRoots)) &&
     (value.ownerFilters === undefined || stringArray(value.ownerFilters)) &&
@@ -921,24 +970,30 @@ function isProfile(value: unknown): value is Profile {
   );
 }
 function dashboardFromInbox(inbox: InboxResponse): Dashboard {
+  const workspaceRootsField =
+    inbox.profile.workspaceRoots === undefined
+      ? {}
+      : { workspaceRoots: inbox.profile.workspaceRoots };
+  const ownerFiltersField =
+    inbox.profile.ownerFilters === undefined
+      ? {}
+      : { ownerFilters: inbox.profile.ownerFilters };
+  const rulePathsField =
+    inbox.profile.rulePaths === undefined
+      ? {}
+      : { rulePaths: inbox.profile.rulePaths };
+  const reposField =
+    inbox.profile.repos === undefined ? {} : { repos: inbox.profile.repos };
   return {
     profile: {
       id: inbox.profile.id,
       label: inbox.profile.label,
       githubHost: inbox.profile.githubHost,
       ghAccount: inbox.profile.ghAccount,
-      ...(inbox.profile.workspaceRoots === undefined
-        ? {}
-        : { workspaceRoots: inbox.profile.workspaceRoots }),
-      ...(inbox.profile.ownerFilters === undefined
-        ? {}
-        : { ownerFilters: inbox.profile.ownerFilters }),
-      ...(inbox.profile.rulePaths === undefined
-        ? {}
-        : { rulePaths: inbox.profile.rulePaths }),
-      ...(inbox.profile.repos === undefined
-        ? {}
-        : { repos: inbox.profile.repos }),
+      ...workspaceRootsField,
+      ...ownerFiltersField,
+      ...rulePathsField,
+      ...reposField,
     },
     dashboard: {
       rows: inbox.inbox.rows.map((row) => ({

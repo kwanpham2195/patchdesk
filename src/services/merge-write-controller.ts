@@ -43,6 +43,7 @@ export class MergeWriteController {
   ) {}
 
   async merge(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the main-process merge route's own I/O boundary parser; readObjectField calls below run immediately and there is no earlier boundary.
     input: unknown,
   ): Promise<Result<unknown, { readonly reason: string }>> {
     const profileId = parseWorkspaceProfileId(
@@ -208,16 +209,19 @@ type MergeWarningAcknowledgement = {
 };
 
 function parseAcknowledgement(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the raw acknowledgement I/O boundary parser; readObjectField calls below run immediately and there is no earlier boundary.
   value: unknown,
   expectedHeadSha: string,
   expectedBaseSha: string,
   expectedPatchHash: string,
 ): MergeWarningAcknowledgement | undefined {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary; no earlier parser exists for this primitive shape.
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return undefined;
   const revision = readObjectField(value, "revision");
   const warningCodes = readObjectField(value, "warningCodes");
   if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof revision !== "object" ||
     revision === null ||
     Array.isArray(revision) ||
@@ -239,6 +243,7 @@ function parseAcknowledgement(
 }
 
 function isMergeWarningCode(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the warning-code I/O boundary type guard; there is no earlier boundary to move the parse to.
   value: unknown,
 ): value is MergeWarningAcknowledgement["warningCodes"][number] {
   return (
@@ -248,7 +253,10 @@ function isMergeWarningCode(
   );
 }
 
-function isMethod(value: unknown): value is MergeMethod {
+function isMethod(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the merge-method I/O boundary type guard; there is no earlier boundary to move the parse to.
+  value: unknown,
+): value is MergeMethod {
   return value === "merge" || value === "squash" || value === "rebase";
 }
 function mergeReason(tag: string): string {

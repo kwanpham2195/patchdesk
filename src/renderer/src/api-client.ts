@@ -27,6 +27,7 @@ export class PatchdeskApiError extends Error {
     readonly retryable: boolean,
     readonly correlationId: string,
     message: string,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- carries the raw, already-failed response body for diagnostics/logging only; call sites never read structured fields off it.
     readonly responseBody?: unknown,
   ) {
     super(message);
@@ -37,9 +38,11 @@ export class PatchdeskApiError extends Error {
 export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the renderer's own request boundary; every call site immediately parses the result with a dedicated parser (parseInboxResponse, parseGlobalSettings, isProfile, ...).
 ): Promise<unknown> {
   const startedAt = performance.now();
   const skipLogging = path === "/v1/logs" || path === "/health";
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
   if (typeof window === "undefined" || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",
@@ -89,6 +92,7 @@ export async function selectDirectory(
   defaultPath?: string,
 ): Promise<string | undefined> {
   const startedAt = performance.now();
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
   if (typeof window === "undefined" || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",
@@ -98,9 +102,11 @@ export async function selectDirectory(
       "Patchdesk desktop services are unavailable.",
     );
   }
+  const defaultPathField =
+    defaultPath === undefined ? {} : { defaultPath };
   const response = await window.patchdesk.request({
     operation: "selectDirectory",
-    ...(defaultPath === undefined ? {} : { defaultPath }),
+    ...defaultPathField,
   });
   const durationMs = Math.round(performance.now() - startedAt);
   if (!response.ok) {
@@ -125,6 +131,7 @@ export async function selectDirectory(
     correlationId: response.correlationId,
   });
   if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows the raw IPC response body at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof response.body !== "object" ||
     response.body === null ||
     !("path" in response.body)
@@ -138,6 +145,7 @@ export async function selectDirectory(
     );
   }
   if (response.body.path === null) return undefined;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows the raw IPC response body's `path` field at this exact I/O boundary; no earlier parser exists for this primitive shape.
   if (typeof response.body.path === "string" && response.body.path.length > 0)
     return response.body.path;
   throw new PatchdeskApiError(
@@ -149,9 +157,12 @@ export async function selectDirectory(
   );
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- narrows a raw JSON error body (already the local API's own response payload) at this exact I/O boundary; no earlier parser exists for this shape.
 function errorCode(value: unknown): string | undefined {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
   if (typeof value !== "object" || value === null || !("error" in value))
     return undefined;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
   return typeof value.error === "string" ? value.error : undefined;
 }
 

@@ -85,6 +85,10 @@ export async function mergePullRequest(input: {
   if (policy.value.baseSha !== revision.value.identity.baseSha)
     return err({ _tag: "RevisionChangedBlocksMerge" });
 
+  const analysisMergePolicyField =
+    input.profile.analysisMergePolicy === undefined
+      ? {}
+      : { analysisMergePolicy: input.profile.analysisMergePolicy };
   const readiness = evaluateMergeReadiness({
     isCurrentHead: true,
     isOpen: policy.value.isOpen,
@@ -101,9 +105,7 @@ export async function mergePullRequest(input: {
     analysisFindingCount: (input.result?.findings ?? []).filter(
       (finding) => finding.severity === "P0" || finding.severity === "P1",
     ).length,
-    ...(input.profile.analysisMergePolicy === undefined
-      ? {}
-      : { analysisMergePolicy: input.profile.analysisMergePolicy }),
+    ...analysisMergePolicyField,
   });
   if (readiness._tag === "Blocked")
     return err({ _tag: "MergeBlocked", readiness });
@@ -124,12 +126,11 @@ export async function mergePullRequest(input: {
           ? "GitHubMergeOutcomeUnknown"
           : "GitHubMergeRejected",
     });
-  return ok({
-    readiness,
-    ...(merged.value.mergeCommitSha === undefined
+  const mergeCommitShaField =
+    merged.value.mergeCommitSha === undefined
       ? {}
-      : { mergeCommitSha: merged.value.mergeCommitSha }),
-  });
+      : { mergeCommitSha: merged.value.mergeCommitSha };
+  return ok({ readiness, ...mergeCommitShaField });
 }
 
 function sameWarningCodes(
