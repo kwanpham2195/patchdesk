@@ -161,6 +161,7 @@ export type InboxView =
   | "all_open";
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
 export function parseInboxResponse(input: unknown): InboxResponse | undefined {
   const parsed = v.safeParse(inboxResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -580,6 +581,7 @@ export type DirectSummaryReviewProjection = v.InferOutput<
   typeof directSummaryReviewProjectionSchema
 >;
 export function parseDirectSummaryReviewResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): DirectSummaryReviewProjection | undefined {
   const parsed = v.safeParse(directSummaryReviewResponseSchema, input);
@@ -639,6 +641,7 @@ export type PendingReviewProjection = v.InferOutput<
   typeof pendingReviewProjectionSchema
 >;
 export function parsePendingReviewProjection(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): PendingReviewProjection | undefined {
   const parsed = v.safeParse(pendingReviewProjectionSchema, input);
@@ -662,6 +665,7 @@ const insightRunResponseSchema = v.strictObject({
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): InsightRunResponse | undefined {
   const parsed = v.safeParse(insightRunResponseSchema, input);
@@ -670,6 +674,7 @@ export function parseInsightRunResponse(
 
 /** Reject malformed local API review projections before they influence renderer state. */
 export function parseWorkbenchResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);
@@ -688,6 +693,7 @@ const commitDiffResponseSchema = v.strictObject({
 export type CommitDiffResponse = v.InferOutput<typeof commitDiffResponseSchema>;
 
 export function parseCommitDiffResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): CommitDiffResponse | undefined {
   const parsed = v.safeParse(commitDiffResponseSchema, input);
@@ -725,6 +731,7 @@ const modelCatalogSchema = v.strictObject({
 export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
 
 /** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
 export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
   const parsed = v.safeParse(modelCatalogSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -769,6 +776,7 @@ export type InsightProviderCatalog = v.InferOutput<
 
 /** Rejects malformed passive or activated Insight provider catalogs. */
 export function parseInsightProviderCatalog(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): InsightProviderCatalog | undefined {
   const parsed = v.safeParse(insightProviderCatalogSchema, input);

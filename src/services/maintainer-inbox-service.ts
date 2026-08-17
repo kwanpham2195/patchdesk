@@ -112,6 +112,9 @@ export class MaintainerInboxService {
         host: repo.host,
         owner: repo.owner,
         repo: repo.repo,
+        // SAFETY: listMaintainerPullRequests lists every PR in the repo and
+        // never reads repo.number; PullRequestRef requires the field only
+        // because it is shared with single-PR lookups.
         number: 1 as never,
       },
     });
@@ -130,13 +133,15 @@ export class MaintainerInboxService {
     const rows = await Promise.all(
       listed.value.pullRequests.map(async ({ summary, checks }) => {
         const latestReview = latestReviewFor(summary, sessions);
-        return projectMaintainerInboxRow({
+        const input = {
           summary,
           checks,
           activeAccount: profile.ghAccount,
-          ...(latestReview === undefined ? {} : { latestReview }),
-          dataFreshness: "fresh",
-        });
+          dataFreshness: "fresh" as const,
+        };
+        return latestReview === undefined
+          ? projectMaintainerInboxRow(input)
+          : projectMaintainerInboxRow({ ...input, latestReview });
       }),
     );
     return {
@@ -154,6 +159,9 @@ export class MaintainerInboxService {
   ): Promise<Result<MaintainerInbox, never>> {
     const cached = await this.cache.read(profile.id);
     if (cached._tag === "ok")
+      // SAFETY: parseMaintainerInboxCache validates refreshedAt with
+      // parseIsoTimestamp before cache.read() resolves "ok", even though
+      // MaintainerInboxCache types the field as a plain string.
       return ok({
         rows: cached.value.rows.map(toCachedRow),
         repositories: profile.repos.map((repo) => ({
