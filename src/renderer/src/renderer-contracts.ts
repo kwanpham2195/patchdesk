@@ -107,6 +107,7 @@ const repoOutcomeSchema = v.object({
     repo: v.pipe(v.string(), v.minLength(1)),
   }),
   state: v.pipe(v.string(), v.minLength(1)),
+  resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
 });
 
 const inboxResponseSchema = v.strictObject({

@@ -24,6 +24,7 @@ export type MaintainerInboxRepository = {
   readonly repo: WatchedRepoConfig;
   readonly state: InboxCacheRepository["state"];
   readonly complete: boolean;
+  readonly resumeAt?: IsoTimestamp;
 };
 
 export type MaintainerInbox = {
@@ -124,18 +125,23 @@ export class MaintainerInboxService {
         number: 1 as never,
       },
     });
-    if (listed._tag === "err")
+    if (listed._tag === "err") {
+      const state =
+        listed.error._tag === "GitHubAuthenticationFailed"
+          ? ("github_auth" as const)
+          : listed.error._tag === "GitHubRateLimited"
+            ? ("github_rate_limited" as const)
+            : ("github_read" as const);
+      const resumeAtField =
+        listed.error._tag === "GitHubRateLimited" &&
+        listed.error.resumeAt !== undefined
+          ? { resumeAt: listed.error.resumeAt }
+          : {};
       return {
         rows: [],
-        repository: {
-          repo,
-          state:
-            listed.error._tag === "GitHubAuthenticationFailed"
-              ? "github_auth"
-              : "github_read",
-          complete: false,
-        },
+        repository: { repo, state, complete: false, ...resumeAtField },
       };
+    }
     const rows = await Promise.all(
       listed.value.pullRequests.map(async ({ summary, checks }) => {
         const latestReview = latestReviewFor(summary, sessions);

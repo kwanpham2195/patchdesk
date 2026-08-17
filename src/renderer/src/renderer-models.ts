@@ -27,6 +27,7 @@ export type Repo = {
 export type RepoOutcome = {
   readonly repo: Repo;
   readonly state: string;
+  readonly resumeAt?: string;
 };
 
 export type PrRow = {

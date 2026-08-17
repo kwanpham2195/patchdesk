@@ -34,6 +34,7 @@ export type MergeFailure =
   | { readonly _tag: "RevisionChangedBlocksMerge" }
   | { readonly _tag: "RevisionUnavailableBlocksMerge" }
   | { readonly _tag: "GitHubMergeRejected" }
+  | { readonly _tag: "GitHubMergeRateLimited" }
   | { readonly _tag: "GitHubMergeOutcomeUnknown" };
 
 /** Performs one explicit merge only after fresh PR evidence satisfies the selected readiness policy. */
@@ -124,7 +125,9 @@ export async function mergePullRequest(input: {
       _tag:
         merged.error.category === "unavailable"
           ? "GitHubMergeOutcomeUnknown"
-          : "GitHubMergeRejected",
+          : merged.error.category === "rate_limited"
+            ? "GitHubMergeRateLimited"
+            : "GitHubMergeRejected",
     });
   const mergeCommitShaField =
     merged.value.mergeCommitSha === undefined

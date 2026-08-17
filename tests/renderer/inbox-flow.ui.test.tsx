@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
@@ -79,6 +85,8 @@ const projection: WorkbenchResponse = {
     currentHeadSha: sha,
     freshness: "fresh",
     refreshedAt: "2026-08-01T00:00:00.000Z",
+    // SAFETY: test fixture narrows a plain hex string to the branded
+    // PatchHash type; only WorkbenchResponse's own parser enforces the brand.
     patchHash: patchHash as never,
   },
   fullPatch:
@@ -109,7 +117,10 @@ const projection: WorkbenchResponse = {
 };
 
 afterEach(() => {
-  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  cleanup();
+  // SAFETY: removes the test-installed `window.patchdesk` stub between
+  // tests; the global itself is declared optional elsewhere in the app.
+  delete (window as { patchdesk?: unknown }).patchdesk;
   vi.restoreAllMocks();
 });
 
@@ -147,6 +158,7 @@ describe("InboxFlow saved-review recovery", () => {
       <InboxFlow
         destination="dashboard"
         dashboard={dashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
         inbox={inbox as never}
         state="success"
         refreshStatus="Current"
@@ -171,5 +183,84 @@ describe("InboxFlow saved-review recovery", () => {
       repo: "repo",
       number: 1,
     });
+  });
+});
+
+describe("InboxFlow rate-limited repo outcome", () => {
+  it("names the rate limit, shows the resume time, and renders no retry button", () => {
+    const resumeAt = "2026-08-01T05:00:00.000Z";
+    const rateLimitedDashboard: Dashboard = {
+      ...dashboard,
+      dashboard: {
+        rows: [],
+        repos: [
+          {
+            repo: { host: "github.com", owner: "owner", repo: "repo" },
+            state: "github_rate_limited",
+            resumeAt,
+          },
+        ],
+      },
+    };
+    render(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={rateLimitedDashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={inbox as never}
+        state="error"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    const formatted = new Date(resumeAt).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const alert = screen
+      .getAllByRole("alert")
+      .find((candidate) => candidate.textContent?.includes("owner/repo"));
+    expect(alert).not.toBeUndefined();
+    expect(alert?.textContent).toContain("GitHub rate-limited this account");
+    expect(alert?.textContent).toContain(formatted);
+    expect(alert?.querySelector("button")).toBeNull();
+  });
+
+  it("shows the graceful fallback copy when no resumeAt is known", () => {
+    const rateLimitedDashboard: Dashboard = {
+      ...dashboard,
+      dashboard: {
+        rows: [],
+        repos: [
+          {
+            repo: { host: "github.com", owner: "owner", repo: "repo" },
+            state: "github_rate_limited",
+          },
+        ],
+      },
+    };
+    render(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={rateLimitedDashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={inbox as never}
+        state="error"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    const alert = screen
+      .getAllByRole("alert")
+      .find((candidate) => candidate.textContent?.includes("owner/repo"));
+    expect(alert).not.toBeUndefined();
+    expect(alert?.textContent).toContain(
+      "Patchdesk will resume automatically once the limit clears.",
+    );
+    expect(alert?.querySelector("button")).toBeNull();
   });
 });

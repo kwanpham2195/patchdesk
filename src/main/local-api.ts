@@ -1436,7 +1436,12 @@ function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
     failure === "pending_review_exists"
   )
     return 409;
-  if (failure === "unavailable" || failure === "outcome_unknown") return 503;
+  if (
+    failure === "unavailable" ||
+    failure === "outcome_unknown" ||
+    failure === "rate_limited"
+  )
+    return 503;
   return 400;
 }
 
@@ -1719,7 +1724,8 @@ async function inlineConversationResponse(
           result.error === "review_write_in_progress"
         ? 409
         : result.error === "github_read_failed" ||
-            result.error === "github_write_failed"
+            result.error === "github_write_failed" ||
+            result.error === "rate_limited"
           ? 503
           : 400;
   return context.json({ error: result.error }, status);
@@ -2190,6 +2196,7 @@ function statusForReason(
   if (reason === "github_read" || reason === "storage") return 503;
   if (reason.includes("storage")) return 503;
   if (reason.includes("unavailable")) return 503;
+  if (reason.includes("rate_limited")) return 503;
   return 400;
 }
 

@@ -52,6 +52,7 @@ import {
 import {
   InboxRefreshScheduler,
   inboxFreshnessLabel,
+  type InboxRefreshOutcome,
 } from "./inbox-refresh-scheduler";
 import {
   applyAppearance,
@@ -398,7 +399,7 @@ export function App({
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
   }, [initialState]);
-  const refreshInbox = useCallback(async (): Promise<"success" | "failure"> => {
+  const refreshInbox = useCallback(async (): Promise<InboxRefreshOutcome> => {
     const profileId = activeInboxProfileId.current;
     if (profileId === undefined) return "failure";
     const generation = ++inboxRefreshGeneration.current;
@@ -417,7 +418,9 @@ export function App({
         dashboard: nextDashboard,
         screen: screenStateForDashboard(nextDashboard),
       });
-      return "success";
+      return allRepositoriesRateLimited(refreshed.inbox.repositories)
+        ? { kind: "rate_limited", resumeAt: maxResumeAt(refreshed.inbox.repositories) }
+        : "success";
     } catch {
       if (generation === inboxRefreshGeneration.current)
         dispatchWorkspace({ _tag: "refreshFailed" });
@@ -1006,21 +1009,55 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
         priority: row.categories[0] ?? "review",
         badges: row.categories,
       })),
-      repos: inbox.inbox.repositories.map((outcome) => ({
-        repo: {
-          host: outcome.repo.host,
-          owner: outcome.repo.owner,
-          repo: outcome.repo.repo,
-        },
-        state: outcome.state,
-      })),
+      repos: inbox.inbox.repositories.map((outcome) => {
+        const resumeAtField =
+          outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+        return {
+          repo: {
+            host: outcome.repo.host,
+            owner: outcome.repo.owner,
+            repo: outcome.repo.repo,
+          },
+          state: outcome.state,
+          ...resumeAtField,
+        };
+      }),
     },
   };
 }
 
+/** True only when every watched repo is rate-limited; a mix with healthy repos keeps the normal poll cadence. */
+function allRepositoriesRateLimited(
+  repositories: InboxResponse["inbox"]["repositories"],
+): boolean {
+  return (
+    repositories.length > 0 &&
+    repositories.every((repo) => repo.state === "github_rate_limited")
+  );
+}
+
+/** The latest known resume time across all-rate-limited repos, falling back to a conservative 60-minute wait. */
+function maxResumeAt(
+  repositories: InboxResponse["inbox"]["repositories"],
+): string {
+  const resumeTimesMs = repositories.reduce<Array<number>>((acc, repo) => {
+    const parsed =
+      repo.resumeAt === undefined ? NaN : Date.parse(repo.resumeAt);
+    if (!Number.isNaN(parsed)) acc.push(parsed);
+    return acc;
+  }, []);
+  return resumeTimesMs.length === 0
+    ? new Date(Date.now() + 60 * 60_000).toISOString()
+    : new Date(Math.max(...resumeTimesMs)).toISOString();
+}
+
 function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
   const outcomes = dashboard.dashboard.repos.map((item) => item.state);
-  if (outcomes.includes("github_auth") || outcomes.includes("github_read"))
+  if (
+    outcomes.includes("github_auth") ||
+    outcomes.includes("github_read") ||
+    outcomes.includes("github_rate_limited")
+  )
     return "error";
   if (outcomes.includes("no_open_prs") && dashboard.dashboard.rows.length === 0)
     return "no_open_prs";

@@ -268,5 +268,7 @@ function mergeReason(tag: string): string {
         ? "stale_head"
         : tag === "RevisionUnavailableBlocksMerge"
           ? "not_fresh"
-          : "merge_failed";
+          : tag === "GitHubMergeRateLimited"
+            ? "merge_rate_limited"
+            : "merge_failed";
 }

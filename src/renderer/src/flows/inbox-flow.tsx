@@ -601,7 +601,7 @@ function Outcome({
     );
   return (
     <section className="mt-6 space-y-2">
-      {repos.flatMap(({ repo, state: outcome }) =>
+      {repos.flatMap(({ repo, state: outcome, resumeAt }) =>
         outcome === "ready" || outcome === "no_open_prs"
           ? []
           : [
@@ -621,7 +621,9 @@ function Outcome({
                     ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local review records remain available."
                     : outcome === "github_read"
                       ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                      : outcome}
+                      : outcome === "github_rate_limited"
+                        ? rateLimitedCopy(resumeAt)
+                        : outcome}
                   {outcome === "github_read" ? (
                     <div>
                       <Button
@@ -657,4 +659,21 @@ function key(repo: {
   readonly repo: string;
 }): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
+}
+
+/**
+ * Names the rate limit explicitly and states when it lifts. No retry action is
+ * offered here: GitHub's primary rate-limit window is hours long, so an
+ * immediate retry would only make it worse; Patchdesk resumes on its own.
+ */
+function rateLimitedCopy(resumeAt: string | undefined): string {
+  const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
+  if (Number.isNaN(resumeAtMs)) {
+    return "GitHub rate-limited this account. Patchdesk will resume automatically once the limit clears.";
+  }
+  const formatted = new Date(resumeAtMs).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `GitHub rate-limited this account. Patchdesk will resume automatically at ${formatted}.`;
 }

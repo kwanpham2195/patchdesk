@@ -18,6 +18,7 @@ export type ApiFailureKind =
   | "pending_review_locked"
   | "review_write_in_progress"
   | "self_approval_not_allowed"
+  | "rate_limited"
   | "internal";
 
 export class PatchdeskApiError extends Error {
@@ -168,6 +169,7 @@ function errorCode(value: unknown): string | undefined {
 
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
+  if (code?.includes("rate_limited") === true) return "rate_limited";
   if (code === "outcome_unknown") return "outcome_unknown";
   if (code === "review_write_in_progress") return "review_write_in_progress";
   if (code === "self_approval_not_allowed") return "self_approval_not_allowed";
@@ -224,6 +226,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return "Another Review operation is still finishing. Try again in a moment.";
     case "self_approval_not_allowed":
       return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
+    case "rate_limited":
+      return "GitHub rate-limited this request. Wait a moment, then try again.";
     case "internal":
       return "Patchdesk could not complete the request.";
   }

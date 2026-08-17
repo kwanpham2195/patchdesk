@@ -1125,6 +1125,77 @@ describe("GitHubAdapter read boundary", () => {
     ).toBe(true);
   });
 
+  it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "gh: API rate limit exceeded for user ID 123.",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubRateLimited", operation: "list_maintainer_prs" },
+    });
+  });
+
+  it("populates the per-host rate-limit cache from a successful rateLimit field, then carries resumeAt on a later rate-limited failure", async () => {
+    const resetAt = "2026-08-01T05:00:00Z";
+    const successPage = {
+      data: {
+        rateLimit: { remaining: 10, resetAt },
+        repository: {
+          pullRequests: {
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: JSON.stringify(successPage),
+        stderr: "",
+      },
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "gh: API rate limit exceeded for user ID 123.",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const first = await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+    });
+    expect(first).toMatchObject({ _tag: "ok" });
+
+    const second = await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+    });
+    expect(second).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "GitHubRateLimited",
+        operation: "list_maintainer_prs",
+        resumeAt: "2026-08-01T05:00:00.000Z",
+      },
+    });
+  });
+
   it("uses checked-in argv contracts for all GitHub read methods and auth", async () => {
     const [listOpenPrs, getPr, getComments, getChecks, getStatuses, getDiff] =
       await Promise.all([

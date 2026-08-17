@@ -34,6 +34,7 @@ export type DirectSummaryReviewFailure =
   | "pending_review_exists"
   | "rejected"
   | "unavailable"
+  | "rate_limited"
   | "outcome_unknown"
   | "review_write_in_progress"
   | "self_approval_not_allowed";
@@ -187,7 +188,9 @@ export class DirectSummaryReviewService {
             ? "permission_denied"
             : written.error.category === "pending_review"
               ? "pending_review_exists"
-              : "rejected",
+              : written.error.category === "rate_limited"
+                ? "rate_limited"
+                : "rejected",
         );
       }
       const confirmed: DirectSummaryReviewState = {

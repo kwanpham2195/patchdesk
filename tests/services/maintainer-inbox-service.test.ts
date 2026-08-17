@@ -67,6 +67,92 @@ describe("MaintainerInboxService", () => {
   });
 });
 
+describe("MaintainerInboxService rate-limited reads", () => {
+  it("maps a GitHubRateLimited read failure to the github_rate_limited state and carries resumeAt", async () => {
+    // SAFETY: test fixture narrows a partial mock (only the members
+    // MaintainerInboxService actually calls) to its stricter collaborator
+    // and profile types.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async () =>
+          err({
+            _tag: "GitHubRateLimited",
+            operation: "list_maintainer_prs",
+            resumeAt: "2026-08-01T05:00:00.000Z",
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+    // SAFETY: test fixture narrows a partial profile mock to
+    // WorkspaceProfileConfig; only the fields the service reads are set.
+    await expect(
+      service.list({
+        id: "cfw",
+        ghAccount: "fixture",
+        repos: [
+          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+        ],
+      } as never),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        repositories: [
+          {
+            state: "github_rate_limited",
+            resumeAt: "2026-08-01T05:00:00.000Z",
+          },
+        ],
+      },
+    });
+  });
+
+  it("maps a GitHubRateLimited read failure with no cached resumeAt to github_rate_limited without a resumeAt field", async () => {
+    // SAFETY: test fixture narrows a partial mock (only the members
+    // MaintainerInboxService actually calls) to its stricter collaborator
+    // and profile types.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async () =>
+          err({
+            _tag: "GitHubRateLimited",
+            operation: "list_maintainer_prs",
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+    // SAFETY: test fixture narrows a partial profile mock to
+    // WorkspaceProfileConfig; only the fields the service reads are set.
+    const result = await service.list({
+      id: "cfw",
+      ghAccount: "fixture",
+      repos: [
+        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+      ],
+    } as never);
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { repositories: [{ state: "github_rate_limited" }] },
+    });
+    if (result._tag === "ok") {
+      expect(result.value.repositories[0]?.resumeAt).toBeUndefined();
+    }
+  });
+});
+
 describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to

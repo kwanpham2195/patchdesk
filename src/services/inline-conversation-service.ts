@@ -82,6 +82,7 @@ export type DirectConversationFailure =
   | "pending_review"
   | "github_read_failed"
   | "github_write_failed"
+  | "rate_limited"
   | "review_write_in_progress"
   | "confirmation_required";
 
@@ -198,7 +199,9 @@ export class InlineConversationService {
           return err(
             created.error.category === "pending_review"
               ? "pending_review"
-              : "github_write_failed",
+              : created.error.category === "rate_limited"
+                ? "rate_limited"
+                : "github_write_failed",
           );
         }
         return ok(

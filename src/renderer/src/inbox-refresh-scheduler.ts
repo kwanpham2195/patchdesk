@@ -4,10 +4,17 @@ export type InboxRefreshReason =
   | "poll"
   | "retry"
   | "manual";
-export type InboxRefreshOutcome = "success" | "failure";
+export type InboxRefreshOutcome =
+  | "success"
+  | "failure"
+  | { readonly kind: "rate_limited"; readonly resumeAt: string };
 
 const POLL_DELAY_MS = 60_000;
 const RETRY_DELAYS_MS = [60_000, 120_000, 240_000, 300_000] as const;
+// GitHub's primary rate-limit window is measured in hours, not minutes. When
+// the resume time is missing or unparseable, wait this long before retrying
+// rather than falling back to RETRY_DELAYS_MS's much shorter ceiling.
+const RATE_LIMIT_FALLBACK_DELAY_MS = 60 * 60_000;
 
 /**
  * Renderer-only timing policy for a visible Inbox. It owns no data and makes
@@ -77,6 +84,17 @@ export class InboxRefreshScheduler {
         if (outcome === "success") {
           this.failures = 0;
           this.schedule("poll", POLL_DELAY_MS);
+          return;
+        }
+        if (outcome !== "failure" && outcome.kind === "rate_limited") {
+          // A rate limit is not a transient failure: do not touch the
+          // failures counter, so a later, unrelated failure after the
+          // window lifts still starts its own backoff ladder from zero.
+          const resumeAt = Date.parse(outcome.resumeAt);
+          const delay = Number.isNaN(resumeAt)
+            ? RATE_LIMIT_FALLBACK_DELAY_MS
+            : Math.max(resumeAt - Date.now(), POLL_DELAY_MS);
+          this.schedule("retry", delay);
           return;
         }
         const delay =

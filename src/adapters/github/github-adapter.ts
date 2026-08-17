@@ -90,7 +90,7 @@ const reviewCommentTargetQuery =
 const maxReviewCommentPages = 10;
 const maxReviewComments = 5_000;
 const maintainerInboxQuery =
-  "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
+  "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { rateLimit { remaining resetAt } repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
 const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 const maxMergePolicyPages = 3;
@@ -434,6 +434,12 @@ const threadCommentsResponseSchema = v.looseObject({
 
 const maintainerInboxResponseSchema = v.looseObject({
   data: v.looseObject({
+    rateLimit: v.optional(
+      v.looseObject({
+        remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        resetAt: v.string(),
+      }),
+    ),
     repository: v.looseObject({
       pullRequests: v.looseObject({
         nodes: v.array(
@@ -951,6 +957,11 @@ export type GitHubReadFailure =
   | {
       readonly _tag: "GitHubResponseInvalid";
       readonly operation: GitHubReadOperation;
+    }
+  | {
+      readonly _tag: "GitHubRateLimited";
+      readonly operation: GitHubReadOperation;
+      readonly resumeAt?: IsoTimestamp;
     };
 
 type GitHubReadOperation =
@@ -988,6 +999,17 @@ type GhCommandRequest = Omit<
 export class GitHubAdapter
   implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter
 {
+  /**
+   * Last-observed rateLimit { remaining, resetAt } per GitHub host, learned
+   * opportunistically from the maintainerInboxQuery response on every
+   * successful poll. Consulted when classifying a later CommandRateLimited
+   * failure on the same host so the resume time can be surfaced proactively.
+   */
+  private readonly rateLimitByHost = new Map<
+    string,
+    { readonly remaining: number; readonly resetAt: IsoTimestamp }
+  >();
+
   constructor(
     private readonly commands: CommandRunner,
     private readonly credentials: GitHubCredentials = new GitHubCliCredentials(
@@ -1032,6 +1054,29 @@ export class GitHubAdapter
     return response;
   }
 
+  /**
+   * Classify a failed CommandFailure into a GitHubReadFailure. A rate-limited
+   * failure carries the last-observed resetAt for `host` when one is cached
+   * (see rateLimitByHost); when the cache is cold, resumeAt is left undefined
+   * and a fallback delay is applied at the point that schedules the wait,
+   * not baked in here.
+   */
+  private commandFailure(
+    operation: GitHubReadOperation,
+    failure: CommandFailure,
+    host: string,
+  ): Result<never, GitHubReadFailure> {
+    if (failure._tag === "CommandAuthenticationRequired")
+      return err({ _tag: "GitHubAuthenticationFailed", operation });
+    if (failure._tag === "CommandRateLimited") {
+      const cached = this.rateLimitByHost.get(host);
+      const resumeAtField =
+        cached === undefined ? {} : { resumeAt: cached.resetAt };
+      return err({ _tag: "GitHubRateLimited", operation, ...resumeAtField });
+    }
+    return err({ _tag: "GitHubReadFailed", operation });
+  }
+
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: PullRequestRef;
@@ -1047,7 +1092,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("list_open_prs", response.error);
+      return this.commandFailure("list_open_prs", response.error, input.profile.githubHost);
     if (!Array.isArray(response.value)) return invalid("list_open_prs");
 
     const summaries: Array<PullRequestSummary> = [];
@@ -1072,6 +1117,7 @@ export class GitHubAdapter
     readonly repo: PullRequestRef;
   }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>> {
     const pullRequests: Array<MaintainerPullRequest> = [];
+    const host = input.profile.githubHost;
     let cursor: string | undefined;
     let hasNextPage = true;
     for (let page = 0; page < 3 && hasNextPage; page += 1) {
@@ -1081,7 +1127,7 @@ export class GitHubAdapter
           "api",
           "graphql",
           "--hostname",
-          input.profile.githubHost,
+          host,
           "-f",
           `query=${maintainerInboxQuery}`,
           "-F",
@@ -1092,15 +1138,26 @@ export class GitHubAdapter
         ],
         timeoutMs: commandTimeoutMs,
       });
-      if (response._tag === "err")
-        return commandFailure("list_maintainer_prs", response.error);
+      if (response._tag === "err") {
+        return this.commandFailure("list_maintainer_prs", response.error, host);
+      }
       const parsed = v.safeParse(maintainerInboxResponseSchema, response.value);
       if (!parsed.success) return invalid("list_maintainer_prs");
+      const rateLimit = parsed.output.data.rateLimit;
+      if (rateLimit !== undefined) {
+        const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
+        if (resumeAt._tag === "ok") {
+          this.rateLimitByHost.set(host, {
+            remaining: rateLimit.remaining,
+            resetAt: resumeAt.value,
+          });
+        }
+      }
       const connection = parsed.output.data.repository.pullRequests;
       for (const node of connection.nodes) {
         const projected = parseMaintainerPullRequest(
           node,
-          input.profile.githubHost,
+          host,
           input.repo.owner,
           input.repo.repo,
         );
@@ -1130,7 +1187,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") {
-      return commandFailure("get_pr", response.error);
+      return this.commandFailure("get_pr", response.error, input.profile.githubHost);
     }
     const raw = v.safeParse(pullRequestSchema, response.value);
     if (!raw.success) return invalid("get_pr");
@@ -1172,7 +1229,7 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err")
-        return commandFailure("get_merge_policy", response.error);
+        return this.commandFailure("get_merge_policy", response.error, input.profile.githubHost);
       const raw = v.safeParse(mergePolicyResponseSchema, response.value);
       if (!raw.success) return invalid("get_merge_policy");
       const parsed = parseMergePolicyPage(raw.output);
@@ -1242,7 +1299,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_pr", response.error);
+      return this.commandFailure("get_pr", response.error, input.profile.githubHost);
     const raw = v.safeParse(mergeOutcomeSchema, response.value);
     return raw.success ? parseMergeOutcome(raw.output) : invalid("get_pr");
   }
@@ -1266,7 +1323,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_pr_commits", response.error);
+      return this.commandFailure("get_pr_commits", response.error, input.profile.githubHost);
     const parsed = v.safeParse(
       v.array(v.array(pullRequestCommitSchema)),
       response.value,
@@ -1336,7 +1393,7 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err") {
-        return commandFailure("get_comments", response.error);
+        return this.commandFailure("get_comments", response.error, input.profile.githubHost);
       }
       const parsed = v.safeParse(threadResponseSchema, response.value);
       if (!parsed.success) return invalid("get_comments");
@@ -1508,9 +1565,9 @@ export class GitHubAdapter
       this.resolveAuthenticatedAccount(input.profile),
     ]);
     if (reviews._tag === "err")
-      return commandFailure("get_reviews", reviews.error);
+      return this.commandFailure("get_reviews", reviews.error, input.profile.githubHost);
     if (comments._tag === "err")
-      return commandFailure("get_comments", comments.error);
+      return this.commandFailure("get_comments", comments.error, input.profile.githubHost);
     const permission =
       account._tag === "ok" && account.value.account === input.profile.ghAccount
         ? await this.getRepositoryPermission({
@@ -1659,7 +1716,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_repository_permission", response.error);
+      return this.commandFailure("get_repository_permission", response.error, input.profile.githubHost);
     const parsed = v.safeParse(repositoryPermissionSchema, response.value);
     if (!parsed.success) return invalid("get_repository_permission");
     const permission = parsed.output.permission;
@@ -1695,7 +1752,7 @@ export class GitHubAdapter
       return ok({ protected: false, allowedDismissers: [] });
     }
     if (response._tag === "err")
-      return commandFailure("get_branch_protection", response.error);
+      return this.commandFailure("get_branch_protection", response.error, input.profile.githubHost);
     const parsed = v.safeParse(branchProtectionSchema, response.value);
     if (!parsed.success) return invalid("get_branch_protection");
     const rules = parsed.output.required_pull_request_reviews;
@@ -1733,12 +1790,19 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       }),
     ]);
+    const classify: CommandFailureClassifier = (operation, failure) =>
+      this.commandFailure(operation, failure, input.profile.githubHost);
     const branch = parseOptionalPolicyResponse(
       branchProtection,
       "branchProtection",
+      classify,
     );
     if (branch._tag === "err") return branch;
-    const rules = parseOptionalPolicyResponse(appliedRuleset, "appliedRuleset");
+    const rules = parseOptionalPolicyResponse(
+      appliedRuleset,
+      "appliedRuleset",
+      classify,
+    );
     if (rules._tag === "err") return rules;
     return ok({ branchProtection: branch.value, appliedRuleset: rules.value });
   }
@@ -1821,7 +1885,7 @@ export class GitHubAdapter
       }),
     ]);
     if (checkRunsResponse._tag === "err" && statusesResponse._tag === "err")
-      return commandFailure("get_checks", checkRunsResponse.error);
+      return this.commandFailure("get_checks", checkRunsResponse.error, input.profile.githubHost);
     const checks =
       checkRunsResponse._tag === "ok"
         ? v.safeParse(checkRunsSchema, checkRunsResponse.value)
@@ -1868,7 +1932,7 @@ export class GitHubAdapter
       });
       return exact._tag === "ok"
         ? exact
-        : commandFailure("get_diff", exact.error);
+        : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
     }
 
     if (input.snapshot !== undefined) {
@@ -1886,7 +1950,7 @@ export class GitHubAdapter
       });
       return exact._tag === "ok"
         ? exact
-        : commandFailure("get_diff", exact.error);
+        : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
     }
 
     const response = await this.ghText(input.profile, {
@@ -1906,7 +1970,7 @@ export class GitHubAdapter
       response._tag === "err" &&
       response.error._tag === "CommandAuthenticationRequired"
     ) {
-      return commandFailure("get_diff", response.error);
+      return this.commandFailure("get_diff", response.error, input.profile.githubHost);
     }
     return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
@@ -1932,7 +1996,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_file", response.error);
+      return this.commandFailure("get_file", response.error, input.profile.githubHost);
     const parsed = v.safeParse(repositoryFileSchema, response.value);
     if (!parsed.success || parsed.output.type !== "file")
       return invalid("get_file");
@@ -2138,7 +2202,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_direct_summary_reviews", response.error);
+      return this.commandFailure("get_direct_summary_reviews", response.error, input.profile.githubHost);
     const parsed = v.safeParse(publishedReviewSchema, response.value);
     if (!parsed.success) return invalid("get_direct_summary_reviews");
     const reviews: DirectSummaryPublishedReview[] = [];
@@ -2192,7 +2256,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (reviews._tag === "err")
-      return commandFailure("get_pending_review", reviews.error);
+      return this.commandFailure("get_pending_review", reviews.error, input.profile.githubHost);
     const parsed = v.safeParse(publishedReviewSchema, reviews.value);
     if (!parsed.success) return invalid("get_pending_review");
     const pending = parsed.output.filter(
@@ -2251,7 +2315,7 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return commandFailure("get_pending_review", response.error);
+      return this.commandFailure("get_pending_review", response.error, input.profile.githubHost);
     const threads = v.safeParse(
       pendingReviewThreadsResponseSchema,
       response.value,
@@ -4061,17 +4125,26 @@ function parseGitHubTimestamp(
   return parseIsoTimestamp(normalized);
 }
 
+/** Classifies a failed CommandFailure into a GitHubReadFailure; bound to the caller's profile host. */
+type CommandFailureClassifier = (
+  operation: GitHubReadOperation,
+  failure: CommandFailure,
+) => Result<never, GitHubReadFailure>;
+
 function parseOptionalPolicyResponse(
   response: Result<unknown, CommandFailure>,
   kind: "branchProtection",
+  classify: CommandFailureClassifier,
 ): Result<GitHubMergePolicyEvidence["branchProtection"], GitHubReadFailure>;
 function parseOptionalPolicyResponse(
   response: Result<unknown, CommandFailure>,
   kind: "appliedRuleset",
+  classify: CommandFailureClassifier,
 ): Result<GitHubMergePolicyEvidence["appliedRuleset"], GitHubReadFailure>;
 function parseOptionalPolicyResponse(
   response: Result<unknown, CommandFailure>,
   kind: "branchProtection" | "appliedRuleset",
+  classify: CommandFailureClassifier,
 ): Result<
   | GitHubMergePolicyEvidence["branchProtection"]
   | GitHubMergePolicyEvidence["appliedRuleset"],
@@ -4080,7 +4153,7 @@ function parseOptionalPolicyResponse(
   if (response._tag === "err") {
     const reason = optionalPolicyUnavailableReason(response.error);
     return reason === undefined
-      ? commandFailure("get_merge_policy_evidence", response.error)
+      ? classify("get_merge_policy_evidence", response.error)
       : ok({ state: "unavailable", reason });
   }
   if (kind === "branchProtection") {
@@ -4125,15 +4198,6 @@ function optionalPolicyUnavailableReason(
   if (failure._tag === "CommandNotFound") return "not_found";
   if (failure._tag === "CommandUnsupported") return "unsupported";
   return undefined;
-}
-
-function commandFailure(
-  operation: GitHubReadOperation,
-  failure: CommandFailure,
-): Result<never, GitHubReadFailure> {
-  return failure._tag === "CommandAuthenticationRequired"
-    ? err({ _tag: "GitHubAuthenticationFailed", operation })
-    : err({ _tag: "GitHubReadFailed", operation });
 }
 
 /** REST review-comment payload GitHub accepts when creating pending-review comments. */
@@ -4245,6 +4309,12 @@ function writeFailure(failure: CommandFailure): GitHubWriteFailure {
       category: "pending_review",
       message:
         "You have an unfinished review on this pull request on GitHub; submit or discard it before commenting.",
+    };
+  if (failure._tag === "CommandRateLimited")
+    return {
+      _tag: "GitHubWriteFailure",
+      category: "rate_limited",
+      message: "GitHub rate-limited this request.",
     };
   if (failure._tag === "CommandFailed")
     return {

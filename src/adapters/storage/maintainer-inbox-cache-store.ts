@@ -36,6 +36,7 @@ export type InboxCacheRepository = {
     | "missing_local_path"
     | "github_auth"
     | "github_read"
+    | "github_rate_limited"
     | "no_open_prs";
   readonly complete: boolean;
 };
@@ -164,6 +165,7 @@ const cacheSchema = v.strictObject({
         "missing_local_path",
         "github_auth",
         "github_read",
+        "github_rate_limited",
         "no_open_prs",
       ]),
       complete: v.boolean(),

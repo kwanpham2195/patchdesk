@@ -81,6 +81,7 @@ export type PendingReviewServiceFailure =
   | "permission_denied"
   | "rejected"
   | "unavailable"
+  | "rate_limited"
   | "outcome_unknown"
   | "review_write_in_progress"
   | "no_pending_review"
@@ -555,7 +556,8 @@ export class PendingReviewService {
             | "auth"
             | "rejected"
             | "unavailable"
-            | "pending_review";
+            | "pending_review"
+            | "rate_limited";
           readonly message: string;
         }
       >
@@ -586,8 +588,13 @@ export class PendingReviewService {
         }
         return err("outcome_unknown");
       }
+      // GitHub flatly refused the request rather than leaving the outcome
+      // ambiguous, so this locks and rejects the same as any other refusal;
+      // only the reported failure code differs, so the maintainer sees an
+      // accurate "rate-limited" message instead of a generic rejection.
       const rejected = rejectPendingReviewWrite(begun.value);
       if (rejected._tag === "ok") await this.persist(session, rejected.value);
+      if (written.error.category === "rate_limited") return err("rate_limited");
       return err(
         written.error.category === "auth" ? "permission_denied" : "rejected",
       );
