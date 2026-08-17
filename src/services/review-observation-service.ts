@@ -3,7 +3,10 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+import type {
+  ReviewObservationJournal,
+  ReviewObservationJournalStore,
+} from "../adapters/storage/review-observation-journal-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
@@ -302,7 +305,7 @@ export class ReviewObservationService {
         : err({ reason: "storage" });
     }
 
-    const candidate: ReviewRemoteSnapshot = {
+    const candidateBase: ReviewRemoteSnapshot = {
       ...represented,
       pullRequest: terminalRead.value,
       comments: comments.value,
@@ -313,10 +316,11 @@ export class ReviewObservationService {
         mergeEvidence?._tag === "ok"
           ? toMergeEvidence(mergePolicy.value, mergeEvidence.value)
           : toMergeEvidence(mergePolicy.value),
-      ...(publishedFeedback?._tag === "ok"
-        ? { publishedFeedback: publishedFeedback.value }
-        : {}),
     };
+    const candidate: ReviewRemoteSnapshot =
+      publishedFeedback?._tag === "ok"
+        ? { ...candidateBase, publishedFeedback: publishedFeedback.value }
+        : candidateBase;
     const savedCandidate = await this.dependencies.remote.saveCandidate({
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -324,7 +328,7 @@ export class ReviewObservationService {
     });
     if (savedCandidate._tag === "err") return err({ reason: "storage" });
 
-    const pending = this.dependencies.pendingReview.adoptObservedState({
+    const adoptObservedStateInput = {
       session,
       observed: observedPending.read,
       evidenceComplete:
@@ -335,10 +339,15 @@ export class ReviewObservationService {
           (publishedFeedback._tag === "ok" &&
             publishedFeedback.value.complete === true)),
       comments: comments.value,
-      ...(publishedFeedback?._tag === "ok"
-        ? { publishedFeedback: publishedFeedback.value }
-        : {}),
-    });
+    };
+    const pending = this.dependencies.pendingReview.adoptObservedState(
+      publishedFeedback?._tag === "ok"
+        ? {
+            ...adoptObservedStateInput,
+            publishedFeedback: publishedFeedback.value,
+          }
+        : adoptObservedStateInput,
+    );
     const nextSessionAt = nextTimestamp(session.updatedAt, detectedAt);
     const nextReviewAt = nextTimestamp(review.updatedAt, detectedAt);
     const previousSnapshotHash = review.representedRemote?.snapshotHash;
@@ -349,7 +358,7 @@ export class ReviewObservationService {
         detectedAt,
         "reconciliation_incomplete",
       );
-    const journal = {
+    const journalBase = {
       schemaVersion: 1 as const,
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -361,14 +370,19 @@ export class ReviewObservationService {
       nextReviewUpdatedAt: nextReviewAt,
       previousSnapshotHash,
       nextSnapshotHash: savedCandidate.value.snapshotHash,
-      ...(pending.pendingReview === undefined
-        ? {}
-        : { nextPendingReview: pending.pendingReview }),
-      ...(pending.findingReviewReceipts === undefined
-        ? {}
-        : { nextFindingReviewReceipts: pending.findingReviewReceipts }),
       createdAt: detectedAt,
     };
+    const journalWithPending: Omit<ReviewObservationJournal, "nextFindingReviewReceipts"> =
+      pending.pendingReview === undefined
+        ? journalBase
+        : { ...journalBase, nextPendingReview: pending.pendingReview };
+    const journal: ReviewObservationJournal =
+      pending.findingReviewReceipts === undefined
+        ? journalWithPending
+        : {
+            ...journalWithPending,
+            nextFindingReviewReceipts: pending.findingReviewReceipts,
+          };
     const storedJournal = await this.dependencies.journals.save(journal);
     if (storedJournal._tag === "err") return err({ reason: "storage" });
 
@@ -816,15 +830,13 @@ function applySessionAdoption(
   } = session;
   void _previousPending;
   void _previousReceipts;
-  return {
-    ...rest,
-    ...(pendingReview === undefined ? {} : { pendingReview }),
-    ...(findingReviewReceipts === undefined ||
+  const base = { ...rest, updatedAt };
+  const withPendingReview =
+    pendingReview === undefined ? base : { ...base, pendingReview };
+  return findingReviewReceipts === undefined ||
     findingReviewReceipts.length === 0
-      ? {}
-      : { findingReviewReceipts }),
-    updatedAt,
-  };
+    ? withPendingReview
+    : { ...withPendingReview, findingReviewReceipts };
 }
 
 function sameSessionAdoption(
@@ -907,7 +919,7 @@ function nextTimestamp(
     Date.parse(requested),
   );
   const next = new Date(milliseconds).toISOString();
-  // Both inputs are parsed timestamps; this arithmetic always produces ISO.
+  // SAFETY: both inputs are parsed timestamps; this arithmetic always produces ISO.
   return next as IsoTimestamp;
 }
 
@@ -915,10 +927,10 @@ function toMergeEvidence(
   policy: NonNullable<ReviewRemoteSnapshot["mergePolicy"]>,
   evidence?: NonNullable<ReviewRemoteSnapshot["mergeEvidence"]>["policy"],
 ): GitHubMergeEvidence {
-  return {
+  const base = {
     mergeable: policy.mergeability,
     mergeStateStatus: policy.mergeStateStatus ?? "unavailable",
     reviewDecision: policy.reviewDecision,
-    ...(evidence === undefined ? {} : { policy: evidence }),
   };
+  return evidence === undefined ? base : { ...base, policy: evidence };
 }

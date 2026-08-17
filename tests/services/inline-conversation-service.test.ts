@@ -39,6 +39,8 @@ const sessionKey = {
 /** Minimal fresh gate: every command passes freshness against the fixture head. */
 const makeGate = () => ({
   requireFresh: vi.fn(async () =>
+    // SAFETY: the service only reads `session.key` from this stub; `profile`
+    // is forwarded opaquely into the gateway mocks below, which ignore it.
     ok({ session: { key: sessionKey }, profile: {} } as never),
   ),
 });
@@ -48,6 +50,9 @@ const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 function command(
   overrides: Partial<DirectConversationCommand>,
 ): DirectConversationCommand {
+  // SAFETY: `overrides` can switch `_tag` to any DirectConversationCommand
+  // variant; each call site only sets the fields that variant requires, and
+  // the resulting command is exercised (not just constructed) by the test.
   return {
     _tag: "Reply",
     expected,
@@ -57,8 +62,10 @@ function command(
   } as DirectConversationCommand;
 }
 
-function makeGateway(overrides: Record<string, unknown> = {}) {
+function makeGateway(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) {
   const github = {
+    // SAFETY: only `headSha` is read from this stub by the service's
+    // current-head freshness check; the rest of PullRequestSummary is unused.
     getPullRequest: vi.fn(async () => ok({ headSha } as never)),
     getPullRequestComments: vi.fn(async () =>
       ok({ threads: [], complete: true }),
@@ -84,6 +91,8 @@ describe("InlineConversationService", () => {
     const getReviewThreadTarget = vi.fn(async () => ok({ found: false }));
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -102,6 +111,8 @@ describe("InlineConversationService", () => {
     const getReviewThreadTarget = vi.fn(async () => ok({ found: false }));
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ setReviewThreadState, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -127,6 +138,8 @@ describe("InlineConversationService", () => {
     }));
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply, getReviewThreadTarget }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -149,6 +162,8 @@ describe("InlineConversationService", () => {
     );
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ getPullRequestComments, createThreadReply }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -176,6 +191,8 @@ describe("InlineConversationService", () => {
     );
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ updateThreadComment, getReviewCommentTarget }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -198,6 +215,8 @@ describe("InlineConversationService", () => {
     const getReviewCommentTarget = vi.fn(async () => ok({ found: false }));
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ updateThreadComment, getReviewCommentTarget }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -223,6 +242,8 @@ describe("InlineConversationService", () => {
     expect(coordinator.acquire(key)).toBe(true);
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply }) as never,
       coordinator,
     );
@@ -243,6 +264,8 @@ describe("InlineConversationService", () => {
     expect(coordinator.acquire(key)).toBe(true);
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway() as never,
       coordinator,
     );
@@ -263,6 +286,8 @@ describe("InlineConversationService", () => {
     );
     const service = new InlineConversationService(
       gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
       makeGateway({ createThreadReply }) as never,
       new ReviewOperationCoordinator(),
     );
@@ -305,6 +330,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
     });
     await expect(
       adapter.getReviewThreadTarget({
+        // SAFETY: FakeGitHubAdapter's target lookups match on `pr` only;
+        // `profile` is accepted but never read.
         profile: {} as never,
         pr: fixturePr,
         threadId,
@@ -312,6 +339,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
     ).resolves.toEqual({ _tag: "ok", value: { found: true } });
     await expect(
       adapter.getReviewThreadTarget({
+        // SAFETY: FakeGitHubAdapter's target lookups match on `pr` only;
+        // `profile` is accepted but never read.
         profile: {} as never,
         pr: foreignPr,
         threadId,
@@ -319,6 +348,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
     await expect(
       adapter.getReviewCommentTarget({
+        // SAFETY: FakeGitHubAdapter's target lookups match on `pr` only;
+        // `profile` is accepted but never read.
         profile: {} as never,
         pr: fixturePr,
         commentId: "PRRC_comment",
@@ -329,6 +360,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
     });
     await expect(
       adapter.getReviewCommentTarget({
+        // SAFETY: FakeGitHubAdapter's target lookups match on `pr` only;
+        // `profile` is accepted but never read.
         profile: {} as never,
         pr: foreignPr,
         commentId: "PRRC_comment",
@@ -340,6 +373,8 @@ describe("FakeGitHubAdapter ownership parity", () => {
     // The thread id is registered in the fake under a different pull request
     // than the active Review session, exactly the cross-PR reuse scenario.
     const adapter = new FakeGitHubAdapter({
+      // SAFETY: only `headSha` is read from this stub by the service's
+      // current-head freshness check; the rest of PullRequestSummary is unused.
       pullRequest: { headSha } as never,
       threadTargets: [{ threadId, pr: foreignPr }],
     });

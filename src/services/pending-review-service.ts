@@ -89,6 +89,12 @@ export type PendingReviewCommandResult = {
   readonly state: PendingReviewState;
 };
 
+/** The session-level fields `adoptObservedState` decides to update, if any. */
+export type PendingReviewObservedAdoption = {
+  readonly pendingReview?: PendingReviewState;
+  readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
+};
+
 /** Read-only renderer projection; unavailable is never none. */
 export type PendingReviewProjection =
   | { readonly state: "none" }
@@ -150,10 +156,7 @@ export class PendingReviewService {
     readonly evidenceComplete: boolean;
     readonly comments: GitHubComments;
     readonly publishedFeedback?: GitHubPublishedFeedback;
-  }): {
-    readonly pendingReview?: PendingReviewState;
-    readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
-  } {
+  }): PendingReviewObservedAdoption {
     if (
       input.session.pendingReview === undefined &&
       input.observed._tag === "Unavailable"
@@ -164,26 +167,32 @@ export class PendingReviewService {
     const current = input.session.pendingReview ?? { _tag: "None" as const };
     const pendingReview = adoptObservedPendingReview(current, input.observed);
     if (isPendingReviewLocked(current)) {
-      return {
-        pendingReview,
-        ...(input.session.findingReviewReceipts === undefined
-          ? {}
-          : { findingReviewReceipts: input.session.findingReviewReceipts }),
-      };
+      return input.session.findingReviewReceipts === undefined
+        ? { pendingReview }
+        : {
+            pendingReview,
+            findingReviewReceipts: input.session.findingReviewReceipts,
+          };
     }
-    const receipts = reconcileObservedFindingReceipts({
-      receipts: input.session.findingReviewReceipts,
-      pendingReview,
-      evidenceComplete: input.evidenceComplete,
-      comments: input.comments,
-      ...(input.publishedFeedback === undefined
-        ? {}
-        : { publishedFeedback: input.publishedFeedback }),
-    });
-    return {
-      pendingReview,
-      ...(receipts.length === 0 ? {} : { findingReviewReceipts: receipts }),
-    };
+    const receipts = reconcileObservedFindingReceipts(
+      input.publishedFeedback === undefined
+        ? {
+            receipts: input.session.findingReviewReceipts,
+            pendingReview,
+            evidenceComplete: input.evidenceComplete,
+            comments: input.comments,
+          }
+        : {
+            receipts: input.session.findingReviewReceipts,
+            pendingReview,
+            evidenceComplete: input.evidenceComplete,
+            comments: input.comments,
+            publishedFeedback: input.publishedFeedback,
+          },
+    );
+    return receipts.length === 0
+      ? { pendingReview }
+      : { pendingReview, findingReviewReceipts: receipts };
   }
 
   /**
@@ -321,11 +330,11 @@ export class PendingReviewService {
         )
           return err("pending_review_locked");
         const state = session.pendingReview;
-        const operation: PendingReviewOperation = {
-          _tag: "Start",
-          requestId: createPendingReviewRequestId(this.now()),
-          ...(input.finding === undefined ? {} : { finding: input.finding }),
-        };
+        const requestId = createPendingReviewRequestId(this.now());
+        const operation: PendingReviewOperation =
+          input.finding === undefined
+            ? { _tag: "Start", requestId }
+            : { _tag: "Start", requestId, finding: input.finding };
         return this.executeWrite(session, state, operation, async () => {
           const created = await this.github.startPendingReviewWithThread({
             profile,
@@ -363,13 +372,22 @@ export class PendingReviewService {
             hasFindingReceipt(session.findingReviewReceipts, input.finding))
         )
           return err("pending_review_locked");
-        const operation: PendingReviewOperation = {
-          _tag: "AddThread",
-          requestId: createPendingReviewRequestId(this.now()),
-          reviewId: input.pendingReviewNodeId,
-          anchor: input.anchor,
-          ...(input.finding === undefined ? {} : { finding: input.finding }),
-        };
+        const requestId = createPendingReviewRequestId(this.now());
+        const operation: PendingReviewOperation =
+          input.finding === undefined
+            ? {
+                _tag: "AddThread",
+                requestId,
+                reviewId: input.pendingReviewNodeId,
+                anchor: input.anchor,
+              }
+            : {
+                _tag: "AddThread",
+                requestId,
+                reviewId: input.pendingReviewNodeId,
+                anchor: input.anchor,
+                finding: input.finding,
+              };
         return this.executeWrite(session, state, operation, async () => {
           const appended = await this.github.addPendingReviewThread({
             profile,
@@ -565,12 +583,15 @@ export class PendingReviewService {
       ...sessionWithoutReceipts
     } = session;
     void _previousReceipts;
+    const sessionUpdate = {
+      ...sessionWithoutReceipts,
+      pendingReview: confirmed.value,
+    };
     return ok({
-      session: {
-        ...sessionWithoutReceipts,
-        pendingReview: confirmed.value,
-        ...(receipts.length === 0 ? {} : { findingReviewReceipts: receipts }),
-      },
+      session:
+        receipts.length === 0
+          ? sessionUpdate
+          : { ...sessionUpdate, findingReviewReceipts: receipts },
       state: confirmed.value,
     });
   }
@@ -585,15 +606,16 @@ export class PendingReviewService {
       ...sessionWithoutReceipts
     } = session;
     void _previousReceipts;
-    const saved = await this.sessions.save({
+    const sessionUpdate = {
       ...sessionWithoutReceipts,
       pendingReview,
-      ...(findingReviewReceipts === undefined ||
-      findingReviewReceipts.length === 0
-        ? {}
-        : { findingReviewReceipts }),
       updatedAt: this.now(),
-    });
+    };
+    const saved = await this.sessions.save(
+      findingReviewReceipts === undefined || findingReviewReceipts.length === 0
+        ? sessionUpdate
+        : { ...sessionUpdate, findingReviewReceipts },
+    );
     return saved._tag === "ok";
   }
 }

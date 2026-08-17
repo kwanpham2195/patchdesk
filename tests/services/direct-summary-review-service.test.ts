@@ -1,43 +1,65 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { err, ok } from "../../src/domain/result";
+import type { DirectSummaryReviewState } from "../../src/domain/direct-summary-review";
+import type { PendingReviewState } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
+// SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
 const profileId = "cfw" as never;
+// SAFETY: this literal matches parseReviewId's <host>__owner__repo__pr-N__review-<hex> shape.
 const reviewId =
   "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+// SAFETY: this literal is a 40-character hex string, matching parseGitSha's format.
 const headSha = "a".repeat(40) as never;
+// SAFETY: this literal matches createReviewSessionId's <host>__owner__repo__sha-N__<hex> shape.
 const sessionId =
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+// SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
 const now = "2026-08-09T11:35:00.000Z" as never;
+// SAFETY: this literal is a 64-character hex string, matching parseContentHash's format.
 const expected = { sessionId, headSha, patchHash: "b".repeat(64) as never };
 function session(
-  directSummaryReview?: unknown,
-  pendingReview?: unknown,
+  directSummaryReview?: DirectSummaryReviewState,
+  pendingReview?: PendingReviewState,
 ): ReviewSession {
-  return {
-    schemaVersion: 5,
+  const base = {
+    schemaVersion: 5 as const,
     id: sessionId,
+    // SAFETY: these literals match their branded parsers' accepted formats
+    // (a bare hostname, and slug-shaped owner/repo names).
     key: {
       profileId,
-      host: "github.com",
-      owner: "centraldigital",
-      repo: "patchdesk",
-      prNumber: 42,
+      host: "github.com" as never,
+      owner: "centraldigital" as never,
+      repo: "patchdesk" as never,
+      // SAFETY: this literal is a positive integer, matching parsePullRequestNumber's format.
+      prNumber: 42 as never,
       headSha,
     },
     pr: { headSha, isDraft: false, isOpen: true },
+    // SAFETY: these literals match parseAbsolutePath's format (a leading-slash path).
     patchPath: "/tmp/patch" as never,
+    // SAFETY: this literal matches parseAbsolutePath's format (a leading-slash path).
     worktree: { path: "/tmp/worktree" as never, headSha },
     createdAt: now,
     updatedAt: now,
-    ...(directSummaryReview === undefined ? {} : { directSummaryReview }),
-    ...(pendingReview === undefined ? {} : { pendingReview }),
-  } as unknown as ReviewSession;
+  };
+  const withDirectSummary =
+    directSummaryReview === undefined
+      ? base
+      : { ...base, directSummaryReview };
+  return pendingReview === undefined
+    ? withDirectSummary
+    : { ...withDirectSummary, pendingReview };
 }
-function fixture(state?: unknown, overrides: Record<string, unknown> = {}) {
+function fixture(
+  state?: DirectSummaryReviewState,
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- each test overrides a differently-shaped github mock method (varying Result payloads); there is no single concrete return type across every possible override.
+  overrides: Record<string, (...args: never[]) => unknown> = {},
+) {
   let stored = session(state);
   const saves: unknown[] = [];
   const sessions = {
@@ -69,6 +91,8 @@ function fixture(state?: unknown, overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   const coordinator = new ReviewOperationCoordinator();
+  // SAFETY: these fixture mocks implement only the Pick<...> subset each
+  // dependency interface requires; the service never calls their other members.
   return {
     service: new DirectSummaryReviewService(
       gate as never,
@@ -160,7 +184,7 @@ describe("DirectSummaryReviewService", () => {
   it("reconciles a matching lost response to a confirmed receipt", async () => {
     const operation = {
       requestId: "request",
-      event: "COMMENT",
+      event: "COMMENT" as const,
       bodyDigest: "a".repeat(64),
       headSha,
       baselineReviewIds: [],

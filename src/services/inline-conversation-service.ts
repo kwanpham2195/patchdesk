@@ -182,13 +182,15 @@ export class InlineConversationService {
               : "github_write_failed",
           );
         }
-        return ok({
-          _tag: "CommentCreated",
-          commentId: created.value.commentId,
-          ...(created.value.reviewId === undefined
-            ? {}
-            : { reviewId: created.value.reviewId }),
-        });
+        return ok(
+          created.value.reviewId === undefined
+            ? { _tag: "CommentCreated", commentId: created.value.commentId }
+            : {
+                _tag: "CommentCreated",
+                commentId: created.value.commentId,
+                reviewId: created.value.reviewId,
+              },
+        );
       }
       case "Reply": {
         if (this.github.createThreadReply === undefined)
@@ -207,15 +209,16 @@ export class InlineConversationService {
           threadId: threadId.value,
           body: input.command.body.trim(),
         });
-        return created._tag === "err"
-          ? err("github_write_failed")
-          : ok({
-              _tag: "ReplyCreated",
-              commentId: created.value.commentId,
-              ...(created.value.reviewId === undefined
-                ? {}
-                : { reviewId: created.value.reviewId }),
-            });
+        if (created._tag === "err") return err("github_write_failed");
+        return ok(
+          created.value.reviewId === undefined
+            ? { _tag: "ReplyCreated", commentId: created.value.commentId }
+            : {
+                _tag: "ReplyCreated",
+                commentId: created.value.commentId,
+                reviewId: created.value.reviewId,
+              },
+        );
       }
       case "SetThreadState": {
         if (this.github.setReviewThreadState === undefined)

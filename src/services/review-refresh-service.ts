@@ -206,25 +206,27 @@ export class ReviewRefreshService {
         const mergePolicyAvailable =
           represented.value.mergePolicy !== undefined &&
           mergePolicy.value !== undefined;
-        const candidate: ReviewRemoteSnapshot = {
-          schemaVersion: 1,
+        const candidateBase = {
+          schemaVersion: 1 as const,
           pullRequest: current.value,
           comments: comments.value,
           commits: represented.value.commits,
           checks: checks.value,
           conversation: represented.value.conversation,
-          ...(publishedFeedbackAvailable
-            ? { publishedFeedback: publishedFeedback.value }
-            : {}),
-          ...(mergePolicyAvailable && mergePolicy.value !== undefined
+        };
+        const candidateWithFeedback = publishedFeedbackAvailable
+          ? { ...candidateBase, publishedFeedback: publishedFeedback.value }
+          : candidateBase;
+        const candidate: ReviewRemoteSnapshot =
+          mergePolicyAvailable && mergePolicy.value !== undefined
             ? {
+                ...candidateWithFeedback,
                 mergePolicy: mergePolicy.value,
                 mergeEvidence:
                   represented.value.mergeEvidence ??
                   toMergeEvidence(mergePolicy.value),
               }
-            : {}),
-        };
+            : candidateWithFeedback;
         const journal = input.recentWrites ?? [];
         const commentPair = withoutRecentWrites(
           candidate.comments,
@@ -246,36 +248,37 @@ export class ReviewRefreshService {
         // Optional readers are not evidence of a change when unavailable. Compare
         // only fields observed in this detection pass, while retaining the full
         // optional fields for explicit refresh.
+        const candidateForFingerprint = {
+          ...candidate,
+          comments: commentPair.candidate,
+        };
+        const candidateFingerprintInput =
+          candidateFeedback === undefined
+            ? candidateForFingerprint
+            : { ...candidateForFingerprint, publishedFeedback: candidateFeedback };
+        const representedForFingerprint = {
+          ...represented.value,
+          comments: commentPair.represented,
+        };
+        const representedFingerprintInput =
+          representedFeedback === undefined
+            ? representedForFingerprint
+            : {
+                ...representedForFingerprint,
+                publishedFeedback: representedFeedback,
+              };
         const metadataChanged =
           hashSnapshot(
-            fingerprintForDetection(
-              {
-                ...candidate,
-                comments: commentPair.candidate,
-                ...(candidateFeedback === undefined
-                  ? {}
-                  : { publishedFeedback: candidateFeedback }),
-              },
-              {
-                publishedFeedback: publishedFeedbackAvailable,
-                mergePolicy: mergePolicyAvailable,
-              },
-            ),
+            fingerprintForDetection(candidateFingerprintInput, {
+              publishedFeedback: publishedFeedbackAvailable,
+              mergePolicy: mergePolicyAvailable,
+            }),
           ) !==
           hashSnapshot(
-            fingerprintForDetection(
-              {
-                ...represented.value,
-                comments: commentPair.represented,
-                ...(representedFeedback === undefined
-                  ? {}
-                  : { publishedFeedback: representedFeedback }),
-              },
-              {
-                publishedFeedback: publishedFeedbackAvailable,
-                mergePolicy: mergePolicyAvailable,
-              },
-            ),
+            fingerprintForDetection(representedFingerprintInput, {
+              publishedFeedback: publishedFeedbackAvailable,
+              mergePolicy: mergePolicyAvailable,
+            }),
           );
         if (!metadataChanged) {
           // Nothing in the snapshot content changed. GitHub's pullRequest.updatedAt
@@ -521,22 +524,23 @@ export class ReviewRefreshService {
         if (verified._tag === "err") return err({ reason: "github_read" });
         if (verified.value.headSha !== current.value.headSha)
           return err({ reason: "head_changed" });
-        const candidate: ReviewRemoteSnapshot = {
-          schemaVersion: 1,
+        const candidateBase = {
+          schemaVersion: 1 as const,
           pullRequest: current.value,
           comments: comments.value,
           commits: commits.value,
           checks: checks.value,
           conversation: conversation.value,
-          ...(publishedFeedback.value === undefined
-            ? {}
-            : { publishedFeedback: publishedFeedback.value }),
           mergePolicy: mergePolicy.value,
           mergeEvidence: toMergeEvidence(
             mergePolicy.value,
             policyEvidence._tag === "ok" ? policyEvidence.value : undefined,
           ),
         };
+        const candidate: ReviewRemoteSnapshot =
+          publishedFeedback.value === undefined
+            ? candidateBase
+            : { ...candidateBase, publishedFeedback: publishedFeedback.value };
         const savedCandidate = await this.dependencies.remote.saveCandidate({
           profileId: input.profileId,
           reviewId: input.reviewId,
@@ -603,12 +607,14 @@ export class ReviewRefreshService {
             profileId: input.profileId,
             reviewId: input.reviewId,
           });
+        // SAFETY: `{ _tag: "None" }` is a literal, complete member of the
+        // PendingReviewState union (no other fields required).
+        const noPendingReview = { _tag: "None" } as PendingReviewState;
         const pendingReview = {
           state:
             reconciled._tag === "ok"
               ? reconciled.value.state
-              : (currentSession.value.pendingReview ??
-                ({ _tag: "None" } as PendingReviewState)),
+              : (currentSession.value.pendingReview ?? noPendingReview),
           unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
         };
         const projected = await this.dependencies.project({
@@ -684,8 +690,8 @@ function fingerprintForDetection(
     readonly mergePolicy: boolean;
   },
 ): ReviewRemoteSnapshot {
-  return {
-    schemaVersion: 1,
+  const fingerprintBase = {
+    schemaVersion: 1 as const,
     // GitHub's pullRequest.updatedAt lags comment and review creation, so it
     // is normalized to a sentinel before hashing. Including it verbatim would
     // make detection flag a phantom update and block GitHub writes.
@@ -694,20 +700,23 @@ function fingerprintForDetection(
     conversation: snapshot.conversation,
     commits: snapshot.commits,
     checks: snapshot.checks,
-    ...(available.publishedFeedback && snapshot.publishedFeedback !== undefined
+  };
+  const withFeedback =
+    available.publishedFeedback && snapshot.publishedFeedback !== undefined
       ? {
+          ...fingerprintBase,
           publishedFeedback: withoutFeedbackPermissions(
             snapshot.publishedFeedback,
           ),
         }
-      : {}),
-    ...(available.mergePolicy && snapshot.mergePolicy !== undefined
-      ? {
-          mergePolicy: fingerprintMergePolicy(snapshot.mergePolicy),
-          mergeEvidence: fingerprintMergeEvidence(snapshot),
-        }
-      : {}),
-  };
+      : fingerprintBase;
+  return available.mergePolicy && snapshot.mergePolicy !== undefined
+    ? {
+        ...withFeedback,
+        mergePolicy: fingerprintMergePolicy(snapshot.mergePolicy),
+        mergeEvidence: fingerprintMergeEvidence(snapshot),
+      }
+    : withFeedback;
 }
 
 function fingerprintMergePolicy(
@@ -717,26 +726,25 @@ function fingerprintMergePolicy(
   // check list in a different order than the checks query. Detection hashes
   // the stable semantic state only, never the completeness markers.
   const checks = [...policy.checks.checks]
-    .map(({ name, required, status, conclusion }) => ({
-      name,
-      required,
-      status,
-      ...(conclusion === undefined ? {} : { conclusion }),
-    }))
+    .map(({ name, required, status, conclusion }) =>
+      conclusion === undefined
+        ? { name, required, status }
+        : { name, required, status, conclusion },
+    )
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return {
+  const policyBase = {
     pr: policy.pr,
     headSha: policy.headSha,
     isOpen: policy.isOpen,
     isDraft: policy.isDraft,
     mergeability: policy.mergeability,
-    ...(policy.mergeStateStatus === undefined
-      ? {}
-      : { mergeStateStatus: policy.mergeStateStatus }),
     reviewDecision: policy.reviewDecision,
     checks: { overall: policy.checks.overall, checks },
     complete: true,
   };
+  return policy.mergeStateStatus === undefined
+    ? policyBase
+    : { ...policyBase, mergeStateStatus: policy.mergeStateStatus };
 }
 
 function fingerprintMergeEvidence(
@@ -744,6 +752,8 @@ function fingerprintMergeEvidence(
 ): GitHubMergeEvidence {
   // Detection never fetches optional policy evidence; the represented
   // snapshot's policy field must not make the fingerprints diverge.
+  // SAFETY: this function's only caller (fingerprintForDetection) invokes it
+  // exclusively inside the `snapshot.mergePolicy !== undefined` branch.
   const evidence =
     snapshot.mergeEvidence ??
     toMergeEvidence(snapshot.mergePolicy as MergePolicySnapshot);
@@ -771,14 +781,16 @@ function withoutViewerMetadata(comments: GitHubComments): GitHubComments {
   };
 }
 
+interface WithoutRecentWritesResult {
+  readonly candidate: GitHubComments;
+  readonly represented: GitHubComments;
+}
+
 function withoutRecentWrites(
   candidate: GitHubComments,
   represented: GitHubComments,
   journal: ReadonlyArray<RecentReviewWrite>,
-): {
-  readonly candidate: GitHubComments;
-  readonly represented: GitHubComments;
-} {
+): WithoutRecentWritesResult {
   // Comments and threads written by this app session are not yet part of the
   // represented snapshot; exclude them symmetrically so they never read as a
   // remote update, while genuine external changes still are detected.
@@ -904,6 +916,7 @@ function omitVolatilePullRequestState(
   // comparable regardless of propagation delay.
   return {
     ...pullRequest,
+    // SAFETY: this literal is a well-formed ISO 8601 instant (the Unix epoch).
     updatedAt: "1970-01-01T00:00:00.000Z" as IsoTimestamp,
   };
 }
@@ -925,6 +938,7 @@ function latestRepresentedMoment(
   for (const comment of publishedFeedback?.comments ?? []) {
     latest = Math.max(latest, Date.parse(comment.createdAt));
   }
+  // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601 instant.
   return new Date(latest).toISOString() as IsoTimestamp;
 }
 
@@ -932,12 +946,14 @@ function toMergeEvidence(
   policy: NonNullable<ReviewRemoteSnapshot["mergePolicy"]>,
   policyEvidence?: NonNullable<ReviewRemoteSnapshot["mergeEvidence"]>["policy"],
 ): NonNullable<ReviewRemoteSnapshot["mergeEvidence"]> {
-  return {
+  const evidenceBase = {
     mergeable: policy.mergeability,
     mergeStateStatus: policy.mergeStateStatus ?? "unavailable",
     reviewDecision: policy.reviewDecision,
-    ...(policyEvidence === undefined ? {} : { policy: policyEvidence }),
   };
+  return policyEvidence === undefined
+    ? evidenceBase
+    : { ...evidenceBase, policy: policyEvidence };
 }
 
 function ref(review: Review): PullRequestRef {

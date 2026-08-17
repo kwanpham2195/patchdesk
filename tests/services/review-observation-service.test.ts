@@ -14,7 +14,11 @@ import {
 } from "../../src/adapters/storage/review-remote-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { createReview, moveReviewToSession } from "../../src/domain/review";
+import {
+  createReview,
+  moveReviewToSession,
+  type Review,
+} from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import {
   createPendingReviewRequestId,
@@ -30,7 +34,10 @@ import {
 import { ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewObservationService } from "../../src/services/review-observation-service";
+import {
+  ReviewObservationService,
+  type ReviewObservationDependencies,
+} from "../../src/services/review-observation-service";
 
 const roots: string[] = [];
 const must = <T>(result: Result<T, unknown>): T => {
@@ -100,12 +107,16 @@ async function fixture(
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(
       (await import("../../src/domain/ids")).parseAbsolutePath(
+        // SAFETY: this literal is only used as a stable path segment for the
+        // fixture's temp directory, never validated as a real session id.
         paths.patchFile(profileId, "session" as never),
       ),
     ),
     worktree: {
       path: must(
         (await import("../../src/domain/ids")).parseAbsolutePath(
+          // SAFETY: this literal is only used as a stable path segment for
+          // the fixture's temp directory, never validated as a real session id.
           paths.worktreeDirectory(profileId, "session" as never),
         ),
       ),
@@ -166,13 +177,13 @@ async function fixture(
   let failed = options.failReviewSave === true;
   const journals = new ReviewObservationJournalStore(paths);
   let removeFailed = options.failJournalRemove === true;
-  const observation = new ReviewObservationService({
+  const observationDependencies = {
     profiles,
     reviews:
       options.failReviewSave === true
         ? {
             load: reviews.load.bind(reviews),
-            async save(value: unknown, expected?: IsoTimestamp) {
+            async save(value: Review, expected?: IsoTimestamp) {
               if (failed) {
                 failed = false;
                 return {
@@ -216,7 +227,11 @@ async function fixture(
         : journals,
     github,
     pendingReview: {
-      adoptObservedState(input) {
+      adoptObservedState(
+        input: Parameters<
+          ReviewObservationDependencies["pendingReview"]["adoptObservedState"]
+        >[0],
+      ) {
         const current = input.session.pendingReview ?? {
           _tag: "None" as const,
         };
@@ -235,10 +250,18 @@ async function fixture(
     },
     coordinator: new ReviewOperationCoordinator(),
     now: () => observedAt,
-    ...(options.project === true
-      ? { project: async () => ok({ state: "review" } as never) }
-      : {}),
-  });
+  };
+  const observation = new ReviewObservationService(
+    options.project === true
+      ? {
+          ...observationDependencies,
+          // SAFETY: this projection stub's return shape is opaque to the
+          // service and only asserted on by tests that opt into it via
+          // `options.project`.
+          project: async () => ok({ state: "review" } as never),
+        }
+      : observationDependencies,
+  );
   return {
     paths,
     sessions,
@@ -458,6 +481,7 @@ describe("ReviewObservationService", () => {
       {
         ...loaded.value,
         pendingReview: { _tag: "None" },
+        // SAFETY: this literal is a well-formed ISO 8601 instant.
         updatedAt: "2026-08-11T00:00:03.000Z" as IsoTimestamp,
       },
       loaded.value.updatedAt,
@@ -476,6 +500,7 @@ describe("ReviewObservationService", () => {
         },
       },
       coordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant.
       now: () => "2026-08-11T00:00:04.000Z" as IsoTimestamp,
     });
     await expect(
@@ -551,6 +576,9 @@ describe("ReviewObservationService", () => {
     });
     if (candidate._tag === "err") throw new Error("fixture");
     const journals = new ReviewObservationJournalStore(value.paths);
+    // SAFETY: expectedSessionUpdatedAt/nextSessionUpdatedAt below are
+    // well-formed ISO 8601 instants, each later than the previous,
+    // satisfying the journal's ordering invariant.
     await journals.save({
       schemaVersion: 1,
       profileId,

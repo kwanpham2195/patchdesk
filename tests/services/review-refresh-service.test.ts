@@ -84,6 +84,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -97,6 +98,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: this literal matches ReviewSessionStore.load's real not_found err-Result shape for the fields this test's assertions read.
           return {
             _tag: "err",
             error: {
@@ -133,17 +135,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -151,6 +156,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -167,6 +173,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -180,6 +187,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `id`/`key.headSha` from the session; other ReviewSession fields are unused.
           return ok({
             id: sessionId,
             key: { ...identity, headSha: mismatchedHead },
@@ -212,17 +220,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -230,6 +241,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -243,6 +255,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -251,12 +264,14 @@ describe("ReviewRefreshService", () => {
           return ok(review);
         },
         async save(value) {
+          // SAFETY: reviews.save's real signature always receives a Review; this spy only records the exact value passed to it.
           saved.push(value as Review);
           return ok(undefined);
         },
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -288,6 +303,7 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
         async getMergeOutcome() {
@@ -296,12 +312,14 @@ describe("ReviewRefreshService", () => {
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -309,6 +327,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -324,6 +343,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -338,6 +358,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -374,17 +395,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`; other ReviewSession fields are unused.
           return ok({ session: { key: { headSha: racedHead } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -392,6 +416,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -406,6 +431,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -417,6 +443,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -436,6 +463,7 @@ describe("ReviewRefreshService", () => {
           return ok({ ...snapshot.pullRequest, headSha: nextHead });
         },
         async getPullRequestChecks() {
+          // SAFETY: this literal matches this reader's real err-Result shape for the one field (`_tag`) the service's error mapping reads.
           return { _tag: "err", error: { _tag: "GitHubReadFailure" } } as never;
         },
         async getPullRequestComments() {
@@ -448,17 +476,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -466,6 +497,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -482,6 +514,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -495,6 +528,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -556,12 +590,14 @@ describe("ReviewRefreshService", () => {
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -569,6 +605,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -581,6 +618,7 @@ describe("ReviewRefreshService", () => {
   });
 
   it("flattens a projected refresh result instead of nesting the Result envelope", async () => {
+    // SAFETY: this stub matches ReviewWorkbenchProjection's real shape for the fields this test's assertions read.
     const projection = {
       state: "review",
       review: { id: review.id, status: "open" },
@@ -588,6 +626,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -601,6 +640,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -632,17 +672,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -650,6 +693,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ok(projection),
     });
@@ -661,6 +705,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -674,6 +719,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -705,17 +751,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -723,6 +772,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
       project: async () => ({
         _tag: "err",
@@ -739,6 +789,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -747,12 +798,14 @@ describe("ReviewRefreshService", () => {
           return ok(review);
         },
         async save(value) {
+          // SAFETY: reviews.save's real signature always receives a Review; this spy only records the exact value passed to it.
           saved.push(value as Review);
           return ok(undefined);
         },
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -784,6 +837,7 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
         async getMergeOutcome() {
@@ -792,12 +846,14 @@ describe("ReviewRefreshService", () => {
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -805,6 +861,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     const refreshed = await service.refresh({ profileId, reviewId: review.id });
@@ -819,6 +876,7 @@ describe("ReviewRefreshService", () => {
   it("does not mark a Published-feedback Review when the current reader omits optional feedback", async () => {
     const represented = {
       ...snapshot,
+      // SAFETY: this stub matches GitHubPublishedFeedback's real shape for the fields this test's assertions read.
       publishedFeedback: { reviews: [], comments: [], complete: true } as never,
     };
     const publishedReview: Review = {
@@ -834,6 +892,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -845,6 +904,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -877,17 +937,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -895,6 +958,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -914,6 +978,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -925,6 +990,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -956,17 +1022,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -974,6 +1043,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1040,6 +1110,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1048,12 +1119,14 @@ describe("ReviewRefreshService", () => {
           return ok(markedReview);
         },
         async save(value) {
+          // SAFETY: reviews.save's real signature always receives a Review; this spy only records the exact value passed to it.
           saved.push(value as Review);
           return ok(undefined);
         },
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1096,17 +1169,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1114,6 +1190,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1171,6 +1248,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1182,6 +1260,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1213,17 +1292,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1231,6 +1313,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1280,6 +1363,7 @@ describe("ReviewRefreshService", () => {
       ...review,
       freshness: {
         _tag: "Unavailable",
+        // SAFETY: this literal is a well-formed ISO 8601 instant.
         detectedAt: "2026-08-01T00:07:00.000Z" as never,
         reason: "comparison_ambiguous",
       },
@@ -1287,6 +1371,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1295,12 +1380,14 @@ describe("ReviewRefreshService", () => {
           return ok(marked);
         },
         async save(value) {
+          // SAFETY: reviews.save's real signature always receives a Review; this spy only records the exact value passed to it.
           marked = value as Review;
           return ok(undefined);
         },
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1332,17 +1419,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1350,6 +1440,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1394,6 +1485,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1405,6 +1497,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1436,17 +1529,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1454,6 +1550,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1505,6 +1602,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1516,6 +1614,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1547,17 +1646,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1565,6 +1667,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1616,6 +1719,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1635,6 +1739,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1666,17 +1771,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1684,6 +1792,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1754,6 +1863,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1765,6 +1875,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1796,17 +1907,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1814,6 +1928,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -1886,6 +2001,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -1905,6 +2021,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -1930,6 +2047,7 @@ describe("ReviewRefreshService", () => {
           return ok(changed.comments);
         },
         async getPullRequestPublishedFeedback() {
+          // SAFETY: `changed.publishedFeedback` is a fixture built from GitHubPublishedFeedback's real shape earlier in this test.
           return ok(changed.publishedFeedback as never);
         },
         async getPullRequestCommits() {
@@ -1939,17 +2057,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -1957,6 +2078,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -2000,6 +2122,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -2019,6 +2142,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -2044,6 +2168,7 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.comments);
         },
         async getPullRequestPublishedFeedback() {
+          // SAFETY: `changed.publishedFeedback` is a fixture built from GitHubPublishedFeedback's real shape earlier in this test.
           return ok(changed.publishedFeedback as never);
         },
         async getPullRequestCommits() {
@@ -2053,17 +2178,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -2071,6 +2199,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
@@ -2132,6 +2261,7 @@ describe("ReviewRefreshService", () => {
                 ...external,
                 id: "c-external-2",
                 body: "Another reply",
+                // SAFETY: this literal is a well-formed ISO 8601 instant.
                 createdAt: "2026-08-01T00:06:00.000Z" as never,
               },
             ],
@@ -2144,6 +2274,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -2163,6 +2294,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -2194,17 +2326,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -2212,12 +2347,14 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
       service.detect({
         profileId,
         reviewId: review.id,
+        // SAFETY: this literal is a well-formed RecentReviewWrite entry, matching the ThreadState variant's real shape.
         recentWrites: [
           { _tag: "ThreadState", threadId, state: "resolved" },
         ] as never,
@@ -2262,6 +2399,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -2281,6 +2419,7 @@ describe("ReviewRefreshService", () => {
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -2312,17 +2451,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -2330,12 +2472,14 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(
       service.detect({
         profileId,
         reviewId: review.id,
+        // SAFETY: this literal is a well-formed RecentReviewWrite entry, matching the ThreadState variant's real shape.
         recentWrites: [
           { _tag: "ThreadState", threadId, state: "resolved" },
         ] as never,
@@ -2384,6 +2528,7 @@ describe("ReviewRefreshService", () => {
     const service = new ReviewRefreshService({
       profiles: {
         async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
@@ -2392,12 +2537,14 @@ describe("ReviewRefreshService", () => {
           return ok(review);
         },
         async save(value) {
+          // SAFETY: reviews.save's real signature always receives a Review; this spy only records the exact value passed to it.
           saved.push(value as Review);
           return ok(undefined);
         },
       },
       sessions: {
         async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
           return ok({ key: { ...identity, headSha }, id: sessionId } as never);
         },
         async save() {
@@ -2429,17 +2576,20 @@ describe("ReviewRefreshService", () => {
           return ok(snapshot.conversation);
         },
         async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
           return ok({} as never);
         },
       },
       preparation: {
         async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
           return ok({ session: { id: sessionId, key: { headSha } } } as never);
         },
       },
       pendingReview: {
         async reconcileWithinReviewLock() {
           return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
             session: {} as never,
             state: { _tag: "None" } as const,
             unavailable: false,
@@ -2447,6 +2597,7 @@ describe("ReviewRefreshService", () => {
         },
       },
       operationCoordinator: new ReviewOperationCoordinator(),
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
       now: () => "2026-08-01T00:10:00.000Z" as never,
     });
     await expect(

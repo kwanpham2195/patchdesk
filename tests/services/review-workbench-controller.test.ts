@@ -6,11 +6,18 @@ import { err, ok } from "../../src/domain/result";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
+// SAFETY: this literal is a well-formed WorkspaceProfileId slug.
 const profileId = "cfw" as never;
+// SAFETY: 40 lowercase hex characters is a well-formed GitSha.
 const headSha = "a".repeat(40) as never;
+// SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
+// branded IsoTimestamp values this fixture's Review/session fields expect.
 const at = "2026-08-09T11:35:00.000Z" as never;
+// SAFETY: this literal matches the branded ReviewSessionId slug format.
 const sessionId =
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+// SAFETY: these literals are well-formed GitHubHost/GitHubOwner/
+// GitHubRepoName/PullRequestNumber values, matching their branded shapes.
 const identity = {
   profileId,
   host: "github.com" as never,
@@ -19,6 +26,7 @@ const identity = {
   prNumber: 42 as never,
 };
 const reviewId = createReviewId(identity);
+// SAFETY: 64 lowercase hex characters is a well-formed ContentHash.
 const snapshotHash = "b".repeat(64) as never;
 const review: Review = {
   schemaVersion: 2,
@@ -37,7 +45,13 @@ const review: Review = {
   createdAt: at,
   updatedAt: at,
 };
+// SAFETY: this minimal shape is opaque to the controller under test — it is
+// only ever passed through `remote.load`/`project.loadRepresented`'s mocks,
+// never inspected field-by-field, so a full ReviewRemoteSnapshot is unneeded.
 const snapshot = { pullRequest: { title: "represented" } } as never;
+// SAFETY: matches the renderer's ReviewWorkbenchProjection wire shape; the
+// controller under test passes it through opaquely, so this suite only
+// needs the fields it actually asserts on to be present.
 const projection = {
   state: "review",
   review: { id: reviewId, status: "open" },
@@ -52,7 +66,10 @@ const projection = {
   mergeReasons: [],
   directSummaryDecision: "unknown",
 } as never;
-function fixture(overrides: Record<string, unknown> = {}) {
+function fixture(
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each test overrides a different, differently-shaped subset of the lifecycle mock bag below (error-shaped Results, plain methods instead of vi.fn(), a real ReviewOperationCoordinator, etc.); the merged result is narrowed to `never` at the constructor call below, same as the base fixture fields it's merged with.
+  overrides: Record<string, unknown> = {},
+) {
   const preparation = {
     prepare: vi.fn(async () =>
       ok({ session: { id: sessionId, key: { headSha }, createdAt: at } }),
@@ -88,8 +105,16 @@ function fixture(overrides: Record<string, unknown> = {}) {
   };
   return {
     controller: new ReviewWorkbenchController(
+      // SAFETY: this fixture only implements the `prepare` method the
+      // controller actually calls, a deliberate narrowing of the full
+      // ReviewSessionPreparation surface to what this suite exercises.
       preparation as never,
+      // SAFETY: same narrowing as `preparation` above, scoped to
+      // ReviewWorkbenchProjectionService's single `loadRepresented` method.
       project as never,
+      // SAFETY: `lifecycle` implements every member the controller's
+      // `lifecycle` dependency bag actually calls in this suite; unused
+      // members of the real interfaces are intentionally omitted.
       lifecycle as never,
     ),
     preparation,

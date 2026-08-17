@@ -81,6 +81,7 @@ export class ReviewWorkbenchController {
   ) {}
 
   async open(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `open` re-parses every domain value itself.
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const identityFields = {
@@ -112,6 +113,7 @@ export class ReviewWorkbenchController {
   }
 
   private async openUnlocked(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- receives `open`'s already-`unknown` input verbatim; re-parses the same domain values itself rather than trusting an earlier boundary.
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const profileId = parseWorkspaceProfileId(
@@ -402,6 +404,7 @@ export class ReviewWorkbenchController {
   }
 
   async load(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `load` re-parses every domain value itself.
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const profileId = parseWorkspaceProfileId(
@@ -441,6 +444,7 @@ export class ReviewWorkbenchController {
   }
 
   async commitDiff(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `commitDiff` re-parses every domain value itself.
     input: unknown,
   ): Promise<Result<unknown, ReviewWorkbenchFailure>> {
     const profileId = parseWorkspaceProfileId(
@@ -477,16 +481,20 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    return this.lifecycle.observation.observe({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      ...(input.recentWrites === undefined
-        ? {}
-        : { recentWrites: input.recentWrites }),
-    });
+    return input.recentWrites === undefined
+      ? this.lifecycle.observation.observe({
+          profileId: input.profileId,
+          reviewId: input.reviewId,
+        })
+      : this.lifecycle.observation.observe({
+          profileId: input.profileId,
+          reviewId: input.reviewId,
+          recentWrites: input.recentWrites,
+        });
   }
 
   async refresh(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `refresh` re-parses every domain value itself.
     input: unknown,
   ): Promise<Result<unknown, ReviewWorkbenchFailure>> {
     const profileId = parseWorkspaceProfileId(

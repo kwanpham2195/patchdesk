@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import { err, ok, type Result } from "../../src/domain/result";
-import type { ViewerPendingReview } from "../../src/domain/pending-review";
+import type {
+  PendingReviewState,
+  ViewerPendingReview,
+} from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
 import {
   PendingReviewService,
@@ -10,43 +13,60 @@ import {
 } from "../../src/services/pending-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
+// SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
 const profileId = "cfw" as never;
+// SAFETY: this literal matches parseReviewId's <host>__owner__repo__pr-N__review-<hex> shape.
 const reviewId =
   "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+// SAFETY: this literal is a 40-character hex string, matching parseGitSha's format.
 const headSha = "a".repeat(40) as never;
+// SAFETY: this literal matches createReviewSessionId's <host>__owner__repo__sha-N__<hex> shape.
 const sessionId =
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+// SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
 const now = "2026-08-09T11:35:00.000Z" as never;
+// SAFETY: this literal is a 64-character hex string, matching parseContentHash's format.
 const expected = { sessionId, headSha, patchHash: "b".repeat(64) as never };
 const anchor = {
+  // SAFETY: this literal matches parseRepoRelativePath's format (a relative, non-empty path).
   path: "src/a.ts" as never,
   startLine: 1,
   line: 1,
   side: "new" as const,
 };
+// SAFETY: these literals match parseInsightRunId/parseFindingId's slug formats.
 const finding = {
   analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
   findingId: "finding-1" as never,
   sessionId,
   headSha,
+  // SAFETY: this literal is a 64-character hex string, matching parseContentHash's format.
   patchHash: "b".repeat(64) as never,
 };
+// SAFETY: this literal matches parseGitHubThreadId's opaque slug format.
 const threadId = "PRRT_kwDORJzsQM0001" as never;
 
 function pending(): ViewerPendingReview {
   return {
+    // SAFETY: this literal is a serialized positive integer, matching parseGitHubReviewRestId's format.
     restId: "9001" as never,
+    // SAFETY: this literal matches parseGitHubReviewNodeId's opaque slug format.
     nodeId: "PRR_kwDORJzsQM7e6QwJ" as never,
+    // SAFETY: this literal matches parseGitHubLogin's accepted username format.
     author: "fixture" as never,
+    // SAFETY: these literals match their branded parsers' accepted formats
+    // (a bare hostname, and slug-shaped owner/repo names).
     pr: {
       host: "github.com" as never,
       owner: "centraldigital" as never,
       repo: "patchdesk" as never,
+      // SAFETY: this literal is a positive integer, matching parsePullRequestNumber's format.
       number: 42 as never,
     },
     headSha,
     comments: [
       {
+        // SAFETY: this literal matches parseGitHubReviewCommentId's opaque slug format.
         reviewCommentId: "PRRC_kwDORJzsQM7fI2Rd" as never,
         threadId,
         body: "body",
@@ -59,31 +79,39 @@ function pending(): ViewerPendingReview {
   };
 }
 function session(
-  state?: unknown,
+  state?: PendingReviewState,
   findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
 ): ReviewSession {
-  return {
-    schemaVersion: 5,
+  const base = {
+    schemaVersion: 5 as const,
     id: sessionId,
+    // SAFETY: these literals match their branded parsers' accepted formats
+    // (a bare hostname, slug-shaped owner/repo names, and a positive integer).
     key: {
       profileId,
-      host: "github.com",
-      owner: "centraldigital",
-      repo: "patchdesk",
-      prNumber: 42,
+      host: "github.com" as never,
+      owner: "centraldigital" as never,
+      repo: "patchdesk" as never,
+      prNumber: 42 as never,
       headSha,
     },
     pr: { headSha, isDraft: false, isOpen: true },
+    // SAFETY: this literal matches parseAbsolutePath's format (a leading-slash path).
     patchPath: "/tmp/patch" as never,
+    // SAFETY: this literal matches parseAbsolutePath's format (a leading-slash path).
     worktree: { path: "/tmp/worktree" as never, headSha },
     createdAt: now,
     updatedAt: now,
-    ...(state === undefined ? {} : { pendingReview: state }),
-    ...(findingReviewReceipts === undefined ? {} : { findingReviewReceipts }),
-  } as unknown as ReviewSession;
+  };
+  const withPendingReview =
+    state === undefined ? base : { ...base, pendingReview: state };
+  return findingReviewReceipts === undefined
+    ? withPendingReview
+    : { ...withPendingReview, findingReviewReceipts };
 }
 function fixture(
-  state?: unknown,
+  state?: PendingReviewState,
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each test overrides a differently-shaped github mock method (varying Result payloads); there is no single concrete value type across every possible override.
   overrides: Record<string, unknown> = {},
   findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
 ) {
@@ -124,8 +152,14 @@ function fixture(
   const coordinator = new ReviewOperationCoordinator();
   return {
     service: new PendingReviewService(
+      // SAFETY: this fixture mock implements only the Pick<...> subset the
+      // service requires; it never calls the gate's other members.
       gate as never,
+      // SAFETY: this fixture mock implements only the Pick<...> subset the
+      // service requires; it never calls the store's other members.
       store as never,
+      // SAFETY: this fixture mock implements only the Pick<...> subset the
+      // service requires; it never calls the gateway's other members.
       github as never,
       () => now,
       coordinator,
@@ -439,6 +473,9 @@ describe("PendingReviewService", () => {
     ] as const) {
       expect(
         projectPendingReview(
+          // SAFETY: projectPendingReview only reads `_tag` from the nested
+          // `operation` to pick an action label; the real operation variants'
+          // other required fields (requestId, reviewId, etc.) are unused here.
           {
             _tag: "OutcomeUnknown",
             operation: { _tag: operation },

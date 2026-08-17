@@ -83,6 +83,7 @@ import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
+import type { LogEntryInput } from "../domain/log-entry";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewContextService } from "../services/review-context-service";
 import {
@@ -338,12 +339,14 @@ export async function startLocalApiServer(
   );
   const storageArtifacts = new ReviewArtifactStorage(
     paths,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     () => new Date().toISOString() as never,
   );
   const lifecycleGate =
     configuration.lifecycleGate ?? new ReviewLifecycleGate();
   const insights = new InsightStore(paths);
-  const storageManagement = new StorageManagementService({
+  const storageManagementInput = {
     profiles,
     sessions,
     reviews,
@@ -353,12 +356,16 @@ export async function startLocalApiServer(
     paths,
     lifecycleGate,
     diagnostics,
-    ...(configuration.trash === undefined
-      ? {}
-      : { trash: configuration.trash }),
     git: configuration.readOnlyGit ?? readOnlyGit,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     now: () => new Date().toISOString() as never,
-  });
+  };
+  const storageManagement = new StorageManagementService(
+    configuration.trash === undefined
+      ? storageManagementInput
+      : { ...storageManagementInput, trash: configuration.trash },
+  );
   await ReviewPreparationJournal.recover(
     paths,
     new ReviewWorktreeService(paths, readOnlyGit),
@@ -374,6 +381,8 @@ export async function startLocalApiServer(
   const recovery = new ReviewRecoveryService(
     profiles,
     sessions,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     () => new Date().toISOString() as never,
     {
       paths,
@@ -397,11 +406,15 @@ export async function startLocalApiServer(
     sessions,
     github,
     paths,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     now: () => new Date().toISOString() as never,
     worktrees: new ReviewWorktreeService(paths, readOnlyGit),
     context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(
       paths,
+      // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+      // instant, satisfying the branded IsoTimestamp contract this callback fills.
       () => new Date().toISOString() as never,
     ),
     lifecycleGate,
@@ -427,6 +440,9 @@ export async function startLocalApiServer(
           reviewWriteGate,
           sessions,
           pendingReviewGateway,
+          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
+          // 8601 instant, satisfying the branded IsoTimestamp contract this
+          // callback fills.
           () => new Date().toISOString() as never,
           reviewOperations,
         )
@@ -438,9 +454,14 @@ export async function startLocalApiServer(
       ? new DirectSummaryReviewService(
           reviewWriteGate,
           sessions,
+          // SAFETY: this branch's guard confirms `github` structurally
+          // implements both gateway interfaces on top of `GitHubReader`.
           github as GitHubDirectSummaryGateway &
             GitHubPendingReviewGateway &
             GitHubReader,
+          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
+          // 8601 instant, satisfying the branded IsoTimestamp contract this
+          // callback fills.
           () => new Date().toISOString() as never,
           reviewOperations,
         )
@@ -452,6 +473,8 @@ export async function startLocalApiServer(
     remote: remoteReviews,
     github,
     preparation: reviewPreparation,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     now: () => new Date().toISOString() as never,
     operationCoordinator: reviewOperations,
     pendingReview: pendingReviews,
@@ -462,15 +485,14 @@ export async function startLocalApiServer(
       refreshedAt,
       freshness,
       pendingReview,
-    }) =>
-      reviewProjection.loadRepresented({
-        profileId,
-        sessionId,
-        snapshot,
-        refreshedAt,
-        freshness,
-        ...(pendingReview === undefined ? {} : { pendingReview }),
-      }),
+    }) => {
+      const projectInput = { profileId, sessionId, snapshot, refreshedAt, freshness };
+      return reviewProjection.loadRepresented(
+        pendingReview === undefined
+          ? projectInput
+          : { ...projectInput, pendingReview },
+      );
+    },
   });
   const reviewObservation = new ReviewObservationService({
     profiles,
@@ -481,6 +503,8 @@ export async function startLocalApiServer(
     github: pendingReviewGateway,
     pendingReview: pendingReviews,
     coordinator: reviewOperations,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
     now: () => new Date().toISOString() as never,
     project: ({
       profileId,
@@ -570,6 +594,9 @@ export async function startLocalApiServer(
             mergePullRequest: merger.mergePullRequest.bind(merger),
           },
           ["squash", "merge", "rebase"],
+          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
+          // 8601 instant, satisfying the branded IsoTimestamp contract this
+          // callback fills.
           () => new Date().toISOString() as never,
           new MergeOperationStore(paths),
           reviewWriteGate,
@@ -856,11 +883,15 @@ export async function startLocalApiServer(
     const recentWrites: Array<RecentReviewWrite> = [];
     for (const entry of parsed.output.recentWrites ?? []) {
       if (entry._tag === "Comment") {
-        recentWrites.push({
-          _tag: "Comment",
-          commentId: entry.commentId,
-          ...(entry.reviewId === undefined ? {} : { reviewId: entry.reviewId }),
-        });
+        recentWrites.push(
+          entry.reviewId === undefined
+            ? { _tag: "Comment", commentId: entry.commentId }
+            : {
+                _tag: "Comment",
+                commentId: entry.commentId,
+                reviewId: entry.reviewId,
+              },
+        );
       } else if (entry._tag === "PendingThread") {
         const parsedThreadId = parseGitHubThreadId(entry.threadId);
         if (parsedThreadId._tag === "err")
@@ -885,13 +916,17 @@ export async function startLocalApiServer(
         });
       }
     }
+    const detectUpdatesInput = {
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+    };
     return response(
       context,
-      await reviewWorkbench.detectUpdates({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        ...(recentWrites.length === 0 ? {} : { recentWrites }),
-      }),
+      await reviewWorkbench.detectUpdates(
+        recentWrites.length === 0
+          ? detectUpdatesInput
+          : { ...detectUpdatesInput, recentWrites },
+      ),
     );
   });
   app.post("/v1/reviews/refresh", async (context) => {
@@ -963,23 +998,27 @@ export async function startLocalApiServer(
     for (const raw of parsed.output.entries.slice(0, 100)) {
       const candidate = safeParse(rendererLogEntrySchema, raw);
       if (!candidate.success) continue;
+      const optionalLogFields: {
+        -readonly [K in
+          | "meta"
+          | "profileId"
+          | "sessionId"
+          | "correlationId"]?: LogEntryInput[K];
+      } = {};
+      if (candidate.output.meta !== undefined)
+        optionalLogFields.meta = candidate.output.meta;
+      if (candidate.output.profileId !== undefined)
+        optionalLogFields.profileId = candidate.output.profileId;
+      if (candidate.output.sessionId !== undefined)
+        optionalLogFields.sessionId = candidate.output.sessionId;
+      if (candidate.output.correlationId !== undefined)
+        optionalLogFields.correlationId = candidate.output.correlationId;
       logs.write({
         process: "renderer",
         level: candidate.output.level,
         topic: candidate.output.topic,
         message: candidate.output.message,
-        ...(candidate.output.meta === undefined
-          ? {}
-          : { meta: candidate.output.meta }),
-        ...(candidate.output.profileId === undefined
-          ? {}
-          : { profileId: candidate.output.profileId }),
-        ...(candidate.output.sessionId === undefined
-          ? {}
-          : { sessionId: candidate.output.sessionId }),
-        ...(candidate.output.correlationId === undefined
-          ? {}
-          : { correlationId: candidate.output.correlationId }),
+        ...optionalLogFields,
       });
       accepted += 1;
     }
@@ -1013,10 +1052,11 @@ export async function startLocalApiServer(
         : parseReviewSessionId(parsed.output.sessionId);
     if (sessionId?._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
-    const bundle = await diagnostics.exportSupportBundle({
-      profileId: profileId.value,
-      ...(sessionId?._tag === "ok" ? { sessionId: sessionId.value } : {}),
-    });
+    const bundle = await diagnostics.exportSupportBundle(
+      sessionId?._tag === "ok"
+        ? { profileId: profileId.value, sessionId: sessionId.value }
+        : { profileId: profileId.value },
+    );
     return bundle._tag === "ok"
       ? context.json(bundle.value)
       : context.json({ error: "diagnostics_unavailable" }, 503);
@@ -1104,16 +1144,16 @@ function logLocalApiRequests(
     const status = context.res.status;
     const durationMs = Math.round(performance.now() - startedAt);
     const correlationId = context.req.header("x-patchdesk-correlation-id");
+    const meta =
+      correlationId === undefined
+        ? { status, durationMs }
+        : { status, durationMs, correlationId };
     logs.write({
       process: "main",
       level: status >= 500 ? "error" : status >= 400 ? "warn" : "debug",
       topic: "http",
       message: `${context.req.method} ${path}`,
-      meta: {
-        status,
-        durationMs,
-        ...(correlationId === undefined ? {} : { correlationId }),
-      },
+      meta,
     });
   };
 }
@@ -1140,6 +1180,7 @@ function corsForRenderer(
   };
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the server's one raw HTTP-body I/O boundary; each route handler runs its own schema against the result immediately, so there is no single concrete type to return here.
 async function jsonBody(context: Context): Promise<unknown> {
   const maximumBytes = 1024 * 1024;
   const declaredLength = Number(context.req.header("Content-Length") ?? "0");
@@ -1167,6 +1208,8 @@ async function jsonBody(context: Context): Promise<unknown> {
     offset += chunk.byteLength;
   }
   try {
+    // SAFETY: JSON.parse's return type is `any`; this cast narrows it to
+    // `unknown` so every caller must validate the parsed body before use.
     return JSON.parse(new TextDecoder().decode(combined)) as unknown;
   } catch {
     return undefined;
@@ -1174,9 +1217,11 @@ async function jsonBody(context: Context): Promise<unknown> {
 }
 
 function isGitHubDirectSummaryGateway(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- structural capability detection on the already-constructed internal `github` adapter, not external/untrusted input; there is no earlier I/O boundary to parse at.
   value: unknown,
 ): value is GitHubDirectSummaryGateway {
   return (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows an internal adapter object for optional-capability `in` checks below; not external input to decode.
     typeof value === "object" &&
     value !== null &&
     "getViewerDirectSummaryReviews" in value &&
@@ -1184,9 +1229,11 @@ function isGitHubDirectSummaryGateway(
   );
 }
 function isGitHubPendingReviewGateway(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- structural capability detection on the already-constructed internal `github` adapter, not external/untrusted input; there is no earlier I/O boundary to parse at.
   value: unknown,
 ): value is GitHubPendingReviewGateway & GitHubReader & GitHubReviewWriter {
   return (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows an internal adapter object for optional-capability `in` checks below; not external input to decode.
     typeof value === "object" &&
     value !== null &&
     "getViewerPendingReview" in value &&
@@ -1196,8 +1243,12 @@ function isGitHubPendingReviewGateway(
     "resolveAuthenticatedAccount" in value
   );
 }
-function isGitHubMergeWriter(value: unknown): value is GitHubMergeWriter {
+function isGitHubMergeWriter(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- structural capability detection on the already-constructed internal `merger` adapter, not external/untrusted input; there is no earlier I/O boundary to parse at.
+  value: unknown,
+): value is GitHubMergeWriter {
   return (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows an internal adapter object for an optional-capability `in` check below; not external input to decode.
     typeof value === "object" && value !== null && "mergePullRequest" in value
   );
 }
@@ -1234,6 +1285,7 @@ async function pendingReviewCommandResponse(
   context: Context,
   service: PendingReviewService | undefined,
   sessions: ReviewSessionStore,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
@@ -1243,28 +1295,45 @@ async function pendingReviewCommandResponse(
     return context.json({ error: "invalid_input" }, 400);
   const result =
     parsed.command._tag === "Start"
-      ? await service.start({
-          profileId: parsed.profileId,
-          reviewId: parsed.reviewId,
-          expected: parsed.command.expected,
-          anchor: parsed.command.anchor,
-          body: parsed.command.body,
-          ...(parsed.command.finding === undefined
-            ? {}
-            : { finding: parsed.command.finding }),
-        })
+      ? await service.start(
+          parsed.command.finding === undefined
+            ? {
+                profileId: parsed.profileId,
+                reviewId: parsed.reviewId,
+                expected: parsed.command.expected,
+                anchor: parsed.command.anchor,
+                body: parsed.command.body,
+              }
+            : {
+                profileId: parsed.profileId,
+                reviewId: parsed.reviewId,
+                expected: parsed.command.expected,
+                anchor: parsed.command.anchor,
+                body: parsed.command.body,
+                finding: parsed.command.finding,
+              },
+        )
       : parsed.command._tag === "AddThread"
-        ? await service.addThread({
-            profileId: parsed.profileId,
-            reviewId: parsed.reviewId,
-            expected: parsed.command.expected,
-            pendingReviewNodeId: parsed.command.pendingReviewNodeId,
-            anchor: parsed.command.anchor,
-            body: parsed.command.body,
-            ...(parsed.command.finding === undefined
-              ? {}
-              : { finding: parsed.command.finding }),
-          })
+        ? await service.addThread(
+            parsed.command.finding === undefined
+              ? {
+                  profileId: parsed.profileId,
+                  reviewId: parsed.reviewId,
+                  expected: parsed.command.expected,
+                  pendingReviewNodeId: parsed.command.pendingReviewNodeId,
+                  anchor: parsed.command.anchor,
+                  body: parsed.command.body,
+                }
+              : {
+                  profileId: parsed.profileId,
+                  reviewId: parsed.reviewId,
+                  expected: parsed.command.expected,
+                  pendingReviewNodeId: parsed.command.pendingReviewNodeId,
+                  anchor: parsed.command.anchor,
+                  body: parsed.command.body,
+                  finding: parsed.command.finding,
+                },
+          )
         : parsed.command._tag === "Submit"
           ? await service.submit({
               profileId: parsed.profileId,
@@ -1290,10 +1359,9 @@ async function pendingReviewCommandResponse(
     parsed.command.expected.sessionId,
   );
   return context.json(
-    {
-      error: result.error,
-      ...(projection === undefined ? {} : { pendingReview: projection }),
-    },
+    projection === undefined
+      ? { error: result.error }
+      : { error: result.error, pendingReview: projection },
     pendingReviewFailureStatus(result.error),
   );
 }
@@ -1301,6 +1369,7 @@ async function pendingReviewCommandResponse(
 async function pendingReviewRecoverResponse(
   context: Context,
   service: PendingReviewService | undefined,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
@@ -1363,6 +1432,7 @@ function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
 async function directSummarySubmitResponse(
   context: Context,
   service: DirectSummaryReviewService | undefined,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
@@ -1382,6 +1452,7 @@ async function directSummarySubmitResponse(
 async function directSummaryRecoverResponse(
   context: Context,
   service: DirectSummaryReviewService | undefined,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
@@ -1402,6 +1473,7 @@ async function directSummaryRecoverResponse(
       );
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
 function parseDirectSummaryCommand(body: unknown):
   | {
       readonly profileId: WorkspaceProfileId;
@@ -1422,6 +1494,7 @@ function parseDirectSummaryCommand(body: unknown):
     profileId._tag === "err" ||
     reviewId._tag === "err" ||
     expected === undefined ||
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof summary !== "string" ||
     summary.trim().length === 0 ||
     (event !== "APPROVE" && event !== "COMMENT" && event !== "REQUEST_CHANGES")
@@ -1436,6 +1509,7 @@ function parseDirectSummaryCommand(body: unknown):
   };
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
 function parsePendingReviewCommand(body: unknown):
   | {
       readonly profileId: WorkspaceProfileId;
@@ -1462,6 +1536,7 @@ function parsePendingReviewCommand(body: unknown):
     const bodyValue = readObjectField(raw, "body");
     if (
       anchor === undefined ||
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
       typeof bodyValue !== "string" ||
       bodyValue.trim().length === 0
     )
@@ -1474,29 +1549,42 @@ function parsePendingReviewCommand(body: unknown):
       return {
         profileId: profileId.value,
         reviewId: reviewId.value,
-        command: {
-          _tag: "Start",
-          expected,
-          anchor,
-          body: bodyValue,
-          ...(parsedFinding === undefined ? {} : { finding: parsedFinding }),
-        },
+        command:
+          parsedFinding === undefined
+            ? { _tag: "Start", expected, anchor, body: bodyValue }
+            : {
+                _tag: "Start",
+                expected,
+                anchor,
+                body: bodyValue,
+                finding: parsedFinding,
+              },
       };
     const pendingReviewNodeId = readObjectField(raw, "pendingReviewNodeId");
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     if (typeof pendingReviewNodeId !== "string") return undefined;
     const parsedNodeId = parseGitHubReviewNodeId(pendingReviewNodeId);
     if (parsedNodeId._tag === "err") return undefined;
     return {
       profileId: profileId.value,
       reviewId: reviewId.value,
-      command: {
-        _tag: "AddThread",
-        expected,
-        pendingReviewNodeId: parsedNodeId.value,
-        anchor,
-        body: bodyValue,
-        ...(parsedFinding === undefined ? {} : { finding: parsedFinding }),
-      },
+      command:
+        parsedFinding === undefined
+          ? {
+              _tag: "AddThread",
+              expected,
+              pendingReviewNodeId: parsedNodeId.value,
+              anchor,
+              body: bodyValue,
+            }
+          : {
+              _tag: "AddThread",
+              expected,
+              pendingReviewNodeId: parsedNodeId.value,
+              anchor,
+              body: bodyValue,
+              finding: parsedFinding,
+            },
     };
   }
   if (tag === "Submit") {
@@ -1506,6 +1594,7 @@ function parsePendingReviewCommand(body: unknown):
       (event !== "APPROVE" &&
         event !== "COMMENT" &&
         event !== "REQUEST_CHANGES") ||
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
       typeof summaryBody !== "string"
     )
       return undefined;
@@ -1528,6 +1617,7 @@ function parsePendingReviewCommand(body: unknown):
 }
 
 function parseFindingReviewSource(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   raw: unknown,
 ): FindingReviewSource | undefined {
   const analysisRunId = parseInsightRunId(
@@ -1553,6 +1643,7 @@ function parseFindingReviewSource(
 }
 
 function parseReviewWriteExpectation(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   raw: unknown,
 ): ReviewWriteExpectation | undefined {
   const sessionId = parseReviewSessionId(readObjectField(raw, "sessionId"));
@@ -1570,6 +1661,7 @@ function parseReviewWriteExpectation(
 }
 
 function parsePendingReviewAnchor(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   raw: unknown,
 ): PendingReviewAnchor | undefined {
   const path = readObjectField(raw, "path");
@@ -1577,10 +1669,13 @@ function parsePendingReviewAnchor(
   const line = readObjectField(raw, "line");
   const side = readObjectField(raw, "side");
   if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof path !== "string" ||
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof startLine !== "number" ||
     !Number.isInteger(startLine) ||
     startLine < 1 ||
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof line !== "number" ||
     !Number.isInteger(line) ||
     line < startLine ||
@@ -1595,6 +1690,7 @@ function parsePendingReviewAnchor(
 async function inlineConversationResponse(
   context: Context,
   service: InlineConversationService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   const parsed = parseInlineConversationCommand(body);
@@ -1618,6 +1714,7 @@ async function inlineConversationResponse(
   return context.json({ error: result.error }, status);
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
 function parseInlineConversationCommand(body: unknown):
   | {
       readonly profileId: WorkspaceProfileId;
@@ -1641,6 +1738,7 @@ function parseInlineConversationCommand(body: unknown):
     sessionId._tag === "err" ||
     headSha._tag === "err" ||
     patchHash._tag === "err" ||
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof tag !== "string"
   ) {
     console.error("Inline conversation command parse failed", {
@@ -1649,6 +1747,7 @@ function parseInlineConversationCommand(body: unknown):
       sessionOk: sessionId._tag,
       headShaOk: headSha._tag,
       patchHashOk: patchHash._tag,
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- reads the runtime type name for a diagnostic log message only, not to narrow/validate the value.
       tagType: typeof tag,
       rawCommand: JSON.stringify(raw),
     });
@@ -1661,6 +1760,7 @@ function parseInlineConversationCommand(body: unknown):
   };
   const value = (name: string): string | undefined => {
     const candidate = readObjectField(raw, name);
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     return typeof candidate === "string" ? candidate : undefined;
   };
   let command: DirectConversationCommand | undefined;
@@ -1672,9 +1772,12 @@ function parseInlineConversationCommand(body: unknown):
     const side = readObjectField(anchor, "side");
     const bodyValue = value("body");
     if (
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
       typeof path === "string" &&
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
       typeof startLine === "number" &&
       Number.isInteger(startLine) &&
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
       typeof line === "number" &&
       Number.isInteger(line) &&
       (side === "new" || side === "old") &&
@@ -1712,6 +1815,7 @@ function parseInlineConversationCommand(body: unknown):
   } else if (tag === "DeleteComment") {
     const commentId = value("commentId");
     const confirmation = readObjectField(raw, "confirmation");
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
     if (commentId !== undefined && typeof confirmation === "boolean")
       command = { _tag: "DeleteComment", expected, commentId, confirmation };
   }
@@ -1724,6 +1828,7 @@ async function publishedFeedbackResponse(
   context: Context,
   service: PublishedFeedbackService,
   action: "edit" | "delete" | "dismiss",
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   const result =
@@ -1753,6 +1858,7 @@ async function publishedFeedbackResponse(
 
 async function parsePublishedEdit(
   service: PublishedFeedbackService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
   const parsed = safeParse(publishedCommentEditSchema, body);
@@ -1771,6 +1877,7 @@ async function parsePublishedEdit(
 
 async function parsePublishedDelete(
   service: PublishedFeedbackService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
   const parsed = safeParse(publishedCommentDeleteSchema, body);
@@ -1789,6 +1896,7 @@ async function parsePublishedDelete(
 
 async function parsePublishedDismiss(
   service: PublishedFeedbackService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Result<void, "invalid_input" | PublishedFeedbackFailure>> {
   const parsed = safeParse(publishedReviewDismissSchema, body);
@@ -1810,6 +1918,7 @@ async function insightRunResponse(
   context: Context,
   coordinator: LocalApiConfiguration["insights"],
   type: InsightType,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -1836,6 +1945,7 @@ async function insightCancelResponse(
   context: Context,
   coordinator: LocalApiConfiguration["insights"],
   type: InsightType,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -1902,6 +2012,7 @@ function insightResultResponse(
 async function insightWalkthroughProgressResponse(
   context: Context,
   coordinator: LocalApiConfiguration["insights"],
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (
@@ -1930,17 +2041,22 @@ async function insightWalkthroughProgressResponse(
     runId._tag === "err"
   )
     return context.json({ error: "invalid_input" }, 400);
+  const progress =
+    parsed.output.currentSectionId === undefined
+      ? {
+          reviewedSectionIds: parsed.output.reviewedSectionIds,
+          supportReviewed: parsed.output.supportReviewed,
+        }
+      : {
+          reviewedSectionIds: parsed.output.reviewedSectionIds,
+          supportReviewed: parsed.output.supportReviewed,
+          currentSectionId: parsed.output.currentSectionId,
+        };
   const result = await coordinator.updateWalkthroughProgress({
     profileId: profileId.value,
     reviewId: reviewId.value,
     runId: runId.value,
-    progress: {
-      reviewedSectionIds: parsed.output.reviewedSectionIds,
-      supportReviewed: parsed.output.supportReviewed,
-      ...(parsed.output.currentSectionId === undefined
-        ? {}
-        : { currentSectionId: parsed.output.currentSectionId }),
-    },
+    progress,
   });
   return insightResultResponse(context, result);
 }
@@ -1950,6 +2066,7 @@ async function insightFindingResponse(
   coordinator: LocalApiConfiguration["insights"],
   action: "dismiss",
   findingIdInput: string,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
