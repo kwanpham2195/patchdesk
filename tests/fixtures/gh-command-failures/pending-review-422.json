@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic, not reproduced — see plan 007 Decision Before Editing #3 (creating a real pending review is a write action, avoided per plan scope)",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"You have 1 pending review per pull request. Submit or discard your pending review before submitting another.\",\"documentation_url\":\"https://docs.github.com/rest/pulls/reviews\",\"status\":\"422\"}",
+  "stderr": "gh: You have 1 pending review per pull request. Submit or discard your pending review before submitting another. (HTTP 422)",
+  "expectedTag": "CommandPendingReview",
+  "note": "Message text is GitHub's documented one-pending-review-per-user error, per plan 007 Decision Before Editing #3 (the write is REST, gh api --method POST .../reviews, confirmed by argv reading, not GraphQL)."
+}

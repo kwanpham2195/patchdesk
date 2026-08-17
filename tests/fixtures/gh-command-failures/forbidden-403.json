@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — a real reproduction would need a token scoped away from a resource this session has access to",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Resource not accessible by integration\",\"documentation_url\":\"https://docs.github.com/rest\",\"status\":\"403\"}",
+  "stderr": "gh: Resource not accessible by integration (HTTP 403)",
+  "expectedTag": "CommandForbidden",
+  "note": "A genuine 403 with no rate-limit wording must still classify CommandForbidden, proving the message-content disambiguation in the structured REST layer doesn't over-match rate-limit-403.json's fixture."
+}

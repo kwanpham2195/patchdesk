@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0 (synthetic wording, no HTTP suffix)",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — represents a shape without structured signal",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+  "expectedTag": "CommandRateLimited",
+  "note": "Exercises isRateLimitFailure's fallback path directly (no structured signal present); also the exact shape a stale forbidden-first ordering would have mis-tagged, mirrored from Why This Matters #1 without the HTTP suffix this time."
+}

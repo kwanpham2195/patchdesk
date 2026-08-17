@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0 (synthetic wording, no HTTP suffix)",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — represents a shape without structured signal",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "gh: You have 1 pending review per pull request. Submit or discard your pending review.",
+  "expectedTag": "CommandPendingReview",
+  "note": "Exercises isPendingReviewFailure's fallback path directly (no structured signal present)."
+}

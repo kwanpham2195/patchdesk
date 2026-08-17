@@ -1,0 +1,11 @@
+{
+  "capturedWith": "n/a — not a gh command; flue-insight-child-invoker.ts's bundled Node runner",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — represents the flue-insight child's failure shape, not a gh call",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error: Cannot find module '/opt/patchdesk/runtime/flue/dist/patchdesk-insight-runner.js'\n    at Function.Module._resolveFilename (node:internal/modules/cjs/loader:1234:15)",
+  "expectedTag": "CommandRuntimeUnavailable",
+  "note": "CommandRunner is shared with the non-gh flue-insight child (flue-insight-child-invoker.ts). This fixture proves isRuntimeFailure still classifies its Node module-resolution failures correctly and that the REST/GraphQL structured layers (which are content-shape-gated, not gh-argv-gated) do not misfire on this unrelated process's output."
+}

@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0 (synthetic wording, no HTTP suffix)",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — represents a shape without structured signal",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "gh: This operation is not implemented for this endpoint",
+  "expectedTag": "CommandUnsupported",
+  "note": "Exercises isUnsupportedFailure's fallback path directly (no structured signal present)."
+}

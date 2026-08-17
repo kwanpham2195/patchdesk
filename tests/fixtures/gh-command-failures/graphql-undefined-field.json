@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "gh api graphql -f query='query { invalidFieldXyz }'",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "{\"errors\":[{\"path\":[\"query\",\"invalidFieldXyz\"],\"extensions\":{\"code\":\"undefinedField\",\"typeName\":\"Query\",\"fieldName\":\"invalidFieldXyz\"},\"locations\":[{\"line\":1,\"column\":9}],\"message\":\"Field 'invalidFieldXyz' doesn't exist on type 'Query'\"}]}",
+  "stderr": "gh: Field 'invalidFieldXyz' doesn't exist on type 'Query'",
+  "expectedTag": "CommandFailed",
+  "note": "A schema-validation error (extensions.code, no top-level type) is not one of the mapped GraphQL signals — must fall through to the regex fallback and then to generic CommandFailed, not be silently swallowed or misrouted. This is a client-side query bug, not a taxonomy gap."
+}

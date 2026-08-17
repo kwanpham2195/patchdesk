@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "gh api repos/OWNER/REPO/branches/main/protection (synthetic body shape; the real endpoint used a real repo/branch, not reproduced here to avoid a live call against unrelated infra)",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection\",\"status\":\"404\"}",
+  "stderr": "gh: Branch not protected (HTTP 404)",
+  "expectedTag": "CommandNotFound",
+  "note": "Deliberate: get_branch_protection (github-adapter.ts) treats this specific 404 as affirmative unprotected evidence, not an error. The structured REST layer must keep mapping 404 uniformly to CommandNotFound so caller-side behavior is unaffected; do not special-case this message."
+}

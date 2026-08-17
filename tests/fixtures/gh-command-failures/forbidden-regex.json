@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0 (synthetic wording, no HTTP suffix)",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — represents an older gh version or non-JSON-stdout error path where only stderr prose is available",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "gh: Resource not accessible by integration",
+  "expectedTag": "CommandForbidden",
+  "note": "No JSON stdout and no trailing (HTTP nnn) in stderr, so the structured REST layer cannot fire; isForbiddenFailure's 'resource not accessible' phrase must still classify this as CommandForbidden."
+}

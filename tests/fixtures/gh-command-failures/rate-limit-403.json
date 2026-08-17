@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic, not reproduced — see plan 007 Decision Before Editing #6 (avoids burning the shared account's real API quota)",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"API rate limit exceeded for user ID 12345.\",\"documentation_url\":\"https://docs.github.com/rest/overview/rate-limits-for-the-rest-api\",\"status\":\"403\"}",
+  "stderr": "gh: API rate limit exceeded for user ID 12345. (HTTP 403)",
+  "expectedTag": "CommandRateLimited",
+  "note": "REGRESSION FIXTURE for Why This Matters #1: GitHub's primary rate limit is HTTP 403, which also matches isForbiddenFailure's bare 403 pattern. The structured REST layer disambiguates by message content (\"rate limit\") before falling to the regex fallback, which plan 002 already reordered defense-in-depth. Message text built from GitHub's documented rate-limit response body."
+}

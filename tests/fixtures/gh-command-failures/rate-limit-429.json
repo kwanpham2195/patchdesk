@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — GitHub documents some newer endpoints returning HTTP 429 directly; not reproduced live to avoid quota exhaustion",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"You have exceeded a secondary rate limit. Please wait a few minutes before you try again.\",\"documentation_url\":\"https://docs.github.com/rest/overview/rate-limits-for-the-rest-api\",\"status\":\"429\"}",
+  "stderr": "gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 429)",
+  "expectedTag": "CommandRateLimited",
+  "note": "429 maps directly to CommandRateLimited regardless of message content per plan 007 Step 2."
+}

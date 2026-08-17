@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "synthetic — GitHub's public GraphQL docs list FORBIDDEN in the errors[].type enum; a live reproduction attempt this session (querying org fields requiring elevated scope) surfaced INSUFFICIENT_SCOPES instead (see graphql-insufficient-scopes.json), not literal FORBIDDEN. Per plan 007 STOP conditions, this is marked clearly synthetic rather than fabricated as a live capture.",
+  "synthetic": true,
+  "exitCode": 1,
+  "stdout": "{\"errors\":[{\"type\":\"FORBIDDEN\",\"path\":[\"repository\"],\"locations\":[{\"line\":1,\"column\":9}],\"message\":\"Resource not accessible by integration\"}]}",
+  "stderr": "gh: Resource not accessible by integration",
+  "expectedTag": "CommandForbidden",
+  "note": "Unreproduced-but-documented per plan 007 STOP conditions; marked synthetic, not silently treated as verified."
+}

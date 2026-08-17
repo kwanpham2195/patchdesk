@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 
+import * as v from "valibot";
+
 import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../../main/executable-discovery";
 
@@ -63,6 +65,15 @@ export type CommandFailure =
 export class CommandRunner {
   constructor(
     private readonly executor: CommandExecutor = new NodeCommandExecutor(),
+    /**
+     * Fires once per execution that reaches the generic CommandFailed
+     * fallback with non-empty stderr — i.e. a nonzero exit that matched
+     * neither a structured signal nor any regex predicate. Defaults to a
+     * no-op; production call sites wire this to AppLogService so future gh
+     * wording drift is observable instead of silently swallowed.
+     */
+    private readonly onUnclassifiedFailure: (stderr: string) => void = () =>
+      undefined,
   ) {}
 
   /** Run a command whose stdout is an opaque text artifact. */
@@ -70,7 +81,7 @@ export class CommandRunner {
     input: CommandRequest,
   ): Promise<Result<string, CommandFailure>> {
     const execution = await this.executor.execute(input);
-    const failure = classifyExecution(execution);
+    const failure = classifyExecution(execution, this.onUnclassifiedFailure);
     if (failure !== undefined) return err(failure);
     if (execution._tag !== "Exited") return err({ _tag: "CommandFailed" });
     return ok(execution.stdout);
@@ -197,29 +208,254 @@ export class NodeCommandExecutor implements CommandExecutor {
 
 function classifyExecution(
   execution: CommandExecution,
+  onUnclassifiedFailure: (stderr: string) => void,
 ): CommandFailure | undefined {
   if (execution._tag === "TimedOut") return { _tag: "CommandTimedOut" };
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
   if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
   if (execution.exitCode === 0) return undefined;
-  if (isAuthenticationFailure(execution.stderr)) {
+
+  const structured = classifyStructuredFailure(
+    execution.stdout,
+    execution.stderr,
+  );
+  if (structured !== undefined) return structured;
+
+  const fallback = classifyByStderrPattern(execution.stderr);
+  if (fallback !== undefined) return fallback;
+
+  if (execution.stderr.length > 0) onUnclassifiedFailure(execution.stderr);
+  return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
+}
+
+/**
+ * `gh api` (REST) and `gh api graphql` (GraphQL) failures both carry
+ * structured, non-prose signal that this app can key on directly instead of
+ * regex-matching English error text (see plan 007 Decision Before Editing).
+ * This is gated purely on the *shape* of stdout/stderr, not on which command
+ * produced them: no protocol hint is threaded through CommandRequest.
+ *
+ * That is a deliberate deviation from the plan's stated recommendation
+ * (explicit `errorProtocol` hint threaded from every call site). Threading a
+ * hint would require touching every `gh api ...` call site in
+ * github-adapter.ts (~50 sites), which a concurrent change was landing
+ * against at the same time. Content-sniffing is safe here because every
+ * non-gh-api caller of CommandRunner (`git` subcommands, `gh auth status`,
+ * `gh --version`, and the non-gh flue-insight child in
+ * flue-insight-child-invoker.ts) never emits a JSON stdout body containing a
+ * string `status` field or an `errors` array shaped like GitHub's API
+ * responses, so those callers safely fall through untouched. The one risk
+ * the plan calls out for content-sniffing — a plain exit code carrying no
+ * content fingerprint — only matters for the exit-code-4 "no auth
+ * configured" shortcut, which this change deliberately does not implement
+ * (the existing `isAuthenticationFailure` phrase list already covers that
+ * message; see no-auth-configured-exit4.json).
+ */
+function classifyStructuredFailure(
+  stdout: string,
+  stderr: string,
+): CommandFailure | undefined {
+  const restStatus = extractRestStatus(stdout, stderr);
+  if (restStatus !== undefined) {
+    const classified = classifyRestStatus(
+      restStatus.status,
+      restStatus.message,
+    );
+    if (classified !== undefined) return classified;
+  }
+
+  const graphqlSignal = extractGraphqlErrorSignal(stdout);
+  if (graphqlSignal !== undefined) {
+    const classified = classifyGraphqlSignal(graphqlSignal);
+    if (classified !== undefined) return classified;
+  }
+
+  return undefined;
+}
+
+/**
+ * Loose on purpose: this validates the small subset of a `gh api` REST error
+ * body this classifier reads, not the full response shape (which varies per
+ * endpoint). Extra fields are allowed and ignored.
+ */
+const restErrorBodySchema = v.looseObject({
+  status: v.optional(v.string()),
+  message: v.optional(v.string()),
+});
+
+/**
+ * Loose for the same reason: only the fields this classifier reads from a
+ * `gh api graphql` error entry (see Decision Before Editing #3 in plan 007).
+ */
+const graphqlErrorEntrySchema = v.looseObject({
+  type: v.optional(v.string()),
+  extensions: v.optional(v.looseObject({ code: v.optional(v.string()) })),
+});
+const graphqlErrorBodySchema = v.looseObject({
+  errors: v.optional(v.array(graphqlErrorEntrySchema)),
+});
+
+type RestStatusSignal = { readonly status: number; readonly message: string };
+
+/**
+ * `gh api` REST failures print a JSON error body to stdout with a string
+ * `status` field (e.g. `{"message":"Not Found",...,"status":"404"}`), and a
+ * one-line stderr `gh: <message> (HTTP <code>)`. Either is a reliable,
+ * gh-owned structured signal; prefer stdout since it also carries the full
+ * message text for the 401/403/422 content disambiguation below.
+ */
+function extractRestStatus(
+  stdout: string,
+  stderr: string,
+): RestStatusSignal | undefined {
+  return extractRestStatusFromStdout(stdout) ?? extractRestStatusFromStderr(stderr);
+}
+
+function extractRestStatusFromStdout(
+  stdout: string,
+): RestStatusSignal | undefined {
+  const raw = parseJson(stdout);
+  if (raw === undefined) return undefined;
+  const parsed = v.safeParse(restErrorBodySchema, raw);
+  if (!parsed.success) return undefined;
+  const status = parsed.output.status;
+  if (status === undefined || !/^\d{3}$/.test(status)) return undefined;
+  return { status: Number(status), message: parsed.output.message ?? "" };
+}
+
+function extractRestStatusFromStderr(
+  stderr: string,
+): RestStatusSignal | undefined {
+  const match = /\(HTTP (\d{3})\)\s*$/.exec(stderr.trimEnd());
+  const code = match?.[1];
+  if (code === undefined) return undefined;
+  return { status: Number(code), message: stderr };
+}
+
+/**
+ * Maps a REST HTTP status to a CommandFailure using status-specific message
+ * content where GitHub documents two distinct meanings behind the same code
+ * (403: primary/secondary rate limit vs genuine forbidden; 422: the
+ * one-pending-review-per-user constraint vs any other validation failure).
+ * Returns undefined for a recognized-but-unmapped status (e.g. 5xx), which
+ * falls through to the regex fallback and then generic CommandFailed —
+ * unchanged from today's behavior for those codes.
+ */
+function classifyRestStatus(
+  status: number,
+  message: string,
+): CommandFailure | undefined {
+  switch (status) {
+    case 401:
+      return { _tag: "CommandAuthenticationRequired" };
+    case 403:
+      return isRateLimitFailure(message)
+        ? { _tag: "CommandRateLimited" }
+        : { _tag: "CommandForbidden" };
+    case 404:
+      return { _tag: "CommandNotFound" };
+    case 405:
+    case 415:
+    case 501:
+      return { _tag: "CommandUnsupported" };
+    case 422:
+      return isPendingReviewFailure(message)
+        ? { _tag: "CommandPendingReview" }
+        : { _tag: "CommandUnsupported" };
+    case 429:
+      return { _tag: "CommandRateLimited" };
+    default:
+      return undefined;
+  }
+}
+
+type GraphqlErrorSignal = { readonly type?: string; readonly code?: string };
+
+/**
+ * `gh api graphql` failures carry no HTTP status anywhere (live-verified: no
+ * `(HTTP nnn)` suffix in stderr for a GraphQL call). The structured signal
+ * instead lives in stdout's `errors[0].type` (resolution-time errors, e.g.
+ * NOT_FOUND, INSUFFICIENT_SCOPES) or `errors[0].extensions.code`
+ * (schema-validation errors, e.g. undefinedField — intentionally
+ * unmapped below; a bad query is a client bug, not a taxonomy gap).
+ */
+function extractGraphqlErrorSignal(
+  stdout: string,
+): GraphqlErrorSignal | undefined {
+  const raw = parseJson(stdout);
+  if (raw === undefined) return undefined;
+  const parsed = v.safeParse(graphqlErrorBodySchema, raw);
+  if (!parsed.success) return undefined;
+  const first = parsed.output.errors?.[0];
+  if (first === undefined) return undefined;
+  const type = first.type;
+  const code = first.extensions?.code;
+  if (type === undefined && code === undefined) return undefined;
+  const typeField = type === undefined ? {} : { type };
+  const codeField = code === undefined ? {} : { code };
+  return { ...typeField, ...codeField };
+}
+
+/**
+ * Maps only the `errors[].type` values this investigation could either
+ * live-verify or find documented in GitHub's public GraphQL error-type enum
+ * (NOT_FOUND, INSUFFICIENT_SCOPES: live-verified this session; FORBIDDEN:
+ * documented, not reproduced — see graphql-forbidden.json). UNPROCESSABLE,
+ * INTERNAL, and SERVICE_UNAVAILABLE were never observed or confirmed, so
+ * they intentionally fall through to the regex fallback rather than being
+ * guessed at.
+ */
+function classifyGraphqlSignal(
+  signal: GraphqlErrorSignal,
+): CommandFailure | undefined {
+  if (signal.type === "NOT_FOUND") return { _tag: "CommandNotFound" };
+  if (signal.type === "FORBIDDEN" || signal.type === "INSUFFICIENT_SCOPES") {
+    return { _tag: "CommandForbidden" };
+  }
+  return undefined;
+}
+
+/**
+ * Parses raw process stdout at the I/O boundary. The result is intentionally
+ * `unknown`; every caller below validates its shape with a valibot schema
+ * (restErrorBodySchema / graphqlErrorBodySchema) before trusting any field,
+ * matching this codebase's `v.safeParse`-at-the-boundary convention.
+ */
+// oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the JSON.parse boundary itself; every call site immediately validates the result with a valibot schema (restErrorBodySchema / graphqlErrorBodySchema) before reading any field.
+function parseJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return undefined;
+  try {
+    // SAFETY: JSON.parse's return type is `any`; this cast only narrows it
+    // to `unknown` so every caller must validate the shape before trusting it.
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Last-resort fallback: gh's stderr prose is not a stable contract. Prefer
+ * the structured paths above; these regexes exist for shapes gh doesn't
+ * expose structurally (network-level failures, older gh versions, and the
+ * non-gh flue-insight child process).
+ */
+function classifyByStderrPattern(stderr: string): CommandFailure | undefined {
+  if (isAuthenticationFailure(stderr)) {
     return { _tag: "CommandAuthenticationRequired" };
   }
-  if (isNotFoundFailure(execution.stderr)) return { _tag: "CommandNotFound" };
-  if (isPendingReviewFailure(execution.stderr)) {
+  if (isNotFoundFailure(stderr)) return { _tag: "CommandNotFound" };
+  if (isPendingReviewFailure(stderr)) {
     return { _tag: "CommandPendingReview" };
   }
-  if (isUnsupportedFailure(execution.stderr))
-    return { _tag: "CommandUnsupported" };
+  if (isUnsupportedFailure(stderr)) return { _tag: "CommandUnsupported" };
   // GitHub's primary rate limit responds with HTTP 403, which also matches
   // isForbiddenFailure's bare `\b403\b`; check rate-limit wording first so a
   // 403 rate-limit response classifies as CommandRateLimited, not CommandForbidden.
-  if (isRateLimitFailure(execution.stderr))
-    return { _tag: "CommandRateLimited" };
-  if (isForbiddenFailure(execution.stderr)) return { _tag: "CommandForbidden" };
-  if (isRuntimeFailure(execution.stderr))
-    return { _tag: "CommandRuntimeUnavailable" };
-  return { _tag: "CommandFailed", stderr: execution.stderr.slice(0, 1024) };
+  if (isRateLimitFailure(stderr)) return { _tag: "CommandRateLimited" };
+  if (isForbiddenFailure(stderr)) return { _tag: "CommandForbidden" };
+  if (isRuntimeFailure(stderr)) return { _tag: "CommandRuntimeUnavailable" };
+  return undefined;
 }
 
 function terminateOwnedProcess(

@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "gh api graphql -f query='query { node(id:\"nonexistent000\") { id } }'",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "{\"data\":{\"node\":null},\"errors\":[{\"type\":\"NOT_FOUND\",\"path\":[\"node\"],\"locations\":[{\"line\":1,\"column\":9}],\"message\":\"Could not resolve to a node with the global id of 'nonexistent000'\"}]}",
+  "stderr": "gh: Could not resolve to a node with the global id of 'nonexistent000'",
+  "expectedTag": "CommandNotFound",
+  "note": "GraphQL failures carry no HTTP status anywhere (confirmed live: no \"(HTTP nnn)\" suffix in stderr); errors[0].type is the structured signal instead."
+}

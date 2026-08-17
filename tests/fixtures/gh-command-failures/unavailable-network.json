@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "GH_HOST=nonexistent-host-xyz123.invalid gh api user",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "error connecting to nonexistent-host-xyz123.invalid\ncheck your internet connection or https://githubstatus.com",
+  "expectedTag": "CommandFailed",
+  "note": "Transport-level failure: no HTTP status, no JSON body, and matches none of the seven regex predicates. Falls through to generic CommandFailed and must invoke the Step 5 catch-all telemetry hook, since this is genuinely unclassified drift-worthy stderr."
+}

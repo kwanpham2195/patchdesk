@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "gh api repos/octocat/Hello-World/issues -f invalidfield=x",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Validation Failed\",\"errors\":[{\"resource\":\"Issue\",\"code\":\"custom\",\"field\":\"invalidfield\",\"message\":\"invalidfield is not a permitted key\"}],\"documentation_url\":\"https://docs.github.com/rest/issues/issues#create-an-issue\",\"status\":\"422\"}",
+  "stderr": "gh: Validation Failed (HTTP 422)\ninvalidfield is not a permitted key",
+  "expectedTag": "CommandUnsupported",
+  "note": "Proves the structured REST layer checks status+status-specific keywords, not the mere presence of a top-level \"errors\" array (this REST 422 body has one, same key name GraphQL uses, but must NOT be misrouted into the GraphQL branch)."
+}

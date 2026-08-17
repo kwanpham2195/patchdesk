@@ -1,0 +1,11 @@
+{
+  "capturedWith": "gh 2.96.0",
+  "capturedAt": "2026-08-18",
+  "command": "gh api repos/patchdesk-nonexistent-org-xyz/patchdesk-nonexistent-repo-xyz",
+  "synthetic": false,
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/repos/repos#get-a-repository\",\"status\":\"404\"}",
+  "stderr": "gh: Not Found (HTTP 404)",
+  "expectedTag": "CommandNotFound",
+  "note": "Structured REST path: stdout status field \"404\" wins over any regex."
+}
