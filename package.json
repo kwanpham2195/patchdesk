@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "productName": "Patchdesk",
+  "license": "MIT",
   "description": "Local-first desktop workbench for safe pull request review.",
   "type": "module",
   "main": "./out/main/electron-main.js",
