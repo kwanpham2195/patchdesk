@@ -29,14 +29,13 @@ import type { PendingReviewAnchor } from "../../domain/pending-review";
 import type { GitHubReviewEvent } from "../../domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
 import {
-  invalid,
-  optionalPolicyUnavailableReason,
   type GitHubReadFailure,
   type GitHubReadOperation,
   type MaintainerPullRequest,
   type MergeOutcome,
   type PendingReviewComment,
 } from "./github-adapter";
+import { invalid, optionalPolicyUnavailableReason } from "./github-write-failures";
 import {
   appliedRulesetSchema,
   type checkRunsSchema,
