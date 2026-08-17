@@ -361,6 +361,9 @@ function parseAction(
       return ok(input);
     // Cached inboxes from before failed checks could start a review retain this old
     // shape. The cache is local, and the current policy always permits analysis.
+    // Remove this branch the next time cacheSchema's schemaVersion changes for any
+    // reason - that bump already invalidates old caches via invalidCache(), so this
+    // migration arm stops being reachable and can be deleted in the same change.
     case "inspect_checks":
       return ok({ kind: "run_review", label: "Run review" });
     default: {
