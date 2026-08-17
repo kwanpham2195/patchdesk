@@ -13,6 +13,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import type * as PierreDiffs from "@pierre/diffs";
+
+// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real. Only tests that also shim `CSSStyleSheet.prototype.replaceSync` reach Pierre's CodeView path at all; every other test in this file renders through the accessible plain-text fallback, which never calls `preloadHighlighter`.
+vi.mock("@pierre/diffs", async (importOriginal) => {
+  const actual = await importOriginal<typeof PierreDiffs>();
+  return {
+    ...actual,
+    preloadHighlighter: vi.fn(async () => undefined),
+  };
+});
 
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
@@ -867,6 +877,124 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       ).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  // These two tests need Pierre's CodeView path (not the accessible
+  // plain-text fallback every other test in this file renders through)
+  // because only a rendered `ConversationThreadCard` proves whether
+  // `saveInlineComment`'s resolved threadId reached the card. CodeView needs
+  // real timers for its own async mount, so — unlike the rest of this
+  // file — these two do not use fake timers.
+  it("upgrades a created comment's card to full controls when the receipt confirms a threadId", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { updatesAvailable: false };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return {
+            _tag: "CommentCreated",
+            commentId: "comment-1",
+            threadId: "thread-1",
+          };
+        throw new Error(input.path);
+      });
+      const user = userEvent.setup();
+      mount(projection());
+      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      const authorButtons = await screen.findAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
+      const commentButton = authorButtons.at(-1);
+      if (commentButton === undefined)
+        throw new Error("missing comment action");
+      commentButton.dataset.lineNumber = "1";
+      commentButton.dataset.lineSide = "additions";
+      await user.click(commentButton);
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Confirmed body",
+      );
+      await user.click(screen.getByRole("button", { name: "Comment" }));
+      // The confirmed threadId reaches the card in the same round trip: no
+      // separate refresh is needed, and the fallback copy never appears.
+      expect(
+        await screen.findByRole("textbox", { name: "Reply" }),
+      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Resolve" })).toBeTruthy();
+      expect(
+        screen.queryByText(/Reply and Resolve aren.t available/i),
+      ).toBeNull();
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
+    }
+  });
+
+  it("leaves a created comment's card comment-only when the receipt omits threadId", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { updatesAvailable: false };
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return { _tag: "CommentCreated", commentId: "comment-1" };
+        throw new Error(input.path);
+      });
+      const user = userEvent.setup();
+      mount(projection());
+      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      const authorButtons = await screen.findAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
+      const commentButton = authorButtons.at(-1);
+      if (commentButton === undefined)
+        throw new Error("missing comment action");
+      commentButton.dataset.lineNumber = "1";
+      commentButton.dataset.lineSide = "additions";
+      await user.click(commentButton);
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Unresolved body",
+      );
+      await user.click(screen.getByRole("button", { name: "Comment" }));
+      // No threadId was confirmed: the flow never synthesizes one, so the
+      // card stays comment-only and explains why.
+      expect(
+        await screen.findByText(/Reply and Resolve aren.t available/i),
+      ).toBeTruthy();
+      expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
     }
   });
 

@@ -331,6 +331,67 @@ describe("InlineConversationService", () => {
       expect.objectContaining({ threadId: "PRRT_thread", body: "Proven" }),
     );
   });
+
+  it("passes through a created comment's confirmed threadId", async () => {
+    const gate = makeGate();
+    const createInlineComment = vi.fn(async () =>
+      ok({ commentId: "PRRC_new", reviewId: "PRR_1", threadId: "PRRT_new" }),
+    );
+    const service = new InlineConversationService(
+      gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
+      makeGateway({ createInlineComment }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+    );
+    const result = await service.execute({
+      profileId,
+      reviewId,
+      command: command({
+        _tag: "CreateComment",
+        anchor: { path: "src/a.ts", startLine: 5, line: 5, side: "new" },
+        body: "New comment",
+      }),
+    });
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        _tag: "CommentCreated",
+        commentId: "PRRC_new",
+        reviewId: "PRR_1",
+        threadId: "PRRT_new",
+      },
+    });
+  });
+
+  it("never synthesizes a threadId when the create receipt did not confirm one", async () => {
+    const gate = makeGate();
+    const createInlineComment = vi.fn(async () => ok({ commentId: "PRRC_new" }));
+    const service = new InlineConversationService(
+      gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
+      makeGateway({ createInlineComment }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+    );
+    const result = await service.execute({
+      profileId,
+      reviewId,
+      command: command({
+        _tag: "CreateComment",
+        anchor: { path: "src/a.ts", startLine: 5, line: 5, side: "new" },
+        body: "New comment",
+      }),
+    });
+    expect(result).toEqual({
+      _tag: "ok",
+      value: { _tag: "CommentCreated", commentId: "PRRC_new" },
+    });
+  });
 });
 
 describe("FakeGitHubAdapter ownership parity", () => {

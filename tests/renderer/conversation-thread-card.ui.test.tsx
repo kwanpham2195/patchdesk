@@ -2,7 +2,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConversationThreadCard } from "../../src/renderer/src/components/conversation-thread-card";
+import {
+  ConversationThreadCard,
+  type ConversationThreadTarget,
+} from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 
 afterEach(() => cleanup());
@@ -13,6 +16,7 @@ if (threadId._tag === "err")
 
 const thread = (
   overrides: {
+    readonly target?: ConversationThreadTarget;
     readonly onReply?: (
       threadId: string,
       body: string,
@@ -205,5 +209,23 @@ describe("ConversationThreadCard", () => {
       screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement,
     );
     expect(onEditComment).toHaveBeenCalledWith("c-reply", "Edited reply");
+  });
+
+  it("explains why Reply and Resolve are unavailable on a comment-only card", () => {
+    render(
+      <ConversationThreadCard
+        thread={thread({ target: { _tag: "comment_only", commentId: "c-new" } })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+    expect(screen.getByText(/Reply and Resolve aren.t available/i)).toBeTruthy();
+  });
+
+  it("never shows the comment-only fallback copy on a confirmed thread card", () => {
+    render(<ConversationThreadCard thread={thread()} />);
+    expect(
+      screen.queryByText(/Reply and Resolve aren.t available/i),
+    ).toBeNull();
   });
 });

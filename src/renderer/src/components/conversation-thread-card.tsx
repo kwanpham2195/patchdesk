@@ -307,6 +307,12 @@ export function ConversationThreadCard({
             : `Show ${hiddenReplyCount} replies`}
         </button>
       ) : null}
+      {thread.target._tag === "comment_only" ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Reply and Resolve aren&apos;t available for this comment yet.
+          Refresh to pick up its GitHub thread.
+        </p>
+      ) : null}
       {thread.onSetState === undefined ? null : (
         <Button
           className="mt-3"

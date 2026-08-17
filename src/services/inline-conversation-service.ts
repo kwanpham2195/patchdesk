@@ -60,6 +60,7 @@ export type DirectConversationReceipt =
       readonly _tag: "CommentCreated";
       readonly commentId: string;
       readonly reviewId?: string;
+      readonly threadId?: string;
     }
   | {
       readonly _tag: "ReplyCreated";
@@ -204,14 +205,18 @@ export class InlineConversationService {
                 : "github_write_failed",
           );
         }
-        return ok(
+        const receipt = {
+          _tag: "CommentCreated" as const,
+          commentId: created.value.commentId,
+        };
+        const withReviewId =
           created.value.reviewId === undefined
-            ? { _tag: "CommentCreated", commentId: created.value.commentId }
-            : {
-                _tag: "CommentCreated",
-                commentId: created.value.commentId,
-                reviewId: created.value.reviewId,
-              },
+            ? receipt
+            : { ...receipt, reviewId: created.value.reviewId };
+        return ok(
+          created.value.threadId === undefined
+            ? withReviewId
+            : { ...withReviewId, threadId: created.value.threadId },
         );
       }
       case "Reply": {

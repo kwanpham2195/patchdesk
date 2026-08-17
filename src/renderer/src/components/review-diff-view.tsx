@@ -35,6 +35,7 @@ import {
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import {
+  parseGitHubThreadId,
   parseRepoRelativePath,
   type GitHubThreadId,
 } from "../../../domain/ids";
@@ -219,7 +220,9 @@ export type LocalCommentAuthoring = {
   readonly onSelectionChange?: (input: LocalCommentLocation) => void;
   readonly onSave: (
     input: LocalCommentAuthoringSaveInput,
-  ) => Promise<{ readonly commentId: string } | void>;
+  ) => Promise<
+    { readonly commentId: string; readonly threadId?: string } | void
+  >;
 };
 
 export type LocalCommentAuthoringSaveInput = {
@@ -360,6 +363,7 @@ function ReviewDiffSurface({
         readonly side: "new" | "old";
         readonly body: string;
         readonly commentId: string;
+        readonly threadId?: GitHubThreadId;
       };
   // Renderer-only feedback while a pending-review Start/Add command is in
   // flight or confirmed failed. Never a GitHub identity: a sending card only
@@ -612,30 +616,44 @@ function ReviewDiffSurface({
         };
         if (fingerprint !== undefined) saveInput.fingerprint = fingerprint;
         const receipt = await localCommentAuthoring.onSave(saveInput);
+        // A read-back that failed or found no match must not fabricate a
+        // thread id: an unparseable or absent `receipt.threadId` leaves the
+        // card `comment_only`-equivalent (no `threadId` on the overlay),
+        // never a guessed identity.
+        const parsedThreadId =
+          receipt?.threadId === undefined
+            ? undefined
+            : parseGitHubThreadId(receipt.threadId);
+        const publishedBase = {
+          _tag: "published" as const,
+          localId,
+          path: anchor.path,
+          start: anchor.startLine,
+          end: anchor.line,
+          side: anchor.side,
+          body,
+        };
+        const nextEntry: CreatedThreadOverlay =
+          receipt !== undefined && receipt.commentId !== undefined
+            ? parsedThreadId?._tag === "ok"
+              ? {
+                  ...publishedBase,
+                  commentId: receipt.commentId,
+                  threadId: parsedThreadId.value,
+                }
+              : { ...publishedBase, commentId: receipt.commentId }
+            : {
+                _tag: "failed" as const,
+                localId,
+                path: anchor.path,
+                start: anchor.startLine,
+                end: anchor.line,
+                side: anchor.side,
+                body,
+              };
         setCreatedThreads((current) =>
           current.map((entry) =>
-            entry.localId === localId
-              ? receipt !== undefined && receipt.commentId !== undefined
-                ? {
-                    _tag: "published" as const,
-                    localId: entry.localId,
-                    path: entry.path,
-                    start: entry.start,
-                    end: entry.end,
-                    side: entry.side,
-                    body: entry.body,
-                    commentId: receipt.commentId,
-                  }
-                : {
-                    _tag: "failed" as const,
-                    localId: entry.localId,
-                    path: entry.path,
-                    start: entry.start,
-                    end: entry.end,
-                    side: entry.side,
-                    body: entry.body,
-                  }
-              : entry,
+            entry.localId === localId ? nextEntry : entry,
           ),
         );
       } catch {
@@ -806,14 +824,16 @@ function ReviewDiffSurface({
           };
         }
         const conversationThread: MutableConversationThreadCardData = {
-          // The card is a comment-only target: no GitHub thread id exists
-          // after a REST create, so Reply and Resolve are structurally
-          // impossible here. Edit and Delete are reachable through the real
-          // viewer-authored comment id (never through a synthetic thread id).
-          target: {
-            _tag: "comment_only" as const,
-            commentId: entry.commentId,
-          },
+          // A bounded, retried read-back inside `createInlineComment` may
+          // already have confirmed the published thread this comment landed
+          // in (see `confirmPublishedCommentThread`), upgrading Reply/Resolve
+          // in the same round trip; when it could not confirm one, the card
+          // stays comment-only and Edit/Delete remain reachable through the
+          // real viewer-authored comment id (never a synthetic thread id).
+          target:
+            entry.threadId === undefined
+              ? { _tag: "comment_only" as const, commentId: entry.commentId }
+              : { _tag: "thread" as const, id: entry.threadId },
           state: "open" as const,
           complete: true,
           comments: [

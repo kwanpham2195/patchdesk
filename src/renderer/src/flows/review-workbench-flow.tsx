@@ -532,7 +532,9 @@ export function ReviewWorkbenchFlow({
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<{ readonly commentId: string } | void> => {
+    ): Promise<
+      { readonly commentId: string; readonly threadId?: string } | void
+    > => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
         throw new Error("The current Diff cannot accept comments.");
@@ -572,7 +574,10 @@ export function ReviewWorkbenchFlow({
             ? commentWrite
             : { ...commentWrite, reviewId: receipt.reviewId },
         ]);
-        return { commentId: receipt.commentId };
+        const created = { commentId: receipt.commentId };
+        return receipt.threadId === undefined
+          ? created
+          : { ...created, threadId: receipt.threadId };
       }
       // A malformed success envelope is a bounded command failure: it must not
       // confirm a local mutation or journal a write that never verified.
@@ -2648,6 +2653,7 @@ type DirectConversationReceipt =
       readonly _tag: "CommentCreated";
       readonly commentId: string;
       readonly reviewId?: string;
+      readonly threadId?: string;
     }
   | {
       readonly _tag: "ReplyCreated";
@@ -2667,6 +2673,7 @@ type MutableCommentCreatedReceipt = {
   _tag: "CommentCreated";
   commentId: string;
   reviewId?: string;
+  threadId?: string;
 };
 /** Mutable builder shape for `DirectConversationReceipt`'s `ReplyCreated` variant; frozen into the readonly contract on return. */
 type MutableReplyCreatedReceipt = {
@@ -2680,6 +2687,7 @@ const directConversationReceiptSchema = v.variant("_tag", [
     _tag: v.literal("CommentCreated"),
     commentId: v.pipe(v.string(), v.minLength(1)),
     reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
+    threadId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
   v.looseObject({
     _tag: v.literal("ReplyCreated"),
@@ -2733,6 +2741,7 @@ function parseDirectConversationReceipt(
     commentId: output.commentId,
   };
   if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
+  if (output.threadId !== undefined) receipt.threadId = output.threadId;
   return receipt;
 }
 

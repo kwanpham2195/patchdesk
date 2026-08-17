@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CommandRunner,
@@ -144,6 +144,40 @@ async function golden(name: string): Promise<ReadonlyArray<string>> {
 
 async function payload(name: string): Promise<string> {
   return readFile(join(payloadRoot, name), "utf8");
+}
+
+/** GraphQL response fixture for `confirmPublishedCommentThread`'s read-back. */
+function confirmThreadResponse(
+  nodes: ReadonlyArray<{
+    readonly id: string;
+    readonly comments: ReadonlyArray<{
+      readonly id: string;
+      readonly body: string;
+    }>;
+  }>,
+): string {
+  return JSON.stringify({
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: nodes.map((node) => ({
+              id: node.id,
+              isResolved: false,
+              isOutdated: false,
+              comments: {
+                nodes: node.comments.map((comment) => ({
+                  id: comment.id,
+                  body: comment.body,
+                  createdAt: "2026-08-17T00:00:00Z",
+                })),
+              },
+            })),
+          },
+        },
+      },
+    },
+  });
 }
 
 /** The REST pull-request payload shape these tests feed to the adapter. */
@@ -2203,21 +2237,30 @@ describe("GitHubAdapter review write boundary", () => {
     expect(request).toContain("pullRequestReview{id}");
   });
 
-  it("creates an inline comment with exactly one REST command and no post-write thread scan", async () => {
-    // The REST create receipt has no thread id; the removed GraphQL scan
-    // declared an unused $id variable (GitHub rejects it) and added a full
-    // reviewThreads(first:100) read on the write's critical path.
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          node_id: "PRRC_comment",
-          pull_request_review_id: 42,
-        }),
-        stderr: "",
-      },
-    ]);
+  it("upgrades a created inline comment to its confirmed thread id on the first read-back attempt", async () => {
+    // The bounded read-back confirms the published thread by comment-id
+    // equality (the same REST node_id / GraphQL id equivalence
+    // getReviewCommentTarget already relies on), plus a body match as
+    // defense-in-depth. Its query declares no `$id` variable — the exact
+    // schema-rejection defect the prior (reverted) attempt shipped.
+    const restResponse = {
+      _tag: "Exited" as const,
+      exitCode: 0,
+      stdout: JSON.stringify({
+        node_id: "PRRC_comment",
+        pull_request_review_id: 42,
+      }),
+      stderr: "",
+    };
+    const graphqlResponse = {
+      _tag: "Exited" as const,
+      exitCode: 0,
+      stdout: confirmThreadResponse([
+        { id: "PRRT_thread", comments: [{ id: "PRRC_comment", body: "Body" }] },
+      ]),
+      stderr: "",
+    };
+    const executor = new FakeProcessExecutor([restResponse, graphqlResponse]);
     const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.createInlineComment({
@@ -2229,11 +2272,154 @@ describe("GitHubAdapter review write boundary", () => {
       }),
     ).resolves.toEqual({
       _tag: "ok",
-      value: { commentId: "PRRC_comment", reviewId: "42" },
+      value: {
+        commentId: "PRRC_comment",
+        reviewId: "42",
+        threadId: "PRRT_thread",
+      },
     });
-    expect(executor.requests).toHaveLength(1);
-    expect(executor.requests[0]?.join(" ")).not.toContain("graphql");
-    expect(executor.requests[0]?.join(" ")).not.toContain("reviewThreads");
+    expect(executor.requests).toHaveLength(2);
+    const graphqlRequest = executor.requests[1]?.join(" ") ?? "";
+    expect(graphqlRequest).toContain("reviewThreads(last: 20)");
+    expect(graphqlRequest).not.toContain("$id:");
+    expect(graphqlRequest).not.toContain("$cursor");
+  });
+
+  it("retries the read-back with backoff before confirming a thread", async () => {
+    vi.useFakeTimers();
+    try {
+      const restResponse = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
+        stderr: "",
+      };
+      const noMatchYet = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: confirmThreadResponse([]),
+        stderr: "",
+      };
+      const nowConfirmed = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: confirmThreadResponse([
+          {
+            id: "PRRT_thread",
+            comments: [{ id: "PRRC_comment", body: "Body" }],
+          },
+        ]),
+        stderr: "",
+      };
+      const executor = new FakeProcessExecutor([
+        restResponse,
+        noMatchYet,
+        nowConfirmed,
+      ]);
+      const adapter = testAdapter(new CommandRunner(executor));
+      const pending = adapter.createInlineComment({
+        profile,
+        pr,
+        headSha: mustParse(parseGitSha(headSha)),
+        coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" },
+        body: "Body",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toEqual({
+        _tag: "ok",
+        value: { commentId: "PRRC_comment", threadId: "PRRT_thread" },
+      });
+      expect(executor.requests).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not upgrade when a matching comment id has a different body, and exhausts all attempts", async () => {
+    vi.useFakeTimers();
+    try {
+      const restResponse = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
+        stderr: "",
+      };
+      const idMatchWrongBody = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: confirmThreadResponse([
+          {
+            id: "PRRT_thread",
+            comments: [{ id: "PRRC_comment", body: "A different body" }],
+          },
+        ]),
+        stderr: "",
+      };
+      const executor = new FakeProcessExecutor([
+        restResponse,
+        idMatchWrongBody,
+        idMatchWrongBody,
+        idMatchWrongBody,
+      ]);
+      const adapter = testAdapter(new CommandRunner(executor));
+      const pending = adapter.createInlineComment({
+        profile,
+        pr,
+        headSha: mustParse(parseGitSha(headSha)),
+        coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" },
+        body: "Body",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toEqual({
+        _tag: "ok",
+        value: { commentId: "PRRC_comment" },
+      });
+      expect(executor.requests).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("degrades the create receipt without upgrading when all read-back attempts are exhausted", async () => {
+    vi.useFakeTimers();
+    try {
+      const restResponse = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
+        stderr: "",
+      };
+      const noMatch = {
+        _tag: "Exited" as const,
+        exitCode: 0,
+        stdout: confirmThreadResponse([]),
+        stderr: "",
+      };
+      const executor = new FakeProcessExecutor([
+        restResponse,
+        noMatch,
+        noMatch,
+        noMatch,
+      ]);
+      const adapter = testAdapter(new CommandRunner(executor));
+      const pending = adapter.createInlineComment({
+        profile,
+        pr,
+        headSha: mustParse(parseGitSha(headSha)),
+        coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" },
+        body: "Body",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toEqual({
+        _tag: "ok",
+        value: { commentId: "PRRC_comment" },
+      });
+      expect(executor.requests).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("proves a review thread target with one bounded node query", async () => {
@@ -2460,7 +2646,7 @@ describe("GitHubAdapter review write boundary", () => {
     });
   });
 
-  it("degrades the create receipt instead of failing when the thread lookup fails", async () => {
+  it("degrades the create receipt instead of failing when the thread read-back hard-fails, and does not retry", async () => {
     const executor = new FakeProcessExecutor([
       {
         _tag: "Exited",
@@ -2480,6 +2666,10 @@ describe("GitHubAdapter review write boundary", () => {
         body: "Body",
       }),
     ).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment" } });
+    // A transport/command error stops the read-back immediately: retrying
+    // against a hard failure is a different problem than eventual
+    // consistency, and the create must not be held hostage to it.
+    expect(executor.requests).toHaveLength(2);
   });
 
   it("merges only through the explicit SHA-pinned GitHub endpoint", async () => {

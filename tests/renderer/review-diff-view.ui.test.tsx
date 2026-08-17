@@ -293,12 +293,90 @@ describe("review diff hydration", () => {
         ).toBeNull(),
       );
       // The published card has the real comment id: Edit and Delete are
-      // reachable, but Reply and Resolve are not, because the REST create
-      // receipt carries no thread id.
+      // reachable, but Reply and Resolve are not, because the read-back did
+      // not confirm a thread id (the fixture's onSave resolves no threadId).
       expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
       expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+      expect(
+        screen.getByText(/Reply and Resolve aren.t available/i),
+      ).toBeTruthy();
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
+    }
+  });
+
+  it("upgrades a published card to full Reply/Resolve controls when the read-back confirms a threadId", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    const onSave = vi.fn(async () => ({
+      commentId: "PRRC_real",
+      threadId: "PRRT_confirmed",
+    }));
+    const patch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const parsed = parseReviewDiff(patch);
+    const user = userEvent.setup();
+    try {
+      render(
+        <ReviewDiffView
+          patch={patch}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath="src/a.ts"
+          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          localCommentAuthoring={{ enabled: true, onSave }}
+          conversationActions={{
+            setThreadState: vi.fn(),
+            replyToThread: vi.fn(),
+          }}
+          virtualized={false}
+        />,
+      );
+      const authorButtons = screen.getAllByRole("button", {
+        name: "Add comment on src/a.ts",
+      });
+      const commentButton = authorButtons.at(-1);
+      if (commentButton === undefined)
+        throw new Error("Expected an inline comment action");
+      commentButton.dataset.lineNumber = "1";
+      commentButton.dataset.lineSide = "additions";
+      await user.click(commentButton);
+      await user.type(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        "Publish this",
+      );
+      await user.click(screen.getByRole("button", { name: "Comment" }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("article", { name: "Publishing conversation" }),
+        ).toBeNull(),
+      );
+      // A confirmed threadId upgrades the card to a full `thread` target in
+      // the same create round trip: Reply and Resolve activate immediately,
+      // and the comment-only fallback copy never appears.
+      expect(screen.getByRole("textbox", { name: "Reply" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Resolve" })).toBeTruthy();
+      expect(
+        screen.queryByText(/Reply and Resolve aren.t available/i),
+      ).toBeNull();
     } finally {
       if (styleSheet?.value !== undefined) {
         delete styleSheet.value.prototype.replaceSync;

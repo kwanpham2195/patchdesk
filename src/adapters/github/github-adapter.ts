@@ -70,6 +70,15 @@ const commandTimeoutMs = 15_000;
 const maxHydratedFileBytes = 512 * 1024;
 const threadQuery =
   "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
+// Reverse pagination confirmed against a live PR (2026-08-17): `reviewThreads`
+// returns oldest-first, and `last`/`before` is schema-valid, so `last: 20`
+// reliably surfaces a just-created thread regardless of how many older
+// threads the PR already has. No `$cursor`/`$id` variable is declared here —
+// matching happens client-side over the returned list (see
+// `confirmPublishedCommentThread`), which is the exact discipline the
+// unused-`$id`-variable defect in commit 2392af8 violated.
+const confirmCreatedCommentThreadQuery =
+  "query ConfirmCreatedCommentThread($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(last: 20) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id body createdAt } } } } } } }";
 // Spike-proven (2026-08-09): every thread comment exposes its owning review
 // and state, which lets the bounded reader prove which threads belong to the
 // viewer's PENDING review without scanning other reviewers' data.
@@ -754,7 +763,11 @@ export interface GitHubReviewWriter {
     readonly body: string;
   }): Promise<
     Result<
-      { readonly commentId: string; readonly reviewId?: string },
+      {
+        readonly commentId: string;
+        readonly reviewId?: string;
+        readonly threadId?: string;
+      },
       GitHubWriteFailure
     >
   >;
@@ -2569,6 +2582,62 @@ export class GitHubAdapter
     });
   }
 
+  /**
+   * Bounded, retried proof that a REST-created comment belongs to a
+   * confirmed, published review thread. Reuses `pendingReviewAfterWrite`'s
+   * discipline (never upgrade without proof) for a published rather than
+   * pending comment: up to 3 attempts (500ms then 1500ms backoff for
+   * eventual consistency), each reading the 20 most-recently-created
+   * threads and matching by comment id equality (the same REST
+   * `node_id`-as-GraphQL-node-id equivalence already relied on by
+   * `getReviewCommentTarget`), with a body match as cheap defense-in-depth.
+   * A transport/command error stops the read-back immediately rather than
+   * retrying a hard failure. Never fabricates an id: returns `undefined`
+   * on any unconfirmed or exhausted outcome, and the caller must not fail
+   * the write over it — the comment was already posted successfully.
+   */
+  private async confirmPublishedCommentThread(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    input: { readonly commentId: string; readonly body: string },
+  ): Promise<GitHubThreadId | undefined> {
+    const backoffsMs = [0, 500, 1500];
+    for (const backoffMs of backoffsMs) {
+      if (backoffMs > 0) await wait(backoffMs);
+      const response = await this.ghJson(profile, {
+        argv: [
+          "gh",
+          "api",
+          "graphql",
+          "--hostname",
+          profile.githubHost,
+          "-f",
+          `query=${confirmCreatedCommentThreadQuery}`,
+          "-F",
+          `owner=${pr.owner}`,
+          "-F",
+          `name=${pr.repo}`,
+          "-F",
+          `number=${pr.number}`,
+        ],
+        timeoutMs: commandTimeoutMs,
+      });
+      if (response._tag === "err") return undefined;
+      const parsed = v.safeParse(threadResponseSchema, response.value);
+      if (!parsed.success) continue;
+      for (const thread of parsed.output.data.repository.pullRequest
+        .reviewThreads.nodes) {
+        const match = thread.comments.nodes.find(
+          (comment) => comment.id === input.commentId,
+        );
+        if (match === undefined || match.body !== input.body) continue;
+        const threadId = parseGitHubThreadId(thread.id);
+        if (threadId._tag === "ok") return threadId.value;
+      }
+    }
+    return undefined;
+  }
+
   async discardPendingReview(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -2602,7 +2671,11 @@ export class GitHubAdapter
     readonly body: string;
   }): Promise<
     Result<
-      { readonly commentId: string; readonly reviewId?: string },
+      {
+        readonly commentId: string;
+        readonly reviewId?: string;
+        readonly threadId?: string;
+      },
       GitHubWriteFailure
     >
   > {
@@ -2640,15 +2713,26 @@ export class GitHubAdapter
       rawReviewId === null || rawReviewId === undefined
         ? undefined
         : String(rawReviewId);
-    // The REST create receipt has no thread id, and a partial thread scan
-    // would be slow and incomplete; Reply and Resolve stay disabled until an
-    // explicit refresh represents the real thread. The comment itself remains
-    // editable and deletable by its authoritative node id.
+    // The REST create receipt has no thread id on its own, so a bounded,
+    // retried read-back (`confirmPublishedCommentThread`) attempts to prove
+    // the published thread this comment landed in, upgrading Reply/Resolve
+    // in the same round trip. A failed or exhausted read-back degrades the
+    // receipt (no `threadId`) instead of failing the write — the comment was
+    // already posted successfully, and the card falls back to an explicit
+    // refresh. The comment itself remains editable and deletable by its
+    // authoritative node id regardless of the read-back's outcome.
     const receipt = { commentId: created.output.node_id };
-    return ok(
+    const withReviewId =
       reviewId === undefined || reviewId.length === 0
         ? receipt
-        : { ...receipt, reviewId },
+        : { ...receipt, reviewId };
+    const threadId = await this.confirmPublishedCommentThread(
+      input.profile,
+      input.pr,
+      { commentId: created.output.node_id, body: input.body },
+    );
+    return ok(
+      threadId === undefined ? withReviewId : { ...withReviewId, threadId },
     );
   }
 
@@ -3221,7 +3305,11 @@ export class FakeGitHubAdapter
     readonly body: string;
   }): Promise<
     Result<
-      { readonly commentId: string; readonly reviewId?: string },
+      {
+        readonly commentId: string;
+        readonly reviewId?: string;
+        readonly threadId?: string;
+      },
       GitHubWriteFailure
     >
   > {
@@ -3560,6 +3648,7 @@ export type FakeGitHubAdapterValues = {
   readonly createInlineComment?: {
     readonly commentId: string;
     readonly reviewId?: string;
+    readonly threadId?: string;
   };
   readonly createThreadReply?: {
     readonly commentId: string;
@@ -4352,6 +4441,11 @@ function missing(
   operation: GitHubReadOperation,
 ): Result<never, GitHubReadFailure> {
   return err({ _tag: "GitHubReadFailed", operation });
+}
+
+/** Backoff delay for `confirmPublishedCommentThread`'s retried read-back. */
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isManagedFetchedRef(value: string): boolean {
