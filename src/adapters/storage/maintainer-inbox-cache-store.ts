@@ -193,6 +193,7 @@ export class MaintainerInboxCacheStore {
 
 /** Parse durable cache values before they become row data in a maintainer-facing API. */
 export function parseMaintainerInboxCache(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON cache I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<MaintainerInboxCache, StorageFailure> {
   const raw = v.safeParse(cacheSchema, input);
@@ -246,6 +247,20 @@ function parseRow(
   const checks = projectChecks(input.checks);
   const summaryState: PullRequestSummary["reviewState"] = input.reviewState;
   const categories: ReadonlyArray<InboxCategory> = input.categories;
+  const additionsField =
+    input.changeStats.additions === undefined
+      ? {}
+      : { additions: input.changeStats.additions };
+  const deletionsField =
+    input.changeStats.deletions === undefined
+      ? {}
+      : { deletions: input.changeStats.deletions };
+  const changedFilesField =
+    input.changeStats.changedFiles === undefined
+      ? {}
+      : { changedFiles: input.changeStats.changedFiles };
+  const latestReviewField =
+    latestReview === undefined ? {} : { latestReview: latestReview.value };
   return ok({
     identity: identity.value,
     title: input.title,
@@ -255,21 +270,11 @@ function parseRow(
     currentHeadSha: currentHeadSha.value,
     isDraft: input.isDraft,
     updatedAt: updatedAt.value,
-    changeStats: {
-      ...(input.changeStats.additions === undefined
-        ? {}
-        : { additions: input.changeStats.additions }),
-      ...(input.changeStats.deletions === undefined
-        ? {}
-        : { deletions: input.changeStats.deletions }),
-      ...(input.changeStats.changedFiles === undefined
-        ? {}
-        : { changedFiles: input.changeStats.changedFiles }),
-    },
+    changeStats: { ...additionsField, ...deletionsField, ...changedFilesField },
     checks,
     reviewState: summaryState,
     mergeability: input.mergeability,
-    ...(latestReview === undefined ? {} : { latestReview: latestReview.value }),
+    ...latestReviewField,
     categories,
     recommendedAction: action.value,
     dataFreshness: input.dataFreshness,
@@ -279,15 +284,18 @@ function parseRow(
 function projectChecks(input: v.InferOutput<typeof checkSchema>): CheckSummary {
   return {
     overall: input.overall,
-    checks: input.checks.map((check) => ({
-      name: check.name,
-      required: check.required,
-      status: check.status,
-      ...(check.conclusion === undefined
-        ? {}
-        : { conclusion: check.conclusion }),
-      ...(check.url === undefined ? {} : { url: check.url }),
-    })),
+    checks: input.checks.map((check) => {
+      const conclusionField =
+        check.conclusion === undefined ? {} : { conclusion: check.conclusion };
+      const urlField = check.url === undefined ? {} : { url: check.url };
+      return {
+        name: check.name,
+        required: check.required,
+        status: check.status,
+        ...conclusionField,
+        ...urlField,
+      };
+    }),
   };
 }
 
