@@ -137,7 +137,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 
 - `review-workbench-controller.ts` is the facade for opening and loading a Review.
 - `review-session-preparation.ts` prepares one immutable session: fetch the PR, fetch the canonical diff, write the patch and prepared context, and create the represented-review worktree. `review-preparation-journal.ts` makes preparation resumable.
-- `review-refresh-service.ts` separates revision refresh from PR reconciliation (ADR-0017).
+- `review-refresh-service.ts` separates revision refresh from PR reconciliation (ADR "Separate PR reconciliation from revision refresh and merge confirmation").
 - `review-workbench-projection.ts` assembles the projection the renderer displays.
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
@@ -160,13 +160,14 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 
 - `github/github-adapter.ts` is the GitHub boundary. It runs the `gh` CLI through `command-runner.ts`, issues bounded REST and GraphQL queries, and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
 - `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell.
+- `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every `gh` call runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory, are never logged or persisted, and reach the child only through its environment.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
 - `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, and others.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.
 - `storage/review-artifact-storage.ts` stores artifacts and quarantines corrupt or unexpected files.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
 - `pi/` holds the model catalogs: the generated catalog and the runtime catalog that the main process consults.
-- `codex/codex-app-server-client.ts` talks to the maintainer's local Codex CLI account (ADR-0016) without reading or persisting its credentials.
+- `codex/codex-app-server-client.ts` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials.
 
 **Architecture Invariant:** adapters are the only layer that performs I/O.
 Nothing else reads a file, spawns a process, or talks to GitHub.
@@ -189,7 +190,7 @@ It re-validates every projection: a 200 response from the API does not mean the 
 
 ### `runtime/flue/`
 
-The isolated model runtime (ADR-0018).
+The isolated model runtime (ADR "Run Flue 2 Insights in Patchdesk-owned one-shot children").
 Each Analysis run or Walkthrough runs in one dedicated one-shot child built on the Flue 2 programmatic Node API.
 
 The parent sends one bounded, strictly parsed invocation through stdin.
@@ -206,9 +207,9 @@ It is analysis guidance, never permission: no shell commands, no GitHub writes, 
 
 ### `docs/adr/`
 
-The architecture decision records, numbered 0001 to 0018.
+The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle (0005), GitHub pending reviews as the one authoritative draft (0014), bounded and non-authoritative model runs (0013), the local Codex CLI account (0016), and one-shot Flue children (0018).
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Flue children, and GitHub calls authenticated as the profile's account.
 
 ### `tests/`
 

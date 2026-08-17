@@ -6,4 +6,4 @@ The workbench always shows when it was last refreshed. It shows **Updates availa
 
 While updates are available, the maintainer can keep reading and editing the local review draft. Patchdesk pauses all GitHub writes until refresh incorporates the newer activity. Refresh preserves the review draft and restores only the write actions allowed by the refreshed state.
 
-For the revised same-revision reconciliation, revision-identity, pending-review, and merge-command rules, see [ADR-0017](0017-separate-pr-reconciliation-from-revision-refresh-and-merge-confirmation.md).
+For the revised same-revision reconciliation, revision-identity, pending-review, and merge-command rules, see the ADR "Separate PR reconciliation from revision refresh and merge confirmation".

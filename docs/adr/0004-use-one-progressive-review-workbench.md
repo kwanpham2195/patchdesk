@@ -1,6 +1,6 @@
 # Use one progressive review workbench
 
-> **Status: Superseded.** The current Review workbench remains progressive, but ADR-0014 removes the local draft dock and obsolete Findings navigation described below.
+> **Status: Superseded.** The current Review workbench remains progressive, but the ADR "Use GitHub pending reviews for Review drafting" removes the local draft dock and obsolete Findings navigation described below.
 
 Patchdesk uses one persistent review workbench across review preparation, insight generation, drafting, publication, and merge. **Files** is the default surface. A current analysis result enriches Files with findings and evidence rather than opening a completed-review destination.
 

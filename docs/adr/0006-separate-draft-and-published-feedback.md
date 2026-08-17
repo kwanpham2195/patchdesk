@@ -1,6 +1,6 @@
 # Separate draft and published feedback
 
-> **Status: Superseded.** ADR-0014 makes GitHub's pending review the only editable draft; Patchdesk no longer keeps a local draft or publication transition.
+> **Status: Superseded.** The ADR "Use GitHub pending reviews for Review drafting" makes GitHub's pending review the only editable draft; Patchdesk no longer keeps a local draft or publication transition.
 
 Patchdesk keeps unpublished Review draft content separate from feedback that GitHub has accepted. After a successful publication, the submitted content leaves the active draft and remains visible as Published feedback. The workbench starts a new empty draft for later commits or discussion.
 
