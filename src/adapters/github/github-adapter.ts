@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import * as v from "valibot";
 
-import type { CommandFailure, CommandRunner } from "./command-runner";
+import type {
+  CommandFailure,
+  CommandRequest,
+  CommandRunner,
+} from "./command-runner";
+import {
+  GitHubCliCredentials,
+  type GitHubCredentials,
+} from "./github-credentials";
 import type {
   CheckRunSummary,
   CheckSummary,
@@ -118,6 +126,69 @@ const publishedCommentSchema = v.array(
     ),
   }),
 );
+
+/** The pull-request identity a thread or comment node carries. */
+const pullRequestIdentitySchema = v.looseObject({
+  number: v.number(),
+  repository: v.looseObject({
+    name: v.string(),
+    owner: v.looseObject({ login: v.string() }),
+  }),
+});
+const reviewThreadTargetSchema = v.looseObject({
+  data: v.looseObject({
+    node: v.nullish(
+      v.looseObject({
+        id: v.string(),
+        comments: v.looseObject({
+          nodes: v.array(
+            v.looseObject({ pullRequest: pullRequestIdentitySchema }),
+          ),
+        }),
+      }),
+    ),
+  }),
+});
+const reviewCommentTargetSchema = v.looseObject({
+  data: v.looseObject({
+    node: v.nullish(
+      v.looseObject({
+        id: v.string(),
+        viewerDidAuthor: v.boolean(),
+        pullRequest: pullRequestIdentitySchema,
+      }),
+    ),
+  }),
+});
+/** Receipt of a REST write whose GraphQL node id the write journal records. */
+const writtenNodeSchema = v.looseObject({ node_id: v.string() });
+/** REST inline-comment receipt: the comment plus the COMMENTED review it submitted. */
+const createdInlineCommentSchema = v.looseObject({
+  node_id: v.string(),
+  pull_request_review_id: v.nullish(v.union([v.string(), v.number()])),
+});
+const addedReviewThreadSchema = v.looseObject({
+  data: v.looseObject({
+    addPullRequestReviewThread: v.looseObject({
+      thread: v.looseObject({
+        id: v.string(),
+        comments: v.looseObject({
+          nodes: v.array(v.looseObject({ id: v.string() })),
+        }),
+      }),
+    }),
+  }),
+});
+const addedThreadReplySchema = v.looseObject({
+  data: v.looseObject({
+    addPullRequestReviewThreadReply: v.looseObject({
+      comment: v.looseObject({
+        id: v.string(),
+        pullRequestReview: v.nullish(v.looseObject({ id: v.string() })),
+      }),
+    }),
+  }),
+});
 
 const repositoryPermissionSchema = v.looseObject({
   permission: v.picklist([
@@ -415,6 +486,19 @@ const maintainerInboxResponseSchema = v.looseObject({
   }),
 });
 
+/** One rollup entry: a CheckRun or a StatusContext, discriminated by `__typename`. */
+const mergePolicyContextSchema = v.looseObject({
+  __typename: v.string(),
+  name: v.optional(v.string()),
+  status: v.optional(v.string()),
+  conclusion: v.optional(v.nullish(v.string())),
+  detailsUrl: v.optional(v.nullish(v.string())),
+  context: v.optional(v.string()),
+  state: v.optional(v.string()),
+  targetUrl: v.optional(v.nullish(v.string())),
+});
+type MergePolicyContext = v.InferOutput<typeof mergePolicyContextSchema>;
+
 const mergePolicyResponseSchema = v.looseObject({
   data: v.looseObject({
     repository: v.looseObject({
@@ -425,6 +509,7 @@ const mergePolicyResponseSchema = v.looseObject({
         baseRefOid: v.string(),
         baseRefName: v.string(),
         mergeable: v.string(),
+        mergeStateStatus: v.nullish(v.string()),
         reviewDecision: v.nullish(v.string()),
         commits: v.looseObject({
           nodes: v.array(
@@ -433,18 +518,7 @@ const mergePolicyResponseSchema = v.looseObject({
                 statusCheckRollup: v.nullish(
                   v.looseObject({
                     contexts: v.looseObject({
-                      nodes: v.array(
-                        v.looseObject({
-                          __typename: v.string(),
-                          name: v.optional(v.string()),
-                          status: v.optional(v.string()),
-                          conclusion: v.optional(v.nullish(v.string())),
-                          detailsUrl: v.optional(v.nullish(v.string())),
-                          context: v.optional(v.string()),
-                          state: v.optional(v.string()),
-                          targetUrl: v.optional(v.nullish(v.string())),
-                        }),
-                      ),
+                      nodes: v.array(mergePolicyContextSchema),
                       pageInfo: v.looseObject({
                         hasNextPage: v.boolean(),
                         endCursor: v.nullish(v.string()),
@@ -459,6 +533,36 @@ const mergePolicyResponseSchema = v.looseObject({
       }),
     }),
   }),
+});
+
+/** A REST review identifier: GitHub sends either a string or a safe integer. */
+const reviewIdSchema = v.union([
+  v.string(),
+  v.pipe(v.number(), v.safeInteger()),
+]);
+/** REST receipt returned by review create and submit calls. */
+const reviewReceiptSchema = v.looseObject({
+  id: reviewIdSchema,
+  state: v.optional(v.string()),
+});
+type ReviewReceipt = v.InferOutput<typeof reviewReceiptSchema>;
+/** REST pull-request payload read only for its merge outcome. */
+const mergeOutcomeSchema = v.looseObject({
+  state: v.string(),
+  merged_at: v.nullish(v.string()),
+  merge_commit_sha: v.nullish(v.string()),
+});
+/** REST merge receipt: GitHub confirms the merge and names its commit. */
+const mergeResultSchema = v.looseObject({
+  merged: v.boolean(),
+  sha: v.nullish(v.string()),
+});
+/** REST receipt of a submitted summary review. */
+const directSummaryReceiptSchema = v.looseObject({
+  id: reviewIdSchema,
+  state: v.string(),
+  commit_id: v.nullish(v.string()),
+  submitted_at: v.nullish(v.string()),
 });
 
 const requiredStatusChecksSchema = v.looseObject({
@@ -871,6 +975,12 @@ type GitHubReadOperation =
   | "get_comment_target"
   | "auth_status";
 
+/** A gh invocation whose account environment the adapter supplies from the profile. */
+type GhCommandRequest = Omit<
+  CommandRequest,
+  "environment" | "inheritEnvironment"
+>;
+
 /**
  * GitHub CLI external adapter. It owns all gh execution and returns parsed, safe projections.
  * Read operations and explicit review writes live in the main process; renderer code never reaches this adapter.
@@ -878,13 +988,55 @@ type GitHubReadOperation =
 export class GitHubAdapter
   implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter
 {
-  constructor(private readonly commands: CommandRunner) {}
+  constructor(
+    private readonly commands: CommandRunner,
+    private readonly credentials: GitHubCredentials = new GitHubCliCredentials(
+      commands,
+    ),
+  ) {}
+
+  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  private async ghJson(
+    profile: WorkspaceProfileConfig,
+    request: GhCommandRequest,
+  ): Promise<Result<unknown, CommandFailure>> {
+    return this.runAsProfileAccount(profile, request, (input) =>
+      this.commands.runJson(input),
+    );
+  }
+
+  /** Run a gh command that returns text as the profile's configured GitHub account. */
+  private async ghText(
+    profile: WorkspaceProfileConfig,
+    request: GhCommandRequest,
+  ): Promise<Result<string, CommandFailure>> {
+    return this.runAsProfileAccount(profile, request, (input) =>
+      this.commands.runText(input),
+    );
+  }
+
+  private async runAsProfileAccount<T>(
+    profile: WorkspaceProfileConfig,
+    request: GhCommandRequest,
+    run: (input: CommandRequest) => Promise<Result<T, CommandFailure>>,
+  ): Promise<Result<T, CommandFailure>> {
+    const environment = await this.credentials.environmentFor(profile);
+    if (environment._tag === "err") return environment;
+    const response = await run({ ...request, environment: environment.value });
+    if (
+      response._tag === "err" &&
+      response.error._tag === "CommandAuthenticationRequired"
+    ) {
+      this.credentials.forget(profile);
+    }
+    return response;
+  }
 
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: PullRequestRef;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -900,8 +1052,10 @@ export class GitHubAdapter
 
     const summaries: Array<PullRequestSummary> = [];
     for (const value of response.value) {
+      const raw = v.safeParse(pullRequestSchema, value);
+      if (!raw.success) return invalid("list_open_prs");
       const summary = parsePullRequest(
-        value,
+        raw.output,
         input.profile.githubHost,
         input.repo.owner,
         input.repo.repo,
@@ -921,7 +1075,7 @@ export class GitHubAdapter
     let cursor: string | undefined;
     let hasNextPage = true;
     for (let page = 0; page < 3 && hasNextPage; page += 1) {
-      const response = await this.commands.runJson({
+      const response = await this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -965,7 +1119,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -978,8 +1132,10 @@ export class GitHubAdapter
     if (response._tag === "err") {
       return commandFailure("get_pr", response.error);
     }
+    const raw = v.safeParse(pullRequestSchema, response.value);
+    if (!raw.success) return invalid("get_pr");
     const parsed = parsePullRequest(
-      response.value,
+      raw.output,
       input.profile.githubHost,
       input.pr.owner,
       input.pr.repo,
@@ -996,7 +1152,7 @@ export class GitHubAdapter
     let cursor: string | undefined;
     let policyPage: MergePolicyPage | undefined;
     for (let page = 0; page < maxMergePolicyPages; page += 1) {
-      const response = await this.commands.runJson({
+      const response = await this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1017,7 +1173,9 @@ export class GitHubAdapter
       });
       if (response._tag === "err")
         return commandFailure("get_merge_policy", response.error);
-      const parsed = parseMergePolicyPage(response.value);
+      const raw = v.safeParse(mergePolicyResponseSchema, response.value);
+      if (!raw.success) return invalid("get_merge_policy");
+      const parsed = parseMergePolicyPage(raw.output);
       if (parsed === undefined) return invalid("get_merge_policy");
       if (
         policyPage !== undefined &&
@@ -1044,7 +1202,7 @@ export class GitHubAdapter
         incompleteMergePolicy(input.pr, policyPage, contexts, "head_mismatch"),
       );
 
-    const required = await this.commands.runJson({
+    const required = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1058,11 +1216,12 @@ export class GitHubAdapter
       return ok(
         incompleteMergePolicy(input.pr, policyPage, contexts, "permission"),
       );
-    const requiredContexts = parseRequiredContexts(required.value);
-    if (requiredContexts === undefined)
+    const rawRequired = v.safeParse(requiredStatusChecksSchema, required.value);
+    if (!rawRequired.success)
       return ok(
         incompleteMergePolicy(input.pr, policyPage, contexts, "mapping"),
       );
+    const requiredContexts = parseRequiredContexts(rawRequired.output);
     return ok(
       completeMergePolicy(input.pr, policyPage, contexts, requiredContexts),
     );
@@ -1072,7 +1231,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1084,7 +1243,8 @@ export class GitHubAdapter
     });
     if (response._tag === "err")
       return commandFailure("get_pr", response.error);
-    return parseMergeOutcome(response.value);
+    const raw = v.safeParse(mergeOutcomeSchema, response.value);
+    return raw.success ? parseMergeOutcome(raw.output) : invalid("get_pr");
   }
 
   async getPullRequestCommits(input: {
@@ -1093,7 +1253,7 @@ export class GitHubAdapter
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
     const current = await this.getPullRequest(input);
     if (current._tag === "err") return current;
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1126,14 +1286,16 @@ export class GitHubAdapter
           : parseGitHubTimestamp(raw.commit.author.date);
       if (sha._tag === "err" || authoredAt._tag === "err")
         return invalid("get_pr_commits");
-      commits.push({
+      const commit = {
         sha: sha.value,
         message: raw.commit.message,
         author: raw.commit.author?.name ?? "ghost",
         authoredAt: authoredAt.value,
-        ...(raw.html_url === undefined ? {} : { url: raw.html_url }),
         isHead: sha.value === current.value.headSha,
-      });
+      };
+      commits.push(
+        raw.html_url === undefined ? commit : { ...commit, url: raw.html_url },
+      );
     }
     commits.sort((left, right) =>
       right.authoredAt.localeCompare(left.authoredAt),
@@ -1154,7 +1316,7 @@ export class GitHubAdapter
       page < maxReviewThreadPages && threads.length < maxReviewThreads;
       page += 1
     ) {
-      const response = await this.commands.runJson({
+      const response = await this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1220,17 +1382,17 @@ export class GitHubAdapter
         if (location !== undefined && comments[0] !== undefined) {
           comments[0] = { ...comments[0], location };
         }
-        threads.push({
+        const thread: GitHubConversationThread = {
           id: threadId.value,
           state: rawThread.isResolved
             ? "resolved"
             : rawThread.isOutdated
               ? "outdated"
-              : "open",
+              : ("open" as const),
           comments: replies.comments,
           complete: replies.complete,
-          ...(location === undefined ? {} : { location }),
-        });
+        };
+        threads.push(location === undefined ? thread : { ...thread, location });
       }
       const pageInfo =
         parsed.output.data.repository.pullRequest.reviewThreads.pageInfo;
@@ -1238,11 +1400,9 @@ export class GitHubAdapter
         return ok({ threads, complete: false, incompleteReason: "pagination" });
       if (!pageInfo.hasNextPage) {
         const complete = threads.every((thread) => thread.complete !== false);
-        return ok({
-          threads,
-          complete,
-          ...(complete ? {} : { incompleteReason: "comment_cap" as const }),
-        });
+        return complete
+          ? ok({ threads, complete })
+          : ok({ threads, complete, incompleteReason: "comment_cap" as const });
       }
       const nextCursor = pageInfo.endCursor;
       if (nextCursor === null || nextCursor === undefined)
@@ -1262,7 +1422,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly threadId: GitHubThreadId;
   }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1277,16 +1437,15 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return missing("get_thread_target");
-    const node = readNode(response.value);
+    const parsed = v.safeParse(reviewThreadTargetSchema, response.value);
     // A missing node, an unexpected node type, or a thread with no first
     // comment is a completed read whose target is simply not a member.
-    if (node === undefined) return ok({ found: false });
-    const threadId = nestedString(node, ["id"]);
-    const commentNodes = nestedArray(node, ["comments", "nodes"]);
-    const comment = commentNodes?.[0];
-    if (threadId !== input.threadId || !isObject(comment))
+    if (!parsed.success) return ok({ found: false });
+    const node = parsed.output.data.node;
+    const comment = node?.comments.nodes[0];
+    if (node?.id !== input.threadId || comment === undefined)
       return ok({ found: false });
-    return matchesPullRequest(comment, input.pr)
+    return matchesPullRequest(comment.pullRequest, input.pr)
       ? ok({ found: true })
       : ok({ found: false });
   }
@@ -1296,7 +1455,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1311,14 +1470,13 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return missing("get_comment_target");
-    const node = readNode(response.value);
-    if (node === undefined) return ok({ found: false });
-    const commentId = nestedString(node, ["id"]);
-    const viewerDidAuthor = nestedBoolean(node, ["viewerDidAuthor"]);
-    if (commentId !== input.commentId || viewerDidAuthor === undefined)
+    const parsed = v.safeParse(reviewCommentTargetSchema, response.value);
+    if (!parsed.success) return ok({ found: false });
+    const node = parsed.output.data.node;
+    if (node === null || node === undefined || node.id !== input.commentId)
       return ok({ found: false });
-    return matchesPullRequest(node, input.pr)
-      ? ok({ found: true, viewerDidAuthor })
+    return matchesPullRequest(node.pullRequest, input.pr)
+      ? ok({ found: true, viewerDidAuthor: node.viewerDidAuthor })
       : ok({ found: false });
   }
 
@@ -1327,7 +1485,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     const [reviews, comments, account] = await Promise.all([
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1337,7 +1495,7 @@ export class GitHubAdapter
         ],
         timeoutMs: commandTimeoutMs,
       }),
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1407,15 +1565,19 @@ export class GitHubAdapter
         event !== "DISMISSED"
       )
         continue;
-      publishedReviews.push({
+      const published: PublishedReview = {
         id: String(review.id),
-        ...(review.node_id === undefined ? {} : { nodeId: review.node_id }),
         author: review.user?.login ?? "ghost",
         body: review.body ?? "",
         event,
         submittedAt: submittedAt.value,
         canDismiss: canDismiss && event !== "DISMISSED",
-      });
+      };
+      publishedReviews.push(
+        review.node_id === undefined
+          ? published
+          : { ...published, nodeId: review.node_id },
+      );
     }
     const publishedComments: PublishedReviewComment[] = [];
     for (const comment of parsedComments.output) {
@@ -1442,31 +1604,43 @@ export class GitHubAdapter
         account._tag === "ok" &&
         account.value.account === input.profile.ghAccount &&
         author === account.value.account;
-      publishedComments.push({
+      let published: PublishedReviewComment = {
         id: String(comment.id),
-        ...(comment.node_id === undefined ? {} : { nodeId: comment.node_id }),
         author,
         body: comment.body,
         createdAt: createdAt.value,
-        ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
-        ...(comment.html_url === undefined ? {} : { url: comment.html_url }),
-        ...(location === undefined ? {} : { location }),
-        ...(comment.pull_request_review_id === undefined ||
-        comment.pull_request_review_id === null
-          ? {}
-          : { reviewId: String(comment.pull_request_review_id) }),
         canEdit: owned && canWrite === true,
         canDelete: owned && canWrite === true,
-      });
+      };
+      if (comment.node_id !== undefined)
+        published = { ...published, nodeId: comment.node_id };
+      if (updatedAt !== undefined)
+        published = { ...published, updatedAt: updatedAt.value };
+      if (comment.html_url !== undefined)
+        published = { ...published, url: comment.html_url };
+      if (location !== undefined) published = { ...published, location };
+      if (
+        comment.pull_request_review_id !== undefined &&
+        comment.pull_request_review_id !== null
+      )
+        published = {
+          ...published,
+          reviewId: String(comment.pull_request_review_id),
+        };
+      publishedComments.push(published);
     }
     const complete =
       parsedReviews.output.length < 100 && parsedComments.output.length < 100;
-    return ok({
+    const feedback = {
       reviews: publishedReviews,
       comments: publishedComments,
       complete,
-      ...(complete ? {} : { incompleteReason: "pagination" as const }),
-    });
+    };
+    return ok(
+      complete
+        ? feedback
+        : { ...feedback, incompleteReason: "pagination" as const },
+    );
   }
 
   async getRepositoryPermission(input: {
@@ -1474,7 +1648,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly account: string;
   }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1504,7 +1678,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1538,7 +1712,7 @@ export class GitHubAdapter
     readonly branch: string;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
     const [branchProtection, appliedRuleset] = await Promise.all([
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1548,7 +1722,7 @@ export class GitHubAdapter
         ],
         timeoutMs: commandTimeoutMs,
       }),
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1588,7 +1762,7 @@ export class GitHubAdapter
       page += 1
     ) {
       if (cursor === null) return { comments, complete: false };
-      const response = await this.commands.runJson({
+      const response = await this.ghJson(profile, {
         argv: [
           "gh",
           "api",
@@ -1625,7 +1799,7 @@ export class GitHubAdapter
     readonly headSha: GitSha;
   }): Promise<Result<CheckSummary, GitHubReadFailure>> {
     const [checkRunsResponse, statusesResponse] = await Promise.all([
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1635,7 +1809,7 @@ export class GitHubAdapter
         ],
         timeoutMs: commandTimeoutMs,
       }),
-      this.commands.runJson({
+      this.ghJson(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1698,7 +1872,7 @@ export class GitHubAdapter
     }
 
     if (input.snapshot !== undefined) {
-      const exact = await this.commands.runText({
+      const exact = await this.ghText(input.profile, {
         argv: [
           "gh",
           "api",
@@ -1715,7 +1889,7 @@ export class GitHubAdapter
         : commandFailure("get_diff", exact.error);
     }
 
-    const response = await this.commands.runText({
+    const response = await this.ghText(input.profile, {
       argv: [
         "gh",
         "pr",
@@ -1747,7 +1921,7 @@ export class GitHubAdapter
       .split("/")
       .map((segment) => encodeURIComponent(segment))
       .join("/");
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1785,7 +1959,7 @@ export class GitHubAdapter
   async resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
-    const response = await this.commands.runText({
+    const response = await this.ghText(profile, {
       // `gh auth status` exits nonzero if any stale, inactive account is
       // invalid, even when the configured active account can make API calls.
       // Ask GitHub who this invocation can actually authenticate as instead.
@@ -1830,7 +2004,7 @@ export class GitHubAdapter
         category: "rejected",
         message: "No review content is selected.",
       });
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1850,7 +2024,10 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
-    const pending = parsePendingReview(response.value);
+    const receipt = v.safeParse(reviewReceiptSchema, response.value);
+    const pending = receipt.success
+      ? parsePendingReview(receipt.output)
+      : undefined;
     return pending === undefined
       ? err({
           _tag: "GitHubWriteFailure",
@@ -1867,7 +2044,7 @@ export class GitHubAdapter
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1883,7 +2060,10 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
-    const reviewId = parseReviewId(response.value);
+    const submitted = v.safeParse(reviewReceiptSchema, response.value);
+    const reviewId = submitted.success
+      ? parseReviewId(submitted.output.id)
+      : undefined;
     return reviewId === undefined
       ? err({
           _tag: "GitHubWriteFailure",
@@ -1900,7 +2080,7 @@ export class GitHubAdapter
     readonly event: GitHubReviewEvent;
     readonly body: string;
   }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1921,7 +2101,10 @@ export class GitHubAdapter
     });
     if (response._tag === "err")
       return err(directSummaryWriteFailure(response.error));
-    const receipt = parseDirectSummaryReceipt(response.value, input.event);
+    const raw = v.safeParse(directSummaryReceiptSchema, response.value);
+    const receipt = raw.success
+      ? parseDirectSummaryReceipt(raw.output, input.event)
+      : undefined;
     return receipt === undefined
       ? err({
           _tag: "GitHubWriteFailure",
@@ -1944,7 +2127,7 @@ export class GitHubAdapter
       GitHubReadFailure
     >
   > {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -1998,7 +2181,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
-    const reviews = await this.commands.runJson({
+    const reviews = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2026,7 +2209,7 @@ export class GitHubAdapter
     if (pending.length > 1) return invalid("get_pending_review");
     const rawReview = pending[0];
     if (rawReview === undefined) return invalid("get_pending_review");
-    const restId = parseReviewId(rawReview);
+    const restId = parseReviewId(rawReview.id);
     const nodeId = rawReview.node_id;
     const commitId = rawReview.commit_id;
     const parsedRestId =
@@ -2049,7 +2232,7 @@ export class GitHubAdapter
       return invalid("get_pending_review");
     }
 
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2144,7 +2327,7 @@ export class GitHubAdapter
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    const created = await this.commands.runJson({
+    const created = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2164,9 +2347,12 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (created._tag === "err") return err(writeFailure(created.error));
-    const pending = parsePendingReview(created.value);
-    const nodeId = nestedString(created.value, ["node_id"]);
-    if (pending === undefined || nodeId === undefined) {
+    const receipt = v.safeParse(reviewReceiptSchema, created.value);
+    const pending = receipt.success
+      ? parsePendingReview(receipt.output)
+      : undefined;
+    const written = v.safeParse(writtenNodeSchema, created.value);
+    if (pending === undefined || !written.success) {
       return err({
         _tag: "GitHubWriteFailure",
         category: "unavailable",
@@ -2178,7 +2364,7 @@ export class GitHubAdapter
     // confirmed remote create unreconciled rather than inventing identities.
     return this.pendingReviewAfterWrite(input.profile, input.pr, {
       restId: pending.reviewId,
-      nodeId,
+      nodeId: written.output.node_id,
       anchor: input.anchor,
       body: input.body,
     });
@@ -2196,7 +2382,7 @@ export class GitHubAdapter
     // has no pageInfo field, and GitHub rejects the mutation at schema
     // validation before executing it. The read-back never runs in that case.
     const appendQuery = `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
-    const appended = await this.commands.runJson({
+    const appended = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2217,22 +2403,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (appended._tag === "err") return err(writeFailure(appended.error));
-    const threadId = nestedString(appended.value, [
-      "data",
-      "addPullRequestReviewThread",
-      "thread",
-      "id",
-    ]);
-    const commentId = nestedString(appended.value, [
-      "data",
-      "addPullRequestReviewThread",
-      "thread",
-      "comments",
-      "nodes",
-      "0",
-      "id",
-    ]);
-    if (threadId === undefined || commentId === undefined) {
+    const added = v.safeParse(addedReviewThreadSchema, appended.value);
+    const thread = added.success
+      ? added.output.data.addPullRequestReviewThread.thread
+      : undefined;
+    if (thread === undefined || thread.comments.nodes[0] === undefined) {
       return err({
         _tag: "GitHubWriteFailure",
         category: "unavailable",
@@ -2241,7 +2416,7 @@ export class GitHubAdapter
     }
     return this.pendingReviewAfterWrite(input.profile, input.pr, {
       nodeId: input.reviewId,
-      createdThreadId: threadId,
+      createdThreadId: thread.id,
     });
   }
 
@@ -2339,7 +2514,7 @@ export class GitHubAdapter
     // uses runText: any exit-0 response is the confirmed absence receipt, and
     // GitHub's HTTP error exits classify as typed failures. Never retried by
     // the caller; a timeout is an unavailable outcome.
-    const response = await this.commands.runText({
+    const response = await this.ghText(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2367,7 +2542,7 @@ export class GitHubAdapter
       GitHubWriteFailure
     >
   > {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2387,32 +2562,30 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
-    const id = nestedString(response.value, ["node_id"]);
-    if (id === undefined)
+    const created = v.safeParse(createdInlineCommentSchema, response.value);
+    if (!created.success)
       return err({
         _tag: "GitHubWriteFailure",
         category: "unavailable",
         message: "GitHub did not return an inline comment ID.",
       });
-    // A create submits a COMMENTED review of its own; its numeric id lets the
-    // write journal exclude that review from update detection.
-    const rawReviewId = (response.value as Record<string, unknown>)[
-      "pull_request_review_id"
-    ];
+    // A create submits a COMMENTED review of its own; its id lets the write
+    // journal exclude that review from update detection.
+    const rawReviewId = created.output.pull_request_review_id;
     const reviewId =
-      typeof rawReviewId === "number" || typeof rawReviewId === "string"
-        ? String(rawReviewId)
-        : undefined;
+      rawReviewId === null || rawReviewId === undefined
+        ? undefined
+        : String(rawReviewId);
     // The REST create receipt has no thread id, and a partial thread scan
     // would be slow and incomplete; Reply and Resolve stay disabled until an
     // explicit refresh represents the real thread. The comment itself remains
     // editable and deletable by its authoritative node id.
-    return ok({
-      commentId: id,
-      ...(typeof reviewId === "string" && reviewId.length > 0
-        ? { reviewId }
-        : {}),
-    });
+    const receipt = { commentId: created.output.node_id };
+    return ok(
+      reviewId === undefined || reviewId.length === 0
+        ? receipt
+        : { ...receipt, reviewId },
+    );
   }
 
   async createThreadReply(input: {
@@ -2425,7 +2598,7 @@ export class GitHubAdapter
       GitHubWriteFailure
     >
   > {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2442,13 +2615,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
-    const commentId = nestedString(response.value, [
-      "data",
-      "addPullRequestReviewThreadReply",
-      "comment",
-      "id",
-    ]);
-    if (typeof commentId !== "string" || commentId.length === 0)
+    const replied = v.safeParse(addedThreadReplySchema, response.value);
+    const comment = replied.success
+      ? replied.output.data.addPullRequestReviewThreadReply.comment
+      : undefined;
+    if (comment === undefined || comment.id.length === 0)
       return err({
         _tag: "GitHubWriteFailure",
         category: "unavailable",
@@ -2456,19 +2627,13 @@ export class GitHubAdapter
       });
     // A reply also submits its own COMMENTED review; expose it so the write
     // journal can exclude it from update detection.
-    const reviewId = nestedString(response.value, [
-      "data",
-      "addPullRequestReviewThreadReply",
-      "comment",
-      "pullRequestReview",
-      "id",
-    ]);
-    return ok({
-      commentId,
-      ...(typeof reviewId === "string" && reviewId.length > 0
-        ? { reviewId }
-        : {}),
-    });
+    const reviewId = comment.pullRequestReview?.id;
+    const receipt = { commentId: comment.id };
+    return ok(
+      reviewId === undefined || reviewId.length === 0
+        ? receipt
+        : { ...receipt, reviewId },
+    );
   }
 
   async setReviewThreadState(input: {
@@ -2480,7 +2645,7 @@ export class GitHubAdapter
       input.state === "resolved"
         ? "resolveReviewThread"
         : "unresolveReviewThread";
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2504,7 +2669,7 @@ export class GitHubAdapter
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2529,7 +2694,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2554,7 +2719,7 @@ export class GitHubAdapter
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2579,7 +2744,7 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2602,7 +2767,7 @@ export class GitHubAdapter
     readonly reviewId: string;
     readonly message: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2630,7 +2795,7 @@ export class GitHubAdapter
   }): Promise<
     Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>
   > {
-    const response = await this.commands.runJson({
+    const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
         "api",
@@ -2646,18 +2811,16 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
-    if (
-      typeof response.value !== "object" ||
-      response.value === null ||
-      (response.value as { readonly merged?: unknown }).merged !== true
-    )
+    const merge = v.safeParse(mergeResultSchema, response.value);
+    if (!merge.success || !merge.output.merged)
       return err({
         _tag: "GitHubWriteFailure",
         category: "unavailable",
         message: "GitHub did not confirm the merge.",
       });
-    const rawSha = (response.value as { readonly sha?: unknown }).sha;
-    const sha = rawSha === undefined ? undefined : parseGitSha(rawSha);
+    const rawSha = merge.output.sha;
+    const sha =
+      rawSha === undefined || rawSha === null ? undefined : parseGitSha(rawSha);
     return sha !== undefined && sha._tag === "err"
       ? err({
           _tag: "GitHubWriteFailure",
@@ -2752,6 +2915,15 @@ export class GitHubAdapter
       if (thread.location !== undefined) continue;
       entries.push({ _tag: "GeneralThread" as const, thread });
     }
+    let inline: GitHubComments = {
+      threads: comments.threads.filter(
+        (thread) => thread.location !== undefined,
+      ),
+    };
+    if (comments.complete !== undefined)
+      inline = { ...inline, complete: comments.complete };
+    if (comments.incompleteReason !== undefined)
+      inline = { ...inline, incompleteReason: comments.incompleteReason };
     entries.sort((a, b) => {
       const at =
         a._tag === "ReviewSummary"
@@ -2774,17 +2946,7 @@ export class GitHubAdapter
     return {
       prDescription,
       entries,
-      inline: {
-        threads: comments.threads.filter(
-          (thread) => thread.location !== undefined,
-        ),
-        ...(comments.complete === undefined
-          ? {}
-          : { complete: comments.complete }),
-        ...(comments.incompleteReason === undefined
-          ? {}
-          : { incompleteReason: comments.incompleteReason }),
-      },
+      inline,
       complete: feedback.complete !== false && comments.complete !== false,
     };
   }
@@ -2843,12 +3005,9 @@ export class FakeGitHubAdapter
       return ok(this.values.mergePolicy);
     const current = await this.getPullRequest(input);
     if (current._tag === "err") return current;
-    return ok({
+    let policy: MergePolicySnapshot = {
       pr: input.pr,
       headSha: current.value.headSha,
-      ...(current.value.baseSha === undefined
-        ? {}
-        : { baseSha: current.value.baseSha }),
       isOpen: current.value.isOpen,
       isDraft: current.value.isDraft,
       mergeability: current.value.mergeability,
@@ -2867,10 +3026,12 @@ export class FakeGitHubAdapter
         current.value.reviewState !== "none" &&
         current.value.reviewState !== "unknown" &&
         this.values.checks !== undefined,
-      ...(current.value.headSha === input.expectedHeadSha
-        ? {}
-        : { incompleteReason: "head_mismatch" }),
-    });
+    };
+    if (current.value.baseSha !== undefined)
+      policy = { ...policy, baseSha: current.value.baseSha };
+    if (current.value.headSha !== input.expectedHeadSha)
+      policy = { ...policy, incompleteReason: "head_mismatch" };
+    return ok(policy);
   }
 
   async getMergePolicyEvidence(input: {
@@ -3365,14 +3526,13 @@ function parseMaintainerPullRequest(
     updatedAt._tag === "err"
   )
     return err({ _tag: "Invalid" });
-  const summary: PullRequestSummary = {
+  let summary: PullRequestSummary = {
     ref: { host, owner, repo, number: number.value },
     title: input.title,
     author: input.author?.login ?? "ghost",
     headBranch: input.headRefName,
     baseBranch: input.baseRefName,
     headSha: headSha.value,
-    ...(baseSha === undefined ? {} : { baseSha: baseSha.value }),
     isDraft: input.isDraft,
     isOpen: true,
     reviewState: mapReviewDecision(input.reviewDecision),
@@ -3389,27 +3549,21 @@ function parseMaintainerPullRequest(
     deletions: input.deletions,
     changedFileCount: input.changedFiles,
   };
+  if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };
   const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
   return ok({ summary, checks: rollupCheckSummary(rollup) });
 }
 
 function parseMergeOutcome(
-  input: unknown,
+  raw: v.InferOutput<typeof mergeOutcomeSchema>,
 ): Result<MergeOutcome, GitHubReadFailure> {
-  if (typeof input !== "object" || input === null || Array.isArray(input))
-    return invalid("get_pr");
-  const state = "state" in input ? input.state : undefined;
-  if (state === "open") return ok({ state: "open" });
-  if (state !== "closed") return invalid("get_pr");
-  const mergedAt = "merged_at" in input ? input.merged_at : undefined;
+  if (raw.state === "open") return ok({ state: "open" });
+  if (raw.state !== "closed") return invalid("get_pr");
+  const mergedAt = raw.merged_at;
   if (mergedAt === null || mergedAt === undefined)
     return ok({ state: "closed_unmerged" });
-  const parsedMergedAt =
-    typeof mergedAt === "string"
-      ? parseGitHubTimestamp(mergedAt)
-      : parseIsoTimestamp(mergedAt);
-  const mergeCommitSha =
-    "merge_commit_sha" in input ? input.merge_commit_sha : undefined;
+  const parsedMergedAt = parseGitHubTimestamp(mergedAt);
+  const mergeCommitSha = raw.merge_commit_sha;
   const parsedCommit =
     mergeCommitSha === null || mergeCommitSha === undefined
       ? undefined
@@ -3419,71 +3573,12 @@ function parseMergeOutcome(
     (parsedCommit !== undefined && parsedCommit._tag === "err")
   )
     return invalid("get_pr");
-  return ok({
-    state: "merged",
-    mergedAt: parsedMergedAt.value,
-    ...(parsedCommit === undefined
-      ? {}
-      : { mergeCommitSha: parsedCommit.value }),
-  });
-}
-
-function isObject(input: unknown): input is Record<string, unknown> {
-  return typeof input === "object" && input !== null;
-}
-
-function nestedString(
-  input: unknown,
-  keys: ReadonlyArray<string>,
-): string | undefined {
-  let value: unknown = input;
-  for (const key of keys) {
-    if (!isObject(value)) return undefined;
-    value = value[key];
-  }
-  return typeof value === "string" ? value : undefined;
-}
-
-function nestedArray(
-  input: unknown,
-  keys: ReadonlyArray<string>,
-): ReadonlyArray<unknown> | undefined {
-  let value: unknown = input;
-  for (const key of keys) {
-    if (!isObject(value)) return undefined;
-    value = value[key];
-  }
-  return Array.isArray(value) ? value : undefined;
-}
-
-function nestedObject(
-  input: unknown,
-  keys: ReadonlyArray<string>,
-): Record<string, unknown> | undefined {
-  let value: unknown = input;
-  for (const key of keys) {
-    if (!isObject(value)) return undefined;
-    value = value[key];
-  }
-  return isObject(value) ? value : undefined;
-}
-
-function nestedBoolean(
-  input: unknown,
-  keys: ReadonlyArray<string>,
-): boolean | undefined {
-  let value: unknown = input;
-  for (const key of keys) {
-    if (!isObject(value)) return undefined;
-    value = value[key];
-  }
-  return typeof value === "boolean" ? value : undefined;
-}
-
-/** The `data.node` payload of a single-node query; undefined when GitHub returned a null or missing node. */
-function readNode(input: unknown): Record<string, unknown> | undefined {
-  const node = nestedObject(input, ["data", "node"]);
-  return node === undefined ? undefined : node;
+  const merged = { state: "merged" as const, mergedAt: parsedMergedAt.value };
+  return ok(
+    parsedCommit === undefined
+      ? merged
+      : { ...merged, mergeCommitSha: parsedCommit.value },
+  );
 }
 
 /**
@@ -3492,35 +3587,19 @@ function readNode(input: unknown): Record<string, unknown> | undefined {
  * adapter resolves the comparison so a foreign target is never disclosed.
  */
 function matchesPullRequest(
-  node: Record<string, unknown>,
+  identity: v.InferOutput<typeof pullRequestIdentitySchema>,
   pr: PullRequestRef,
 ): boolean {
-  const owner = nestedString(node, [
-    "pullRequest",
-    "repository",
-    "owner",
-    "login",
-  ]);
-  const name = nestedString(node, ["pullRequest", "repository", "name"]);
-  const number = nestedNumber(node, ["pullRequest", "number"]);
-  return owner === pr.owner && name === pr.repo && number === pr.number;
+  return (
+    identity.repository.owner.login === pr.owner &&
+    identity.repository.name === pr.repo &&
+    identity.number === pr.number
+  );
 }
 
 /** Fixture counterpart of `matchesPullRequest`: identical membership semantics. */
 function samePullRequest(a: PullRequestRef, b: PullRequestRef): boolean {
   return a.owner === b.owner && a.repo === b.repo && a.number === b.number;
-}
-
-function nestedNumber(
-  input: unknown,
-  keys: ReadonlyArray<string>,
-): number | undefined {
-  let value: unknown = input;
-  for (const key of keys) {
-    if (!isObject(value)) return undefined;
-    value = value[key];
-  }
-  return typeof value === "number" ? value : undefined;
 }
 
 function mapReviewDecision(
@@ -3556,10 +3635,10 @@ function rollupCheckSummary(value: string | undefined): CheckSummary {
   }
 }
 
-function parseMergePolicyPage(input: unknown): MergePolicyPage | undefined {
-  const parsed = v.safeParse(mergePolicyResponseSchema, input);
-  if (!parsed.success) return undefined;
-  const pullRequest = parsed.output.data.repository.pullRequest;
+function parseMergePolicyPage(
+  raw: v.InferOutput<typeof mergePolicyResponseSchema>,
+): MergePolicyPage | undefined {
+  const pullRequest = raw.data.repository.pullRequest;
   const headSha = parseGitSha(pullRequest.headRefOid);
   const baseSha = parseGitSha(pullRequest.baseRefOid);
   const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup;
@@ -3576,7 +3655,7 @@ function parseMergePolicyPage(input: unknown): MergePolicyPage | undefined {
     if (summary === undefined) return undefined;
     contexts.push(summary);
   }
-  return {
+  const page = {
     headSha: headSha.value,
     baseSha: baseSha.value,
     baseBranch: pullRequest.baseRefName,
@@ -3587,75 +3666,69 @@ function parseMergePolicyPage(input: unknown): MergePolicyPage | undefined {
     reviewDecision: mapMergePolicyReviewDecision(pullRequest.reviewDecision),
     contexts,
     hasNextPage: rollup.contexts.pageInfo.hasNextPage,
-    ...(typeof rollup.contexts.pageInfo.endCursor === "string"
-      ? { endCursor: rollup.contexts.pageInfo.endCursor }
-      : {}),
   };
+  const endCursor = rollup.contexts.pageInfo.endCursor ?? undefined;
+  return endCursor === undefined ? page : { ...page, endCursor };
 }
 
-function parsePolicyContext(input: unknown): CheckRunSummary | undefined {
-  if (!isObject(input) || typeof input.__typename !== "string")
-    return undefined;
-  const name = typeof input.name === "string" ? input.name : undefined;
-  const status = typeof input.status === "string" ? input.status : undefined;
+function parsePolicyContext(
+  input: MergePolicyContext,
+): CheckRunSummary | undefined {
+  const { name, status } = input;
   if (
     input.__typename === "CheckRun" &&
     name !== undefined &&
     status !== undefined
   ) {
-    const conclusion = mapCheckConclusion(
-      typeof input.conclusion === "string"
-        ? input.conclusion.toLowerCase()
-        : undefined,
-    );
-    const url =
-      typeof input.detailsUrl === "string" ? input.detailsUrl : undefined;
-    return {
+    const conclusion = mapCheckConclusion(input.conclusion?.toLowerCase());
+    const check = {
       name,
-      required: "unknown",
+      required: "unknown" as const,
       status: mapCheckStatus(status.toLowerCase()),
-      ...(conclusion === undefined ? {} : { conclusion }),
-      ...(url === undefined ? {} : { url }),
     };
+    const concluded =
+      conclusion === undefined ? check : { ...check, conclusion };
+    const url = input.detailsUrl ?? undefined;
+    return url === undefined ? concluded : { ...concluded, url };
   }
-  const context = typeof input.context === "string" ? input.context : undefined;
-  const stateValue = typeof input.state === "string" ? input.state : undefined;
+  const { context, state: rawState } = input;
   if (
     input.__typename === "StatusContext" &&
     context !== undefined &&
-    stateValue !== undefined
+    rawState !== undefined
   ) {
-    const state = stateValue.toLowerCase();
-    const url =
-      typeof input.targetUrl === "string" ? input.targetUrl : undefined;
-    return {
+    const state = rawState.toLowerCase();
+    const statusContext = {
       name: context,
-      required: "unknown",
+      required: "unknown" as const,
       status:
         state === "pending" || state === "expected"
-          ? "in_progress"
-          : "completed",
-      ...(state === "success"
-        ? { conclusion: "success" as const }
-        : state === "failure" || state === "error"
-          ? { conclusion: "failure" as const }
-          : {}),
-      ...(url === undefined ? {} : { url }),
+          ? ("in_progress" as const)
+          : ("completed" as const),
     };
+    const conclusion =
+      state === "success"
+        ? ("success" as const)
+        : state === "failure" || state === "error"
+          ? ("failure" as const)
+          : undefined;
+    const concluded =
+      conclusion === undefined
+        ? statusContext
+        : { ...statusContext, conclusion };
+    const url = input.targetUrl ?? undefined;
+    return url === undefined ? concluded : { ...concluded, url };
   }
   return undefined;
 }
 
 function parseRequiredContexts(
-  input: unknown,
-): ReadonlySet<string> | undefined {
-  const parsed = v.safeParse(requiredStatusChecksSchema, input);
-  if (!parsed.success) return undefined;
-  const values = [
-    ...(parsed.output.contexts ?? []),
-    ...(parsed.output.checks ?? []).map((check) => check.context),
-  ];
-  return new Set(values);
+  raw: v.InferOutput<typeof requiredStatusChecksSchema>,
+): ReadonlySet<string> {
+  return new Set([
+    ...(raw.contexts ?? []),
+    ...(raw.checks ?? []).map((check) => check.context),
+  ]);
 }
 
 function completeMergePolicy(
@@ -3720,7 +3793,9 @@ function mapMergePolicyReviewDecision(
   return "unknown";
 }
 
-function mapMergeStateStatus(value: unknown): GitHubMergeStateStatus {
+function mapMergeStateStatus(
+  value: string | null | undefined,
+): GitHubMergeStateStatus {
   switch (value) {
     case "BLOCKED":
       return "blocked";
@@ -3745,15 +3820,14 @@ function mapMergeStateStatus(value: unknown): GitHubMergeStateStatus {
 }
 
 function parsePullRequest(
-  input: unknown,
+  raw: v.InferOutput<typeof pullRequestSchema>,
   host: GitHubHost,
   owner: GitHubOwner,
   repo: GitHubRepoName,
 ):
   | Result<PullRequestSummary, never>
   | Result<never, { readonly _tag: "Invalid" }> {
-  const parsed = v.safeParse(pullRequestSchema, input);
-  if (!parsed.success) return err({ _tag: "Invalid" });
+  const parsed = { output: raw };
   const number = parsePullRequestNumber(parsed.output.number);
   const headSha = parseGitSha(parsed.output.head.sha);
   const baseSha =
@@ -3769,45 +3843,41 @@ function parsePullRequest(
   )
     return err({ _tag: "Invalid" });
 
-  const summary: PullRequestSummary = {
+  let summary: PullRequestSummary = {
     ref: { host, owner, repo, number: number.value },
     title: parsed.output.title,
-    ...(parsed.output.body === undefined || parsed.output.body === null
-      ? {}
-      : { description: parsed.output.body }),
     author: parsed.output.user.login,
     headBranch: parsed.output.head.ref,
     baseBranch: parsed.output.base.ref,
     headSha: headSha.value,
-    ...(baseSha === undefined ? {} : { baseSha: baseSha.value }),
     isDraft: parsed.output.draft,
     isOpen: parsed.output.state === "open",
     reviewState: "unknown",
     mergeability: mapMergeability(parsed.output.mergeable_state),
     labels: (parsed.output.labels ?? []).map((label) => label.name),
-    ...(parsed.output.requested_reviewers === undefined
-      ? {}
-      : {
-          requestedReviewers: parsed.output.requested_reviewers.map(
-            (reviewer) => reviewer.login,
-          ),
-        }),
-    ...(parsed.output.assignees === undefined
-      ? {}
-      : {
-          assignees: parsed.output.assignees.map((assignee) => assignee.login),
-        }),
     updatedAt: updatedAt.value,
-    ...(parsed.output.changed_files === undefined
-      ? {}
-      : { changedFileCount: parsed.output.changed_files }),
-    ...(parsed.output.additions === undefined
-      ? {}
-      : { additions: parsed.output.additions }),
-    ...(parsed.output.deletions === undefined
-      ? {}
-      : { deletions: parsed.output.deletions }),
   };
+  const description = parsed.output.body ?? undefined;
+  if (description !== undefined) summary = { ...summary, description };
+  if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };
+  const requestedReviewers = parsed.output.requested_reviewers;
+  if (requestedReviewers !== undefined)
+    summary = {
+      ...summary,
+      requestedReviewers: requestedReviewers.map((reviewer) => reviewer.login),
+    };
+  const assignees = parsed.output.assignees;
+  if (assignees !== undefined)
+    summary = {
+      ...summary,
+      assignees: assignees.map((assignee) => assignee.login),
+    };
+  if (parsed.output.changed_files !== undefined)
+    summary = { ...summary, changedFileCount: parsed.output.changed_files };
+  if (parsed.output.additions !== undefined)
+    summary = { ...summary, additions: parsed.output.additions };
+  if (parsed.output.deletions !== undefined)
+    summary = { ...summary, deletions: parsed.output.deletions };
   return ok(summary);
 }
 
@@ -3835,20 +3905,19 @@ function parseComment(
     undefined,
     undefined,
   );
-  const comment: GitHubComment = {
+  let comment: GitHubComment = {
     id: input.id,
     author: input.author?.login ?? "ghost",
     body: input.body,
     createdAt: createdAt.value,
-    ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
-    ...(input.url === null || input.url === undefined
-      ? {}
-      : { url: input.url }),
-    ...(location === undefined ? {} : { location }),
-    ...(input.viewerDidAuthor === undefined
-      ? {}
-      : { viewerDidAuthor: input.viewerDidAuthor }),
   };
+  if (updatedAt !== undefined)
+    comment = { ...comment, updatedAt: updatedAt.value };
+  const url = input.url ?? undefined;
+  if (url !== undefined) comment = { ...comment, url };
+  if (location !== undefined) comment = { ...comment, location };
+  if (input.viewerDidAuthor !== undefined)
+    comment = { ...comment, viewerDidAuthor: input.viewerDidAuthor };
   return ok(comment);
 }
 
@@ -3872,58 +3941,58 @@ function parseLocation(
   // GitHub reports single-line LEFT-side threads with a phantom startLine of
   // line + 1 (the range is degenerate, not inverted); normalizing it keeps the
   // thread anchored to the single old-side line it was created on.
-  return {
-    path: parsedPath.value,
-    ...(selectedLine === undefined
-      ? {}
-      : startLine === null || startLine === undefined
-        ? { line: selectedLine }
-        : startLine > selectedLine
-          ? { line: selectedLine }
-          : { line: startLine, lineEnd: selectedLine }),
-    ...(diffSide === "RIGHT"
-      ? { diffSide: "new" as const }
+  let location: GitHubComment["location"] = { path: parsedPath.value };
+  if (selectedLine !== undefined) {
+    location =
+      startLine === null || startLine === undefined || startLine > selectedLine
+        ? { ...location, line: selectedLine }
+        : { ...location, line: startLine, lineEnd: selectedLine };
+  }
+  const side =
+    diffSide === "RIGHT" || (diffSide !== "LEFT" && startSide === "RIGHT")
+      ? ("new" as const)
       : diffSide === "LEFT" || startSide === "LEFT"
-        ? { diffSide: "old" as const }
-        : startSide === "RIGHT"
-          ? { diffSide: "new" as const }
-          : {}),
-  };
+        ? ("old" as const)
+        : undefined;
+  return side === undefined ? location : { ...location, diffSide: side };
 }
 
 function toCheckRunSummary(
   input: v.InferOutput<typeof checkRunsSchema>["check_runs"][number],
 ): CheckRunSummary {
   const conclusion = mapCheckConclusion(input.conclusion);
-  return {
+  const check = {
     name: input.name,
-    required: "unknown",
+    required: "unknown" as const,
     status: mapCheckStatus(input.status),
-    ...(conclusion === undefined ? {} : { conclusion }),
-    ...(input.details_url === null || input.details_url === undefined
-      ? {}
-      : { url: input.details_url }),
   };
+  const concluded = conclusion === undefined ? check : { ...check, conclusion };
+  const url = input.details_url ?? undefined;
+  return url === undefined ? concluded : { ...concluded, url };
 }
 
 function toCommitStatusSummary(
   input: v.InferOutput<typeof commitStatusesSchema>["statuses"][number],
 ): CheckRunSummary {
   const state = input.state.toLowerCase();
-  return {
+  const status = {
     name: input.context,
-    required: "unknown",
+    required: "unknown" as const,
     status:
-      state === "pending" || state === "expected" ? "in_progress" : "completed",
-    ...(state === "success"
-      ? { conclusion: "success" as const }
-      : state === "failure" || state === "error"
-        ? { conclusion: "failure" as const }
-        : {}),
-    ...(input.target_url === null || input.target_url === undefined
-      ? {}
-      : { url: input.target_url }),
+      state === "pending" || state === "expected"
+        ? ("in_progress" as const)
+        : ("completed" as const),
   };
+  const conclusion =
+    state === "success"
+      ? ("success" as const)
+      : state === "failure" || state === "error"
+        ? ("failure" as const)
+        : undefined;
+  const concluded =
+    conclusion === undefined ? status : { ...status, conclusion };
+  const url = input.target_url ?? undefined;
+  return url === undefined ? concluded : { ...concluded, url };
 }
 
 function mapMergeability(
@@ -4021,30 +4090,30 @@ function parseOptionalPolicyResponse(
     );
     if (!parsed.success) return invalid("get_merge_policy_evidence");
     const reviews = parsed.output.required_pull_request_reviews;
-    const value: GitHubClassicBranchProtectionEvidence =
-      reviews === null
-        ? {}
-        : {
-            // GitHub reports zero when no approval policy is configured. It is
-            // not usable evidence for an approval requirement.
-            ...(reviews.required_approving_review_count > 0
-              ? {
-                  requiredApprovingReviewCount:
-                    reviews.required_approving_review_count,
-                }
-              : {}),
-            dismissStaleReviews: reviews.dismiss_stale_reviews,
-            requireCodeOwnerReviews: reviews.require_code_owner_reviews,
-          };
+    let value: GitHubClassicBranchProtectionEvidence = {};
+    if (reviews !== null) {
+      value = {
+        dismissStaleReviews: reviews.dismiss_stale_reviews,
+        requireCodeOwnerReviews: reviews.require_code_owner_reviews,
+      };
+      // GitHub reports zero when no approval policy is configured. It is not
+      // usable evidence for an approval requirement.
+      if (reviews.required_approving_review_count > 0)
+        value = {
+          ...value,
+          requiredApprovingReviewCount: reviews.required_approving_review_count,
+        };
+    }
     return ok({ state: "available", value });
   }
   const parsed = v.safeParse(appliedRulesetSchema, response.value);
   if (!parsed.success) return invalid("get_merge_policy_evidence");
   const value: GitHubAppliedRulesetEvidence = {
-    rules: parsed.output.map((rule) => ({
-      type: rule.type,
-      ...(rule.name === undefined ? {} : { name: rule.name }),
-    })),
+    rules: parsed.output.map((rule) =>
+      rule.name === undefined
+        ? { type: rule.type }
+        : { type: rule.type, name: rule.name },
+    ),
   };
   return ok({ state: "available", value });
 }
@@ -4067,19 +4136,30 @@ function commandFailure(
     : err({ _tag: "GitHubReadFailed", operation });
 }
 
+/** REST review-comment payload GitHub accepts when creating pending-review comments. */
+type GitHubReviewCommentPayload = {
+  readonly path: string;
+  readonly line: number;
+  readonly side: "RIGHT" | "LEFT";
+  readonly body: string;
+  readonly start_line?: number;
+  readonly start_side?: "RIGHT" | "LEFT";
+};
+
 function toGitHubReviewComment(
   comment: PendingReviewComment,
-): Record<string, unknown> {
-  const side = comment.diffSide === "new" ? "RIGHT" : "LEFT";
-  return {
+): GitHubReviewCommentPayload {
+  const side =
+    comment.diffSide === "new" ? ("RIGHT" as const) : ("LEFT" as const);
+  const payload = {
     path: comment.path,
     line: comment.lineEnd ?? comment.line,
     side,
     body: comment.body,
-    ...(comment.lineEnd === undefined
-      ? {}
-      : { start_line: comment.line, start_side: side }),
   };
+  return comment.lineEnd === undefined
+    ? payload
+    : { ...payload, start_line: comment.line, start_side: side };
 }
 
 function samePendingReviewAnchor(
@@ -4098,17 +4178,12 @@ function samePendingReviewAnchor(
 function pendingReviewComment(
   anchor: PendingReviewAnchor,
   body: string,
-): Record<string, unknown> {
-  const side = anchor.side === "new" ? "RIGHT" : "LEFT";
-  return {
-    path: anchor.path,
-    line: anchor.line,
-    side,
-    body,
-    ...(anchor.startLine === anchor.line
-      ? {}
-      : { start_line: anchor.startLine, start_side: side }),
-  };
+): GitHubReviewCommentPayload {
+  const side = anchor.side === "new" ? ("RIGHT" as const) : ("LEFT" as const);
+  const payload = { path: anchor.path, line: anchor.line, side, body };
+  return anchor.startLine === anchor.line
+    ? payload
+    : { ...payload, start_line: anchor.startLine, start_side: side };
 }
 
 /** Domain anchor from a spike-proven thread shape, normalizing the LEFT single-line quirk. */
@@ -4142,25 +4217,19 @@ function pendingReviewAnchor(thread: {
   return { path: path.value, startLine, line: thread.line, side };
 }
 
-function parseReviewId(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null || !("id" in input))
-    return undefined;
-  const value = (input as { readonly id: unknown }).id;
-  return typeof value === "string" ||
-    (typeof value === "number" && Number.isSafeInteger(value))
-    ? String(value)
-    : undefined;
+/** A review id GitHub sends as a string or a safe integer; anything else is unusable. */
+function parseReviewId(id: string | number): string | undefined {
+  const parsed = v.safeParse(reviewIdSchema, id);
+  return parsed.success ? String(parsed.output) : undefined;
 }
 
 function parsePendingReview(
-  input: unknown,
+  receipt: ReviewReceipt,
 ): { readonly reviewId: string; readonly state: "PENDING" } | undefined {
-  const reviewId = parseReviewId(input);
-  if (reviewId === undefined || typeof input !== "object" || input === null)
-    return undefined;
-  return (input as { readonly state?: unknown }).state === "PENDING"
-    ? { reviewId, state: "PENDING" }
-    : undefined;
+  const reviewId = parseReviewId(receipt.id);
+  return reviewId === undefined || receipt.state !== "PENDING"
+    ? undefined
+    : { reviewId, state: "PENDING" };
 }
 
 function writeFailure(failure: CommandFailure): GitHubWriteFailure {
@@ -4235,30 +4304,20 @@ function digestReviewBody(body: string): string {
 }
 
 function parseDirectSummaryReceipt(
-  value: unknown,
+  raw: v.InferOutput<typeof directSummaryReceiptSchema>,
   expectedEvent: GitHubReviewEvent,
 ): DirectSummaryReviewReceipt | undefined {
-  const raw = v.safeParse(
-    v.looseObject({
-      id: v.union([v.string(), v.number()]),
-      state: v.string(),
-      commit_id: v.nullish(v.string()),
-      submitted_at: v.nullish(v.string()),
-    }),
-    value,
-  );
   if (
-    !raw.success ||
-    raw.output.commit_id === undefined ||
-    raw.output.commit_id === null ||
-    raw.output.submitted_at === undefined ||
-    raw.output.submitted_at === null ||
-    directSummaryEvent(raw.output.state) !== expectedEvent
+    raw.commit_id === undefined ||
+    raw.commit_id === null ||
+    raw.submitted_at === undefined ||
+    raw.submitted_at === null ||
+    directSummaryEvent(raw.state) !== expectedEvent
   )
     return undefined;
-  const reviewId = parseGitHubReviewRestId(String(raw.output.id));
-  const headSha = parseGitSha(raw.output.commit_id);
-  const submittedAt = parseGitHubTimestamp(raw.output.submitted_at);
+  const reviewId = parseGitHubReviewRestId(String(raw.id));
+  const headSha = parseGitSha(raw.commit_id);
+  const submittedAt = parseGitHubTimestamp(raw.submitted_at);
   return reviewId._tag === "err" ||
     headSha._tag === "err" ||
     submittedAt._tag === "err"

@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import * as v from "valibot";
 import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
+  type CommandFailure,
 } from "../../src/adapters/github/command-runner";
 import {
   createFetchedDiffRefs,
@@ -14,16 +16,28 @@ import {
   GitHubAdapter,
 } from "../../src/adapters/github/github-adapter";
 import {
+  GitHubCliCredentials,
+  type GitHubCredentials,
+} from "../../src/adapters/github/github-credentials";
+import {
   parseGitHubHost,
   parseGitHubLogin,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseGitHubReviewNodeId,
+  parseGitHubReviewRestId,
+  parseGitHubThreadId,
   parseAbsolutePath,
   parseGitSha,
   parsePullRequestNumber,
+  parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { ok, type Result } from "../../src/domain/result";
+import {
+  parseWorkspaceProfileConfig,
+  type WorkspaceProfileConfig,
+} from "../../src/domain/workspace-profile";
 
 const fixtureRoot = join(
   import.meta.dirname,
@@ -76,6 +90,8 @@ const pr: PullRequestRef = {
 class FakeProcessExecutor implements CommandExecutor {
   readonly requests: Array<ReadonlyArray<string>> = [];
   readonly stdin: Array<string | undefined> = [];
+  readonly environments: Array<Readonly<Record<string, string>> | undefined> =
+    [];
 
   constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
 
@@ -83,9 +99,11 @@ class FakeProcessExecutor implements CommandExecutor {
     readonly argv: ReadonlyArray<string>;
     readonly timeoutMs: number;
     readonly stdin?: string;
+    readonly environment?: Readonly<Record<string, string>>;
   }): Promise<CommandExecution> {
     this.requests.push(input.argv);
     this.stdin.push(input.stdin);
+    this.environments.push(input.environment);
     const response = this.responses[this.requests.length - 1];
     if (response === undefined)
       throw new Error("Missing fake command response");
@@ -93,19 +111,64 @@ class FakeProcessExecutor implements CommandExecutor {
   }
 }
 
+/** Resolves a fixed credential so command expectations stay about gh argv. */
+class StubCredentials implements GitHubCredentials {
+  readonly forgotten: Array<string> = [];
+
+  async environmentFor(): Promise<
+    Result<Readonly<Record<string, string>>, CommandFailure>
+  > {
+    return ok({ GH_TOKEN: "profile-token" });
+  }
+
+  forget(profile: WorkspaceProfileConfig): void {
+    this.forgotten.push(profile.ghAccount);
+  }
+}
+
+function testAdapter(
+  commands: CommandRunner,
+  credentials: GitHubCredentials = new StubCredentials(),
+): GitHubAdapter {
+  return new GitHubAdapter(commands, credentials);
+}
+
 async function golden(name: string): Promise<ReadonlyArray<string>> {
-  return JSON.parse(
-    await readFile(join(fixtureRoot, `${name}.json`), "utf8"),
-  ) as ReadonlyArray<string>;
+  const parsed = v.safeParse(
+    v.array(v.string()),
+    JSON.parse(await readFile(join(fixtureRoot, `${name}.json`), "utf8")),
+  );
+  if (!parsed.success) throw new Error(`Malformed golden argv fixture ${name}`);
+  return parsed.output;
 }
 
 async function payload(name: string): Promise<string> {
   return readFile(join(payloadRoot, name), "utf8");
 }
 
+/** The REST pull-request payload shape these tests feed to the adapter. */
+type PullRequestPayload = {
+  readonly number: number;
+  readonly title: string;
+  readonly state: string;
+  readonly draft: boolean;
+  readonly head: { readonly ref: string; readonly sha: string };
+  readonly base: { readonly ref: string; readonly sha?: string };
+  readonly user: { readonly login: string };
+  readonly updated_at: string;
+  readonly body?: string | null;
+  readonly mergeable_state?: string | undefined;
+  readonly labels?: ReadonlyArray<{ readonly name: string }>;
+  readonly requested_reviewers?: ReadonlyArray<{ readonly login: string }>;
+  readonly assignees?: ReadonlyArray<{ readonly login: string }>;
+  readonly additions?: number | undefined;
+  readonly deletions?: number | undefined;
+  readonly changed_files?: number | undefined;
+};
+
 function pullRequestPayload(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
+  overrides: Partial<PullRequestPayload> = {},
+): PullRequestPayload {
   return {
     number: 42,
     title: "Add safe GitHub reads",
@@ -212,7 +275,7 @@ describe("CommandRunner", () => {
 
     describe("GitHubAdapter direct summary writes", () => {
       it("fails closed when gh exits generically after the request may have dispatched", async () => {
-        const adapter = new GitHubAdapter(
+        const adapter = testAdapter(
           new CommandRunner(
             new FakeProcessExecutor([
               {
@@ -254,7 +317,7 @@ describe("CommandRunner", () => {
 
 describe("GitHubAdapter merge outcome", () => {
   it("reads merged, open, and closed-unmerged outcomes without a write command", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -302,7 +365,7 @@ describe("GitHubAdapter merge outcome", () => {
 
 describe("GitHubAdapter merge policy", () => {
   it("joins the exact-head rollup to required branch contexts", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -359,7 +422,7 @@ describe("GitHubAdapter merge policy", () => {
       ["FUTURE_STATUS", "unknown"],
     ] as const;
     for (const [raw, expected] of statuses) {
-      const adapter = new GitHubAdapter(
+      const adapter = testAdapter(
         new CommandRunner(
           new FakeProcessExecutor([
             {
@@ -390,7 +453,7 @@ describe("GitHubAdapter merge policy", () => {
         value: { mergeStateStatus: expected },
       });
     }
-    const missing = new GitHubAdapter(
+    const missing = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -423,7 +486,7 @@ describe("GitHubAdapter merge policy", () => {
   });
 
   it("fails closed for a head mismatch, policy pagination cap, or branch-protection denial", async () => {
-    const headMismatch = new GitHubAdapter(
+    const headMismatch = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -456,7 +519,7 @@ describe("GitHubAdapter merge policy", () => {
       ),
       stderr: "",
     }));
-    const pagination = new GitHubAdapter(
+    const pagination = testAdapter(
       new CommandRunner(new FakeProcessExecutor(pages)),
     );
     await expect(
@@ -470,7 +533,7 @@ describe("GitHubAdapter merge policy", () => {
       value: { complete: false, incompleteReason: "pagination" },
     });
 
-    const denied = new GitHubAdapter(
+    const denied = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -510,7 +573,9 @@ function mergePolicyPayload(
       readonly endCursor: string | null;
     };
   } = {},
-): Record<string, unknown> {
+) {
+  // An undefined mergeStateStatus is dropped by JSON.stringify, which is how
+  // GitHub reports the field being absent.
   return {
     data: {
       repository: {
@@ -521,9 +586,7 @@ function mergePolicyPayload(
           baseRefOid: baseSha,
           baseRefName: "sit",
           mergeable: "MERGEABLE",
-          ...(overrides.mergeStateStatus === undefined
-            ? {}
-            : { mergeStateStatus: overrides.mergeStateStatus }),
+          mergeStateStatus: overrides.mergeStateStatus,
           reviewDecision: "APPROVED",
           commits: {
             nodes: [
@@ -584,7 +647,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
     ).resolves.toEqual({
@@ -620,7 +683,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   });
 
   it("treats a zero approval count as unavailable policy evidence", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -664,7 +727,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   ] as const)(
     "maps an optional endpoint HTTP %s response to unavailable evidence",
     async (status, reason) => {
-      const adapter = new GitHubAdapter(
+      const adapter = testAdapter(
         new CommandRunner(
           new FakeProcessExecutor([
             {
@@ -695,7 +758,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   );
 
   it("returns a typed adapter failure for malformed successful payloads", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -729,7 +792,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   });
 
   it("returns a typed adapter failure when an optional endpoint times out", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           { _tag: "TimedOut", stdout: "", stderr: "" },
@@ -804,7 +867,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.getPullRequestPublishedFeedback({
       profile,
       pr,
@@ -819,7 +882,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
   });
 
   it("projects dismissal capability when GitHub reports an unprotected base branch as 404", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -873,7 +936,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
   });
 
   it("fails closed when permission evidence is malformed while retaining records", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -925,7 +988,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
     // A started-but-unsubmitted review has no submitted_at key at all; the
     // feedback read must tolerate it (and later detect/refresh passes) rather
     // than reporting GitHubResponseInvalid.
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1030,7 +1093,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       })),
     );
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
@@ -1116,7 +1179,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(
       await adapter.listOpenPullRequests({ profile, repo: pr }),
@@ -1253,7 +1316,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getPullRequestComments({ profile, pr }),
     ).resolves.toEqual({
@@ -1306,7 +1369,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     await expect(
       adapter.getPullRequestComments({ profile, pr }),
@@ -1331,7 +1394,7 @@ describe("GitHubAdapter read boundary", () => {
       hasNextPage: true,
       endCursor: "repeat",
     };
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1382,7 +1445,7 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const complete = new GitHubAdapter(
+    const complete = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1415,7 +1478,7 @@ describe("GitHubAdapter read boundary", () => {
       },
     });
 
-    const partial = new GitHubAdapter(
+    const partial = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1460,7 +1523,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       };
     });
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(new FakeProcessExecutor(responses)),
     );
 
@@ -1473,7 +1536,7 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("returns a degraded summary when optional GitHub metadata is absent", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1515,7 +1578,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "pull request diff unavailable",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(await adapter.getPullRequestDiff({ profile, pr })).toEqual({
       _tag: "err",
@@ -1545,7 +1608,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(
       await adapter.getPullRequestDiff({
@@ -1606,7 +1669,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(
       await adapter.getPullRequestDiff({
@@ -1650,7 +1713,7 @@ describe("GitHubAdapter read boundary", () => {
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 1, stdout: "", stderr: "unknown revision" },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(
       await adapter.getPullRequestDiff({
@@ -1688,7 +1751,7 @@ describe("GitHubAdapter read boundary", () => {
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 0, stdout: `${headSha}\n`, stderr: "" },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     expect(
       await adapter.getPullRequestDiff({
@@ -1712,7 +1775,7 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("classifies a successful status for a different gh account as github_auth", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1733,7 +1796,7 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("classifies a configured account that is listed but inactive as github_auth", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1754,7 +1817,7 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("classifies malformed valid JSON GitHub responses without exposing payloads", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1774,7 +1837,7 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("maps missing local GitHub auth to github_auth", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1830,7 +1893,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getPullRequestCommits({ profile, pr }),
     ).resolves.toMatchObject({
@@ -1873,7 +1936,7 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getPullRequestCommits({ profile, pr }),
     ).resolves.toEqual({
@@ -1906,7 +1969,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
 
     await expect(
       adapter.createPendingReview({
@@ -1948,7 +2011,7 @@ describe("GitHubAdapter review write boundary", () => {
   });
 
   it("rejects a create response unless GitHub confirms the review is pending", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -1998,7 +2061,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.submitPendingReview({
         profile,
@@ -2025,7 +2088,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.deleteThreadComment({ profile, commentId: "PRRC_abc" }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
@@ -2054,11 +2117,11 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.createThreadReply({
         profile,
-        threadId: "PRRT_thread" as never,
+        threadId: mustParse(parseGitHubThreadId("PRRT_thread")),
         body: "A reply",
       }),
     ).resolves.toEqual({
@@ -2084,7 +2147,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.createInlineComment({
         profile,
@@ -2131,12 +2194,12 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getReviewThreadTarget({
         profile,
         pr,
-        threadId: "PRRT_thread" as never,
+        threadId: mustParse(parseGitHubThreadId("PRRT_thread")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: true } });
     const request = executor.requests[0]?.join(" ") ?? "";
@@ -2179,12 +2242,12 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getReviewThreadTarget({
         profile,
         pr,
-        threadId: "PRRT_foreign" as never,
+        threadId: mustParse(parseGitHubThreadId("PRRT_foreign")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
   });
@@ -2198,12 +2261,12 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(missing));
+    const adapter = testAdapter(new CommandRunner(missing));
     await expect(
       adapter.getReviewThreadTarget({
         profile,
         pr,
-        threadId: "PRRT_gone" as never,
+        threadId: mustParse(parseGitHubThreadId("PRRT_gone")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
     const wrongType = new FakeProcessExecutor([
@@ -2214,12 +2277,12 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter2 = new GitHubAdapter(new CommandRunner(wrongType));
+    const adapter2 = testAdapter(new CommandRunner(wrongType));
     await expect(
       adapter2.getReviewThreadTarget({
         profile,
         pr,
-        threadId: "PRRT_thread" as never,
+        threadId: mustParse(parseGitHubThreadId("PRRT_thread")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
   });
@@ -2247,7 +2310,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getReviewCommentTarget({
         profile,
@@ -2287,7 +2350,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(foreign));
+    const adapter = testAdapter(new CommandRunner(foreign));
     await expect(
       adapter.getReviewCommentTarget({
         profile,
@@ -2317,7 +2380,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter2 = new GitHubAdapter(new CommandRunner(notAuthor));
+    const adapter2 = testAdapter(new CommandRunner(notAuthor));
     await expect(
       adapter2.getReviewCommentTarget({ profile, pr, commentId: "PRRC_other" }),
     ).resolves.toEqual({
@@ -2336,7 +2399,7 @@ describe("GitHubAdapter review write boundary", () => {
       },
       { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 500" },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.createInlineComment({
         profile,
@@ -2361,7 +2424,7 @@ describe("GitHubAdapter review write boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.mergePullRequest({
         profile,
@@ -2388,7 +2451,7 @@ describe("GitHubAdapter pending-review gateway", () => {
   const commentId = "PRRC_kwDORJzsQM7fI2Rd";
   const reviewListUrl = `repos/centraldigital/patchdesk/pulls/42/reviews?per_page=100&page=1`;
 
-  function reviewsPayload(overrides: Record<string, unknown> = {}): string {
+  function reviewsPayload(): string {
     return JSON.stringify([
       {
         id: reviewId,
@@ -2397,49 +2460,87 @@ describe("GitHubAdapter pending-review gateway", () => {
         body: "Summary body",
         state: "PENDING",
         commit_id: headSha,
-        ...overrides,
       },
     ]);
   }
 
-  function threadsPayload(overrides: Record<string, unknown> = {}): string {
+  /** One GraphQL review-thread node as GitHub reports it. */
+  type ThreadNodeFixture = {
+    readonly id: string;
+    readonly isOutdated: boolean;
+    readonly path: string;
+    readonly line: number;
+    readonly startLine: number;
+    readonly diffSide: string;
+    readonly startDiffSide?: string | undefined;
+    readonly comments: {
+      readonly nodes: ReadonlyArray<{
+        readonly id: string;
+        readonly body: string;
+        readonly createdAt: string;
+        readonly author: { readonly login: string };
+        readonly pullRequestReview: {
+          readonly id: string;
+          readonly state: string;
+        };
+      }>;
+      readonly pageInfo: {
+        readonly hasNextPage: boolean;
+        readonly endCursor: string | null;
+      };
+    };
+  };
+
+  function threadNode(
+    overrides: Partial<ThreadNodeFixture> = {},
+  ): ThreadNodeFixture {
+    return {
+      id: threadId,
+      isOutdated: false,
+      path: "src/review.ts",
+      line: 7,
+      startLine: 7,
+      diffSide: "RIGHT",
+      startDiffSide: "RIGHT",
+      comments: {
+        nodes: [
+          {
+            id: commentId,
+            body: "Comment body",
+            createdAt: "2026-08-09T11:34:50Z",
+            author: { login: account },
+            pullRequestReview: { id: reviewNodeId, state: "PENDING" },
+          },
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+      ...overrides,
+    };
+  }
+
+  function threadsPayload(
+    options: {
+      readonly node?: ThreadNodeFixture;
+      readonly pageInfo?: {
+        readonly hasNextPage: boolean;
+        readonly endCursor: string | null;
+      };
+    } = {},
+  ): string {
     return JSON.stringify({
       data: {
         repository: {
           pullRequest: {
             reviewThreads: {
-              nodes: [
-                {
-                  id: threadId,
-                  isOutdated: false,
-                  path: "src/review.ts",
-                  line: 7,
-                  startLine: 7,
-                  diffSide: "RIGHT",
-                  startDiffSide: "RIGHT",
-                  comments: {
-                    nodes: [
-                      {
-                        id: commentId,
-                        body: "Comment body",
-                        createdAt: "2026-08-09T11:34:50Z",
-                        author: { login: account },
-                        pullRequestReview: {
-                          id: reviewNodeId,
-                          state: "PENDING",
-                        },
-                      },
-                    ],
-                    pageInfo: { hasNextPage: false, endCursor: null },
-                  },
-                },
-              ],
-              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [options.node ?? threadNode()],
+              pageInfo: options.pageInfo ?? {
+                hasNextPage: false,
+                endCursor: null,
+              },
             },
           },
         },
       },
-      ...overrides,
     });
   }
 
@@ -2463,12 +2564,12 @@ describe("GitHubAdapter pending-review gateway", () => {
         ]),
       ),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getViewerPendingReview({
         profile,
         pr,
-        account: account as never,
+        account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
     expect(executor.requests[0]).toContain(reviewListUrl);
@@ -2479,11 +2580,11 @@ describe("GitHubAdapter pending-review gateway", () => {
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.getViewerPendingReview({
       profile,
       pr,
-      account: account as never,
+      account: mustParse(parseGitHubLogin(account)),
     });
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
@@ -2507,46 +2608,22 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("normalizes GitHub's inverted LEFT single-line range", async () => {
-    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
-    const node = (
-      (threads["data"] as Record<string, unknown>)["repository"] as Record<
-        string,
-        unknown
-      >
-    )["pullRequest"] as Record<string, unknown>;
-    (
-      (node["reviewThreads"] as Record<string, unknown>)["nodes"] as Array<
-        Record<string, unknown>
-      >
-    )[0] = {
-      id: threadId,
-      isOutdated: false,
-      path: "src/review.ts",
-      line: 7,
-      startLine: 8,
-      diffSide: "LEFT",
-      comments: {
-        nodes: [
-          {
-            id: commentId,
-            body: "Comment body",
-            createdAt: "2026-08-09T11:34:50Z",
-            author: { login: account },
-            pullRequestReview: { id: reviewNodeId, state: "PENDING" },
-          },
-        ],
-        pageInfo: { hasNextPage: false, endCursor: null },
-      },
-    };
+    const threads = threadsPayload({
+      node: threadNode({
+        startLine: 8,
+        diffSide: "LEFT",
+        startDiffSide: undefined,
+      }),
+    });
     const executor = new FakeProcessExecutor([
       exited(reviewsPayload()),
-      exited(JSON.stringify(threads)),
+      exited(threads),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.getViewerPendingReview({
       profile,
       pr,
-      account: account as never,
+      account: mustParse(parseGitHubLogin(account)),
     });
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
@@ -2561,48 +2638,34 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("treats foreign-author and non-pending threads as non-actionable", async () => {
-    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
-    const node = (
-      (threads["data"] as Record<string, unknown>)["repository"] as Record<
-        string,
-        unknown
-      >
-    )["pullRequest"] as Record<string, unknown>;
-    (
-      (node["reviewThreads"] as Record<string, unknown>)["nodes"] as Array<
-        Record<string, unknown>
-      >
-    )[0] = {
-      id: threadId,
-      isOutdated: false,
-      path: "src/review.ts",
-      line: 7,
-      startLine: 7,
-      diffSide: "RIGHT",
-      comments: {
-        nodes: [
-          {
-            id: commentId,
-            body: "Comment body",
-            createdAt: "2026-08-09T11:34:50Z",
-            author: { login: "other" },
-            pullRequestReview: { id: reviewNodeId, state: "PENDING" },
-          },
-        ],
-        pageInfo: { hasNextPage: false, endCursor: null },
-      },
-    };
+    const threads = threadsPayload({
+      node: threadNode({
+        startDiffSide: undefined,
+        comments: {
+          nodes: [
+            {
+              id: commentId,
+              body: "Comment body",
+              createdAt: "2026-08-09T11:34:50Z",
+              author: { login: "other" },
+              pullRequestReview: { id: reviewNodeId, state: "PENDING" },
+            },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      }),
+    });
     const executor = new FakeProcessExecutor([
       exited(reviewsPayload()),
-      exited(JSON.stringify(threads)),
+      exited(threads),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     // No actionable comments: an empty pending review is the unproven case.
     await expect(
       adapter.getViewerPendingReview({
         profile,
         pr,
-        account: account as never,
+        account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
   });
@@ -2614,7 +2677,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       user: { login: "other" },
       submitted_at: "2026-08-08T00:00:00Z",
     }));
-    const paginated = new GitHubAdapter(
+    const paginated = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([exited(JSON.stringify(fullReviews))]),
       ),
@@ -2623,38 +2686,27 @@ describe("GitHubAdapter pending-review gateway", () => {
       paginated.getViewerPendingReview({
         profile,
         pr,
-        account: account as never,
+        account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
 
-    const threads = JSON.parse(threadsPayload()) as Record<string, unknown>;
-    const node = (
-      (threads["data"] as Record<string, unknown>)["repository"] as Record<
-        string,
-        unknown
-      >
-    )["pullRequest"] as Record<string, unknown>;
-    (node["reviewThreads"] as Record<string, unknown>)["pageInfo"] = {
-      hasNextPage: true,
-      endCursor: "cursor",
-    };
-    const incompleteThreads = new GitHubAdapter(
+    const threads = threadsPayload({
+      pageInfo: { hasNextPage: true, endCursor: "cursor" },
+    });
+    const incompleteThreads = testAdapter(
       new CommandRunner(
-        new FakeProcessExecutor([
-          exited(reviewsPayload()),
-          exited(JSON.stringify(threads)),
-        ]),
+        new FakeProcessExecutor([exited(reviewsPayload()), exited(threads)]),
       ),
     );
     await expect(
       incompleteThreads.getViewerPendingReview({
         profile,
         pr,
-        account: account as never,
+        account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
 
-    const malformed = new GitHubAdapter(
+    const malformed = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           exited("{not-json"),
@@ -2666,7 +2718,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       malformed.getViewerPendingReview({
         profile,
         pr,
-        account: account as never,
+        account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
   });
@@ -2686,13 +2738,13 @@ describe("GitHubAdapter pending-review gateway", () => {
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.startPendingReviewWithThread({
       profile,
       pr,
       headSha: mustParse(parseGitSha(headSha)),
       anchor: {
-        path: "src/review.ts" as never,
+        path: mustParse(parseRepoRelativePath("src/review.ts")),
         startLine: 7,
         line: 7,
         side: "new",
@@ -2714,7 +2766,7 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("never fabricates a pending owner when the create read-back cannot be proven", async () => {
-    const missingRead = new GitHubAdapter(
+    const missingRead = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           exited(
@@ -2735,7 +2787,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       pr,
       headSha: mustParse(parseGitSha(headSha)),
       anchor: {
-        path: "src/review.ts" as never,
+        path: mustParse(parseRepoRelativePath("src/review.ts")),
         startLine: 7,
         line: 7,
         side: "new",
@@ -2771,13 +2823,13 @@ describe("GitHubAdapter pending-review gateway", () => {
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.addPendingReviewThread({
       profile,
       pr,
-      reviewId: reviewNodeId as never,
+      reviewId: mustParse(parseGitHubReviewNodeId(reviewNodeId)),
       anchor: {
-        path: "src/review.ts" as never,
+        path: mustParse(parseRepoRelativePath("src/review.ts")),
         startLine: 9,
         line: 9,
         side: "new",
@@ -2818,13 +2870,13 @@ describe("GitHubAdapter pending-review gateway", () => {
       exited(reviewsPayload()),
       exited(threadsPayload()),
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     const result = await adapter.addPendingReviewThread({
       profile,
       pr,
-      reviewId: reviewNodeId as never,
+      reviewId: mustParse(parseGitHubReviewNodeId(reviewNodeId)),
       anchor: {
-        path: "src/review.ts" as never,
+        path: mustParse(parseRepoRelativePath("src/review.ts")),
         startLine: 9,
         line: 9,
         side: "new",
@@ -2841,7 +2893,7 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("rejects an append whose mutation response lacks thread identity", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           exited(
@@ -2859,9 +2911,9 @@ describe("GitHubAdapter pending-review gateway", () => {
     const result = await adapter.addPendingReviewThread({
       profile,
       pr,
-      reviewId: reviewNodeId as never,
+      reviewId: mustParse(parseGitHubReviewNodeId(reviewNodeId)),
       anchor: {
-        path: "src/review.ts" as never,
+        path: mustParse(parseRepoRelativePath("src/review.ts")),
         startLine: 9,
         line: 9,
         side: "new",
@@ -2876,12 +2928,12 @@ describe("GitHubAdapter pending-review gateway", () => {
 
   it("isolates the viewer's pending review from a foreign account", async () => {
     const executor = new FakeProcessExecutor([exited(reviewsPayload())]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
       adapter.getViewerPendingReview({
         profile,
         pr,
-        account: "other" as never,
+        account: mustParse(parseGitHubLogin("other")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
   });
@@ -2892,9 +2944,13 @@ describe("GitHubAdapter pending-review discard", () => {
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 0, stdout: "", stderr: "" },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
-      adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never }),
+      adapter.discardPendingReview({
+        profile,
+        pr,
+        reviewId: mustParse(parseGitHubReviewRestId("9001")),
+      }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
     expect(executor.requests[0]).toEqual([
       "gh",
@@ -2916,9 +2972,13 @@ describe("GitHubAdapter pending-review discard", () => {
         stderr: "gh: Not Found (HTTP 404)",
       },
     ]);
-    const adapter = new GitHubAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(new CommandRunner(executor));
     await expect(
-      adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never }),
+      adapter.discardPendingReview({
+        profile,
+        pr,
+        reviewId: mustParse(parseGitHubReviewRestId("9001")),
+      }),
     ).resolves.toMatchObject({
       _tag: "err",
       error: { _tag: "GitHubWriteFailure", category: "unavailable" },
@@ -2927,11 +2987,14 @@ describe("GitHubAdapter pending-review discard", () => {
 
   it("keeps the fake discard seam unimplemented until a fixture is supplied", async () => {
     const adapter = new FakeGitHubAdapter({
-      pullRequest: { headSha } as never,
       authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
-    } as never);
+    });
     await expect(
-      adapter.discardPendingReview({ profile, pr, reviewId: "9001" as never }),
+      adapter.discardPendingReview({
+        profile,
+        pr,
+        reviewId: mustParse(parseGitHubReviewRestId("9001")),
+      }),
     ).resolves.toMatchObject({
       _tag: "err",
       error: { category: "unavailable" },
@@ -2941,7 +3004,7 @@ describe("GitHubAdapter pending-review discard", () => {
 
 describe("GitHubAdapter direct summary reads", () => {
   it("ignores dismissed reviews while retaining submitted direct summaries", async () => {
-    const adapter = new GitHubAdapter(
+    const adapter = testAdapter(
       new CommandRunner(
         new FakeProcessExecutor([
           {
@@ -2984,5 +3047,141 @@ describe("GitHubAdapter direct summary reads", () => {
         reviews: [{ reviewId: "101", event: "COMMENT", headSha }],
       },
     });
+  });
+});
+
+describe("GitHubAdapter workspace-profile GitHub account", () => {
+  const enterpriseProfile = mustParse(
+    parseWorkspaceProfileConfig({
+      id: "opn",
+      label: "OPN",
+      githubHost: "github.opn.example",
+      ghAccount: "matthew-opn",
+      ownerFilters: [],
+      workspaceRoots: [],
+      rulePaths: [],
+      repos: [],
+    }),
+  );
+
+  function credentialAdapter(executor: FakeProcessExecutor): GitHubAdapter {
+    const commands = new CommandRunner(executor);
+    return new GitHubAdapter(commands, new GitHubCliCredentials(commands));
+  }
+
+  function exited(stdout: string): CommandExecution {
+    return { _tag: "Exited", exitCode: 0, stdout, stderr: "" };
+  }
+
+  it("authenticates gh as the profile's account, not the machine-wide active account", async () => {
+    const executor = new FakeProcessExecutor([
+      exited("profile-token\n"),
+      exited(JSON.stringify(pullRequestPayload())),
+    ]);
+
+    await expect(
+      credentialAdapter(executor).getPullRequest({ profile, pr }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+
+    expect(executor.requests[0]).toEqual([
+      "gh",
+      "auth",
+      "token",
+      "--hostname",
+      "github.com",
+      "--user",
+      "pmquan2cfw",
+    ]);
+    expect(executor.requests[1]?.[0]).toBe("gh");
+    expect(executor.environments[1]).toEqual({ GH_TOKEN: "profile-token" });
+  });
+
+  it("passes an Enterprise Server host its own token variable", async () => {
+    const executor = new FakeProcessExecutor([
+      exited("enterprise-token\n"),
+      exited(JSON.stringify(pullRequestPayload())),
+    ]);
+
+    await credentialAdapter(executor).getPullRequest({
+      profile: enterpriseProfile,
+      pr,
+    });
+
+    expect(executor.requests[0]).toEqual([
+      "gh",
+      "auth",
+      "token",
+      "--hostname",
+      "github.opn.example",
+      "--user",
+      "matthew-opn",
+    ]);
+    expect(executor.environments[1]).toEqual({
+      GH_ENTERPRISE_TOKEN: "enterprise-token",
+    });
+  });
+
+  it("reports authentication failure without dispatching the call when the account has no stored credential", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "no oauth token found for github.com account pmquan2cfw",
+      },
+    ]);
+
+    await expect(
+      credentialAdapter(executor).getPullRequest({ profile, pr }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubAuthenticationFailed", operation: "get_pr" },
+    });
+    expect(executor.requests).toHaveLength(1);
+  });
+
+  it("reuses a resolved token and re-reads it after GitHub rejects the credential", async () => {
+    const executor = new FakeProcessExecutor([
+      exited("token-1\n"),
+      exited(JSON.stringify(pullRequestPayload())),
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "gh auth login",
+      },
+      exited("token-2\n"),
+      exited(JSON.stringify(pullRequestPayload())),
+    ]);
+    const adapter = credentialAdapter(executor);
+
+    await adapter.getPullRequest({ profile, pr });
+    await adapter.getPullRequest({ profile, pr });
+    await adapter.getPullRequest({ profile, pr });
+
+    expect(executor.requests.map((request) => request.slice(0, 3))).toEqual([
+      ["gh", "auth", "token"],
+      ["gh", "api", "--hostname"],
+      ["gh", "api", "--hostname"],
+      ["gh", "auth", "token"],
+      ["gh", "api", "--hostname"],
+    ]);
+    expect(executor.environments[2]).toEqual({ GH_TOKEN: "token-1" });
+    expect(executor.environments[4]).toEqual({ GH_TOKEN: "token-2" });
+  });
+
+  it("resolves the authenticated account against the profile's own credential", async () => {
+    const executor = new FakeProcessExecutor([
+      exited("profile-token\n"),
+      exited("pmquan2cfw\n"),
+    ]);
+
+    await expect(
+      credentialAdapter(executor).resolveAuthenticatedAccount(profile),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { host: "github.com", account: "pmquan2cfw" },
+    });
+    expect(executor.environments[1]).toEqual({ GH_TOKEN: "profile-token" });
   });
 });

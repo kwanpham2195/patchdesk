@@ -4,6 +4,26 @@ Ground truth learned live (Aug 2026) while debugging inline-conversation write
 blocking on `cfw-bo-staff-api#717`. Verify against GitHub before trusting these,
 but they are reproducible with the QA profile (`cfw`).
 
+## gh authenticates as the active account unless a token is supplied
+
+A bare `gh api` call uses whichever account is active machine-wide
+(`gh auth switch`), so with two profiles only one was ever live: the other
+profile's refresh failed with "GitHub authentication is required" even though
+its account was signed in. `github-credentials.ts` now resolves each profile's
+own token (`gh auth token --hostname <host> --user <account>`) and passes it to
+every gh child through `GH_TOKEN` / `GH_ENTERPRISE_TOKEN` (ADR "Authenticate
+GitHub as the profile account"). Live facts behind that:
+
+- `--user` wins over an ambient `GH_TOKEN` in the environment, so the resolve
+  call reads the keyring account even in a shell that exports a token.
+- An unknown account exits 1 with `no oauth token found for github.com account
+  <login>` — wording that matches none of `command-runner.ts`'s classifiers, so
+  the credential module maps its own failures to
+  `CommandAuthenticationRequired` instead of relying on stderr sniffing.
+- `git fetch` in `review-worktree-service.ts` still uses the machine's git
+  credential helper, which is the active account. Private-repo diff fetches for
+  a non-active profile remain an open surface.
+
 ## GitHub's updatedAt lags comment/review creation
 
 `PullRequest.updatedAt` can lag the comments/reviews it should reflect by
