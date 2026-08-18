@@ -52,6 +52,7 @@ for (const [name, expected] of Object.entries(expectedMetadata)) {
     );
 }
 if (
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows the raw plist-derived JSON's CFBundleIconFile field at this exact I/O boundary; no earlier parser exists for this primitive shape.
   typeof metadata.CFBundleIconFile !== "string" ||
   metadata.CFBundleIconFile.length === 0
 )
@@ -161,7 +162,7 @@ try {
   const workspaceTab = settings.getByRole("tab", { name: "Workspace" });
   await workspaceTab.click();
   await settings.getByTestId("settings-section-workspace").waitFor();
-  await settings.getByTestId("watchlist-management").waitFor();
+  await settings.getByTestId("workspace-scope").waitFor();
   const dataTab = settings.getByRole("tab", { name: "Data & recovery" });
   await dataTab.click();
   await settings.getByTestId("settings-section-data").waitFor();
