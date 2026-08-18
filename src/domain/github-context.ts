@@ -254,6 +254,8 @@ export type GitHubLabel = {
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;
   readonly title: string;
+  /** GitHub GraphQL node ID (REST's `node_id`), e.g. for `labelableId` in label mutations. */
+  readonly nodeId?: string;
   /** Markdown source from GitHub. Renderers must treat it as untrusted text. */
   readonly description?: string;
   readonly author: string;

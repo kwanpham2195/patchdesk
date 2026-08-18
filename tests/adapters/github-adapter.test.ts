@@ -1406,7 +1406,12 @@ describe("GitHubAdapter read boundary", () => {
     });
     expect(await adapter.getPullRequest({ profile, pr })).toMatchObject({
       _tag: "ok",
-      value: { headSha, baseBranch: "sit", author: "reviewer" },
+      value: {
+        headSha,
+        baseBranch: "sit",
+        author: "reviewer",
+        nodeId: "PR_kwDOL7JuT85qX9Zz",
+      },
     });
     expect(await adapter.getPullRequestComments({ profile, pr })).toEqual({
       _tag: "ok",

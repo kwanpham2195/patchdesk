@@ -413,6 +413,8 @@ export function parsePullRequest(
     })),
     updatedAt: updatedAt.value,
   };
+  if (parsed.output.node_id !== undefined)
+    summary = { ...summary, nodeId: parsed.output.node_id };
   const description = parsed.output.body ?? undefined;
   if (description !== undefined) summary = { ...summary, description };
   if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };

@@ -164,6 +164,7 @@ export const pullRequestCommitSchema = v.looseObject({
 
 export const pullRequestSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  node_id: v.optional(v.string()),
   title: v.string(),
   body: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(65_536)))),
   state: v.picklist(["open", "closed"]),
