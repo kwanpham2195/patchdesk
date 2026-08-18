@@ -25,6 +25,7 @@ import type {
   PullRequestSummary,
   MergePolicySnapshot,
   RepositoryLabelListing,
+  RepositoryLabelPermission,
 } from "../../domain/github-context";
 import {
   parseGitSha,
@@ -497,7 +498,25 @@ export type RepositoryPermissionEvidence = {
     | "pull"
     | "none";
   readonly pullRequestsWrite: boolean;
+  /**
+   * `triage` can apply/dismiss existing labels despite lacking pull-request
+   * write access, so this is derived separately from `pullRequestsWrite`
+   * rather than reusing it.
+   */
+  readonly canManageLabels: boolean;
 };
+
+/**
+ * Projects optional repository-permission evidence into a three-state label
+ * capability. Missing or failed evidence yields `unknown`, never a wrong
+ * extreme in either direction — see `RepositoryLabelPermission`.
+ */
+export function repositoryLabelPermission(
+  permission: Result<RepositoryPermissionEvidence, GitHubReadFailure> | undefined,
+): RepositoryLabelPermission {
+  if (permission === undefined || permission._tag === "err") return "unknown";
+  return permission.value.canManageLabels ? "permitted" : "denied";
+}
 
 export type BranchProtectionEvidence = {
   readonly protected: boolean;
@@ -1329,6 +1348,13 @@ export class GitHubAdapter
         permission === "admin" ||
         permission === "maintain" ||
         permission === "push",
+      // Apply/dismiss-labels is granted to triage and above, not just the
+      // pull-request-write roles: https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization
+      canManageLabels:
+        permission === "admin" ||
+        permission === "maintain" ||
+        permission === "push" ||
+        permission === "triage",
     });
   }
 

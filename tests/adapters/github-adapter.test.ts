@@ -14,6 +14,8 @@ import {
   createFetchedDiffRefs,
   FakeGitHubAdapter,
   GitHubAdapter,
+  repositoryLabelPermission,
+  type GitHubReadFailure,
 } from "../../src/adapters/github/github-adapter";
 import {
   GitHubCliCredentials,
@@ -33,7 +35,7 @@ import {
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import {
   parseWorkspaceProfileConfig,
   type WorkspaceProfileConfig,
@@ -1079,6 +1081,109 @@ describe("GitHubAdapter Published feedback capabilities", () => {
       _tag: "ok",
       value: { reviews: [{ id: "7", canDismiss: true }] },
     });
+  });
+});
+
+describe("GitHubAdapter repository label permission", () => {
+  it.each([
+    ["admin", true],
+    ["maintain", true],
+    ["push", true],
+    ["triage", true],
+    ["pull", false],
+    ["none", false],
+  ] as const)(
+    "maps collaborator permission %s to canManageLabels %s",
+    async (permission, canManageLabels) => {
+      const adapter = testAdapter(
+        new CommandRunner(
+          new FakeProcessExecutor([
+            {
+              _tag: "Exited",
+              exitCode: 0,
+              stdout: JSON.stringify({ permission }),
+              stderr: "",
+            },
+          ]),
+        ),
+      );
+      await expect(
+        adapter.getRepositoryPermission({
+          profile,
+          pr,
+          account: "pmquan2cfw",
+        }),
+      ).resolves.toMatchObject({
+        _tag: "ok",
+        value: { permission, canManageLabels },
+      });
+    },
+  );
+
+  it("keeps pullRequestsWrite denied for triage even though labels are permitted", async () => {
+    const adapter = testAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify({ permission: "triage" }),
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+    await expect(
+      adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        permission: "triage",
+        pullRequestsWrite: false,
+        canManageLabels: true,
+      },
+    });
+  });
+});
+
+describe("repositoryLabelPermission", () => {
+  const failure: GitHubReadFailure = {
+    _tag: "GitHubReadFailed",
+    operation: "get_repository_permission",
+  };
+
+  it("reports permitted when evidence grants label management", () => {
+    expect(
+      repositoryLabelPermission(
+        ok({
+          account: "pmquan2cfw",
+          permission: "triage",
+          pullRequestsWrite: false,
+          canManageLabels: true,
+        }),
+      ),
+    ).toBe("permitted");
+  });
+
+  it("reports denied when evidence withholds label management", () => {
+    expect(
+      repositoryLabelPermission(
+        ok({
+          account: "pmquan2cfw",
+          permission: "pull",
+          pullRequestsWrite: false,
+          canManageLabels: false,
+        }),
+      ),
+    ).toBe("denied");
+  });
+
+  it("reports unknown when the evidence read failed", () => {
+    expect(repositoryLabelPermission(err(failure))).toBe("unknown");
+  });
+
+  it("reports unknown when no evidence was fetched at all", () => {
+    expect(repositoryLabelPermission(undefined)).toBe("unknown");
   });
 });
 

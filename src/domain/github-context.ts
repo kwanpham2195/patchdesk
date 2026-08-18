@@ -245,6 +245,13 @@ export type PullRequestSnapshot = {
   readonly isOpen: boolean;
 };
 
+/**
+ * Whether the authenticated account may manage labels on a repository.
+ * `unknown` covers permission evidence that was never fetched or came back
+ * unavailable; it must never be treated as either `permitted` or `denied`.
+ */
+export type RepositoryLabelPermission = "permitted" | "denied" | "unknown";
+
 export type GitHubLabel = {
   readonly name: string;
   /** GitHub's hex color, six characters, no leading `#`. */
