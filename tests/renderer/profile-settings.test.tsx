@@ -5,8 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
+import type { Profile } from "../../src/renderer/src/renderer-models";
+import { failure, success } from "./fake-desktop-response";
 
-const profile = {
+const profile: Profile = {
   id: "cfw",
   label: "CFW",
   githubHost: "github.com",
@@ -111,7 +113,9 @@ describe("workspace profile settings", () => {
 
     releaseSave();
     await vi.waitFor(() =>
-      expect((label as HTMLInputElement).value).toBe("Newer"),
+      expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+        "Newer",
+      ),
     );
   });
 
@@ -150,17 +154,95 @@ describe("workspace profile settings", () => {
   });
 });
 
+describe("workspace root discovery", () => {
+  it("shows a per-root count of repositories found and watched", async () => {
+    installDesktopApi({
+      suggestions: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          localPath: "/workspace/cfw/patchdesk",
+        },
+      ],
+    });
+    const watchedProfile: Profile = {
+      ...profile,
+      repos: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "watched-repo",
+          localPath: "/workspace/cfw/watched-repo",
+        },
+      ],
+    };
+
+    renderSettings(undefined, watchedProfile);
+
+    expect(
+      await screen.findByText("2 repositories found · 1 watched"),
+    ).toBeTruthy();
+  });
+
+  it("shows the explicit zero-found state for a saved root with no discoveries", async () => {
+    installDesktopApi({ suggestions: [] });
+
+    renderSettings();
+
+    expect(
+      await screen.findByText(
+        "No git repositories with GitHub remotes found in this folder.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows a failure state when the discovery scan errors", async () => {
+    installDesktopApi({ suggestions: "reject" });
+
+    renderSettings();
+
+    expect(
+      await screen.findByText("Could not scan this folder for repositories."),
+    ).toBeTruthy();
+  });
+
+  it("shows a save affordance instead of a count for a root that hasn't been saved yet", async () => {
+    installDesktopApi({ suggestions: [] });
+    const user = userEvent.setup();
+
+    renderSettings();
+    await screen.findByText(
+      "No git repositories with GitHub remotes found in this folder.",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Add workspace root" }),
+    );
+    await user.type(
+      screen.getByLabelText("workspace root 2"),
+      "/workspace/unsaved",
+    );
+
+    expect(
+      screen.getByText(
+        "Save the profile to scan this folder for repositories.",
+      ),
+    ).toBeTruthy();
+  });
+});
+
 function renderSettings(
-  onWorkspaceReload = async (): Promise<void> => undefined,
+  onWorkspaceReload: () => Promise<void> = async () => undefined,
+  activeProfile: Profile = profile,
 ): void {
   render(
     <SettingsFlow
-      dashboard={{ profile, dashboard: { rows: [], repos: [] } }}
+      dashboard={{ profile: activeProfile, dashboard: { rows: [], repos: [] } }}
       appearance="system"
       onAppearanceChange={() => undefined}
       diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
       onDiffThemeChange={() => undefined}
-      profiles={[profile]}
+      profiles={[activeProfile]}
       onWorkspaceReload={onWorkspaceReload}
       section="workspace"
     />,
@@ -171,6 +253,14 @@ function installDesktopApi(
   options: {
     readonly rejectProfileSave?: boolean;
     readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
+    readonly suggestions?:
+      | "reject"
+      | ReadonlyArray<{
+          readonly host: string;
+          readonly owner: string;
+          readonly repo: string;
+          readonly localPath: string;
+        }>;
   } = {},
 ): ReturnType<typeof vi.fn> {
   const request = vi.fn(
@@ -183,6 +273,11 @@ function installDesktopApi(
       if (input.operation === "selectDirectory")
         return success({ path: "/picked/enterprise" });
       if (input.path === "/v1/environment") return success({});
+      if (input.path === "/v1/watchlist/suggestions") {
+        return options.suggestions === "reject"
+          ? failure({ error: "storage" })
+          : success(options.suggestions ?? []);
+      }
       if (
         input.path === "/v1/profiles" &&
         options.pendingProfileSave !== undefined
@@ -198,22 +293,4 @@ function installDesktopApi(
     value: { request, onNavigate: () => () => undefined },
   });
   return request;
-}
-
-function success(body: unknown): {
-  readonly ok: true;
-  readonly status: 200;
-  readonly body: unknown;
-  readonly correlationId: string;
-} {
-  return { ok: true, status: 200, body, correlationId: "test" };
-}
-
-function failure(body: unknown): {
-  readonly ok: false;
-  readonly status: 500;
-  readonly body: unknown;
-  readonly correlationId: string;
-} {
-  return { ok: false, status: 500, body, correlationId: "test" };
 }

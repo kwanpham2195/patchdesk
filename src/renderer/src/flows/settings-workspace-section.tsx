@@ -8,7 +8,9 @@ import {
 import { ChevronDown, FolderOpen, Plus, X } from "lucide-react";
 import { requestJson, selectDirectory } from "../api-client";
 import {
+  parseDiscoveredRepos,
   parseEnvironmentCheckResponse,
+  type DiscoveredRepo,
   type EnvironmentCheckResponse,
   type GithubAuthAccount,
 } from "../renderer-contracts";
@@ -41,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { Dashboard, Profile } from "../renderer-models";
+import type { Dashboard, Profile, Repo } from "../renderer-models";
 
 type ProfileDraft = {
   readonly id: string;
@@ -63,6 +65,23 @@ type ReviewingAsState =
   | { readonly kind: "checking" }
   | { readonly kind: "loaded"; readonly env: EnvironmentCheckResponse }
   | { readonly kind: "error" };
+
+/** Local state machine for the workspace-root discovery scan (`GET /v1/watchlist/suggestions`), scoped to the saved profile since discovery runs server-side against it. */
+type RootDiscoveryState =
+  | { readonly kind: "loading" }
+  | { readonly kind: "loaded"; readonly repos: ReadonlyArray<DiscoveredRepo> }
+  | { readonly kind: "error" };
+
+/** What a single workspace-root row shows for its discovery result. */
+type RootDiscoveryStatus =
+  | { readonly kind: "unsaved" }
+  | { readonly kind: "loading" }
+  | { readonly kind: "error" }
+  | {
+      readonly kind: "found";
+      readonly total: number;
+      readonly watched: number;
+    };
 
 type WorkspaceProfileSectionProps = {
   readonly dashboard: Dashboard | undefined;
@@ -129,6 +148,10 @@ export function WorkspaceProfileSection({
     profileDraft.ghAccount,
     updateProfileDraft,
   );
+
+  const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
+  const rootDiscoveryStatus = (root: string): RootDiscoveryStatus =>
+    workspaceRootDiscoveryStatus(root, dashboard?.profile, rootDiscovery);
 
   if (!visible) return null;
 
@@ -265,6 +288,11 @@ export function WorkspaceProfileSection({
               onChoose={(entryId) => {
                 void chooseWorkspaceRoot(entryId);
               }}
+              renderStatus={(value) => (
+                <WorkspaceRootDiscoveryStatus
+                  status={rootDiscoveryStatus(value)}
+                />
+              )}
             />
             <ProfileListEditor
               label="Owner filters"
@@ -661,6 +689,178 @@ function useReviewingAsProbe(
   };
 }
 
+const EMPTY_ROOTS: ReadonlyArray<string> = [];
+const EMPTY_REPOS: ReadonlyArray<Repo> = [];
+
+/**
+ * Runs the `GET /v1/watchlist/suggestions` scan that
+ * `DashboardController.discoverWorkspaceRepos` performs against the *saved*
+ * profile's workspace roots (see `WatchlistPanel`, whose request/parse path
+ * this mirrors). Re-runs whenever the saved profile's id, workspace roots,
+ * or watched repos change — which covers both switching profiles and a
+ * successful profile save bringing a newly-typed root into scope, since
+ * `onWorkspaceReload` refreshes `dashboard.profile` after either.
+ */
+function useWorkspaceRootDiscovery(
+  savedProfile: Profile | undefined,
+): RootDiscoveryState {
+  const [state, setState] = useState<RootDiscoveryState>({
+    kind: "loading",
+  });
+  // A JSON key rather than the profile object itself: the dashboard is
+  // refetched (and reallocated) on every reload even when nothing this scan
+  // cares about changed, and `profileDirty`'s dependency check above uses
+  // the same `JSON.stringify` comparison for the same reason.
+  const savedKey = JSON.stringify({
+    id: savedProfile?.id,
+    workspaceRoots: savedProfile?.workspaceRoots,
+    repos: savedProfile?.repos,
+  });
+
+  useEffect(() => {
+    let active = true;
+    setState({ kind: "loading" });
+    void (async () => {
+      try {
+        const value = await requestJson("/v1/watchlist/suggestions");
+        if (!active) return;
+        const parsed = parseDiscoveredRepos(value);
+        setState(
+          parsed === undefined
+            ? { kind: "error" }
+            : { kind: "loaded", repos: parsed },
+        );
+      } catch {
+        if (active) setState({ kind: "error" });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [savedKey]);
+
+  return state;
+}
+
+function repoKey(repo: {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+}): string {
+  return `${repo.host}/${repo.owner}/${repo.repo}`;
+}
+
+/**
+ * Attributes discovered and already-watched repos to the saved workspace
+ * root that contains them, by path prefix — the same attribution
+ * `WatchlistPanel.groupByRoot` uses, since `/v1/watchlist/suggestions`
+ * returns a flat list with no per-root grouping of its own. A repo whose
+ * path matches more than one configured root (nested roots) is attributed
+ * to the first root that claims it, so totals never double-count it.
+ * `discovered` already excludes watched repos (`DashboardService.
+ * discoverWorkspaceRepos` filters them out), so a root's total is the two
+ * counts combined, not `discovered` alone.
+ */
+function countsByRoot(
+  discovered: ReadonlyArray<DiscoveredRepo>,
+  watchedRepos: ReadonlyArray<Repo>,
+  savedRoots: ReadonlyArray<string>,
+): ReadonlyMap<string, { readonly total: number; readonly watched: number }> {
+  const byKey = new Map<string, { localPath: string; watched: boolean }>();
+  for (const repo of discovered) {
+    byKey.set(repoKey(repo), { localPath: repo.localPath, watched: false });
+  }
+  for (const repo of watchedRepos) {
+    byKey.set(repoKey(repo), {
+      localPath: repo.localPath ?? "",
+      watched: true,
+    });
+  }
+  const assigned = new Set<string>();
+  const counts = new Map<
+    string,
+    { readonly total: number; readonly watched: number }
+  >();
+  for (const root of savedRoots) {
+    let total = 0;
+    let watched = 0;
+    for (const [key, entry] of byKey) {
+      if (assigned.has(key) || !entry.localPath.startsWith(root)) continue;
+      assigned.add(key);
+      total += 1;
+      if (entry.watched) watched += 1;
+    }
+    counts.set(root, { total, watched });
+  }
+  return counts;
+}
+
+/**
+ * Resolves one workspace-root row's discovery status. A root that isn't
+ * part of the *saved* profile has never been scanned — discovery runs
+ * server-side against the saved profile, not the unsaved draft — so it
+ * reports "unsaved" rather than a count of 0, which would be a false
+ * negative in exactly the case this panel exists to surface.
+ */
+function workspaceRootDiscoveryStatus(
+  root: string,
+  savedProfile: Profile | undefined,
+  discovery: RootDiscoveryState,
+): RootDiscoveryStatus {
+  const trimmedRoot = root.trim();
+  const savedRoots = savedProfile?.workspaceRoots ?? EMPTY_ROOTS;
+  if (!savedRoots.includes(trimmedRoot)) return { kind: "unsaved" };
+  if (discovery.kind === "loading") return { kind: "loading" };
+  if (discovery.kind === "error") return { kind: "error" };
+  const counts = countsByRoot(
+    discovery.repos,
+    savedProfile?.repos ?? EMPTY_REPOS,
+    savedRoots,
+  ).get(trimmedRoot) ?? { total: 0, watched: 0 };
+  return { kind: "found", total: counts.total, watched: counts.watched };
+}
+
+/** Renders one workspace-root row's discovery result: a count, the explicit zero-found state, a loading state, a failure state, or the unsaved-root affordance. */
+function WorkspaceRootDiscoveryStatus({
+  status,
+}: {
+  readonly status: RootDiscoveryStatus;
+}): React.JSX.Element | null {
+  if (status.kind === "unsaved") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Save the profile to scan this folder for repositories.
+      </p>
+    );
+  }
+  if (status.kind === "loading") {
+    return (
+      <p className="text-xs text-muted-foreground" role="status">
+        Scanning for repositories…
+      </p>
+    );
+  }
+  if (status.kind === "error") {
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        Could not scan this folder for repositories.
+      </p>
+    );
+  }
+  if (status.total === 0) {
+    return (
+      <p className="text-xs text-muted-foreground" role="status">
+        No git repositories with GitHub remotes found in this folder.
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground" role="status">
+      {`${status.total} ${status.total === 1 ? "repository" : "repositories"} found · ${status.watched} watched`}
+    </p>
+  );
+}
+
 type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
 
 function profileListEntry(value: string): ProfileListEntry {
@@ -1040,6 +1240,7 @@ function ProfileListEditor({
   onAdd,
   onRemove,
   onChoose,
+  renderStatus,
 }: {
   readonly label: string;
   readonly field: ProfileListField;
@@ -1053,6 +1254,7 @@ function ProfileListEditor({
   readonly onAdd: (field: ProfileListField) => void;
   readonly onRemove: (field: ProfileListField, entryId: string) => void;
   readonly onChoose?: (entryId: string) => void;
+  readonly renderStatus?: (value: string) => React.ReactNode;
 }): React.JSX.Element {
   const singular = label.slice(0, -1).toLowerCase();
   return (
@@ -1060,42 +1262,47 @@ function ProfileListEditor({
       <legend className="text-sm font-medium">{label}</legend>
       <div className="flex flex-col gap-2 rounded-lg border p-2">
         {entries.map((entry, index) => (
-          <div key={entry.id} className="flex min-w-0 items-center gap-2">
-            <Input
-              aria-label={`${singular} ${index + 1}`}
-              value={entry.value}
-              placeholder={placeholder}
-              onChange={(event) =>
-                onChange(field, entry.id, event.target.value)
-              }
-            />
-            {onChoose === undefined ? null : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => onChoose(entry.id)}
-              >
-                <FolderOpen data-icon="inline-start" />
-                Choose folder
-              </Button>
-            )}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label={`Remove ${singular} ${index + 1}`}
-                    onClick={() => onRemove(field, entry.id)}
-                  />
+          <div key={entry.id} className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <Input
+                aria-label={`${singular} ${index + 1}`}
+                value={entry.value}
+                placeholder={placeholder}
+                onChange={(event) =>
+                  onChange(field, entry.id, event.target.value)
                 }
-              >
-                <X />
-              </TooltipTrigger>
-              <TooltipContent>{`Remove ${singular}`}</TooltipContent>
-            </Tooltip>
+              />
+              {onChoose === undefined ? null : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onChoose(entry.id)}
+                >
+                  <FolderOpen data-icon="inline-start" />
+                  Choose folder
+                </Button>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      aria-label={`Remove ${singular} ${index + 1}`}
+                      onClick={() => onRemove(field, entry.id)}
+                    />
+                  }
+                >
+                  <X />
+                </TooltipTrigger>
+                <TooltipContent>{`Remove ${singular}`}</TooltipContent>
+              </Tooltip>
+            </div>
+            {renderStatus === undefined || entry.value.trim() === ""
+              ? null
+              : renderStatus(entry.value)}
           </div>
         ))}
       </div>
