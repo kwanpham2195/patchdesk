@@ -106,6 +106,7 @@ const operationSchema = v.strictObject({
 
 /** Parses persisted merge-operation evidence without admitting provider payloads or free-form errors. */
 export function parseMergeOperation(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON merge-operation I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<MergeOperation, InvalidMergeOperation> {
   const raw = v.safeParse(operationSchema, input);
@@ -152,9 +153,15 @@ export function parseMergeOperation(
 
 /** Creates durable merge intent before any remote merge call starts. */
 export function requestMergeOperation(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- delegates straight to parseMergeOperation, itself the JSON merge-operation I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<MergeOperation, InvalidMergeOperation> {
-  if (typeof input !== "object" || input === null || Array.isArray(input))
+  if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input)
+  )
     return invalid();
   return parseMergeOperation({ ...input, state: { _tag: "Requested" } });
 }
@@ -174,13 +181,15 @@ export function confirmMergeOperation(
   mergedAt: IsoTimestamp,
   mergeCommitSha?: GitSha,
 ): Result<MergeOperation, InvalidMergeOperation> {
+  const mergeCommitShaField =
+    mergeCommitSha === undefined ? {} : { mergeCommitSha };
   return operation.state._tag === "OutcomeUnknown"
     ? ok({
         ...operation,
         state: {
           _tag: "Confirmed",
           mergedAt,
-          ...(mergeCommitSha === undefined ? {} : { mergeCommitSha }),
+          ...mergeCommitShaField,
         },
       })
     : invalid();
@@ -194,11 +203,18 @@ export function rejectMergeOperation(
   if (
     (operation.state._tag !== "Requested" &&
       operation.state._tag !== "OutcomeUnknown") ||
+    // SAFETY: `rejectionReasons` is a tuple of string literals, so `Array.includes`
+    // requires an argument of that same literal union; this assertion only
+    // satisfies that signature, and this call's own boolean result is the actual
+    // runtime membership check — reason is trusted as MergeRejectionReason only
+    // once this condition has returned false (see the return below).
     !rejectionReasons.includes(reason as MergeRejectionReason)
   )
     return invalid();
   return ok({
     ...operation,
+    // SAFETY: the guard above already proved `rejectionReasons.includes(reason)`;
+    // this assertion only restates that proof for the compiler.
     state: { _tag: "Rejected", reason: reason as MergeRejectionReason },
   });
 }
@@ -217,12 +233,14 @@ function parseState(
     (mergeCommitSha !== undefined && mergeCommitSha._tag === "err")
   )
     return invalid();
+  const mergeCommitShaField =
+    mergeCommitSha === undefined
+      ? {}
+      : { mergeCommitSha: mergeCommitSha.value };
   return ok({
     _tag: "Confirmed",
     mergedAt: mergedAt.value,
-    ...(mergeCommitSha === undefined
-      ? {}
-      : { mergeCommitSha: mergeCommitSha.value }),
+    ...mergeCommitShaField,
   });
 }
 
