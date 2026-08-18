@@ -28,7 +28,7 @@
     "precommit": "react-doctor --staged --blocking warning --yes && node scripts/lint-staged.mjs",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky"
+    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
