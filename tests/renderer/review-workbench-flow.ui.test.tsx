@@ -115,6 +115,7 @@ function projection(
     checks: { overall: "passing", checks: [] },
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
+    directSummary: { state: "idle" },
     ...overrides,
   } as WorkbenchResponse;
 }
@@ -490,6 +491,47 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       }),
     );
     observe({ _tag: "Unavailable" });
+  });
+
+  it("advances the summary dialog to its confirmation panel after a confirmed submit, even though the projection always carries an idle directSummary", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return new Promise(() => {
+          // Left pending: this regression is about the dialog reacting to
+          // the submit response itself, not to a later detect-updates read.
+        });
+      if (input.path === "/v1/reviews/direct-summary/submit")
+        return {
+          directSummary: {
+            state: "confirmed",
+            receipt: { reviewId: "9100", event: "COMMENT" },
+          },
+        };
+      throw new Error(input.path);
+    });
+    // The base fixture's `directSummary: { state: "idle" }` matches what the
+    // server always sends (see `projectDirectSummaryReview`); a naive `??`
+    // fallback onto that value would mask the fresh submit result and leave
+    // the dialog stuck on the submit form.
+    // SAFETY: `pending("none")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
+    mount(projection({ pendingReview: pending("none") as never }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Start a review" }));
+    await user.click(
+      screen.getByRole("button", { name: "Write review summary" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Review summary" }),
+      "Approve this",
+    );
+    await user.click(screen.getByRole("button", { name: "Submit review" }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("dialog")).getByRole("status").textContent,
+      ).toBe("Review summary #9100 was published to GitHub."),
+    );
   });
 
   it("sends a pending-review Start command with the represented anchor and revision", async () => {

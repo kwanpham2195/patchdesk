@@ -145,6 +145,23 @@ function boundedDirectSummaryError(cause: unknown): string {
 }
 
 /**
+ * A stable value signature for a direct-summary projection, used to detect
+ * when the server-sent projection actually changes (as opposed to merely
+ * re-rendering with the same value). Distinct from the projection's
+ * `state` alone so that two "confirmed" or "recovery_required" projections
+ * with different payloads are treated as different values.
+ */
+function directSummarySignature(
+  projection: DirectSummaryReviewProjection,
+): string {
+  if (projection.state === "confirmed")
+    return `confirmed:${projection.receipt.reviewId}:${projection.receipt.event}`;
+  if (projection.state === "recovery_required")
+    return `recovery_required:${projection.resolution}`;
+  return "idle";
+}
+
+/**
  * The exact pending-review thread ids a projection confirms. Only ids that
  * parse as GitHub thread ids are journaled: detection matches real remote
  * threads, and an unparseable id would silently break the detector request.
@@ -1014,13 +1031,29 @@ export function ReviewWorkbenchFlow({
   const [directSummaryError, setDirectSummaryError] = useState<
     string | undefined
   >(undefined);
-  const [directSummaryState, setDirectSummaryState] =
-    useState<DirectSummaryReviewProjection>(
-      workbench.directSummary ?? { state: "idle" },
-    );
+  // The result of a command the renderer just issued (submit/recover) must
+  // win over the server-sent projection until a genuinely newer projection
+  // value arrives. `directSummaryOverride` holds that command result;
+  // `observedDirectSummarySignature` tracks the last projection value seen
+  // so a render-time comparison (not a useEffect) can drop the override the
+  // moment the projection actually changes underneath it.
+  const [directSummaryOverride, setDirectSummaryOverride] = useState<
+    DirectSummaryReviewProjection | undefined
+  >(undefined);
+  const [observedDirectSummarySignature, setObservedDirectSummarySignature] =
+    useState<string | undefined>(undefined);
+  const projectedDirectSummary: DirectSummaryReviewProjection =
+    workbench.directSummary ?? { state: "idle" };
+  const projectedDirectSummarySignature = directSummarySignature(
+    projectedDirectSummary,
+  );
+  if (projectedDirectSummarySignature !== observedDirectSummarySignature) {
+    setObservedDirectSummarySignature(projectedDirectSummarySignature);
+    setDirectSummaryOverride(undefined);
+  }
   const observedDirectSummaryRef = useRef<string | undefined>(undefined);
   const visibleDirectSummaryState =
-    workbench.directSummary ?? directSummaryState;
+    directSummaryOverride ?? projectedDirectSummary;
   const observeDirectSummaryReceipt = useCallback(
     (reviewId: string): void => {
       if (observedDirectSummaryRef.current === reviewId) return;
@@ -1060,7 +1093,7 @@ export function ReviewWorkbenchFlow({
         const result = parseDirectSummaryReviewResponse(value);
         if (result === undefined)
           throw new Error("Invalid direct summary review response");
-        setDirectSummaryState(result);
+        setDirectSummaryOverride(result);
         if (result.state === "confirmed") {
           const write = {
             _tag: "DirectSummaryReview" as const,
@@ -1080,7 +1113,7 @@ export function ReviewWorkbenchFlow({
             cause.kind === "ambiguous_write" ||
             cause.kind === "timeout")
         )
-          setDirectSummaryState({
+          setDirectSummaryOverride({
             state: "recovery_required",
             resolution: "check_required",
           });
@@ -1108,7 +1141,7 @@ export function ReviewWorkbenchFlow({
         const result = parseDirectSummaryReviewResponse(value);
         if (result === undefined)
           throw new Error("Invalid direct summary recovery response");
-        setDirectSummaryState(result);
+        setDirectSummaryOverride(result);
         if (result.state === "confirmed") {
           setRecentWrites((current) => [
             ...current,
