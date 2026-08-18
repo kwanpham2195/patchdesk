@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Tag } from "lucide-react";
 
-import type { RepositoryLabel } from "../../../domain/github-context";
+import type {
+  RepositoryLabel,
+  RepositoryLabelPermission,
+} from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
 import type { RepositoryLabelListResponse } from "../renderer-contracts";
 import { LabelChip } from "./label-chip";
@@ -26,17 +29,6 @@ export type LabelPickerActions = {
   ) => Promise<void>;
 };
 
-/**
- * Whether a label write on this repository will succeed. No permission
- * signal reaches the renderer for label management (unlike e.g. `canEdit`
- * on a published comment), so every mount starts `"unknown"` rather than
- * guessing: a write is offered, but honestly caveated as unconfirmed.
- * `"denied"` is learned only once GitHub actually refuses a write — from
- * then on further attempts are withheld, the exact defect plan 009 fixed.
- * A first successful write instead confirms `"permitted"`.
- */
-type LabelWritePermission = "unknown" | "denied" | "permitted";
-
 type ReadState =
   | { readonly _tag: "loading" }
   | { readonly _tag: "github_read" }
@@ -45,6 +37,14 @@ type ReadState =
       readonly _tag: "ready";
       readonly labels: ReadonlyArray<RepositoryLabel>;
       readonly totalCount: number;
+      /**
+       * The service's real, GitHub-evidenced answer for whether this
+       * account can write labels here (`LabelListOutcome.ready.permission`
+       * in `src/services/label-service.ts`). Never inferred client-side —
+       * `"unknown"` means evidence was genuinely unavailable, not that a
+       * write hasn't been tried yet.
+       */
+      readonly permission: RepositoryLabelPermission;
     }
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
@@ -95,7 +95,8 @@ export function LabelPicker({
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [readState, setReadState] = useState<ReadState>({ _tag: "loading" });
-  const [permission, setPermission] = useState<LabelWritePermission>("unknown");
+  const permission: RepositoryLabelPermission =
+    readState._tag === "ready" ? readState.permission : "unknown";
   const [pendingAdds, setPendingAdds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -170,21 +171,24 @@ export function LabelPicker({
       ? actions.addLabels([ref])
       : actions.removeLabels([ref]);
     write
-      .then(() => setPermission("permitted"))
       .catch((cause: unknown) => {
         // The optimistic guess did not hold: revert it.
         if (nextAttached)
           setPendingAdds((current) => withoutName(current, label.name));
         else setPendingRemoves((current) => withoutName(current, label.name));
-        if (cause instanceof PatchdeskApiError && cause.kind === "github_rejected") {
-          setPermission("denied");
-        } else {
-          setWriteError(
-            nextAttached
-              ? `Patchdesk could not add "${label.name}".`
-              : `Patchdesk could not remove "${label.name}".`,
-          );
-        }
+        // Permission state is never inferred from this: it already comes
+        // from the read path (`readState.permission`), evidenced by
+        // `getRepositoryPermission`. A rejected write here still gets a
+        // specific reason surfaced — a permitted user can still hit e.g. an
+        // IP allow list — but it does not change what the picker believes
+        // about this account's standing.
+        const reason =
+          cause instanceof PatchdeskApiError ? ` ${cause.message}` : "";
+        setWriteError(
+          nextAttached
+            ? `Patchdesk could not add "${label.name}".${reason}`
+            : `Patchdesk could not remove "${label.name}".${reason}`,
+        );
       })
       .finally(() => {
         setBusyNames((current) => withoutName(current, label.name));
@@ -204,15 +208,14 @@ export function LabelPicker({
         <PopoverHeader>
           <PopoverTitle>Labels</PopoverTitle>
         </PopoverHeader>
-        {permission === "denied" ? (
+        {readState._tag === "ready" && permission === "denied" ? (
           <p role="alert" className="text-xs text-destructive">
-            You don&apos;t have permission to manage labels on this
-            repository.
+            This account cannot manage labels on this repository.
           </p>
-        ) : permission === "unknown" ? (
+        ) : readState._tag === "ready" && permission === "unknown" ? (
           <p className="text-xs text-muted-foreground">
-            Patchdesk hasn&apos;t confirmed you can manage labels here — a
-            change may be refused.
+            Patchdesk could not confirm you can manage labels here — a change
+            may be refused.
           </p>
         ) : null}
         {writeError === undefined ? null : (
@@ -244,6 +247,9 @@ function projectReadState(
       _tag: "ready",
       labels,
       totalCount: response.totalCount ?? labels.length,
+      // Fails closed to `"unknown"` (never `"permitted"`) if the field is
+      // ever missing — an unconfirmed state, not an authorized one.
+      permission: response.permission ?? "unknown",
     };
   }
   if (response.state === "github_rate_limited") {

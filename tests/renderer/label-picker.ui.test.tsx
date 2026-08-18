@@ -16,6 +16,7 @@ const repositoryLabels: RepositoryLabelListResponse = {
     { id: "LA_docs", name: "documentation", color: "0075ca" },
   ],
   totalCount: 2,
+  permission: "permitted",
 };
 
 function actionsFixture(
@@ -161,27 +162,81 @@ describe("LabelPicker", () => {
     ).toBeTruthy();
   });
 
-  it("shows unconfirmed permission by default, before any write is attempted", async () => {
+  it("fully enables the picker with no caveat when the service reports 'permitted'", async () => {
     const user = userEvent.setup();
     render(<LabelPicker attachedLabels={[]} actions={actionsFixture()} />);
     await openPicker(user);
+    const bugCheckbox = await screen.findByRole("checkbox", { name: "bug" });
+    expect(bugCheckbox.getAttribute("aria-disabled")).not.toBe("true");
     expect(
-      await screen.findByText(
-        "Patchdesk hasn't confirmed you can manage labels here — a change may be refused.",
+      screen.queryByText(
+        "This account cannot manage labels on this repository.",
       ),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        "Patchdesk could not confirm you can manage labels here — a change may be refused.",
+      ),
+    ).toBeNull();
   });
 
-  it("renders a denied state distinctly once GitHub actually refuses a write, and withholds further attempts", async () => {
+  it("shows the honest unconfirmed caveat, without hiding or disabling the picker, when permission evidence is unavailable", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture({
+      fetchLabels: vi.fn(async () => ({
+        ...repositoryLabels,
+        permission: "unknown" as const,
+      })),
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    expect(
+      await screen.findByText(
+        "Patchdesk could not confirm you can manage labels here — a change may be refused.",
+      ),
+    ).toBeTruthy();
+    const bugCheckbox = screen.getByRole("checkbox", { name: "bug" });
+    // Caveated, not withheld: a write is still offered even though the
+    // evidence needed to confirm it is genuinely unavailable.
+    expect(bugCheckbox.getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("disables the picker and states the account cannot manage labels, with no retry, when the service reports 'denied'", async () => {
+    const user = userEvent.setup();
+    const addLabels = vi.fn(async () => undefined);
+    const actions = actionsFixture({
+      fetchLabels: vi.fn(async () => ({
+        ...repositoryLabels,
+        permission: "denied" as const,
+      })),
+      addLabels,
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    expect(
+      await screen.findByText(
+        "This account cannot manage labels on this repository.",
+      ),
+    ).toBeTruthy();
+    const docsCheckbox = screen.getByRole("checkbox", {
+      name: "documentation",
+    });
+    expect(docsCheckbox.getAttribute("aria-disabled")).toBe("true");
+    // Disabled means disabled: clicking it must not issue a write.
+    await user.click(docsCheckbox);
+    expect(addLabels).not.toHaveBeenCalled();
+  });
+
+  it("still surfaces a write's specific forbidden reason even for a permitted account", async () => {
     const user = userEvent.setup();
     const actions = actionsFixture({
       addLabels: vi.fn(async () => {
         throw new PatchdeskApiError(
-          "github_rejected",
-          409,
+          "forbidden",
+          403,
           false,
           "corr-1",
-          "GitHub rejected this action.",
+          "GitHub blocked this action: an IP allow list is enabled and this network is not on it.",
         );
       }),
     });
@@ -193,16 +248,13 @@ describe("LabelPicker", () => {
     await user.click(docsCheckbox);
     expect(
       await screen.findByText(
-        "You don't have permission to manage labels on this repository.",
+        'Patchdesk could not add "documentation". GitHub blocked this action: an IP allow list is enabled and this network is not on it.',
       ),
     ).toBeTruthy();
-    expect(
-      screen.queryByText(
-        "Patchdesk hasn't confirmed you can manage labels here — a change may be refused.",
-      ),
-    ).toBeNull();
-    const bugCheckbox = screen.getByRole("checkbox", { name: "bug" });
-    expect(bugCheckbox.getAttribute("aria-disabled")).toBe("true");
+    // A permitted account hitting a specific write failure is not
+    // reclassified as denied: the picker still reflects the read path's
+    // 'permitted' signal, so a retry remains offered.
+    expect(docsCheckbox.getAttribute("aria-disabled")).not.toBe("true");
   });
 
   it("shows a forbidden read's specific reason instead of an empty list", async () => {

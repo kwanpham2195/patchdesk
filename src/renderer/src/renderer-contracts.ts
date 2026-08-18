@@ -204,6 +204,10 @@ const repositoryLabelListResponseSchema = v.strictObject({
   // GitHub's exact total; compare against `labels.length` to detect
   // truncation of the bounded page the local API returns.
   totalCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  // Only present on `state: "ready"` — the real, service-computed
+  // three-state label-write permission (never inferred from a failed
+  // write). See `LabelListOutcome` in `src/services/label-service.ts`.
+  permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
   forbiddenReason: v.optional(
     v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),

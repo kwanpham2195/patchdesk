@@ -1976,6 +1976,7 @@ function labelListResponse(
       state: "ready",
       labels: outcome.labels,
       totalCount: outcome.totalCount,
+      permission: outcome.permission,
     });
   if (outcome._tag === "github_rate_limited") {
     const resumeAtField =

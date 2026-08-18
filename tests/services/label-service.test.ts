@@ -334,6 +334,7 @@ describe("LabelService", () => {
           _tag: "ready",
           labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
           totalCount: 1,
+          permission: "permitted",
         },
       });
       expect(listRepositoryLabels).toHaveBeenCalledWith(
@@ -367,6 +368,78 @@ describe("LabelService", () => {
           _tag: "ready",
           labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
           totalCount: 150,
+          permission: "permitted",
+        },
+      });
+    });
+
+    it("carries 'denied' onto the read outcome instead of only discovering it via a rejected write", async () => {
+      const gate = makeGate();
+      const listRepositoryLabels = vi.fn(async () =>
+        ok({
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+        }),
+      );
+      const getRepositoryPermission = vi.fn(async () =>
+        ok({
+          account: "octocat",
+          permission: "read" as const,
+          pullRequestsWrite: false,
+          canManageLabels: false,
+        }),
+      );
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels, getRepositoryPermission }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: {
+          _tag: "ready",
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+          permission: "denied",
+        },
+      });
+    });
+
+    it("carries 'unknown' onto the read outcome when permission evidence is unavailable, never 'permitted'", async () => {
+      const gate = makeGate();
+      const listRepositoryLabels = vi.fn(async () =>
+        ok({
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+        }),
+      );
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({
+          listRepositoryLabels,
+          // No `getRepositoryPermission` implementation is the adapter's
+          // real-world "unknown" shape (an optional method left unwired).
+          getRepositoryPermission: undefined as never,
+        }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: {
+          _tag: "ready",
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+          permission: "unknown",
         },
       });
     });

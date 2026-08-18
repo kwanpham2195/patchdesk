@@ -3,9 +3,11 @@ import type { GitHubReader, GitHubReviewWriter, GitHubReadFailure } from "../ada
 import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
-import type { RepositoryLabel } from "../domain/github-context";
+import type { RepositoryLabel, RepositoryLabelPermission } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type {
   ReviewWriteGate,
   ReviewWriteGateFailure,
@@ -50,6 +52,14 @@ export type LabelListOutcome =
       readonly labels: ReadonlyArray<RepositoryLabel>;
       /** GitHub's exact total; compare against `labels.length` to detect truncation. */
       readonly totalCount: number;
+      /**
+       * Whether this account can write labels on this repository, computed
+       * the same way `execute`'s write gate computes it (`getRepositoryPermission`
+       * evidence through `repositoryLabelPermission`). Carried on the read path
+       * so the picker can gate its controls on real evidence instead of
+       * inferring permission from a rejected write.
+       */
+      readonly permission: RepositoryLabelPermission;
     }
   | { readonly _tag: "github_auth" }
   | { readonly _tag: "github_read" }
@@ -139,20 +149,55 @@ export class LabelService {
           ? "not_found"
           : "permission_denied",
       );
-    const listed = await this.github.listRepositoryLabels({
-      profile: current.value.profile,
-      repo: {
-        host: current.value.session.key.host,
-        owner: current.value.session.key.owner,
-        repo: current.value.session.key.repo,
-        number: current.value.session.key.prNumber,
-      },
-    });
+    const pr = {
+      host: current.value.session.key.host,
+      owner: current.value.session.key.owner,
+      repo: current.value.session.key.repo,
+      number: current.value.session.key.prNumber,
+    };
+    const [listed, permission] = await Promise.all([
+      this.github.listRepositoryLabels({
+        profile: current.value.profile,
+        repo: pr,
+      }),
+      this.resolveLabelPermission(current.value.profile, pr),
+    ]);
     return ok(
       listed._tag === "ok"
-        ? { _tag: "ready", labels: listed.value.labels, totalCount: listed.value.totalCount }
+        ? {
+            _tag: "ready",
+            labels: listed.value.labels,
+            totalCount: listed.value.totalCount,
+            permission,
+          }
         : mapReadFailure(listed.error),
     );
+  }
+
+  /**
+   * Resolves the real three-state label-write permission for one profile's
+   * pull request, shared by `execute`'s write gate and `list`'s read
+   * projection so the picker sees the same signal the write path enforces.
+   * `getRepositoryPermission` is an optional adapter read; when it is
+   * unavailable, or the resolved account does not match the configured
+   * profile account, the answer is `unknown` — never `permitted`.
+   */
+  private async resolveLabelPermission(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+  ): Promise<RepositoryLabelPermission> {
+    const account = await this.github.resolveAuthenticatedAccount(profile);
+    const permissionEvidence =
+      account._tag === "ok" &&
+      account.value.account === profile.ghAccount &&
+      this.github.getRepositoryPermission !== undefined
+        ? await this.github.getRepositoryPermission({
+            profile,
+            pr,
+            account: account.value.account,
+          })
+        : undefined;
+    return repositoryLabelPermission(permissionEvidence);
   }
 
   private async executeUnlocked(input: {
@@ -175,21 +220,11 @@ export class LabelService {
     // A write attempted without `permitted` is refused here, not only in the
     // UI. `unknown` (missing/failed evidence) must never be treated as
     // permitted — only an explicit `permitted` proceeds.
-    const account = await this.github.resolveAuthenticatedAccount(
+    const permission = await this.resolveLabelPermission(
       current.value.profile,
+      pr,
     );
-    const permissionEvidence =
-      account._tag === "ok" &&
-      account.value.account === current.value.profile.ghAccount &&
-      this.github.getRepositoryPermission !== undefined
-        ? await this.github.getRepositoryPermission({
-            profile: current.value.profile,
-            pr,
-            account: account.value.account,
-          })
-        : undefined;
-    if (repositoryLabelPermission(permissionEvidence) !== "permitted")
-      return err("permission_denied");
+    if (permission !== "permitted") return err("permission_denied");
 
     const pullRequest = await this.github.getPullRequest({
       profile: current.value.profile,
