@@ -162,6 +162,11 @@ const recentReviewWriteSchema = variant("_tag", [
     _tag: picklist(["DirectSummaryReview"] as const),
     reviewId: pipe(string(), minLength(1)),
   }),
+  strictObject({
+    _tag: picklist(["LabelChange"] as const),
+    added: array(string()),
+    removed: array(string()),
+  }),
 ]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -963,10 +968,16 @@ export async function startLocalApiServer(
           threadId: parsedThreadId.value,
           state: entry.state,
         });
-      } else {
+      } else if (entry._tag === "DirectSummaryReview") {
         recentWrites.push({
           _tag: "DirectSummaryReview",
           reviewId: entry.reviewId,
+        });
+      } else {
+        recentWrites.push({
+          _tag: "LabelChange",
+          added: entry.added,
+          removed: entry.removed,
         });
       }
     }

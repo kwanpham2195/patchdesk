@@ -13,6 +13,7 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
 } from "../src/domain/ids";
@@ -24,6 +25,7 @@ import {
 } from "../src/main/local-api";
 import { ok } from "../src/domain/result";
 import { StorageManagementService } from "../src/services/storage-management-service";
+import { ReviewWorkbenchController } from "../src/services/review-workbench-controller";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";
@@ -71,6 +73,12 @@ function headers(overrides: Record<string, string> = {}) {
 async function post(
   api: LocalApiServer,
   path: string,
+  // `body` stays `unknown` on the way in: this helper is the wire boundary
+  // itself (it JSON.stringifies whatever is passed), and callers deliberately
+  // send both well-formed domain payloads and malformed ones to exercise the
+  // route schema's 400 responses. There is no single named domain type this
+  // could be narrowed to.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above
   body: unknown,
   requestHeaders: Record<string, string> = headers(),
 ) {
@@ -145,7 +153,7 @@ describe("local API current Review capability boundary", () => {
               path: must(parseAbsolutePath("/tmp/patchdesk-worktree")),
               headSha,
             },
-            createdAt: "2026-08-14T00:00:00.000Z" as never,
+            createdAt: must(parseIsoTimestamp("2026-08-14T00:00:00.000Z")),
           }),
         )
       )._tag,
@@ -273,6 +281,32 @@ describe("local API current Review capability boundary", () => {
     }
   });
 
+  it("accepts a LabelChange recent write and passes it through to the workbench controller unchanged", async () => {
+    const detectUpdates = vi
+      .spyOn(ReviewWorkbenchController.prototype, "detectUpdates")
+      .mockResolvedValue(ok(undefined));
+    const api = await start();
+    const reviewId =
+      "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
+    const labelChangeWrite = {
+      _tag: "LabelChange",
+      added: ["bug"],
+      removed: ["needs-triage"],
+    };
+
+    const response = await post(api, "v1/reviews/detect-updates", {
+      profileId: "profile",
+      reviewId,
+      recentWrites: [labelChangeWrite],
+    });
+
+    expect(response.status).toBe(200);
+    expect(detectUpdates).toHaveBeenCalledTimes(1);
+    expect(detectUpdates.mock.calls[0]?.[0]).toMatchObject({
+      recentWrites: [labelChangeWrite],
+    });
+  });
+
   it("delegates cache and full local-data cleanup to distinct operations", async () => {
     const clearCache = vi
       .spyOn(StorageManagementService.prototype, "clearCache")
@@ -315,17 +349,16 @@ describe("local API current Review capability boundary", () => {
       ["POST", "v1/storage/cleanup"],
     ] as const;
     for (const [method, path] of removed) {
-      const response = await fetch(new URL(path, api.url), {
-        method,
-        headers: headers(),
-        ...(method === "POST" ? { body: "{}" } : {}),
-      });
+      const requestInit: RequestInit = { method, headers: headers() };
+      if (method === "POST") requestInit.body = "{}";
+      const response = await fetch(new URL(path, api.url), requestInit);
       expect(response.status, `${method} ${path}`).toBe(404);
-      const denied = await fetch(new URL(path, api.url), {
+      const deniedInit: RequestInit = {
         method,
         headers: { Origin: origin, "Content-Type": "application/json" },
-        ...(method === "POST" ? { body: "{}" } : {}),
-      });
+      };
+      if (method === "POST") deniedInit.body = "{}";
+      const denied = await fetch(new URL(path, api.url), deniedInit);
       expect(denied.status, `denied ${method} ${path}`).toBe(401);
     }
     expect((await post(api, "v1/storage/clear-local-data", {})).status).toBe(
