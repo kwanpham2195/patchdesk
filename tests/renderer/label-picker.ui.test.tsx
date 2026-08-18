@@ -1,0 +1,243 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { LabelPicker } from "../../src/renderer/src/components/label-picker";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import type { RepositoryLabelListResponse } from "../../src/renderer/src/renderer-contracts";
+
+afterEach(() => cleanup());
+
+const repositoryLabels: RepositoryLabelListResponse = {
+  state: "ready",
+  labels: [
+    { id: "LA_bug", name: "bug", color: "d73a4a" },
+    { id: "LA_docs", name: "documentation", color: "0075ca" },
+  ],
+  totalCount: 2,
+};
+
+function actionsFixture(
+  overrides: Partial<{
+    fetchLabels: () => Promise<RepositoryLabelListResponse | undefined>;
+    addLabels: (
+      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+    ) => Promise<void>;
+    removeLabels: (
+      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+    ) => Promise<void>;
+  }> = {},
+) {
+  return {
+    fetchLabels: vi.fn(async () => repositoryLabels),
+    addLabels: vi.fn(async () => undefined),
+    removeLabels: vi.fn(async () => undefined),
+    ...overrides,
+  };
+}
+
+async function openPicker(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Labels" }));
+}
+
+describe("LabelPicker", () => {
+  it("renders nothing when the Review can no longer accept label writes", () => {
+    const { container } = render(<LabelPicker attachedLabels={[]} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders currently attached labels as checked and other repository labels as available", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    render(
+      <LabelPicker
+        attachedLabels={[{ name: "bug", color: "d73a4a" }]}
+        actions={actions}
+      />,
+    );
+    await openPicker(user);
+    await waitFor(() => expect(actions.fetchLabels).toHaveBeenCalledOnce());
+    const bugCheckbox = await screen.findByRole("checkbox", { name: "bug" });
+    const docsCheckbox = screen.getByRole("checkbox", {
+      name: "documentation",
+    });
+    expect(bugCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(docsCheckbox.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("issues an add-labels command with the toggled label's id and name", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    const docsCheckbox = await screen.findByRole("checkbox", {
+      name: "documentation",
+    });
+    await user.click(docsCheckbox);
+    await waitFor(() =>
+      expect(actions.addLabels).toHaveBeenCalledWith([
+        { id: "LA_docs", name: "documentation" },
+      ]),
+    );
+    expect(actions.removeLabels).not.toHaveBeenCalled();
+  });
+
+  it("issues a remove-labels command with the toggled label's id and name", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    render(
+      <LabelPicker
+        attachedLabels={[{ name: "bug", color: "d73a4a" }]}
+        actions={actions}
+      />,
+    );
+    await openPicker(user);
+    const bugCheckbox = await screen.findByRole("checkbox", { name: "bug" });
+    await user.click(bugCheckbox);
+    await waitFor(() =>
+      expect(actions.removeLabels).toHaveBeenCalledWith([
+        { id: "LA_bug", name: "bug" },
+      ]),
+    );
+    expect(actions.addLabels).not.toHaveBeenCalled();
+  });
+
+  it("shows the toggled label immediately (optimistic) and reconciles once the authoritative labels arrive", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    const { rerender } = render(
+      <LabelPicker attachedLabels={[]} actions={actions} />,
+    );
+    await openPicker(user);
+    const docsCheckbox = await screen.findByRole("checkbox", {
+      name: "documentation",
+    });
+    await user.click(docsCheckbox);
+    // Applied immediately, before the write's promise ever settles.
+    expect(
+      screen.getByRole("checkbox", { name: "documentation" }).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    await waitFor(() => expect(actions.addLabels).toHaveBeenCalledOnce());
+    // The authoritative prop now agrees; the optimistic override should
+    // have nothing left to override.
+    rerender(
+      <LabelPicker
+        attachedLabels={[{ name: "documentation", color: "0075ca" }]}
+        actions={actions}
+      />,
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "documentation" }).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+  });
+
+  it("reverts a failed write and surfaces the failure instead of silently reverting", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture({
+      addLabels: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    const docsCheckbox = await screen.findByRole("checkbox", {
+      name: "documentation",
+    });
+    await user.click(docsCheckbox);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("checkbox", { name: "documentation" })
+          .getAttribute("aria-checked"),
+      ).toBe("false"),
+    );
+    expect(
+      await screen.findByText('Patchdesk could not add "documentation".'),
+    ).toBeTruthy();
+  });
+
+  it("shows unconfirmed permission by default, before any write is attempted", async () => {
+    const user = userEvent.setup();
+    render(<LabelPicker attachedLabels={[]} actions={actionsFixture()} />);
+    await openPicker(user);
+    expect(
+      await screen.findByText(
+        "Patchdesk hasn't confirmed you can manage labels here — a change may be refused.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("renders a denied state distinctly once GitHub actually refuses a write, and withholds further attempts", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture({
+      addLabels: vi.fn(async () => {
+        throw new PatchdeskApiError(
+          "github_rejected",
+          409,
+          false,
+          "corr-1",
+          "GitHub rejected this action.",
+        );
+      }),
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    const docsCheckbox = await screen.findByRole("checkbox", {
+      name: "documentation",
+    });
+    await user.click(docsCheckbox);
+    expect(
+      await screen.findByText(
+        "You don't have permission to manage labels on this repository.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Patchdesk hasn't confirmed you can manage labels here — a change may be refused.",
+      ),
+    ).toBeNull();
+    const bugCheckbox = screen.getByRole("checkbox", { name: "bug" });
+    expect(bugCheckbox.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("shows a forbidden read's specific reason instead of an empty list", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture({
+      fetchLabels: vi.fn(async () => ({
+        state: "github_forbidden" as const,
+        forbiddenReason: "saml" as const,
+      })),
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    expect(
+      await screen.findByText(
+        "GitHub blocked this read: this account's token needs SAML single sign-on authorization.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("makes truncation visible when totalCount exceeds the returned labels", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture({
+      fetchLabels: vi.fn(async () => ({
+        state: "ready" as const,
+        labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+        totalCount: 150,
+      })),
+    });
+    render(<LabelPicker attachedLabels={[]} actions={actions} />);
+    await openPicker(user);
+    expect(
+      await screen.findByText(
+        "Showing 1 of 150 labels. Some repository labels aren't shown.",
+      ),
+    ).toBeTruthy();
+  });
+});

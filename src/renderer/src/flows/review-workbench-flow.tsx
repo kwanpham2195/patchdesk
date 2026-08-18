@@ -34,6 +34,7 @@ import {
   type ReviewWorkbenchInitialState,
   useReviewWorkbenchNavigation,
 } from "../components/review-workbench";
+import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
@@ -54,10 +55,12 @@ import {
   parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
   parsePendingReviewProjection,
+  parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
   type CommitDiffResponse,
   type DirectSummaryReviewProjection,
   type PendingReviewProjection,
+  type RepositoryLabelListResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
@@ -738,6 +741,67 @@ export function ReviewWorkbenchFlow({
     },
     [workbench, runDirectCommand],
   );
+  // Labels are pull-request-level metadata, not diff-anchored (see
+  // `LabelService`'s own doc comment), so this gates on the Review still
+  // being open rather than `canWriteDirectConversation`'s stricter
+  // freshness/patchHash requirements.
+  const canWriteLabels = workbench.review.status === "open";
+  const fetchLabels = useCallback(async (): Promise<
+    RepositoryLabelListResponse | undefined
+  > => {
+    const value = await requestJson(
+      `/v1/reviews/labels?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}`,
+    );
+    return parseRepositoryLabelListResponse(value);
+  }, [workbench]);
+  const addLabels = useCallback(
+    async (
+      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/labels/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "AddLabels", labels },
+          },
+        }),
+      );
+      const receipt = parseLabelReceipt(value);
+      if (receipt?._tag === "LabelsAdded") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "LabelChange", added: receipt.added, removed: [] },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
+  const removeLabels = useCallback(
+    async (
+      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/labels/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "RemoveLabels", labels },
+          },
+        }),
+      );
+      const receipt = parseLabelReceipt(value);
+      if (receipt?._tag === "LabelsRemoved") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "LabelChange", added: [], removed: receipt.removed },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
@@ -1376,6 +1440,9 @@ export function ReviewWorkbenchFlow({
   const conversationActions = canWriteDirectConversation
     ? { setThreadState, replyToThread, editComment, deleteComment }
     : undefined;
+  const labelActions: LabelPickerActions | undefined = canWriteLabels
+    ? { fetchLabels, addLabels, removeLabels }
+    : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
@@ -1435,10 +1502,14 @@ export function ReviewWorkbenchFlow({
           ...workbenchActionsWithPendingReviewPanel,
           directSummary: directSummaryPanel,
         };
+  const workbenchActionsWithLabels =
+    labelActions === undefined
+      ? workbenchActionsWithDirectSummaryPanel
+      : { ...workbenchActionsWithDirectSummaryPanel, labels: labelActions };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithDirectSummaryPanel
-      : { ...workbenchActionsWithDirectSummaryPanel, ...conversationActions };
+      ? workbenchActionsWithLabels
+      : { ...workbenchActionsWithLabels, ...conversationActions };
 
   return (
     <>
@@ -2747,6 +2818,32 @@ function parseDirectConversationReceipt(
   if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
   if (output.threadId !== undefined) receipt.threadId = output.threadId;
   return receipt;
+}
+
+const labelReceiptSchema = v.variant("_tag", [
+  v.looseObject({
+    _tag: v.literal("LabelsAdded"),
+    added: v.array(v.string()),
+  }),
+  v.looseObject({
+    _tag: v.literal("LabelsRemoved"),
+    removed: v.array(v.string()),
+  }),
+]);
+
+type LabelReceipt =
+  | { readonly _tag: "LabelsAdded"; readonly added: ReadonlyArray<string> }
+  | {
+      readonly _tag: "LabelsRemoved";
+      readonly removed: ReadonlyArray<string>;
+    };
+
+function parseLabelReceipt(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the labels command response; there is no earlier boundary to run it at.
+  value: unknown,
+): LabelReceipt | undefined {
+  const parsed = v.safeParse(labelReceiptSchema, value);
+  return parsed.success ? parsed.output : undefined;
 }
 
 function insightStatusLabel(status: string): string {

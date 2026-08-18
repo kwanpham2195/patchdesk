@@ -34,6 +34,7 @@ import {
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { LabelChip } from "./label-chip";
+import { LabelPicker, type LabelPickerActions } from "./label-picker";
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -325,6 +326,7 @@ export type ReviewWorkbenchActions = {
   ) => Promise<string | void>;
   readonly editComment?: (commentId: string, body: string) => Promise<void>;
   readonly deleteComment?: (commentId: string) => Promise<void>;
+  readonly labels?: LabelPickerActions;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -819,8 +821,7 @@ export function ReviewWorkbench({
                 )}
               </div>
             </div>
-            {model.pullRequest !== undefined &&
-            model.pullRequest.labels.length > 0 ? (
+            {model.pullRequest === undefined ? null : (
               <div
                 className="flex flex-wrap items-center gap-1"
                 aria-label="Pull request labels"
@@ -828,8 +829,14 @@ export function ReviewWorkbench({
                 {model.pullRequest.labels.map((label) => (
                   <LabelChip key={label.name} label={label} />
                 ))}
+                <LabelPicker
+                  attachedLabels={model.pullRequest.labels}
+                  {...(actions.labels === undefined
+                    ? {}
+                    : { actions: actions.labels })}
+                />
               </div>
-            ) : null}
+            )}
             <PendingReviewNotice pendingReview={actions.pendingReview} />
             <p
               className="text-xs text-muted-foreground"
