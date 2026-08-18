@@ -97,6 +97,8 @@ function boundedPendingReviewError(cause: unknown): string {
       cause.kind === "pending_review_locked"
     )
       return "The pending review changed. Check GitHub again or refresh.";
+    if (cause.kind === "forbidden")
+      return "GitHub blocked this submission: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
   }
   return "Patchdesk could not finish this review. Check GitHub again or refresh.";
 }
@@ -133,6 +135,8 @@ function boundedDirectSummaryError(cause: unknown): string {
       return "The pull request changed. Refresh before submitting a review summary.";
     if (cause.kind === "rejected" || cause.kind === "github_rejected")
       return "GitHub rejected the review summary.";
+    if (cause.kind === "forbidden")
+      return "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
   }
   return "Patchdesk could not submit this review summary. Check GitHub again or refresh.";
 }

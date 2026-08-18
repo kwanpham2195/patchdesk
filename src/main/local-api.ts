@@ -1433,9 +1433,12 @@ async function storedPendingReviewProjection(
   );
 }
 
-function pendingReviewFailureStatus(failure: string): 400 | 404 | 409 | 503 {
+function pendingReviewFailureStatus(
+  failure: string,
+): 400 | 403 | 404 | 409 | 503 {
   if (failure === "invalid_input") return 400;
   if (failure === "not_found") return 404;
+  if (failure === "forbidden") return 403;
   if (
     failure === "not_fresh" ||
     failure === "stale_head" ||
@@ -1729,17 +1732,19 @@ async function inlineConversationResponse(
   const status =
     result.error === "not_found"
       ? 404
-      : result.error === "not_fresh" ||
-          result.error === "permission_denied" ||
-          result.error === "confirmation_required" ||
-          result.error === "pending_review" ||
-          result.error === "review_write_in_progress"
-        ? 409
-        : result.error === "github_read_failed" ||
-            result.error === "github_write_failed" ||
-            result.error === "rate_limited"
-          ? 503
-          : 400;
+      : result.error === "forbidden"
+        ? 403
+        : result.error === "not_fresh" ||
+            result.error === "permission_denied" ||
+            result.error === "confirmation_required" ||
+            result.error === "pending_review" ||
+            result.error === "review_write_in_progress"
+          ? 409
+          : result.error === "github_read_failed" ||
+              result.error === "github_write_failed" ||
+              result.error === "rate_limited"
+            ? 503
+            : 400;
   return context.json({ error: result.error }, status);
 }
 
@@ -2190,9 +2195,10 @@ function storageResponse(
 
 function statusForReason(
   reason: string,
-): 400 | 401 | 404 | 409 | 422 | 500 | 502 | 503 {
+): 400 | 401 | 403 | 404 | 409 | 422 | 500 | 502 | 503 {
   if (reason === "not_found" || reason.endsWith("_not_found")) return 404;
   if (reason.includes("auth")) return 401;
+  if (reason.includes("forbidden")) return 403;
   if (
     reason === "revision_conflict" ||
     reason === "stale_head" ||

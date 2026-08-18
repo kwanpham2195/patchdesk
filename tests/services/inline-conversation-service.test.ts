@@ -366,6 +366,33 @@ describe("InlineConversationService", () => {
     });
   });
 
+  it("surfaces a forbidden inline comment write as 'forbidden', not the generic 'github_write_failed'", async () => {
+    const gate = makeGate();
+    const createInlineComment = vi.fn(async () => ({
+      _tag: "err" as const,
+      error: { category: "forbidden" as const },
+    }));
+    const service = new InlineConversationService(
+      gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
+      makeGateway({ createInlineComment }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+    );
+    const result = await service.execute({
+      profileId,
+      reviewId,
+      command: command({
+        _tag: "CreateComment",
+        anchor: { path: "src/a.ts", startLine: 5, line: 5, side: "new" },
+        body: "New comment",
+      }),
+    });
+    expect(result).toEqual({ _tag: "err", error: "forbidden" });
+  });
+
   it("never synthesizes a threadId when the create receipt did not confirm one", async () => {
     const gate = makeGate();
     const createInlineComment = vi.fn(async () => ok({ commentId: "PRRC_new" }));

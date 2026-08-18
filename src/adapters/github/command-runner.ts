@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 import * as v from "valibot";
 
+import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../../main/executable-discovery";
 
@@ -45,17 +46,13 @@ export interface CommandExecutor {
 }
 
 /**
- * Closed set of reasons GitHub can refuse a request as forbidden. Kept
- * small and closed deliberately: the renderer receives a member of this
- * enum, never GitHub's raw message text (see plan 009's Why This Matters —
- * GitHubReadFailure never leaks stdout/stderr to the renderer, and this
- * type preserves that property for forbidden reads).
+ * `ForbiddenReason` itself lives in the domain layer (see
+ * `../../domain/github-forbidden-reason.ts`) so `GitHubWriteFailure`, a
+ * domain type, can carry it without a domain -> adapter import; re-exported
+ * here since existing callers (`github-adapter.ts`,
+ * `maintainer-inbox-service.ts`) already import it from this module.
  */
-export type ForbiddenReason =
-  | "ip_allow_list"
-  | "saml"
-  | "insufficient_scopes"
-  | "unknown";
+export type { ForbiddenReason };
 
 /** Safe, product-facing classifications for command execution failures. */
 export type CommandFailure =

@@ -3351,6 +3351,32 @@ describe("GitHubAdapter pending-review discard", () => {
     });
   });
 
+  it("classifies a forbidden discard as forbidden with its specific reason, not the generic unavailable category", async () => {
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "gh: Resource not accessible by integration (HTTP 403)",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+    await expect(
+      adapter.discardPendingReview({
+        profile,
+        pr,
+        reviewId: mustParse(parseGitHubReviewRestId("9001")),
+      }),
+    ).resolves.toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "GitHubWriteFailure",
+        category: "forbidden",
+        reason: "unknown",
+      },
+    });
+  });
+
   it("keeps the fake discard seam unimplemented until a fixture is supplied", async () => {
     const adapter = new FakeGitHubAdapter({
       authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },

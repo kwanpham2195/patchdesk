@@ -346,6 +346,26 @@ describe("PendingReviewService", () => {
     expect(value.github.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces a forbidden write as 'forbidden', not the generic 'rejected' category", async () => {
+    const value = fixture(
+      { _tag: "None" },
+      {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "forbidden" }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "forbidden" });
+  });
+
   it("adds only once for an exact Finding while its receipt owns the pending thread", async () => {
     const value = fixture({ _tag: "Pending", review: pending() });
     await expect(

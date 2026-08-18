@@ -42,4 +42,37 @@ describe("renderer API boundary", () => {
       retryable: true,
     });
   });
+
+  it("classifies a forbidden write as its own 'forbidden' kind, not the generic 'auth' bucket a bare 403 status would otherwise produce", async () => {
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async () => ({
+          ok: false,
+          status: 403,
+          body: { error: "forbidden" },
+          correlationId: "corr-forbidden",
+        }),
+        openExternalHttps: async () => false,
+        onNavigate: () => () => undefined,
+        qaScrollDiagnosticsEnabled: false,
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      await requestJson("/v1/pending-review");
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+
+    expect(thrown).toBeInstanceOf(PatchdeskApiError);
+    if (!(thrown instanceof PatchdeskApiError)) return;
+    expect(thrown.kind).toBe("forbidden");
+    expect(thrown.status).toBe(403);
+    // Honest, reason-classified copy — never GitHub's raw message text, and
+    // never a retry-implying claim for a condition retrying cannot fix.
+    expect(thrown.message).toContain("Retrying will not help");
+    expect(thrown.message).not.toMatch(/try again|retry the/i);
+  });
 });

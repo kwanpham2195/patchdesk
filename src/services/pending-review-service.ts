@@ -31,6 +31,7 @@ import {
   type IsoTimestamp,
 } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
+import type { GitHubWriteFailure } from "../domain/github-write";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type {
@@ -79,6 +80,7 @@ export type PendingReviewServiceFailure =
   | "not_fresh"
   | "stale_head"
   | "permission_denied"
+  | "forbidden"
   | "rejected"
   | "unavailable"
   | "rate_limited"
@@ -550,16 +552,7 @@ export class PendingReviewService {
     write: () => Promise<
       Result<
         PendingReviewThreadWrite | ViewerPendingReview | undefined,
-        {
-          readonly _tag: "GitHubWriteFailure";
-          readonly category:
-            | "auth"
-            | "rejected"
-            | "unavailable"
-            | "pending_review"
-            | "rate_limited";
-          readonly message: string;
-        }
+        GitHubWriteFailure
       >
     >,
   ): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
@@ -595,6 +588,7 @@ export class PendingReviewService {
       const rejected = rejectPendingReviewWrite(begun.value);
       if (rejected._tag === "ok") await this.persist(session, rejected.value);
       if (written.error.category === "rate_limited") return err("rate_limited");
+      if (written.error.category === "forbidden") return err("forbidden");
       return err(
         written.error.category === "auth" ? "permission_denied" : "rejected",
       );

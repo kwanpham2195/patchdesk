@@ -4,6 +4,7 @@ import { appLog } from "./lib/logger";
 export type ApiFailureKind =
   | "invalid_input"
   | "auth"
+  | "forbidden"
   | "unavailable"
   | "timeout"
   | "storage"
@@ -184,6 +185,7 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
     return "pending_review";
   if (code?.includes("storage") === true) return "storage";
   if (code?.includes("ambiguous") === true) return "ambiguous_write";
+  if (code?.includes("forbidden") === true) return "forbidden";
   if (status === 401 || status === 403 || code?.includes("auth") === true)
     return "auth";
   if (status === 400 || code === "invalid_input") return "invalid_input";
@@ -198,6 +200,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return "The request contains invalid information.";
     case "auth":
       return "GitHub authentication is required for this action.";
+    case "forbidden":
+      return "GitHub blocked this action: the repository or organization restricts access here (an IP allow list, SSO requirement, or token scope). Retrying will not help — check GitHub's access settings for this organization.";
     case "unavailable":
       return "The requested service is currently unavailable.";
     case "timeout":

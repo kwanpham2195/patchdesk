@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   markMergeOutcomeUnknown,
   parseMergeOperation,
+  rejectMergeOperation,
   requestMergeOperation,
 } from "../../src/domain/merge-operation";
 
@@ -41,6 +42,26 @@ describe("MergeOperation", () => {
   it("rejects old evidence without Review ownership", () => {
     expect(
       parseMergeOperation({ ...operation, reviewId: undefined }),
+    ).toMatchObject({ _tag: "err" });
+  });
+
+  it("records a forbidden merge as its own closed rejection reason, distinct from the generic 'merge_failed'", () => {
+    const requested = requestMergeOperation(operation);
+    if (requested._tag !== "ok") throw new Error("Invalid test fixture");
+    expect(rejectMergeOperation(requested.value, "merge_forbidden")).toEqual({
+      _tag: "ok",
+      value: {
+        ...requested.value,
+        state: { _tag: "Rejected", reason: "merge_forbidden" },
+      },
+    });
+  });
+
+  it("never admits a reason outside the closed rejection-reason list", () => {
+    const requested = requestMergeOperation(operation);
+    if (requested._tag !== "ok") throw new Error("Invalid test fixture");
+    expect(
+      rejectMergeOperation(requested.value, "not_a_real_reason"),
     ).toMatchObject({ _tag: "err" });
   });
 });

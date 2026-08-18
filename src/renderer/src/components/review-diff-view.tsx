@@ -2003,6 +2003,8 @@ function composerErrorMessage(cause: unknown): string {
       cause.kind === "pending_review_locked"
     )
       return "The pending review changed. Refresh to see its current state.";
+    if (cause.kind === "forbidden")
+      return "GitHub blocked this comment: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
     return `Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`;
   }
   return cause instanceof Error

@@ -259,7 +259,8 @@ function isMethod(
 ): value is MergeMethod {
   return value === "merge" || value === "squash" || value === "rebase";
 }
-function mergeReason(tag: string): string {
+/** Exported for direct unit testing of the tag-to-wire-reason mapping without module-mocking merge-service.ts. */
+export function mergeReason(tag: string): string {
   return tag === "MergeBlocked"
     ? "merge_blocked"
     : tag === "MergeAcknowledgementRequired"
@@ -270,5 +271,7 @@ function mergeReason(tag: string): string {
           ? "not_fresh"
           : tag === "GitHubMergeRateLimited"
             ? "merge_rate_limited"
-            : "merge_failed";
+            : tag === "GitHubMergeForbidden"
+              ? "merge_forbidden"
+              : "merge_failed";
 }

@@ -184,6 +184,18 @@ describe("DirectSummaryReviewService", () => {
     expect(value.github.createDirectSummaryReview).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces a forbidden write as 'forbidden', not the generic 'rejected' category", async () => {
+    const value = fixture(undefined, {
+      createDirectSummaryReview: vi.fn(async () =>
+        err({ category: "forbidden" }),
+      ),
+    });
+    await expect(submit(value.service)).resolves.toEqual({
+      _tag: "err",
+      error: "forbidden",
+    });
+  });
+
   it("reconciles a matching lost response to a confirmed receipt", async () => {
     const operation = {
       requestId: "request",

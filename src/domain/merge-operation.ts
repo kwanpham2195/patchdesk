@@ -30,6 +30,7 @@ export type MergeRejectionReason =
   | "stale_head"
   | "merge_blocked"
   | "merge_acknowledgement_required"
+  | "merge_forbidden"
   | "merge_failed";
 
 export type MergeOperationState =
@@ -68,6 +69,7 @@ const rejectionReasons = [
   "stale_head",
   "merge_blocked",
   "merge_acknowledgement_required",
+  "merge_forbidden",
   "merge_failed",
 ] as const;
 

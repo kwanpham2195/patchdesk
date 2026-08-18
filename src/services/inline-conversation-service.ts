@@ -80,6 +80,7 @@ export type DirectConversationFailure =
   | "not_found"
   | "not_fresh"
   | "permission_denied"
+  | "forbidden"
   | "pending_review"
   | "github_read_failed"
   | "github_write_failed"
@@ -202,7 +203,9 @@ export class InlineConversationService {
               ? "pending_review"
               : created.error.category === "rate_limited"
                 ? "rate_limited"
-                : "github_write_failed",
+                : created.error.category === "forbidden"
+                  ? "forbidden"
+                  : "github_write_failed",
           );
         }
         const receipt = {

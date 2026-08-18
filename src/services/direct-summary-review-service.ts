@@ -31,6 +31,7 @@ export type DirectSummaryReviewFailure =
   | "not_fresh"
   | "stale_head"
   | "permission_denied"
+  | "forbidden"
   | "pending_review_exists"
   | "rejected"
   | "unavailable"
@@ -190,7 +191,9 @@ export class DirectSummaryReviewService {
               ? "pending_review_exists"
               : written.error.category === "rate_limited"
                 ? "rate_limited"
-                : "rejected",
+                : written.error.category === "forbidden"
+                  ? "forbidden"
+                  : "rejected",
         );
       }
       const confirmed: DirectSummaryReviewState = {
