@@ -10,7 +10,7 @@ patchdesk-specific workflow and gotchas proven in Aug 2026.
 Launch the dev app in a herdr tab so it survives and is observable:
 
 ```bash
-herdr tab create --cwd /Users/kwanpham/Work/cfw/patchdesk --label patchdesk-dev
+herdr tab create --cwd "$(pwd)" --label patchdesk-dev
 # parse the new pane id from the JSON result (result.root_pane.pane_id, e.g. wF:p16)
 herdr pane send-text wF:p16 "pnpm dev -- --remote-debugging-port=9233"
 herdr pane send-keys wF:p16 enter

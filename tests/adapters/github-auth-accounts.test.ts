@@ -34,7 +34,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
             state: "success",
             scopes: ["repo", "read:org"],
             gitProtocol: "https",
-            tokenSource: "/Users/kwanpham/.config/gh/hosts.yml",
+            tokenSource: "/Users/testuser/.config/gh/hosts.yml",
           },
           {
             active: false,
@@ -139,7 +139,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
             state: "success",
             scopes: ["repo", "read:org"],
             gitProtocol: "https",
-            tokenSource: "/Users/kwanpham/.config/gh/hosts.yml",
+            tokenSource: "/Users/testuser/.config/gh/hosts.yml",
           },
         ],
       },
