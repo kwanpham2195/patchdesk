@@ -5,9 +5,21 @@ explicitly running pull-request reviews.
 
 ## Development
 
-**Runtime.** Use pnpm 8.8.0 and Node >=22.19.0. Electron 43.1.1 embeds a
-compatible Node release. The isolated Flue 2 runtime has an exact lock and is
-validated during package smoke.
+**Prerequisites.** macOS on Apple Silicon (arm64) only — there is no
+Windows, Linux, Intel, or universal build; the packaged app will not run on
+an Intel Mac. Install the GitHub CLI (`gh`) and `git`; Patchdesk shells out
+to both, and never stores GitHub credentials itself — the entire GitHub
+read/write path runs `gh auth token --hostname <host> --user <account>` (see
+`src/adapters/github/github-credentials.ts`). Authenticate before running
+the app:
+
+```bash
+gh auth login
+```
+
+Use pnpm 8.8.0 and Node >=22.19.0. Electron 43.1.1 embeds a compatible Node
+release. The isolated Flue 2 runtime has an exact lock and is validated
+during package smoke.
 
 **Install and fast checks.**
 
@@ -17,6 +29,10 @@ pnpm lint
 pnpm typecheck
 pnpm test -- --run
 ```
+
+`pnpm install` also installs `runtime/flue`'s dependencies through the root
+`prepare` script. If you ran `pnpm install --ignore-scripts`, `prepare` did
+not run and packaging will fail; recover with `pnpm --dir runtime/flue install`.
 
 **Desktop and renderer.** Build before the full browser suite.
 
@@ -41,6 +57,21 @@ pnpm test:package-smoke
 
 `pnpm stage:flue-runtime` builds and stages the exact isolated Flue runtime.
 Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI checks.
+
+`pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
+app `pnpm test:package-smoke` reads) and `release/Patchdesk-0.1.0-arm64-mac.zip`
+(~196 MiB) — note the zip sits directly in `release/`, not in
+`release/mac-arm64/`. That zip is what you hand to another developer; a
+`.blockmap` sidecar is written next to it and is not part of the handoff.
+
+The build is ad-hoc signed, not Apple-signed or notarized. Before first
+launch, a recipient must clear the quarantine attribute:
+
+```bash
+xattr -cr /path/to/Patchdesk.app
+```
+
+or right-click the unzipped `Patchdesk.app` → Open → "Open Anyway".
 
 **Local work.**
 
