@@ -30,7 +30,6 @@ import {
 } from "../components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { WatchlistPanel } from "../components/watchlist-panel";
 import {
   Tooltip,
   TooltipContent,
@@ -43,7 +42,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { Dashboard, Profile, Repo } from "../renderer-models";
+import {
+  repositoryKey,
+  type Dashboard,
+  type Profile,
+  type Repo,
+} from "../renderer-models";
+import {
+  groupWatchlistEntries,
+  mergeWatchlistEntries,
+  RepositoryChecklist,
+  useWatchlistToggle,
+  WatchedOutsideRootsSection,
+  WatchlistToggleStatus,
+  type WatchlistEntry,
+} from "./settings-workspace-repositories";
 
 type ProfileDraft = {
   readonly id: string;
@@ -150,133 +163,162 @@ export function WorkspaceProfileSection({
   );
 
   const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
+  const savedRepos = dashboard?.profile.repos ?? EMPTY_REPOS;
+  const savedRoots = dashboard?.profile.workspaceRoots ?? EMPTY_ROOTS;
+  const discoveredRepos =
+    rootDiscovery.kind === "loaded" ? rootDiscovery.repos : EMPTY_DISCOVERED;
+  // The single merge and the single grouping of discovered + watched
+  // repositories for this render — replaces what used to be two independent
+  // fetch/group pipelines (this hook's own and `WatchlistPanel`'s).
+  const watchlistEntries = mergeWatchlistEntries(discoveredRepos, savedRepos);
+  const { byRoot, other } = groupWatchlistEntries(watchlistEntries, savedRoots);
+  const watchedKeys = new Set(savedRepos.map((repo) => repositoryKey(repo)));
+  const isWatched = (entry: WatchlistEntry): boolean =>
+    watchedKeys.has(repositoryKey(entry));
+  const watchlistToggle = useWatchlistToggle(onWorkspaceReload);
+  const handleToggle = (
+    entry: WatchlistEntry,
+    currentlyWatched: boolean,
+  ): void => {
+    void watchlistToggle.toggleRepo(entry, currentlyWatched);
+  };
   const rootDiscoveryStatus = (root: string): RootDiscoveryStatus =>
-    workspaceRootDiscoveryStatus(root, dashboard?.profile, rootDiscovery);
+    workspaceRootDiscoveryStatus(
+      root,
+      dashboard?.profile,
+      rootDiscovery,
+      byRoot,
+      isWatched,
+    );
 
   if (!visible) return null;
 
   return (
-    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Reviewing as</CardTitle>
-            <CardDescription>
-              The GitHub account Patchdesk uses to find and review pull
-              requests, resolved from the GitHub CLI.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ReviewingAsPanel
-              state={reviewingAs}
-              profileDraft={profileDraft}
-              updateProfileDraft={updateProfileDraft}
-              onRecheck={recheck}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              The active GitHub account and profile details for this workspace.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
-                <Select
-                  value={dashboard?.profile.id ?? profileDraft.id}
-                  items={profiles.map((profile) => ({
-                    label: profile.label,
-                    value: profile.id,
-                  }))}
-                  onValueChange={(value) => {
-                    if (value !== null) selectProfile(value);
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Reviewing as</CardTitle>
+          <CardDescription>
+            The GitHub account Patchdesk uses to find and review pull requests,
+            resolved from the GitHub CLI.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ReviewingAsPanel
+            state={reviewingAs}
+            profileDraft={profileDraft}
+            updateProfileDraft={updateProfileDraft}
+            onRecheck={recheck}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+          <CardDescription>
+            The active GitHub account and profile details for this workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          <FieldGroup className="gap-4">
+            <Field>
+              <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
+              <Select
+                value={dashboard?.profile.id ?? profileDraft.id}
+                items={profiles.map((profile) => ({
+                  label: profile.label,
+                  value: profile.id,
+                }))}
+                onValueChange={(value) => {
+                  if (value !== null) selectProfile(value);
+                }}
+              >
+                <SelectTrigger id="active-profile" aria-label="Active profile">
+                  <SelectValue placeholder="Select a profile">
+                    {profileDraft.label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={startNewProfile}>
+                <Plus data-icon="inline-start" />
+                New profile
+              </Button>
+              {profileDirty || creatingProfile ? (
+                <Button
+                  size="sm"
+                  disabled={savingProfile}
+                  onClick={() => {
+                    void saveProfile();
                   }}
                 >
-                  <SelectTrigger
-                    id="active-profile"
-                    aria-label="Active profile"
-                  >
-                    <SelectValue placeholder="Select a profile">
-                      {profileDraft.label}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {profiles.map((profile) => (
-                      <SelectItem key={profile.id} value={profile.id}>
-                        {profile.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={startNewProfile}>
-                  <Plus data-icon="inline-start" />
-                  New profile
+                  {savingProfile ? "Saving profile…" : "Save profile"}
                 </Button>
-                {profileDirty || creatingProfile ? (
-                  <Button
-                    size="sm"
-                    disabled={savingProfile}
-                    onClick={() => {
-                      void saveProfile();
-                    }}
-                  >
-                    {savingProfile ? "Saving profile…" : "Save profile"}
-                  </Button>
-                ) : null}
-              </div>
-              <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                <Field className="sm:col-span-2">
-                  <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
-                  <Input
-                    id="profile-id"
-                    aria-label="Profile ID"
-                    value={profileDraft.id}
-                    disabled={!creatingProfile}
-                    onChange={(event) =>
-                      updateProfileDraft((current) => ({
-                        ...current,
-                        id: event.target.value,
-                      }))
-                    }
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="profile-label">Label</FieldLabel>
-                  <Input
-                    id="profile-label"
-                    aria-label="Label"
-                    value={profileDraft.label}
-                    onChange={(event) =>
-                      updateProfileDraft((current) => ({
-                        ...current,
-                        label: event.target.value,
-                      }))
-                    }
-                  />
-                </Field>
-              </FieldGroup>
+              ) : null}
+            </div>
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
+                <Input
+                  id="profile-id"
+                  aria-label="Profile ID"
+                  value={profileDraft.id}
+                  disabled={!creatingProfile}
+                  onChange={(event) =>
+                    updateProfileDraft((current) => ({
+                      ...current,
+                      id: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="profile-label">Label</FieldLabel>
+                <Input
+                  id="profile-label"
+                  aria-label="Label"
+                  value={profileDraft.label}
+                  onChange={(event) =>
+                    updateProfileDraft((current) => ({
+                      ...current,
+                      label: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
             </FieldGroup>
-            {profileError === undefined ? null : (
-              <p role="alert" className="text-sm text-destructive">
-                {profileError}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          </FieldGroup>
+          {profileError === undefined ? null : (
+            <p role="alert" className="text-sm text-destructive">
+              {profileError}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      <section
+        aria-labelledby="workspace-scope-title"
+        data-testid="workspace-scope"
+      >
         <Card>
           <CardHeader>
-            <CardTitle>Workspace scope</CardTitle>
+            <CardTitle id="workspace-scope-title">Workspace scope</CardTitle>
             <CardDescription>
               Where Patchdesk looks for repositories and the rules that apply.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
+            <WatchlistToggleStatus
+              error={watchlistToggle.error}
+              feedback={watchlistToggle.feedback}
+            />
             <ProfileListEditor
               label="Workspace roots"
               field="workspaceRoots"
@@ -288,12 +330,33 @@ export function WorkspaceProfileSection({
               onChoose={(entryId) => {
                 void chooseWorkspaceRoot(entryId);
               }}
-              renderStatus={(value) => (
-                <WorkspaceRootDiscoveryStatus
-                  status={rootDiscoveryStatus(value)}
-                />
-              )}
+              renderStatus={(value) => {
+                const status = rootDiscoveryStatus(value);
+                const trimmedRoot = value.trim();
+                return (
+                  <div className="flex flex-col gap-2">
+                    <WorkspaceRootDiscoveryStatus status={status} />
+                    {status.kind === "found" ? (
+                      <RepositoryChecklist
+                        entries={byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES}
+                        isWatched={isWatched}
+                        pending={watchlistToggle.pending}
+                        onToggle={handleToggle}
+                        ariaLabel={`Repositories under ${trimmedRoot}`}
+                      />
+                    ) : null}
+                  </div>
+                );
+              }}
             />
+            {other.length === 0 ? null : (
+              <WatchedOutsideRootsSection
+                entries={other}
+                isWatched={isWatched}
+                pending={watchlistToggle.pending}
+                onToggle={handleToggle}
+              />
+            )}
             <ProfileListEditor
               label="Owner filters"
               field="ownerFilters"
@@ -314,18 +377,7 @@ export function WorkspaceProfileSection({
             />
           </CardContent>
         </Card>
-      </div>
-      <WatchlistPanel
-        profile={
-          dashboard?.profile ?? {
-            id: "",
-            label: "",
-            githubHost: "github.com",
-            ghAccount: "",
-          }
-        }
-        onWorkspaceReload={onWorkspaceReload}
-      />
+      </section>
     </div>
   );
 }
@@ -691,6 +743,8 @@ function useReviewingAsProbe(
 
 const EMPTY_ROOTS: ReadonlyArray<string> = [];
 const EMPTY_REPOS: ReadonlyArray<Repo> = [];
+const EMPTY_DISCOVERED: ReadonlyArray<DiscoveredRepo> = [];
+const EMPTY_ENTRIES: ReadonlyArray<WatchlistEntry> = [];
 
 /**
  * Runs the `GET /v1/watchlist/suggestions` scan that
@@ -742,82 +796,31 @@ function useWorkspaceRootDiscovery(
   return state;
 }
 
-function repoKey(repo: {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-}): string {
-  return `${repo.host}/${repo.owner}/${repo.repo}`;
-}
-
-/**
- * Attributes discovered and already-watched repos to the saved workspace
- * root that contains them, by path prefix — the same attribution
- * `WatchlistPanel.groupByRoot` uses, since `/v1/watchlist/suggestions`
- * returns a flat list with no per-root grouping of its own. A repo whose
- * path matches more than one configured root (nested roots) is attributed
- * to the first root that claims it, so totals never double-count it.
- * `discovered` already excludes watched repos (`DashboardService.
- * discoverWorkspaceRepos` filters them out), so a root's total is the two
- * counts combined, not `discovered` alone.
- */
-function countsByRoot(
-  discovered: ReadonlyArray<DiscoveredRepo>,
-  watchedRepos: ReadonlyArray<Repo>,
-  savedRoots: ReadonlyArray<string>,
-): ReadonlyMap<string, { readonly total: number; readonly watched: number }> {
-  const byKey = new Map<string, { localPath: string; watched: boolean }>();
-  for (const repo of discovered) {
-    byKey.set(repoKey(repo), { localPath: repo.localPath, watched: false });
-  }
-  for (const repo of watchedRepos) {
-    byKey.set(repoKey(repo), {
-      localPath: repo.localPath ?? "",
-      watched: true,
-    });
-  }
-  const assigned = new Set<string>();
-  const counts = new Map<
-    string,
-    { readonly total: number; readonly watched: number }
-  >();
-  for (const root of savedRoots) {
-    let total = 0;
-    let watched = 0;
-    for (const [key, entry] of byKey) {
-      if (assigned.has(key) || !entry.localPath.startsWith(root)) continue;
-      assigned.add(key);
-      total += 1;
-      if (entry.watched) watched += 1;
-    }
-    counts.set(root, { total, watched });
-  }
-  return counts;
-}
-
 /**
  * Resolves one workspace-root row's discovery status. A root that isn't
  * part of the *saved* profile has never been scanned — discovery runs
  * server-side against the saved profile, not the unsaved draft — so it
  * reports "unsaved" rather than a count of 0, which would be a false
- * negative in exactly the case this panel exists to surface.
+ * negative in exactly the case this panel exists to surface. The "found"
+ * count is read off `byRoot`, the single grouping computed once per render
+ * in `WorkspaceProfileSection` (via `groupWatchlistEntries`) rather than a
+ * second, parallel grouping algorithm.
  */
 function workspaceRootDiscoveryStatus(
   root: string,
   savedProfile: Profile | undefined,
   discovery: RootDiscoveryState,
+  byRoot: ReadonlyMap<string, ReadonlyArray<WatchlistEntry>>,
+  isWatched: (entry: WatchlistEntry) => boolean,
 ): RootDiscoveryStatus {
   const trimmedRoot = root.trim();
   const savedRoots = savedProfile?.workspaceRoots ?? EMPTY_ROOTS;
   if (!savedRoots.includes(trimmedRoot)) return { kind: "unsaved" };
   if (discovery.kind === "loading") return { kind: "loading" };
   if (discovery.kind === "error") return { kind: "error" };
-  const counts = countsByRoot(
-    discovery.repos,
-    savedProfile?.repos ?? EMPTY_REPOS,
-    savedRoots,
-  ).get(trimmedRoot) ?? { total: 0, watched: 0 };
-  return { kind: "found", total: counts.total, watched: counts.watched };
+  const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
+  const watchedCount = rootEntries.filter(isWatched).length;
+  return { kind: "found", total: rootEntries.length, watched: watchedCount };
 }
 
 /** Renders one workspace-root row's discovery result: a count, the explicit zero-found state, a loading state, a failure state, or the unsaved-root affordance. */

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -230,6 +230,139 @@ describe("workspace root discovery", () => {
     ).toBeTruthy();
   });
 });
+
+describe("watchlist toggling", () => {
+  it("ticking an unwatched repository adds it to the watchlist", async () => {
+    const request = installDesktopApi({
+      suggestions: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          localPath: "/workspace/cfw/patchdesk",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderSettings();
+
+    const checkbox = await repositoryCheckbox("centraldigital/patchdesk");
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
+    await user.click(checkbox);
+
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith({
+        path: "/v1/watchlist",
+        method: "POST",
+        body: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          localPath: "/workspace/cfw/patchdesk",
+        },
+      }),
+    );
+  });
+
+  it("unticking a watched repository removes it from the watchlist", async () => {
+    const request = installDesktopApi({ suggestions: [] });
+    const watchedProfile: Profile = {
+      ...profile,
+      repos: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "watched-repo",
+          localPath: "/workspace/cfw/watched-repo",
+        },
+      ],
+    };
+    const user = userEvent.setup();
+
+    renderSettings(undefined, watchedProfile);
+
+    const checkbox = await repositoryCheckbox("centraldigital/watched-repo");
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    await user.click(checkbox);
+
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith({
+        path: "/v1/watchlist",
+        method: "DELETE",
+        body: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "watched-repo",
+        },
+      }),
+    );
+  });
+
+  it("renders a watched repository with no recorded local path", async () => {
+    installDesktopApi({ suggestions: [] });
+    const watchedProfile: Profile = {
+      ...profile,
+      repos: [
+        { host: "github.com", owner: "centraldigital", repo: "no-path-repo" },
+      ],
+    };
+
+    renderSettings(undefined, watchedProfile);
+
+    const checkbox = await repositoryCheckbox("centraldigital/no-path-repo");
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    const row = checkbox.closest("label");
+    if (row === null)
+      throw new Error("Expected the repository row to render inside a label.");
+    // The row still renders with an empty local-path line rather than
+    // omitting it or throwing, confirming the `localPath: ""` normalisation.
+    expect(
+      within(row).getByText("centraldigital/no-path-repo").nextSibling
+        ?.textContent,
+    ).toBe("");
+  });
+
+  it("shows a watched repository whose local path matches no saved workspace root", async () => {
+    installDesktopApi({ suggestions: [] });
+    const watchedProfile: Profile = {
+      ...profile,
+      repos: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "outside-repo",
+          localPath: "/elsewhere/outside-repo",
+        },
+      ],
+    };
+
+    renderSettings(undefined, watchedProfile);
+
+    expect(
+      await screen.findByText("Watched outside current workspace roots"),
+    ).toBeTruthy();
+    const outsideGroup = screen.getByLabelText(
+      "Repositories watched outside current workspace roots",
+    );
+    const checkbox = within(outsideGroup).getByRole("checkbox");
+    expect(
+      within(outsideGroup).getByText("centraldigital/outside-repo"),
+    ).toBeTruthy();
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+/** Finds the repository checklist row for `ownerSlashRepo` (rendered by `RepositoryChecklist`) and returns its checkbox. */
+async function repositoryCheckbox(
+  ownerSlashRepo: string,
+): Promise<HTMLElement> {
+  const text = await screen.findByText(ownerSlashRepo);
+  const row = text.closest("label");
+  if (row === null)
+    throw new Error("Expected the repository row to render inside a label.");
+  return within(row).getByRole("checkbox");
+}
 
 function renderSettings(
   onWorkspaceReload: () => Promise<void> = async () => undefined,
