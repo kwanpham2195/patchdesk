@@ -17,7 +17,11 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { inboxIdentityKey, type InboxRow, type InboxView } from "@/renderer-contracts";
+import {
+  inboxIdentityKey,
+  type InboxRow,
+  type InboxView,
+} from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
 import { LabelChip } from "./label-chip";
 import {
@@ -26,10 +30,7 @@ import {
   type ReviewInitialSection,
 } from "../hooks/use-inbox-view";
 import { inboxQueues } from "@/inbox-queues";
-import type {
-  InboxSort,
-  SavedInboxView,
-} from "@/inbox-view-preferences";
+import type { InboxSort, SavedInboxView } from "@/inbox-view-preferences";
 import { formatInboxAge } from "@/inbox-refresh-scheduler";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
@@ -52,6 +53,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +69,11 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -138,7 +145,7 @@ export function MaintainerInbox({
     search,
     sort,
     selectedRepo,
-    selectedLabel,
+    selectedLabels,
     queueOpen,
     inspectorOpen,
     savedViews,
@@ -164,7 +171,7 @@ export function MaintainerInbox({
     changeSearch,
     changeSort,
     changeSelectedRepo,
-    changeSelectedLabel,
+    changeSelectedLabels,
     toggleQueue,
     toggleInspector,
     onListKeyDown,
@@ -197,8 +204,8 @@ export function MaintainerInbox({
         selectedRepo={selectedRepo}
         onRepositoryChange={changeSelectedRepo}
         labelItems={labelItems}
-        selectedLabel={selectedLabel}
-        onLabelChange={changeSelectedLabel}
+        selectedLabels={selectedLabels}
+        onLabelChange={changeSelectedLabels}
         sort={sort}
         onSortChange={changeSort}
         visibleCount={visibleRows.length}
@@ -237,7 +244,7 @@ export function MaintainerInbox({
         view={view}
         savedViews={savedViews}
         selectedRepo={selectedRepo}
-        selectedLabel={selectedLabel}
+        selectedLabels={selectedLabels}
         open={queueOpen}
         onSelect={selectView}
         onSelectSaved={selectSavedView}
@@ -289,10 +296,10 @@ function StaleInboxBanner({
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
         This queue reflects a snapshot from{" "}
-        {formatInboxAge(Date.now() - Date.parse(refreshedAt))}. GitHub
-        sign-in could not be verified since then, so ordering, checks, and
-        review state below are not current. See the GitHub authentication
-        notice above to reconnect.
+        {formatInboxAge(Date.now() - Date.parse(refreshedAt))}. GitHub sign-in
+        could not be verified since then, so ordering, checks, and review state
+        below are not current. See the GitHub authentication notice above to
+        reconnect.
       </AlertDescription>
     </Alert>
   );
@@ -377,7 +384,7 @@ function InboxFiltersBar({
   selectedRepo,
   onRepositoryChange,
   labelItems,
-  selectedLabel,
+  selectedLabels,
   onLabelChange,
   sort,
   onSortChange,
@@ -394,14 +401,15 @@ function InboxFiltersBar({
   readonly selectedRepo: string;
   readonly onRepositoryChange: (value: string) => void;
   readonly labelItems: ReadonlyArray<{ label: string; value: string }>;
-  readonly selectedLabel: string;
-  readonly onLabelChange: (value: string) => void;
+  readonly selectedLabels: ReadonlyArray<string>;
+  readonly onLabelChange: (value: ReadonlyArray<string>) => void;
   readonly sort: InboxSort;
   readonly onSortChange: (value: InboxSort) => void;
   readonly visibleCount: number;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
+  const selectedLabelSet = new Set(selectedLabels);
   return (
     <section
       className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
@@ -454,31 +462,61 @@ function InboxFiltersBar({
           </SelectContent>
         </Select>
       ) : null}
-      {labelItems.length > 1 ? (
-        <Select
-          items={labelItems}
-          value={selectedLabel}
-          onValueChange={(value) => onLabelChange(value ?? "")}
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-28 max-w-40 text-xs"
-            aria-label="Filter by label"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {labelItems.map((item) => (
-              <SelectItem
-                key={item.value}
-                value={item.value}
-                className="text-xs"
+      {labelItems.length > 0 ? (
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-28 max-w-40 justify-start text-xs"
+                aria-label="Filter by label"
               >
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+                <span className="truncate">
+                  {labelFilterTriggerText(selectedLabels)}
+                </span>
+              </Button>
+            }
+          />
+          <PopoverContent align="start">
+            {selectedLabels.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="mb-1 w-full justify-start"
+                onClick={() => onLabelChange([])}
+              >
+                Clear
+              </Button>
+            ) : null}
+            <div className="max-h-64 overflow-y-auto">
+              <ul className="flex flex-col gap-0.5" aria-label="Labels">
+                {labelItems.map((item) => {
+                  const checked = selectedLabelSet.has(item.value);
+                  return (
+                    <li key={item.value}>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-muted/50">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() =>
+                            onLabelChange(
+                              checked
+                                ? selectedLabels.filter(
+                                    (name) => name !== item.value,
+                                  )
+                                : [...selectedLabels, item.value],
+                            )
+                          }
+                        />
+                        {item.label}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </PopoverContent>
+        </Popover>
       ) : null}
       <Select
         value={sort}
@@ -525,6 +563,13 @@ function InboxFiltersBar({
       </Button>
     </section>
   );
+}
+
+/** Trigger copy for the label filter: names the single selection, or a count once more than one is picked. */
+function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
+  if (selected.length === 0) return "All labels";
+  if (selected.length === 1) return selected[0] ?? "All labels";
+  return `${selected.length} labels`;
 }
 
 function InboxRowsPanel({
@@ -752,20 +797,26 @@ function InboxFreshness({
       ? undefined
       : Date.now() - Date.parse(snapshot.refreshedAt);
   const degraded = ageMs !== undefined && isInboxCacheDegraded(ageMs);
-  const variant = status === "Stale" ? "destructive" : stable ? "secondary" : "outline";
+  const variant =
+    status === "Stale" ? "destructive" : stable ? "secondary" : "outline";
   return (
     <div className="flex items-center gap-1.5">
       <Badge
         variant={variant}
         className={cn(
           "h-5 max-w-full px-1.5 text-[10px]",
-          degraded && status !== "Stale" && "border-amber-500/40 text-amber-600 dark:text-amber-400",
+          degraded &&
+            status !== "Stale" &&
+            "border-amber-500/40 text-amber-600 dark:text-amber-400",
         )}
         title={snapshot?.refreshedAt}
       >
         GitHub: {status}
       </Badge>
-      {!stable && status !== "Refreshing" && status !== "Paused" && ageMs !== undefined ? (
+      {!stable &&
+      status !== "Refreshing" &&
+      status !== "Paused" &&
+      ageMs !== undefined ? (
         <span className="text-[10px] text-muted-foreground">
           Updated {formatInboxAge(ageMs)}
         </span>
@@ -779,7 +830,7 @@ function QueueRail({
   view,
   savedViews,
   selectedRepo,
-  selectedLabel,
+  selectedLabels,
   open,
   onSelect,
   onSelectSaved,
@@ -791,7 +842,7 @@ function QueueRail({
   readonly view: InboxView;
   readonly savedViews: ReadonlyArray<SavedInboxView>;
   readonly selectedRepo: string;
-  readonly selectedLabel: string;
+  readonly selectedLabels: ReadonlyArray<string>;
   readonly open: boolean;
   readonly onSelect: (view: InboxView) => void;
   readonly onSelectSaved: (view: SavedInboxView) => void;
@@ -858,7 +909,7 @@ function QueueRail({
               variant="outline"
               className="ml-2 h-4 min-w-4 px-1 text-[10px]"
             >
-              {viewCount(rows, item.id, selectedRepo, selectedLabel)}
+              {viewCount(rows, item.id, selectedRepo, selectedLabels)}
             </Badge>
           </Button>
         ))}
@@ -1048,7 +1099,8 @@ function Inspector({
           {row.labels.map((label) => (
             <LabelChip key={label.name} label={label} />
           ))}
-          {row.labelCount !== undefined && row.labelCount > row.labels.length ? (
+          {row.labelCount !== undefined &&
+          row.labelCount > row.labels.length ? (
             <span className="text-muted-foreground">
               +{row.labelCount - row.labels.length} more
             </span>
@@ -1212,9 +1264,9 @@ function viewCount(
   rows: ReadonlyArray<InboxRow>,
   view: InboxView,
   selectedRepo: string,
-  selectedLabel: string,
+  selectedLabels: ReadonlyArray<string>,
 ): number {
-  return filterRows(rows, view, "", selectedRepo, selectedLabel).length;
+  return filterRows(rows, view, "", selectedRepo, selectedLabels).length;
 }
 function queueIndicatorClass(view: InboxView): string {
   switch (view) {

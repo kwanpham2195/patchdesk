@@ -72,6 +72,54 @@ describe("inbox view preferences", () => {
     expect(savedViews[0]?.sort).toBe("size");
   });
 
+  it("degrades a stale string selectedLabel to an empty array without dropping siblings", () => {
+    store({
+      view: "checks_failing",
+      search: "nanoid",
+      selectedLabel: "bug",
+    });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.selectedLabels).toEqual([]);
+    expect(loaded.view).toBe("checks_failing");
+    expect(loaded.search).toBe("nanoid");
+  });
+
+  it("keeps a saved view with a stale string selectedLabel, defaulting selectedLabels to []", () => {
+    store({
+      savedViews: [
+        {
+          id: "a",
+          name: "Waiting",
+          view: "waiting",
+          sort: "size",
+          selectedLabel: "bug",
+        },
+      ],
+    });
+    const { savedViews } = loadInboxViewPreferences("profile-1");
+    expect(savedViews.map((view) => view.id)).toEqual(["a"]);
+    expect(savedViews[0]?.selectedLabels).toEqual([]);
+    expect(savedViews[0]?.sort).toBe("size");
+  });
+
+  it("round-trips a selectedLabels array", () => {
+    saveInboxViewPreferences("profile-1", {
+      selectedLabels: ["bug", "enhancement"],
+    });
+    expect(loadInboxViewPreferences("profile-1").selectedLabels).toEqual([
+      "bug",
+      "enhancement",
+    ]);
+  });
+
+  it("caps selectedLabels at 50 entries", () => {
+    const labels = Array.from({ length: 60 }, (_, index) => `label-${index}`);
+    store({ selectedLabels: labels });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.selectedLabels).toHaveLength(50);
+    expect(loaded.selectedLabels).toEqual(labels.slice(0, 50));
+  });
+
   it("resets on a version mismatch", () => {
     window.localStorage.setItem(
       KEY,

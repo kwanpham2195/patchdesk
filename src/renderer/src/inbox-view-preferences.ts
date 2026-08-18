@@ -33,6 +33,12 @@ const trimmed = (limit: number) =>
     v.minLength(1),
   );
 
+const cappedLabels = (max: number) =>
+  v.pipe(
+    v.array(clipped(200)),
+    v.transform((values) => values.slice(0, max)),
+  );
+
 const savedViewSchema = v.object({
   id: trimmed(80),
   name: trimmed(60),
@@ -40,7 +46,7 @@ const savedViewSchema = v.object({
   search: v.fallback(clipped(200), ""),
   sort: v.fallback(inboxSortSchema, "priority"),
   selectedRepo: v.fallback(clipped(200), ""),
-  selectedLabel: v.fallback(clipped(200), ""),
+  selectedLabels: v.fallback(cappedLabels(50), []),
 });
 
 /** A named local shortcut for a composed inbox filter; it never changes review state. */
@@ -53,7 +59,7 @@ const preferencesSchema = v.object({
   search: v.fallback(clipped(200), ""),
   sort: v.fallback(inboxSortSchema, "priority"),
   selectedRepo: v.fallback(clipped(200), ""),
-  selectedLabel: v.fallback(clipped(200), ""),
+  selectedLabels: v.fallback(cappedLabels(50), []),
   queueRailOpen: v.fallback(v.boolean(), true),
   inspectorOpen: v.fallback(v.boolean(), true),
   selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
@@ -67,7 +73,7 @@ export type InboxViewPreferences = {
   readonly search: string;
   readonly sort: InboxSort;
   readonly selectedRepo: string;
-  readonly selectedLabel: string;
+  readonly selectedLabels: ReadonlyArray<string>;
   readonly queueRailOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
@@ -79,7 +85,7 @@ export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   search: "",
   sort: "priority",
   selectedRepo: "",
-  selectedLabel: "",
+  selectedLabels: [],
   queueRailOpen: true,
   inspectorOpen: true,
   savedViews: [],
@@ -130,7 +136,7 @@ function preferencesFrom(
     search: parsed.search,
     sort: parsed.sort,
     selectedRepo: parsed.selectedRepo,
-    selectedLabel: parsed.selectedLabel,
+    selectedLabels: parsed.selectedLabels,
     queueRailOpen: parsed.queueRailOpen,
     inspectorOpen: parsed.inspectorOpen,
     savedViews: uniqueSavedViews(parsed.savedViews),

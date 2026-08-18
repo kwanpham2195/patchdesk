@@ -8,7 +8,11 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { inboxIdentityKey, type InboxRow, type InboxView } from "@/renderer-contracts";
+import {
+  inboxIdentityKey,
+  type InboxRow,
+  type InboxView,
+} from "@/renderer-contracts";
 import { inboxQueues } from "@/inbox-queues";
 import {
   loadInboxViewPreferences,
@@ -25,7 +29,7 @@ type InboxViewState = {
   readonly search: string;
   readonly sort: InboxSort;
   readonly selectedRepo: string;
-  readonly selectedLabel: string;
+  readonly selectedLabels: ReadonlyArray<string>;
   readonly queueOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedKey?: string;
@@ -39,7 +43,10 @@ type InboxViewAction =
   | { readonly _tag: "searchChanged"; readonly search: string }
   | { readonly _tag: "sortChanged"; readonly sort: InboxSort }
   | { readonly _tag: "repositoryChanged"; readonly selectedRepo: string }
-  | { readonly _tag: "labelChanged"; readonly selectedLabel: string }
+  | {
+      readonly _tag: "labelChanged";
+      readonly selectedLabels: ReadonlyArray<string>;
+    }
   | { readonly _tag: "rowSelected"; readonly selectedKey: string }
   | { readonly _tag: "queueToggled" }
   | { readonly _tag: "inspectorToggled" }
@@ -54,7 +61,7 @@ function inboxViewState(
     search: preferences.search,
     sort: preferences.sort,
     selectedRepo: preferences.selectedRepo,
-    selectedLabel: preferences.selectedLabel,
+    selectedLabels: preferences.selectedLabels,
     queueOpen: preferences.queueRailOpen,
     inspectorOpen: preferences.inspectorOpen,
     savedViews: preferences.savedViews,
@@ -80,7 +87,7 @@ function inboxViewReducer(
         search: action.view.search,
         sort: action.view.sort,
         selectedRepo: action.view.selectedRepo,
-        selectedLabel: action.view.selectedLabel,
+        selectedLabels: action.view.selectedLabels,
       };
     case "searchChanged":
       return { ...state, search: action.search };
@@ -89,7 +96,7 @@ function inboxViewReducer(
     case "repositoryChanged":
       return { ...state, selectedRepo: action.selectedRepo };
     case "labelChanged":
-      return { ...state, selectedLabel: action.selectedLabel };
+      return { ...state, selectedLabels: action.selectedLabels };
     case "rowSelected":
       return { ...state, selectedKey: action.selectedKey };
     case "queueToggled":
@@ -140,9 +147,10 @@ export function filterRows(
   view: InboxView,
   search: string,
   selectedRepo: string = "",
-  selectedLabel: string = "",
+  selectedLabels: ReadonlyArray<string> = [],
 ): ReadonlyArray<InboxRow> {
   const needle = search.trim().toLocaleLowerCase();
+  const selectedLabelSet = new Set(selectedLabels);
   return rows.filter(
     (row) =>
       matchesView(row, view) &&
@@ -152,8 +160,8 @@ export function filterRows(
           .includes(needle)) &&
       (selectedRepo.length === 0 ||
         `${row.identity.owner}/${row.identity.repo}` === selectedRepo) &&
-      (selectedLabel.length === 0 ||
-        row.labels.some((label) => label.name === selectedLabel)),
+      (selectedLabelSet.size === 0 ||
+        row.labels.some((label) => selectedLabelSet.has(label.name))),
   );
 }
 
@@ -254,7 +262,7 @@ export function useInboxView(params: {
     search,
     sort,
     selectedRepo,
-    selectedLabel,
+    selectedLabels,
     queueOpen,
     inspectorOpen,
     selectedKey,
@@ -298,19 +306,18 @@ export function useInboxView(params: {
     const seen = new Map<string, string>();
     for (const row of rows)
       for (const label of row.labels) seen.set(label.name, label.color);
-    return [
-      { label: "All labels", value: "" },
-      ...[...seen.keys()].sort().map((name) => ({ label: name, value: name })),
-    ];
+    return [...seen.keys()]
+      .sort()
+      .map((name) => ({ label: name, value: name }));
   }, [rows]);
 
   const visibleRows = useMemo(
     () =>
       sortRows(
-        filterRows(rows, view, search, selectedRepo, selectedLabel),
+        filterRows(rows, view, search, selectedRepo, selectedLabels),
         sort,
       ),
-    [rows, search, sort, view, selectedRepo, selectedLabel],
+    [rows, search, sort, view, selectedRepo, selectedLabels],
   );
   // The repository reads as noise when every visible row shares it, so rows
   // only carry it while the view actually spans more than one repository.
@@ -344,7 +351,7 @@ export function useInboxView(params: {
       search: next.search,
       sort: next.sort,
       selectedRepo: next.selectedRepo,
-      selectedLabel: next.selectedLabel,
+      selectedLabels: next.selectedLabels,
     });
   };
   const saveCurrentView = (): void => {
@@ -357,7 +364,7 @@ export function useInboxView(params: {
       search,
       sort,
       selectedRepo,
-      selectedLabel,
+      selectedLabels: [...selectedLabels],
     };
     const updated = [...savedViews, next].slice(-20);
     dispatchInboxView({ _tag: "savedViewAdded", view: next });
@@ -391,9 +398,9 @@ export function useInboxView(params: {
     dispatchInboxView({ _tag: "repositoryChanged", selectedRepo: next });
     saveInboxViewPreferences(profileId, { selectedRepo: next });
   };
-  const changeSelectedLabel = (next: string): void => {
-    dispatchInboxView({ _tag: "labelChanged", selectedLabel: next });
-    saveInboxViewPreferences(profileId, { selectedLabel: next });
+  const changeSelectedLabels = (next: ReadonlyArray<string>): void => {
+    dispatchInboxView({ _tag: "labelChanged", selectedLabels: next });
+    saveInboxViewPreferences(profileId, { selectedLabels: next });
   };
   const toggleQueue = (): void => {
     const next = !queueOpen;
@@ -451,7 +458,7 @@ export function useInboxView(params: {
     search,
     sort,
     selectedRepo,
-    selectedLabel,
+    selectedLabels,
     queueOpen,
     inspectorOpen,
     savedViews,
@@ -477,7 +484,7 @@ export function useInboxView(params: {
     changeSearch,
     changeSort,
     changeSelectedRepo,
-    changeSelectedLabel,
+    changeSelectedLabels,
     toggleQueue,
     toggleInspector,
     onListKeyDown,

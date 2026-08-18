@@ -194,11 +194,11 @@ describe("MaintainerInbox", () => {
     expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/New feature/).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("combobox", { name: "Filter by label" }));
-    await user.click(await screen.findByRole("option", { name: "bug" }));
+    await user.click(screen.getByRole("button", { name: "Filter by label" }));
+    await user.click(await screen.findByRole("checkbox", { name: "bug" }));
 
     expect(
-      screen.getByRole("combobox", { name: "Filter by label" }).textContent,
+      screen.getByRole("button", { name: "Filter by label" }).textContent,
     ).toContain("bug");
     expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/New feature/)).toBeNull();
@@ -231,10 +231,8 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    await user.click(screen.getByRole("combobox", { name: "Filter by label" }));
-    await user.click(
-      await screen.findByRole("option", { name: "bug" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Filter by label" }));
+    await user.click(await screen.findByRole("checkbox", { name: "bug" }));
     expect(screen.queryByText(/New feature/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /save current view/i }));
@@ -245,11 +243,9 @@ describe("MaintainerInbox", () => {
 
     // Clear the label filter directly; "New feature" becomes visible again.
     await user.click(
-      await screen.findByRole("combobox", { name: "Filter by label" }),
+      await screen.findByRole("button", { name: "Filter by label" }),
     );
-    await user.click(
-      await screen.findByRole("option", { name: "All labels" }),
-    );
+    await user.click(await screen.findByRole("button", { name: /clear/i }));
     expect(await screen.findByText(/New feature/)).toBeTruthy();
 
     // Re-select the saved view; the label filter should be restored.
