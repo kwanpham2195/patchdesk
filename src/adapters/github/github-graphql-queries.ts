@@ -37,6 +37,15 @@ export const maintainerInboxQuery =
 // 010's totalCount-derived label truncation on the maintainer inbox query.
 export const repositoryLabelsQuery =
   "query RepositoryLabels($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { labels(first: 100) { totalCount nodes { id name color } } } }";
+// `labelIds` is passed as a real GraphQL list via repeated `-F
+// 'labelIds[]=<id>'` gh invocations (verified live on gh 2.96.0); no
+// `--input`/stdin plumbing needed. `clientMutationId` is the smallest field
+// every GitHub input-object mutation echoes back, so a successful response
+// needs no further parsing beyond the command succeeding.
+export const addLabelsToLabelableMutation =
+  "mutation($labelableId: ID!, $labelIds: [ID!]!) { addLabelsToLabelable(input: { labelableId: $labelableId, labelIds: $labelIds }) { clientMutationId } }";
+export const removeLabelsFromLabelableMutation =
+  "mutation($labelableId: ID!, $labelIds: [ID!]!) { removeLabelsFromLabelable(input: { labelableId: $labelableId, labelIds: $labelIds }) { clientMutationId } }";
 export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;

@@ -57,6 +57,7 @@ import type { GitHubReviewEvent } from "../../domain/pending-review";
 import type { GitHubWriteFailure } from "../../domain/github-write";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
 import {
+  addLabelsToLabelableMutation,
   confirmCreatedCommentThreadQuery,
   maintainerInboxQuery,
   maxMergePolicyPages,
@@ -67,6 +68,7 @@ import {
   maxReviewThreads,
   mergePolicyQuery,
   pendingReviewThreadsQuery,
+  removeLabelsFromLabelableMutation,
   repositoryLabelsQuery,
   reviewCommentTargetQuery,
   reviewThreadTargetQuery,
@@ -333,6 +335,18 @@ export interface GitHubReviewWriter {
     readonly profile: WorkspaceProfileConfig;
     readonly threadId: GitHubThreadId;
     readonly state: "resolved" | "open";
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Applies existing repository labels to a labelable (e.g. a pull request) by GraphQL node ID. */
+  addLabelsToLabelable?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly labelableId: string;
+    readonly labelIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Removes existing labels from a labelable (e.g. a pull request) by GraphQL node ID. */
+  removeLabelsFromLabelable?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly labelableId: string;
+    readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -2438,6 +2452,56 @@ export class GitHubAdapter
         `query=mutation($threadId:ID!){${mutation}(input:{threadId:$threadId}){thread{id}}}`,
         "-F",
         `threadId=${input.threadId}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  async addLabelsToLabelable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly labelableId: string;
+    readonly labelIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${addLabelsToLabelableMutation}`,
+        "-F",
+        `labelableId=${input.labelableId}`,
+        ...input.labelIds.flatMap((labelId) => ["-F", `labelIds[]=${labelId}`]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  async removeLabelsFromLabelable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly labelableId: string;
+    readonly labelIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${removeLabelsFromLabelableMutation}`,
+        "-F",
+        `labelableId=${input.labelableId}`,
+        ...input.labelIds.flatMap((labelId) => ["-F", `labelIds[]=${labelId}`]),
       ],
       timeoutMs: commandTimeoutMs,
     });

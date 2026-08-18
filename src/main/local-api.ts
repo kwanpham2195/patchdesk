@@ -57,6 +57,7 @@ import {
   InlineConversationService,
   type DirectConversationCommand,
 } from "../services/inline-conversation-service";
+import { LabelService, type LabelCommand } from "../services/label-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import {
   PendingReviewService,
@@ -191,6 +192,24 @@ const insightFindingSchema = strictObject({
   reviewId: pipe(string(), minLength(1)),
   runId: pipe(string(), minLength(1)),
   reason: optional(pipe(string(), minLength(1), maxLength(500))),
+});
+const labelRefSchema = strictObject({
+  id: pipe(string(), minLength(1)),
+  name: pipe(string(), minLength(1)),
+});
+const labelCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  command: variant("_tag", [
+    strictObject({
+      _tag: picklist(["AddLabels"] as const),
+      labels: pipe(array(labelRefSchema), minLength(1)),
+    }),
+    strictObject({
+      _tag: picklist(["RemoveLabels"] as const),
+      labels: pipe(array(labelRefSchema), minLength(1)),
+    }),
+  ]),
 });
 const publishedCommentEditSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -441,6 +460,15 @@ export async function startLocalApiServer(
     insights,
   );
   const inlineConversations = new InlineConversationService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
+    () => new Date().toISOString() as never,
+    recentWriteJournals,
+  );
+  const labelWrites = new LabelService(
     reviewWriteGate,
     github,
     reviewOperations,
@@ -726,6 +754,9 @@ export async function startLocalApiServer(
       inlineConversations,
       await jsonBody(context),
     ),
+  );
+  app.post("/v1/reviews/labels/command", async (context) =>
+    labelResponse(context, labelWrites, await jsonBody(context)),
   );
   app.post("/v1/reviews/pending-review/command", async (context) =>
     pendingReviewCommandResponse(
@@ -1856,6 +1887,41 @@ function parseInlineConversationCommand(body: unknown):
   return command === undefined
     ? undefined
     : { profileId: profileId.value, reviewId: reviewId.value, command };
+}
+
+async function labelResponse(
+  context: Context,
+  service: LabelService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+): Promise<Response> {
+  const parsed = safeParse(labelCommandSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err")
+    return context.json({ error: "invalid_input" }, 400);
+  const command: LabelCommand = parsed.output.command;
+  const result = await service.execute({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command,
+  });
+  if (result._tag === "ok") return context.json(result.value);
+  const status =
+    result.error === "not_found"
+      ? 404
+      : result.error === "forbidden"
+        ? 403
+        : result.error === "permission_denied" ||
+            result.error === "review_write_in_progress"
+          ? 409
+          : result.error === "github_read_failed" ||
+              result.error === "github_write_failed" ||
+              result.error === "rate_limited"
+            ? 503
+            : 400;
+  return context.json({ error: result.error }, status);
 }
 
 async function publishedFeedbackResponse(
