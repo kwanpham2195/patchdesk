@@ -102,15 +102,18 @@ export const addedThreadReplySchema = v.looseObject({
   }),
 });
 
+// GitHub's collaborator-permission REST endpoint also returns a top-level
+// `permission` field, but that field only ever carries the legacy four-value
+// vocabulary (admin/write/read/none) — it collapses maintain into write and
+// triage into read, so it cannot distinguish triage, which is the entire
+// reason canManageLabels exists. `role_name` carries the granular vocabulary
+// (admin/maintain/write/triage/read/none) and, for orgs with GitHub custom
+// repository roles, an arbitrary role name this codebase has never seen.
+// It is parsed as an open string rather than a picklist so an unrecognized
+// custom role degrades to a safe "unknown" state in github-adapter.ts
+// instead of failing the whole read closed.
 export const repositoryPermissionSchema = v.looseObject({
-  permission: v.picklist([
-    "admin",
-    "maintain",
-    "push",
-    "triage",
-    "pull",
-    "none",
-  ]),
+  role_name: v.string(),
 });
 export const branchProtectionSchema = v.looseObject({
   required_pull_request_reviews: v.optional(

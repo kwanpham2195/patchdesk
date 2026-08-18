@@ -887,7 +887,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
       {
         _tag: "Exited",
         exitCode: 0,
-        stdout: JSON.stringify({ permission: "push" }),
+        stdout: JSON.stringify({ role_name: "write" }),
         stderr: "",
       },
       {
@@ -945,7 +945,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ permission: "push" }),
+            stdout: JSON.stringify({ role_name: "write" }),
             stderr: "",
           },
           {
@@ -1057,7 +1057,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ permission: "push" }),
+            stdout: JSON.stringify({ role_name: "write" }),
             stderr: "",
           },
           {
@@ -1085,23 +1085,29 @@ describe("GitHubAdapter Published feedback capabilities", () => {
 });
 
 describe("GitHubAdapter repository label permission", () => {
+  // GitHub's collaborator-permission endpoint reports the granular role
+  // vocabulary in `role_name` (verified live: `gh api
+  // repos/{owner}/{repo}/collaborators/{user}/permission --jq role_name`
+  // returns "write" for a standard write collaborator, never the legacy
+  // "push"). The top-level `permission` field only ever carries the legacy
+  // four-value vocabulary and is not read for this derivation.
   it.each([
     ["admin", true],
     ["maintain", true],
-    ["push", true],
+    ["write", true],
     ["triage", true],
-    ["pull", false],
+    ["read", false],
     ["none", false],
   ] as const)(
-    "maps collaborator permission %s to canManageLabels %s",
-    async (permission, canManageLabels) => {
+    "maps collaborator role %s to canManageLabels %s",
+    async (role_name, canManageLabels) => {
       const adapter = testAdapter(
         new CommandRunner(
           new FakeProcessExecutor([
             {
               _tag: "Exited",
               exitCode: 0,
-              stdout: JSON.stringify({ permission }),
+              stdout: JSON.stringify({ role_name }),
               stderr: "",
             },
           ]),
@@ -1115,7 +1121,7 @@ describe("GitHubAdapter repository label permission", () => {
         }),
       ).resolves.toMatchObject({
         _tag: "ok",
-        value: { permission, canManageLabels },
+        value: { permission: role_name, canManageLabels },
       });
     },
   );
@@ -1127,7 +1133,7 @@ describe("GitHubAdapter repository label permission", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ permission: "triage" }),
+            stdout: JSON.stringify({ role_name: "triage" }),
             stderr: "",
           },
         ]),
@@ -1141,6 +1147,35 @@ describe("GitHubAdapter repository label permission", () => {
         permission: "triage",
         pullRequestsWrite: false,
         canManageLabels: true,
+      },
+    });
+  });
+
+  it("degrades an unrecognized custom repository role to unknown with every capability denied", async () => {
+    // An org with a GitHub custom repository role can return a role_name
+    // this codebase has never seen (e.g. "security-champion"). It must
+    // degrade to an explicit, safe "unknown" state rather than failing the
+    // whole read closed the way a strict picklist would.
+    const adapter = testAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify({ role_name: "security-champion" }),
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+    await expect(
+      adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        permission: "unknown",
+        pullRequestsWrite: false,
+        canManageLabels: false,
       },
     });
   });
@@ -1170,7 +1205,7 @@ describe("repositoryLabelPermission", () => {
       repositoryLabelPermission(
         ok({
           account: "pmquan2cfw",
-          permission: "pull",
+          permission: "read",
           pullRequestsWrite: false,
           canManageLabels: false,
         }),

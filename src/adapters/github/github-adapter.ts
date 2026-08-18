@@ -488,15 +488,29 @@ export type AuthenticatedGitHubAccount = {
   readonly account: string;
 };
 
+/**
+ * GitHub's granular repository-role vocabulary, as reported by the
+ * collaborator-permission endpoint's `role_name` field.
+ */
+const KNOWN_REPOSITORY_ROLES = [
+  "admin",
+  "maintain",
+  "write",
+  "triage",
+  "read",
+  "none",
+] as const;
+type KnownRepositoryRole = (typeof KNOWN_REPOSITORY_ROLES)[number];
+const KNOWN_REPOSITORY_ROLE_SET: ReadonlySet<string> = new Set(
+  KNOWN_REPOSITORY_ROLES,
+);
+function isKnownRepositoryRole(value: string): value is KnownRepositoryRole {
+  return KNOWN_REPOSITORY_ROLE_SET.has(value);
+}
+
 export type RepositoryPermissionEvidence = {
   readonly account: string;
-  readonly permission:
-    | "admin"
-    | "maintain"
-    | "push"
-    | "triage"
-    | "pull"
-    | "none";
+  readonly permission: KnownRepositoryRole | "unknown";
   readonly pullRequestsWrite: boolean;
   /**
    * `triage` can apply/dismiss existing labels despite lacking pull-request
@@ -1340,20 +1354,25 @@ export class GitHubAdapter
       return this.commandFailure("get_repository_permission", response.error, input.profile.githubHost);
     const parsed = v.safeParse(repositoryPermissionSchema, response.value);
     if (!parsed.success) return invalid("get_repository_permission");
-    const permission = parsed.output.permission;
+    const roleName = parsed.output.role_name;
+    // A GitHub custom repository role reports a role_name this codebase has
+    // never seen. Degrade it to an explicit "unknown" state with every
+    // derived capability denied, rather than failing the whole read closed —
+    // see ADR "Choose a validation style by data boundary" (0022).
+    const permission = isKnownRepositoryRole(roleName) ? roleName : "unknown";
     return ok({
       account: input.account,
       permission,
       pullRequestsWrite:
         permission === "admin" ||
         permission === "maintain" ||
-        permission === "push",
+        permission === "write",
       // Apply/dismiss-labels is granted to triage and above, not just the
       // pull-request-write roles: https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization
       canManageLabels:
         permission === "admin" ||
         permission === "maintain" ||
-        permission === "push" ||
+        permission === "write" ||
         permission === "triage",
     });
   }
