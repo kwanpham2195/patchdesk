@@ -30,6 +30,13 @@ export const maxReviewCommentPages = 10;
 export const maxReviewComments = 5_000;
 export const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $cursor: String) { rateLimit { remaining resetAt } repository(owner: $owner, name: $name) { pullRequests(first: 100, after: $cursor, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles labels(first: 20) { totalCount nodes { name color } pageInfo { hasNextPage } } reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } pageInfo { hasNextPage endCursor } } } }";
+// GitHub's `labels` connection rejects `first` above 100 (confirmed live
+// 2026-08-18: `first: 101` fails with EXCESSIVE_PAGINATION), so 100 is the
+// largest single page the schema allows — this fetches it unpaginated and
+// leans on `totalCount` to surface the rare repo with more, matching plan
+// 010's totalCount-derived label truncation on the maintainer inbox query.
+export const repositoryLabelsQuery =
+  "query RepositoryLabels($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { labels(first: 100) { totalCount nodes { id name color } } } }";
 export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;

@@ -24,6 +24,7 @@ import type {
   PullRequestCommit,
   PullRequestSummary,
   MergePolicySnapshot,
+  RepositoryLabelListing,
 } from "../../domain/github-context";
 import {
   parseGitSha,
@@ -65,6 +66,7 @@ import {
   maxReviewThreads,
   mergePolicyQuery,
   pendingReviewThreadsQuery,
+  repositoryLabelsQuery,
   reviewCommentTargetQuery,
   reviewThreadTargetQuery,
   threadCommentsQuery,
@@ -89,6 +91,7 @@ import {
   pullRequestCommitSchema,
   pullRequestSchema,
   repositoryFileSchema,
+  repositoryLabelsResponseSchema,
   repositoryPermissionSchema,
   requiredStatusChecksSchema,
   reviewCommentTargetSchema,
@@ -116,6 +119,7 @@ import {
   parseOptionalPolicyResponse,
   parsePendingReview,
   parsePullRequest,
+  parseRepositoryLabel,
   parseRequiredContexts,
   parseReviewId,
   pendingReviewAnchor,
@@ -147,6 +151,11 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: PullRequestRef;
   }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>>;
+  /** Bounded list of labels available in the repository, for populating a label picker. */
+  listRepositoryLabels(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>>;
   getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -523,6 +532,7 @@ export type GitHubReadFailure =
 export type GitHubReadOperation =
   | "list_open_prs"
   | "list_maintainer_prs"
+  | "list_repository_labels"
   | "get_pr"
   | "get_merge_policy"
   | "get_merge_policy_evidence"
@@ -729,6 +739,39 @@ export class GitHubAdapter
         return invalid("list_maintainer_prs");
     }
     return ok({ pullRequests, complete: !hasNextPage });
+  }
+
+  /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
+  async listRepositoryLabels(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${repositoryLabelsQuery}`,
+        "-F",
+        `owner=${input.repo.owner}`,
+        "-F",
+        `name=${input.repo.repo}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("list_repository_labels", response.error, host);
+    const parsed = v.safeParse(repositoryLabelsResponseSchema, response.value);
+    if (!parsed.success) return invalid("list_repository_labels");
+    const connection = parsed.output.data.repository.labels;
+    return ok({
+      labels: connection.nodes.map(parseRepositoryLabel),
+      totalCount: connection.totalCount,
+    });
   }
 
   async getPullRequest(input: {

@@ -12,6 +12,7 @@ import type {
   GitHubMergeStateStatus,
   MergePolicySnapshot,
   PullRequestSummary,
+  RepositoryLabel,
 } from "../../domain/github-context";
 import {
   parseGitSha,
@@ -49,6 +50,7 @@ import {
   type mergePolicyResponseSchema,
   type pullRequestIdentitySchema,
   type pullRequestSchema,
+  type repositoryLabelsResponseSchema,
   type requiredStatusChecksSchema,
   reviewIdSchema,
   type ReviewReceipt,
@@ -105,6 +107,14 @@ export function parseMaintainerPullRequest(
   if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };
   const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
   return ok({ summary, checks: rollupCheckSummary(rollup) });
+}
+
+export function parseRepositoryLabel(
+  input: v.InferOutput<
+    typeof repositoryLabelsResponseSchema
+  >["data"]["repository"]["labels"]["nodes"][number],
+): RepositoryLabel {
+  return { id: input.id, name: input.name, color: input.color };
 }
 
 export function parseMergeOutcome(

@@ -251,6 +251,18 @@ export type GitHubLabel = {
   readonly color: string;
 };
 
+/** A label available in a repository, for populating a label picker. */
+export type RepositoryLabel = GitHubLabel & {
+  /** GitHub GraphQL node ID, e.g. for the future `addLabelsToLabelable` mutation. */
+  readonly id: string;
+};
+
+export type RepositoryLabelListing = {
+  readonly labels: ReadonlyArray<RepositoryLabel>;
+  /** GitHub's exact total label count; compare against `labels.length` to detect truncation, mirroring `PullRequestSummary.labelCount`. */
+  readonly totalCount: number;
+};
+
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;
   readonly title: string;

@@ -427,6 +427,23 @@ export const mergePolicyContextSchema = v.looseObject({
 });
 export type MergePolicyContext = v.InferOutput<typeof mergePolicyContextSchema>;
 
+export const repositoryLabelsResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      labels: v.looseObject({
+        totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        nodes: v.array(
+          v.looseObject({
+            id: v.string(),
+            name: v.string(),
+            color: v.string(),
+          }),
+        ),
+      }),
+    }),
+  }),
+});
+
 export const mergePolicyResponseSchema = v.looseObject({
   data: v.looseObject({
     repository: v.looseObject({

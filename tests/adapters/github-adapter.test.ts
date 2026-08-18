@@ -1236,6 +1236,74 @@ describe("GitHubAdapter read boundary", () => {
     expect(summary?.labels).toHaveLength(20);
   });
 
+  it("fetches repository labels with their GraphQL node ids", async () => {
+    const page = {
+      data: {
+        repository: {
+          labels: {
+            totalCount: 2,
+            nodes: [
+              { id: "LA_kwDOL7JuT87MAAAB", name: "bug", color: "d73a4a" },
+              { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+            ],
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listRepositoryLabels({ profile, repo: pr });
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        totalCount: 2,
+        labels: [
+          { id: "LA_kwDOL7JuT87MAAAB", name: "bug", color: "d73a4a" },
+          { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    });
+    expect(
+      executor.requests[0]?.some((argument) =>
+        argument.includes("labels(first: 100)"),
+      ),
+    ).toBe(true);
+  });
+
+  it("surfaces repository-label truncation via totalCount when more labels exist than the bounded page returned", async () => {
+    const page = {
+      data: {
+        repository: {
+          labels: {
+            totalCount: 5,
+            nodes: [
+              { id: "LA_kwDOL7JuT87MAAAB", name: "bug", color: "d73a4a" },
+              { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+              { id: "LA_kwDOL7JuT87MAAAD", name: "question", color: "d876e3" },
+            ],
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listRepositoryLabels({ profile, repo: pr });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.totalCount).toBe(5);
+    expect(result.value.labels).toHaveLength(3);
+    // The caller derives the remaining, uncaptured labels from these two counts.
+    expect(result.value.totalCount - result.value.labels.length).toBe(2);
+  });
+
   it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {
     const executor = new FakeProcessExecutor([
       {

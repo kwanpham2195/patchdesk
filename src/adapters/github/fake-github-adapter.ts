@@ -7,6 +7,7 @@ import type {
   MergePolicySnapshot,
   PullRequestCommit,
   PullRequestSummary,
+  RepositoryLabelListing,
 } from "../../domain/github-context";
 import {
   type GitSha,
@@ -78,6 +79,16 @@ export class FakeGitHubAdapter
       })),
       complete: true,
     });
+  }
+
+  async listRepositoryLabels(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+  }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
+    void input;
+    return this.values.repositoryLabels === undefined
+      ? missing("list_repository_labels")
+      : ok(this.values.repositoryLabels);
   }
 
   async getPullRequest(input: {
@@ -546,6 +557,7 @@ export class FakeGitHubAdapter
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
   readonly maintainerPullRequests: MaintainerPullRequestListing;
+  readonly repositoryLabels: RepositoryLabelListing;
   readonly pullRequest: PullRequestSummary;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
