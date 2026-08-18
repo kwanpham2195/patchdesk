@@ -19,7 +19,7 @@
     "stage:flue-runtime": "node scripts/stage-flue-runtime.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
-    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac dir",
+    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac",
     "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
@@ -111,7 +111,8 @@
       "category": "public.app-category.developer-tools",
       "icon": "resources/icons/patchdesk.icns",
       "target": [
-        "dir"
+        "dir",
+        "zip"
       ],
       "identity": null
     }
