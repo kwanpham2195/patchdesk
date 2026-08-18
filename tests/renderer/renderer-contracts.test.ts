@@ -4,6 +4,7 @@ import {
   parseCommitDiffResponse,
   parseInsightProviderCatalog,
   parseModelCatalog,
+  parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";
 
@@ -40,6 +41,68 @@ const reviewProjection = {
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
 };
+
+describe("parseRepositoryLabelListResponse", () => {
+  it("reaches the renderer with a successful fetch's labels and total intact", () => {
+    const parsed = parseRepositoryLabelListResponse({
+      state: "ready",
+      labels: [
+        { id: "LA_bug", name: "bug", color: "d73a4a" },
+        { id: "LA_docs", name: "documentation", color: "0075ca" },
+      ],
+      totalCount: 2,
+    });
+    expect(parsed).toEqual({
+      state: "ready",
+      labels: [
+        { id: "LA_bug", name: "bug", color: "d73a4a" },
+        { id: "LA_docs", name: "documentation", color: "0075ca" },
+      ],
+      totalCount: 2,
+    });
+  });
+
+  it("conveys truncation via totalCount rather than dropping it", () => {
+    const parsed = parseRepositoryLabelListResponse({
+      state: "ready",
+      labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+      totalCount: 150,
+    });
+    expect(parsed?.totalCount).toBe(150);
+    expect(parsed?.labels).toHaveLength(1);
+  });
+
+  it("surfaces a forbidden read's specific reason", () => {
+    const parsed = parseRepositoryLabelListResponse({
+      state: "github_forbidden",
+      forbiddenReason: "saml",
+    });
+    expect(parsed).toEqual({ state: "github_forbidden", forbiddenReason: "saml" });
+  });
+
+  it("surfaces a rate-limited read's resume time", () => {
+    const parsed = parseRepositoryLabelListResponse({
+      state: "github_rate_limited",
+      resumeAt: "2026-01-01T01:00:00.000Z",
+    });
+    expect(parsed).toEqual({
+      state: "github_rate_limited",
+      resumeAt: "2026-01-01T01:00:00.000Z",
+    });
+  });
+
+  it("rejects an unrecognized state and unknown fields", () => {
+    expect(parseRepositoryLabelListResponse({ state: "not_a_real_state" })).toBeUndefined();
+    expect(
+      parseRepositoryLabelListResponse({
+        state: "ready",
+        labels: [],
+        totalCount: 0,
+        extra: "nope",
+      }),
+    ).toBeUndefined();
+  });
+});
 
 describe("commit diff response", () => {
   it("parses provider catalogs and rejects paths or raw diagnostics", () => {

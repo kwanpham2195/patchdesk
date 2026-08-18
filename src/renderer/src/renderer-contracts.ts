@@ -179,6 +179,48 @@ export function inboxIdentityKey(row: InboxRow): string {
   return `${row.identity.host}/${row.identity.owner}/${row.identity.repo}#${row.identity.number}`;
 }
 
+// `GET /v1/reviews/labels` is a local-API payload Patchdesk owns on both
+// sides (ADR "Choose a validation style by data boundary"), so it gets a
+// `v.strictObject` schema parsed with `v.safeParse` — the same style
+// `inboxResponseSchema` uses above — rather than the per-field `v.fallback`
+// style reserved for local, user-editable preference state.
+const repositoryLabelListResponseSchema = v.strictObject({
+  state: v.picklist([
+    "ready",
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ]),
+  labels: v.optional(
+    v.array(
+      v.strictObject({
+        id: v.pipe(v.string(), v.minLength(1)),
+        name: v.pipe(v.string(), v.minLength(1)),
+        color: v.pipe(v.string(), v.minLength(1)),
+      }),
+    ),
+  ),
+  // GitHub's exact total; compare against `labels.length` to detect
+  // truncation of the bounded page the local API returns.
+  totalCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+  forbiddenReason: v.optional(
+    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
+  ),
+});
+
+export type RepositoryLabelListResponse = v.InferOutput<
+  typeof repositoryLabelListResponseSchema
+>;
+
+/** Parses the local API's repository label listing before a label picker owns it. */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+export function parseRepositoryLabelListResponse(input: unknown): RepositoryLabelListResponse | undefined {
+  const parsed = v.safeParse(repositoryLabelListResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 // The main process projects a renderer-safe Session identity only. Patch,
 // worktree, and comparison artifact paths never cross this boundary; the strict
 // objects below reject any response that still carries them.

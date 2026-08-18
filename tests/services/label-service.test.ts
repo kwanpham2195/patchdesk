@@ -308,4 +308,144 @@ describe("LabelService", () => {
     expect(addLabelsToLabelable).not.toHaveBeenCalled();
     coordinator.release(key);
   });
+
+  describe("list", () => {
+    it("reaches the renderer with the repository's labels intact", async () => {
+      const gate = makeGate();
+      const listRepositoryLabels = vi.fn(async () =>
+        ok({
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+        }),
+      );
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: {
+          _tag: "ready",
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 1,
+        },
+      });
+      expect(listRepositoryLabels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repo: expect.objectContaining({ owner: "centraldigital", repo: "patchdesk" }),
+        }),
+      );
+    });
+
+    it("conveys truncation instead of silently dropping it", async () => {
+      const gate = makeGate();
+      const listRepositoryLabels = vi.fn(async () =>
+        ok({
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 150,
+        }),
+      );
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: {
+          _tag: "ready",
+          labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+          totalCount: 150,
+        },
+      });
+    });
+
+    it("surfaces a forbidden read as its specific reason, not a generic failure", async () => {
+      const gate = makeGate();
+      const listRepositoryLabels = vi.fn(async () => ({
+        _tag: "err" as const,
+        error: {
+          _tag: "GitHubForbidden" as const,
+          operation: "list_repository_labels" as const,
+          reason: "saml" as const,
+        },
+      }));
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: { _tag: "github_forbidden", reason: "saml" },
+      });
+    });
+
+    it("surfaces a rate-limited read with its resume time, not a generic failure", async () => {
+      const gate = makeGate();
+      const resumeAt = "2026-01-01T01:00:00.000Z";
+      const listRepositoryLabels = vi.fn(async () => ({
+        _tag: "err" as const,
+        error: {
+          _tag: "GitHubRateLimited" as const,
+          operation: "list_repository_labels" as const,
+          // SAFETY: this literal is a well-formed ISO 8601 instant,
+          // satisfying the branded IsoTimestamp contract this field expects.
+          resumeAt: resumeAt as never,
+        },
+      }));
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: { _tag: "github_rate_limited", resumeAt },
+      });
+    });
+
+    it("refuses without listing when the review cannot be resolved", async () => {
+      const gate = {
+        requireCurrentSession: vi.fn(async () => ({
+          _tag: "err" as const,
+          error: { reason: "not_found" as const },
+        })),
+      };
+      const listRepositoryLabels = vi.fn();
+      const service = new LabelService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ listRepositoryLabels }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.list({ profileId, reviewId });
+      expect(result).toEqual({ _tag: "err", error: "not_found" });
+      expect(listRepositoryLabels).not.toHaveBeenCalled();
+    });
+  });
 });

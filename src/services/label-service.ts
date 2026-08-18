@@ -1,7 +1,9 @@
 import { repositoryLabelPermission } from "../adapters/github/github-adapter";
-import type { GitHubReader, GitHubReviewWriter } from "../adapters/github/github-adapter";
+import type { GitHubReader, GitHubReviewWriter, GitHubReadFailure } from "../adapters/github/github-adapter";
+import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
+import type { RepositoryLabel } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type {
@@ -35,19 +37,44 @@ export type LabelWriteFailure =
   | "rate_limited"
   | "review_write_in_progress";
 
+/**
+ * Outcome of listing a repository's available labels for one current Review.
+ * Mirrors `MaintainerInboxRepository`'s read-failure vocabulary
+ * (`github_auth` / `github_rate_limited` / `github_forbidden` / `github_read`)
+ * so a GitHub read failure is data on the success path, not an HTTP error —
+ * the same shape `GET /v1/inbox` uses for per-repo failure state.
+ */
+export type LabelListOutcome =
+  | {
+      readonly _tag: "ready";
+      readonly labels: ReadonlyArray<RepositoryLabel>;
+      /** GitHub's exact total; compare against `labels.length` to detect truncation. */
+      readonly totalCount: number;
+    }
+  | { readonly _tag: "github_auth" }
+  | { readonly _tag: "github_read" }
+  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: IsoTimestamp }
+  | { readonly _tag: "github_forbidden"; readonly reason: ForbiddenReason };
+
+/** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as a `LabelListOutcome` instead. */
+export type LabelListFailure = "not_found" | "permission_denied";
+
 type Gateway = Pick<
   GitHubReader,
-  "getPullRequest" | "resolveAuthenticatedAccount" | "getRepositoryPermission"
+  | "getPullRequest"
+  | "resolveAuthenticatedAccount"
+  | "getRepositoryPermission"
+  | "listRepositoryLabels"
 > &
   Pick<GitHubReviewWriter, "addLabelsToLabelable" | "removeLabelsFromLabelable">;
 
 /**
- * Owns direct, GitHub-published label assignment for one current Review.
- * Labels are pull-request-level metadata, not diff-anchored, so this gates
- * on `requireCurrentSession` (proves the Review is not stale/terminal) rather
- * than `requireFresh` (which also demands exact patch freshness — right for
- * diff-anchored writes, wrong here: a new commit does not invalidate a
- * label).
+ * Owns direct, GitHub-published label reads and assignment for one current
+ * Review. Labels are pull-request-level metadata, not diff-anchored, so both
+ * `execute` and `list` gate on `requireCurrentSession` (proves the Review is
+ * not stale/terminal) rather than `requireFresh` (which also demands exact
+ * patch freshness — right for diff-anchored writes, wrong here: a new commit
+ * does not invalidate a label).
  */
 export class LabelService {
   constructor(
@@ -84,6 +111,48 @@ export class LabelService {
     } finally {
       this.writeCoordinator.release(key);
     }
+  }
+
+  /**
+   * Read-only counterpart to `execute`: the labels available to assign on
+   * the current Review's repository, for populating a label picker. Reuses
+   * `requireCurrentSession` purely to resolve repo identity (same reasoning
+   * as `execute`'s doc comment: labels are not diff-anchored), not because a
+   * read needs the write gate's guarantees.
+   */
+  async list(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<LabelListOutcome, LabelListFailure>> {
+    const current = await this.gate.requireCurrentSession(
+      input.profileId,
+      input.reviewId,
+    );
+    // Reuses `mapGateFailure`'s exact reason mapping, but that function is
+    // typed to `LabelWriteFailure` (a strictly wider union than
+    // `LabelListFailure`), so the two-value read result is spelled out here
+    // rather than widening the read failure type to match it.
+    if (current._tag === "err")
+      return err(
+        current.error.reason === "not_found" ||
+          current.error.reason === "storage"
+          ? "not_found"
+          : "permission_denied",
+      );
+    const listed = await this.github.listRepositoryLabels({
+      profile: current.value.profile,
+      repo: {
+        host: current.value.session.key.host,
+        owner: current.value.session.key.owner,
+        repo: current.value.session.key.repo,
+        number: current.value.session.key.prNumber,
+      },
+    });
+    return ok(
+      listed._tag === "ok"
+        ? { _tag: "ready", labels: listed.value.labels, totalCount: listed.value.totalCount }
+        : mapReadFailure(listed.error),
+    );
   }
 
   private async executeUnlocked(input: {
@@ -172,6 +241,19 @@ function mapWriteFailure(failure: GitHubWriteFailure): LabelWriteFailure {
   if (failure.category === "rate_limited") return "rate_limited";
   if (failure.category === "forbidden") return "forbidden";
   return "github_write_failed";
+}
+
+/** Keeps a forbidden or rate-limited label read specific instead of collapsing it to a generic read failure. */
+function mapReadFailure(failure: GitHubReadFailure): LabelListOutcome {
+  if (failure._tag === "GitHubRateLimited") {
+    const resumeAtField =
+      failure.resumeAt === undefined ? {} : { resumeAt: failure.resumeAt };
+    return { _tag: "github_rate_limited", ...resumeAtField };
+  }
+  if (failure._tag === "GitHubForbidden")
+    return { _tag: "github_forbidden", reason: failure.reason };
+  if (failure._tag === "GitHubAuthenticationFailed") return { _tag: "github_auth" };
+  return { _tag: "github_read" };
 }
 
 function journalEntryFor(receipt: LabelReceipt): RecentReviewWrite {

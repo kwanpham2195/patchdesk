@@ -57,7 +57,12 @@ import {
   InlineConversationService,
   type DirectConversationCommand,
 } from "../services/inline-conversation-service";
-import { LabelService, type LabelCommand } from "../services/label-service";
+import {
+  LabelService,
+  type LabelCommand,
+  type LabelListFailure,
+  type LabelListOutcome,
+} from "../services/label-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import {
   PendingReviewService,
@@ -763,6 +768,19 @@ export async function startLocalApiServer(
   app.post("/v1/reviews/labels/command", async (context) =>
     labelResponse(context, labelWrites, await jsonBody(context)),
   );
+  app.get("/v1/reviews/labels", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const reviewId = parseReviewId(context.req.query("reviewId"));
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return labelListResponse(
+      context,
+      await labelWrites.list({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+      }),
+    );
+  });
   app.post("/v1/reviews/pending-review/command", async (context) =>
     pendingReviewCommandResponse(
       context,
@@ -1933,6 +1951,43 @@ async function labelResponse(
             ? 503
             : 400;
   return context.json({ error: result.error }, status);
+}
+
+/**
+ * Shapes a repository label listing the same way `GET /v1/inbox` shapes
+ * per-repo failure state: a GitHub read failure (auth/rate-limit/forbidden)
+ * is data in a 200 response, not an HTTP error, so its specific reason
+ * survives to the renderer. Only the review-resolution half — the review
+ * itself missing or refused — becomes an HTTP error, mirroring
+ * `labelResponse`'s write-path status mapping.
+ */
+function labelListResponse(
+  context: Context,
+  result: Result<LabelListOutcome, LabelListFailure>,
+): Response {
+  if (result._tag === "err")
+    return context.json(
+      { error: result.error },
+      result.error === "not_found" ? 404 : 409,
+    );
+  const outcome = result.value;
+  if (outcome._tag === "ready")
+    return context.json({
+      state: "ready",
+      labels: outcome.labels,
+      totalCount: outcome.totalCount,
+    });
+  if (outcome._tag === "github_rate_limited") {
+    const resumeAtField =
+      outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+    return context.json({ state: "github_rate_limited", ...resumeAtField });
+  }
+  if (outcome._tag === "github_forbidden")
+    return context.json({
+      state: "github_forbidden",
+      forbiddenReason: outcome.reason,
+    });
+  return context.json({ state: outcome._tag });
 }
 
 async function publishedFeedbackResponse(
