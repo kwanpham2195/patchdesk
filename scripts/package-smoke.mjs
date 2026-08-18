@@ -167,14 +167,27 @@ try {
   await dataTab.click();
   await settings.getByTestId("settings-section-data").waitFor();
   await settings.getByTestId("local-review-data-card").waitFor();
+  // The fixture route never resolves a workspace profile, so cleanup stays
+  // unavailable: assert the real disabled state and its explanatory copy
+  // instead of an activity load that can never become clickable here.
+  await settings
+    .getByText("Choose a workspace profile before clearing its local data.", {
+      exact: true,
+    })
+    .waitFor();
+  const clearLocalData = settings.getByTestId("clear-local-data-button");
+  if (await clearLocalData.isEnabled())
+    throw new Error(
+      "Packaged Settings clear-local-data button should stay disabled without an active workspace profile",
+    );
   const reviewActivityCard = settings.getByTestId("review-activity-card");
   await reviewActivityCard.scrollIntoViewIfNeeded();
   await reviewActivityCard.waitFor();
   const loadActivity = settings.getByRole("button", { name: "Load activity" });
-  await loadActivity.click();
-  await settings
-    .getByText("No local review activity yet.", { exact: true })
-    .waitFor();
+  if (await loadActivity.isEnabled())
+    throw new Error(
+      "Packaged Settings Load activity button should stay disabled without an active workspace profile",
+    );
   const settingsViewport = window
     .getByTestId("settings-scroll-region")
     .locator('[data-slot="scroll-area-viewport"]');
