@@ -1,9 +1,13 @@
+import * as v from "valibot";
+
 import type { GitHubReader } from "../adapters/github/github-adapter";
+import { CommandRunner } from "../adapters/github/command-runner";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -14,7 +18,10 @@ import {
   type PatchdeskConfigFile,
 } from "../domain/contracts";
 import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type {
+  WatchedRepoConfig,
+  WorkspaceProfileConfig,
+} from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
   DashboardService,
@@ -28,12 +35,12 @@ import {
 import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
 import {
   addWatchedRepo,
-  createDefaultCfwProfile,
+  detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "./profile-service";
-import type { WatchedRepoRef } from "./profile-service";
+import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
 import type { OriginFinder } from "./dashboard-service";
 import {
   parsePullRequestEntry,
@@ -46,18 +53,68 @@ export type DashboardControllerFailure = {
   readonly reason: "invalid_input" | "not_found" | "storage";
 };
 
+// This class is the main-process composition root: every schema below parses
+// the raw JSON body `local-api.ts` hands it (`await jsonBody(context)`, or a
+// single extracted field), the earliest point any of these requests are
+// decoded. Fields kept as `v.unknown()` are re-validated by the specific
+// domain parser (`parseGitHubHost`, `parseAbsolutePath`, ...) that already
+// owns that invariant; the schema's job here is only to give a genuine
+// object shape to narrow against, without resorting to `typeof` or a
+// `Record<string, unknown>` dictionary type.
+const rawObjectSchema = v.object({});
+const repoRefInputSchema = v.object({
+  host: v.unknown(),
+  owner: v.unknown(),
+  repo: v.unknown(),
+});
+const watchlistRepoInputSchema = v.object({
+  host: v.unknown(),
+  owner: v.unknown(),
+  repo: v.unknown(),
+  localPath: v.optional(v.unknown()),
+});
+const localPathInputSchema = v.object({
+  localPath: v.optional(v.unknown()),
+});
+const nonEmptyStringSchema = v.pipe(v.string(), v.minLength(1));
+const saveProfileInputSchema = v.object({
+  id: v.unknown(),
+  label: v.unknown(),
+  githubHost: v.unknown(),
+  ghAccount: v.unknown(),
+  ownerFilters: v.unknown(),
+  workspaceRoots: v.unknown(),
+  rulePaths: v.unknown(),
+});
+const directEntryInputSchema = v.object({
+  reference: v.string(),
+});
+
 /** Main-process composition root for the renderer's profile, dashboard, and direct-entry actions. */
 export class DashboardController {
   private readonly settings: ProfileSettingsService;
   private readonly dashboard: DashboardService;
   private readonly inbox: MaintainerInboxService;
   private readonly inboxRefresh: InboxRefreshCoordinator;
+  /**
+   * Memoized first-run detection, kept for this controller instance's
+   * lifetime (one per process; see `local-api.ts`). Detection is only ever
+   * consulted while unpersisted (`listProfiles` short-circuits on a
+   * non-empty store), and a successful detection immediately persists and
+   * selects the profile, so the memo naturally stops mattering the moment a
+   * real account is found. Storing the in-flight promise (not just its
+   * resolved value) also coalesces concurrent callers onto one `gh` probe.
+   */
+  private detectionMemo:
+    | Promise<Result<WorkspaceProfileConfig, ProfileMutationFailure>>
+    | undefined;
 
   constructor(
     private readonly profiles: ProfileStore,
-    github: GitHubReader,
+    private readonly github: GitHubReader,
     origins?: OriginFinder,
     paths: PatchdeskPaths = PatchdeskPaths.default(),
+    private readonly commands: CommandRunner = new CommandRunner(),
   ) {
     this.settings = new ProfileSettingsService(profiles);
     this.dashboard = new DashboardService(github, origins);
@@ -65,26 +122,57 @@ export class DashboardController {
       github,
       new ReviewSessionStore(paths),
       new MaintainerInboxCacheStore(paths),
-      { now: () => new Date().toISOString() as never },
+      {
+        // SAFETY: Date.prototype.toISOString() always returns a valid ISO
+        // 8601 instant, satisfying the branded IsoTimestamp contract this
+        // callback fills.
+        now: () => new Date().toISOString() as never,
+      },
     );
     this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }
 
-  async listProfiles(): Promise<
+  /**
+   * `forceDetection` discards a cached negative/ephemeral detection and
+   * re-probes `gh` immediately. Only `testGitHubAccess` passes `true` — it
+   * backs the setup checklist's explicit "Re-check" action, the one place a
+   * user expects a stale "not authenticated" reading to update the moment
+   * they fix it in a terminal. Every other caller (inbox/dashboard polling,
+   * `GET /v1/profiles`) takes the memoized reading, since those happen on a
+   * timer rather than in response to the user just having taken an action.
+   */
+  async listProfiles(
+    forceDetection = false,
+  ): Promise<
     Result<ReadonlyArray<WorkspaceProfileConfig>, DashboardControllerFailure>
   > {
     const existing = await this.profiles.list();
     if (existing._tag === "err") return failure("storage");
     if (existing.value.length > 0) return ok(existing.value);
-    const initial = createDefaultCfwProfile();
-    if (initial._tag === "err") return failure("invalid_input");
-    const saved = await this.settings.saveProfile(initial.value);
+    if (forceDetection) this.detectionMemo = undefined;
+    if (this.detectionMemo === undefined) {
+      this.detectionMemo = detectDefaultWorkspaceProfile(this.commands);
+    }
+    const detected = await this.detectionMemo;
+    if (detected._tag === "err") return failure("invalid_input");
+    if (detected.value.ghAccount.length === 0) {
+      // Detection found no real account on this machine. The persisted-profile
+      // schema requires a non-empty ghAccount (see workspace-profile.ts), so
+      // there is nothing valid to save yet; hand the renderer this ephemeral,
+      // neutral profile so it can prompt for an account instead of writing an
+      // unusable record or auto-selecting a profile that was never saved.
+      // The negative reading is memoized (see `detectionMemo`) until either
+      // a real profile is saved or `forceDetection` re-probes explicitly.
+      return ok([detected.value]);
+    }
+    const saved = await this.settings.saveProfile(detected.value);
     if (saved._tag === "err") return failure("storage");
-    const selected = await this.settings.selectProfile(initial.value.id);
-    return selected._tag === "ok" ? ok([initial.value]) : failure("storage");
+    const selected = await this.settings.selectProfile(detected.value.id);
+    return selected._tag === "ok" ? ok([detected.value]) : failure("storage");
   }
 
   async selectProfile(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the local API's boundary: `local-api.ts` extracts `id` from the raw JSON body and hands it here unparsed; there is no earlier boundary to run it at.
     rawId: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
     const id = parseWorkspaceProfileId(rawId);
@@ -108,6 +196,7 @@ export class DashboardController {
 
   /** Applies one validated global-settings patch while preserving profile selection. */
   async updateSettings(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PATCH /v1/settings`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<PatchdeskConfigFile, DashboardControllerFailure>> {
     const patch = parsePatchdeskSettingsPatch(input);
@@ -118,23 +207,26 @@ export class DashboardController {
 
   /** Creates or updates a profile through the typed profile JSON boundary. */
   async saveProfile(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /PUT /v1/profiles`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    if (!isObject(input)) return failure("invalid_input");
-    const id = parseWorkspaceProfileId(input.id);
+    const parsedInput = v.safeParse(saveProfileInputSchema, input);
+    if (!parsedInput.success) return failure("invalid_input");
+    const fields = parsedInput.output;
+    const id = parseWorkspaceProfileId(fields.id);
     if (id._tag === "err") return failure("invalid_input");
     const existing = await this.profiles.load(id.value);
     if (existing._tag === "err" && existing.error.reason !== "not_found")
       return failure("storage");
     const current = existing._tag === "ok" ? existing.value : undefined;
     const profile = parseWorkspaceProfileConfig({
-      id: input.id,
-      label: input.label,
-      githubHost: input.githubHost,
-      ghAccount: input.ghAccount,
-      ownerFilters: input.ownerFilters,
-      workspaceRoots: input.workspaceRoots,
-      rulePaths: input.rulePaths,
+      id: fields.id,
+      label: fields.label,
+      githubHost: fields.githubHost,
+      ghAccount: fields.ghAccount,
+      ownerFilters: fields.ownerFilters,
+      workspaceRoots: fields.workspaceRoots,
+      rulePaths: fields.rulePaths,
       repos: current?.repos ?? [],
     });
     if (profile._tag === "err") return failure("invalid_input");
@@ -179,6 +271,7 @@ export class DashboardController {
 
   /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
   async refreshWatchlistRepo(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for repo-scoped watchlist requests; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<DashboardPrList, DashboardControllerFailure>> {
     const profile = await this.activeProfile();
@@ -200,43 +293,73 @@ export class DashboardController {
   }
 
   async addWatchlistRepo(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/watchlist`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    if (!isObject(input)) return failure("invalid_input");
+    if (!v.safeParse(rawObjectSchema, input).success)
+      return failure("invalid_input");
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const host = parseGitHubHost(input.host);
-    const owner = parseGitHubOwner(input.owner);
-    const repo = parseGitHubRepoName(input.repo);
-    if (host._tag === "err" || owner._tag === "err" || repo._tag === "err")
+    const parsedInput = v.safeParse(watchlistRepoInputSchema, input);
+    if (!parsedInput.success) return failure("invalid_input");
+    const fields = parsedInput.output;
+    const host = parseGitHubHost(fields.host);
+    const owner = parseGitHubOwner(fields.owner);
+    const repo = parseGitHubRepoName(fields.repo);
+    // `localPath` really is optional here (unlike `setLocalPath`, there is no
+    // existing association to "clear"): omit it when absent, but once
+    // present it must parse as a genuine absolute path — no longer smuggled
+    // through as `localPath as never`, which previously bypassed validation
+    // entirely and could persist an unusable path.
+    const localPath =
+      fields.localPath === undefined
+        ? undefined
+        : parseAbsolutePath(fields.localPath);
+    if (
+      host._tag === "err" ||
+      owner._tag === "err" ||
+      repo._tag === "err" ||
+      (localPath !== undefined && localPath._tag === "err")
+    )
       return failure("invalid_input");
-    const changed = addWatchedRepo(profile.value, {
+    const repoToAdd: WatchedRepoConfig = {
       host: host.value,
       owner: owner.value,
       repo: repo.value,
-      ...(typeof input.localPath === "string"
-        ? { localPath: input.localPath as never }
-        : {}),
-    });
+    };
+    const changed = addWatchedRepo(
+      profile.value,
+      localPath === undefined
+        ? repoToAdd
+        : { ...repoToAdd, localPath: localPath.value },
+    );
     if (changed._tag === "err") return failure("invalid_input");
     const saved = await this.settings.saveProfile(changed.value);
     return saved._tag === "ok" ? ok(changed.value) : failure("storage");
   }
 
   async setLocalPath(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PATCH /v1/watchlist/path`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    if (!isObject(input)) return failure("invalid_input");
+    if (!v.safeParse(rawObjectSchema, input).success)
+      return failure("invalid_input");
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
     const ref = repoRef(input);
     if (ref._tag === "err") return ref;
+    const parsedLocalPath = v.safeParse(localPathInputSchema, input);
+    const rawLocalPath = parsedLocalPath.success
+      ? parsedLocalPath.output.localPath
+      : undefined;
+    // A missing/blank/non-string `localPath` means "clear the association",
+    // not "invalid request" — `updateWatchedRepoPath` below is what actually
+    // validates a present value as a real absolute path.
+    const nonEmptyLocalPath = v.safeParse(nonEmptyStringSchema, rawLocalPath);
     const changed = updateWatchedRepoPath(
       profile.value,
       ref.value,
-      typeof input.localPath === "string" && input.localPath.length > 0
-        ? input.localPath
-        : undefined,
+      nonEmptyLocalPath.success ? nonEmptyLocalPath.output : undefined,
     );
     if (changed._tag === "err") return failure("invalid_input");
     const saved = await this.settings.saveProfile(changed.value);
@@ -244,6 +367,7 @@ export class DashboardController {
   }
 
   async removeWatchlistRepo(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for `DELETE /v1/watchlist`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
     const profile = await this.activeProfile();
@@ -268,13 +392,17 @@ export class DashboardController {
   }
 
   async previewDirectEntry(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/direct-entry/preview`; there is no earlier boundary to run it at.
     value: unknown,
   ): Promise<Result<unknown, DashboardControllerFailure>> {
-    if (!isObject(value) || typeof value.reference !== "string")
-      return failure("invalid_input");
+    const parsedValue = v.safeParse(directEntryInputSchema, value);
+    if (!parsedValue.success) return failure("invalid_input");
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const pr = parsePullRequestEntry(value.reference, profile.value.githubHost);
+    const pr = parsePullRequestEntry(
+      parsedValue.output.reference,
+      profile.value.githubHost,
+    );
     if (pr._tag === "err") return failure("invalid_input");
     const profiles = await this.listProfiles();
     if (profiles._tag === "err") return profiles;
@@ -299,23 +427,25 @@ export class DashboardController {
       DashboardControllerFailure
     >
   > {
-    const profile = await this.activeProfile();
+    // Force a fresh detection probe: this is the setup checklist's
+    // "Confirm GitHub access" / "Re-check" flow, so a user who just ran
+    // `gh auth login` in a terminal must see it reflected immediately
+    // rather than a memoized pre-login reading (see `detectionMemo`).
+    const profile = await this.activeProfile(true);
     if (profile._tag === "err") return profile;
-    const dashboard = await this.dashboard.listPendingPullRequests(
-      profile.value,
-    );
-    if (dashboard._tag === "err") return failure("storage");
-    return ok({
-      state: dashboard.value.repos.some((repo) => repo.state === "github_auth")
-        ? "github_auth"
-        : "available",
-    });
+    // Consult authentication directly rather than inferring it from
+    // per-repo dashboard state: on an empty watchlist `listPendingPullRequests`
+    // has no repos to attach an auth failure to, so its `repos` array is `[]`
+    // regardless of whether `gh` is authenticated. That would report a false
+    // "available" on first run, before any repo has been added.
+    const auth = await this.github.resolveAuthenticatedAccount(profile.value);
+    return ok({ state: auth._tag === "err" ? "github_auth" : "available" });
   }
 
-  private async activeProfile(): Promise<
-    Result<WorkspaceProfileConfig, DashboardControllerFailure>
-  > {
-    const profiles = await this.listProfiles();
+  private async activeProfile(
+    forceDetection = false,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    const profiles = await this.listProfiles(forceDetection);
     if (profiles._tag === "err") return profiles;
     const config = await this.profiles.loadConfig();
     const selected =
@@ -331,18 +461,17 @@ export class DashboardController {
 }
 
 function repoRef(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the `{ host, owner, repo }` shape shared by several watchlist endpoints; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<WatchedRepoRef, DashboardControllerFailure> {
-  if (!isObject(input)) return failure("invalid_input");
-  const host = parseGitHubHost(input.host);
-  const owner = parseGitHubOwner(input.owner);
-  const repo = parseGitHubRepoName(input.repo);
+  const parsed = v.safeParse(repoRefInputSchema, input);
+  if (!parsed.success) return failure("invalid_input");
+  const host = parseGitHubHost(parsed.output.host);
+  const owner = parseGitHubOwner(parsed.output.owner);
+  const repo = parseGitHubRepoName(parsed.output.repo);
   return host._tag === "ok" && owner._tag === "ok" && repo._tag === "ok"
     ? ok({ host: host.value, owner: owner.value, repo: repo.value })
     : failure("invalid_input");
-}
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 function failure(
   reason: DashboardControllerFailure["reason"],

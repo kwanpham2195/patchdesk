@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
+import { failure, success } from "./fake-desktop-response";
 
 const profile = {
   id: "cfw",
@@ -80,7 +81,7 @@ describe("SettingsModal", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("opens on the initialSection only for the first open, then resets to General", async () => {
+  it("targets the current initialSection on every open, not only the first", async () => {
     installDesktopApi();
     const user = userEvent.setup();
     let open = true;
@@ -109,7 +110,9 @@ describe("SettingsModal", () => {
     ).toBe("true");
     expect(screen.getByTestId("settings-section-logs")).toBeTruthy();
 
-    // Close and reopen the same mounted instance: the restore applies only once.
+    // Close, then reopen the same mounted instance targeting a different
+    // section: a later, distinct openSettings() call must still land on the
+    // section it asked for, not fall back to General.
     await user.click(screen.getByRole("button", { name: "Close" }));
     const modalProps = {
       open,
@@ -124,14 +127,14 @@ describe("SettingsModal", () => {
       onDiffThemeChange: () => undefined,
       profiles: [profile],
       onWorkspaceReload: async () => undefined,
-      initialSection: "logs" as const,
+      initialSection: "workspace" as const,
       onSectionChange: () => undefined,
     };
     view.rerender(<SettingsModal {...modalProps} open={false} />);
     view.rerender(<SettingsModal {...modalProps} open />);
     expect(
       screen
-        .getByRole("tab", { name: "General" })
+        .getByRole("tab", { name: "Workspace" })
         .getAttribute("aria-selected"),
     ).toBe("true");
   });
@@ -205,10 +208,16 @@ describe("SettingsModal", () => {
         "Choose a workspace profile before clearing its local data.",
       ),
     ).toBeTruthy();
+    // SAFETY: "Clear cache" is rendered by `<Button>`
+    // (src/renderer/src/components/ui/button.tsx), which wraps base-ui's
+    // `Button` with `nativeButton` left at its default `true` and renders a
+    // native `<button>` element.
     expect(
       (screen.getByRole("button", { name: "Clear cache" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    // SAFETY: "Clear local review data" is the same `<Button>` component,
+    // which renders a native `<button>` element.
     expect(
       (
         screen.getByRole("button", {
@@ -280,6 +289,10 @@ describe("SettingsModal", () => {
         expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
       ),
     );
+    // SAFETY: "Save" here is `AlertDialogAction`
+    // (src/renderer/src/components/ui/alert-dialog.tsx), which renders
+    // `<Button>` and so, like the other `<Button>` casts in this file, is a
+    // native `<button>` element.
     expect(
       (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
         .disabled,
@@ -344,6 +357,9 @@ describe("SettingsModal", () => {
     const model = await screen.findByRole("combobox", {
       name: "Default model",
     });
+    // SAFETY: the "Default model" combobox is `ModelCombobox`
+    // (src/renderer/src/components/model-combobox.tsx), whose `role="combobox"`
+    // is base-ui's `Combobox.Input`, an `<input>` element.
     expect((model as HTMLInputElement).value).toBe("DeepSeek Flash");
     await user.click(model);
     await user.click(
@@ -351,9 +367,100 @@ describe("SettingsModal", () => {
     );
 
     expect(
-      window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
-    ).toBe(JSON.stringify({ model: "openai-codex", reasoning: "medium" }));
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+    ).toBe(
+      JSON.stringify({
+        provider: "pi",
+        model: "openai-codex",
+        reasoning: "medium",
+      }),
+    );
     expect(request).toHaveBeenCalledWith({ path: "/v1/insight-providers" });
+  });
+
+  it("offers the full reasoning range and saves a chosen default under the shared Analysis key", async () => {
+    installDesktopApi({
+      models: {
+        providers: [
+          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+        ],
+        models: [
+          {
+            provider: "pi",
+            id: "deepseek-flash",
+            label: "DeepSeek Flash",
+            reasoning: ["minimal", "low", "medium", "high", "xhigh"],
+            defaultReasoning: "medium",
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+
+    renderModal();
+    await user.click(screen.getByRole("tab", { name: "Review" }));
+    const reasoning = await screen.findByRole("combobox", {
+      name: "Default reasoning",
+    });
+    await user.click(reasoning);
+    await screen.findByRole("option", { name: "Minimal" });
+    expect(
+      ["Minimal", "Low", "Medium", "High", "Extra high"].map(
+        (name) => screen.getByRole("option", { name }).textContent,
+      ),
+    ).toEqual(["Minimal", "Low", "Medium", "High", "Extra high"]);
+    await user.click(screen.getByRole("option", { name: "Extra high" }));
+
+    expect(
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+    ).toBe(
+      JSON.stringify({
+        provider: "pi",
+        model: "deepseek-flash",
+        reasoning: "xhigh",
+      }),
+    );
+  });
+
+  it("does not overwrite a Codex-provider Analysis preference just by opening Settings", async () => {
+    window.localStorage.setItem(
+      "patchdesk.insight-run.v1.analysis.cfw",
+      JSON.stringify({
+        provider: "codex-cli-account",
+        model: "gpt-5-codex",
+        reasoning: "high",
+      }),
+    );
+    installDesktopApi({
+      models: {
+        providers: [
+          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+        ],
+        models: [
+          {
+            provider: "pi",
+            id: "deepseek-flash",
+            label: "DeepSeek Flash",
+            reasoning: ["medium"],
+            defaultReasoning: "medium",
+          },
+        ],
+      },
+    });
+
+    renderModal();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Review" }));
+    await screen.findByRole("combobox", { name: "Default model" });
+
+    expect(
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+    ).toBe(
+      JSON.stringify({
+        provider: "codex-cli-account",
+        model: "gpt-5-codex",
+        reasoning: "high",
+      }),
+    );
   });
 
   it("searches a late default model by canonical ID and selects it with the keyboard", async () => {
@@ -387,9 +494,13 @@ describe("SettingsModal", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     expect(
-      window.localStorage.getItem("patchdesk.review-execution.v1.cfw"),
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
     ).toBe(
-      JSON.stringify({ model: "provider/model-492", reasoning: "medium" }),
+      JSON.stringify({
+        provider: "pi",
+        model: "provider/model-492",
+        reasoning: "medium",
+      }),
     );
   });
 
@@ -494,22 +605,4 @@ function installDesktopApi(
     value: { request, onNavigate: () => () => undefined },
   });
   return request;
-}
-
-function success(body: unknown): {
-  readonly ok: true;
-  readonly status: 200;
-  readonly body: unknown;
-  readonly correlationId: string;
-} {
-  return { ok: true, status: 200, body, correlationId: "test" };
-}
-
-function failure(body: unknown): {
-  readonly ok: false;
-  readonly status: 503;
-  readonly body: unknown;
-  readonly correlationId: string;
-} {
-  return { ok: false, status: 503, body, correlationId: "test" };
 }

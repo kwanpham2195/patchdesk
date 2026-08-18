@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type SetStateAction } from "react";
-import { FolderOpen, Plus, X } from "lucide-react";
-import { requestJson, selectDirectory } from "../api-client";
+import { useEffect, useRef, useState } from "react";
+import * as v from "valibot";
+import { requestJson } from "../api-client";
 import { parseInsightProviderCatalog } from "../renderer-contracts";
 import {
   DIFF_DARK_THEMES,
@@ -9,10 +9,11 @@ import {
 } from "../diff-theme-preferences";
 import type { AppearancePreference } from "../appearance-preferences";
 import {
-  loadReviewExecutionPreference,
-  saveReviewExecutionPreference,
-  type ReviewReasoningPreference,
-} from "../review-execution-preferences";
+  loadInsightRunPreference,
+  saveInsightRunPreference,
+  type InsightRunPreference,
+} from "../insight-run-preferences";
+import type { InsightReasoning } from "../../../domain/insight-provider";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { cleanupCopy } from "../review-copy";
 import { LogsPanel } from "../components/logs-panel";
@@ -35,14 +36,7 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
-import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { WatchlistPanel } from "../components/watchlist-panel";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -52,6 +46,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import type { Dashboard, Profile } from "../renderer-models";
+import { WorkspaceProfileSection } from "./settings-workspace-section";
 
 export type SettingsSection =
   | "general"
@@ -60,29 +55,37 @@ export type SettingsSection =
   | "data"
   | "logs";
 
-type ProfileDraft = {
-  readonly id: string;
-  readonly label: string;
-  readonly githubHost: string;
-  readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<ProfileListEntry>;
-  readonly ownerFilters: ReadonlyArray<ProfileListEntry>;
-  readonly rulePaths: ReadonlyArray<ProfileListEntry>;
-};
+// Not `strictObject`: the redacted local-activity feed may gain fields over
+// time, and this panel only ever reads this fixed set.
+const activityEventSchema = v.object({
+  at: v.string(),
+  category: v.string(),
+  phase: v.string(),
+  retryable: v.boolean(),
+  durationMs: v.optional(v.number()),
+  detail: v.optional(v.string()),
+});
 
-type ProfileListEntry = {
-  readonly id: string;
-  readonly value: string;
-};
+type ActivityEvent = v.InferOutput<typeof activityEventSchema>;
 
-type ActivityEvent = {
-  readonly at: string;
-  readonly category: string;
-  readonly phase: string;
-  readonly retryable: boolean;
-  readonly durationMs?: number;
-  readonly detail?: string;
-};
+const diagnosticsResponseSchema = v.object({
+  events: v.array(v.unknown()),
+});
+
+/** Parses the local API's diagnostics response for the Settings activity log; each malformed event drops itself instead of discarding the whole feed. */
+function parseDiagnosticsResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): ReadonlyArray<ActivityEvent> | undefined {
+  const parsed = v.safeParse(diagnosticsResponseSchema, input);
+  if (!parsed.success) return undefined;
+  const events: ActivityEvent[] = [];
+  for (const event of parsed.output.events) {
+    const item = v.safeParse(activityEventSchema, event);
+    if (item.success) events.push(item.output);
+  }
+  return events;
+}
 
 type CleanupState = {
   readonly requestId: number;
@@ -133,12 +136,83 @@ export function SettingsFlow({
   onDiscardProfileReady,
   onProfileSwitchStart,
 }: SettingsFlowProps): React.JSX.Element {
-  const [profileDraft, setProfileDraft] = useState(() =>
-    profileDraftFor(dashboard?.profile),
+  // `WorkspaceProfileSection` is always mounted — not just while the
+  // Workspace tab is showing — so its profile draft, baseline/generation
+  // refs, and `onSaveProfileReady`/`onDiscardProfileReady` wiring survive
+  // switching to another Settings tab and back. `visible` only controls
+  // whether it currently renders its cards.
+  const workspaceSection = (
+    <WorkspaceProfileSection
+      dashboard={dashboard}
+      profiles={profiles}
+      onWorkspaceReload={onWorkspaceReload}
+      visible={section === "workspace"}
+      onProfileDirtyChange={onProfileDirtyChange}
+      onProfileSwitchRequest={onProfileSwitchRequest}
+      onSaveProfileReady={onSaveProfileReady}
+      onDiscardProfileReady={onDiscardProfileReady}
+      onProfileSwitchStart={onProfileSwitchStart}
+    />
   );
-  const [creatingProfile, setCreatingProfile] = useState(false);
-  const [profileError, setProfileError] = useState<string>();
-  const [savingProfile, setSavingProfile] = useState(false);
+
+  if (section === "review") {
+    return (
+      <>
+        {workspaceSection}
+        <ReviewPreferences profileId={dashboard?.profile.id} />
+      </>
+    );
+  }
+
+  if (section === "logs") {
+    return (
+      <>
+        {workspaceSection}
+        <LogsPanel />
+      </>
+    );
+  }
+
+  if (section === "workspace") {
+    return <>{workspaceSection}</>;
+  }
+
+  if (section === "data") {
+    return (
+      <>
+        {workspaceSection}
+        <DataSection
+          dashboard={dashboard}
+          onWorkspaceReload={onWorkspaceReload}
+          onCleanupSuccess={onCleanupSuccess}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {workspaceSection}
+      <GeneralSection
+        appearance={appearance}
+        onAppearanceChange={onAppearanceChange}
+        diffThemePreferences={diffThemePreferences}
+        onDiffThemeChange={onDiffThemeChange}
+      />
+    </>
+  );
+}
+
+/** The Data & recovery Settings section: cache/local-data cleanup and the redacted local activity log. Split out of `SettingsFlow` so that component stays a thin per-section router. */
+function DataSection({
+  dashboard,
+  onWorkspaceReload,
+  onCleanupSuccess,
+}: {
+  readonly dashboard: Dashboard | undefined;
+  readonly onWorkspaceReload: () => Promise<void>;
+  readonly onCleanupSuccess: ((action: "cache" | "local") => void) | undefined;
+}): React.JSX.Element {
   const [cleanup, setCleanup] = useState<CleanupState>({
     requestId: 0,
     pending: false,
@@ -149,203 +223,6 @@ export function SettingsFlow({
   const cleanupAvailable = dashboard?.profile.id !== undefined;
   const activityLoadGeneration = useRef(0);
   const cleanupRequestId = useRef(0);
-  const profileBaseline = useRef(profileDraft);
-  const pendingSavedProfile = useRef<
-    { readonly id: string; readonly label: string } | undefined
-  >(undefined);
-  const profileDraftGeneration = useRef(0);
-  const updateProfileDraft = (update: SetStateAction<ProfileDraft>): void => {
-    profileDraftGeneration.current += 1;
-    setProfileDraft(update);
-    onProfileDirtyChange?.(true);
-  };
-  const profileDirty =
-    JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
-
-  useEffect(() => {
-    if (dashboard === undefined) return;
-    const pending = pendingSavedProfile.current;
-    if (pending !== undefined) {
-      if (
-        dashboard.profile.id !== pending.id ||
-        dashboard.profile.label !== pending.label
-      )
-        return;
-      pendingSavedProfile.current = undefined;
-    }
-    if (
-      creatingProfile ||
-      dashboard.profile.id === profileDraft.id ||
-      profileDirty
-    )
-      return;
-    const next = profileDraftFor(dashboard.profile);
-    profileBaseline.current = next;
-    setProfileDraft(next);
-  }, [creatingProfile, dashboard, profileDirty, profileDraft.id]);
-
-  const saveProfile = async (): Promise<boolean> => {
-    setProfileError(undefined);
-    const normalized = normalizeProfileDraft(profileDraft);
-    if (typeof normalized === "string") {
-      setProfileError(normalized);
-      return false;
-    }
-    if (
-      creatingProfile &&
-      profiles.some((profile) => profile.id === normalized.id)
-    ) {
-      setProfileError("A profile with this ID already exists.");
-      return false;
-    }
-    setSavingProfile(true);
-    const draftGeneration = profileDraftGeneration.current;
-    try {
-      await requestJson("/v1/profiles", {
-        method: creatingProfile ? "POST" : "PUT",
-        body: normalized,
-      });
-      if (creatingProfile) {
-        await requestJson("/v1/profiles/select", {
-          method: "POST",
-          body: { id: normalized.id },
-        });
-      }
-      const next = profileDraftFromNormalized(normalized);
-      pendingSavedProfile.current = {
-        id: normalized.id,
-        label: normalized.label,
-      };
-      profileBaseline.current = next;
-      if (profileDraftGeneration.current === draftGeneration) {
-        setProfileDraft(next);
-        onProfileDirtyChange?.(false);
-      } else {
-        onProfileDirtyChange?.(true);
-      }
-      setCreatingProfile(false);
-      await onWorkspaceReload();
-      return true;
-    } catch (cause: unknown) {
-      setProfileError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not save the local review state.",
-      );
-      return false;
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  useEffect(() => {
-    onSaveProfileReady?.(saveProfile);
-  });
-
-  const discardProfileDraft = (): void => {
-    const baseline = profileBaseline.current;
-    setProfileDraft(baseline);
-    setCreatingProfile(false);
-    setProfileError(undefined);
-    onProfileDirtyChange?.(false);
-  };
-
-  useEffect(() => {
-    onDiscardProfileReady?.(discardProfileDraft);
-  });
-
-  const performSelectProfile = async (id: string): Promise<void> => {
-    const selected = profiles.find((profile) => profile.id === id);
-    if (selected === undefined) return;
-    const previousDraft = profileDraft;
-    const previousBaseline = profileBaseline.current;
-    const draftGeneration = profileDraftGeneration.current;
-    setCreatingProfile(false);
-    setProfileError(undefined);
-    const next = profileDraftFor(selected);
-    try {
-      await requestJson("/v1/profiles/select", {
-        method: "POST",
-        body: { id },
-      });
-      onProfileSwitchStart?.();
-      if (profileDraftGeneration.current === draftGeneration) {
-        profileBaseline.current = next;
-        setProfileDraft(next);
-        onProfileDirtyChange?.(false);
-      }
-      await onWorkspaceReload();
-    } catch (cause: unknown) {
-      if (profileDraftGeneration.current === draftGeneration) {
-        profileBaseline.current = previousBaseline;
-        setProfileDraft(previousDraft);
-        onProfileDirtyChange?.(
-          JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline),
-        );
-      }
-      setProfileError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not switch profiles.",
-      );
-    }
-  };
-
-  const selectProfile = (id: string): void => {
-    const proceed = (): void => {
-      void performSelectProfile(id);
-    };
-    if (profileDirty) onProfileSwitchRequest?.(id, proceed);
-    else proceed();
-  };
-
-  const updateProfileList = (
-    field: ProfileListField,
-    entryId: string,
-    value: string,
-  ): void => {
-    updateProfileDraft((current) => ({
-      ...current,
-      [field]: current[field].map((entry) =>
-        entry.id === entryId ? { ...entry, value } : entry,
-      ),
-    }));
-  };
-
-  const addProfileListEntry = (field: ProfileListField): void => {
-    updateProfileDraft((current) => ({
-      ...current,
-      [field]: [...current[field], profileListEntry("")],
-    }));
-  };
-
-  const removeProfileListEntry = (
-    field: ProfileListField,
-    entryId: string,
-  ): void => {
-    updateProfileDraft((current) => ({
-      ...current,
-      [field]: current[field].filter((entry) => entry.id !== entryId),
-    }));
-  };
-
-  const chooseWorkspaceRoot = async (entryId: string): Promise<void> => {
-    const entry = profileDraft.workspaceRoots.find(
-      (candidate) => candidate.id === entryId,
-    );
-    if (entry === undefined) return;
-    const selected = await selectDirectory(entry.value);
-    if (selected === undefined) return;
-    updateProfileList("workspaceRoots", entryId, selected);
-  };
-
-  const startNewProfile = (): void => {
-    setCreatingProfile(true);
-    setProfileError(undefined);
-    const next = profileDraftFor(undefined);
-    profileBaseline.current = next;
-    updateProfileDraft(next);
-  };
 
   const runCleanup = async (): Promise<void> => {
     const action = cleanup.action;
@@ -398,9 +275,9 @@ export function SettingsFlow({
       const value = await requestJson(
         `/v1/diagnostics?profileId=${encodeURIComponent(dashboard.profile.id)}`,
       );
-      if (!record(value) || !Array.isArray(value.events))
-        throw new Error("invalid_activity");
-      const events = value.events.filter(isActivityEvent).slice(-40).reverse();
+      const parsed = parseDiagnosticsResponse(value);
+      if (parsed === undefined) throw new Error("invalid_activity");
+      const events = parsed.slice(-40).reverse();
       if (generation !== activityLoadGeneration.current) return;
       setActivity(events);
     } catch {
@@ -413,348 +290,158 @@ export function SettingsFlow({
     }
   };
 
-  if (section === "review") {
-    return <ReviewPreferences profileId={dashboard?.profile.id} />;
-  }
-
-  if (section === "logs") {
-    return <LogsPanel />;
-  }
-
-  if (section === "workspace") {
-    return (
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile</CardTitle>
-              <CardDescription>
-                The active GitHub account and profile details for this
-                workspace.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-5">
-              <FieldGroup className="gap-4">
-                <Field>
-                  <FieldLabel htmlFor="active-profile">
-                    Active profile
-                  </FieldLabel>
-                  <Select
-                    value={dashboard?.profile.id ?? profileDraft.id}
-                    items={profiles.map((profile) => ({
-                      label: profile.label,
-                      value: profile.id,
-                    }))}
-                    onValueChange={(value) => {
-                      if (value !== null) selectProfile(value);
-                    }}
-                  >
-                    <SelectTrigger
-                      id="active-profile"
-                      aria-label="Active profile"
-                    >
-                      <SelectValue placeholder="Select a profile">
-                        {profileDraft.label}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles.map((profile) => (
-                        <SelectItem key={profile.id} value={profile.id}>
-                          {profile.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={startNewProfile}>
-                    <Plus data-icon="inline-start" />
-                    New profile
-                  </Button>
-                  {profileDirty || creatingProfile ? (
-                    <Button
-                      size="sm"
-                      disabled={savingProfile}
-                      onClick={() => {
-                        void saveProfile();
-                      }}
-                    >
-                      {savingProfile ? "Saving profile…" : "Save profile"}
-                    </Button>
-                  ) : null}
-                </div>
-                <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
-                    <Input
-                      id="profile-id"
-                      aria-label="Profile ID"
-                      value={profileDraft.id}
-                      disabled={!creatingProfile}
-                      onChange={(event) =>
-                        updateProfileDraft((current) => ({
-                          ...current,
-                          id: event.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="profile-label">Label</FieldLabel>
-                    <Input
-                      id="profile-label"
-                      aria-label="Label"
-                      value={profileDraft.label}
-                      onChange={(event) =>
-                        updateProfileDraft((current) => ({
-                          ...current,
-                          label: event.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="profile-gh-account">
-                      GitHub account
-                    </FieldLabel>
-                    <Input
-                      id="profile-gh-account"
-                      aria-label="GitHub account"
-                      value={profileDraft.ghAccount}
-                      onChange={(event) =>
-                        updateProfileDraft((current) => ({
-                          ...current,
-                          ghAccount: event.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
-                  <Field className="sm:col-span-2">
-                    <FieldLabel htmlFor="profile-github-host">
-                      GitHub host
-                    </FieldLabel>
-                    <Input
-                      id="profile-github-host"
-                      aria-label="GitHub host"
-                      value={profileDraft.githubHost}
-                      onChange={(event) =>
-                        updateProfileDraft((current) => ({
-                          ...current,
-                          githubHost: event.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
-                </FieldGroup>
-              </FieldGroup>
-              {profileError === undefined ? null : (
-                <p role="alert" className="text-sm text-destructive">
-                  {profileError}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Workspace scope</CardTitle>
-              <CardDescription>
-                Where Patchdesk looks for repositories and the rules that apply.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-5">
-              <ProfileListEditor
-                label="Workspace roots"
-                field="workspaceRoots"
-                entries={profileDraft.workspaceRoots}
-                placeholder="/absolute/workspace/path"
-                onChange={updateProfileList}
-                onAdd={addProfileListEntry}
-                onRemove={removeProfileListEntry}
-                onChoose={(entryId) => {
-                  void chooseWorkspaceRoot(entryId);
-                }}
-              />
-              <ProfileListEditor
-                label="Owner filters"
-                field="ownerFilters"
-                entries={profileDraft.ownerFilters}
-                placeholder="github-owner"
-                onChange={updateProfileList}
-                onAdd={addProfileListEntry}
-                onRemove={removeProfileListEntry}
-              />
-              <ProfileListEditor
-                label="Rule paths"
-                field="rulePaths"
-                entries={profileDraft.rulePaths}
-                placeholder="/absolute/path/to/AGENTS.md"
-                onChange={updateProfileList}
-                onAdd={addProfileListEntry}
-                onRemove={removeProfileListEntry}
-              />
-            </CardContent>
-          </Card>
-        </div>
-        <WatchlistPanel
-          profile={
-            dashboard?.profile ?? {
-              id: "",
-              label: "",
-              githubHost: "github.com",
-              ghAccount: "",
-            }
-          }
-          onWorkspaceReload={onWorkspaceReload}
-        />
-      </div>
-    );
-  }
-
-  if (section === "data") {
-    return (
-      <>
-        <Card data-testid="local-review-data-card">
-          <CardHeader>
-            <CardTitle>Local review data</CardTitle>
-            <CardDescription>
-              Two workspace actions, ordered by severity. Confirmations state
-              what stays and what goes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+  return (
+    <>
+      <Card data-testid="local-review-data-card">
+        <CardHeader>
+          <CardTitle>Local review data</CardTitle>
+          <CardDescription>
+            Two workspace actions, ordered by severity. Confirmations state what
+            stays and what goes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Alert>
+            <AlertTitle>Stored reviews stay readable</AlertTitle>
+            <AlertDescription>
+              Clear cache keeps review history. Clear local review data removes
+              completed and failed local reviews; an active review and
+              diagnostic reports stay.
+            </AlertDescription>
+          </Alert>
+          {cleanupAvailable ? null : (
             <Alert>
-              <AlertTitle>Stored reviews stay readable</AlertTitle>
+              <AlertTitle>No active workspace</AlertTitle>
               <AlertDescription>
-                Clear cache keeps review history. Clear local review data
-                removes completed and failed local reviews; an active review and
-                diagnostic reports stay.
+                Choose a workspace profile before clearing its local data.
               </AlertDescription>
             </Alert>
-            {cleanupAvailable ? null : (
-              <Alert>
-                <AlertTitle>No active workspace</AlertTitle>
-                <AlertDescription>
-                  Choose a workspace profile before clearing its local data.
-                </AlertDescription>
-              </Alert>
-            )}
-            <div className="flex flex-col gap-2">
-              <Button
-                variant="outline"
-                disabled={!cleanupAvailable}
-                onClick={() => {
-                  setCleanup((current) => ({
-                    requestId: current.requestId,
-                    action: "cache",
-                    pending: false,
-                  }));
-                }}
-              >
-                Clear cache
-              </Button>
-              <Button
-                variant="outline"
-                disabled={!cleanupAvailable}
-                data-testid="clear-local-data-button"
-                onClick={() => {
-                  setCleanup((current) => ({
-                    requestId: current.requestId,
-                    action: "local",
-                    pending: false,
-                  }));
-                }}
-              >
-                Clear local review data
-              </Button>
-            </div>
-            {cleanup.error === undefined ? null : (
-              <Alert variant="destructive">
-                <AlertTitle>Cleanup failed</AlertTitle>
-                <AlertDescription role="alert">
-                  {cleanup.error}
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-        <Card data-testid="review-activity-card">
-          <CardHeader>
-            <CardTitle>Review activity</CardTitle>
-            <CardDescription>
-              Redacted local milestones for review and walkthrough runs.
-              Patchdesk never shows prompts, tokens, paths, or provider output.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+          )}
+          <div className="flex flex-col gap-2">
             <Button
               variant="outline"
               disabled={!cleanupAvailable}
               onClick={() => {
-                void loadActivity();
+                setCleanup((current) => ({
+                  requestId: current.requestId,
+                  action: "cache",
+                  pending: false,
+                }));
               }}
             >
-              Load activity
+              Clear cache
             </Button>
-            {activityLoadState.message === undefined ? null : (
-              <Alert variant="destructive">
-                <AlertTitle>Activity unavailable</AlertTitle>
-                <AlertDescription role="alert">
-                  {activityLoadState.message}
-                </AlertDescription>
-              </Alert>
-            )}
-            {activity === undefined ? null : activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground" role="status">
-                No local review activity yet.
-              </p>
-            ) : (
-              <ol
-                className="flex flex-col gap-2"
-                aria-label="Review activity log"
-              >
-                {activity.map((event) => (
-                  <li
-                    key={`${event.at}-${event.category}-${event.phase}-${event.detail ?? ""}`}
-                    className="rounded-md border p-3 text-sm"
-                  >
-                    <p className="font-medium">{activityLabel(event.phase)}</p>
-                    <p className="text-muted-foreground">
-                      {event.category} ·{" "}
-                      {event.retryable ? "can retry" : "completed"}
-                      {event.durationMs === undefined
-                        ? ""
-                        : ` · ${Math.round(event.durationMs / 1_000)}s`}
-                    </p>
-                    {event.detail === undefined ? null : (
-                      <p className="mt-1 text-muted-foreground">
-                        {event.detail}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
-        <CleanupConfirmation
-          action={cleanup.action}
-          pending={cleanup.pending}
-          error={cleanup.error}
-          onCancel={() => {
-            if (!cleanup.pending)
-              setCleanup((current) => ({
-                requestId: current.requestId,
-                pending: false,
-              }));
-          }}
-          onConfirm={() => {
-            void runCleanup();
-          }}
-        />
-      </>
-    );
-  }
+            <Button
+              variant="outline"
+              disabled={!cleanupAvailable}
+              data-testid="clear-local-data-button"
+              onClick={() => {
+                setCleanup((current) => ({
+                  requestId: current.requestId,
+                  action: "local",
+                  pending: false,
+                }));
+              }}
+            >
+              Clear local review data
+            </Button>
+          </div>
+          {cleanup.error === undefined ? null : (
+            <Alert variant="destructive">
+              <AlertTitle>Cleanup failed</AlertTitle>
+              <AlertDescription role="alert">{cleanup.error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+      <Card data-testid="review-activity-card">
+        <CardHeader>
+          <CardTitle>Review activity</CardTitle>
+          <CardDescription>
+            Redacted local milestones for review and walkthrough runs. Patchdesk
+            never shows prompts, tokens, paths, or provider output.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Button
+            variant="outline"
+            disabled={!cleanupAvailable}
+            onClick={() => {
+              void loadActivity();
+            }}
+          >
+            Load activity
+          </Button>
+          {activityLoadState.message === undefined ? null : (
+            <Alert variant="destructive">
+              <AlertTitle>Activity unavailable</AlertTitle>
+              <AlertDescription role="alert">
+                {activityLoadState.message}
+              </AlertDescription>
+            </Alert>
+          )}
+          {activity === undefined ? null : activity.length === 0 ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              No local review activity yet.
+            </p>
+          ) : (
+            <ol
+              className="flex flex-col gap-2"
+              aria-label="Review activity log"
+            >
+              {activity.map((event) => (
+                <li
+                  key={`${event.at}-${event.category}-${event.phase}-${event.detail ?? ""}`}
+                  className="rounded-md border p-3 text-sm"
+                >
+                  <p className="font-medium">{activityLabel(event.phase)}</p>
+                  <p className="text-muted-foreground">
+                    {event.category} ·{" "}
+                    {event.retryable ? "can retry" : "completed"}
+                    {event.durationMs === undefined
+                      ? ""
+                      : ` · ${Math.round(event.durationMs / 1_000)}s`}
+                  </p>
+                  {event.detail === undefined ? null : (
+                    <p className="mt-1 text-muted-foreground">{event.detail}</p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+      <CleanupConfirmation
+        action={cleanup.action}
+        pending={cleanup.pending}
+        error={cleanup.error}
+        onCancel={() => {
+          if (!cleanup.pending)
+            setCleanup((current) => ({
+              requestId: current.requestId,
+              pending: false,
+            }));
+        }}
+        onConfirm={() => {
+          void runCleanup();
+        }}
+      />
+    </>
+  );
+}
 
+/** The General Settings section: Appearance and Diff theme. Split out of `SettingsFlow` so that component stays a thin per-section router. */
+function GeneralSection({
+  appearance,
+  onAppearanceChange,
+  diffThemePreferences,
+  onDiffThemeChange,
+}: {
+  readonly appearance: AppearancePreference;
+  readonly onAppearanceChange: (value: AppearancePreference) => void;
+  readonly diffThemePreferences: DiffThemePreferences;
+  readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
+}): React.JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -803,7 +490,10 @@ export function SettingsFlow({
                   value !== null &&
                   DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
                 )
-                  onDiffThemeChange({ ...diffThemePreferences, light: value });
+                  onDiffThemeChange({
+                    ...diffThemePreferences,
+                    light: value,
+                  });
               }}
             >
               <SelectTrigger className="h-12" aria-label="Light diff theme">
@@ -900,17 +590,28 @@ function ReviewPreferences({
         const model = selectedModel(piModels, piModels[0]?.id, saved.model);
         setModels(piModels);
         const next = {
+          provider: "pi" as const,
           model: model ?? saved.model,
           reasoning: saved.reasoning,
         };
         setPreference(next);
         setCatalogUnavailable(false);
+        // A stored non-"pi" preference means the last Analysis run used
+        // Codex; Settings is Pi-only, so it must not silently overwrite that
+        // provider choice just by loading this screen. Only self-heal a
+        // stale model id when the shared preference is already Pi-scoped
+        // (or unset).
+        const storedProvider =
+          profileId === undefined
+            ? undefined
+            : loadInsightRunPreference(profileId, "analysis")?.provider;
         if (
           profileId !== undefined &&
           model !== undefined &&
-          saved.model !== model
+          saved.model !== model &&
+          (storedProvider === undefined || storedProvider === "pi")
         )
-          saveReviewExecutionPreference(profileId, next);
+          saveInsightRunPreference(profileId, "analysis", next);
       })
       .catch(() => {
         if (!active) return;
@@ -923,10 +624,12 @@ function ReviewPreferences({
   }, [profileId]);
   const update = (next: {
     readonly model: string;
-    readonly reasoning: ReviewReasoningPreference;
+    readonly reasoning: InsightReasoning;
   }): void => {
-    setPreference(next);
-    if (profileId !== undefined) saveReviewExecutionPreference(profileId, next);
+    const withProvider = { provider: "pi" as const, ...next };
+    setPreference(withProvider);
+    if (profileId !== undefined)
+      saveInsightRunPreference(profileId, "analysis", withProvider);
   };
   return (
     <Card data-testid="settings-section-review">
@@ -975,7 +678,13 @@ function ReviewPreferences({
             <Select
               value={preference.reasoning}
               onValueChange={(value) => {
-                if (value === "low" || value === "medium" || value === "high")
+                if (
+                  value === "minimal" ||
+                  value === "low" ||
+                  value === "medium" ||
+                  value === "high" ||
+                  value === "xhigh"
+                )
                   update({ ...preference, reasoning: value });
               }}
             >
@@ -986,9 +695,11 @@ function ReviewPreferences({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="minimal">Minimal</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="high">High</SelectItem>
+                <SelectItem value="xhigh">Extra high</SelectItem>
               </SelectContent>
             </Select>
           </Field>
@@ -1017,16 +728,22 @@ function ReviewPreferences({
   );
 }
 
-function preferenceFor(profileId: string | undefined): {
-  readonly model: string;
-  readonly reasoning: ReviewReasoningPreference;
-} {
-  return profileId === undefined
-    ? { model: "pi-design", reasoning: "medium" }
-    : (loadReviewExecutionPreference(profileId) ?? {
-        model: "pi-design",
-        reasoning: "medium",
-      });
+/**
+ * Settings is Pi-only: it never shows or writes a Codex preference. When the
+ * shared Analysis default was last set by a Codex run, this falls back to
+ * the ordinary Pi default rather than displaying a value Settings cannot
+ * represent — see the storedProvider guard above, which keeps that fallback
+ * from being persisted just because this screen loaded.
+ */
+function preferenceFor(profileId: string | undefined): InsightRunPreference {
+  const fallback: InsightRunPreference = {
+    provider: "pi",
+    model: "pi-design",
+    reasoning: "medium",
+  };
+  if (profileId === undefined) return fallback;
+  const stored = loadInsightRunPreference(profileId, "analysis");
+  return stored?.provider === "pi" ? stored : fallback;
 }
 
 function selectedModel(
@@ -1097,196 +814,6 @@ function CleanupConfirmation({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
-
-function profileListEntry(value: string): ProfileListEntry {
-  return { id: crypto.randomUUID(), value };
-}
-
-function profileListEntries(
-  values: ReadonlyArray<string>,
-): ReadonlyArray<ProfileListEntry> {
-  return values.map(profileListEntry);
-}
-
-function profileDraftFor(profile: Profile | undefined): ProfileDraft {
-  return {
-    id: profile?.id ?? "",
-    label: profile?.label ?? "",
-    githubHost: profile?.githubHost ?? "github.com",
-    ghAccount: profile?.ghAccount ?? "",
-    workspaceRoots: profileListEntries(
-      profile === undefined ? [""] : (profile.workspaceRoots ?? []),
-    ),
-    ownerFilters: profileListEntries(
-      profile === undefined ? [""] : (profile.ownerFilters ?? []),
-    ),
-    rulePaths: profileListEntries(profile?.rulePaths ?? []),
-  };
-}
-
-function profileDraftFromNormalized(profile: {
-  readonly id: string;
-  readonly label: string;
-  readonly githubHost: string;
-  readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<string>;
-  readonly ownerFilters: ReadonlyArray<string>;
-  readonly rulePaths: ReadonlyArray<string>;
-}): ProfileDraft {
-  return {
-    ...profile,
-    workspaceRoots: profileListEntries(profile.workspaceRoots),
-    ownerFilters: profileListEntries(profile.ownerFilters),
-    rulePaths: profileListEntries(profile.rulePaths),
-  };
-}
-
-function normalizeProfileDraft(draft: ProfileDraft):
-  | {
-      readonly id: string;
-      readonly label: string;
-      readonly githubHost: string;
-      readonly ghAccount: string;
-      readonly workspaceRoots: ReadonlyArray<string>;
-      readonly ownerFilters: ReadonlyArray<string>;
-      readonly rulePaths: ReadonlyArray<string>;
-    }
-  | string {
-  const workspaceRoots = trimEntries(
-    draft.workspaceRoots.map((entry) => entry.value),
-    "Workspace roots",
-  );
-  if (typeof workspaceRoots === "string") return workspaceRoots;
-  const ownerFilters = trimEntries(
-    draft.ownerFilters.map((entry) => entry.value),
-    "Owner filters",
-  );
-  if (typeof ownerFilters === "string") return ownerFilters;
-  const rulePaths = trimEntries(
-    draft.rulePaths.map((entry) => entry.value),
-    "Rule paths",
-  );
-  if (typeof rulePaths === "string") return rulePaths;
-  return {
-    id: draft.id.trim(),
-    label: draft.label.trim(),
-    githubHost: draft.githubHost.trim(),
-    ghAccount: draft.ghAccount.trim(),
-    workspaceRoots,
-    ownerFilters,
-    rulePaths,
-  };
-}
-
-function trimEntries(
-  entries: ReadonlyArray<string>,
-  label: string,
-): ReadonlyArray<string> | string {
-  const trimmed = entries.map((entry) => entry.trim());
-  return trimmed.some((entry) => entry.length === 0)
-    ? `${label} cannot contain blank entries.`
-    : trimmed;
-}
-
-function ProfileListEditor({
-  label,
-  field,
-  entries,
-  placeholder,
-  onChange,
-  onAdd,
-  onRemove,
-  onChoose,
-}: {
-  readonly label: string;
-  readonly field: ProfileListField;
-  readonly entries: ReadonlyArray<ProfileListEntry>;
-  readonly placeholder: string;
-  readonly onChange: (
-    field: ProfileListField,
-    entryId: string,
-    value: string,
-  ) => void;
-  readonly onAdd: (field: ProfileListField) => void;
-  readonly onRemove: (field: ProfileListField, entryId: string) => void;
-  readonly onChoose?: (entryId: string) => void;
-}): React.JSX.Element {
-  const singular = label.slice(0, -1).toLowerCase();
-  return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="text-sm font-medium">{label}</legend>
-      <div className="flex flex-col gap-2 rounded-lg border p-2">
-        {entries.map((entry, index) => (
-          <div key={entry.id} className="flex min-w-0 items-center gap-2">
-            <Input
-              aria-label={`${singular} ${index + 1}`}
-              value={entry.value}
-              placeholder={placeholder}
-              onChange={(event) =>
-                onChange(field, entry.id, event.target.value)
-              }
-            />
-            {onChoose === undefined ? null : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => onChoose(entry.id)}
-              >
-                <FolderOpen data-icon="inline-start" />
-                Choose folder
-              </Button>
-            )}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label={`Remove ${singular} ${index + 1}`}
-                    onClick={() => onRemove(field, entry.id)}
-                  />
-                }
-              >
-                <X />
-              </TooltipTrigger>
-              <TooltipContent>{`Remove ${singular}`}</TooltipContent>
-            </Tooltip>
-          </div>
-        ))}
-      </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => onAdd(field)}
-        className="w-fit"
-      >
-        <Plus data-icon="inline-start" />
-        {`Add ${singular}`}
-      </Button>
-    </fieldset>
-  );
-}
-
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isActivityEvent(value: unknown): value is ActivityEvent {
-  return (
-    record(value) &&
-    typeof value.at === "string" &&
-    typeof value.category === "string" &&
-    typeof value.phase === "string" &&
-    typeof value.retryable === "boolean" &&
-    (value.durationMs === undefined || typeof value.durationMs === "number") &&
-    (value.detail === undefined || typeof value.detail === "string")
   );
 }
 

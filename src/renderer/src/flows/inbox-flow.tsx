@@ -1,3 +1,4 @@
+import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
@@ -33,8 +34,13 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { requestJson } from "../api-client";
-import { parseWorkbenchResponse } from "../renderer-contracts";
+import {
+  parseEnvironmentCheckResponse,
+  parseGitHubAccessCheckResponse,
+  parseWorkbenchResponse,
+} from "../renderer-contracts";
 import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
+import type { SettingsSection } from "./settings-flow";
 import type {
   Dashboard,
   DashboardScreenState,
@@ -42,7 +48,10 @@ import type {
   RepoOutcome,
   WorkbenchPayload,
 } from "../renderer-models";
-import type { InboxResponse } from "../renderer-contracts";
+import type {
+  EnvironmentCheckResponse,
+  InboxResponse,
+} from "../renderer-contracts";
 
 export function InboxFlow({
   destination,
@@ -62,7 +71,7 @@ export function InboxFlow({
   readonly state: DashboardScreenState;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
-  readonly onSettings: () => void;
+  readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenWorkbench: (
     workbench: WorkbenchPayload,
     initialSection?: ReviewInitialSection,
@@ -241,7 +250,7 @@ function InboxScreen({
   readonly dashboard: Dashboard;
   readonly onRefresh: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
-  readonly onSettings: () => void;
+  readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenReview: (
     row: InboxResponse["inbox"]["rows"][number],
     initialSection?: ReviewInitialSection,
@@ -306,7 +315,7 @@ function Pending({
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
   readonly onRefresh: () => void;
-  readonly onSettings: () => void;
+  readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenRow: (pr: {
     readonly host?: string;
     readonly owner: string;
@@ -506,6 +515,231 @@ function Pending({
     </div>
   );
 }
+type AccessCheckState =
+  | { readonly kind: "checking" }
+  | { readonly kind: "available" }
+  | { readonly kind: "github_auth" }
+  | { readonly kind: "error" };
+
+type ToolsCheckState =
+  | { readonly kind: "checking" }
+  | { readonly kind: "loaded"; readonly env: EnvironmentCheckResponse }
+  | { readonly kind: "error" };
+
+/**
+ * Renders the first two setup-checklist items against their real, current
+ * state (`POST /v1/github/access`, `GET /v1/environment`) instead of static
+ * prose. Both fetch on mount and again whenever "Re-check" is pressed, so a
+ * user who fixes something in a terminal (installs `gh`, runs
+ * `gh auth login`) can confirm it without restarting the app.
+ */
+function SetupChecklist(): React.JSX.Element {
+  const [access, setAccess] = useState<AccessCheckState>({
+    kind: "checking",
+  });
+  const [tools, setTools] = useState<ToolsCheckState>({ kind: "checking" });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setAccess({ kind: "checking" });
+    void (async () => {
+      try {
+        const value = await requestJson("/v1/github/access", {
+          method: "POST",
+        });
+        if (!active) return;
+        const parsed = parseGitHubAccessCheckResponse(value);
+        setAccess(
+          parsed === undefined ? { kind: "error" } : { kind: parsed.state },
+        );
+      } catch {
+        if (active) setAccess({ kind: "error" });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    let active = true;
+    setTools({ kind: "checking" });
+    void (async () => {
+      try {
+        const value = await requestJson("/v1/environment");
+        if (!active) return;
+        const parsed = parseEnvironmentCheckResponse(value);
+        setTools(
+          parsed === undefined
+            ? { kind: "error" }
+            : { kind: "loaded", env: parsed },
+        );
+      } catch {
+        if (active) setTools({ kind: "error" });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  return (
+    <>
+      <ol className="space-y-3 text-sm">
+        <li>
+          <span className="font-medium">1. Confirm GitHub access</span>
+          <p className="text-muted-foreground">
+            Choose the GitHub account Patchdesk should use for read-only
+            discovery.
+          </p>
+          <AccessCheckLine state={access} />
+        </li>
+        <li>
+          <span className="font-medium">2. Check local tools</span>
+          <p className="text-muted-foreground">
+            Verify Git and GitHub access without exposing credentials.
+          </p>
+          <ToolsCheckLines state={tools} />
+        </li>
+        <li>
+          <span className="font-medium">3. Add your first repository</span>
+          <p className="text-muted-foreground">
+            Select a local checkout so reviews can use repository context.
+          </p>
+        </li>
+      </ol>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-4"
+        onClick={() => setAttempt((value) => value + 1)}
+      >
+        Re-check
+      </Button>
+    </>
+  );
+}
+
+function AccessCheckLine({
+  state,
+}: {
+  readonly state: AccessCheckState;
+}): React.JSX.Element {
+  switch (state.kind) {
+    case "checking":
+      return (
+        <StatusLine
+          tone="muted"
+          icon={<LoaderCircle className="animate-spin" />}
+        >
+          Checking GitHub access…
+        </StatusLine>
+      );
+    case "available":
+      return (
+        <StatusLine tone="pass" icon={<CheckCircle2 />}>
+          GitHub access confirmed.
+        </StatusLine>
+      );
+    case "github_auth":
+      return (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          Not authenticated. Run <code>gh auth login</code> for the GitHub
+          account entered in Settings, under Workspace, then re-check.
+        </StatusLine>
+      );
+    case "error":
+      return (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          Could not check GitHub access.
+        </StatusLine>
+      );
+  }
+}
+
+function ToolsCheckLines({
+  state,
+}: {
+  readonly state: ToolsCheckState;
+}): React.JSX.Element {
+  if (state.kind === "checking")
+    return (
+      <StatusLine tone="muted" icon={<LoaderCircle className="animate-spin" />}>
+        Checking git and gh…
+      </StatusLine>
+    );
+  if (state.kind === "error")
+    return (
+      <StatusLine tone="fail" icon={<CircleAlert />}>
+        Could not check local tools.
+      </StatusLine>
+    );
+  const { env } = state;
+  return (
+    <div className="mt-1 space-y-1">
+      {env.git === "ready" ? (
+        <StatusLine tone="pass" icon={<CheckCircle2 />}>
+          Git is installed.
+        </StatusLine>
+      ) : (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          Git is not installed. Install Git for this platform, then re-check.
+        </StatusLine>
+      )}
+      {env.gh === "ready" ? (
+        <StatusLine tone="pass" icon={<CheckCircle2 />}>
+          GitHub CLI (gh) is installed.
+        </StatusLine>
+      ) : (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          GitHub CLI (gh) is not installed. Install the GitHub CLI, then
+          re-check.
+        </StatusLine>
+      )}
+      {env.gh !== "ready" ? null : env.githubAuth === "ready" ? (
+        <StatusLine tone="pass" icon={<CheckCircle2 />}>
+          GitHub CLI is authenticated.
+        </StatusLine>
+      ) : env.githubAuth === "authentication_required" ? (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          Not authenticated. Run <code>gh auth login</code> for the GitHub
+          account entered in Settings, under Workspace, then re-check.
+        </StatusLine>
+      ) : (
+        <StatusLine tone="fail" icon={<CircleAlert />}>
+          GitHub CLI authentication status could not be determined.
+        </StatusLine>
+      )}
+    </div>
+  );
+}
+
+function StatusLine({
+  tone,
+  icon,
+  children,
+}: {
+  readonly tone: "muted" | "pass" | "fail";
+  readonly icon: React.ReactNode;
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  const toneClass =
+    tone === "pass"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : tone === "fail"
+        ? "text-rose-700 dark:text-rose-400"
+        : "text-muted-foreground";
+  return (
+    <p className={`mt-1 flex items-center gap-1.5 text-xs ${toneClass}`}>
+      <span className="inline-flex size-3.5 shrink-0 items-center justify-center [&>svg]:size-3.5">
+        {icon}
+      </span>
+      {children}
+    </p>
+  );
+}
+
 function Outcome({
   state,
   repos,
@@ -515,7 +749,7 @@ function Outcome({
   readonly state: DashboardScreenState;
   readonly repos: ReadonlyArray<RepoOutcome>;
   readonly onRetry: () => void;
-  readonly onSettings: () => void;
+  readonly onSettings: (section?: SettingsSection) => void;
 }): React.JSX.Element {
   if (state === "loading")
     return (
@@ -538,28 +772,8 @@ function Outcome({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ol className="space-y-3 text-sm">
-            <li>
-              <span className="font-medium">1. Confirm GitHub access</span>
-              <p className="text-muted-foreground">
-                Choose the GitHub account Patchdesk should use for read-only
-                discovery.
-              </p>
-            </li>
-            <li>
-              <span className="font-medium">2. Check local tools</span>
-              <p className="text-muted-foreground">
-                Verify Git and GitHub access without exposing credentials.
-              </p>
-            </li>
-            <li>
-              <span className="font-medium">3. Add your first repository</span>
-              <p className="text-muted-foreground">
-                Select a local checkout so reviews can use repository context.
-              </p>
-            </li>
-          </ol>
-          <Button className="mt-5" onClick={onSettings}>
+          <SetupChecklist />
+          <Button className="mt-5" onClick={() => onSettings("workspace")}>
             Open Settings to finish setup
           </Button>
         </CardContent>
@@ -576,7 +790,7 @@ function Outcome({
             <Button variant="outline" onClick={onRetry}>
               Retry dashboard
             </Button>
-            <Button variant="outline" onClick={onSettings}>
+            <Button variant="outline" onClick={() => onSettings()}>
               Open Settings
             </Button>
           </div>
@@ -592,7 +806,11 @@ function Outcome({
           blocked only for those repositories. Healthy repositories remain
           available.
           <div>
-            <Button className="mt-3" variant="outline" onClick={onSettings}>
+            <Button
+              className="mt-3"
+              variant="outline"
+              onClick={() => onSettings()}
+            >
               Open Settings to choose a local path
             </Button>
           </div>
@@ -620,7 +838,7 @@ function Outcome({
                 </AlertTitle>
                 <AlertDescription>
                   {outcome === "github_auth"
-                    ? "GitHub authentication is required before Patchdesk can refresh pull requests. Local review records remain available."
+                    ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
                     : outcome === "github_read"
                       ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
                       : outcome === "github_forbidden"
@@ -643,7 +861,7 @@ function Outcome({
                       <Button
                         className="mt-3"
                         variant="outline"
-                        onClick={onSettings}
+                        onClick={() => onSettings("workspace")}
                       >
                         Open Settings for GitHub access
                       </Button>

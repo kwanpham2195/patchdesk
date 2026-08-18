@@ -179,6 +179,60 @@ export function inboxIdentityKey(row: InboxRow): string {
   return `${row.identity.host}/${row.identity.owner}/${row.identity.repo}#${row.identity.number}`;
 }
 
+// `GET /v1/environment` carries app metadata (productName, version, ...)
+// this parser does not care about, so it stays a plain `v.object` — the same
+// choice `inboxResponseSchema` makes for `profile` — rather than a
+// `v.strictObject` that would reject the response the moment an unrelated
+// metadata field changes.
+const environmentCheckResponseSchema = v.object({
+  git: v.picklist(["ready", "missing"]),
+  gh: v.picklist(["ready", "missing"]),
+  githubAuth: v.picklist(["ready", "authentication_required", "unavailable"]),
+  // The backend always returns an array (possibly empty), never omits the
+  // key, so this stays required rather than `v.optional` — an unparseable
+  // or missing `githubAccounts` is a real signal that the probe response
+  // itself is malformed, not an absent-but-fine field.
+  githubAccounts: v.array(
+    v.strictObject({
+      host: v.pipe(v.string(), v.minLength(1)),
+      login: v.pipe(v.string(), v.minLength(1)),
+      active: v.boolean(),
+    }),
+  ),
+});
+
+export type EnvironmentCheckResponse = v.InferOutput<
+  typeof environmentCheckResponseSchema
+>;
+export type GithubAuthAccount =
+  EnvironmentCheckResponse["githubAccounts"][number];
+
+/** Parses the local API's local-tool/auth environment check for the setup checklist. */
+export function parseEnvironmentCheckResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): EnvironmentCheckResponse | undefined {
+  const parsed = v.safeParse(environmentCheckResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const githubAccessCheckResponseSchema = v.strictObject({
+  state: v.picklist(["available", "github_auth"]),
+});
+
+export type GitHubAccessCheckResponse = v.InferOutput<
+  typeof githubAccessCheckResponseSchema
+>;
+
+/** Parses the local API's GitHub access check for the setup checklist. */
+export function parseGitHubAccessCheckResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): GitHubAccessCheckResponse | undefined {
+  const parsed = v.safeParse(githubAccessCheckResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 // `GET /v1/reviews/labels` is a local-API payload Patchdesk owns on both
 // sides (ADR "Choose a validation style by data boundary"), so it gets a
 // `v.strictObject` schema parsed with `v.safeParse` — the same style
@@ -219,8 +273,10 @@ export type RepositoryLabelListResponse = v.InferOutput<
 >;
 
 /** Parses the local API's repository label listing before a label picker owns it. */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-export function parseRepositoryLabelListResponse(input: unknown): RepositoryLabelListResponse | undefined {
+export function parseRepositoryLabelListResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): RepositoryLabelListResponse | undefined {
   const parsed = v.safeParse(repositoryLabelListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }

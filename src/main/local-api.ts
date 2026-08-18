@@ -39,6 +39,7 @@ import {
 } from "../services/storage-management-service";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
+import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import type {
   GitHubDirectSummaryGateway,
@@ -443,6 +444,7 @@ export async function startLocalApiServer(
     github,
     configuration.origins ?? new WorkspaceOriginFinder(commands),
     paths,
+    commands,
   );
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
@@ -729,10 +731,11 @@ export async function startLocalApiServer(
     response(context, await dashboard.testGitHubAccess()),
   );
   app.get("/v1/environment", async (context) => {
-    const [git, gh, ghAuth] = await Promise.all([
+    const [git, gh, ghAuth, githubAccounts] = await Promise.all([
       commands.runText({ argv: ["git", "--version"], timeoutMs: 5_000 }),
       commands.runText({ argv: ["gh", "--version"], timeoutMs: 5_000 }),
       commands.runText({ argv: ["gh", "auth", "status"], timeoutMs: 10_000 }),
+      listAuthenticatedGitHubAccounts(commands, 10_000),
     ]);
     return context.json({
       ...(parsedConfiguration.output.appMetadata ?? {
@@ -749,6 +752,7 @@ export async function startLocalApiServer(
           : ghAuth.error._tag === "CommandAuthenticationRequired"
             ? "authentication_required"
             : "unavailable",
+      githubAccounts,
       runtime: "bundled",
     });
   });

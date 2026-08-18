@@ -132,7 +132,10 @@ describe("InboxFlow saved-review recovery", () => {
     Object.defineProperty(window, "patchdesk", {
       configurable: true,
       value: {
-        request: async (input: { readonly path: string; readonly body?: unknown }) => {
+        request: async (input: {
+          readonly path: string;
+          readonly body?: unknown;
+        }) => {
           requests.push(input);
           if (input.path === "/v1/reviews/load") {
             return {
@@ -343,5 +346,185 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
     expect(alert).not.toBeUndefined();
     expect(alert?.textContent).toContain("did not say why");
     expect(alert?.querySelector("button")).toBeNull();
+  });
+});
+
+describe("InboxFlow settings targeting", () => {
+  it("opens the Workspace section from the first-run setup card", () => {
+    const onSettings = vi.fn();
+    render(
+      <InboxFlow
+        destination="dashboard"
+        state="empty"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={onSettings}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Settings to finish setup" }),
+    );
+    expect(onSettings).toHaveBeenCalledWith("workspace");
+  });
+
+  it("opens the Workspace section from the github_auth error banner", () => {
+    const onSettings = vi.fn();
+    const authDashboard: Dashboard = {
+      ...dashboard,
+      dashboard: {
+        rows: [],
+        repos: [
+          {
+            repo: { host: "github.com", owner: "owner", repo: "repo" },
+            state: "github_auth",
+          },
+        ],
+      },
+    };
+    render(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={authDashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={inbox as never}
+        state="error"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={onSettings}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Settings for GitHub access" }),
+    );
+    expect(onSettings).toHaveBeenCalledWith("workspace");
+  });
+});
+
+describe("InboxFlow setup checklist", () => {
+  function stubPatchdesk(
+    handlers: Record<string, { readonly ok: true; readonly body: unknown }>,
+  ): void {
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: { readonly path: string }) => {
+          const handler = handlers[input.path];
+          if (handler === undefined)
+            return {
+              ok: true,
+              status: 200,
+              correlationId: input.path,
+              body: {},
+            };
+          return {
+            ok: handler.ok,
+            status: 200,
+            correlationId: input.path,
+            body: handler.body,
+          };
+        },
+      },
+    });
+  }
+
+  it("shows both checks passing when GitHub access is available and local tools are ready", async () => {
+    stubPatchdesk({
+      "/v1/github/access": { ok: true, body: { state: "available" } },
+      "/v1/environment": {
+        ok: true,
+        body: {
+          git: "ready",
+          gh: "ready",
+          githubAuth: "ready",
+          githubAccounts: [
+            { host: "github.com", login: "patchdesk", active: true },
+          ],
+        },
+      },
+    });
+    render(
+      <InboxFlow
+        destination="dashboard"
+        state="empty"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText("GitHub access confirmed.")).toBeTruthy();
+    expect(await screen.findByText("Git is installed.")).toBeTruthy();
+    expect(
+      await screen.findByText("GitHub CLI (gh) is installed."),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText("GitHub CLI is authenticated."),
+    ).toBeTruthy();
+  });
+
+  it("says the GitHub CLI needs installing when gh is missing, not that authentication is required", async () => {
+    stubPatchdesk({
+      "/v1/github/access": { ok: true, body: { state: "available" } },
+      "/v1/environment": {
+        ok: true,
+        body: {
+          git: "ready",
+          gh: "missing",
+          githubAuth: "unavailable",
+          githubAccounts: [],
+        },
+      },
+    });
+    render(
+      <InboxFlow
+        destination="dashboard"
+        state="empty"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByText(
+        "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Not authenticated/)).toBeNull();
+  });
+
+  it("tells the user to run gh auth login for the Settings account when authentication is required", async () => {
+    stubPatchdesk({
+      "/v1/github/access": { ok: true, body: { state: "github_auth" } },
+      "/v1/environment": {
+        ok: true,
+        body: {
+          git: "ready",
+          gh: "ready",
+          githubAuth: "authentication_required",
+          githubAccounts: [],
+        },
+      },
+    });
+    render(
+      <InboxFlow
+        destination="dashboard"
+        state="empty"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+    const guidance = await screen.findAllByText(
+      (_, element) =>
+        element?.textContent ===
+        "Not authenticated. Run gh auth login for the GitHub account entered in Settings, under Workspace, then re-check.",
+    );
+    // One from the "Confirm GitHub access" check, one from "Check local tools" —
+    // each fetches its own state from a different endpoint.
+    expect(guidance.length).toBe(2);
   });
 });

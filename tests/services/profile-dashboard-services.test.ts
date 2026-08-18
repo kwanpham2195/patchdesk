@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import {
+  CommandRunner,
+  type CommandExecution,
+  type CommandExecutor,
+  type CommandRequest,
+} from "../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
@@ -9,6 +15,7 @@ import {
   type PatchdeskConfigFile,
 } from "../../src/domain/contracts";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -23,18 +30,31 @@ import { DashboardService } from "../../src/services/dashboard-service";
 import { DashboardController } from "../../src/services/dashboard-controller";
 import {
   addWatchedRepo,
-  createDefaultCfwProfile,
+  detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "../../src/services/profile-service";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import {
   parsePullRequestEntry,
   profileSwitchConfirmation,
   suggestProfile,
 } from "../../src/services/pull-request-input-service";
+
+class FakeCommandExecutor implements CommandExecutor {
+  constructor(private readonly execution: CommandExecution) {}
+
+  execute(_input: CommandRequest): Promise<CommandExecution> {
+    return Promise.resolve(this.execution);
+  }
+}
+
+const expectedHomeWorkspaceRoot = (() => {
+  const parsed = parseAbsolutePath(homedir());
+  return parsed._tag === "ok" ? [parsed.value] : [];
+})();
 
 function mustParse<T, E>(
   result:
@@ -145,25 +165,116 @@ describe("profile settings and direct-entry services", () => {
     }
   });
 
-  it("persists a selected profile and provides the safe CFW example only as a local default", async () => {
+  it("derives the first-run default profile from the machine's active gh account and home directory", async () => {
+    const commands = new CommandRunner(
+      new FakeCommandExecutor({
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: "octocat\n",
+        stderr: "",
+      }),
+    );
+    const detected = await detectDefaultWorkspaceProfile(commands);
+    expect(detected).toMatchObject({
+      _tag: "ok",
+      value: {
+        id: "default",
+        label: "Default",
+        githubHost: "github.com",
+        ghAccount: "octocat",
+        ownerFilters: [],
+        workspaceRoots: expectedHomeWorkspaceRoot,
+        repos: [],
+      },
+    });
+  });
+
+  it("falls back to an empty ghAccount, never a fabricated identity, when gh detection fails", async () => {
+    const commands = new CommandRunner(
+      new FakeCommandExecutor({ _tag: "Unavailable" }),
+    );
+    const detected = await detectDefaultWorkspaceProfile(commands);
+    expect(detected).toMatchObject({
+      _tag: "ok",
+      value: {
+        id: "default",
+        label: "Default",
+        githubHost: "github.com",
+        ghAccount: "",
+        ownerFilters: [],
+        repos: [],
+      },
+    });
+  });
+
+  it("persists and selects the derived first-run default profile once gh detection succeeds", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-`);
     try {
-      const service = new ProfileSettingsService(
-        new ProfileStore(PatchdeskPaths.forTest(root)),
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const commands = new CommandRunner(
+        new FakeCommandExecutor({
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: "octocat\n",
+          stderr: "",
+        }),
       );
-      const created = createDefaultCfwProfile();
-      expect(created).toMatchObject({
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+        commands,
+      );
+
+      const listed = await controller.listProfiles();
+      expect(listed).toMatchObject({
         _tag: "ok",
-        value: { id: "cfw", ghAccount: "pmquan2cfw", repos: [] },
+        value: [{ id: "default", ghAccount: "octocat" }],
       });
-      if (created._tag === "err") return;
-      expect(await service.saveProfile(created.value)).toEqual({
+
+      expect(await store.list()).toMatchObject({
         _tag: "ok",
-        value: undefined,
+        value: [{ id: "default", ghAccount: "octocat" }],
       });
-      expect(await service.selectProfile(created.value.id)).toEqual({
+      expect(await store.loadConfig()).toMatchObject({
         _tag: "ok",
-        value: created.value.id,
+        value: { lastSelectedProfileId: "default" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("never persists a first-run profile when gh detection cannot find a real account", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-empty-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const commands = new CommandRunner(
+        new FakeCommandExecutor({ _tag: "Unavailable" }),
+      );
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+        commands,
+      );
+
+      const listed = await controller.listProfiles();
+      expect(listed).toMatchObject({
+        _tag: "ok",
+        value: [{ id: "default", ghAccount: "", ownerFilters: [] }],
+      });
+
+      // The profile schema requires a non-empty ghAccount (workspace-profile.ts),
+      // so an undetectable account must never be written to disk or auto-selected.
+      expect(await store.list()).toEqual({ _tag: "ok", value: [] });
+      expect(await store.loadConfig()).toEqual({
+        _tag: "err",
+        error: expect.objectContaining({ reason: "not_found" }),
       });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -264,6 +375,62 @@ describe("profile settings and direct-entry services", () => {
     });
   });
 
+  it("reports github_auth on an empty watchlist when gh is unauthenticated, not a false available", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-access-check-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const emptyWatchlistProfile = mustParse(
+        parseWorkspaceProfileConfig({ ...profile, repos: [] }),
+      );
+      await store.save(emptyWatchlistProfile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+
+      // With no watched repos, `listPendingPullRequests` has nothing to
+      // attach an auth failure to and its `repos` array is always `[]` —
+      // testGitHubAccess must consult authentication directly instead of
+      // inferring it from that empty per-repo list.
+      expect(await controller.testGitHubAccess()).toEqual({
+        _tag: "ok",
+        value: { state: "github_auth" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports available on an empty watchlist when gh is authenticated", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-access-check-ok-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const emptyWatchlistProfile = mustParse(
+        parseWorkspaceProfileConfig({ ...profile, repos: [] }),
+      );
+      await store.save(emptyWatchlistProfile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({
+          authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
+        }),
+        undefined,
+        paths,
+      );
+
+      expect(await controller.testGitHubAccess()).toEqual({
+        _tag: "ok",
+        value: { state: "available" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("suggests a matching profile and requires confirmation before switching", () => {
     const githubEnterprise = mustParse(
       parseWorkspaceProfileConfig({
@@ -318,7 +485,7 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
   }
 
   override async saveConfig(
-    config: unknown,
+    config: PatchdeskConfigFile,
   ): Promise<Result<void, StorageFailure>> {
     const parsed = parsePatchdeskConfig(config);
     if (parsed._tag === "err") {

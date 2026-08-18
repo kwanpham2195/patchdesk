@@ -45,7 +45,7 @@ export type SettingsModalProps = {
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
   readonly preferenceError?: string | undefined;
   readonly onRetryPreferences?: () => void;
-  /** Section to open on the first open only (reload restore); later opens start at General. */
+  /** Section to open on; defaults to General when the caller does not target one. */
   readonly initialSection?: SettingsSection;
   /** Reports section switches so the parent can persist a reload restore. */
   readonly onSectionChange?: (section: SettingsSection) => void;
@@ -63,7 +63,6 @@ export function SettingsModal({
   const [section, setSection] = useState<SettingsSection>(
     initialSection ?? "general",
   );
-  const firstOpenRef = useRef(true);
   const dirtyRef = useRef(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const pendingSwitch = useRef<(() => void) | undefined>(undefined);
@@ -74,16 +73,10 @@ export function SettingsModal({
   const [dirtySavePending, setDirtySavePending] = useState(false);
   const openerRef = useRef<HTMLElement | null>(null);
   const lastOpen = useRef(false);
-  const initialSectionRef = useRef(initialSection);
 
   useEffect(() => {
     if (open && !lastOpen.current) {
-      setSection(
-        firstOpenRef.current && initialSectionRef.current !== undefined
-          ? initialSectionRef.current
-          : "general",
-      );
-      firstOpenRef.current = false;
+      setSection(initialSection ?? "general");
       openerRef.current = opener ?? null;
     }
     if (!open && lastOpen.current) {
@@ -91,7 +84,7 @@ export function SettingsModal({
       openerRef.current = null;
     }
     lastOpen.current = open;
-  }, [open, opener]);
+  }, [open, opener, initialSection]);
 
   const requestClose = (nextOpen: boolean): void => {
     if (nextOpen || !dirtyRef.current) {
@@ -174,7 +167,7 @@ export function SettingsModal({
             </DialogDescription>
             {flowProps.preferenceError === undefined ? null : (
               <Alert variant="destructive" role="alert" className="mt-3">
-                <AlertTitle>Preference update failed</AlertTitle>
+                <AlertTitle>Preference error</AlertTitle>
                 <AlertDescription>
                   {flowProps.preferenceError}{" "}
                   <Button

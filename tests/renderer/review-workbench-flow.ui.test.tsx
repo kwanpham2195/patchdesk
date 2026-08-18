@@ -586,6 +586,60 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(patch).toHaveBeenCalledWith({ pendingReview: nextPending });
   });
 
+  it("opens the Analysis run dialog with the default set in Settings", async () => {
+    // Settings and the run dialog now share one storage key
+    // (`insight-run-preferences`, type "analysis"); this seeds it exactly as
+    // `ReviewPreferences` in settings-flow.tsx would, to prove the run
+    // dialog actually opens with that saved default instead of the
+    // hardcoded pi/medium fallback.
+    localStorage.setItem(
+      "patchdesk.insight-run.v1.analysis.profile",
+      JSON.stringify({
+        provider: "pi",
+        model: "settings-model",
+        reasoning: "high",
+      }),
+    );
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers")
+        return {
+          ...providerCatalog,
+          models: [
+            ...providerCatalog.models,
+            {
+              provider: "pi",
+              id: "settings-model",
+              label: "Settings model",
+              reasoning: ["medium", "high"],
+              defaultReasoning: "medium",
+            },
+          ],
+        };
+      throw new Error(input.path);
+    });
+    mount(projection());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Generate analysis" }),
+    );
+
+    const model = await screen.findByRole("combobox", {
+      name: "Insight model",
+    });
+    // SAFETY: `ModelCombobox` renders its trigger as a plain text input; the
+    // accessible-name query above only matches that element.
+    expect((model as HTMLInputElement).value).toBe("Settings model");
+    // SAFETY: the reasoning field is a native `<select>`; the accessible-name
+    // query above only matches that element.
+    const reasoning = screen.getByRole("combobox", {
+      name: "Insight reasoning",
+    }) as HTMLSelectElement;
+    expect(reasoning.value).toBe("high");
+  });
+
   it("hides Add to review for a Finding whose location is not on the diff", async () => {
     bridge(async (input) => {
       if (input.path === "/v1/reviews/detect-updates")

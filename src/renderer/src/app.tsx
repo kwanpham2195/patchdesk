@@ -240,7 +240,7 @@ export function App({
   const [settingsOpener, setSettingsOpener] = useState<
     HTMLElement | undefined
   >();
-  const [settingsInitialSection] = useState<SettingsSection>(
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(
     () => restoredSettingsSection() ?? "general",
   );
   // Workbench position restored after reload; applied once to the matching review.
@@ -297,10 +297,19 @@ export function App({
     if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
     let active = true;
     const loadGlobalPreferences = async (): Promise<void> => {
+      preferenceRetry.current = loadGlobalPreferences;
+      if (active) setPreferenceError(undefined);
       let stored: GlobalSettings;
       try {
         stored = parseGlobalSettings(await api("/v1/settings"));
       } catch {
+        // A missing config file is a genuine first run and is already
+        // normalized to an empty settings object upstream, so any rejection
+        // here is a real load failure (corrupt file, I/O error, ...).
+        if (active)
+          setPreferenceError(
+            "Could not load saved preferences. Appearance and diff theme are using defaults; retry to reload the saved settings, or change a preference to overwrite the stored file.",
+          );
         return;
       }
       const appearanceFromStorage = stored.appearance;
@@ -524,12 +533,13 @@ export function App({
     [destination, navigationState, performNavigation],
   );
   const openSettings = useCallback(
-    (opener?: HTMLElement): void => {
+    (opener?: HTMLElement, section?: SettingsSection): void => {
       if (navigationState !== "clear") return;
       const fallback =
         document.querySelector<HTMLElement>("[data-settings-opener]") ??
         document.querySelector<HTMLElement>("#main-content");
       setSettingsOpener(opener ?? fallback ?? undefined);
+      setSettingsSection(section ?? "general");
       setSettingsOpen(true);
     },
     [navigationState],
@@ -629,7 +639,7 @@ export function App({
           }
         }}
         opener={settingsOpener}
-        initialSection={settingsInitialSection}
+        initialSection={settingsSection}
         onSectionChange={(section) => saveSettingsRestore(section)}
         {...(dashboard === undefined ? {} : { dashboard })}
         appearance={appearance}
@@ -809,7 +819,7 @@ export function App({
           ...refreshedAtField,
         })}
         onRefresh={() => void refreshDashboard()}
-        onSettings={() => openSettings()}
+        onSettings={(section) => openSettings(undefined, section)}
         onOpenWorkbench={(next, initialSection) => {
           setWorkbench(next);
           const initialSectionField =
