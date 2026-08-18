@@ -22,24 +22,7 @@ needs. Treat its report as a claim, not a result: review the diff, and send it
 back or delegate an independent check when the claim is load-bearing. Nothing
 is reported as done on a subagent's word alone.
 
-### One bite-size task per subagent
-
-Hand over one small, self-contained step — never a whole multi-step plan.
-Decompose the work first, delegate a slice, review it, then brief the next
-slice with what you learned. A subagent handed a long plan swallows it whole:
-whole-plan runs burned 400-800k tokens each, and the first review landed only
-after everything was built, so a wrong turn early was discovered late.
-
-When a plan rests on an assumption nothing in the codebase has done before,
-spike it first with a read-only task. Settling one such unknown cost 44k
-tokens and 73 seconds; guessing wrong would have reshaped the code written
-on top of it.
-
-### Working-tree rules
-
-- No git worktrees. Subagents work directly in the main checkout.
-- Therefore only one *writing* subagent at a time — concurrent edits to one
-  working tree corrupt each other. Read-only scouting and spikes may overlap.
-- Subagents must not spawn subagents or forks of their own. State this in
-  every brief. Watch for `fork` entries you did not create, stop them, and
-  treat anything they touched as half-applied until re-read and re-verified.
+How the delegation itself is run — slice sizing, spiking unknowns, working-tree
+and fan-out rules — lives in the `delegated-execution` skill rather than being
+restated here. The points above are the patchdesk-specific parts: what to hand
+off, and that a subagent's report is a claim until the diff is reviewed.
