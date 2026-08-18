@@ -58,6 +58,12 @@ const entrySchema = v.variant("_tag", [
     reviewId: v.string(),
     writtenAt: v.string(),
   }),
+  v.strictObject({
+    _tag: v.literal("LabelChange"),
+    added: v.array(v.string()),
+    removed: v.array(v.string()),
+    writtenAt: v.string(),
+  }),
 ]);
 const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),
@@ -209,10 +215,17 @@ function parseRecentWriteEntries(
         threadId: threadId.value,
         writtenAt: writtenAt.value,
       });
-    } else {
+    } else if (entry._tag === "DirectSummaryReview") {
       entries.push({
         _tag: "DirectSummaryReview",
         reviewId: entry.reviewId,
+        writtenAt: writtenAt.value,
+      });
+    } else {
+      entries.push({
+        _tag: "LabelChange",
+        added: entry.added,
+        removed: entry.removed,
         writtenAt: writtenAt.value,
       });
     }

@@ -617,5 +617,9 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       return `PendingThread:${entry.threadId}`;
     case "DirectSummaryReview":
       return `DirectSummaryReview:${entry.reviewId}`;
+    case "LabelChange":
+      // Two label writes are the same write only if they touched the exact
+      // same label names; sort so key order doesn't depend on call order.
+      return `LabelChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
   }
 }

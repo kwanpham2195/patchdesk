@@ -79,6 +79,11 @@ export type RecentReviewWrite =
   | {
       readonly _tag: "DirectSummaryReview";
       readonly reviewId: string;
+    }
+  | {
+      readonly _tag: "LabelChange";
+      readonly added: ReadonlyArray<string>;
+      readonly removed: ReadonlyArray<string>;
     };
 
 export type DetectionResult = {
@@ -249,6 +254,11 @@ export class ReviewRefreshService {
           represented.value.comments,
           journal,
         );
+        const labelPair = withoutRecentLabelChanges(
+          candidate.pullRequest,
+          represented.value.pullRequest,
+          journal,
+        );
         const candidateFeedback =
           publishedFeedbackAvailable && publishedFeedback.value !== undefined
             ? withoutJournaledFeedback(publishedFeedback.value, journal)
@@ -266,6 +276,7 @@ export class ReviewRefreshService {
         // optional fields for explicit refresh.
         const candidateForFingerprint = {
           ...candidate,
+          pullRequest: labelPair.candidate,
           comments: commentPair.candidate,
         };
         const candidateFingerprintInput =
@@ -274,6 +285,7 @@ export class ReviewRefreshService {
             : { ...candidateForFingerprint, publishedFeedback: candidateFeedback };
         const representedForFingerprint = {
           ...represented.value,
+          pullRequest: labelPair.represented,
           comments: commentPair.represented,
         };
         const representedFingerprintInput =
@@ -880,6 +892,40 @@ function withoutRecentWrites(
   };
 }
 
+interface WithoutRecentLabelChangesResult {
+  readonly candidate: PullRequestSummary;
+  readonly represented: PullRequestSummary;
+}
+
+function withoutRecentLabelChanges(
+  candidate: PullRequestSummary,
+  represented: PullRequestSummary,
+  journal: ReadonlyArray<RecentReviewWrite>,
+): WithoutRecentLabelChangesResult {
+  // A label this session added or removed is not yet stably reflected on
+  // both sides (the represented snapshot predates the write; a fresh GitHub
+  // read can also lag). Symmetric removal of the touched names from both
+  // sides mirrors withoutOwnPendingThreads: the own change never reads as an
+  // update, while a change to any other label still does.
+  const touched = new Set<string>();
+  for (const entry of journal) {
+    if (entry._tag !== "LabelChange") continue;
+    for (const name of entry.added) touched.add(name);
+    for (const name of entry.removed) touched.add(name);
+  }
+  if (touched.size === 0) return { candidate, represented };
+  const withoutTouchedLabels = (
+    pullRequest: PullRequestSummary,
+  ): PullRequestSummary => ({
+    ...pullRequest,
+    labels: pullRequest.labels.filter((label) => !touched.has(label.name)),
+  });
+  return {
+    candidate: withoutTouchedLabels(candidate),
+    represented: withoutTouchedLabels(represented),
+  };
+}
+
 function withoutJournaledFeedback(
   feedback: GitHubPublishedFeedback,
   journal: ReadonlyArray<RecentReviewWrite>,
@@ -1009,6 +1055,10 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       return `PendingThread:${entry.threadId}`;
     case "DirectSummaryReview":
       return `DirectSummaryReview:${entry.reviewId}`;
+    case "LabelChange":
+      // Two label writes are the same write only if they touched the exact
+      // same label names; sort so key order doesn't depend on call order.
+      return `LabelChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
   }
 }
 

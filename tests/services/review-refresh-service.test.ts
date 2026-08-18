@@ -1584,6 +1584,205 @@ describe("ReviewRefreshService", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("ignores a label change written by this app session when detecting updates", async () => {
+    // GitHub already reports the added label (the mutation already
+    // succeeded); the represented snapshot just predates it. The journal
+    // must keep that alone from reading as a remote update.
+    const changed = {
+      ...snapshot,
+      pullRequest: {
+        ...snapshot.pullRequest,
+        labels: [{ name: "bug", color: "d73a4a" }],
+      },
+    };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: {
+        async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      reviews: {
+        async load() {
+          return ok(review);
+        },
+        save,
+      },
+      sessions: {
+        async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
+          return ok({ key: { ...identity, headSha }, id: sessionId } as never);
+        },
+        async save() {
+          return ok(undefined);
+        },
+      },
+      remote: {
+        async load() {
+          return ok(snapshot);
+        },
+        async saveCandidate() {
+          return ok({ snapshotHash: hashSnapshot(snapshot) });
+        },
+      },
+      github: {
+        async getPullRequest() {
+          return ok(changed.pullRequest);
+        },
+        async getPullRequestChecks() {
+          return ok(snapshot.checks);
+        },
+        async getPullRequestComments() {
+          return ok(snapshot.comments);
+        },
+        async getPullRequestCommits() {
+          return ok([]);
+        },
+        async loadConversation() {
+          return ok(snapshot.conversation);
+        },
+        async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      preparation: {
+        async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      pendingReview: {
+        async reconcileWithinReviewLock() {
+          return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
+            session: {} as never,
+            state: { _tag: "None" } as const,
+            unavailable: false,
+          });
+        },
+      },
+      operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
+      now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(
+      service.detect({
+        profileId,
+        reviewId: review.id,
+        recentWrites: [{ _tag: "LabelChange", added: ["bug"], removed: [] }],
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        updatesAvailable: false,
+        detectedAt: "2026-08-01T00:10:00.000Z",
+      },
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("still detects an unrelated label change when a different label is journaled", async () => {
+    // The journal masks only the exact app-owned label names; a different
+    // label added remotely must still read as updates available.
+    const changed = {
+      ...snapshot,
+      pullRequest: {
+        ...snapshot.pullRequest,
+        labels: [
+          { name: "bug", color: "d73a4a" },
+          { name: "priority", color: "ffcc00" },
+        ],
+      },
+    };
+    const save = vi.fn(async () => ok(undefined));
+    const service = new ReviewRefreshService({
+      profiles: {
+        async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      reviews: {
+        async load() {
+          return ok(review);
+        },
+        save,
+      },
+      sessions: {
+        async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
+          return ok({ key: { ...identity, headSha }, id: sessionId } as never);
+        },
+        async save() {
+          return ok(undefined);
+        },
+      },
+      remote: {
+        async load() {
+          return ok(snapshot);
+        },
+        async saveCandidate() {
+          return ok({ snapshotHash: hashSnapshot(snapshot) });
+        },
+      },
+      github: {
+        async getPullRequest() {
+          return ok(changed.pullRequest);
+        },
+        async getPullRequestChecks() {
+          return ok(snapshot.checks);
+        },
+        async getPullRequestComments() {
+          return ok(snapshot.comments);
+        },
+        async getPullRequestCommits() {
+          return ok([]);
+        },
+        async loadConversation() {
+          return ok(snapshot.conversation);
+        },
+        async getMergePolicy() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      preparation: {
+        async prepare() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      pendingReview: {
+        async reconcileWithinReviewLock() {
+          return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
+            session: {} as never,
+            state: { _tag: "None" } as const,
+            unavailable: false,
+          });
+        },
+      },
+      operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
+      now: () => "2026-08-01T00:10:00.000Z" as never,
+    });
+    await expect(
+      service.detect({
+        profileId,
+        reviewId: review.id,
+        recentWrites: [{ _tag: "LabelChange", added: ["bug"], removed: [] }],
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { updatesAvailable: true, detectedAt: "2026-08-01T00:10:00.000Z" },
+    });
+    expect(save).toHaveBeenCalled();
+  });
+
   it("unions the durable own-write journal into detect() so a renderer reload does not read the maintainer's own comment as a remote update", async () => {
     // Defense in depth (Current State: detect() is unreachable in production
     // today): the same reload scenario as the test above, but the write is

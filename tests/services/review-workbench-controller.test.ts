@@ -407,6 +407,32 @@ describe("ReviewWorkbenchController", () => {
     });
   });
 
+  it("dedupes a LabelChange entry the durable journal and the request both carry", async () => {
+    // Exercises this file's own copy of recentWriteDedupeKey (duplicated
+    // from review-refresh-service.ts): missing the LabelChange case here
+    // would let an identical durable+requested pair through as two entries.
+    const observe = vi.fn(async () => ok({ _tag: "Reconciled", detectedAt: at }));
+    const recentWrites = {
+      load: vi.fn(async () =>
+        ok([{ _tag: "LabelChange" as const, added: ["bug"], removed: [] }]),
+      ),
+    };
+    const value = fixture({
+      recentWrites,
+      observation: { recover: vi.fn(), observe },
+    });
+    await value.controller.detectUpdates({
+      profileId,
+      reviewId,
+      recentWrites: [{ _tag: "LabelChange", added: ["bug"], removed: [] }],
+    });
+    expect(observe).toHaveBeenCalledWith({
+      profileId,
+      reviewId,
+      recentWrites: [{ _tag: "LabelChange", added: ["bug"], removed: [] }],
+    });
+  });
+
   it("negative control: without a durable journal entry, an empty request-supplied journal still yields a projection", async () => {
     const observe = vi.fn(
       async (observeInput: {

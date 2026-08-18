@@ -819,6 +819,15 @@ function containsRecentWrites(
         ) === true
       );
     }
+    if (write._tag === "LabelChange") {
+      const labelNames = new Set(
+        snapshot.pullRequest.labels.map((label) => label.name),
+      );
+      return (
+        write.added.every((name) => labelNames.has(name)) &&
+        write.removed.every((name) => !labelNames.has(name))
+      );
+    }
     return (
       snapshot.comments.threads.some((thread) =>
         thread.comments.some((comment) => comment.id === write.commentId),
