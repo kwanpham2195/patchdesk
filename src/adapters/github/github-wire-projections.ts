@@ -86,7 +86,11 @@ export function parseMaintainerPullRequest(
     isOpen: true,
     reviewState: mapReviewDecision(input.reviewDecision),
     mergeability: mapMergeability(input.mergeable),
-    labels: [],
+    labels: input.labels.nodes.map((label) => ({
+      name: label.name,
+      color: label.color,
+    })),
+    labelCount: input.labels.totalCount,
     requestedReviewers: input.reviewRequests.nodes.flatMap((request) =>
       request.requestedReviewer?.login === undefined
         ? []
@@ -403,7 +407,10 @@ export function parsePullRequest(
     isOpen: parsed.output.state === "open",
     reviewState: "unknown",
     mergeability: mapMergeability(parsed.output.mergeable_state),
-    labels: (parsed.output.labels ?? []).map((label) => label.name),
+    labels: (parsed.output.labels ?? []).map((label) => ({
+      name: label.name,
+      color: label.color,
+    })),
     updatedAt: updatedAt.value,
   };
   const description = parsed.output.body ?? undefined;

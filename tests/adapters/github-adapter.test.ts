@@ -192,7 +192,7 @@ type PullRequestPayload = {
   readonly updated_at: string;
   readonly body?: string | null;
   readonly mergeable_state?: string | undefined;
-  readonly labels?: ReadonlyArray<{ readonly name: string }>;
+  readonly labels?: ReadonlyArray<{ readonly name: string; readonly color: string }>;
   readonly requested_reviewers?: ReadonlyArray<{ readonly login: string }>;
   readonly assignees?: ReadonlyArray<{ readonly login: string }>;
   readonly additions?: number | undefined;
@@ -213,7 +213,7 @@ function pullRequestPayload(
     user: { login: "reviewer" },
     updated_at: "2026-07-16T12:00:00Z",
     mergeable_state: "clean",
-    labels: [{ name: "review" }],
+    labels: [{ name: "review", color: "0e8a16" }],
     requested_reviewers: [{ login: "pmquan2cfw" }],
     assignees: [{ login: "pmquan2cfw" }],
     additions: 12,
@@ -1103,6 +1103,11 @@ describe("GitHubAdapter read boundary", () => {
                 additions: 12,
                 deletions: 3,
                 changedFiles: 2,
+                labels: {
+                  totalCount: 2,
+                  nodes: [{ name: "bug", color: "d73a4a" }],
+                  pageInfo: { hasNextPage: false },
+                },
                 reviewRequests: {
                   nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
                 },
@@ -1143,6 +1148,8 @@ describe("GitHubAdapter read boundary", () => {
             summary: expect.objectContaining({
               reviewState: "review_pending",
               mergeability: "mergeable",
+              labels: [{ name: "bug", color: "d73a4a" }],
+              labelCount: 2,
             }),
             checks: { overall: "passing", checks: [] },
           }),
@@ -1157,6 +1164,76 @@ describe("GitHubAdapter read boundary", () => {
         argument.includes("reviewRequests(first: 50)"),
       ),
     ).toBe(true);
+    expect(
+      executor.requests[0]?.some((argument) =>
+        argument.includes("labels(first: 20)"),
+      ),
+    ).toBe(true);
+  });
+
+  it("surfaces label truncation via labelCount when a PR has more labels than the bounded fetch returns", async () => {
+    const truncatedLabels = Array.from({ length: 20 }, (_, index) => ({
+      name: `label-${index}`,
+      color: "d73a4a",
+    }));
+    const page = {
+      data: {
+        repository: {
+          pullRequests: {
+            nodes: [
+              {
+                number: 42,
+                title: "Add safe GitHub reads",
+                isDraft: false,
+                headRefName: "feat/github-read",
+                headRefOid: headSha,
+                baseRefName: "sit",
+                author: { login: "reviewer" },
+                updatedAt: "2026-07-16T12:00:00Z",
+                mergeable: "MERGEABLE",
+                reviewDecision: "REVIEW_REQUIRED",
+                additions: 12,
+                deletions: 3,
+                changedFiles: 2,
+                labels: {
+                  totalCount: 25,
+                  nodes: truncatedLabels,
+                  pageInfo: { hasNextPage: true },
+                },
+                reviewRequests: { nodes: [] },
+                assignees: { nodes: [] },
+                commits: {
+                  nodes: [
+                    { commit: { statusCheckRollup: { state: "SUCCESS" } } },
+                  ],
+                },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: JSON.stringify(page),
+        stderr: "",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+    });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    const summary = result.value.pullRequests[0]?.summary;
+    expect(summary?.labelCount).toBe(25);
+    expect(summary?.labels).toHaveLength(20);
   });
 
   it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {

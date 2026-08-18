@@ -1,8 +1,20 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
 import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+
+afterEach(() => {
+  cleanup();
+});
+
 const row: InboxRow = {
   identity: { host: "github.com", owner: "owner", repo: "repo", number: 1 },
   title: "PR",
@@ -16,6 +28,7 @@ const row: InboxRow = {
   checks: { overall: "unknown" as const, checks: [] },
   reviewState: "none" as const,
   mergeability: "unknown" as const,
+  labels: [],
   latestReview: {
     reviewId: "review-1",
     reviewedHeadSha: "a".repeat(40),
@@ -121,6 +134,128 @@ describe("MaintainerInbox", () => {
     expect(
       within(container).getByText(/Priority order may be unreliable/),
     ).toBeTruthy();
+  });
+
+  it("renders label chips on the row and in the Inspector, showing truncation only in the Inspector", () => {
+    const labeled: InboxRow = {
+      ...row,
+      labels: [
+        { name: "bug", color: "d73a4a" },
+        { name: "enhancement", color: "a2eeef" },
+      ],
+      labelCount: 5,
+    };
+    render(
+      <MaintainerInbox
+        profileId="label-chips"
+        profileLabel="P"
+        rows={[labeled]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText("bug").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("enhancement").length).toBeGreaterThan(0);
+    // The single row is auto-selected, so the Inspector already shows its
+    // labels; "+N more" (labelCount truncation) is Inspector-only copy that
+    // never appears in the dense row itself.
+    expect(screen.getByText("+3 more")).toBeTruthy();
+  });
+
+  it("filters rows by the selected label", async () => {
+    const user = userEvent.setup();
+    const bugRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, number: 1 },
+      title: "Bug fix",
+      labels: [{ name: "bug", color: "d73a4a" }],
+    };
+    const featureRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, number: 2 },
+      title: "New feature",
+      labels: [{ name: "enhancement", color: "a2eeef" }],
+    };
+    render(
+      <MaintainerInbox
+        profileId="label-filter"
+        profileLabel="P"
+        rows={[bugRow, featureRow]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/New feature/).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by label" }));
+    await user.click(await screen.findByRole("option", { name: "bug" }));
+
+    expect(
+      screen.getByRole("combobox", { name: "Filter by label" }).textContent,
+    ).toContain("bug");
+    expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/New feature/)).toBeNull();
+  });
+
+  it("restores a saved view's selected label", async () => {
+    const user = userEvent.setup();
+    const bugRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, number: 1 },
+      title: "Bug fix",
+      labels: [{ name: "bug", color: "d73a4a" }],
+    };
+    const featureRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, number: 2 },
+      title: "New feature",
+      labels: [{ name: "enhancement", color: "a2eeef" }],
+    };
+    render(
+      <MaintainerInbox
+        profileId="label-saved-view"
+        profileLabel="P"
+        rows={[bugRow, featureRow]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by label" }));
+    await user.click(
+      await screen.findByRole("option", { name: "bug" }),
+    );
+    expect(screen.queryByText(/New feature/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /save current view/i }));
+    fireEvent.change(screen.getByLabelText(/name/i), {
+      target: { value: "Bugs only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save view/i }));
+
+    // Clear the label filter directly; "New feature" becomes visible again.
+    await user.click(
+      await screen.findByRole("combobox", { name: "Filter by label" }),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: "All labels" }),
+    );
+    expect(await screen.findByText(/New feature/)).toBeTruthy();
+
+    // Re-select the saved view; the label filter should be restored.
+    fireEvent.click(screen.getByRole("button", { name: "Bugs only" }));
+    expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/New feature/)).toBeNull();
   });
 
   it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {

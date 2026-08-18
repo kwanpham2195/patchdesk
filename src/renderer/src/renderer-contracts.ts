@@ -82,6 +82,8 @@ const inboxRowSchema = v.strictObject({
       matchesCurrentHead: v.boolean(),
     }),
   ),
+  labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
+  labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(
     v.picklist([
       "needs_review",
@@ -259,7 +261,7 @@ const pullRequestSummarySchema = v.strictObject({
     "unknown",
   ]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
-  labels: v.array(v.string()),
+  labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   requestedReviewers: v.optional(v.array(v.string())),
   assignees: v.optional(v.array(v.string())),
   updatedAt: v.pipe(v.string(), v.isoTimestamp()),

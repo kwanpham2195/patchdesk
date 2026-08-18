@@ -84,7 +84,7 @@ function session() {
 // `ReviewRemoteSnapshot` the service under test receives as an
 // already-parsed argument; every field already matches its real runtime
 // shape.
-const snapshot = {
+const snapshotData = {
   schemaVersion: 1,
   pullRequest: {
     ref: identity,
@@ -128,7 +128,9 @@ const snapshot = {
     mergeStateStatus: "clean",
     reviewDecision: "approved",
   },
-} as never;
+};
+// SAFETY: see the file-level note above `const snapshotData`.
+const snapshot = snapshotData as never;
 function review(
   // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each call site overrides a different, differently-shaped subset of the Review fixture below; the merged result is narrowed to `never` at the return, same as the base fixture fields it's merged with.
   overrides: Record<string, unknown> = {},
@@ -211,6 +213,40 @@ describe("ReviewWorkbenchProjectionService", () => {
     expect(value.profiles.load).toHaveBeenCalledOnce();
     expect(value.sessions.load).toHaveBeenCalledOnce();
     expect(value.reviews.load).toHaveBeenCalledOnce();
+  });
+
+  it("carries real {name,color} labels through to the renderer-facing pull request shape", async () => {
+    const value = fixture();
+    // SAFETY: same shape as `snapshotData` above, only `pullRequest.labels` differs.
+    const labeledSnapshot = {
+      ...snapshotData,
+      pullRequest: {
+        ...snapshotData.pullRequest,
+        labels: [
+          { name: "bug", color: "d73a4a" },
+          { name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    } as never;
+    await expect(
+      value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: labeledSnapshot,
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        pullRequest: {
+          labels: [
+            { name: "bug", color: "d73a4a" },
+            { name: "enhancement", color: "a2eeef" },
+          ],
+        },
+      },
+    });
   });
 
   it("projects represented freshness, analysis and walkthrough defaults, and merge evidence", async () => {

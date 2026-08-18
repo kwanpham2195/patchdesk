@@ -245,6 +245,12 @@ export type PullRequestSnapshot = {
   readonly isOpen: boolean;
 };
 
+export type GitHubLabel = {
+  readonly name: string;
+  /** GitHub's hex color, six characters, no leading `#`. */
+  readonly color: string;
+};
+
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;
   readonly title: string;
@@ -260,7 +266,9 @@ export type PullRequestSummary = PullRequestSnapshot & {
     | "changes_requested"
     | "unknown";
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
-  readonly labels: ReadonlyArray<string>;
+  readonly labels: ReadonlyArray<GitHubLabel>;
+  /** Total labels on the pull request when the read source reports it; undefined when not applicable (e.g. the REST reader, which never truncates). Compare against `labels.length` to detect truncation. */
+  readonly labelCount?: number;
   /** GitHub metadata used for dashboard priority; labels are never interpreted as assignment state. */
   readonly requestedReviewers?: ReadonlyArray<string>;
   readonly assignees?: ReadonlyArray<string>;

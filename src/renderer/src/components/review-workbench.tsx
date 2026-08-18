@@ -33,6 +33,7 @@ import {
 } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import { LabelChip } from "./label-chip";
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -818,6 +819,17 @@ export function ReviewWorkbench({
                 )}
               </div>
             </div>
+            {model.pullRequest !== undefined &&
+            model.pullRequest.labels.length > 0 ? (
+              <div
+                className="flex flex-wrap items-center gap-1"
+                aria-label="Pull request labels"
+              >
+                {model.pullRequest.labels.map((label) => (
+                  <LabelChip key={label.name} label={label} />
+                ))}
+              </div>
+            ) : null}
             <PendingReviewNotice pendingReview={actions.pendingReview} />
             <p
               className="text-xs text-muted-foreground"

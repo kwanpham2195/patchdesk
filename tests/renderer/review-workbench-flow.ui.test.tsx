@@ -311,6 +311,31 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(insights.getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("renders real GitHub label chips in the header when the pull request carries labels", async () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
+    );
+    const basePullRequest = projection().pullRequest;
+    if (basePullRequest === undefined) throw new Error("fixture");
+    const labeled = projection({
+      pullRequest: {
+        ...basePullRequest,
+        labels: [
+          { name: "bug", color: "d73a4a" },
+          { name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    });
+    mount(labeled);
+    expect(
+      screen.getByRole("heading", { name: "Canonical workbench" }),
+    ).toBeTruthy();
+    expect(screen.getByText("bug")).toBeTruthy();
+    expect(screen.getByText("enhancement")).toBeTruthy();
+  });
+
   it("refreshes only by reviewId and replaces the canonical projection", async () => {
     const refreshed = projection({
       session: { ...projection().session, id: "session-b" },

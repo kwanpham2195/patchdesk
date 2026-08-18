@@ -18,7 +18,8 @@
     "mergeable_state": "clean",
     "labels": [
       {
-        "name": "review"
+        "name": "review",
+        "color": "0e8a16"
       }
     ],
     "requested_reviewers": [

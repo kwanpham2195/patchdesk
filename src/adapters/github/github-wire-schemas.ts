@@ -173,7 +173,9 @@ export const pullRequestSchema = v.looseObject({
   user: v.looseObject({ login: v.string() }),
   updated_at: v.string(),
   mergeable_state: v.optional(v.string()),
-  labels: v.optional(v.array(v.looseObject({ name: v.string() }))),
+  labels: v.optional(
+    v.array(v.looseObject({ name: v.string(), color: v.string() })),
+  ),
   requested_reviewers: v.optional(
     v.array(v.looseObject({ login: v.string() })),
   ),
@@ -370,6 +372,13 @@ export const maintainerInboxResponseSchema = v.looseObject({
             additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
             deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
             changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+            labels: v.looseObject({
+              totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+              nodes: v.array(
+                v.looseObject({ name: v.string(), color: v.string() }),
+              ),
+              pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
+            }),
             reviewRequests: v.looseObject({
               nodes: v.array(
                 v.looseObject({

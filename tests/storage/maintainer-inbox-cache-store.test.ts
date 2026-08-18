@@ -82,6 +82,7 @@ describe("maintainer inbox cache store", () => {
           checks: { overall: "passing" as const, checks: [] },
           reviewState: "none" as const,
           mergeability: "unknown" as const,
+          labels: [],
           categories: ["needs_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
@@ -132,6 +133,91 @@ describe("maintainer inbox cache store", () => {
       value: undefined,
     });
     expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+  });
+
+  it("round-trips a row carrying labels and labelCount", async () => {
+    const { store, profileId } = await fixtureStore();
+    const cache = {
+      schemaVersion: 1 as const,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          identity: {
+            host: must(parseGitHubHost("github.com")),
+            owner: must(parseGitHubOwner("centraldigital")),
+            repo: must(parseGitHubRepoName("patchdesk")),
+            number: must(parsePullRequestNumber(42)),
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: { additions: 8, deletions: 2, changedFiles: 1 },
+          checks: { overall: "passing" as const, checks: [] },
+          reviewState: "none" as const,
+          mergeability: "unknown" as const,
+          labels: [{ name: "bug", color: "d73a4a" }],
+          labelCount: 5,
+          categories: ["needs_review"] as const,
+          recommendedAction: {
+            kind: "run_review" as const,
+            label: "Run review" as const,
+          },
+          dataFreshness: "fresh" as const,
+        },
+      ],
+      repositories: [],
+    };
+    expect(await store.save(profileId, cache)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+  });
+
+  it("parses a pre-labels cache row that omits `labels` entirely, defaulting it to an empty array (no invalidation of old caches)", () => {
+    const parsed = parseMaintainerInboxCache({
+      schemaVersion: 1,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          identity: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          checks: { overall: "passing", checks: [] },
+          reviewState: "none",
+          mergeability: "unknown",
+          categories: ["needs_review"],
+          recommendedAction: {
+            kind: "run_review",
+            label: "Run review",
+          },
+          dataFreshness: "fresh",
+        },
+      ],
+      repositories: [],
+    });
+
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { rows: [{ labels: [] }] },
+    });
+    if (parsed._tag === "ok")
+      expect(parsed.value.rows[0]).not.toHaveProperty("labelCount");
   });
 
   it("upgrades a cached failed-check action to a review action", () => {

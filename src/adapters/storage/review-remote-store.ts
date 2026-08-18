@@ -137,7 +137,7 @@ const pullRequestSchema = v.strictObject({
     "unknown",
   ]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
-  labels: v.array(v.string()),
+  labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   requestedReviewers: v.optional(v.array(v.string())),
   assignees: v.optional(v.array(v.string())),
   updatedAt: v.string(),

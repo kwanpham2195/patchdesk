@@ -88,6 +88,36 @@ afterEach(async () => {
 });
 
 describe("ReviewRemoteStore", () => {
+  it("round-trips a pull request with non-empty name+color labels", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withLabels: ReviewRemoteSnapshot = {
+      ...snapshot,
+      pullRequest: {
+        ...snapshot.pullRequest,
+        labels: [
+          { name: "bug", color: "d73a4a" },
+          { name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withLabels,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withLabels });
+  });
+
   it("round-trips viewerDidAuthor on thread comments", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

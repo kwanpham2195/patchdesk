@@ -27,6 +27,7 @@ const savedRow = {
   checks: { overall: "unknown", checks: [] },
   reviewState: "none",
   mergeability: "unknown",
+  labels: [],
   latestReview: {
     reviewId: "review-1",
     reviewedHeadSha: sha,

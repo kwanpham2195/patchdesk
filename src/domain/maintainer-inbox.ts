@@ -1,4 +1,8 @@
-import type { CheckSummary, PullRequestSummary } from "./github-context";
+import type {
+  CheckSummary,
+  GitHubLabel,
+  PullRequestSummary,
+} from "./github-context";
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
@@ -56,6 +60,8 @@ export type MaintainerInboxRow = {
   readonly reviewState: PullRequestSummary["reviewState"];
   readonly mergeability: PullRequestSummary["mergeability"];
   readonly latestReview?: InboxReviewSummary;
+  readonly labels: ReadonlyArray<GitHubLabel>;
+  readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
   readonly dataFreshness: "fresh" | "cached";
@@ -114,6 +120,10 @@ export function projectMaintainerInboxRow(input: {
       : { changedFiles: input.summary.changedFileCount };
   const latestReviewField =
     review === undefined ? {} : { latestReview: review };
+  const labelCountField =
+    input.summary.labelCount === undefined
+      ? {}
+      : { labelCount: input.summary.labelCount };
   return {
     identity: input.summary.ref,
     title: input.summary.title,
@@ -132,6 +142,8 @@ export function projectMaintainerInboxRow(input: {
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
     ...latestReviewField,
+    labels: input.summary.labels,
+    ...labelCountField,
     categories,
     recommendedAction,
     dataFreshness: input.dataFreshness,

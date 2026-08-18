@@ -133,6 +133,10 @@ const rowSchema = v.strictObject({
       matchesCurrentHead: v.boolean(),
     }),
   ),
+  labels: v.optional(
+    v.array(v.strictObject({ name: v.string(), color: v.string() })),
+  ),
+  labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(
     v.picklist([
       "needs_review",
@@ -265,6 +269,9 @@ function parseRow(
       : { changedFiles: input.changeStats.changedFiles };
   const latestReviewField =
     latestReview === undefined ? {} : { latestReview: latestReview.value };
+  const labels = input.labels ?? [];
+  const labelCountField =
+    input.labelCount === undefined ? {} : { labelCount: input.labelCount };
   return ok({
     identity: identity.value,
     title: input.title,
@@ -279,6 +286,8 @@ function parseRow(
     reviewState: summaryState,
     mergeability: input.mergeability,
     ...latestReviewField,
+    labels,
+    ...labelCountField,
     categories,
     recommendedAction: action.value,
     dataFreshness: input.dataFreshness,

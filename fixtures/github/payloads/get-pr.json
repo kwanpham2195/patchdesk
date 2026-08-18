@@ -17,7 +17,8 @@
   "mergeable_state": "clean",
   "labels": [
     {
-      "name": "review"
+      "name": "review",
+      "color": "0e8a16"
     }
   ],
   "additions": 12,
