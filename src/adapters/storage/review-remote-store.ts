@@ -383,6 +383,7 @@ export class ReviewRemoteStore {
 }
 
 export function parseReviewRemoteSnapshot(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON snapshot I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<ReviewRemoteSnapshot, StorageFailure> {
   const parsed = v.safeParse(snapshotSchema, input);
@@ -418,42 +419,52 @@ export function parseReviewRemoteSnapshot(
     mergeEvidence._tag === "err"
   )
     return invalidRead();
+  const publishedFeedbackField =
+    publishedFeedback.value === undefined
+      ? {}
+      : { publishedFeedback: publishedFeedback.value };
+  const mergePolicyField =
+    mergePolicy.value === undefined
+      ? {}
+      : { mergePolicy: mergePolicy.value };
+  const mergeEvidenceField =
+    mergeEvidence.value === undefined
+      ? {}
+      : { mergeEvidence: mergeEvidence.value };
   return ok({
     schemaVersion: 1,
     pullRequest: pr.value,
     comments: comments.value,
     commits: commits.value,
     checks: checks.value,
-    ...(publishedFeedback.value === undefined
-      ? {}
-      : { publishedFeedback: publishedFeedback.value }),
+    ...publishedFeedbackField,
     conversation: conversation.value,
-    ...(mergePolicy.value === undefined
-      ? {}
-      : { mergePolicy: mergePolicy.value }),
-    ...(mergeEvidence.value === undefined
-      ? {}
-      : { mergeEvidence: mergeEvidence.value }),
+    ...mergePolicyField,
+    ...mergeEvidenceField,
   });
 }
 
 export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
-  const canonical = canonicalJson({
-    ...snapshot,
-    checks: withoutCheckUrls(snapshot.checks),
-    ...(snapshot.mergePolicy === undefined
+  const mergePolicyField =
+    snapshot.mergePolicy === undefined
       ? {}
       : {
           mergePolicy: {
             ...snapshot.mergePolicy,
             checks: withoutCheckUrls(snapshot.mergePolicy.checks),
           },
-        }),
+        };
+  const canonical = canonicalJson({
+    ...snapshot,
+    checks: withoutCheckUrls(snapshot.checks),
+    ...mergePolicyField,
   });
+  // SAFETY: a sha256 hex digest is always a well-formed content hash string; this is the one place that computes it, so branding it here is sound.
   return createHash("sha256").update(canonical).digest("hex") as ContentHash;
 }
 
 function parseSnapshot(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- delegates straight to parseReviewRemoteSnapshot, itself the JSON snapshot I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<ReviewRemoteSnapshot, StorageFailure> {
   return parseReviewRemoteSnapshot(input);
@@ -480,9 +491,26 @@ function parsePullRequest(
     updatedAt._tag === "err"
   )
     return invalidRead();
+  const baseShaField = base.value === undefined ? {} : { baseSha: base.value };
+  const descriptionField =
+    input.description === undefined ? {} : { description: input.description };
+  const requestedReviewersField =
+    input.requestedReviewers === undefined
+      ? {}
+      : { requestedReviewers: input.requestedReviewers };
+  const assigneesField =
+    input.assignees === undefined ? {} : { assignees: input.assignees };
+  const changedFileCountField =
+    input.changedFileCount === undefined
+      ? {}
+      : { changedFileCount: input.changedFileCount };
+  const additionsField =
+    input.additions === undefined ? {} : { additions: input.additions };
+  const deletionsField =
+    input.deletions === undefined ? {} : { deletions: input.deletions };
   return ok({
     headSha: head.value,
-    ...(base.value === undefined ? {} : { baseSha: base.value }),
+    ...baseShaField,
     isDraft: input.isDraft,
     isOpen: input.isOpen,
     ref: {
@@ -492,25 +520,19 @@ function parsePullRequest(
       number: number.value,
     },
     title: input.title,
-    ...(input.description === undefined
-      ? {}
-      : { description: input.description }),
+    ...descriptionField,
     author: input.author,
     headBranch: input.headBranch,
     baseBranch: input.baseBranch,
     reviewState: input.reviewState,
     mergeability: input.mergeability,
     labels: input.labels,
-    ...(input.requestedReviewers === undefined
-      ? {}
-      : { requestedReviewers: input.requestedReviewers }),
-    ...(input.assignees === undefined ? {} : { assignees: input.assignees }),
+    ...requestedReviewersField,
+    ...assigneesField,
     updatedAt: updatedAt.value,
-    ...(input.changedFileCount === undefined
-      ? {}
-      : { changedFileCount: input.changedFileCount }),
-    ...(input.additions === undefined ? {} : { additions: input.additions }),
-    ...(input.deletions === undefined ? {} : { deletions: input.deletions }),
+    ...changedFileCountField,
+    ...additionsField,
+    ...deletionsField,
   });
 }
 
@@ -528,12 +550,13 @@ function parseCommits(
     const sha = parseGitSha(commit.sha);
     const authoredAt = parseIsoTimestamp(commit.authoredAt);
     if (sha._tag === "err" || authoredAt._tag === "err") return invalidRead();
+    const urlField = commit.url === undefined ? {} : { url: commit.url };
     commits.push({
       sha: sha.value,
       message: commit.message,
       author: commit.author,
       authoredAt: authoredAt.value,
-      ...(commit.url === undefined ? {} : { url: commit.url }),
+      ...urlField,
       isHead: commit.isHead,
     });
   }
@@ -554,15 +577,18 @@ function parseChecks(
 ): Result<CheckSummary, StorageFailure> {
   return ok({
     overall: input.overall,
-    checks: input.checks.map((check): CheckRunSummary => ({
-      name: check.name,
-      required: check.required,
-      status: check.status,
-      ...(check.conclusion === undefined
-        ? {}
-        : { conclusion: check.conclusion }),
-      ...(check.url === undefined ? {} : { url: check.url }),
-    })),
+    checks: input.checks.map((check): CheckRunSummary => {
+      const conclusionField =
+        check.conclusion === undefined ? {} : { conclusion: check.conclusion };
+      const urlField = check.url === undefined ? {} : { url: check.url };
+      return {
+        name: check.name,
+        required: check.required,
+        status: check.status,
+        ...conclusionField,
+        ...urlField,
+      };
+    }),
   });
 }
 
@@ -573,9 +599,11 @@ function parsePublishedFeedback(
   for (const review of input.reviews) {
     const submittedAt = parseIsoTimestamp(review.submittedAt);
     if (submittedAt._tag === "err") return invalidRead();
+    const nodeIdField =
+      review.nodeId === undefined ? {} : { nodeId: review.nodeId };
     reviews.push({
       id: review.id,
-      ...(review.nodeId === undefined ? {} : { nodeId: review.nodeId }),
+      ...nodeIdField,
       author: review.author,
       body: review.body,
       event: review.event,
@@ -600,27 +628,40 @@ function parsePublishedFeedback(
       (location !== undefined && location._tag === "err")
     )
       return invalidRead();
+    const nodeIdField =
+      comment.nodeId === undefined ? {} : { nodeId: comment.nodeId };
+    const updatedAtField =
+      updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
+    const urlField = comment.url === undefined ? {} : { url: comment.url };
+    const locationField =
+      location === undefined ? {} : { location: location.value };
+    const reviewIdField =
+      comment.reviewId === undefined ? {} : { reviewId: comment.reviewId };
     comments.push({
       id: comment.id,
-      ...(comment.nodeId === undefined ? {} : { nodeId: comment.nodeId }),
+      ...nodeIdField,
       author: comment.author,
       body: comment.body,
       createdAt: createdAt.value,
-      ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
-      ...(comment.url === undefined ? {} : { url: comment.url }),
-      ...(location === undefined ? {} : { location: location.value }),
-      ...(comment.reviewId === undefined ? {} : { reviewId: comment.reviewId }),
+      ...updatedAtField,
+      ...urlField,
+      ...locationField,
+      ...reviewIdField,
       canEdit: comment.canEdit,
       canDelete: comment.canDelete,
     });
   }
+  const completeField =
+    input.complete === undefined ? {} : { complete: input.complete };
+  const incompleteReasonField =
+    input.incompleteReason === undefined
+      ? {}
+      : { incompleteReason: input.incompleteReason };
   return ok({
     reviews,
     comments,
-    ...(input.complete === undefined ? {} : { complete: input.complete }),
-    ...(input.incompleteReason === undefined
-      ? {}
-      : { incompleteReason: input.incompleteReason }),
+    ...completeField,
+    ...incompleteReasonField,
   });
 }
 
@@ -667,6 +708,32 @@ function parseConversation(
       (location !== undefined && location._tag === "err")
     )
       return invalidRead();
+    const updatedAtField =
+      updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
+    const urlField =
+      entry.comment.url === undefined ? {} : { url: entry.comment.url };
+    const viewerDidAuthorField =
+      entry.comment.viewerDidAuthor === undefined
+        ? {}
+        : { viewerDidAuthor: entry.comment.viewerDidAuthor };
+    const locationField =
+      location === undefined ? {} : { location: location.value };
+    const reviewIdField =
+      entry.comment.reviewId === undefined
+        ? {}
+        : { reviewId: entry.comment.reviewId };
+    const nodeIdField =
+      entry.comment.nodeId === undefined
+        ? {}
+        : { nodeId: entry.comment.nodeId };
+    const canEditField =
+      entry.comment.canEdit === undefined
+        ? {}
+        : { canEdit: entry.comment.canEdit };
+    const canDeleteField =
+      entry.comment.canDelete === undefined
+        ? {}
+        : { canDelete: entry.comment.canDelete };
     entries.push({
       _tag: "IssueComment",
       comment: {
@@ -674,38 +741,33 @@ function parseConversation(
         author: entry.comment.author,
         body: entry.comment.body,
         createdAt: createdAt.value,
-        ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
-        ...(entry.comment.url === undefined ? {} : { url: entry.comment.url }),
-        ...(entry.comment.viewerDidAuthor === undefined
-          ? {}
-          : { viewerDidAuthor: entry.comment.viewerDidAuthor }),
-        ...(location === undefined ? {} : { location: location.value }),
-        ...(entry.comment.reviewId === undefined
-          ? {}
-          : { reviewId: entry.comment.reviewId }),
-        ...(entry.comment.nodeId === undefined
-          ? {}
-          : { nodeId: entry.comment.nodeId }),
-        ...(entry.comment.canEdit === undefined
-          ? {}
-          : { canEdit: entry.comment.canEdit }),
-        ...(entry.comment.canDelete === undefined
-          ? {}
-          : { canDelete: entry.comment.canDelete }),
+        ...updatedAtField,
+        ...urlField,
+        ...viewerDidAuthorField,
+        ...locationField,
+        ...reviewIdField,
+        ...nodeIdField,
+        ...canEditField,
+        ...canDeleteField,
       },
     });
   }
   const inline =
     input.inline === undefined ? ok(undefined) : parseComments(input.inline);
   if (inline._tag === "err") return invalidRead();
+  const inlineField = inline.value === undefined ? {} : { inline: inline.value };
+  const completeField =
+    input.complete === undefined ? {} : { complete: input.complete };
+  const incompleteReasonField =
+    input.incompleteReason === undefined
+      ? {}
+      : { incompleteReason: input.incompleteReason };
   return ok({
     prDescription: input.prDescription,
     entries,
-    ...(inline.value === undefined ? {} : { inline: inline.value }),
-    ...(input.complete === undefined ? {} : { complete: input.complete }),
-    ...(input.incompleteReason === undefined
-      ? {}
-      : { incompleteReason: input.incompleteReason }),
+    ...inlineField,
+    ...completeField,
+    ...incompleteReasonField,
   });
 }
 
@@ -733,17 +795,24 @@ function parseComments(
         (location !== undefined && location._tag === "err")
       )
         return invalidRead();
+      const updatedAtField =
+        updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
+      const urlField = comment.url === undefined ? {} : { url: comment.url };
+      const viewerDidAuthorField =
+        comment.viewerDidAuthor === undefined
+          ? {}
+          : { viewerDidAuthor: comment.viewerDidAuthor };
+      const locationField =
+        location === undefined ? {} : { location: location.value };
       comments.push({
         id: comment.id,
         author: comment.author,
         body: comment.body,
         createdAt: createdAt.value,
-        ...(updatedAt === undefined ? {} : { updatedAt: updatedAt.value }),
-        ...(comment.url === undefined ? {} : { url: comment.url }),
-        ...(comment.viewerDidAuthor === undefined
-          ? {}
-          : { viewerDidAuthor: comment.viewerDidAuthor }),
-        ...(location === undefined ? {} : { location: location.value }),
+        ...updatedAtField,
+        ...urlField,
+        ...viewerDidAuthorField,
+        ...locationField,
       });
     }
     const location =
@@ -751,23 +820,33 @@ function parseComments(
         ? undefined
         : parseLocation(thread.location);
     if (location?._tag === "err") return invalidRead();
+    const completeField =
+      thread.complete === undefined ? {} : { complete: thread.complete };
+    const incompleteReasonField =
+      thread.incompleteReason === undefined
+        ? {}
+        : { incompleteReason: thread.incompleteReason };
+    const locationField =
+      location === undefined ? {} : { location: location.value };
     threads.push({
       id: id.value,
       state: thread.state,
       comments,
-      ...(thread.complete === undefined ? {} : { complete: thread.complete }),
-      ...(thread.incompleteReason === undefined
-        ? {}
-        : { incompleteReason: thread.incompleteReason }),
-      ...(location === undefined ? {} : { location: location.value }),
+      ...completeField,
+      ...incompleteReasonField,
+      ...locationField,
     });
   }
+  const completeField =
+    input.complete === undefined ? {} : { complete: input.complete };
+  const incompleteReasonField =
+    input.incompleteReason === undefined
+      ? {}
+      : { incompleteReason: input.incompleteReason };
   return ok({
     threads,
-    ...(input.complete === undefined ? {} : { complete: input.complete }),
-    ...(input.incompleteReason === undefined
-      ? {}
-      : { incompleteReason: input.incompleteReason }),
+    ...completeField,
+    ...incompleteReasonField,
   });
 }
 
@@ -792,11 +871,16 @@ function parseLocation(input: {
 > {
   const path = parseRepoRelativePath(input.path);
   if (path._tag === "err") return invalidRead();
+  const lineField = input.line === undefined ? {} : { line: input.line };
+  const lineEndField =
+    input.lineEnd === undefined ? {} : { lineEnd: input.lineEnd };
+  const diffSideField =
+    input.diffSide === undefined ? {} : { diffSide: input.diffSide };
   return ok({
     path: path.value,
-    ...(input.line === undefined ? {} : { line: input.line }),
-    ...(input.lineEnd === undefined ? {} : { lineEnd: input.lineEnd }),
-    ...(input.diffSide === undefined ? {} : { diffSide: input.diffSide }),
+    ...lineField,
+    ...lineEndField,
+    ...diffSideField,
   });
 }
 
@@ -820,6 +904,15 @@ function parseMergePolicy(
     checks._tag === "err"
   )
     return invalidRead();
+  const baseShaField = base === undefined ? {} : { baseSha: base.value };
+  const mergeStateStatusField =
+    input.mergeStateStatus === undefined
+      ? {}
+      : { mergeStateStatus: input.mergeStateStatus };
+  const incompleteReasonField =
+    input.incompleteReason === undefined
+      ? {}
+      : { incompleteReason: input.incompleteReason };
   return ok({
     pr: {
       host: host.value,
@@ -828,19 +921,15 @@ function parseMergePolicy(
       number: number.value,
     },
     headSha: head.value,
-    ...(base === undefined ? {} : { baseSha: base.value }),
+    ...baseShaField,
     isOpen: input.isOpen,
     isDraft: input.isDraft,
     mergeability: input.mergeability,
-    ...(input.mergeStateStatus === undefined
-      ? {}
-      : { mergeStateStatus: input.mergeStateStatus }),
+    ...mergeStateStatusField,
     reviewDecision: input.reviewDecision,
     checks: checks.value,
     complete: input.complete,
-    ...(input.incompleteReason === undefined
-      ? {}
-      : { incompleteReason: input.incompleteReason }),
+    ...incompleteReasonField,
   });
 }
 
@@ -853,34 +942,40 @@ function parseMergeEvidence(
       mergeStateStatus: input.mergeStateStatus,
       reviewDecision: input.reviewDecision,
     });
+  const requiredApprovingReviewCountField =
+    input.policy.branchProtection.state === "unavailable" ||
+    input.policy.branchProtection.value.requiredApprovingReviewCount ===
+      undefined
+      ? {}
+      : {
+          requiredApprovingReviewCount:
+            input.policy.branchProtection.value.requiredApprovingReviewCount,
+        };
+  const dismissStaleReviewsField =
+    input.policy.branchProtection.state === "unavailable" ||
+    input.policy.branchProtection.value.dismissStaleReviews === undefined
+      ? {}
+      : {
+          dismissStaleReviews:
+            input.policy.branchProtection.value.dismissStaleReviews,
+        };
+  const requireCodeOwnerReviewsField =
+    input.policy.branchProtection.state === "unavailable" ||
+    input.policy.branchProtection.value.requireCodeOwnerReviews === undefined
+      ? {}
+      : {
+          requireCodeOwnerReviews:
+            input.policy.branchProtection.value.requireCodeOwnerReviews,
+        };
   const branchProtection =
     input.policy.branchProtection.state === "unavailable"
       ? input.policy.branchProtection
       : {
           state: "available" as const,
           value: {
-            ...(input.policy.branchProtection.value
-              .requiredApprovingReviewCount === undefined
-              ? {}
-              : {
-                  requiredApprovingReviewCount:
-                    input.policy.branchProtection.value
-                      .requiredApprovingReviewCount,
-                }),
-            ...(input.policy.branchProtection.value.dismissStaleReviews ===
-            undefined
-              ? {}
-              : {
-                  dismissStaleReviews:
-                    input.policy.branchProtection.value.dismissStaleReviews,
-                }),
-            ...(input.policy.branchProtection.value.requireCodeOwnerReviews ===
-            undefined
-              ? {}
-              : {
-                  requireCodeOwnerReviews:
-                    input.policy.branchProtection.value.requireCodeOwnerReviews,
-                }),
+            ...requiredApprovingReviewCountField,
+            ...dismissStaleReviewsField,
+            ...requireCodeOwnerReviewsField,
           },
         };
   const appliedRuleset =
@@ -889,10 +984,10 @@ function parseMergeEvidence(
       : {
           state: "available" as const,
           value: {
-            rules: input.policy.appliedRuleset.value.rules.map((rule) => ({
-              type: rule.type,
-              ...(rule.name === undefined ? {} : { name: rule.name }),
-            })),
+            rules: input.policy.appliedRuleset.value.rules.map((rule) => {
+              const nameField = rule.name === undefined ? {} : { name: rule.name };
+              return { type: rule.type, ...nameField };
+            }),
           },
         };
   return ok({
@@ -906,27 +1001,32 @@ function parseMergeEvidence(
 function withoutCheckUrls(checks: CheckSummary): CheckSummary {
   return {
     overall: checks.overall,
-    checks: checks.checks.map((check) => ({
-      name: check.name,
-      required: check.required,
-      status: check.status,
-      ...(check.conclusion === undefined
-        ? {}
-        : { conclusion: check.conclusion }),
-    })),
+    checks: checks.checks.map((check) => {
+      const conclusionField =
+        check.conclusion === undefined ? {} : { conclusion: check.conclusion };
+      return {
+        name: check.name,
+        required: check.required,
+        status: check.status,
+        ...conclusionField,
+      };
+    }),
   };
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- canonicalizes an arbitrary already-validated snapshot value for content hashing; every JSON-compatible shape is valid input, so there is no narrower schema to parse against.
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.keys(value as object)
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- distinguishes a plain object from a primitive for canonicalization purposes only, not decoding external input against a contract.
+  if (value !== null && typeof value === "object") {
+    // SAFETY: the `typeof value === "object"` check above, with `Array.isArray` already excluded, establishes `value` is a non-null, non-array object, so reading its own keys is sound.
+    // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- generic recursive canonicalizer; the whole point is that no narrower key/value contract exists for an arbitrary snapshot value.
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
       .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`,
-      )
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
       .join(",")}}`;
+  }
   return JSON.stringify(value) ?? "null";
 }
 

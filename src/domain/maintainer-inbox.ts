@@ -94,11 +94,26 @@ export function projectMaintainerInboxRow(input: {
   )
     categories.push("ready_to_merge");
 
+  const reviewField = review === undefined ? {} : { review };
   const recommendedAction = recommendedActionFor({
     categories,
-    ...(review === undefined ? {} : { review }),
+    ...reviewField,
     dataFreshness: input.dataFreshness,
   });
+  const additionsField =
+    input.summary.additions === undefined
+      ? {}
+      : { additions: input.summary.additions };
+  const deletionsField =
+    input.summary.deletions === undefined
+      ? {}
+      : { deletions: input.summary.deletions };
+  const changedFilesField =
+    input.summary.changedFileCount === undefined
+      ? {}
+      : { changedFiles: input.summary.changedFileCount };
+  const latestReviewField =
+    review === undefined ? {} : { latestReview: review };
   return {
     identity: input.summary.ref,
     title: input.summary.title,
@@ -109,20 +124,14 @@ export function projectMaintainerInboxRow(input: {
     isDraft: input.summary.isDraft,
     updatedAt: input.summary.updatedAt,
     changeStats: {
-      ...(input.summary.additions === undefined
-        ? {}
-        : { additions: input.summary.additions }),
-      ...(input.summary.deletions === undefined
-        ? {}
-        : { deletions: input.summary.deletions }),
-      ...(input.summary.changedFileCount === undefined
-        ? {}
-        : { changedFiles: input.summary.changedFileCount }),
+      ...additionsField,
+      ...deletionsField,
+      ...changedFilesField,
     },
     checks: input.checks,
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
-    ...(review === undefined ? {} : { latestReview: review }),
+    ...latestReviewField,
     categories,
     recommendedAction,
     dataFreshness: input.dataFreshness,

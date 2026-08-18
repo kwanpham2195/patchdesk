@@ -56,6 +56,7 @@ const snapshot: ReviewRemoteSnapshot = {
     reviewState: "none",
     mergeability: "mergeable",
     labels: [],
+    // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
     updatedAt: "2026-08-01T00:00:00.000Z" as never,
   },
   comments: { threads: [], complete: true },
@@ -96,6 +97,7 @@ describe("ReviewRemoteStore", () => {
       comments: {
         threads: [
           {
+            // SAFETY: a test-only opaque thread id string; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
             id: "t" as never,
             state: "open" as const,
             comments: [
@@ -103,9 +105,11 @@ describe("ReviewRemoteStore", () => {
                 id: "c",
                 author: "pmquan2",
                 body: "test",
+                // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
                 createdAt: "2026-08-01T00:05:00.000Z" as never,
                 viewerDidAuthor: true,
                 location: {
+                  // SAFETY: a plain repo-relative path string already satisfies RepoRelativePath's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
                   path: "a.go" as never,
                   line: 1,
                   lineEnd: 1,
@@ -151,11 +155,13 @@ describe("ReviewRemoteStore", () => {
               reviewId: "4936696628",
               author: "chanakan-art",
               body: "inline finding",
+              // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
               createdAt: "2026-08-14T11:26:55.000Z" as never,
               viewerDidAuthor: false,
               canEdit: false,
               canDelete: false,
               location: {
+                // SAFETY: a plain repo-relative path string already satisfies RepoRelativePath's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
                 path: "migrations/29.up.sql" as never,
                 line: 44,
                 diffSide: "new" as const,
@@ -292,6 +298,7 @@ describe("ReviewRemoteStore", () => {
       store.load({
         profileId,
         reviewId,
+        // SAFETY: a deliberately wrong-but-well-formed hex digest, chosen so it will not match `snapshot`'s real content hash; the ContentHash brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
         snapshotHash: "0".repeat(64) as never,
       }),
     ).resolves.toMatchObject({ _tag: "err" });
