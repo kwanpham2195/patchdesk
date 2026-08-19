@@ -4,6 +4,7 @@ import { readdir } from "node:fs/promises";
 import {
   createReviewSessionId,
   parseAbsolutePath,
+  parseContentHash,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -12,6 +13,7 @@ import {
   parsePullRequestNumber,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type GitSha,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
@@ -19,6 +21,7 @@ import {
   parseFindingReviewReceipts,
   parsePendingReviewState,
   pendingReviewMatchesSession,
+  type PendingReviewState,
 } from "../../domain/pending-review";
 import { parseDirectSummaryReviewState } from "../../domain/direct-summary-review";
 import type { ReviewSession } from "../../domain/review-session";
@@ -57,6 +60,7 @@ const reviewSessionSchema = v.strictObject({
     }),
   ),
   patchPath: v.string(),
+  canonicalPatchHash: v.optional(v.string()),
   worktree: v.strictObject({ path: v.string(), headSha: v.string() }),
   pendingReview: v.optional(v.unknown()),
   findingReviewReceipts: v.optional(v.unknown()),
@@ -82,6 +86,7 @@ export class ReviewSessionStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async save(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the very first statement below runs parseStoredReviewSession, the actual I/O boundary parser for this shape; there is no earlier boundary to move it to.
     session: unknown,
     expectedUpdatedAt?: ReviewSession["updatedAt"],
   ): Promise<Result<void, StorageFailure>> {
@@ -224,8 +229,78 @@ async function mapConcurrent<T, R>(
   return values;
 }
 
+/** Mutable draft of `ReviewSession`, built in statements so each optional
+ * field is added only when it has a value. */
+type MutableReviewSession = {
+  -readonly [K in keyof ReviewSession]: ReviewSession[K];
+};
+/** Mutable draft of `ReviewSession["pr"]`, built in statements so the
+ * optional `baseSha` is added only when it has a value. */
+type MutableSessionPr = {
+  headSha: GitSha;
+  baseSha?: GitSha;
+  isDraft: boolean;
+  isOpen: boolean;
+};
+/** Mutable draft of `ReviewSession["prContext"]`, built in statements so the
+ * optional `description` is added only when it has a value. */
+type MutableSessionPrContext = {
+  title: string;
+  description?: string;
+  author: string;
+  headBranch: string;
+  baseBranch: string;
+};
+/** Mutable draft of the `parseFindingReviewReceipts` session argument, built
+ * in statements so the optional `pendingReview` is added only when it has a
+ * value. */
+type MutableFindingReviewContext = {
+  id: ReviewSessionId;
+  headSha: GitSha;
+  pendingReview?: PendingReviewState;
+};
+
+function buildSessionPr(
+  headSha: GitSha,
+  baseSha: GitSha | undefined,
+  isDraft: boolean,
+  isOpen: boolean,
+): MutableSessionPr {
+  const pr: MutableSessionPr = { headSha, isDraft, isOpen };
+  if (baseSha !== undefined) pr.baseSha = baseSha;
+  return pr;
+}
+
+function buildSessionPrContext(raw: {
+  readonly title: string;
+  readonly description?: string | undefined;
+  readonly author: string;
+  readonly headBranch: string;
+  readonly baseBranch: string;
+}): MutableSessionPrContext {
+  const context: MutableSessionPrContext = {
+    title: raw.title,
+    author: raw.author,
+    headBranch: raw.headBranch,
+    baseBranch: raw.baseBranch,
+  };
+  if (raw.description !== undefined) context.description = raw.description;
+  return context;
+}
+
+function buildFindingReviewContext(
+  id: ReviewSessionId,
+  headSha: GitSha,
+  pendingReview: PendingReviewState | undefined,
+): MutableFindingReviewContext {
+  const context: MutableFindingReviewContext = { id, headSha };
+  if (pendingReview !== undefined) context.pendingReview = pendingReview;
+  return context;
+}
+
 /** Parses one current schema-5 session and rejects all removed authority fields. */
 export function parseStoredReviewSession(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for stored sessions; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<ReviewSession, StorageFailure> {
   const raw = v.safeParse(reviewSessionSchema, input);
@@ -238,6 +313,10 @@ export function parseStoredReviewSession(
   const headSha = parseGitSha(raw.output.key.headSha);
   const id = parseReviewSessionId(raw.output.id);
   const patchPath = parseAbsolutePath(raw.output.patchPath);
+  const canonicalPatchHash =
+    raw.output.canonicalPatchHash === undefined
+      ? undefined
+      : parseContentHash(raw.output.canonicalPatchHash);
   const worktreePath = parseAbsolutePath(raw.output.worktree.path);
   const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
   const prHeadSha = parseGitSha(raw.output.pr.headSha);
@@ -256,6 +335,7 @@ export function parseStoredReviewSession(
     headSha._tag === "err" ||
     id._tag === "err" ||
     patchPath._tag === "err" ||
+    (canonicalPatchHash !== undefined && canonicalPatchHash._tag === "err") ||
     worktreePath._tag === "err" ||
     worktreeHeadSha._tag === "err" ||
     prHeadSha._tag === "err" ||
@@ -299,13 +379,14 @@ export function parseStoredReviewSession(
   const findingReviewReceipts =
     raw.output.findingReviewReceipts === undefined
       ? ok(undefined)
-      : parseFindingReviewReceipts(raw.output.findingReviewReceipts, {
-          id: id.value,
-          headSha: headSha.value,
-          ...(pendingReview.value === undefined
-            ? {}
-            : { pendingReview: pendingReview.value }),
-        });
+      : parseFindingReviewReceipts(
+          raw.output.findingReviewReceipts,
+          buildFindingReviewContext(
+            id.value,
+            headSha.value,
+            pendingReview.value,
+          ),
+        );
   const directSummaryReview =
     raw.output.directSummaryReview === undefined
       ? ok(undefined)
@@ -323,16 +404,8 @@ export function parseStoredReviewSession(
   const prContext =
     raw.output.prContext === undefined
       ? undefined
-      : {
-          title: raw.output.prContext.title,
-          ...(raw.output.prContext.description === undefined
-            ? {}
-            : { description: raw.output.prContext.description }),
-          author: raw.output.prContext.author,
-          headBranch: raw.output.prContext.headBranch,
-          baseBranch: raw.output.prContext.baseBranch,
-        };
-  return ok({
+      : buildSessionPrContext(raw.output.prContext);
+  const session: MutableReviewSession = {
     schemaVersion: 5,
     id: id.value,
     key: {
@@ -343,31 +416,32 @@ export function parseStoredReviewSession(
       prNumber: prNumber.value,
       headSha: headSha.value,
     },
-    pr: {
-      headSha: prHeadSha.value,
-      ...(prBaseSha === undefined ? {} : { baseSha: prBaseSha.value }),
-      isDraft: raw.output.pr.isDraft,
-      isOpen: raw.output.pr.isOpen,
-    },
-    ...(prContext === undefined ? {} : { prContext }),
+    pr: buildSessionPr(
+      prHeadSha.value,
+      prBaseSha === undefined ? undefined : prBaseSha.value,
+      raw.output.pr.isDraft,
+      raw.output.pr.isOpen,
+    ),
     patchPath: patchPath.value,
     worktree: { path: worktreePath.value, headSha: worktreeHeadSha.value },
-    ...(pendingReview.value === undefined
-      ? {}
-      : { pendingReview: pendingReview.value }),
-    ...(findingReviewReceipts.value === undefined
-      ? {}
-      : { findingReviewReceipts: findingReviewReceipts.value }),
-    ...(directSummaryReview.value === undefined
-      ? {}
-      : { directSummaryReview: directSummaryReview.value }),
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
-  });
+  };
+  if (prContext !== undefined) session.prContext = prContext;
+  if (canonicalPatchHash !== undefined)
+    session.canonicalPatchHash = canonicalPatchHash.value;
+  if (pendingReview.value !== undefined)
+    session.pendingReview = pendingReview.value;
+  if (findingReviewReceipts.value !== undefined)
+    session.findingReviewReceipts = findingReviewReceipts.value;
+  if (directSummaryReview.value !== undefined)
+    session.directSummaryReview = directSummaryReview.value;
+  return ok(session);
 }
 
 function isMissing(cause: unknown): boolean {
   return (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a caught exception of unknown shape at this exact I/O boundary predicate; no earlier parser exists for a thrown value.
     typeof cause === "object" &&
     cause !== null &&
     "code" in cause &&

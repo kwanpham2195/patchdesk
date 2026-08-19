@@ -74,4 +74,34 @@ describe("ReviewSession storage", () => {
       ).toMatchObject({ _tag: "err" });
     }
   });
+
+  it("round-trips a stored canonicalPatchHash", () => {
+    const canonicalPatchHash =
+      "625e3b6a" + "0".repeat(56);
+    const parsed = parseStoredReviewSession({
+      ...current,
+      canonicalPatchHash,
+    });
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { canonicalPatchHash },
+    });
+  });
+
+  it("omits canonicalPatchHash from the parsed value when the field is absent", () => {
+    const parsed = parseStoredReviewSession(current);
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag !== "ok") return;
+    expect(parsed.value.canonicalPatchHash).toBeUndefined();
+    expect("canonicalPatchHash" in parsed.value).toBe(false);
+  });
+
+  it("parses a session with no canonicalPatchHash key at all without quarantining it", () => {
+    // Back-compat guard: existing sessions written before this field
+    // existed must keep parsing as valid so they heal in place instead
+    // of being moved to .quarantine and losing their pendingReview draft.
+    expect("canonicalPatchHash" in current).toBe(false);
+    const parsed = parseStoredReviewSession(current);
+    expect(parsed).toMatchObject({ _tag: "ok" });
+  });
 });

@@ -1,6 +1,7 @@
 import {
   createReviewSessionId,
   type AbsolutePath,
+  type ContentHash,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
@@ -31,6 +32,7 @@ export type ReviewSession = {
     readonly baseBranch: string;
   };
   readonly patchPath: AbsolutePath;
+  readonly canonicalPatchHash?: ContentHash;
   readonly worktree: ReviewWorktreeRef;
   readonly pendingReview?: PendingReviewState;
   readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
@@ -53,24 +55,34 @@ export type ReviewWorktreeRef = {
   readonly headSha: GitSha;
 };
 
+/** Mutable draft of `ReviewSession`, built in statements so each optional
+ * field is added only when it has a value. */
+type MutableReviewSession = {
+  -readonly [K in keyof ReviewSession]: ReviewSession[K];
+};
+
 /** Constructs a deterministic session without filesystem or GitHub effects. */
 export function createReviewSession(input: {
   readonly key: ReviewSessionKey;
   readonly pr: PullRequestSnapshot;
   readonly prContext?: ReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
+  readonly canonicalPatchHash?: ContentHash;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
 }): ReviewSession {
-  return {
+  const session: MutableReviewSession = {
     schemaVersion: 5,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,
-    ...(input.prContext === undefined ? {} : { prContext: input.prContext }),
     patchPath: input.patchPath,
     worktree: input.worktree,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
   };
+  if (input.prContext !== undefined) session.prContext = input.prContext;
+  if (input.canonicalPatchHash !== undefined)
+    session.canonicalPatchHash = input.canonicalPatchHash;
+  return session;
 }
