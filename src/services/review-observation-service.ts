@@ -43,6 +43,7 @@ import type { RecentReviewWrite } from "./review-refresh-service";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { PendingReviewService } from "./pending-review-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import { requestAbortContext } from "../adapters/github/command-runner";
 
 /** Typed outcome of one bounded same-revision observation. */
 export type ReviewObservation =
@@ -780,6 +781,17 @@ export class ReviewObservationService {
     reason: RevisionUnavailableReason,
   ): Promise<Result<ReviewObservation, ReviewObservationFailure>> {
     void input;
+    // The caller's request may have been abandoned (the desktop bridge's
+    // 30s timeout, or the renderer navigating away) partway through this
+    // observation, which is why a read here failed or never completed. That
+    // is not genuine proof the Review's GitHub state is unreachable or
+    // incomplete: nobody is waiting on this result, so degrading the durable
+    // Review to Unavailable would quarantine it on abandoned, not observed,
+    // evidence. Skip the write and report nothing changed; the next real
+    // request re-observes from scratch.
+    if (requestAbortContext.getStore()?.aborted === true) {
+      return ok({ _tag: "Unchanged", detectedAt });
+    }
     const unavailable = markReviewUnavailable(
       review,
       { detectedAt, reason },

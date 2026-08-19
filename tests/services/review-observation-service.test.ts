@@ -32,8 +32,9 @@ import {
   parseWorkspaceProfileId,
   type IsoTimestamp,
 } from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import {
   ReviewObservationService,
@@ -639,6 +640,58 @@ describe("ReviewObservationService", () => {
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { pendingReview: { _tag: "WriteInFlight" } },
+    });
+  });
+
+  it("releases the Review lock and does not quarantine the Review when the request's own client aborted", async () => {
+    const value = await fixture();
+    const coordinator = new ReviewOperationCoordinator();
+    // A GitHub read failing here stands in for the underlying `gh` command
+    // being cut short by the aborted request's cancelled signal: from
+    // observeUnlocked's perspective both surface as the same `err` result.
+    const abortedDuringRead = {
+      ...fakeGitHub({ terminal: false }),
+      async getPullRequest() {
+        return err({ _tag: "GitHubReadFailed" as const, operation: "get_pr" as const });
+      },
+    };
+    const observation = new ReviewObservationService({
+      profiles: new ProfileStore(value.paths),
+      reviews: value.reviews,
+      sessions: value.sessions,
+      remote: value.remote,
+      journals: value.journals,
+      recentWrites: value.recentWrites,
+      github: abortedDuringRead,
+      pendingReview: {
+        adoptObservedState() {
+          return { pendingReview: { _tag: "None" as const } };
+        },
+      },
+      coordinator,
+      now: () => observedAt,
+    });
+
+    const controller = new AbortController();
+    controller.abort();
+    const result = await runWithRequestAbortSignal(controller.signal, () =>
+      observation.observe({ profileId, reviewId: value.review.id }),
+    );
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: { _tag: "Unchanged", detectedAt: observedAt },
+    });
+    // The lock is free again: a fresh acquire succeeds immediately instead
+    // of the review staying held for the abandoned request's duration.
+    expect(coordinator.acquire(`${profileId}:${value.review.id}`)).toBe(true);
+    // The abandoned request's failed read did not degrade the durable
+    // Review; it is exactly as it was before this observation ran.
+    await expect(
+      value.reviews.load(profileId, value.review.id),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { freshness: { _tag: "Fresh" } },
     });
   });
 });

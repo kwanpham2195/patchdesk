@@ -38,7 +38,10 @@ import {
   type TrashMover,
 } from "../services/storage-management-service";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
-import { CommandRunner } from "../adapters/github/command-runner";
+import {
+  CommandRunner,
+  runWithRequestAbortSignal,
+} from "../adapters/github/command-runner";
 import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import type {
@@ -704,12 +707,14 @@ export async function startLocalApiServer(
   app.patch("/v1/settings", async (context) =>
     response(context, await dashboard.updateSettings(await jsonBody(context))),
   );
-  app.get("/v1/inbox", async (context) => {
-    const result = await dashboard.inboxForActiveProfile();
-    if (result._tag === "err")
-      await recordProfileReloadFailure("profile-reload-inbox");
-    return response(context, result);
-  });
+  app.get("/v1/inbox", async (context) =>
+    runWithRequestAbortSignal(context.req.raw.signal, async () => {
+      const result = await dashboard.inboxForActiveProfile();
+      if (result._tag === "err")
+        await recordProfileReloadFailure("profile-reload-inbox");
+      return response(context, result);
+    }),
+  );
   app.post("/v1/watchlist", async (context) =>
     response(
       context,
@@ -1009,12 +1014,14 @@ export async function startLocalApiServer(
       profileId: profileId.value,
       reviewId: reviewId.value,
     };
-    return response(
-      context,
-      await reviewWorkbench.detectUpdates(
-        recentWrites.length === 0
-          ? detectUpdatesInput
-          : { ...detectUpdatesInput, recentWrites },
+    return runWithRequestAbortSignal(context.req.raw.signal, async () =>
+      response(
+        context,
+        await reviewWorkbench.detectUpdates(
+          recentWrites.length === 0
+            ? detectUpdatesInput
+            : { ...detectUpdatesInput, recentWrites },
+        ),
       ),
     );
   });

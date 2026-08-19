@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 
 import * as v from "valibot";
@@ -7,6 +8,24 @@ import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../../main/executable-discovery";
 
 const FORCE_KILL_AFTER_MS = 2_000;
+
+/**
+ * Ambient cancellation for the current request. Threading an explicit
+ * `signal` through every service and adapter call site between an HTTP route
+ * and its eventual `CommandRunner.runText`/`runJson` call would touch every
+ * `GitHubReader` method; this carries the route's `AbortSignal` implicitly
+ * across the same async call chain instead. A caller-supplied `signal` on
+ * `CommandRequest` always wins over the ambient one (see `runText`/`runJson`).
+ */
+export const requestAbortContext = new AsyncLocalStorage<AbortSignal>();
+
+/** Runs `fn` with `signal` available to every `CommandRunner` call made within it (see `requestAbortContext`). */
+export function runWithRequestAbortSignal<T>(
+  signal: AbortSignal,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return requestAbortContext.run(signal, fn);
+}
 
 /** An explicit executable and argument vector owned by an external adapter. */
 export type CommandRequest = {
@@ -38,7 +57,8 @@ export type CommandExecution =
       readonly stderr: string;
     }
   | { readonly _tag: "OutputExceeded" }
-  | { readonly _tag: "Unavailable" };
+  | { readonly _tag: "Unavailable" }
+  | { readonly _tag: "Aborted" };
 
 /** The narrow process seam used by CommandRunner. */
 export interface CommandExecutor {
@@ -66,7 +86,17 @@ export type CommandFailure =
   | { readonly _tag: "CommandRateLimited" }
   | { readonly _tag: "CommandRuntimeUnavailable" }
   | { readonly _tag: "CommandFailed"; readonly stderr?: string }
-  | { readonly _tag: "CommandInvalidJson" };
+  | { readonly _tag: "CommandInvalidJson" }
+  /**
+   * The caller's request was abandoned (renderer bridge timeout or the
+   * client disconnecting) while the child process was already running, and
+   * this run terminated it early. Distinct from `CommandUnavailable` (which
+   * covers cancellation before the process ever started, e.g. during
+   * executable discovery) so callers can tell "we cut this short on
+   * purpose" apart from a genuine execution failure and avoid treating it
+   * as one.
+   */
+  | { readonly _tag: "CommandAborted" };
 
 /**
  * Execute explicitly-formed argv commands while retaining raw process output inside the boundary.
@@ -90,7 +120,7 @@ export class CommandRunner {
   async runText(
     input: CommandRequest,
   ): Promise<Result<string, CommandFailure>> {
-    const execution = await this.executor.execute(input);
+    const execution = await this.executor.execute(withAmbientSignal(input));
     const failure = classifyExecution(execution, this.onUnclassifiedFailure);
     if (failure !== undefined) return err(failure);
     if (execution._tag !== "Exited") return err({ _tag: "CommandFailed" });
@@ -153,6 +183,7 @@ export class NodeCommandExecutor implements CommandExecutor {
       let stderr = "";
       let settled = false;
       let timedOut = false;
+      let aborted = false;
       let outputExceeded = false;
       const maxOutputBytes = 2 * 1024 * 1024;
 
@@ -164,7 +195,10 @@ export class NodeCommandExecutor implements CommandExecutor {
           FORCE_KILL_AFTER_MS,
         );
       };
-      const onAbort = (): void => terminate();
+      const onAbort = (): void => {
+        aborted = true;
+        terminate();
+      };
       const finish = (execution: CommandExecution): void => {
         if (settled) return;
         settled = true;
@@ -179,6 +213,7 @@ export class NodeCommandExecutor implements CommandExecutor {
       }, input.timeoutMs);
 
       if (input.signal?.aborted) {
+        aborted = true;
         terminate();
       } else {
         input.signal?.addEventListener("abort", onAbort, { once: true });
@@ -202,6 +237,10 @@ export class NodeCommandExecutor implements CommandExecutor {
       child.stdin?.end(input.stdin);
       child.once("error", () => finish({ _tag: "Unavailable" }));
       child.once("close", (exitCode) => {
+        if (aborted) {
+          finish({ _tag: "Aborted" });
+          return;
+        }
         if (outputExceeded) {
           finish({ _tag: "OutputExceeded" });
           return;
@@ -216,10 +255,18 @@ export class NodeCommandExecutor implements CommandExecutor {
   }
 }
 
+/** Merges the ambient request signal in only when the caller did not already supply one explicitly. */
+function withAmbientSignal(input: CommandRequest): CommandRequest {
+  if (input.signal !== undefined) return input;
+  const ambient = requestAbortContext.getStore();
+  return ambient === undefined ? input : { ...input, signal: ambient };
+}
+
 function classifyExecution(
   execution: CommandExecution,
   onUnclassifiedFailure: (stderr: string) => void,
 ): CommandFailure | undefined {
+  if (execution._tag === "Aborted") return { _tag: "CommandAborted" };
   if (execution._tag === "TimedOut") return { _tag: "CommandTimedOut" };
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
   if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
