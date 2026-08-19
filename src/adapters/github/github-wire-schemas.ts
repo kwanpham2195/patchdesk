@@ -146,11 +146,34 @@ export const mergeEvidenceBranchProtectionSchema = v.looseObject({
     }),
   ),
 });
+// Bounded per the ADR "Choose a validation style by data boundary": only the
+// specific `pull_request` and `required_status_checks` fields Patchdesk
+// displays are named here, not the full parameters payload GitHub returns.
+export const appliedRulesetRuleParametersSchema = v.looseObject({
+  required_approving_review_count: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100)),
+  ),
+  require_last_push_approval: v.optional(v.boolean()),
+  required_review_thread_resolution: v.optional(v.boolean()),
+  dismiss_stale_reviews_on_push: v.optional(v.boolean()),
+  require_code_owner_review: v.optional(v.boolean()),
+  required_status_checks: v.optional(
+    v.pipe(
+      v.array(
+        v.looseObject({
+          context: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+        }),
+      ),
+      v.maxLength(100),
+    ),
+  ),
+});
 export const appliedRulesetSchema = v.pipe(
   v.array(
     v.looseObject({
       type: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
       name: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
+      parameters: v.optional(appliedRulesetRuleParametersSchema),
     }),
   ),
   v.maxLength(50),

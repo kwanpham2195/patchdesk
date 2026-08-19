@@ -7,6 +7,7 @@ import type {
   CheckSummary,
   CheckRunSummary,
   Conversation,
+  GitHubAppliedRulesetPullRequestParameters,
   GitHubComment,
   GitHubComments,
   GitHubMergeEvidence,
@@ -201,6 +202,15 @@ const optionalEvidenceUnavailableSchema = v.strictObject({
   state: v.literal("unavailable"),
   reason: v.picklist(["forbidden", "not_found", "unsupported"]),
 });
+const storedPullRequestParametersSchema = v.strictObject({
+  requiredApprovingReviewCount: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100)),
+  ),
+  requireLastPushApproval: v.optional(v.boolean()),
+  requiredReviewThreadResolution: v.optional(v.boolean()),
+  dismissStaleReviewsOnPush: v.optional(v.boolean()),
+  requireCodeOwnerReview: v.optional(v.boolean()),
+});
 const mergePolicyEvidenceSchema = v.strictObject({
   branchProtection: v.union([
     v.strictObject({
@@ -220,7 +230,12 @@ const mergePolicyEvidenceSchema = v.strictObject({
       state: v.literal("available"),
       value: v.strictObject({
         rules: v.array(
-          v.strictObject({ type: v.string(), name: v.optional(v.string()) }),
+          v.strictObject({
+            type: v.string(),
+            name: v.optional(v.string()),
+            pullRequestParameters: v.optional(storedPullRequestParametersSchema),
+            requiredStatusCheckContexts: v.optional(v.array(v.string())),
+          }),
         ),
       }),
     }),
@@ -1004,7 +1019,26 @@ function parseMergeEvidence(
           value: {
             rules: input.policy.appliedRuleset.value.rules.map((rule) => {
               const nameField = rule.name === undefined ? {} : { name: rule.name };
-              return { type: rule.type, ...nameField };
+              const storedPullRequestParameters = buildStoredPullRequestParameters(
+                rule.pullRequestParameters,
+              );
+              const pullRequestParametersField =
+                storedPullRequestParameters === undefined
+                  ? {}
+                  : { pullRequestParameters: storedPullRequestParameters };
+              const requiredStatusCheckContextsField =
+                rule.requiredStatusCheckContexts === undefined
+                  ? {}
+                  : {
+                      requiredStatusCheckContexts:
+                        rule.requiredStatusCheckContexts,
+                    };
+              return {
+                type: rule.type,
+                ...nameField,
+                ...pullRequestParametersField,
+                ...requiredStatusCheckContextsField,
+              };
             }),
           },
         };
@@ -1014,6 +1048,34 @@ function parseMergeEvidence(
     reviewDecision: input.reviewDecision,
     policy: { branchProtection, appliedRuleset },
   });
+}
+
+/** Mutable draft of a stored `pull_request` rule's parameters, built in
+ * statements so each optional field is added only when it has a value. */
+type MutableStoredPullRequestParameters = {
+  requiredApprovingReviewCount?: number;
+  requireLastPushApproval?: boolean;
+  requiredReviewThreadResolution?: boolean;
+  dismissStaleReviewsOnPush?: boolean;
+  requireCodeOwnerReview?: boolean;
+};
+
+function buildStoredPullRequestParameters(
+  input: v.InferOutput<typeof storedPullRequestParametersSchema> | undefined,
+): GitHubAppliedRulesetPullRequestParameters | undefined {
+  if (input === undefined) return undefined;
+  const built: MutableStoredPullRequestParameters = {};
+  if (input.requiredApprovingReviewCount !== undefined)
+    built.requiredApprovingReviewCount = input.requiredApprovingReviewCount;
+  if (input.requireLastPushApproval !== undefined)
+    built.requireLastPushApproval = input.requireLastPushApproval;
+  if (input.requiredReviewThreadResolution !== undefined)
+    built.requiredReviewThreadResolution = input.requiredReviewThreadResolution;
+  if (input.dismissStaleReviewsOnPush !== undefined)
+    built.dismissStaleReviewsOnPush = input.dismissStaleReviewsOnPush;
+  if (input.requireCodeOwnerReview !== undefined)
+    built.requireCodeOwnerReview = input.requireCodeOwnerReview;
+  return Object.keys(built).length === 0 ? undefined : built;
 }
 
 function withoutCheckUrls(checks: CheckSummary): CheckSummary {

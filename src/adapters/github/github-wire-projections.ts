@@ -6,6 +6,7 @@ import type {
   CheckRunSummary,
   CheckSummary,
   GitHubAppliedRulesetEvidence,
+  GitHubAppliedRulesetPullRequestParameters,
   GitHubClassicBranchProtectionEvidence,
   GitHubComment,
   GitHubMergePolicyEvidence,
@@ -686,13 +687,74 @@ export function parseOptionalPolicyResponse(
   const parsed = v.safeParse(appliedRulesetSchema, response.value);
   if (!parsed.success) return invalid("get_merge_policy_evidence");
   const value: GitHubAppliedRulesetEvidence = {
-    rules: parsed.output.map((rule) =>
-      rule.name === undefined
-        ? { type: rule.type }
-        : { type: rule.type, name: rule.name },
-    ),
+    rules: parsed.output.map(buildAppliedRule),
   };
   return ok({ state: "available", value });
+}
+
+type AppliedRulesetRule = v.InferOutput<typeof appliedRulesetSchema>[number];
+type AppliedRulesetRuleParameters = NonNullable<
+  AppliedRulesetRule["parameters"]
+>;
+
+/** Mutable draft of one applied-rule entry, built in statements so each
+ * optional field is added only when its rule type actually configures it. */
+type MutableAppliedRule = {
+  type: string;
+  name?: string;
+  pullRequestParameters?: GitHubAppliedRulesetPullRequestParameters;
+  requiredStatusCheckContexts?: ReadonlyArray<string>;
+};
+
+function buildAppliedRule(
+  rule: AppliedRulesetRule,
+): GitHubAppliedRulesetEvidence["rules"][number] {
+  const built: MutableAppliedRule = { type: rule.type };
+  if (rule.name !== undefined) built.name = rule.name;
+  if (rule.type === "pull_request") {
+    const pullRequestParameters = buildPullRequestParameters(rule.parameters);
+    if (pullRequestParameters !== undefined)
+      built.pullRequestParameters = pullRequestParameters;
+  }
+  if (rule.type === "required_status_checks") {
+    const contexts = rule.parameters?.required_status_checks;
+    if (contexts !== undefined)
+      built.requiredStatusCheckContexts = contexts.map(
+        (check) => check.context,
+      );
+  }
+  return built;
+}
+
+/** Mutable draft of the bounded `pull_request` parameters, built in
+ * statements so each optional field is added only when GitHub configured it. */
+type MutablePullRequestParameters = {
+  requiredApprovingReviewCount?: number;
+  requireLastPushApproval?: boolean;
+  requiredReviewThreadResolution?: boolean;
+  dismissStaleReviewsOnPush?: boolean;
+  requireCodeOwnerReview?: boolean;
+};
+
+function buildPullRequestParameters(
+  parameters: AppliedRulesetRuleParameters | undefined,
+): GitHubAppliedRulesetPullRequestParameters | undefined {
+  if (parameters === undefined) return undefined;
+  const built: MutablePullRequestParameters = {};
+  if (parameters.required_approving_review_count !== undefined)
+    built.requiredApprovingReviewCount =
+      parameters.required_approving_review_count;
+  if (parameters.require_last_push_approval !== undefined)
+    built.requireLastPushApproval = parameters.require_last_push_approval;
+  if (parameters.required_review_thread_resolution !== undefined)
+    built.requiredReviewThreadResolution =
+      parameters.required_review_thread_resolution;
+  if (parameters.dismiss_stale_reviews_on_push !== undefined)
+    built.dismissStaleReviewsOnPush =
+      parameters.dismiss_stale_reviews_on_push;
+  if (parameters.require_code_owner_review !== undefined)
+    built.requireCodeOwnerReview = parameters.require_code_owner_review;
+  return Object.keys(built).length === 0 ? undefined : built;
 }
 
 /** REST review-comment payload GitHub accepts when creating pending-review comments. */
