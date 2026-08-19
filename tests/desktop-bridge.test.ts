@@ -52,6 +52,13 @@ const denied = [
   { path: "/v1/reviews/complete", method: "POST" },
   { path: "/v1/reviews/models" },
   { path: `/v1/${"r" + "uns"}/review-pr`, method: "POST" },
+  // The "add" finding action was removed from local-api.ts; only "dismiss"
+  // remains registered (see registeredLocalApiRoutes' scan below). Keeps
+  // allowedRoutePatterns from pre-authorizing a deleted GitHub-write route.
+  {
+    path: "/v1/reviews/insights/analysis/findings/finding-1/add",
+    method: "POST",
+  },
 ] satisfies ReadonlyArray<LocalApiDesktopRequest>;
 
 describe("desktop request bridge", () => {
