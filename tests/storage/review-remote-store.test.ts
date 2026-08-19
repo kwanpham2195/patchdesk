@@ -328,6 +328,61 @@ describe("ReviewRemoteStore", () => {
     expect(saved.value.snapshotHash).not.toBe(hashSnapshot(snapshot));
   });
 
+  it("round-trips applied-ruleset rule parameters", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withRuleParameters: ReviewRemoteSnapshot = {
+      ...snapshot,
+      mergeEvidence: {
+        mergeable: "blocked",
+        mergeStateStatus: "blocked",
+        reviewDecision: "review_required",
+        policy: {
+          branchProtection: { state: "unavailable", reason: "not_found" },
+          appliedRuleset: {
+            state: "available",
+            value: {
+              rules: [
+                {
+                  type: "pull_request",
+                  name: "Protect sit",
+                  pullRequestParameters: {
+                    requiredApprovingReviewCount: 1,
+                    requireLastPushApproval: true,
+                    requiredReviewThreadResolution: true,
+                    dismissStaleReviewsOnPush: false,
+                    requireCodeOwnerReview: false,
+                  },
+                },
+                {
+                  type: "required_status_checks",
+                  requiredStatusCheckContexts: [
+                    "buildkite/dynamic-onboarding-service",
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withRuleParameters,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withRuleParameters });
+  });
+
   it("accepts legacy snapshots without evidence and rejects untyped evidence", () => {
     const legacy = { ...snapshot, mergeEvidence: undefined };
     const parsedLegacy = parseReviewRemoteSnapshot(legacy);
