@@ -480,9 +480,11 @@ function ReviewDiffSurface({
       setViewerElement(node);
       // CodeView's props don't include tabIndex/role/aria-label (it destructures
       // a closed prop list, no DOM rest-spread), and its own setup() only
-      // defaults tabindex to -1. Apply keyboard-focusability and an accessible
-      // name here so Up/Down/PageUp/PageDown/Home/End reach native scrolling,
-      // matching the AccessiblePatch fallback's role="region" convention below.
+      // defaults tabindex to -1 (script-focusable but not reachable by
+      // sequential Tab navigation). Apply real keyboard-focusability and an
+      // accessible name here so Up/Down/PageUp/PageDown/Home/End reach
+      // native scrolling, matching the AccessiblePatch fallback's
+      // role="region" convention below.
       if (node !== null) {
         node.tabIndex = 0;
         node.setAttribute("role", "region");

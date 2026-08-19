@@ -505,6 +505,95 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
   }
 });
 
+test("keyboard input scrolls the diff viewport once it is focusable", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#performance-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+
+    // Load-bearing on the fix itself: Pierre's own CodeView.setup()
+    // defaults the container to tabindex="-1" (script-focusable via
+    // .focus(), but not reachable by sequential Tab navigation) whenever no
+    // tabindex is already present, so a scroll-after-.focus() check alone
+    // would pass even without this fix. tabindex="0" plus a named
+    // role="region" are what actually make the viewport a real keyboard tab
+    // stop with an accessible name.
+    await expect(diffViewport).toHaveAttribute("tabindex", "0");
+    await expect(
+      page.getByRole("region", { name: "Diff content" }),
+    ).toHaveCount(1);
+
+    const overflow = () =>
+      diffViewport.evaluate(
+        (viewport) => viewport.scrollHeight - viewport.clientHeight,
+      );
+    // The performance fixture is a ~1000-file synthetic patch, so genuine
+    // overflow is present well before any progressive-loading tail.
+    await expect.poll(overflow).toBeGreaterThan(500);
+
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
+    // Pierre's CodeView is virtualized: a ResizeObserver on the sticky
+    // container (`handleResize` / `resolveAnchoredScrollTop` in
+    // @pierre/diffs/dist/components/CodeView.js) can re-anchor scrollTop as
+    // items mount/unmount, occasionally reverting a single key's nudge
+    // before the next frame. Retry the press instead of asserting after one
+    // fixed wait, for the same reason 55a137f retries past Pierre's
+    // post-scroll pointer-event suspension rather than guessing a sleep.
+    // This proves the browser's native key-scroll wiring works without
+    // fighting Pierre's own scroll compensation, which this fix must not
+    // touch (the repo already rejected code that does, see fcd2bc9).
+    const pressUntil = async (
+      key: string,
+      matches: (current: number, before: number) => boolean,
+    ): Promise<number> => {
+      const before = await scrollTop();
+      await expect
+        .poll(
+          async () => {
+            await page.keyboard.press(key);
+            return matches(await scrollTop(), before);
+          },
+          { timeout: 3_000 },
+        )
+        .toBe(true);
+      return scrollTop();
+    };
+
+    await diffViewport.focus();
+    await expect(diffViewport).toBeFocused();
+    expect(await scrollTop()).toBe(0);
+
+    // Focus + PageDown is the load-bearing proof: with no tabIndex, this
+    // press would leave scrollTop at 0 forever (verified by temporarily
+    // reverting the fix, see commit message).
+    await pressUntil("PageDown", (c, b) => c > b);
+    await pressUntil("ArrowDown", (c, b) => c > b);
+    const afterSecondPageDown = await pressUntil("PageDown", (c, b) => c > b);
+    const afterPageUp = await pressUntil("PageUp", (c, b) => c < b);
+    const afterEnd = await pressUntil("End", (c, b) => c > b);
+    // End should reach materially further than a page-up/page-down dance
+    // did, proving it is not merely replaying the previous key's effect.
+    expect(afterEnd).toBeGreaterThan(afterSecondPageDown);
+
+    const afterHome = await pressUntil("Home", (c, b) => c < b);
+    // Home is not asserted to land at exactly 0: after a large scroll
+    // excursion Pierre's virtualizer can settle a few pixels off true top
+    // as it re-measures rendered items, which is layout behavior unrelated
+    // to this fix's key-focusability change.
+    expect(afterHome).toBeLessThan(afterPageUp);
+
+    const afterSpace = await pressUntil("Space", (c, b) => c > b);
+    await pressUntil("Shift+Space", (c) => c < afterSpace);
+  } finally {
+    await close(server);
+  }
+});
+
 test("Pierre headers retain per-file totals while the navigator stays compact", async ({
   page,
 }) => {
