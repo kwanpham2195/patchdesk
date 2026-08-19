@@ -478,6 +478,16 @@ function ReviewDiffSurface({
     (node: HTMLDivElement | null): void => {
       viewerContainer.current = node;
       setViewerElement(node);
+      // CodeView's props don't include tabIndex/role/aria-label (it destructures
+      // a closed prop list, no DOM rest-spread), and its own setup() only
+      // defaults tabindex to -1. Apply keyboard-focusability and an accessible
+      // name here so Up/Down/PageUp/PageDown/Home/End reach native scrolling,
+      // matching the AccessiblePatch fallback's role="region" convention below.
+      if (node !== null) {
+        node.tabIndex = 0;
+        node.setAttribute("role", "region");
+        node.setAttribute("aria-label", "Diff content");
+      }
     },
     [],
   );
@@ -1767,7 +1777,7 @@ function ReviewDiffSurface({
             items={items.slice(0, loadedCount)}
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
-            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono"
+            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
             style={DIFF_CODE_METRICS}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
