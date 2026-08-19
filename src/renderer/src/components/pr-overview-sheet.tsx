@@ -194,8 +194,14 @@ export function CanonicalReviewOverviewSheet({
             title="Merge readiness"
             defaultOpen
             icon={<GitMerge className="size-3.5" />}
-            trailing={mergeReadinessLabel(overview.mergeReadiness._tag)}
-            trailingTone={mergeReadinessTone(overview.mergeReadiness._tag)}
+            trailing={mergeReadinessLabel(
+              overview.mergeReadiness._tag,
+              overview.mergeReadiness.blockers,
+            )}
+            trailingTone={mergeReadinessTone(
+              overview.mergeReadiness._tag,
+              overview.mergeReadiness.blockers,
+            )}
           >
             <MergeReadinessDetail overview={overview} />
             {merge === undefined ||
@@ -239,6 +245,7 @@ const successTone = "text-status-success";
 const warningTone = "text-status-warning";
 const destructiveTone = "text-destructive";
 const mutedTone = "text-muted-foreground";
+const infoTone = "text-status-info";
 const destructiveCard =
   "border-destructive/30 bg-destructive/10 text-destructive";
 const warningCard =
@@ -644,9 +651,28 @@ function insightTone(status: ReviewInsightStatus): string {
   }
 }
 
+// A "Blocked" tag whose only blocker is mergeability_unknown is not a
+// confirmed block — it's Patchdesk saying it does not yet know GitHub's
+// merge status. The header must not contradict the neutral info treatment
+// the body already gives that case (see the infoCard comment above and
+// ADR 0027, "Unknown is not failure"). Any additional blocker alongside it
+// is a real, confirmed block, so it keeps the destructive treatment.
+function isUnconfirmedBlock(
+  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
+): boolean {
+  return (
+    tag === "Blocked" &&
+    blockers.length === 1 &&
+    blockers[0] === "mergeability_unknown"
+  );
+}
+
 function mergeReadinessLabel(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
 ): string {
+  if (isUnconfirmedBlock(tag, blockers)) return "Unknown";
   switch (tag) {
     case "Ready":
       return "Ready to merge";
@@ -659,7 +685,9 @@ function mergeReadinessLabel(
 
 function mergeReadinessTone(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
 ): string {
+  if (isUnconfirmedBlock(tag, blockers)) return infoTone;
   switch (tag) {
     case "Ready":
       return successTone;
