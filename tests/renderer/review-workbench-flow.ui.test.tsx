@@ -153,14 +153,24 @@ type BridgeHandler = (input: {
 
 /**
  * Opening the inline comment composer selects its line, which scrolls
- * Pierre's CodeView to it. That scroll suspends pointer events on its sticky
- * container for a real, un-fakeable ~120ms so hover interactions do not land
- * mid-scroll. These two tests run with real timers specifically for
- * CodeView's async mount, so wait out that window before clicking through
- * the composer.
+ * Pierre's CodeView to it. That scroll suspends pointer events on the
+ * CodeView's sticky container for a real, un-fakeable
+ * `DEFAULT_SCROLL_INTERACTION_RESTORE_DELAY_MS` (120ms — see
+ * `suspendScrollInteractions`/`restoreScrollInteractions` in
+ * `@pierre/diffs/dist/components/CodeView.js`) so hover/click interactions
+ * do not land mid-scroll. `user.type` focuses its target with a click
+ * first, and userEvent's pointer-events check throws while that suspension
+ * is still in effect. Retry the focusing click — rather than guess how
+ * long the suspension lasts — until Pierre lifts it, then type without
+ * clicking again.
  */
-async function waitPastPierreScrollSuspend(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 200));
+async function typePastPierreScrollSuspend(
+  user: ReturnType<typeof userEvent.setup>,
+  element: HTMLElement,
+  text: string,
+): Promise<void> {
+  await waitFor(() => user.click(element));
+  await user.type(element, text, { skipClick: true });
 }
 
 function bridge(handler: BridgeHandler) {
@@ -1057,12 +1067,17 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
-      await waitPastPierreScrollSuspend();
-      await user.type(
+      await typePastPierreScrollSuspend(
+        user,
         screen.getByRole("textbox", { name: "Inline comment" }),
         "Confirmed body",
       );
-      await user.click(screen.getByRole("button", { name: "Comment" }));
+      // Typing can itself grow the composer and re-trigger Pierre's layout,
+      // restarting the same scroll-interaction suspension described above.
+      // Retry the submit click for the same reason as the focusing click.
+      await waitFor(() =>
+        user.click(screen.getByRole("button", { name: "Comment" })),
+      );
       // The confirmed threadId reaches the card in the same round trip: no
       // separate refresh is needed, and the fallback copy never appears.
       expect(
@@ -1113,12 +1128,17 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
-      await waitPastPierreScrollSuspend();
-      await user.type(
+      await typePastPierreScrollSuspend(
+        user,
         screen.getByRole("textbox", { name: "Inline comment" }),
         "Unresolved body",
       );
-      await user.click(screen.getByRole("button", { name: "Comment" }));
+      // Typing can itself grow the composer and re-trigger Pierre's layout,
+      // restarting the same scroll-interaction suspension described above.
+      // Retry the submit click for the same reason as the focusing click.
+      await waitFor(() =>
+        user.click(screen.getByRole("button", { name: "Comment" })),
+      );
       // No threadId was confirmed: the flow never synthesizes one, so the
       // card stays comment-only and explains why.
       expect(
