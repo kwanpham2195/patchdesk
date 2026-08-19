@@ -14,7 +14,7 @@
     "test": "vitest",
     "test:ui": "vitest --run dashboard.ui",
     "test:e2e": "pnpm build && playwright test",
-    "dev": "electron-vite dev",
+    "dev": "pnpm --dir runtime/flue build && electron-vite dev",
     "build": "electron-vite build",
     "stage:flue-runtime": "node scripts/stage-flue-runtime.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
@@ -28,7 +28,7 @@
     "precommit": "react-doctor --staged --blocking warning --yes && node scripts/lint-staged.mjs",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile"
+    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile && pnpm --dir runtime/flue build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
