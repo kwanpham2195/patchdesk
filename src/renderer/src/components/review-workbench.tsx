@@ -1,7 +1,6 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -348,18 +347,9 @@ export type ReviewWorkbenchInitialState = {
   readonly insightDetail?: "analysis" | "walkthrough";
 };
 
-const ReviewWorkbenchNavigationContext = createContext<
-  (() => void) | undefined
->(undefined);
 const PublishedFeedbackNavigationContext = createContext<
   (() => void) | undefined
 >(undefined);
-
-/** Lets an Insight reader return to the primary Files surface without coupling it to Tabs. */
-// oxlint-disable-next-line react/only-export-components -- Hook intentionally shares the workbench navigation context.
-export function useReviewWorkbenchNavigation(): (() => void) | undefined {
-  return useContext(ReviewWorkbenchNavigationContext);
-}
 
 /** Renders the canonical Review projection. Optional work stays in typed slots. */
 // Pre-existing giant component (~850 lines before this change;
@@ -720,10 +710,6 @@ export function ReviewWorkbench({
           subtitle: `${selectedCommit.author} · ${selectedCommit.sha.slice(0, 8)} · ${formatRelativeTime(selectedCommit.authoredAt)} · ${commitDiff.position} of ${commitDiff.total} · ${commitDiff.fileCount} files · +${commitDiff.additions}/-${commitDiff.deletions}`,
         };
 
-  const navigateToFiles = useCallback((): void => {
-    commitWorkbenchPosition({ activeTab: "diff", section: "files" });
-    setSelectedCommitSha(undefined);
-  }, [commitWorkbenchPosition]);
   const focusPublishedFeedback = useCallback((): void => {
     const feedbackRegion = feedbackRegionRef.current;
     const region =
@@ -743,448 +729,446 @@ export function ReviewWorkbench({
     directConversationActionProps(actions, selectedCommitSha);
 
   return (
-    <ReviewWorkbenchNavigationContext.Provider value={navigateToFiles}>
-      <PublishedFeedbackNavigationContext.Provider
-        value={focusPublishedFeedback}
+    <PublishedFeedbackNavigationContext.Provider
+      value={focusPublishedFeedback}
+    >
+      <section
+        className="flex min-h-0 flex-1 flex-col"
+        aria-label="Review workbench"
       >
-        <section
-          className="flex min-h-0 flex-1 flex-col"
-          aria-label="Review workbench"
+        <header
+          data-review-workbench-toolbar
+          className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
         >
-          <header
-            data-review-workbench-toolbar
-            className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h1
-                className="min-w-0 text-lg font-semibold"
-                aria-label={title}
-                title={title}
-              >
-                #{model.session.key.prNumber} {title}
-              </h1>
-              <div
-                className="flex flex-wrap items-center gap-2"
-                aria-label="Pull request status and actions"
-              >
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
-                    checksPillColor(model.checks.overall),
-                  )}
-                >
-                  {checksIcon(model.checks.overall)}
-                  Checks · {checksLabel}
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
-                    mergePillColor(model.mergeReadiness._tag),
-                  )}
-                >
-                  {mergeIcon(model.mergeReadiness._tag)}
-                  Merge · {mergeLabel(model.mergeReadiness._tag)}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={externalPullRequest === undefined}
-                  onClick={() => {
-                    if (externalPullRequest !== undefined)
-                      void openPullRequestExternalUrl(
-                        pullRequestPageUrl(externalPullRequest).toString(),
-                        externalPullRequest,
-                      );
-                  }}
-                >
-                  <ExternalLink /> Open on GitHub
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOverviewOpen(true)}
-                >
-                  PR overview
-                </Button>
-                {actions.pendingReview === undefined || terminal ? null : (
-                  <PendingReviewHeaderAction
-                    pendingReview={actions.pendingReview}
-                    onNavigateToDiff={() =>
-                      commitWorkbenchPosition({ activeTab: "diff", section })
-                    }
-                    onOpenSummary={() => setSummaryDialogOpen(true)}
-                    summaryAvailable={
-                      actions.directSummary !== undefined &&
-                      actions.directSummary.state !== "recovery_required"
-                    }
-                  />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1
+              className="min-w-0 text-lg font-semibold"
+              aria-label={title}
+              title={title}
+            >
+              #{model.session.key.prNumber} {title}
+            </h1>
+            <div
+              className="flex flex-wrap items-center gap-2"
+              aria-label="Pull request status and actions"
+            >
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
+                  checksPillColor(model.checks.overall),
                 )}
-              </div>
-            </div>
-            {model.pullRequest === undefined ? null : (
-              <div
-                className="flex flex-wrap items-center gap-1"
-                aria-label="Pull request labels"
               >
-                {model.pullRequest.labels.map((label) => (
-                  <LabelChip key={label.name} label={label} />
-                ))}
-                <LabelPicker
-                  attachedLabels={model.pullRequest.labels}
-                  {...(actions.labels === undefined
-                    ? {}
-                    : { actions: actions.labels })}
+                {checksIcon(model.checks.overall)}
+                Checks · {checksLabel}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
+                  mergePillColor(model.mergeReadiness._tag),
+                )}
+              >
+                {mergeIcon(model.mergeReadiness._tag)}
+                Merge · {mergeLabel(model.mergeReadiness._tag)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={externalPullRequest === undefined}
+                onClick={() => {
+                  if (externalPullRequest !== undefined)
+                    void openPullRequestExternalUrl(
+                      pullRequestPageUrl(externalPullRequest).toString(),
+                      externalPullRequest,
+                    );
+                }}
+              >
+                <ExternalLink /> Open on GitHub
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setOverviewOpen(true)}
+              >
+                PR overview
+              </Button>
+              {actions.pendingReview === undefined || terminal ? null : (
+                <PendingReviewHeaderAction
+                  pendingReview={actions.pendingReview}
+                  onNavigateToDiff={() =>
+                    commitWorkbenchPosition({ activeTab: "diff", section })
+                  }
+                  onOpenSummary={() => setSummaryDialogOpen(true)}
+                  summaryAvailable={
+                    actions.directSummary !== undefined &&
+                    actions.directSummary.state !== "recovery_required"
+                  }
                 />
-              </div>
-            )}
-            <PendingReviewNotice pendingReview={actions.pendingReview} />
-            <p
-              className="text-xs text-muted-foreground"
-              title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
-            >
-              {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
-              {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
-              {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
-              refreshed {model.revision.refreshedAt}
-              {hasUpdates ? (
-                <span
-                  className="ml-2 inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400"
-                  role="status"
-                  data-review-new-version-indicator
-                >
-                  Updates available
-                  {/* A renderer reload loads the stored projection; only the explicit
-                  refresh action replaces represented GitHub state. */}
-                  <button
-                    type="button"
-                    className="underline decoration-amber-500/60 underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
-                    disabled={actions.refreshing === true || terminal}
-                    onClick={() => void actions.refresh()}
-                  >
-                    {actions.refreshing === true
-                      ? "Refreshing…"
-                      : "Refresh GitHub state"}
-                  </button>
-                </span>
-              ) : null}
-            </p>
-            <p className="sr-only" aria-live="polite">
-              {hasUpdates
-                ? "Remote updates are available. Refresh before publishing or merging."
-                : "Review state is current."}
-            </p>
-          </header>
-
-          <div
-            className="flex shrink-0 items-center gap-1 border-b px-4 py-1"
-            data-review-workbench-tabs
-          >
-            <TabButton
-              active={activeTab === "conversation"}
-              onClick={() =>
-                commitWorkbenchPosition({ activeTab: "conversation", section })
-              }
-            >
-              Conversation
-            </TabButton>
-            <TabButton
-              active={activeTab === "diff"}
-              onClick={() =>
-                commitWorkbenchPosition({ activeTab: "diff", section })
-              }
-            >
-              Diff
-            </TabButton>
-            <TabButton
-              active={activeTab === "insights"}
-              onClick={() =>
-                commitWorkbenchPosition({
-                  activeTab: "insights",
-                  section: "files",
-                })
-              }
-            >
-              Insights
-            </TabButton>
+              )}
+            </div>
           </div>
-
-          <div
-            className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
-            data-review-workbench-content
-          >
-            {activeTab === "conversation" ? (
-              <Conversation
-                conversation={model.conversation}
-                {...conversationTabProps}
+          {model.pullRequest === undefined ? null : (
+            <div
+              className="flex flex-wrap items-center gap-1"
+              aria-label="Pull request labels"
+            >
+              {model.pullRequest.labels.map((label) => (
+                <LabelChip key={label.name} label={label} />
+              ))}
+              <LabelPicker
+                attachedLabels={model.pullRequest.labels}
+                {...(actions.labels === undefined
+                  ? {}
+                  : { actions: actions.labels })}
               />
-            ) : activeTab === "diff" ? (
-              <div className="min-h-0 flex-1 overflow-hidden">
-                {model.fullPatch === undefined ? (
-                  <div className="p-6 text-sm text-muted-foreground">
-                    No patch is available for this Review session.
-                  </div>
-                ) : (
-                  <div
-                    data-review-diff-layout={
-                      navigatorVisible
-                        ? "with-navigator"
-                        : "collapsed-navigator"
-                    }
-                    className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
-                  >
-                    {navigatorVisible ? (
-                      <ReviewNavigator
-                        patch={model.fullPatch}
-                        commits={model.commits}
-                        section={section}
-                        {...(selectedPath === undefined
-                          ? {}
-                          : { selectedPath })}
-                        {...(activePath === undefined ? {} : { activePath })}
-                        {...(selectedCommitSha === undefined
-                          ? {}
-                          : { selectedCommitSha })}
-                        onSectionChange={selectSection}
-                        onFileSelect={(path) => {
-                          commitWorkbenchPosition({
-                            activeTab: "diff",
-                            section: "files",
-                            selectedPath: path,
-                          });
-                          setActivePath(path);
-                        }}
-                        onCommitSelect={selectCommit}
-                        onCollapse={() => setNavigatorVisible(false)}
-                      />
-                    ) : (
-                      <div className="flex items-start justify-center pt-2">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon-sm"
-                                variant="outline"
-                                onClick={() => setNavigatorVisible(true)}
-                                aria-label="Show review navigator"
-                              />
-                            }
-                          >
-                            <PanelLeftOpen />
-                          </TooltipTrigger>
-                          <TooltipContent>Show review navigator</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    )}
-                    <div className="min-h-0 min-w-0">
-                      {selectedCommitSha !== undefined &&
-                      commitDiffState._tag === "Loading" ? (
-                        <p
-                          className="p-6 text-sm text-muted-foreground"
-                          role="status"
-                        >
-                          Loading commit diff…
-                        </p>
-                      ) : displayedPatch === undefined ? (
-                        <p className="p-6 text-sm text-muted-foreground">
-                          No patch is available for this Review session.
-                        </p>
-                      ) : (
-                        <>
-                          <DiffWorkbench
-                            key={
-                              selectedCommitSha ??
-                              model.revision.reviewedHeadSha
-                            }
-                            patch={displayedPatch}
-                            {...(selectedCommitSha === undefined
-                              ? {
-                                  sourceSession: {
-                                    profileId: model.session.key.profileId,
-                                    sessionId: model.session.id,
-                                  },
-                                }
-                              : {})}
-                            {...(selectedPath === undefined ||
-                            selectedCommitSha !== undefined
-                              ? {}
-                              : {
-                                  controlledSelectedPath: selectedPath,
-                                  onSelectedPathChange: (path: string) => {
-                                    commitWorkbenchPosition({
-                                      activeTab: "diff",
-                                      section,
-                                      selectedPath: path,
-                                    });
-                                    setActivePath(path);
-                                  },
-                                })}
-                            {...(selectedCommitSha === undefined
-                              ? {
-                                  onActiveFileChange: (path: string) =>
-                                    setActivePath(path),
-                                }
-                              : {})}
-                            {...(selectedCommitSha === undefined
-                              ? { annotations }
-                              : {})}
-                            {...(selectedCommitSha === undefined
-                              ? actions.localCommentAuthoring === undefined
-                                ? {}
-                                : {
-                                    localCommentAuthoring:
-                                      actions.localCommentAuthoring,
-                                  }
-                              : commitCommentAuthoring === undefined
-                                ? {}
-                                : {
-                                    localCommentAuthoring:
-                                      commitCommentAuthoring,
-                                  })}
-                            {...(actions.pendingReviewComposer === undefined
-                              ? {}
-                              : {
-                                  pendingReviewComposer:
-                                    actions.pendingReviewComposer,
-                                })}
-                            {...(diffConversationActions === undefined
-                              ? {}
-                              : { conversationActions: diffConversationActions })}
-                            hideFileNavigation
-                            surfaceAction={undefined}
-                            {...(commitHeader === undefined
-                              ? {}
-                              : {
-                                  diffTitle: commitHeader.title,
-                                  diffSubtitle: commitHeader.subtitle,
-                                  copyValue: commitHeader.sha,
-                                })}
-                            className="min-h-0 h-full"
-                            fillViewport={false}
-                            preferences={preferences}
-                            onPreferencesChange={updatePreferences}
-                          />
-                        </>
-                      )}
-                      {commitDiffError ? (
-                        <p
-                          role="alert"
-                          className="border-t px-4 py-2 text-sm text-destructive"
-                        >
-                          This commit diff could not be loaded.
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                data-review-workbench-insights
-                className="min-h-0 flex-1 overflow-hidden p-4"
-              >
-                {slots.insights}
-              </div>
-            )}
-          </div>
-
-          <div
-            ref={feedbackRegionRef}
-            tabIndex={-1}
-            className="hidden min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none"
-            data-review-workbench-feedback
+            </div>
+          )}
+          <PendingReviewNotice pendingReview={actions.pendingReview} />
+          <p
+            className="text-xs text-muted-foreground"
+            title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
           >
-            {slots.conversation}
-            {slots.mergeAction}
-          </div>
-          <div
-            className="hidden min-h-0 shrink-0"
-            data-review-workbench-draft-dock
-          ></div>
+            {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
+            {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
+            {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
+            refreshed {model.revision.refreshedAt}
+            {hasUpdates ? (
+              <span
+                className="ml-2 inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400"
+                role="status"
+                data-review-new-version-indicator
+              >
+                Updates available
+                {/* A renderer reload loads the stored projection; only the explicit
+                refresh action replaces represented GitHub state. */}
+                <button
+                  type="button"
+                  className="underline decoration-amber-500/60 underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                  disabled={actions.refreshing === true || terminal}
+                  onClick={() => void actions.refresh()}
+                >
+                  {actions.refreshing === true
+                    ? "Refreshing…"
+                    : "Refresh GitHub state"}
+                </button>
+              </span>
+            ) : null}
+          </p>
+          <p className="sr-only" aria-live="polite">
+            {hasUpdates
+              ? "Remote updates are available. Refresh before publishing or merging."
+              : "Review state is current."}
+          </p>
+        </header>
 
-          <CanonicalReviewOverviewSheet
-            open={overviewOpen}
-            onOpenChange={setOverviewOpen}
-            overview={overview}
-            {...(actions.merge === undefined ? {} : { merge: actions.merge })}
-            onRefresh={actions.refresh}
+        <div
+          className="flex shrink-0 items-center gap-1 border-b px-4 py-1"
+          data-review-workbench-tabs
+        >
+          <TabButton
+            active={activeTab === "conversation"}
+            onClick={() =>
+              commitWorkbenchPosition({ activeTab: "conversation", section })
+            }
+          >
+            Conversation
+          </TabButton>
+          <TabButton
+            active={activeTab === "diff"}
+            onClick={() =>
+              commitWorkbenchPosition({ activeTab: "diff", section })
+            }
+          >
+            Diff
+          </TabButton>
+          <TabButton
+            active={activeTab === "insights"}
+            onClick={() =>
+              commitWorkbenchPosition({
+                activeTab: "insights",
+                section: "files",
+              })
+            }
+          >
+            Insights
+          </TabButton>
+        </div>
+
+        <div
+          className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+          data-review-workbench-content
+        >
+          {activeTab === "conversation" ? (
+            <Conversation
+              conversation={model.conversation}
+              {...conversationTabProps}
+            />
+          ) : activeTab === "diff" ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {model.fullPatch === undefined ? (
+                <div className="p-6 text-sm text-muted-foreground">
+                  No patch is available for this Review session.
+                </div>
+              ) : (
+                <div
+                  data-review-diff-layout={
+                    navigatorVisible
+                      ? "with-navigator"
+                      : "collapsed-navigator"
+                  }
+                  className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
+                >
+                  {navigatorVisible ? (
+                    <ReviewNavigator
+                      patch={model.fullPatch}
+                      commits={model.commits}
+                      section={section}
+                      {...(selectedPath === undefined
+                        ? {}
+                        : { selectedPath })}
+                      {...(activePath === undefined ? {} : { activePath })}
+                      {...(selectedCommitSha === undefined
+                        ? {}
+                        : { selectedCommitSha })}
+                      onSectionChange={selectSection}
+                      onFileSelect={(path) => {
+                        commitWorkbenchPosition({
+                          activeTab: "diff",
+                          section: "files",
+                          selectedPath: path,
+                        });
+                        setActivePath(path);
+                      }}
+                      onCommitSelect={selectCommit}
+                      onCollapse={() => setNavigatorVisible(false)}
+                    />
+                  ) : (
+                    <div className="flex items-start justify-center pt-2">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              onClick={() => setNavigatorVisible(true)}
+                              aria-label="Show review navigator"
+                            />
+                          }
+                        >
+                          <PanelLeftOpen />
+                        </TooltipTrigger>
+                        <TooltipContent>Show review navigator</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                  <div className="min-h-0 min-w-0">
+                    {selectedCommitSha !== undefined &&
+                    commitDiffState._tag === "Loading" ? (
+                      <p
+                        className="p-6 text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        Loading commit diff…
+                      </p>
+                    ) : displayedPatch === undefined ? (
+                      <p className="p-6 text-sm text-muted-foreground">
+                        No patch is available for this Review session.
+                      </p>
+                    ) : (
+                      <>
+                        <DiffWorkbench
+                          key={
+                            selectedCommitSha ??
+                            model.revision.reviewedHeadSha
+                          }
+                          patch={displayedPatch}
+                          {...(selectedCommitSha === undefined
+                            ? {
+                                sourceSession: {
+                                  profileId: model.session.key.profileId,
+                                  sessionId: model.session.id,
+                                },
+                              }
+                            : {})}
+                          {...(selectedPath === undefined ||
+                          selectedCommitSha !== undefined
+                            ? {}
+                            : {
+                                controlledSelectedPath: selectedPath,
+                                onSelectedPathChange: (path: string) => {
+                                  commitWorkbenchPosition({
+                                    activeTab: "diff",
+                                    section,
+                                    selectedPath: path,
+                                  });
+                                  setActivePath(path);
+                                },
+                              })}
+                          {...(selectedCommitSha === undefined
+                            ? {
+                                onActiveFileChange: (path: string) =>
+                                  setActivePath(path),
+                              }
+                            : {})}
+                          {...(selectedCommitSha === undefined
+                            ? { annotations }
+                            : {})}
+                          {...(selectedCommitSha === undefined
+                            ? actions.localCommentAuthoring === undefined
+                              ? {}
+                              : {
+                                  localCommentAuthoring:
+                                    actions.localCommentAuthoring,
+                                }
+                            : commitCommentAuthoring === undefined
+                              ? {}
+                              : {
+                                  localCommentAuthoring:
+                                    commitCommentAuthoring,
+                                })}
+                          {...(actions.pendingReviewComposer === undefined
+                            ? {}
+                            : {
+                                pendingReviewComposer:
+                                  actions.pendingReviewComposer,
+                              })}
+                          {...(diffConversationActions === undefined
+                            ? {}
+                            : { conversationActions: diffConversationActions })}
+                          hideFileNavigation
+                          surfaceAction={undefined}
+                          {...(commitHeader === undefined
+                            ? {}
+                            : {
+                                diffTitle: commitHeader.title,
+                                diffSubtitle: commitHeader.subtitle,
+                                copyValue: commitHeader.sha,
+                              })}
+                          className="min-h-0 h-full"
+                          fillViewport={false}
+                          preferences={preferences}
+                          onPreferencesChange={updatePreferences}
+                        />
+                      </>
+                    )}
+                    {commitDiffError ? (
+                      <p
+                        role="alert"
+                        className="border-t px-4 py-2 text-sm text-destructive"
+                      >
+                        This commit diff could not be loaded.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              data-review-workbench-insights
+              className="min-h-0 flex-1 overflow-hidden p-4"
+            >
+              {slots.insights}
+            </div>
+          )}
+        </div>
+
+        <div
+          ref={feedbackRegionRef}
+          tabIndex={-1}
+          className="hidden min-h-0 max-h-[min(25vh,16rem)] shrink-0 overflow-y-auto outline-none"
+          data-review-workbench-feedback
+        >
+          {slots.conversation}
+          {slots.mergeAction}
+        </div>
+        <div
+          className="hidden min-h-0 shrink-0"
+          data-review-workbench-draft-dock
+        ></div>
+
+        <CanonicalReviewOverviewSheet
+          open={overviewOpen}
+          onOpenChange={setOverviewOpen}
+          overview={overview}
+          {...(actions.merge === undefined ? {} : { merge: actions.merge })}
+          onRefresh={actions.refresh}
+        />
+        {actions.pendingReview === undefined ||
+        actions.pendingReview.projection?.state !== "pending" ? null : (
+          <FinishReviewDialog
+            open={actions.pendingReview.finishDialogOpen}
+            onOpenChange={actions.pendingReview.onCloseFinishDialog}
+            projection={actions.pendingReview.projection}
+            {...(actions.pendingReview.finishDialogInitialSummary ===
+            undefined
+              ? {}
+              : {
+                  initialSummary:
+                    actions.pendingReview.finishDialogInitialSummary,
+                })}
+            actions={{
+              busy: actions.pendingReview.busy,
+              onSubmit: actions.pendingReview.onSubmit,
+              onDiscard: actions.pendingReview.onDiscard,
+              onCheckGitHubAgain: actions.pendingReview.onCheckGitHubAgain,
+            }}
+            {...(actions.pendingReview.finishDialogError === undefined
+              ? {}
+              : { error: actions.pendingReview.finishDialogError })}
           />
-          {actions.pendingReview === undefined ||
-          actions.pendingReview.projection?.state !== "pending" ? null : (
-            <FinishReviewDialog
-              open={actions.pendingReview.finishDialogOpen}
-              onOpenChange={actions.pendingReview.onCloseFinishDialog}
-              projection={actions.pendingReview.projection}
-              {...(actions.pendingReview.finishDialogInitialSummary ===
-              undefined
-                ? {}
-                : {
-                    initialSummary:
-                      actions.pendingReview.finishDialogInitialSummary,
-                  })}
-              actions={{
-                busy: actions.pendingReview.busy,
-                onSubmit: actions.pendingReview.onSubmit,
-                onDiscard: actions.pendingReview.onDiscard,
-                onCheckGitHubAgain: actions.pendingReview.onCheckGitHubAgain,
-              }}
-              {...(actions.pendingReview.finishDialogError === undefined
-                ? {}
-                : { error: actions.pendingReview.finishDialogError })}
-            />
-          )}
-          {actions.directSummary === undefined ? null : (
-            <SummaryReviewDialog
-              open={summaryDialogOpen}
-              onOpenChange={setSummaryDialogOpen}
-              busy={actions.directSummary.busy}
-              state={actions.directSummary.state}
-              {...(actions.directSummary.receipt === undefined
-                ? {}
-                : { receipt: actions.directSummary.receipt })}
-              {...(actions.directSummary.recoveryResolution === undefined
-                ? {}
-                : {
-                    recoveryResolution:
-                      actions.directSummary.recoveryResolution,
-                  })}
-              approvalCapability={actions.directSummary.approvalCapability}
-              {...(actions.directSummary.error === undefined
-                ? {}
-                : { error: actions.directSummary.error })}
-              onSubmit={actions.directSummary.onSubmit}
-              onRecover={actions.directSummary.onRecover}
-              {...(externalPullRequest === undefined
-                ? {}
-                : {
-                    onOpenPullRequest: () => {
-                      void openPullRequestExternalUrl(
-                        pullRequestPageUrl(externalPullRequest).toString(),
-                        externalPullRequest,
-                      );
-                    },
-                  })}
-            />
-          )}
-          {actions.merge === undefined ||
-          actions.merge.readiness._tag === "Blocked" ? null : (
-            <CompactMergeCommand
-              initialMethod="squash"
-              readiness={actions.merge.readiness}
-              methods={actions.merge.methods}
-              {...(actions.merge.mergeReasons === undefined
-                ? {}
-                : { mergeReasons: actions.merge.mergeReasons })}
-              {...(actions.merge.pullRequest === undefined
-                ? {}
-                : { pullRequest: actions.merge.pullRequest })}
-              context={actions.merge.context}
-              onMerge={actions.merge.onMerge}
-              onRecoverMerge={actions.merge.onRecoverMerge}
-            />
-          )}
-        </section>
-      </PublishedFeedbackNavigationContext.Provider>
-    </ReviewWorkbenchNavigationContext.Provider>
+        )}
+        {actions.directSummary === undefined ? null : (
+          <SummaryReviewDialog
+            open={summaryDialogOpen}
+            onOpenChange={setSummaryDialogOpen}
+            busy={actions.directSummary.busy}
+            state={actions.directSummary.state}
+            {...(actions.directSummary.receipt === undefined
+              ? {}
+              : { receipt: actions.directSummary.receipt })}
+            {...(actions.directSummary.recoveryResolution === undefined
+              ? {}
+              : {
+                  recoveryResolution:
+                    actions.directSummary.recoveryResolution,
+                })}
+            approvalCapability={actions.directSummary.approvalCapability}
+            {...(actions.directSummary.error === undefined
+              ? {}
+              : { error: actions.directSummary.error })}
+            onSubmit={actions.directSummary.onSubmit}
+            onRecover={actions.directSummary.onRecover}
+            {...(externalPullRequest === undefined
+              ? {}
+              : {
+                  onOpenPullRequest: () => {
+                    void openPullRequestExternalUrl(
+                      pullRequestPageUrl(externalPullRequest).toString(),
+                      externalPullRequest,
+                    );
+                  },
+                })}
+          />
+        )}
+        {actions.merge === undefined ||
+        actions.merge.readiness._tag === "Blocked" ? null : (
+          <CompactMergeCommand
+            initialMethod="squash"
+            readiness={actions.merge.readiness}
+            methods={actions.merge.methods}
+            {...(actions.merge.mergeReasons === undefined
+              ? {}
+              : { mergeReasons: actions.merge.mergeReasons })}
+            {...(actions.merge.pullRequest === undefined
+              ? {}
+              : { pullRequest: actions.merge.pullRequest })}
+            context={actions.merge.context}
+            onMerge={actions.merge.onMerge}
+            onRecoverMerge={actions.merge.onRecoverMerge}
+          />
+        )}
+      </section>
+    </PublishedFeedbackNavigationContext.Provider>
   );
 }
 

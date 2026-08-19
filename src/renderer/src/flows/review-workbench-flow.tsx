@@ -32,7 +32,6 @@ import {
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
-  useReviewWorkbenchNavigation,
 } from "../components/review-workbench";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
@@ -1650,7 +1649,6 @@ function InsightsSlot({
   readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
   readonly onFinishWithAnalysisSummary: (summary: string) => void;
 }): React.JSX.Element {
-  const navigateToFiles = useReviewWorkbenchNavigation();
   const [configuration, updateConfiguration] = useReducer(
     insightRunConfigurationReducer,
     initialInsightRunConfiguration,
@@ -2062,14 +2060,6 @@ function InsightsSlot({
             aria-label="Insight navigation"
             className="flex shrink-0 items-center gap-2 overflow-x-auto border-b pb-2"
           >
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={navigateToFiles === undefined}
-              onClick={navigateToFiles}
-            >
-              Files
-            </Button>
             <InsightRailButton
               selected={selectedInsight === "overview"}
               onClick={() => setSelectedInsight("overview")}
