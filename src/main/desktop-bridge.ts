@@ -108,7 +108,7 @@ const allowedRoutes = new Set([
 
 const allowedRoutePatterns = [
   /^GET \/v1\/reviews\/insights\/runs\/[^/]+$/,
-  /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/(?:add|dismiss)$/,
+  /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/dismiss$/,
 ];
 
 /**
@@ -312,10 +312,11 @@ async function readBridgeResponseBody(
   return text.length === 0 ? undefined : parseJson(text);
 }
 
-// No explicit return type: this is the same raw-body boundary as above, and
-// annotating it `unknown` would discard the `{ error: "invalid_response" }`
-// fallback's known shape for no benefit — every caller already treats the
-// result as unparsed.
+// No explicit return type: an explicit `unknown` here trips
+// anti-slop/no-known-value-widening on the `{ error: "invalid_response" }`
+// fallback below. Leaving the annotation off costs nothing — the `as
+// unknown` cast in the try branch already makes the inferred return type
+// `unknown` (it absorbs the fallback's object type in the union).
 function parseJson(value: string) {
   try {
     // SAFETY: JSON.parse's return type is `any`; this cast narrows it to
