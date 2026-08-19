@@ -332,6 +332,267 @@ describe("ReviewWorkbenchProjectionService", () => {
     });
   });
 
+  describe("deriveMergeReasons (via loadRepresented's mergeEvidence)", () => {
+    // SAFETY: this test helper builds a `ReviewRemoteSnapshot`-shaped
+    // fixture with a custom `mergeEvidence`; cast `as never` for the same
+    // reason as `snapshotData` above.
+    function snapshotWithMergeEvidence(
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- test-only fixture builder; the resulting object is cast `as never` below, the same boundary `snapshotData` itself uses.
+      mergeEvidence: unknown,
+    ) {
+      // SAFETY: see the file-level note above `const snapshotData`; this
+      // helper only swaps in a caller-supplied `mergeEvidence` fixture.
+      return { ...snapshotData, mergeEvidence } as never;
+    }
+
+    it("prefers a ruleset-sourced approval count, marking it available instead of partial", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "mergeable",
+          mergeStateStatus: "clean",
+          reviewDecision: "review_required",
+          policy: {
+            branchProtection: { state: "unavailable", reason: "not_found" },
+            appliedRuleset: {
+              state: "available",
+              value: {
+                rules: [
+                  {
+                    type: "pull_request",
+                    pullRequestParameters: { requiredApprovingReviewCount: 2 },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReasons: [
+            {
+              code: "review_required",
+              message: "2 approving reviews required by ruleset configuration.",
+              source: "ruleset_configuration",
+              availability: "available",
+              openOnGitHub: false,
+            },
+          ],
+        },
+      });
+    });
+
+    it("still uses classic branch protection when no ruleset count is available", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "mergeable",
+          mergeStateStatus: "clean",
+          reviewDecision: "review_required",
+          policy: {
+            branchProtection: {
+              state: "available",
+              value: { requiredApprovingReviewCount: 1 },
+            },
+            appliedRuleset: { state: "unavailable", reason: "not_found" },
+          },
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReasons: [
+            {
+              code: "review_required",
+              message: "1 approving review required by branch protection.",
+              source: "branch_protection",
+              availability: "available",
+              openOnGitHub: false,
+            },
+          ],
+        },
+      });
+    });
+
+    it("names requireLastPushApproval and requiredReviewThreadResolution as separate reasons when GitHub reports blocked, and skips the generic fallback", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "blocked",
+          mergeStateStatus: "blocked",
+          reviewDecision: "approved",
+          policy: {
+            branchProtection: { state: "unavailable", reason: "not_found" },
+            appliedRuleset: {
+              state: "available",
+              value: {
+                rules: [
+                  {
+                    type: "pull_request",
+                    pullRequestParameters: {
+                      requireLastPushApproval: true,
+                      requiredReviewThreadResolution: true,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReasons: [
+            {
+              code: "review_required",
+              message:
+                "New changes require approval from someone other than the last pusher.",
+              source: "ruleset_configuration",
+              availability: "available",
+            },
+            {
+              code: "blocked",
+              message:
+                "All review threads must be resolved before this can merge.",
+              source: "ruleset_configuration",
+              availability: "available",
+            },
+          ],
+        },
+      });
+      const reasons =
+        result._tag === "ok" ? result.value.mergeReasons : undefined;
+      expect(reasons).toHaveLength(2);
+      expect(
+        reasons?.some((reason) =>
+          reason.message.includes("merge requirements are not satisfied"),
+        ),
+      ).toBe(false);
+    });
+
+    it("reports failing checks and an outstanding review requirement together", async () => {
+      const value = fixture();
+      // SAFETY: see the file-level note above `const snapshotData`; this
+      // inline fixture only overrides `checks` and `mergeEvidence`.
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: {
+          ...snapshotData,
+          checks: { overall: "failing", checks: [] },
+          mergeEvidence: {
+            mergeable: "mergeable",
+            mergeStateStatus: "clean",
+            reviewDecision: "review_required",
+          },
+          // SAFETY: see the file-level note above `const snapshotData`.
+        } as never,
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      const reasons =
+        result._tag === "ok" ? result.value.mergeReasons : undefined;
+      expect(reasons).toHaveLength(2);
+      expect(reasons).toContainEqual(
+        expect.objectContaining({ code: "review_required" }),
+      );
+      expect(reasons).toContainEqual(
+        expect.objectContaining({ code: "checks" }),
+      );
+    });
+
+    it("reports has_hooks and unstable honestly instead of an empty array", async () => {
+      const value = fixture();
+      const hasHooks = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "mergeable",
+          mergeStateStatus: "has_hooks",
+          reviewDecision: "approved",
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(hasHooks).toMatchObject({
+        _tag: "ok",
+        value: { mergeReasons: [{ code: "blocked" }] },
+      });
+      const hasHooksReasons =
+        hasHooks._tag === "ok" ? hasHooks.value.mergeReasons : undefined;
+      expect(hasHooksReasons?.[0]?.message).toMatch(/pre-receive hook/);
+
+      const unstable = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "mergeable",
+          mergeStateStatus: "unstable",
+          reviewDecision: "approved",
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(unstable).toMatchObject({
+        _tag: "ok",
+        value: { mergeReasons: [{ code: "blocked" }] },
+      });
+      const unstableReasons =
+        unstable._tag === "ok" ? unstable.value.mergeReasons : undefined;
+      expect(unstableReasons?.[0]?.message).toMatch(/non-required checks/);
+      expect(unstableReasons?.[0]?.message).not.toMatch(/\bblocked\b/i);
+    });
+
+    it("does not assert unsatisfied requirements when no policy evidence is readable at all", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot: snapshotWithMergeEvidence({
+          mergeable: "blocked",
+          mergeStateStatus: "blocked",
+          reviewDecision: "approved",
+        }),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReasons: [
+            {
+              code: "blocked",
+              source: "github_pr_state",
+              availability: "partial",
+              openOnGitHub: true,
+            },
+          ],
+        },
+      });
+      const reasons =
+        result._tag === "ok" ? result.value.mergeReasons : undefined;
+      expect(reasons?.[0]?.message).not.toMatch(
+        /requirements are not satisfied/,
+      );
+      expect(reasons?.[0]?.message).toMatch(/could not read/i);
+    });
+  });
+
   it("never falls back to session-only context when the represented snapshot is complete", async () => {
     const value = fixture();
     const result = await value.service.loadRepresented({

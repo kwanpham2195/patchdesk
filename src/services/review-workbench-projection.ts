@@ -27,6 +27,7 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitSha,
+  type InsightRunId,
   type IsoTimestamp,
   type PullRequestNumber,
   type ReviewId,
@@ -39,6 +40,7 @@ import type {
   InsightArtifactStatus,
   InsightProjection,
   InsightScopeProjection,
+  InsightStatus,
 } from "../domain/insight";
 import { parseUnifiedPatch } from "../domain/patch";
 import {
@@ -47,14 +49,17 @@ import {
 } from "../domain/narrative-walkthrough";
 import type { MergeReadiness } from "../domain/merge-readiness";
 import type {
+  InsightFailureCategory,
   InsightFindingDismissal,
   InsightRecord,
   RetainedInsight,
+  WalkthroughProgress,
 } from "../domain/insight-record";
 import {
   parseInsightProvider,
   parseInsightReasoning,
   type InsightProvenance,
+  type InsightReasoning,
 } from "../domain/insight-provider";
 import type { PendingReviewProjection } from "./pending-review-service";
 import {
@@ -127,6 +132,17 @@ export type ReviewWorkbenchProjection = {
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
 };
 
+/** Mutable draft of `ReviewWorkbenchProjection`, built in statements so each
+ * optional field (`fullPatch`, `pullRequest`) is added only when it has a value. */
+type MutableReviewWorkbenchProjection = {
+  -readonly [K in keyof ReviewWorkbenchProjection]: ReviewWorkbenchProjection[K];
+};
+/** Mutable draft of `ReviewWorkbenchProjection["revision"]`, built in
+ * statements so `patchHash`/`currentHeadSha` are added only when known. */
+type MutableRevisionProjection = {
+  -readonly [K in keyof ReviewWorkbenchProjection["revision"]]: ReviewWorkbenchProjection["revision"][K];
+};
+
 export type LoadWorkbenchInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
@@ -137,6 +153,20 @@ export type WorkbenchProjectionFailure =
   | { readonly _tag: "SessionNotFound" }
   | { readonly _tag: "ReviewNotFound" }
   | { readonly _tag: "SessionStorageUnavailable" };
+
+/** Live-read evidence `project` combines with the durable Session; absent when no GitHub read was attempted. */
+type ProjectRemoteInput = {
+  readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
+  readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
+  readonly commits?: ReadonlyArray<PullRequestCommit>;
+  readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
+  readonly mergeEvidence?: GitHubMergeEvidence;
+};
+/** Mutable draft of `ProjectRemoteInput`, built in statements so the
+ * optional `mergeEvidence` is added only when the snapshot carried one. */
+type MutableProjectRemoteInput = {
+  -readonly [K in keyof ProjectRemoteInput]: ProjectRemoteInput[K];
+};
 
 /**
  * Read-side owner of the renderer-safe model for the exact snapshot held by
@@ -168,18 +198,18 @@ export class ReviewWorkbenchProjectionService {
       sessionId: input.sessionId,
     });
     if (session._tag === "err") return session;
+    const remote: MutableProjectRemoteInput = {
+      current: { _tag: "ok", value: input.snapshot.pullRequest },
+      conversation: ok(input.snapshot.conversation),
+      commits: input.snapshot.commits,
+      checks: { _tag: "ok", value: input.snapshot.checks },
+    };
+    if (input.snapshot.mergeEvidence !== undefined)
+      remote.mergeEvidence = input.snapshot.mergeEvidence;
     return this.project(
       session.value.profile,
       session.value.session,
-      {
-        current: { _tag: "ok", value: input.snapshot.pullRequest },
-        conversation: ok(input.snapshot.conversation),
-        commits: input.snapshot.commits,
-        checks: { _tag: "ok", value: input.snapshot.checks },
-        ...(input.snapshot.mergeEvidence === undefined
-          ? {}
-          : { mergeEvidence: input.snapshot.mergeEvidence }),
-      },
+      remote,
       input.refreshedAt,
       input.freshness,
       input.pendingReview,
@@ -207,19 +237,7 @@ export class ReviewWorkbenchProjectionService {
   private async project(
     profile: WorkspaceProfileConfig,
     session: ReviewSession,
-    remote:
-      | {
-          readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
-          readonly conversation: Awaited<
-            ReturnType<GitHubReader["loadConversation"]>
-          >;
-          readonly commits?: ReadonlyArray<PullRequestCommit>;
-          readonly checks: Awaited<
-            ReturnType<GitHubReader["getPullRequestChecks"]>
-          >;
-          readonly mergeEvidence?: GitHubMergeEvidence;
-        }
-      | undefined,
+    remote: ProjectRemoteInput | undefined,
     representedAt: IsoTimestamp,
     durableFreshness: ReviewFreshness,
     pendingReview?: {
@@ -232,10 +250,16 @@ export class ReviewWorkbenchProjectionService {
       this.loadStoredInsights(session),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
-    const patchHash =
+    const rawPatchHash =
       fullPatch === undefined
         ? undefined
         : createHash("sha256").update(fullPatch).digest("hex");
+    // SAFETY: `createHash("sha256").digest("hex")` always yields a
+    // 64-character lowercase hex string, which already satisfies
+    // ContentHash's runtime shape (`parseContentHash` checks exactly
+    // `/^[a-f0-9]{64}$/`).
+    const patchHash =
+      rawPatchHash === undefined ? undefined : (rawPatchHash as ContentHash);
 
     const current = remote?.current;
     const currentHeadSha =
@@ -334,25 +358,23 @@ export class ReviewWorkbenchProjectionService {
       analysis,
       session,
       freshness,
-      patchHash: patchHash as ContentHash | undefined,
+      patchHash,
       pendingReview: pendingReview?.state ?? session.pendingReview,
     });
 
-    return ok({
+    const revision: MutableRevisionProjection = {
+      reviewedHeadSha: session.key.headSha,
+      freshness,
+      refreshedAt,
+    };
+    if (patchHash !== undefined) revision.patchHash = patchHash;
+    if (currentHeadSha !== undefined) revision.currentHeadSha = currentHeadSha;
+
+    const projection: MutableReviewWorkbenchProjection = {
       state: "review",
       review: { id: reviewId, status: reviewStatus },
       session: projectSession(session),
-      revision: {
-        reviewedHeadSha: session.key.headSha,
-        ...(patchHash === undefined
-          ? {}
-          : { patchHash: patchHash as ContentHash }),
-        ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
-        freshness,
-        refreshedAt,
-      },
-      ...(fullPatch === undefined ? {} : { fullPatch }),
-      ...(pullRequest === undefined ? {} : { pullRequest }),
+      revision,
       commits: remote?.commits ?? [],
       insights: {
         analysis,
@@ -369,7 +391,10 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       mergeReasons,
-    });
+    };
+    if (fullPatch !== undefined) projection.fullPatch = fullPatch;
+    if (pullRequest !== undefined) projection.pullRequest = pullRequest;
+    return ok(projection);
   }
 
   private async loadStoredInsights(
@@ -408,22 +433,20 @@ export class ReviewWorkbenchProjectionService {
             analysis.value.retained,
           )
         : undefined;
-    return ok({
-      ...(analysis._tag === "ok" ? { analysis: analysis.value } : {}),
-      ...(walkthrough._tag === "ok"
-        ? { walkthrough: walkthrough.value.record }
-        : {}),
-      ...(analysisArtifact?.scope === undefined
-        ? {}
-        : { analysisScope: analysisArtifact.scope }),
-      ...(analysisArtifact?.artifactStatus === undefined
-        ? {}
-        : { analysisArtifactStatus: analysisArtifact.artifactStatus }),
-      ...(walkthrough._tag === "ok" &&
+    const records: MutableStoredInsightRecords = {};
+    if (analysis._tag === "ok") records.analysis = analysis.value;
+    if (walkthrough._tag === "ok")
+      records.walkthrough = walkthrough.value.record;
+    if (analysisArtifact?.scope !== undefined)
+      records.analysisScope = analysisArtifact.scope;
+    if (analysisArtifact?.artifactStatus !== undefined)
+      records.analysisArtifactStatus = analysisArtifact.artifactStatus;
+    if (
+      walkthrough._tag === "ok" &&
       walkthrough.value.artifactStatus !== undefined
-        ? { walkthroughArtifactStatus: walkthrough.value.artifactStatus }
-        : {}),
-    });
+    )
+      records.walkthroughArtifactStatus = walkthrough.value.artifactStatus;
+    return ok(records);
   }
 
   private async readInsightScope(
@@ -488,6 +511,10 @@ export class ReviewWorkbenchProjectionService {
       return err({ reason: "storage" });
     }
     if (loaded.value.retained === undefined) {
+      // SAFETY: `loaded.value.retained` is undefined here, so the generic
+      // `RetainedInsight<NarrativeWalkthrough>` parameter names no runtime
+      // data this branch actually inspects; only the `retained?` field's
+      // absence, which is what the check above already confirmed, matters.
       return ok({
         record: loaded.value as InsightRecord<
           RetainedInsight<NarrativeWalkthrough>
@@ -641,6 +668,13 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
   };
 }
 
+// Ordering: most-actionable-first. A maintainer reading this list top to
+// bottom sees the reasons whose next action is on them (get another review,
+// address feedback, resolve a named rule, update the branch, resolve
+// conflicts, wait on a check) before reasons that are purely informational
+// (has_hooks, unstable) or, worse, admittedly vague (the generic blocked
+// fallback). The fallback is pushed last and only when nothing more specific
+// was already collected, so it never buries a real answer under a vague one.
 function deriveMergeReasons(
   current: PullRequestSummary | undefined,
   evidence: GitHubMergeEvidence | undefined,
@@ -663,91 +697,170 @@ function deriveMergeReasons(
                   : ("unknown" as const),
         });
   if (aggregate === undefined) return [];
-  const protection = aggregate.policy?.branchProtection;
+
+  const branchProtection = aggregate.policy?.branchProtection;
   // Only a positive classic branch-protection count matches an approval
   // requirement. Zero and rules that do not expose approval configuration are
   // unavailable evidence, not an exact policy claim.
-  const requiredCount =
-    protection?.state === "available" &&
-    protection.value.requiredApprovingReviewCount !== undefined &&
-    protection.value.requiredApprovingReviewCount > 0
-      ? protection.value.requiredApprovingReviewCount
+  const classicCount =
+    branchProtection?.state === "available" &&
+    branchProtection.value.requiredApprovingReviewCount !== undefined &&
+    branchProtection.value.requiredApprovingReviewCount > 0
+      ? branchProtection.value.requiredApprovingReviewCount
       : undefined;
-  const policySource =
-    requiredCount === undefined
-      ? ("github_pr_state" as const)
+
+  const appliedRuleset = aggregate.policy?.appliedRuleset;
+  const pullRequestRule =
+    appliedRuleset?.state === "available"
+      ? appliedRuleset.value.rules.find(
+          (rule) => rule.pullRequestParameters !== undefined,
+        )?.pullRequestParameters
+      : undefined;
+  // Same "only a positive count is evidence" rule as classic protection.
+  const rulesetCount =
+    pullRequestRule?.requiredApprovingReviewCount !== undefined &&
+    pullRequestRule.requiredApprovingReviewCount > 0
+      ? pullRequestRule.requiredApprovingReviewCount
+      : undefined;
+  // Ruleset evidence is preferred: on a repo governed by Rulesets the classic
+  // `branches/{branch}/protection` endpoint legitimately 404s, so a
+  // ruleset-sourced count is the more direct evidence when both exist.
+  const requiredCount = rulesetCount ?? classicCount;
+  const requiredCountSource =
+    rulesetCount !== undefined
+      ? ("ruleset_configuration" as const)
       : ("branch_protection" as const);
+
+  const policyReadable =
+    branchProtection?.state === "available" ||
+    appliedRuleset?.state === "available";
+  const blocked =
+    aggregate.mergeStateStatus === "blocked" ||
+    aggregate.mergeable === "blocked";
+
+  const reasons: MergeDisplayReason[] = [];
+
+  // `reviewDecision` reconciliation: GraphQL `reviewDecision` stays the gate
+  // for whether a review is outstanding at all. It reflects live
+  // approval/dismissal state that no static ruleset field can express, and a
+  // live probe found it can under-report on a ruleset-governed repo (null,
+  // mapped to "unknown", on a PR that already had a genuine approving review
+  // from a non-last-pusher) — never over-report a requirement ruleset config
+  // says doesn't exist. So ruleset evidence never invents a review
+  // requirement by itself (this branch is still gated strictly on
+  // `reviewDecision === "review_required"`) and never overrides an
+  // "approved" decision; it only supplies a higher-confidence count/source
+  // once the gate already says a review is outstanding.
   if (aggregate.reviewDecision === "review_required") {
-    return [
-      {
-        code: "review_required",
-        message:
-          requiredCount === undefined
-            ? "Approval required by GitHub."
-            : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by branch protection.`,
-        source: policySource,
-        availability: requiredCount === undefined ? "partial" : "available",
-        openOnGitHub: requiredCount === undefined,
-      },
-    ];
+    reasons.push({
+      code: "review_required",
+      message:
+        requiredCount === undefined
+          ? "Approval required by GitHub."
+          : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by ${requiredCountSource === "ruleset_configuration" ? "ruleset configuration" : "branch protection"}.`,
+      source:
+        requiredCount === undefined ? "github_pr_state" : requiredCountSource,
+      availability: requiredCount === undefined ? "partial" : "available",
+      openOnGitHub: requiredCount === undefined,
+    });
+  } else if (aggregate.reviewDecision === "changes_requested") {
+    reasons.push({
+      code: "changes_requested",
+      message: "Changes requested.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
   }
-  if (aggregate.reviewDecision === "changes_requested")
-    return [
-      {
-        code: "changes_requested",
-        message: "Changes requested.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+
+  // GitHub says blocked and the ruleset says why: name the specific rules,
+  // matching what GitHub's own UI renders for each.
+  if (blocked && pullRequestRule?.requireLastPushApproval === true)
+    reasons.push({
+      code: "review_required",
+      message:
+        "New changes require approval from someone other than the last pusher.",
+      source: "ruleset_configuration",
+      availability: "available",
+      openOnGitHub: false,
+    });
+  if (blocked && pullRequestRule?.requiredReviewThreadResolution === true)
+    reasons.push({
+      code: "blocked",
+      message: "All review threads must be resolved before this can merge.",
+      source: "ruleset_configuration",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (aggregate.mergeStateStatus === "behind")
-    return [
-      {
-        code: "behind",
-        message: "Update this branch with the base branch.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+    reasons.push({
+      code: "behind",
+      message: "Update this branch with the base branch.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (
     aggregate.mergeStateStatus === "dirty" ||
     aggregate.mergeable === "conflicting"
   )
-    return [
-      {
-        code: "conflicts",
-        message: "Resolve merge conflicts.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+    reasons.push({
+      code: "conflicts",
+      message: "Resolve merge conflicts.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (checks.overall === "failing")
-    return [
-      {
-        code: "checks",
-        message: "Required checks have not passed.",
-        source: "checks",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
-  if (
-    aggregate.mergeStateStatus === "blocked" ||
-    aggregate.mergeable === "blocked"
-  )
-    return [
-      {
-        code: "blocked",
-        message: "GitHub merge requirements are not satisfied.",
-        source: "github_pr_state",
-        availability: requiredCount === undefined ? "partial" : "available",
-        openOnGitHub: true,
-      },
-    ];
-  return [];
+    reasons.push({
+      code: "checks",
+      message: "Required checks have not passed.",
+      source: "checks",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
+  // Both fall through GitHub's own `mergeStateStatus` without blocking the
+  // merge; say so honestly instead of staying silent.
+  if (aggregate.mergeStateStatus === "has_hooks")
+    reasons.push({
+      code: "blocked",
+      message:
+        "GitHub reports this pull request is mergeable; a required pre-receive hook has already run and passed.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
+  if (aggregate.mergeStateStatus === "unstable")
+    reasons.push({
+      code: "blocked",
+      message:
+        "GitHub reports non-required checks are failing. Required checks are passing, so this does not block the merge.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
+  // The generic fallback only fires when GitHub reports blocked and nothing
+  // above already explained why — including the two named rules above, but
+  // also any review/checks reason from another axis, since a maintainer
+  // shown a specific reason does not need an additional vague one.
+  if (blocked && reasons.length === 0)
+    reasons.push({
+      code: "blocked",
+      message: policyReadable
+        ? "GitHub reports this merge is blocked, but none of the readable merge rules explain why."
+        : "Patchdesk could not read this repository's merge rules, so it cannot say why GitHub blocked this merge.",
+      source: "github_pr_state",
+      availability: policyReadable ? "available" : "partial",
+      openOnGitHub: true,
+    });
+
+  return reasons;
 }
 
 function evaluateReadiness(
@@ -786,6 +899,45 @@ type StoredInsightRecords = {
   readonly analysisArtifactStatus?: InsightArtifactStatus;
   readonly walkthroughArtifactStatus?: InsightArtifactStatus;
 };
+/** Mutable draft of `StoredInsightRecords`, built in statements so each
+ * optional field is added only when storage actually held it. */
+type MutableStoredInsightRecords = {
+  -readonly [K in keyof StoredInsightRecords]: StoredInsightRecords[K];
+};
+
+/** Mutable draft of `InsightProjection`, built in statements so each
+ * optional field is added only when it has a value. */
+type MutableInsightProjection<T> = {
+  status: InsightStatus;
+  artifactStatus?: InsightArtifactStatus;
+  retained?: MutableRetainedProjection<T>;
+  progress?: WalkthroughProgress;
+  activeRun?: {
+    runId?: InsightRunId;
+    sessionId: ReviewSessionId;
+    startedAt: IsoTimestamp;
+  };
+  replacementFailure?: MutableReplacementFailureProjection;
+};
+/** Mutable draft of `InsightProjection["retained"]`, built in statements so
+ * the optional `scope` is added only when the caller supplied one. */
+type MutableRetainedProjection<T> = {
+  runId?: InsightRunId;
+  sessionId: ReviewSessionId;
+  headSha: GitSha;
+  generatedAt: IsoTimestamp;
+  value: T;
+  scope?: InsightScopeProjection;
+};
+/** Mutable draft of `InsightProjection["replacementFailure"]`, built in
+ * statements so the optional `category` is added only when known. */
+type MutableReplacementFailureProjection = {
+  runId?: InsightRunId;
+  category?: InsightFailureCategory;
+  model: string;
+  reasoning: InsightReasoning;
+  retryable: boolean;
+};
 
 function projectStoredInsight<T>(
   record: InsightRecord<RetainedInsight<T>> | undefined,
@@ -797,71 +949,70 @@ function projectStoredInsight<T>(
   scope?: InsightScopeProjection,
   artifactStatus?: InsightArtifactStatus,
 ): InsightProjection<T> {
-  const retained =
-    record?.retained === undefined
-      ? undefined
-      : {
-          runId: record.retained.runId,
-          sessionId: record.retained.revision.sessionId,
-          headSha: record.retained.revision.headSha,
-          generatedAt: record.retained.generatedAt,
-          value: decorate(record.retained.value, record),
-          ...(scope === undefined ? {} : { scope }),
-        };
+  let retained: MutableRetainedProjection<T> | undefined;
+  if (record?.retained !== undefined) {
+    retained = {
+      runId: record.retained.runId,
+      sessionId: record.retained.revision.sessionId,
+      headSha: record.retained.revision.headSha,
+      generatedAt: record.retained.generatedAt,
+      value: decorate(record.retained.value, record),
+    };
+    if (scope !== undefined) retained.scope = scope;
+  }
   if (record?.activeRun !== undefined) {
-    return {
+    const projection: MutableInsightProjection<T> = {
       status: "running",
-      ...(artifactStatus === undefined ? {} : { artifactStatus }),
-      ...(record.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
-      ...(retained === undefined ? {} : { retained }),
       activeRun: {
         runId: record.activeRun.id,
         sessionId: record.activeRun.revision.sessionId,
         startedAt: record.activeRun.startedAt,
       },
     };
+    if (artifactStatus !== undefined) projection.artifactStatus = artifactStatus;
+    if (record.walkthroughProgress !== undefined)
+      projection.progress = record.walkthroughProgress;
+    if (retained !== undefined) projection.retained = retained;
+    return projection;
   }
   if (record?.replacementFailure !== undefined) {
-    return {
+    const replacementFailure: MutableReplacementFailureProjection = {
+      runId: record.replacementFailure.runId,
+      model: record.replacementFailure.model,
+      reasoning: record.replacementFailure.reasoning,
+      retryable: record.replacementFailure.retryable,
+    };
+    if (record.replacementFailure.category !== undefined)
+      replacementFailure.category = record.replacementFailure.category;
+    const projection: MutableInsightProjection<T> = {
       status: "failed",
-      ...(artifactStatus === undefined ? {} : { artifactStatus }),
-      ...(record.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
-      ...(retained === undefined ? {} : { retained }),
-      replacementFailure: {
-        runId: record.replacementFailure.runId,
-        ...(record.replacementFailure.category === undefined
-          ? {}
-          : { category: record.replacementFailure.category }),
-        model: record.replacementFailure.model,
-        reasoning: record.replacementFailure.reasoning,
-        retryable: record.replacementFailure.retryable,
-      },
+      replacementFailure,
     };
+    if (artifactStatus !== undefined) projection.artifactStatus = artifactStatus;
+    if (record.walkthroughProgress !== undefined)
+      projection.progress = record.walkthroughProgress;
+    if (retained !== undefined) projection.retained = retained;
+    return projection;
   }
-  if (retained === undefined)
-    return {
-      status: "not_generated",
-      ...(record?.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
-    };
+  if (retained === undefined) {
+    const projection: MutableInsightProjection<T> = { status: "not_generated" };
+    if (record?.walkthroughProgress !== undefined)
+      projection.progress = record.walkthroughProgress;
+    return projection;
+  }
   const retainedRecord = record?.retained;
   const isCurrent =
     retainedRecord?.revision.sessionId === session.id &&
     retainedRecord.revision.headSha === session.key.headSha &&
     retainedRecord.revision.patchHash === patchHash;
-  return {
+  const projection: MutableInsightProjection<T> = {
     status: isCurrent ? "current" : "outdated",
-    ...(artifactStatus === undefined ? {} : { artifactStatus }),
-    ...(record?.walkthroughProgress === undefined
-      ? {}
-      : { progress: record.walkthroughProgress }),
     retained,
   };
+  if (artifactStatus !== undefined) projection.artifactStatus = artifactStatus;
+  if (record?.walkthroughProgress !== undefined)
+    projection.progress = record.walkthroughProgress;
+  return projection;
 }
 
 function projectAnalysisFindings(
@@ -883,6 +1034,7 @@ function projectAnalysisFindings(
 }
 
 function parseRetainedBase(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for a retained Insight record's shared fields; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<RetainedInsight<unknown>, undefined> {
   const revision = readObjectField(input, "revision");
@@ -925,11 +1077,13 @@ function parseRetainedBase(
 }
 
 function parseRetainedProvenance(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for a retained Insight's provenance field; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<InsightProvenance, undefined> {
   const provider = parseInsightProvider(readObjectField(input, "provider"));
   const model = readObjectField(input, "model");
   const reasoning = parseInsightReasoning(readObjectField(input, "reasoning"));
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
   return typeof model === "string" &&
     model.trim().length > 0 &&
     model.length <= 200 &&
@@ -940,6 +1094,7 @@ function parseRetainedProvenance(
 }
 
 function parseRetainedAnalysis(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for a retained analysis Insight; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<RetainedInsight<ReviewResult>, undefined> {
   const base = parseRetainedBase(input);
@@ -951,6 +1106,7 @@ function parseRetainedAnalysis(
 }
 
 function parseRetainedWalkthrough(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for a retained Walkthrough Insight; there is no earlier boundary to run it at.
   input: unknown,
   patch: string,
   profileId: WorkspaceProfileId,
@@ -974,11 +1130,17 @@ function parseRetainedWalkthrough(
 
 /** Preserve bounded prose while removing coordinates that no longer have trusted bytes. */
 function readableWalkthroughWithoutArtifact(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for a degraded, artifact-less Walkthrough salvage; there is no earlier boundary to run it at.
   input: unknown,
   profileId: WorkspaceProfileId,
   retained: RetainedInsight<unknown>,
 ): NarrativeWalkthrough {
+  // SAFETY: the `typeof`/`!== null` check below already confirms `input` is
+  // a non-null object before the assertion narrows its field types to
+  // `unknown` for the bounded reads that follow; it does not assert their
+  // contents.
   const raw =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw stored JSON at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
     typeof input === "object" && input !== null
       ? (input as {
           readonly title?: unknown;
@@ -988,7 +1150,12 @@ function readableWalkthroughWithoutArtifact(
       : {};
   const chapters = Array.isArray(raw.chapters)
     ? raw.chapters.slice(0, 12).map((chapter, chapterIndex) => {
+        // SAFETY: the `typeof`/`!== null` check below already confirms
+        // `chapter` is a non-null object before the assertion narrows its
+        // field types to `unknown` for the bounded reads that follow; it
+        // does not assert their contents.
         const value =
+          // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw stored JSON at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
           typeof chapter === "object" && chapter !== null
             ? (chapter as {
                 readonly title?: unknown;
@@ -997,7 +1164,13 @@ function readableWalkthroughWithoutArtifact(
             : {};
         const sections = Array.isArray(value.sections)
           ? value.sections.slice(0, 32).map((section, sectionIndex) => {
+              // SAFETY: the `typeof`/`!== null` check below already
+              // confirms `section` is a non-null object before the
+              // assertion narrows its field types to `unknown` for the
+              // bounded reads that follow; it does not assert their
+              // contents.
               const item =
+                // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw stored JSON at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
                 typeof section === "object" && section !== null
                   ? (section as {
                       readonly title?: unknown;
@@ -1039,10 +1212,12 @@ function readableWalkthroughWithoutArtifact(
 }
 
 function boundedArtifactText(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for one stored prose field; there is no earlier boundary to run it at.
   value: unknown,
   maxLength: number,
   fallback: string,
 ): string {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
   return typeof value === "string" && value.trim().length > 0
     ? value.slice(0, maxLength)
     : fallback;
