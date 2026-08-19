@@ -189,6 +189,67 @@ describe("pr overview sheet merge readiness", () => {
     ).toBe(2);
   });
 
+  it("header reads Unknown, not Blocked, when the only blocker is mergeability_unknown", () => {
+    const readiness: Readiness = {
+      _tag: "Blocked",
+      blockers: ["mergeability_unknown"],
+      warnings: [],
+    };
+    renderOverview(baseOverview({ mergeReadiness: readiness }));
+    expect(screen.queryByText("Blocked")).toBeNull();
+    const header = screen.getByText("Unknown");
+    expect(header.className).toContain("text-status-info");
+    expect(header.className).not.toContain("text-destructive");
+  });
+
+  it("header still reads Blocked when mergeability_unknown accompanies a real blocker", () => {
+    const readiness: Readiness = {
+      _tag: "Blocked",
+      blockers: ["mergeability_unknown", "conflicting"],
+      warnings: [],
+    };
+    renderOverview(baseOverview({ mergeReadiness: readiness }));
+    expect(screen.queryByText("Unknown")).toBeNull();
+    const header = screen.getByText("Blocked");
+    expect(header.className).toContain("text-destructive");
+    expect(header.className).not.toContain("text-status-info");
+  });
+
+  it("header still reads Blocked with the destructive tone for a plain conflicting blocker", () => {
+    const readiness: Readiness = {
+      _tag: "Blocked",
+      blockers: ["conflicting"],
+      warnings: [],
+    };
+    renderOverview(baseOverview({ mergeReadiness: readiness }));
+    const header = screen.getByText("Blocked");
+    expect(header.className).toContain("text-destructive");
+    expect(header.className).not.toContain("text-status-info");
+  });
+
+  it("leaves the Ready and NeedsAcknowledgement header labels unchanged", () => {
+    renderOverview(
+      baseOverview({
+        mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+      }),
+    );
+    const readyHeader = screen.getByText("Ready to merge");
+    expect(readyHeader.className).toContain("text-status-success");
+    cleanup();
+
+    renderOverview(
+      baseOverview({
+        mergeReadiness: {
+          _tag: "NeedsAcknowledgement",
+          blockers: [],
+          warnings: ["request_changes"],
+        },
+      }),
+    );
+    const warningsHeader = screen.getByText("Warnings");
+    expect(warningsHeader.className).toContain("text-status-warning");
+  });
+
   it("shows Open on GitHub only once when several reasons request it", () => {
     renderOverview(
       baseOverview({
