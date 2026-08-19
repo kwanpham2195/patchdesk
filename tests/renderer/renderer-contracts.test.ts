@@ -187,6 +187,35 @@ describe("parseWorkbenchResponse", () => {
     });
   });
 
+  it("accepts a pull request summary carrying a GraphQL nodeId", () => {
+    const projection = {
+      ...reviewProjection,
+      pullRequest: {
+        ref: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          number: 42,
+        },
+        title: "Add nodeId to the pull request domain type",
+        nodeId: "PR_kwDOOxMYd87hgCZR",
+        author: "octocat",
+        headBranch: "feature",
+        baseBranch: "main",
+        headSha: sessionProjection.key.headSha,
+        isDraft: false,
+        isOpen: true,
+        reviewState: "none" as const,
+        mergeability: "mergeable" as const,
+        labels: [],
+        updatedAt: "2026-07-18T00:00:00.000Z",
+      },
+    };
+    const parsed = parseWorkbenchResponse(projection);
+    expect(parsed).toBeDefined();
+    expect(parsed?.pullRequest?.nodeId).toBe("PR_kwDOOxMYd87hgCZR");
+  });
+
   it("accepts Patchdesk-owned Finding dispositions", () => {
     const projection = {
       ...reviewProjection,

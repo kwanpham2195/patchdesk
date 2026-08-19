@@ -370,6 +370,7 @@ const githubThreadSchema = v.strictObject({
 const pullRequestSummarySchema = v.strictObject({
   ref: pullRequestRefSchema,
   title: v.string(),
+  nodeId: v.optional(v.string()),
   description: v.optional(v.string()),
   author: v.string(),
   headBranch: v.string(),
@@ -810,7 +811,13 @@ export function parseWorkbenchResponse(
   input: unknown,
 ): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);
-  return parsed.success ? parsed.output : undefined;
+  if (parsed.success) return parsed.output;
+  // The dot path names only the rejected field (e.g. an unrecognized or
+  // missing field), never the field's value, so it is safe to log without
+  // repeating the sensitive-value guard's job elsewhere in this file.
+  const issuePath = v.getDotPath(parsed.issues[0]) ?? "(unknown field)";
+  console.error(`Invalid workbench projection: rejected at "${issuePath}"`);
+  return undefined;
 }
 
 const commitDiffResponseSchema = v.strictObject({
