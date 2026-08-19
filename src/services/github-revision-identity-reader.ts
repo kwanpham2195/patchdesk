@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { PullRequestRef } from "../domain/pull-request";
 import type {
@@ -95,14 +93,18 @@ export class GitHubRevisionIdentityReader {
       baseSha: current.value.baseSha,
       canonicalPatchHash: canonicalPatchHash.value,
     };
-    const sessionPatchHash = await this.sessionPatchHash(input.session);
-    if (sessionPatchHash === undefined) {
-      return ok({ _tag: "Unavailable", reason: "reconciliation_incomplete" });
-    }
+    // A session prepared before ADR 0026 (or one whose canonical fetch
+    // failed at open time, per that ADR) has no stored hash. It is compared
+    // on the SHA pair alone rather than reported `Unavailable`: `headSha`
+    // and `baseSha` are still stored and content-addressed, so a genuine
+    // revision change is still caught. No hash is backfilled onto the
+    // session here — session identity embeds the head SHA, so a legacy
+    // session naturally retires the moment a new revision creates a new one.
     const same =
       input.session.key.headSha === identity.headSha &&
       input.session.pr.baseSha === identity.baseSha &&
-      sessionPatchHash === identity.canonicalPatchHash;
+      (input.session.canonicalPatchHash === undefined ||
+        input.session.canonicalPatchHash === identity.canonicalPatchHash);
     return ok(
       same ? { _tag: "Same", identity } : { _tag: "Changed", identity },
     );
@@ -147,17 +149,6 @@ export class GitHubRevisionIdentityReader {
       current.value.headSha === input.identity.headSha &&
       current.value.baseSha === input.identity.baseSha;
     return ok({ _tag: same ? "Unchanged" : "Changed" });
-  }
-
-  private async sessionPatchHash(session: ReviewSession) {
-    const patch = await readFile(session.patchPath, "utf8").catch(
-      () => undefined,
-    );
-    if (patch === undefined) return undefined;
-    const hash = parseContentHash(
-      hashReviewArtifactContent(normalizeReviewPatch(patch)),
-    );
-    return hash._tag === "ok" ? hash.value : undefined;
   }
 }
 

@@ -12,6 +12,8 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import {
   createReviewSessionId,
   parseAbsolutePath,
+  parseContentHash,
+  type ContentHash,
   type GitSha,
   type IsoTimestamp,
   type ReviewSessionId,
@@ -55,10 +57,49 @@ export type PrepareReviewSessionFailure =
   | { readonly _tag: "PreparationUnavailable" }
   | { readonly _tag: "PreparationCleanupUnavailable" };
 
-/** Sessions store GitHub's canonical complete unified patch unchanged. */
+/**
+ * A worktree-mode session may store the local git rendering of the patch on
+ * disk for display and insights; that rendering is not what proves revision
+ * identity. See ADR 0026 — the canonical hash always comes from GitHub's
+ * compare rendering instead.
+ */
 export function normalizeReviewPatch(patch: string): string {
   return patch;
 }
+
+/** Mutable draft of `ReviewWorktreeService.prepare`'s input, built in
+ * statements so `localPath` is added only when present. */
+type MutableWorktreePrepareInput = {
+  -readonly [K in keyof Parameters<
+    ReviewWorktreeService["prepare"]
+  >[0]]: Parameters<ReviewWorktreeService["prepare"]>[0][K];
+};
+
+/** Mutable draft of a session's `prContext`, built in statements so
+ * `description` is added only when present. */
+type MutablePrContext = {
+  -readonly [K in keyof NonNullable<
+    ReviewSession["prContext"]
+  >]: NonNullable<ReviewSession["prContext"]>[K];
+};
+
+/** Mutable draft of `createReviewSession`'s input, built in statements so
+ * `canonicalPatchHash` is added only when present. */
+type MutableCreateReviewSessionInput = {
+  -readonly [K in keyof Parameters<
+    typeof createReviewSession
+  >[0]]: Parameters<typeof createReviewSession>[0][K];
+};
+
+/** Outcome of writing a session's on-disk artifacts: the canonical patch
+ * hash, present only when it could be established. */
+type WriteArtifactsResult = { readonly canonicalPatchHash?: ContentHash };
+
+/** Mutable draft of `WriteArtifactsResult`, built in statements so
+ * `canonicalPatchHash` is added only when present. */
+type MutableWriteArtifactsResult = {
+  -readonly [K in keyof WriteArtifactsResult]: WriteArtifactsResult[K];
+};
 
 type PreparationDependencies = {
   readonly profiles: ProfileStore;
@@ -198,7 +239,7 @@ export class ReviewSessionPreparation {
       if (recorded._tag === "err")
         return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     }
-    const prepared = await this.dependencies.worktrees.prepare({
+    const worktreePrepareInput: MutableWorktreePrepareInput = {
       profileId: input.profileId,
       host: input.pullRequest.host,
       owner: input.pullRequest.owner,
@@ -207,10 +248,12 @@ export class ReviewSessionPreparation {
       baseSha: current.value.baseSha,
       sha: headSha,
       sessionId,
-      ...(matchingRepo?.localPath === undefined
-        ? {}
-        : { localPath: matchingRepo.localPath }),
-    });
+    };
+    if (matchingRepo?.localPath !== undefined)
+      worktreePrepareInput.localPath = matchingRepo.localPath;
+    const prepared = await this.dependencies.worktrees.prepare(
+      worktreePrepareInput,
+    );
     if (prepared._tag === "err")
       return await this.abort(journal, { _tag: "PreparationUnavailable" });
     const artifacts = await this.writeArtifacts({
@@ -241,7 +284,15 @@ export class ReviewSessionPreparation {
     const committing = await journal.markCommitting();
     if (committing._tag === "err")
       return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const session = createReviewSession({
+    const prContext: MutablePrContext = {
+      title: current.value.title,
+      author: current.value.author,
+      headBranch: current.value.headBranch,
+      baseBranch: current.value.baseBranch,
+    };
+    if (current.value.description !== undefined)
+      prContext.description = current.value.description;
+    const sessionInput: MutableCreateReviewSessionInput = {
       key: {
         profileId: input.profileId,
         host: input.pullRequest.host,
@@ -256,19 +307,14 @@ export class ReviewSessionPreparation {
         isDraft: current.value.isDraft,
         isOpen: current.value.isOpen,
       },
-      prContext: {
-        title: current.value.title,
-        ...(current.value.description === undefined
-          ? {}
-          : { description: current.value.description }),
-        author: current.value.author,
-        headBranch: current.value.headBranch,
-        baseBranch: current.value.baseBranch,
-      },
+      prContext,
       patchPath: patchPath.value,
       worktree: { path: parsedWorktreePath.value, headSha },
       createdAt: this.dependencies.now(),
-    });
+    };
+    if (artifacts.value.canonicalPatchHash !== undefined)
+      sessionInput.canonicalPatchHash = artifacts.value.canonicalPatchHash;
+    const session = createReviewSession(sessionInput);
     const saved = await this.dependencies.sessions.save(session);
     if (saved._tag === "err")
       return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
@@ -285,7 +331,7 @@ export class ReviewSessionPreparation {
     readonly worktreePath: string;
     readonly prepared: ManagedWorktree | MetadataOnlyReview;
     readonly journal: ReviewPreparationJournal;
-  }): Promise<Result<void, PrepareReviewSessionFailure>> {
+  }): Promise<Result<WriteArtifactsResult, PrepareReviewSessionFailure>> {
     const patchPath = this.dependencies.paths.patchFile(
       input.input.profileId,
       input.sessionId,
@@ -312,7 +358,18 @@ export class ReviewSessionPreparation {
       return await this.abort(input.journal, {
         _tag: "PreparationUnavailable",
       });
-    const [comments, checks, diff] = await Promise.all([
+    // Worktree mode's primary `diff` runs local `git diff`; only GitHub's
+    // compare rendering proves revision identity (ADR 0026), so fetch it
+    // concurrently here rather than serially after the primary diff.
+    const canonicalDiff =
+      fetchedRefs === undefined
+        ? undefined
+        : this.dependencies.github.getPullRequestDiff({
+            profile: input.profile,
+            pr: input.input.pullRequest,
+            snapshot: { baseSha: input.baseSha, headSha: input.headSha },
+          });
+    const [comments, checks, diff, canonical] = await Promise.all([
       this.dependencies.github.getPullRequestComments({
         profile: input.profile,
         pr: input.input.pullRequest,
@@ -329,6 +386,7 @@ export class ReviewSessionPreparation {
           ? { snapshot: { baseSha: input.baseSha, headSha: input.headSha } }
           : { fetchedRefs: fetchedRefs.value }),
       }),
+      canonicalDiff ?? Promise.resolve(undefined),
     ]);
     if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err")
       return await this.abort(input.journal, {
@@ -346,6 +404,21 @@ export class ReviewSessionPreparation {
       return await this.abort(input.journal, {
         _tag: "PreparationUnavailable",
       });
+    }
+    // The canonical hash always comes from GitHub's compare rendering: when
+    // there is no worktree, `diff` already is that rendering; otherwise it
+    // is the extra `canonical` fetch above. A failed fetch or an unparsable
+    // hash leaves the hash absent rather than failing preparation — opening
+    // a PR must never become more fragile because of this proof (ADR 0026).
+    let canonicalPatchHash: ContentHash | undefined;
+    if (fetchedRefs === undefined) {
+      const parsed = parseContentHash(hashReviewArtifactContent(normalizedPatch));
+      if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
+    } else if (canonical !== undefined && canonical._tag === "ok") {
+      const parsed = parseContentHash(
+        hashReviewArtifactContent(normalizeReviewPatch(canonical.value)),
+      );
+      if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     }
     const contextPath = this.dependencies.paths.preparedContextFile(
       input.input.profileId,
@@ -384,8 +457,11 @@ export class ReviewSessionPreparation {
       },
       rulePaths: input.profile.rulePaths,
     });
+    const artifactResult: MutableWriteArtifactsResult = {};
+    if (canonicalPatchHash !== undefined)
+      artifactResult.canonicalPatchHash = canonicalPatchHash;
     return context._tag === "ok"
-      ? ok(undefined)
+      ? ok(artifactResult)
       : await this.abort(input.journal, { _tag: "PreparationUnavailable" });
   }
 
