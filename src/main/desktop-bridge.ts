@@ -20,6 +20,7 @@ import {
   type DesktopRequest,
   type DesktopResponse,
   type LocalApiDesktopRequest,
+  type SelectDirectoryDesktopRequest,
 } from "./ipc-contract";
 import type { StartedLocalApi } from "./app-lifecycle";
 
@@ -43,6 +44,19 @@ const requestSchema = union([
   }),
 ]);
 
+/** Mutable draft of `SelectDirectoryDesktopRequest`, built in statements so
+ * the optional `defaultPath` is added only when it has a value. */
+type MutableSelectDirectoryDesktopRequest = {
+  -readonly [
+    K in keyof SelectDirectoryDesktopRequest
+  ]: SelectDirectoryDesktopRequest[K];
+};
+/** Mutable draft of `LocalApiDesktopRequest`, built in statements so the
+ * optional `method` and `body` are added only when they have a value. */
+type MutableLocalApiDesktopRequest = {
+  -readonly [K in keyof LocalApiDesktopRequest]: LocalApiDesktopRequest[K];
+};
+
 const allowedRoutes = new Set([
   "GET /v1/profiles",
   "POST /v1/profiles",
@@ -60,6 +74,8 @@ const allowedRoutes = new Set([
   "GET /v1/environment",
   "POST /v1/direct-entry/preview",
   "POST /v1/reviews/inline-conversations/command",
+  "POST /v1/reviews/labels/command",
+  "GET /v1/reviews/labels",
   "POST /v1/reviews/pending-review/command",
   "POST /v1/reviews/pending-review/recover",
   "POST /v1/reviews/direct-summary/submit",
@@ -94,6 +110,19 @@ const allowedRoutePatterns = [
   /^GET \/v1\/reviews\/insights\/runs\/[^/]+$/,
   /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/(?:add|dismiss)$/,
 ];
+
+/**
+ * Routes registered in `local-api.ts` that are intentionally unreachable
+ * through the desktop bridge. `tests/desktop-bridge.test.ts` derives every
+ * route Hono actually registers and fails, naming the route, unless it
+ * appears here or in `allowedRoutes` / `allowedRoutePatterns` — so adding a
+ * Hono route without a matching bridge decision cannot ship silently.
+ */
+export const deliberatelyDeniedRoutes = new Set([
+  // Liveness probe for the local HTTP server process itself; the renderer
+  // has no reason to reach it through the desktop bridge.
+  "GET /health",
+]);
 
 // The renderer projection can carry a large retained Walkthrough plus its full
 // patch (a 100+-hunk PR easily exceeds 2 MB of bounded diff text). 8 MB keeps
@@ -131,6 +160,7 @@ export function installDesktopRequestBridge(
   ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
   ipc.handle(
     DESKTOP_REQUEST_CHANNEL,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the desktop bridge's raw IPC-message I/O boundary; the very next statement runs `safeParse(requestSchema, input)` against it before anything else touches it.
     async (event, input: unknown): Promise<DesktopResponse> => {
       const correlationId = randomUUID();
       const parsed = safeParse(requestSchema, input);
@@ -141,21 +171,24 @@ export function installDesktopRequestBridge(
             ? { operation: parsed.output.operation, state: parsed.output.state }
             : parsed.output.operation === "openExternalHttps"
               ? { operation: parsed.output.operation, url: parsed.output.url }
-              : {
-                  operation: parsed.output.operation,
-                  ...(parsed.output.defaultPath === undefined
-                    ? {}
-                    : { defaultPath: parsed.output.defaultPath }),
-                }
-          : {
-              path: parsed.output.path,
-              ...(parsed.output.method === undefined
-                ? {}
-                : { method: parsed.output.method }),
-              ...(parsed.output.body === undefined
-                ? {}
-                : { body: parsed.output.body }),
-            };
+              : (() => {
+                  const selectDirectoryRequest: MutableSelectDirectoryDesktopRequest =
+                    { operation: parsed.output.operation };
+                  if (parsed.output.defaultPath !== undefined)
+                    selectDirectoryRequest.defaultPath =
+                      parsed.output.defaultPath;
+                  return selectDirectoryRequest;
+                })()
+          : (() => {
+              const localApiRequest: MutableLocalApiDesktopRequest = {
+                path: parsed.output.path,
+              };
+              if (parsed.output.method !== undefined)
+                localApiRequest.method = parsed.output.method;
+              if (parsed.output.body !== undefined)
+                localApiRequest.body = parsed.output.body;
+              return localApiRequest;
+            })();
       if (request === undefined || event.sender.id !== senderId) {
         return {
           ok: false,
@@ -218,21 +251,21 @@ export function installDesktopRequestBridge(
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30_000);
       try {
+        const requestInit: RequestInit = {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Origin: rendererOrigin,
+            "X-Patchdesk-Correlation-Id": correlationId,
+            [APP_CAPABILITY_HEADER]: server.capability,
+          },
+          signal: controller.signal,
+        };
+        if (request.body !== undefined)
+          requestInit.body = JSON.stringify(request.body);
         const response = await fetch(
           new URL(request.path.slice(1), server.url),
-          {
-            method,
-            headers: {
-              "Content-Type": "application/json",
-              Origin: rendererOrigin,
-              "X-Patchdesk-Correlation-Id": correlationId,
-              [APP_CAPABILITY_HEADER]: server.capability,
-            },
-            ...(request.body === undefined
-              ? {}
-              : { body: JSON.stringify(request.body) }),
-            signal: controller.signal,
-          },
+          requestInit,
         );
         const ok = response.ok;
         const status = response.status;
@@ -270,6 +303,7 @@ export function installDesktopRequestBridge(
 async function readBridgeResponseBody(
   response: Response,
   maxResponseBytes: number,
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the desktop bridge's raw HTTP-response-body I/O boundary; the renderer runs its own route-specific parser against DesktopResponse.body, so there is no single concrete type to return here.
 ): Promise<unknown> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > maxResponseBytes)
@@ -278,8 +312,14 @@ async function readBridgeResponseBody(
   return text.length === 0 ? undefined : parseJson(text);
 }
 
-function parseJson(value: string): unknown {
+// No explicit return type: this is the same raw-body boundary as above, and
+// annotating it `unknown` would discard the `{ error: "invalid_response" }`
+// fallback's known shape for no benefit — every caller already treats the
+// result as unparsed.
+function parseJson(value: string) {
   try {
+    // SAFETY: JSON.parse's return type is `any`; this cast narrows it to
+    // `unknown` so every caller must validate the parsed body before use.
     return JSON.parse(value) as unknown;
   } catch {
     return { error: "invalid_response" };
