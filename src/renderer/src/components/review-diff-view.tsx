@@ -109,6 +109,10 @@ const WALKTHROUGH_DIFF_COLORS_CSS = `
 }
 `;
 const TREE_ORDER_SORT_LIMIT = 256;
+// Each attempt materializes up to 128 more items and waits a frame. This
+// bounds the retry chain so a file that never resolves in the viewer (a
+// defect in its own right) gives up honestly instead of polling forever.
+const MAX_SELECTION_SCROLL_ATTEMPTS = 120;
 
 /** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
  * each optional field is added only when it has a value. */
@@ -1168,29 +1172,53 @@ function ReviewDiffSurface({
     selectedLines?.range.end ?? "",
     selectedLines?.range.side ?? "",
   ].join(":");
-  const lastSelectionScrollKey = useRef<string | undefined>(undefined);
+  // Tracks progress toward scrolling to the current selection across
+  // restarts of the effect below. Progressive hydration (a file finishing
+  // its fetch, a collapse toggle, a new annotation) changes `items` on its
+  // own schedule, unrelated to the user's selection, and `items` is a
+  // dependency of that effect. A restart must not forget an in-flight
+  // append-and-retry chain's progress, and must not mistake "the effect
+  // merely re-ran" for "this selection was already scrolled to."
+  const selectionScrollProgress = useRef<{
+    key: string;
+    attempts: number;
+    completed: boolean;
+  }>({ key: "", attempts: 0, completed: false });
 
   useEffect(() => {
     if (selectedPath === undefined) return;
-    const selectionChanged =
-      selectionScrollKey !== lastSelectionScrollKey.current;
-    if (selectionChanged) lastSelectionScrollKey.current = selectionScrollKey;
+    if (selectionScrollProgress.current.key !== selectionScrollKey) {
+      selectionScrollProgress.current = {
+        key: selectionScrollKey,
+        attempts: 0,
+        completed: false,
+      };
+    }
+    // Already scrolled to this exact selection. A later, unrelated `items`
+    // change (hydration, collapse, annotations) restarting this effect must
+    // not re-fight wherever the user has scrolled to since.
+    if (selectionScrollProgress.current.completed) return;
     let secondFrame: number | undefined;
     let continuationFrame: number | undefined;
     const scrollToSelection = (): void => {
+      const progress = selectionScrollProgress.current;
+      // A newer selection superseded this one while a stale frame from this
+      // closure was still pending.
+      if (progress.key !== selectionScrollKey || progress.completed) return;
       const targetIndex = items.findIndex((item) => item.id === selectedPath);
       if (targetIndex === -1) return;
-      if (
-        !selectionChanged &&
-        viewer.current?.getItem(selectedPath) !== undefined
-      )
-        return;
       // DiffWorkbench promotes exceptionally deep direct selections to its
       // explicit selected-file mode. Do not spend a frame materializing a
       // large all-files stream while that controlled preference update is in
       // flight.
       if (preferences.fileMode === "all" && targetIndex > 128) return;
       if (viewer.current?.getItem(selectedPath) === undefined) {
+        if (progress.attempts >= MAX_SELECTION_SCROLL_ATTEMPTS) {
+          // Give up honestly: the target never materialized in the viewer,
+          // so stop polling rather than retry forever.
+          return;
+        }
+        progress.attempts += 1;
         // Keep direct navigation responsive for large all-files patches. The
         // selected path is committed before this progressive CodeView work,
         // then files are materialized in small animation-frame batches.
@@ -1212,6 +1240,7 @@ function ReviewDiffSurface({
           align: "center",
         });
       }
+      progress.completed = true;
     };
     // CodeView recalculates line metrics after expanding a selected unchanged
     // hunk. Scroll on the following frame so the target range uses those
