@@ -734,10 +734,13 @@ test("PR overview shows a blocked merge state without a duplicate alert", async 
     const overview = page.getByRole("dialog", { name: "PR overview" });
     await expect(overview).toBeVisible();
     await expect(overview.getByText("Blocked")).toBeVisible();
-    await expect(
-      overview.getByText("Required checks have not passed."),
-    ).toBeVisible();
-    await expect(overview.getByText("Checks · available")).toBeVisible();
+    // Confirmed evidence (availability: "available") still renders as a
+    // destructive card, but the raw "available" enum value is internal
+    // vocabulary and must not leak into the rendered text (see ADR 0027).
+    const reason = overview.locator("[data-reason-availability='available']");
+    await expect(reason).toContainText("Required checks have not passed.");
+    await expect(reason).toContainText("Checks");
+    await expect(reason).not.toContainText("available");
     await expect(
       overview.getByRole("button", { name: "Open on GitHub" }),
     ).toBeVisible();
