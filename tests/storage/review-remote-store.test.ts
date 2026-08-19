@@ -118,6 +118,33 @@ describe("ReviewRemoteStore", () => {
     ).resolves.toEqual({ _tag: "ok", value: withLabels });
   });
 
+  it("round-trips the pull request's GraphQL nodeId", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withNodeId: ReviewRemoteSnapshot = {
+      ...snapshot,
+      pullRequest: {
+        ...snapshot.pullRequest,
+        nodeId: "PR_kwDOOxMYd87hgCZR",
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withNodeId,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withNodeId });
+  });
+
   it("round-trips viewerDidAuthor on thread comments", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

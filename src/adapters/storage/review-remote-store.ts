@@ -133,6 +133,7 @@ const pullRequestSchema = v.strictObject({
     number: v.number(),
   }),
   title: v.string(),
+  nodeId: v.optional(v.string()),
   description: v.optional(v.string()),
   author: v.string(),
   headBranch: v.string(),
@@ -506,6 +507,8 @@ function parsePullRequest(
   )
     return invalidRead();
   const baseShaField = base.value === undefined ? {} : { baseSha: base.value };
+  const nodeIdField =
+    input.nodeId === undefined ? {} : { nodeId: input.nodeId };
   const descriptionField =
     input.description === undefined ? {} : { description: input.description };
   const requestedReviewersField =
@@ -534,6 +537,7 @@ function parsePullRequest(
       number: number.value,
     },
     title: input.title,
+    ...nodeIdField,
     ...descriptionField,
     author: input.author,
     headBranch: input.headBranch,
