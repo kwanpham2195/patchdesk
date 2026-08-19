@@ -284,33 +284,56 @@ export class ReviewObservationService {
       return this.markUnavailable(input, review, detectedAt, "github_read");
     }
 
-    const second = await identity.read({
+    // Cheap torn-read guard: headSha and baseSha are content-addressed, so an
+    // unchanged pair proves the diff `first` already fetched and hashed is
+    // still canonical without re-fetching or re-hashing it (see
+    // GitHubRevisionIdentityReader.recheckUnchanged). Only escalate to the
+    // full, expensive read if this cheap check finds the pair changed.
+    const recheck = await identity.recheckUnchanged({
       profile,
       pr: reviewRef(review),
-      session,
+      identity: first.value.identity,
     });
-    if (second._tag === "err")
+    if (recheck._tag === "err")
       return this.markUnavailable(input, review, detectedAt, "github_read");
-    if (second.value._tag === "Unavailable")
+    if (recheck.value._tag === "Unavailable")
       return this.markUnavailable(
         input,
         review,
         detectedAt,
-        second.value.reason,
+        recheck.value.reason,
       );
-    if (second.value._tag === "Changed") {
-      const changed = markReviewRevisionChanged(
-        review,
-        { detectedAt, identity: second.value.identity },
-        detectedAt,
-      );
-      const saved = await this.dependencies.reviews.save(
-        changed,
-        review.updatedAt,
-      );
-      return saved._tag === "ok"
-        ? ok({ _tag: "RevisionChanged", detectedAt })
-        : err({ reason: "storage" });
+    if (recheck.value._tag === "Changed") {
+      const second = await identity.read({
+        profile,
+        pr: reviewRef(review),
+        session,
+      });
+      if (second._tag === "err")
+        return this.markUnavailable(input, review, detectedAt, "github_read");
+      if (second.value._tag === "Unavailable")
+        return this.markUnavailable(
+          input,
+          review,
+          detectedAt,
+          second.value.reason,
+        );
+      if (second.value._tag === "Changed") {
+        const changed = markReviewRevisionChanged(
+          review,
+          { detectedAt, identity: second.value.identity },
+          detectedAt,
+        );
+        const saved = await this.dependencies.reviews.save(
+          changed,
+          review.updatedAt,
+        );
+        return saved._tag === "ok"
+          ? ok({ _tag: "RevisionChanged", detectedAt })
+          : err({ reason: "storage" });
+      }
+      // second.value._tag === "Same": the full read resolved the race the
+      // cheap recheck flagged; continue exactly as an unchanged recheck would.
     }
 
     const candidateBase: ReviewRemoteSnapshot = {

@@ -56,6 +56,7 @@ const identity = {
 };
 const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("0".repeat(40)));
+const otherSha = must(parseGitSha("2".repeat(40)));
 const at = must(parseIsoTimestamp("2026-08-12T00:00:00.000Z"));
 const observedAt = must(parseIsoTimestamp("2026-08-12T00:01:00.000Z"));
 const patch = [
@@ -368,6 +369,62 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
           : { state: "open" as const },
       );
     },
+  };
+}
+
+/**
+ * Wraps `fakeGitHub` with call counters on `getPullRequest` and
+ * `getPullRequestDiff`, so tests can assert how many round trips one
+ * observation makes without depending on internal call ordering.
+ */
+function countingGitHub(input: { readonly terminal: boolean }) {
+  const base = fakeGitHub(input);
+  const counts = { getPullRequest: 0, getPullRequestDiff: 0 };
+  return {
+    github: {
+      ...base,
+      async getPullRequest(...args: Parameters<typeof base.getPullRequest>) {
+        counts.getPullRequest += 1;
+        return base.getPullRequest(...args);
+      },
+      async getPullRequestDiff(
+        ...args: Parameters<typeof base.getPullRequestDiff>
+      ) {
+        counts.getPullRequestDiff += 1;
+        return base.getPullRequestDiff(...args);
+      },
+    },
+    counts,
+  };
+}
+
+/**
+ * Like `fakeGitHub`, but reports the represented session's own headSha for
+ * the first two `getPullRequest` calls (the terminal-state read and the
+ * first identity proof), then reports a changed headSha from the third call
+ * onward — simulating a push landing in the gap between the first identity
+ * read and the cheap second-check recheck.
+ */
+function fakeGitHubChangedMidObservation(input: { readonly terminal: boolean }) {
+  const base = fakeGitHub(input);
+  const counts = { getPullRequest: 0, getPullRequestDiff: 0 };
+  return {
+    github: {
+      ...base,
+      async getPullRequest(...args: Parameters<typeof base.getPullRequest>) {
+        counts.getPullRequest += 1;
+        const result = await base.getPullRequest(...args);
+        if (result._tag === "err" || counts.getPullRequest <= 2) return result;
+        return ok({ ...result.value, headSha: otherSha });
+      },
+      async getPullRequestDiff(
+        ...args: Parameters<typeof base.getPullRequestDiff>
+      ) {
+        counts.getPullRequestDiff += 1;
+        return base.getPullRequestDiff(...args);
+      },
+    },
+    counts,
   };
 }
 
@@ -693,5 +750,78 @@ describe("ReviewObservationService", () => {
       _tag: "ok",
       value: { freshness: { _tag: "Fresh" } },
     });
+  });
+
+  it("does not re-fetch the diff for the second same-revision check", async () => {
+    const value = await fixture();
+    const { github, counts } = countingGitHub({ terminal: false });
+    const observation = new ReviewObservationService({
+      profiles: new ProfileStore(value.paths),
+      reviews: value.reviews,
+      sessions: value.sessions,
+      remote: value.remote,
+      journals: value.journals,
+      recentWrites: value.recentWrites,
+      github,
+      pendingReview: {
+        adoptObservedState() {
+          return { pendingReview: { _tag: "None" as const } };
+        },
+      },
+      coordinator: new ReviewOperationCoordinator(),
+      now: () => observedAt,
+    });
+
+    await expect(
+      observation.observe({ profileId, reviewId: value.review.id }),
+    ).resolves.toMatchObject({ _tag: "ok", value: { _tag: "Reconciled" } });
+    // The full diff is fetched once (the first, gating identity read); the
+    // torn-read guard after the fan-out reconfirms headSha/baseSha only.
+    expect(counts.getPullRequestDiff).toBe(1);
+  });
+
+  it("reaches the same RevisionChanged outcome when the cheap recheck catches a mid-observation push", async () => {
+    const value = await fixture();
+    const { github, counts } = fakeGitHubChangedMidObservation({
+      terminal: false,
+    });
+    const observation = new ReviewObservationService({
+      profiles: new ProfileStore(value.paths),
+      reviews: value.reviews,
+      sessions: value.sessions,
+      remote: value.remote,
+      journals: value.journals,
+      recentWrites: value.recentWrites,
+      github,
+      pendingReview: {
+        adoptObservedState() {
+          return { pendingReview: { _tag: "None" as const } };
+        },
+      },
+      coordinator: new ReviewOperationCoordinator(),
+      now: () => observedAt,
+    });
+
+    await expect(
+      observation.observe({ profileId, reviewId: value.review.id }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "RevisionChanged", detectedAt: observedAt },
+    });
+    await expect(
+      value.reviews.load(profileId, value.review.id),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        freshness: {
+          _tag: "RevisionChanged",
+          identity: { headSha: otherSha, baseSha },
+        },
+      },
+    });
+    // The cheap recheck flags a change, so this observation escalates to a
+    // full read to obtain complete identity proof for storage -- the same
+    // total diff work the old always-full-second-read code performed.
+    expect(counts.getPullRequestDiff).toBe(2);
   });
 });
