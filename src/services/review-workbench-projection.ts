@@ -823,27 +823,13 @@ function deriveMergeReasons(
       openOnGitHub: false,
     });
 
-  // Both fall through GitHub's own `mergeStateStatus` without blocking the
-  // merge; say so honestly instead of staying silent.
-  if (aggregate.mergeStateStatus === "has_hooks")
-    reasons.push({
-      code: "blocked",
-      message:
-        "GitHub reports this pull request is mergeable; a required pre-receive hook has already run and passed.",
-      source: "github_pr_state",
-      availability: "available",
-      openOnGitHub: false,
-    });
-
-  if (aggregate.mergeStateStatus === "unstable")
-    reasons.push({
-      code: "blocked",
-      message:
-        "GitHub reports non-required checks are failing. Required checks are passing, so this does not block the merge.",
-      source: "github_pr_state",
-      availability: "available",
-      openOnGitHub: false,
-    });
+  // `has_hooks` and `unstable` are both mergeable states per GitHub's own
+  // `MergeStateStatus` semantics (HAS_HOOKS: "Mergeable with passing commit
+  // status and pre-receive hooks"; UNSTABLE: "Mergeable with non-passing
+  // commit status" — i.e. only non-required checks are failing). Neither is
+  // a blocker, so neither contributes a reason here; surfacing them as
+  // informational content (not a blocker) is a display concern for a later
+  // slice.
 
   // The generic fallback only fires when GitHub reports blocked and nothing
   // above already explained why — including the two named rules above, but
