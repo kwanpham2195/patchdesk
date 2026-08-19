@@ -151,6 +151,18 @@ type BridgeHandler = (input: {
   // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
 }) => Promise<unknown> | unknown;
 
+/**
+ * Opening the inline comment composer selects its line, which scrolls
+ * Pierre's CodeView to it. That scroll suspends pointer events on its sticky
+ * container for a real, un-fakeable ~120ms so hover interactions do not land
+ * mid-scroll. These two tests run with real timers specifically for
+ * CodeView's async mount, so wait out that window before clicking through
+ * the composer.
+ */
+async function waitPastPierreScrollSuspend(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+}
+
 function bridge(handler: BridgeHandler) {
   const request = vi.fn(
     async (input: { readonly path: string; readonly body?: unknown }) => {
@@ -1045,6 +1057,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
+      await waitPastPierreScrollSuspend();
       await user.type(
         screen.getByRole("textbox", { name: "Inline comment" }),
         "Confirmed body",
@@ -1100,6 +1113,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       commentButton.dataset.lineNumber = "1";
       commentButton.dataset.lineSide = "additions";
       await user.click(commentButton);
+      await waitPastPierreScrollSuspend();
       await user.type(
         screen.getByRole("textbox", { name: "Inline comment" }),
         "Unresolved body",
