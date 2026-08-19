@@ -438,6 +438,73 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
   }
 });
 
+test("file-tree search selects a file deep in a large patch and scrolls its header into view despite concurrent item churn", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#performance-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+    const path = "src/generated/file-0050.ts";
+
+    // Index 50 stays well under the all-files direct-selection guard
+    // (`targetIndex > 128` in review-diff-view.tsx), so a failure here
+    // proves the scroll-to-selection retry chain, not that guard.
+    await page.locator("[data-file-tree-search-input]").fill("file-0050");
+    const target = page.getByRole("treeitem", { name: "file-0050.ts" });
+    await expect(target).toBeVisible();
+
+    // Progressive hydration mutates `items` (a dependency of the
+    // scroll-to-selection effect) on its own schedule as files stream in,
+    // which is what let that effect's retry chain get cancelled mid-flight.
+    // Toggling an already-loaded file's "viewed" state churns `items` the
+    // same way, so hammering it on nearly every frame reproduces that race
+    // deterministically instead of hoping a real hydration tick lands at
+    // the wrong moment.
+    await page.evaluate(() => {
+      const checkbox = document.querySelector<HTMLElement>(
+        '[data-review-diff-file-header] [role="checkbox"]',
+      );
+      if (checkbox === null) {
+        throw new Error("expected an already-loaded file's viewed checkbox");
+      }
+      let frame = 0;
+      const churn = (): void => {
+        checkbox.click();
+        frame += 1;
+        if (frame < 90) requestAnimationFrame(churn);
+      };
+      requestAnimationFrame(churn);
+    });
+    await target.click();
+
+    await expect(diff).toHaveAttribute("data-selected-path", path);
+    const header = page.locator(`[data-review-diff-file-header="${path}"]`);
+    await expect(header).toBeVisible({ timeout: 5_000 });
+
+    const [headerBox, viewportBox] = await Promise.all([
+      header.boundingBox(),
+      diffViewport.boundingBox(),
+    ]);
+    if (headerBox === null || viewportBox === null) {
+      throw new Error(
+        "expected both the selected file's header and the diff viewport to report a layout box",
+      );
+    }
+    // scrollTop alone does not prove the right file surfaced: churn can
+    // move it for reasons unrelated to this selection while file-0050's
+    // header stays off the visible viewport. Only a vertical overlap
+    // between the header's box and the viewport's visible box proves the
+    // header itself reached the viewport.
+    expect(headerBox.y + headerBox.height).toBeGreaterThan(viewportBox.y);
+    expect(headerBox.y).toBeLessThan(viewportBox.y + viewportBox.height);
+  } finally {
+    await close(server);
+  }
+});
+
 test("Pierre headers retain per-file totals while the navigator stays compact", async ({
   page,
 }) => {
@@ -764,6 +831,7 @@ async function serveRenderer(): Promise<Server> {
 }
 function origin(server: Server): string {
   const address = server.address();
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows Node's net.Server.address() union (AddressInfo | string | null) to the TCP shape this loopback helper needs; there is no schema for a stdlib return type.
   if (address === null || typeof address === "string")
     throw new Error("missing address");
   return `http://127.0.0.1:${address.port}`;
