@@ -7,16 +7,20 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { GitHubReader } from "../../src/adapters/github/github-adapter";
 import {
   parseAbsolutePath,
+  parseContentHash,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
+  type ContentHash,
 } from "../../src/domain/ids";
+import type { PullRequestSummary } from "../../src/domain/github-context";
 import { createReviewSession } from "../../src/domain/review-session";
 import { ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
 import { GitHubRevisionIdentityReader } from "../../src/services/github-revision-identity-reader";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -57,6 +61,24 @@ const patch = [
   "",
 ].join("\n");
 const roots: string[] = [];
+
+function contentHashOf(text: string): ContentHash {
+  return must(parseContentHash(hashReviewArtifactContent(text)));
+}
+
+/** Mutable draft of `createReviewSession`'s input, built in statements so
+ * `canonicalPatchHash` is added only when a fixture supplies one. */
+type MutableCreateReviewSessionInput = {
+  -readonly [K in keyof Parameters<
+    typeof createReviewSession
+  >[0]]: Parameters<typeof createReviewSession>[0][K];
+};
+
+/** Mutable draft of a fixture `PullRequestSummary`, built in statements so
+ * `baseSha` is added only when a fixture supplies one. */
+type MutablePullRequestSummary = {
+  -readonly [K in keyof PullRequestSummary]: PullRequestSummary[K];
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -124,12 +146,74 @@ describe("GitHubRevisionIdentityReader", () => {
       value: { _tag: "Unavailable", reason: "base_missing" },
     });
   });
+
+  it("reports Same when the stored canonical hash equals the fresh hash and both SHAs match", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
+    roots.push(root);
+    const session = await makeSession(root, patch, contentHashOf(patch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, baseSha, changedFileCount: 1 }, patch),
+    );
+
+    await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Same", identity: { headSha, baseSha } },
+    });
+  });
+
+  it("reports Changed when the stored canonical hash differs from the fresh hash even though both SHAs match", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
+    roots.push(root);
+    const changedPatch = patch.replace("+after", "+different");
+    const session = await makeSession(root, patch, contentHashOf(changedPatch));
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, baseSha, changedFileCount: 1 }, patch),
+    );
+
+    await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Changed", identity: { headSha, baseSha } },
+    });
+  });
+
+  it("reports Same on the SHA pair alone when the legacy session has no stored canonical hash, regardless of remote patch content", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
+    roots.push(root);
+    const session = await makeSession(root, patch);
+    const unrelatedRemotePatch = patch.replace("+after", "+wildly different");
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha, baseSha, changedFileCount: 1 }, unrelatedRemotePatch),
+    );
+
+    await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Same", identity: { headSha, baseSha } },
+    });
+  });
+
+  it("reports Changed when the legacy session has no stored canonical hash but the head SHA differs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-revision-"));
+    roots.push(root);
+    const session = await makeSession(root, patch);
+    const reader = new GitHubRevisionIdentityReader(
+      gateway({ headSha: otherSha, baseSha, changedFileCount: 1 }, patch),
+    );
+
+    await expect(reader.read({ profile, pr, session })).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Changed", identity: { headSha: otherSha, baseSha } },
+    });
+  });
 });
 
-async function makeSession(root: string, contents: string) {
+async function makeSession(
+  root: string,
+  contents: string,
+  canonicalPatchHash?: ContentHash,
+) {
   const patchPath = join(root, "review.patch");
   await writeFile(patchPath, contents, "utf8");
-  return createReviewSession({
+  const input: MutableCreateReviewSessionInput = {
     key: {
       profileId,
       host: pr.host,
@@ -141,8 +225,13 @@ async function makeSession(root: string, contents: string) {
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(parseAbsolutePath(patchPath)),
     worktree: { path: must(parseAbsolutePath(root)), headSha },
+    // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
+    // branded IsoTimestamp contract `createdAt` requires.
     createdAt: "2026-08-12T00:00:00.000Z" as never,
-  });
+  };
+  if (canonicalPatchHash !== undefined)
+    input.canonicalPatchHash = canonicalPatchHash;
+  return createReviewSession(input);
 }
 
 function gateway(
@@ -155,10 +244,9 @@ function gateway(
 ): Pick<GitHubReader, "getPullRequest" | "getPullRequestDiff"> {
   return {
     async getPullRequest() {
-      return ok({
+      const summary: MutablePullRequestSummary = {
         ref: pr,
         headSha: current.headSha,
-        ...(current.baseSha === undefined ? {} : { baseSha: current.baseSha }),
         isDraft: false,
         isOpen: true,
         title: "Fixture",
@@ -169,8 +257,12 @@ function gateway(
         mergeability: "mergeable",
         labels: [],
         changedFileCount: current.changedFileCount,
+        // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying
+        // the branded IsoTimestamp contract `updatedAt` requires.
         updatedAt: "2026-08-12T00:00:00.000Z" as never,
-      });
+      };
+      if (current.baseSha !== undefined) summary.baseSha = current.baseSha;
+      return ok(summary);
     },
     async getPullRequestDiff() {
       return ok(diff);
