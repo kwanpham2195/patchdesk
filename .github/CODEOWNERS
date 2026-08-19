@@ -1,5 +1,5 @@
-# Code-owner review is auto-requested on every PR. This repo is private on
-# GitHub's free plan, so branch protection (which would make owner approval
-# required, not just requested) is unavailable — this alone does not enforce
-# review.
+# Code-owner review is auto-requested on every PR. Branch protection could
+# require that approval (require_code_owner_reviews), but it's deliberately
+# off: the sole code owner can't approve their own PR, so enabling it would
+# block every merge while there's one maintainer.
 * @kwanpham2195
