@@ -44,6 +44,7 @@ import type { PendingReviewState } from "../domain/pending-review";
 import { hashSnapshot } from "../adapters/storage/review-remote-store";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { AppLogService } from "./app-log-service";
 
 export type ReviewRefreshFailure = {
   readonly reason:
@@ -122,6 +123,8 @@ export type ReviewRefreshDependencies = {
   >;
   readonly recentWrites: Pick<RecentWriteJournalStore, "load" | "clear">;
   readonly operationCoordinator: ReviewOperationCoordinator;
+  /** Local diagnostic log stream; best effort, never gates a refresh. Wire-visible failures stay collapsed to "storage" — this only makes the underlying cause observable in `patchdesk.jsonl`. */
+  readonly log?: Pick<AppLogService, "write">;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
     readonly sessionId: ReviewSessionId;
@@ -574,7 +577,30 @@ export class ReviewRefreshService {
           reviewId: input.reviewId,
           snapshot: candidate,
         });
-        if (savedCandidate._tag === "err") return err({ reason: "storage" });
+        if (savedCandidate._tag === "err") {
+          const saveFailureMeta =
+            savedCandidate.error.issuePath === undefined
+              ? {
+                  reviewId: input.reviewId,
+                  operation: savedCandidate.error.operation,
+                  reason: savedCandidate.error.reason,
+                }
+              : {
+                  reviewId: input.reviewId,
+                  operation: savedCandidate.error.operation,
+                  reason: savedCandidate.error.reason,
+                  issuePath: savedCandidate.error.issuePath,
+                };
+          this.dependencies.log?.write({
+            process: "main",
+            level: "error",
+            topic: "review-refresh",
+            message: "remote candidate save failed; reported to caller as storage",
+            profileId: input.profileId,
+            meta: saveFailureMeta,
+          });
+          return err({ reason: "storage" });
+        }
         let sessionId = review.currentSessionId;
         if (current.value.headSha !== review.currentHeadSha) {
           const prepared = await this.dependencies.preparation.prepare({
@@ -582,7 +608,10 @@ export class ReviewRefreshService {
             pullRequest,
           });
           if (prepared._tag === "err")
-            return mapPreparationFailure(prepared.error._tag);
+            return mapPreparationFailure(
+              prepared.error._tag,
+              this.dependencies.log,
+            );
           if (prepared.value.session.key.headSha !== current.value.headSha)
             return err({ reason: "head_changed" });
           const persisted = await this.dependencies.sessions.save(
@@ -1073,15 +1102,26 @@ function ref(review: Review): PullRequestRef {
 
 function mapPreparationFailure(
   tag: string,
+  log?: Pick<AppLogService, "write">,
 ): Result<never, ReviewRefreshFailure> {
-  return err({
-    reason:
-      tag === "HeadChanged"
-        ? "head_changed"
-        : tag === "ProfileNotFound"
-          ? "not_found"
-          : tag === "GitHubReadUnavailable"
-            ? "github_read"
-            : "storage",
+  const reason: ReviewRefreshFailure["reason"] =
+    tag === "HeadChanged"
+      ? "head_changed"
+      : tag === "ProfileNotFound"
+        ? "not_found"
+        : tag === "GitHubReadUnavailable"
+          ? "github_read"
+          : "storage";
+  // This is a default fallthrough: any preparation failure tag not named
+  // above (currently ProfileUnavailable, SessionStorageUnavailable,
+  // PreparationUnavailable, PreparationCleanupUnavailable) becomes "storage".
+  // Logging the source tag before collapsing keeps that distinction visible.
+  log?.write({
+    process: "main",
+    level: reason === "storage" ? "warn" : "debug",
+    topic: "review-refresh",
+    message: "preparation failure classified during refresh",
+    meta: { tag, reason },
   });
+  return err({ reason });
 }

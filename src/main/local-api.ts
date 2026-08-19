@@ -539,6 +539,7 @@ export async function startLocalApiServer(
     operationCoordinator: reviewOperations,
     pendingReview: pendingReviews,
     recentWrites: recentWriteJournals,
+    log: logs,
     project: ({
       profileId,
       sessionId,
@@ -641,6 +642,7 @@ export async function startLocalApiServer(
       refresh: reviewRefresh,
       observation: reviewObservation,
       commits: reviewCommits,
+      logs,
     },
   );
   const merger =

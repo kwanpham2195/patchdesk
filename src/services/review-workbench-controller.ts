@@ -36,6 +36,7 @@ import type {
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
 import { readObjectField } from "./read-object-field";
+import type { AppLogService } from "./app-log-service";
 
 export type ReviewWorkbenchFailure = {
   readonly reason:
@@ -79,6 +80,8 @@ export class ReviewWorkbenchController {
       >;
       readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits: ReviewCommitService;
+      /** Local diagnostic log stream; best effort, never gates a request. Wire-visible failures stay collapsed to their existing reason — this only makes the underlying cause observable in `patchdesk.jsonl`. */
+      readonly logs?: Pick<AppLogService, "write">;
     },
   ) {}
 
@@ -221,7 +224,7 @@ export class ReviewWorkbenchController {
       },
     });
     if (prepared._tag === "err")
-      return err(mapPreparationFailure(prepared.error));
+      return err(mapPreparationFailure(prepared.error, this.lifecycle.logs));
     const created = createReview({
       identity,
       currentSessionId: prepared.value.session.id,
@@ -299,7 +302,26 @@ export class ReviewWorkbenchController {
             identity.profileId,
             reviewId,
           );
-        if (quarantinedReview._tag === "err") return err({ reason: "storage" });
+        if (quarantinedReview._tag === "err") {
+          this.lifecycle.logs?.write({
+            process: "main",
+            level: "error",
+            topic: "review-workbench",
+            message:
+              "quarantining the unusable review failed; reported to caller as storage",
+            profileId: identity.profileId,
+            meta: {
+              reviewId,
+              ...(quarantinedReview.error._tag === "StorageFailure"
+                ? {
+                    operation: quarantinedReview.error.operation,
+                    reason: quarantinedReview.error.reason,
+                  }
+                : { tag: quarantinedReview.error._tag }),
+            },
+          });
+          return err({ reason: "storage" });
+        }
         const created = await this.createFreshReview(identity);
         return created._tag === "err"
           ? created
@@ -550,20 +572,34 @@ export class ReviewWorkbenchController {
 
 function mapPreparationFailure(
   failure: PrepareReviewSessionFailure,
+  logs?: Pick<AppLogService, "write">,
 ): ReviewWorkbenchFailure {
-  switch (failure._tag) {
-    case "ProfileNotFound":
-      return { reason: "not_found" };
-    case "GitHubReadUnavailable":
-      return { reason: "github_read" };
-    case "HeadChanged":
-      return { reason: "head_changed" };
-    case "ProfileUnavailable":
-    case "SessionStorageUnavailable":
-    case "PreparationUnavailable":
-    case "PreparationCleanupUnavailable":
-      return { reason: "storage" };
-  }
+  const mapped: ReviewWorkbenchFailure = (() => {
+    switch (failure._tag) {
+      case "ProfileNotFound":
+        return { reason: "not_found" };
+      case "GitHubReadUnavailable":
+        return { reason: "github_read" };
+      case "HeadChanged":
+        return { reason: "head_changed" };
+      case "ProfileUnavailable":
+      case "SessionStorageUnavailable":
+      case "PreparationUnavailable":
+      case "PreparationCleanupUnavailable":
+        return { reason: "storage" };
+    }
+  })();
+  // ProfileUnavailable, SessionStorageUnavailable, PreparationUnavailable,
+  // and PreparationCleanupUnavailable all collapse to "storage"; logging the
+  // source tag before mapping keeps that distinction visible in the log.
+  logs?.write({
+    process: "main",
+    level: mapped.reason === "storage" ? "warn" : "debug",
+    topic: "review-workbench",
+    message: "preparation failure classified while opening a review",
+    meta: { tag: failure._tag, reason: mapped.reason },
+  });
+  return mapped;
 }
 
 function mapProjectionFailure(

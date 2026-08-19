@@ -49,7 +49,15 @@ export type ReviewRemoteSnapshot = {
   readonly mergeEvidence?: GitHubMergeEvidence;
 };
 
-export type ReviewRemoteStoreFailure = StorageFailure;
+/**
+ * Diagnostic-only widening of StorageFailure: when the top-level schema
+ * rejects a stored or candidate snapshot, the first valibot issue's dot
+ * path is attached so callers can log which field failed without changing
+ * the wire "storage" reason this store already returns.
+ */
+export type ReviewRemoteStoreFailure = StorageFailure & {
+  readonly issuePath?: string;
+};
 
 const commentSchema = v.strictObject({
   id: v.string(),
@@ -385,9 +393,15 @@ export class ReviewRemoteStore {
 export function parseReviewRemoteSnapshot(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON snapshot I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
-): Result<ReviewRemoteSnapshot, StorageFailure> {
+): Result<ReviewRemoteSnapshot, ReviewRemoteStoreFailure> {
   const parsed = v.safeParse(snapshotSchema, input);
-  if (!parsed.success) return invalidRead();
+  if (!parsed.success) {
+    // The dot path names only the rejected field (e.g. a value shape or an
+    // unrecognized enum member), never the field's value, so it is safe to
+    // carry into the log without repeating the sensitive-value guard's job.
+    const issuePath = v.getDotPath(parsed.issues[0]) ?? undefined;
+    return invalidRead(issuePath);
+  }
   const pr = parsePullRequest(parsed.output.pullRequest);
   const comments = parseComments(parsed.output.comments);
   const checks = parseChecks(parsed.output.checks);
@@ -466,7 +480,7 @@ export function hashSnapshot(snapshot: ReviewRemoteSnapshot): ContentHash {
 function parseSnapshot(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- delegates straight to parseReviewRemoteSnapshot, itself the JSON snapshot I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
-): Result<ReviewRemoteSnapshot, StorageFailure> {
+): Result<ReviewRemoteSnapshot, ReviewRemoteStoreFailure> {
   return parseReviewRemoteSnapshot(input);
 }
 
@@ -1043,10 +1057,11 @@ function remoteSnapshotPath(
   );
 }
 
-function invalidRead(): Result<never, StorageFailure> {
-  return err({
+function invalidRead(issuePath?: string): Result<never, ReviewRemoteStoreFailure> {
+  const failure: ReviewRemoteStoreFailure = {
     _tag: "StorageFailure",
     operation: "read",
     reason: "invalid_stored_value",
-  });
+  };
+  return err(issuePath === undefined ? failure : { ...failure, issuePath });
 }
