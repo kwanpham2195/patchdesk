@@ -55,9 +55,14 @@ returns — `review_required`, then `changes_requested`, `behind`,
 `conflicts`, `checks`, `blocked` — so "checks pending AND review
 required" can never both be shown.
 
-Two states render nothing at all. `GitHubMergeStateStatus` includes
-`has_hooks` and `unstable`, and both fall through every branch to the
-final `return []`, silently producing no reason.
+`has_hooks` and `unstable` are mergeable states, not blockers.
+`GitHubMergeStateStatus` says so in its own semantics: `HAS_HOOKS` is
+"Mergeable with passing commit status and pre-receive hooks" and
+`UNSTABLE` is "Mergeable with non-passing commit status" — only
+non-required checks are failing. Falling through to `return []` for
+both is correct, not a gap. The real gap is that neither is surfaced
+as information anywhere in the panel; that is a display concern for a
+later slice, not a missing blocker.
 
 It asserts more than it knows. The `blocked` branch emits the fixed
 message "GitHub merge requirements are not satisfied." regardless of

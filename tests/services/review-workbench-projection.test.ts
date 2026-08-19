@@ -516,7 +516,12 @@ describe("ReviewWorkbenchProjectionService", () => {
       );
     });
 
-    it("reports has_hooks and unstable honestly instead of an empty array", async () => {
+    it("treats has_hooks and unstable as mergeable, producing no blocker reason", async () => {
+      // Per GitHub's own `MergeStateStatus` semantics, HAS_HOOKS ("Mergeable
+      // with passing commit status and pre-receive hooks") and UNSTABLE
+      // ("Mergeable with non-passing commit status") both describe a
+      // mergeable PR, not a blocked one, so neither should ever produce a
+      // `mergeReasons` entry.
       const value = fixture();
       const hasHooks = await value.service.loadRepresented({
         profileId,
@@ -531,11 +536,8 @@ describe("ReviewWorkbenchProjectionService", () => {
       });
       expect(hasHooks).toMatchObject({
         _tag: "ok",
-        value: { mergeReasons: [{ code: "blocked" }] },
+        value: { mergeReasons: [] },
       });
-      const hasHooksReasons =
-        hasHooks._tag === "ok" ? hasHooks.value.mergeReasons : undefined;
-      expect(hasHooksReasons?.[0]?.message).toMatch(/pre-receive hook/);
 
       const unstable = await value.service.loadRepresented({
         profileId,
@@ -550,12 +552,8 @@ describe("ReviewWorkbenchProjectionService", () => {
       });
       expect(unstable).toMatchObject({
         _tag: "ok",
-        value: { mergeReasons: [{ code: "blocked" }] },
+        value: { mergeReasons: [] },
       });
-      const unstableReasons =
-        unstable._tag === "ok" ? unstable.value.mergeReasons : undefined;
-      expect(unstableReasons?.[0]?.message).toMatch(/non-required checks/);
-      expect(unstableReasons?.[0]?.message).not.toMatch(/\bblocked\b/i);
     });
 
     it("does not assert unsatisfied requirements when no policy evidence is readable at all", async () => {
