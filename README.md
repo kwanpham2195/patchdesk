@@ -1,92 +1,43 @@
 # Patchdesk
 
 Patchdesk is a local-first Electron workbench for preparing, inspecting, and
-explicitly running pull-request reviews.
+explicitly running pull-request reviews. It is a desktop app that runs on
+your machine, reads pull requests from your watched repositories on GitHub,
+and lets you review and act on them without a hosted service in between.
 
-## Development
+## Requirements
 
-**Prerequisites.** macOS on Apple Silicon (arm64) only — there is no
-Windows, Linux, Intel, or universal build; the packaged app will not run on
-an Intel Mac. Install the GitHub CLI (`gh`) and `git`; Patchdesk shells out
-to both, and never stores GitHub credentials itself — the entire GitHub
-read/write path runs `gh auth token --hostname <host> --user <account>` (see
-`src/adapters/github/github-credentials.ts`). Authenticate before running
-the app:
+- macOS on Apple Silicon (arm64) only — there is no Windows, Linux, Intel, or
+  universal build; the packaged app will not run on an Intel Mac.
+- The GitHub CLI (`gh`), installed and authenticated:
+  ```bash
+  gh auth login
+  ```
+- `git`.
 
-```bash
-gh auth login
-```
+Patchdesk never stores GitHub credentials itself. The entire GitHub
+read/write path shells out to `gh auth token --hostname <host> --user
+<account>` (see `src/adapters/github/github-credentials.ts`); Patchdesk holds
+no token of its own.
 
-Use pnpm 8.8.0 and Node >=22.19.0. Electron 43.1.1 embeds a compatible Node
-release. The isolated Flue 2 runtime has an exact lock and is validated
-during package smoke.
+## Install
 
-**Install and fast checks.**
-
-```bash
-pnpm install
-pnpm lint
-pnpm typecheck
-pnpm test -- --run
-```
-
-`pnpm install` also installs `runtime/flue`'s dependencies through the root
-`prepare` script. If you ran `pnpm install --ignore-scripts`, `prepare` did
-not run and packaging will fail; recover with `pnpm --dir runtime/flue install`.
-
-**Desktop and renderer.** Build before the full browser suite.
-
-```bash
-pnpm build
-pnpm test:e2e
-```
-
-**Focused browser checks.**
-
-```bash
-pnpm test:a11y
-pnpm test:performance
-```
-
-**Release package.** Build a macOS directory package, then smoke-test it.
-
-```bash
-pnpm package:mac
-pnpm test:package-smoke
-```
-
-`pnpm stage:flue-runtime` builds and stages the exact isolated Flue runtime.
-Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI checks.
-
-`pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
-app `pnpm test:package-smoke` reads) and `release/Patchdesk-0.1.0-arm64-mac.zip`
-(~196 MiB) — note the zip sits directly in `release/`, not in
-`release/mac-arm64/`. That zip is what you hand to another developer; a
-`.blockmap` sidecar is written next to it and is not part of the handoff.
-
-The build is ad-hoc signed, not Apple-signed or notarized. Before first
-launch, a recipient must clear the quarantine attribute:
+Patchdesk is distributed as a `.zip`. Unzip it, then clear the quarantine
+attribute before first launch — the build is ad-hoc signed, not
+Apple-signed or notarized:
 
 ```bash
 xattr -cr /path/to/Patchdesk.app
 ```
 
-or right-click the unzipped `Patchdesk.app` → Open → "Open Anyway".
+or right-click `Patchdesk.app` → Open → "Open Anyway".
 
-**Local work.**
+## First run
 
-```bash
-pnpm dev
-```
-
-See [AGENTS.md](AGENTS.md) for the ordered full gate and live-app checks.
-
-## Documentation
-
-- [Architecture](docs/architecture.md) describes the high-level architecture.
-- [Test cases](docs/test-cases.md) lists the canonical automated and manual checks per flow.
-- [CONTEXT.md](CONTEXT.md) is the glossary of domain terms.
-- [docs/adr/](docs/adr/) holds the architecture decision records.
+Launch the app. If you have not already authenticated `gh`, run `gh auth
+login` first. Patchdesk resolves the rest of its setup from the machine —
+your GitHub account and a starting workspace root — then asks which
+repositories under that root to watch.
 
 ## Safety statement
 
@@ -106,3 +57,15 @@ write for explicit GitHub reconciliation and never retries it automatically.
 Pull-request descriptions and check links are rendered as untrusted content;
 only a user click may open an HTTPS link on the configured GitHub host through
 the main process.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) describes the high-level architecture.
+- [Test cases](docs/test-cases.md) lists the canonical automated and manual checks per flow.
+- [CONTEXT.md](CONTEXT.md) is the glossary of domain terms.
+- [docs/adr/](docs/adr/) holds the architecture decision records.
+
+## Building from source
+
+To build Patchdesk yourself or contribute changes, see
+[CONTRIBUTING.md](CONTRIBUTING.md).

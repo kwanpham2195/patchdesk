@@ -13,7 +13,7 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - If either pane is gone or idle, start/restart it before doing the work.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code. A stale main process shows as repeated `400 invalid_input` on `/v1/reviews/detect-updates` (old route schema vs new typed journal). Restart via the herdr dev tab (Ctrl-C, then `pnpm dev -- --remote-debugging-port=9233`).
 
-Verification commands live in `README.md`. For desktop or renderer changes run the full gate in order (typecheck, tests, build, browser checks); package and smoke-test only when package-specific proof is requested.
+Verification commands live in `CONTRIBUTING.md`. For desktop or renderer changes run the full gate in order (typecheck, tests, build, browser checks); package and smoke-test only when package-specific proof is requested.
 
 The pre-commit hook (`pnpm precommit`) runs a blocking React Doctor scan on staged files, then `pnpm lint:staged` (oxlint --fix over staged files). If it blocks, fix the reported finding; do not disable or retune rules to make the commit pass. Anti-slop rules are not auto-fixable: fix the file's findings, then re-stage. `doctor.config.json` ignores the vendored plugin and installed skills from the React Doctor scan.
 
