@@ -21,6 +21,7 @@ import {
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
+import { deriveConversationThreadEntries } from "../conversation-thread-entries";
 import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
   parseGitHubHost,
@@ -641,15 +642,12 @@ export function ReviewWorkbench({
             ];
           });
         })();
-  // A pending-review thread is also visible to the thread reader; the pending
-  // card is the authoritative view for the review owner, so the represented
-  // conversation must not duplicate the same thread id.
-  const pendingThreadIds = new Set(
-    pendingReviewAnnotations.flatMap((annotation) =>
-      annotation.pendingReviewThread === undefined
-        ? []
-        : [annotation.pendingReviewThread.threadId],
-    ),
+  // A pending-review thread is also visible to the thread reader; dedupe
+  // lives in `deriveConversationThreadEntries` so the diff and (eventually) a
+  // Threads navigator section agree on the same entry list by construction.
+  const conversationThreadEntries = deriveConversationThreadEntries(
+    conversationAnnotations,
+    pendingReviewAnnotations,
   );
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
     ...findings.flatMap((finding) =>
@@ -670,14 +668,7 @@ export function ReviewWorkbench({
             },
           ],
     ),
-    ...conversationAnnotations.filter(
-      (annotation) =>
-        !(
-          annotation.conversationThread?.target._tag === "thread" &&
-          pendingThreadIds.has(annotation.conversationThread.target.id)
-        ),
-    ),
-    ...pendingReviewAnnotations,
+    ...conversationThreadEntries,
   ];
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
