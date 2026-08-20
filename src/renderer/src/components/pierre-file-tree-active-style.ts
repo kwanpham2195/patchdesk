@@ -8,7 +8,19 @@
  * shadow root. Backslash and the quote character are backslash-escaped;
  * every other C0 control character (newline included) is emitted as a CSS
  * hex escape, which keeps the result a single valid CSS string token
- * regardless of what the path contains.
+ * regardless of what the path contains. The trailing space after each hex
+ * escape is mandatory, not cosmetic: it is the escape's terminator, so a
+ * control character immediately followed by a literal hex digit (or by a
+ * literal space) can never be misread as part of the hex sequence.
+ *
+ * A NUL byte (0x00) hex-escapes to `\0`, which a CSS parser decodes back to
+ * U+FFFD (the replacement character), not U+0000
+ * (https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point) -- so a
+ * NUL-containing path would not match its own generated selector. This is
+ * not exploitable (the mismatch stays inside the string; nothing escapes
+ * the selector), and filesystems reject NUL in paths anyway, so it is left
+ * as-is rather than special-cased. Noted here only so a future "fix" to
+ * this function does not reintroduce something worse trying to "correct" it.
  */
 export function escapeCssAttributeValue(value: string): string {
   let result = "";

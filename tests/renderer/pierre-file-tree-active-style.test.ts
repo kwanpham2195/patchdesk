@@ -34,31 +34,75 @@ describe("escapeCssAttributeValue", () => {
     expect(escapeCssAttributeValue("a\tb\rc")).toBe("a\\9 b\\d c");
   });
 
-  it("round-trips an adversarial path combining a quote, a backslash, and a newline through the CSS string-escape grammar unchanged", () => {
+  it("hex-escapes a form feed the same way as other C0 controls", () => {
+    // Form feed (0x0c) takes the same `code <= 0x1f` branch as tab/CR/LF but
+    // had no case of its own -- assert it explicitly rather than trusting
+    // the range check by inference from its neighbors.
+    expect(escapeCssAttributeValue("a\fb")).toBe("a\\c b");
+  });
+
+  it("terminates a hex escape with a space even when the next real character is itself a hex digit", () => {
+    // Without the mandatory trailing space, "\x1f" (escaped) followed by a
+    // literal "f" would read back as the 3-hex-digit escape "1ff" -- silently
+    // swallowing the literal character into the control character's escape.
+    const escaped = escapeCssAttributeValue("\x1ff");
+    expect(escaped).toBe("\\1f f");
+    expect(decodeCssStringToken(escaped)).toEqual({
+      text: "\x1ff",
+      endedEarly: false,
+    });
+  });
+
+  it("terminates a hex escape with a space even when the next real character is itself a literal space", () => {
+    // The escape's own terminator space and the path's own literal space
+    // must both survive round-tripping as two distinct space characters,
+    // not collapse into one.
+    const escaped = escapeCssAttributeValue("\x1f ");
+    expect(escaped).toBe("\\1f  ");
+    expect(decodeCssStringToken(escaped)).toEqual({
+      text: "\x1f ",
+      endedEarly: false,
+    });
+  });
+
+  it("never lets an unescaped quote terminate the generated CSS string token early", () => {
     const adversarial = 'src/"; } * { color: red; } /*\\\n.ts';
     const escaped = escapeCssAttributeValue(adversarial);
-    // Decoding the escaped text with the same escape grammar a conformant
-    // CSS parser uses must reconstruct the exact original path. If the
-    // escaping were missing or wrong, either this would fail to round-trip,
-    // or (for a no-op "escaper") the raw quote/backslash/newline bytes would
-    // let a CSS parser read past the intended string boundary -- which is
-    // exactly the injection this function exists to prevent.
-    expect(decodeCssStringEscapes(escaped)).toBe(adversarial);
+    // `decodeCssStringToken` models where a real CSS parser would stop
+    // reading this string token: at the first unescaped `"`. Round-tripping
+    // alone is not enough to prove no injection is possible -- a decoder
+    // that (like a bug once present here) only understands backslash
+    // escapes and copies an unescaped `"` straight through would still
+    // round-trip correctly, because it never treats the quote as
+    // significant. Asserting `endedEarly: false` is what actually proves no
+    // unescaped `"` reached the output: if `escapeCssAttributeValue`
+    // regressed to no longer escaping `"`, this decoder would stop at that
+    // quote, `endedEarly` would flip to `true`, and `text` would come back
+    // truncated instead of matching `adversarial`.
+    const decoded = decodeCssStringToken(escaped);
+    expect(decoded.endedEarly).toBe(false);
+    expect(decoded.text).toBe(adversarial);
   });
 });
 
 /**
- * A minimal decoder for the CSS string-token escape grammar
- * (https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point), used
- * only by these tests to verify that `escapeCssAttributeValue`'s output
- * round-trips back to the original text the way a real CSS parser would
- * read it.
+ * A minimal decoder that models CSS string-token consumption
+ * (https://www.w3.org/TR/css-syntax-3/#consume-a-string-token and
+ * https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point), used only
+ * by these tests to verify both that `escapeCssAttributeValue`'s output
+ * decodes back to the original text, and -- separately -- that no unescaped
+ * `"` in it would terminate the string token before the end of the input.
+ *
+ * `endedEarly: true` means an unescaped `"` was found before `value` was
+ * fully consumed, i.e. a real CSS parser would stop reading the string
+ * there and parse whatever follows as further CSS, not string content.
  */
-function decodeCssStringEscapes(value: string): string {
+function decodeCssStringToken(value: string) {
   let result = "";
   let index = 0;
   while (index < value.length) {
     const char = value[index];
+    if (char === '"') return { text: result, endedEarly: true };
     if (char !== "\\") {
       result += char;
       index += 1;
@@ -67,17 +111,26 @@ function decodeCssStringEscapes(value: string): string {
     index += 1;
     const hexMatch = /^[0-9a-fA-F]{1,6}/.exec(value.slice(index));
     if (hexMatch === null) {
+      // `\<char>` (including `\"` and `\\`) is a literal-character escape.
       result += value[index] ?? "";
       index += 1;
       continue;
     }
-    result += String.fromCodePoint(parseInt(hexMatch[0], 16));
+    const codePoint = parseInt(hexMatch[0], 16);
+    // A hex escape of 0, a surrogate, or an out-of-range code point decodes
+    // to U+FFFD, not to that literal code point.
+    result +=
+      codePoint === 0 ||
+      (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
+      codePoint > 0x10ffff
+        ? "�"
+        : String.fromCodePoint(codePoint);
     index += hexMatch[0].length;
     // A single trailing whitespace character after a hex escape terminates
     // the escape rather than being literal content.
     if (/\s/.test(value[index] ?? "")) index += 1;
   }
-  return result;
+  return { text: result, endedEarly: false };
 }
 
 describe("buildActivePathTreeStyle", () => {

@@ -354,6 +354,9 @@ test("native diff scrolling passively follows the active file without changing f
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toHaveAttribute("data-selected-path", "src/b.ts");
+    const focusAfterClick = await page.evaluate(
+      () => document.activeElement?.localName,
+    );
 
     const viewport = page.locator(".review-diff-viewport");
     const box = await viewport.boundingBox();
@@ -382,19 +385,21 @@ test("native diff scrolling passively follows the active file without changing f
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toHaveAttribute("data-selected-path", "src/b.ts");
-    // Focus legitimately stays on the tree row the user actually clicked:
-    // nothing here -- not the click handler, not passive scroll-follow --
-    // ever moves DOM focus to the diff viewport. Verified by checking
-    // `document.activeElement` right after the click, before any scrolling:
-    // it was already "body" on the pre-fix `key={activePath}` tree (the
-    // click's own activePath update remounted the tree it had just placed
-    // focus on) and is "file-tree-container" once the tree stops remounting
-    // on every active-file change. Mouse-wheel-scrolling an unrelated
-    // region (the diff viewport, not the tree) correctly leaves focus where
-    // the user's last real interaction put it.
+    // Focus legitimately stays wherever the click put it: nothing here --
+    // not the click handler, not passive scroll-follow -- ever moves DOM
+    // focus to the diff viewport. This is a differential check (the same
+    // element right after the click as after scrolling), not a hardcoded
+    // "ends on file-tree-container": on the pre-fix `key={activePath}` tree,
+    // `focusAfterClick` itself was already "body", because the click's own
+    // activePath update remounted the tree it had just placed focus on --
+    // so asserting a specific end state would only prove "focus didn't
+    // move" by coincidence, given that starting point. Once the tree stops
+    // remounting on every active-file change, focus starts on
+    // "file-tree-container" and this proves mouse-wheel-scrolling an
+    // unrelated region (the diff viewport, not the tree) doesn't disturb it.
     expect(
       await page.evaluate(() => document.activeElement?.localName),
-    ).toBe("file-tree-container");
+    ).toBe(focusAfterClick);
   } finally {
     await close(server);
   }
