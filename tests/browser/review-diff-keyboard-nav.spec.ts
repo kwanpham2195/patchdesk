@@ -96,6 +96,37 @@ test("the fixed panel header follows `.` keyboard file navigation, not just the 
   }
 });
 
+test("`.` reaches a file living in the final viewport-height of content, which the container can never scroll far enough to satisfy strict top-of-viewport selection", async ({
+  page,
+}) => {
+  // Regression for the unreachable-last-file bug: #workbench-fixture's
+  // last file (src/b.ts) is a single line, so its own `getTopForItem` sits
+  // past `scrollHeight - clientHeight` -- the container physically cannot
+  // scroll far enough to bring that top to the viewport top. A selection
+  // rule that only accepts `top <= scrollTop` can therefore never select
+  // it, by keyboard jump or by scrolling to the very bottom; the file tree
+  // and panel header stay stuck on the previous file permanently. See
+  // review-diff-active-file.ts for the fix (eligibility relaxes to plain
+  // visibility for files that are unreachable by construction).
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    await diffViewport.focus();
+    await expect(diffViewport).toBeFocused();
+
+    const header = page.locator("[data-diff-workbench-header-path]");
+    await expect(header).toHaveText("src/a.ts");
+
+    await page.keyboard.press(".");
+    await expect(header).toHaveText("src/b.ts");
+  } finally {
+    await close(server);
+  }
+});
+
 test("typing `.` in the comment composer inserts the character instead of navigating", async ({
   page,
 }) => {

@@ -1175,9 +1175,14 @@ function ReviewDiffSurface({
       codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
     ): void => {
       if (preferences.fileMode !== "all") return;
+      const viewportElement = viewerContainer.current;
       const path = activeFilePathAtScrollTop(
         items.slice(0, loadedCount),
-        scrollTop,
+        {
+          scrollTop,
+          viewportHeight: viewportElement?.clientHeight ?? 0,
+          contentHeight: viewportElement?.scrollHeight ?? 0,
+        },
         (id) => codeView.getTopForItem(id),
       );
       if (path === undefined || path === activePathRef.current) return;
@@ -1341,12 +1346,17 @@ function ReviewDiffSurface({
       // rather than always from the first file in the diff.
       if (fileNavCurrentPath.current === undefined) {
         const codeView = viewer.current?.getInstance();
+        const viewportElement = viewerContainer.current;
         fileNavCurrentPath.current =
           codeView === undefined
             ? undefined
             : activeFilePathAtScrollTop(
                 currentItems,
-                codeView.getScrollTop(),
+                {
+                  scrollTop: codeView.getScrollTop(),
+                  viewportHeight: viewportElement?.clientHeight ?? 0,
+                  contentHeight: viewportElement?.scrollHeight ?? 0,
+                },
                 (id) => codeView.getTopForItem(id),
               );
       }
@@ -1449,12 +1459,17 @@ function ReviewDiffSurface({
       // one advances from `hunkNavCurrentAnchor`, not from scroll position.
       if (hunkNavCurrentAnchor.current === undefined) {
         const codeView = viewer.current?.getInstance();
+        const viewportElement = viewerContainer.current;
         const activePath =
           codeView === undefined
             ? undefined
             : activeFilePathAtScrollTop(
                 currentItems,
-                codeView.getScrollTop(),
+                {
+                  scrollTop: codeView.getScrollTop(),
+                  viewportHeight: viewportElement?.clientHeight ?? 0,
+                  contentHeight: viewportElement?.scrollHeight ?? 0,
+                },
                 (id) => codeView.getTopForItem(id),
               );
         hunkNavCurrentAnchor.current =
