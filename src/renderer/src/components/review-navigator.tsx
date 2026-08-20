@@ -268,6 +268,17 @@ type ThreadStateBadge = {
  * filled primary badge, resolved a muted secondary badge, and pending an
  * outline badge in a warm accent color so a not-yet-submitted reply never
  * reads as an already-published thread.
+ *
+ * The `"outdated"` and `"unknown"` cases can't happen today: every row this
+ * navigator receives comes from a Mapped conversation thread, and
+ * `mapConversationThread`/`projectReadOnlyConversationAnnotations`
+ * (`inline-conversation-mapping.ts`) exclude both before a row exists (see
+ * `ConversationThreadRowState`'s doc comment). They're handled here anyway
+ * because `ConversationThreadRowState` is typed as wide as
+ * `ConversationThreadCardData["state"]`, which the Conversation screen's
+ * general threads legitimately populate with those states — narrowing this
+ * switch would mean narrowing that shared type or asserting past it, and
+ * this repo doesn't cast past a `switch`'s type checking.
  */
 function threadRowStateBadge(
   state: ConversationThreadRowState,

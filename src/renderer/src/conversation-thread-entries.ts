@@ -29,8 +29,21 @@ export function deriveConversationThreadEntries(
   return [...publishedEntries, ...pending];
 }
 
-/** A Threads navigator row's display state: the three published thread
- * states plus `"pending"` for a viewer-authored reply not yet submitted. */
+/**
+ * A Threads navigator row's display state: the four published thread states
+ * plus `"pending"` for a viewer-authored reply not yet submitted. This type
+ * mirrors `ConversationThreadCardData["state"]` (`conversation-thread-card.tsx`)
+ * rather than being derived from it, because that type is also used by the
+ * Conversation screen's general (unanchored) threads, which genuinely can be
+ * `"outdated"` or `"unknown"`. The threads reaching *this* navigator never
+ * are: `mapConversationThread` and `projectReadOnlyConversationAnnotations`
+ * (`inline-conversation-mapping.ts`) exclude outdated threads and anything
+ * whose state isn't `"open"` or `"resolved"` before an entry is ever built.
+ * `"outdated"` and `"unknown"` stay in this union — and in
+ * `threadRowStateBadge`'s switch (`review-navigator.tsx`), which renders it —
+ * only so the type keeps matching its wider source rather than requiring a
+ * cast at the boundary.
+ */
 export type ConversationThreadRowState =
   | "open"
   | "resolved"
