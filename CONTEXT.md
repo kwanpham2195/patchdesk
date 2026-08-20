@@ -119,7 +119,7 @@ A group of GitHub review comments, with open, resolved, or outdated state. Inlin
 _Avoid_: Review thread, discussion thread
 
 **Mapped conversation thread**:
-An inline Conversation thread in open or resolved state whose GitHub anchor can be placed unambiguously on either the old or new side of the current diff. Only mapped Conversation threads appear in the diff view. Outdated threads are excluded.
+An inline Conversation thread in open or resolved state whose GitHub anchor can be placed unambiguously on either the old or new side of the current diff. Only mapped Conversation threads appear in the diff view and the Threads section. Outdated threads are excluded from both.
 _Avoid_: Current thread, unresolved thread
 
 **Thread state change**:
@@ -137,6 +137,10 @@ _Avoid_: Complete thread
 **Conversation entry**:
 One item in the Conversation screen's chronological timeline. Types: PR description, issue comment, review summary, or general conversation thread (a review-comment thread with no diff anchor; includes its nested replies). Inline conversation threads live in the diff view instead.
 _Avoid_: Timeline entry, discussion entry
+
+**Threads section**:
+The Review workbench navigator section, beside Files and Commits, that lists exactly the Conversation threads the diff renders as annotations for the current revision: Mapped conversation threads and the viewer's pending-review threads. Selecting an entry reveals and marks its anchored lines in the diff; the section carries no thread actions, which stay with the thread itself. Threads the diff cannot place do not appear.
+_Avoid_: Thread inbox, thread roster, unresolved list, discussion queue
 
 **Walkthrough**:
 The latest successful guided explanation of a pinned pull request revision.
