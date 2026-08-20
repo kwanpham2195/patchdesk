@@ -21,7 +21,10 @@ import {
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
-import { deriveConversationThreadEntries } from "../conversation-thread-entries";
+import {
+  deriveConversationThreadEntries,
+  type ConversationThreadRow,
+} from "../conversation-thread-entries";
 import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
   parseGitHubHost,
@@ -51,6 +54,7 @@ import type {
   LocalCommentLocation,
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
+  SelectedDiffRange,
 } from "./review-diff-view";
 import type {
   ConversationThreadCardData,
@@ -470,6 +474,16 @@ export function ReviewWorkbench({
   const [selectedCommitSha, setSelectedCommitSha] = useState<
     string | undefined
   >(initialState?.selectedCommitSha);
+  // Session-local: the last thread row chosen in the Threads section, and the
+  // diff range it anchors to. Not part of restored position (screen-restore's
+  // schema stays as widened in slice B) — a stale mark on reopen would be
+  // worse than none.
+  const [selectedThreadId, setSelectedThreadId] = useState<
+    string | undefined
+  >(undefined);
+  const [selectedRange, setSelectedRange] = useState<
+    SelectedDiffRange | undefined
+  >(undefined);
   const commitWorkbenchPosition = useCallback(
     (next: {
       readonly activeTab: "conversation" | "diff" | "insights";
@@ -510,6 +524,8 @@ export function ReviewWorkbench({
     (sha: string): void => {
       commitWorkbenchPosition({ activeTab: "diff", section: "commits" });
       setSelectedCommitSha(sha);
+      setSelectedThreadId(undefined);
+      setSelectedRange(undefined);
     },
     [commitWorkbenchPosition],
   );
@@ -946,6 +962,9 @@ export function ReviewWorkbench({
                       {...(selectedCommitSha === undefined
                         ? {}
                         : { selectedCommitSha })}
+                      {...(selectedThreadId === undefined
+                        ? {}
+                        : { selectedThreadId })}
                       onSectionChange={selectSection}
                       onFileSelect={(path) => {
                         commitWorkbenchPosition({
@@ -954,15 +973,23 @@ export function ReviewWorkbench({
                           selectedPath: path,
                         });
                         setActivePath(path);
+                        setSelectedThreadId(undefined);
+                        setSelectedRange(undefined);
                       }}
                       onCommitSelect={selectCommit}
-                      onThreadSelect={(path) => {
+                      onThreadSelect={(row: ConversationThreadRow) => {
+                        setSelectedThreadId(row.id);
+                        setSelectedRange({
+                          start: row.start,
+                          end: row.end,
+                          side: row.side,
+                        });
                         commitWorkbenchPosition({
                           activeTab: "diff",
                           section: "threads",
-                          selectedPath: path,
+                          selectedPath: row.path,
                         });
-                        setActivePath(path);
+                        setActivePath(row.path);
                       }}
                       onCollapse={() => setNavigatorVisible(false)}
                     />
@@ -1043,6 +1070,9 @@ export function ReviewWorkbench({
                           {...(selectedCommitSha === undefined
                             ? { annotations }
                             : {})}
+                          {...(selectedRange === undefined
+                            ? {}
+                            : { selectedRange })}
                           {...(selectedCommitSha === undefined
                             ? actions.localCommentAuthoring === undefined
                               ? {}

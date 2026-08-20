@@ -4,6 +4,7 @@ import { PanelLeftClose } from "lucide-react";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   projectConversationThreadRows,
+  type ConversationThreadRow,
   type ConversationThreadRowState,
 } from "../conversation-thread-entries";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -30,10 +31,11 @@ type ReviewNavigatorProps = {
   readonly selectedPath?: string;
   readonly activePath?: string;
   readonly selectedCommitSha?: string;
+  readonly selectedThreadId?: string;
   readonly onSectionChange: (section: ReviewNavigatorSection) => void;
   readonly onFileSelect: (path: string) => void;
   readonly onCommitSelect: (sha: string) => void;
-  readonly onThreadSelect: (path: string) => void;
+  readonly onThreadSelect: (row: ConversationThreadRow) => void;
   readonly onCollapse?: () => void;
 };
 
@@ -46,6 +48,7 @@ export function ReviewNavigator({
   selectedPath,
   activePath,
   selectedCommitSha,
+  selectedThreadId,
   onSectionChange,
   onFileSelect,
   onCommitSelect,
@@ -203,9 +206,9 @@ export function ReviewNavigator({
                   <button
                     key={row.id}
                     type="button"
-                    aria-pressed={selectedPath === row.path}
+                    aria-pressed={selectedThreadId === row.id}
                     className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
-                    onClick={() => onThreadSelect(row.path)}
+                    onClick={() => onThreadSelect(row)}
                   >
                     <span className="flex w-full items-center justify-between gap-2">
                       <span className="truncate font-medium">{row.author}</span>

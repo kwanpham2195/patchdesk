@@ -11,6 +11,7 @@ import {
   type PendingReviewComposerActions,
   type ReviewConversationActions,
   type ReviewInlineAnnotation,
+  type SelectedDiffRange,
 } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ export function DiffWorkbench({
   preferences: controlledPreferences,
   onPreferencesChange,
   annotations,
+  selectedRange,
   surfaceAction,
 }: {
   readonly patch: string;
@@ -74,6 +76,7 @@ export function DiffWorkbench({
     update: Partial<ReviewViewPreferences>,
   ) => void;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly selectedRange?: SelectedDiffRange;
   readonly surfaceAction?: React.ReactNode;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
@@ -283,6 +286,7 @@ export function DiffWorkbench({
             ? {}
             : { conversationActions })}
           {...(annotations === undefined ? {} : { annotations })}
+          {...(selectedRange === undefined ? {} : { selectedRange })}
         />
       </div>
     </section>
