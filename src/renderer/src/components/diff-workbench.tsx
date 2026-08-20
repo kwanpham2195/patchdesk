@@ -194,8 +194,17 @@ export function DiffWorkbench({
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
         <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {diffTitle ?? selectedPath ?? "No file selected"}
+            <p
+              className="truncate text-sm font-medium"
+              data-diff-workbench-header-path={
+                diffTitle ?? activePath ?? selectedPath ?? undefined
+              }
+            >
+              {/* Keyboard nav (`,` `.` `[` `]` `{` `}` in review-diff-view)
+                  moves activePath without changing selectedPath, so this
+                  fixed header must prefer activePath to stay in sync with
+                  the file on screen. */}
+              {diffTitle ?? activePath ?? selectedPath ?? "No file selected"}
             </p>
             <p className="text-xs text-muted-foreground">
               {diffSubtitle ??

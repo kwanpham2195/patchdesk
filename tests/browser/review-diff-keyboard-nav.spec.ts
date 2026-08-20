@@ -58,6 +58,44 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
   }
 });
 
+test("the fixed panel header follows `.` keyboard file navigation, not just the last click", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    // #active-follow-fixture's three files each carry 48 changed lines (far
+    // taller than #workbench-fixture's, which combined nearly fit in one
+    // 900px viewport). A `.` jump there lands ambiguously close to the
+    // documented "recompute-the-previous-file" trap in review-diff-view.tsx
+    // (an unrelated, pre-existing quirk out of scope for this fix), so this
+    // regression needs a fixture with real scroll distance between files to
+    // prove the header genuinely settles on the jumped-to file.
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    await diffViewport.focus();
+    await expect(diffViewport).toBeFocused();
+
+    // This fixture's DiffWorkbench mount never sets `diffTitle`, so the
+    // fixed header falls through to activePath/selectedPath -- the exact
+    // path this regression covers. `selectFile` (the click path) is never
+    // invoked here, only the `.` keyboard jump, so a header still reading
+    // `selectedPath` would stay frozen on src/a.ts instead of following the
+    // jump to src/b.ts.
+    const header = page.locator("[data-diff-workbench-header-path]");
+    await expect(header).toHaveText("src/a.ts");
+
+    await page.keyboard.press(".");
+    await expect
+      .poll(() => headerOverlapsViewport(page, diffViewport, "src/b.ts"))
+      .toBe(true);
+    await expect(header).toHaveText("src/b.ts");
+  } finally {
+    await close(server);
+  }
+});
+
 test("typing `.` in the comment composer inserts the character instead of navigating", async ({
   page,
 }) => {
