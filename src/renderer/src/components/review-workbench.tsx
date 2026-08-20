@@ -74,12 +74,17 @@ import {
   ReviewNavigator,
   type ReviewNavigatorSection,
 } from "./review-navigator";
+import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
   type ReviewViewPreferences,
 } from "../review-view-preferences";
+import {
+  loadNavigatorWidthPreferences,
+  saveNavigatorWidthPreferences,
+} from "../navigator-width-preferences";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -418,6 +423,23 @@ export function ReviewWorkbench({
   );
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
   const [navigatorVisible, setNavigatorVisible] = useState(true);
+  const [navigatorWidthRem, setNavigatorWidthRem] = useState(
+    () => loadNavigatorWidthPreferences().width,
+  );
+  const handleNavigatorResize = useCallback((widthRem: number) => {
+    setNavigatorWidthRem(widthRem);
+  }, []);
+  const handleNavigatorResizeEnd = useCallback((widthRem: number) => {
+    setNavigatorWidthRem(widthRem);
+    saveNavigatorWidthPreferences(widthRem);
+  }, []);
+  // SAFETY: "--review-navigator-width" is a custom property; CSSProperties
+  // doesn't declare custom-property keys, but any `--name: string` entry is
+  // valid inline-style CSS. It feeds the diff layout's
+  // `grid-cols-[var(--review-navigator-width)_...]` rule below.
+  const navigatorGridStyle = {
+    "--review-navigator-width": `${navigatorWidthRem}rem`,
+  } as React.CSSProperties;
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
     loadReviewViewPreferences(model.session.key.profileId),
   );
@@ -916,7 +938,8 @@ export function ReviewWorkbench({
                       ? "with-navigator"
                       : "collapsed-navigator"
                   }
-                  className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[18rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
+                  style={navigatorVisible ? navigatorGridStyle : undefined}
+                  className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
                 >
                   {navigatorVisible ? (
                     <ReviewNavigator
@@ -961,6 +984,13 @@ export function ReviewWorkbench({
                       </Tooltip>
                     </div>
                   )}
+                  {navigatorVisible ? (
+                    <ReviewNavigatorResizeHandle
+                      widthRem={navigatorWidthRem}
+                      onResize={handleNavigatorResize}
+                      onResizeEnd={handleNavigatorResizeEnd}
+                    />
+                  ) : null}
                   <div className="min-h-0 min-w-0">
                     {selectedCommitSha !== undefined &&
                     commitDiffState._tag === "Loading" ? (

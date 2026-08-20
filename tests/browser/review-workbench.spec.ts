@@ -169,6 +169,75 @@ test("Pierre controls persist and the review navigator can collapse", async ({
   }
 });
 
+test("review navigator resize handle keyboard-resizes the pane, resets on double-click, and the width survives reload", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+
+    const navigation = page.getByRole("complementary", {
+      name: "Review navigation",
+    });
+    const handle = page.getByRole("separator", {
+      name: "Resize review navigator",
+    });
+    await expect(handle).toBeVisible();
+    await expect(handle).toHaveAttribute("aria-orientation", "vertical");
+    await expect(handle).toHaveAttribute("aria-valuenow", "18");
+    await expect(handle).toHaveAttribute("aria-valuemin", "14");
+    await expect(handle).toHaveAttribute("aria-valuemax", "34");
+
+    const initialBox = await navigation.boundingBox();
+    if (initialBox === null) throw new Error("navigator has no layout box");
+    expect(Math.round(initialBox.width)).toBe(288); // 18rem default at a 16px root
+
+    await handle.focus();
+    for (let i = 0; i < 5; i += 1) await page.keyboard.press("ArrowRight");
+    await expect(handle).toHaveAttribute("aria-valuenow", "23");
+    const widenedBox = await navigation.boundingBox();
+    if (widenedBox === null) throw new Error("navigator has no layout box");
+    expect(Math.round(widenedBox.width)).toBe(368); // 18rem + 5 steps
+
+    await page.keyboard.press("Home");
+    await expect(handle).toHaveAttribute("aria-valuenow", "14");
+    const minBox = await navigation.boundingBox();
+    if (minBox === null) throw new Error("navigator has no layout box");
+    expect(Math.round(minBox.width)).toBe(224); // clamped to the 14rem minimum
+
+    await page.keyboard.press("End");
+    await expect(handle).toHaveAttribute("aria-valuenow", "34");
+    const maxBox = await navigation.boundingBox();
+    if (maxBox === null) throw new Error("navigator has no layout box");
+    expect(Math.round(maxBox.width)).toBe(544); // clamped to the 34rem maximum
+
+    await handle.dblclick();
+    await expect(handle).toHaveAttribute("aria-valuenow", "18");
+
+    for (let i = 0; i < 3; i += 1) await page.keyboard.press("ArrowRight");
+    await expect(handle).toHaveAttribute("aria-valuenow", "21");
+
+    await page.reload();
+    const reloadedHandle = page.getByRole("separator", {
+      name: "Resize review navigator",
+    });
+    await expect(reloadedHandle).toHaveAttribute("aria-valuenow", "21");
+    const reloadedBox = await page
+      .getByRole("complementary", { name: "Review navigation" })
+      .boundingBox();
+    if (reloadedBox === null) throw new Error("navigator has no layout box");
+    expect(Math.round(reloadedBox.width)).toBe(336); // persisted 21rem survives reload
+
+    await page.getByRole("button", { name: "Hide review navigator" }).click();
+    await expect(
+      page.getByRole("separator", { name: "Resize review navigator" }),
+    ).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
 test("Patchdesk has no application sidebar and keeps the desktop width", async ({
   page,
 }) => {
