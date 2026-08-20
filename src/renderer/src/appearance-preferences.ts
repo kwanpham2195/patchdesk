@@ -4,14 +4,14 @@ export type ResolvedAppearance = "light" | "dark";
 const STORAGE_KEY = "patchdesk.appearance.v1";
 
 export function loadAppearancePreference(): AppearancePreference {
-  if (typeof window === "undefined") return "system";
+  if (globalThis.window === undefined) return "system";
   const value = window.localStorage.getItem(STORAGE_KEY);
   return value === "light" || value === "dark" ? value : "system";
 }
 
 /** Removes the renderer preference after it has been persisted to config.json. */
 export function clearAppearancePreference(): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -23,8 +23,8 @@ export function resolveAppearance(
   value: AppearancePreference,
 ): ResolvedAppearance {
   if (value !== "system") return value;
-  return typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
+  return globalThis.window !== undefined &&
+    window.matchMedia !== undefined &&
     window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";

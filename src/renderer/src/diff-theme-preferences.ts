@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 import {
   PIERRE_DARK_THEMES,
   PIERRE_LIGHT_THEMES,
@@ -13,43 +15,47 @@ export type DiffThemePreferences = {
   readonly dark: string;
 };
 
-export const DEFAULT_DIFF_THEME_PREFERENCES: DiffThemePreferences = {
+// `as const satisfies` (rather than `: DiffThemePreferences`) keeps `light`/
+// `dark` as literal types so they can be passed directly as `v.fallback`
+// defaults below, which must match the picklist's literal option type.
+export const DEFAULT_DIFF_THEME_PREFERENCES = {
   light: "pierre-light",
   dark: "pierre-dark",
-};
+} as const satisfies DiffThemePreferences;
 
 const storageKey = "patchdesk.diff-theme.v2";
 const v1StorageKey = "patchdesk.diff-theme.v1";
 
-function hasTheme(
-  themes: ReadonlyArray<DiffThemeOption>,
-  value: unknown,
-): value is string {
-  return (
-    typeof value === "string" && themes.some((theme) => theme.id === value)
-  );
-}
+// Every field falls back independently to today's default, matching the old
+// `hasTheme` narrowing: an unrecognized or wrong-typed theme id resets only
+// that one field, never the whole pair.
+const diffThemePreferencesSchema = v.object({
+  light: v.fallback(
+    v.picklist(DIFF_LIGHT_THEMES.map((theme) => theme.id)),
+    DEFAULT_DIFF_THEME_PREFERENCES.light,
+  ),
+  dark: v.fallback(
+    v.picklist(DIFF_DARK_THEMES.map((theme) => theme.id)),
+    DEFAULT_DIFF_THEME_PREFERENCES.dark,
+  ),
+});
 
+/**
+ * Boundary parser for a persisted or IPC-carried diff theme pair. This is
+ * genuinely unknown input from three separate call sites outside this module
+ * (a JSON config value, and a `CustomEvent<unknown>` detail), so there is no
+ * earlier boundary to move the parse to.
+ */
 export function parseDiffThemePreferences(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the diff theme preferences I/O boundary parser, called with genuinely unknown values from app.tsx (parsed settings JSON) and review-diff-view.tsx (a CustomEvent detail); there is no earlier boundary to parse at.
   value: unknown,
 ): DiffThemePreferences {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_DIFF_THEME_PREFERENCES;
-  }
-  const candidate = value as Record<string, unknown>;
-  const parsed: DiffThemePreferences = {
-    light: hasTheme(DIFF_LIGHT_THEMES, candidate.light)
-      ? candidate.light
-      : DEFAULT_DIFF_THEME_PREFERENCES.light,
-    dark: hasTheme(DIFF_DARK_THEMES, candidate.dark)
-      ? candidate.dark
-      : DEFAULT_DIFF_THEME_PREFERENCES.dark,
-  };
-  return parsed;
+  const parsed = v.safeParse(diffThemePreferencesSchema, value);
+  return parsed.success ? parsed.output : DEFAULT_DIFF_THEME_PREFERENCES;
 }
 
 export function loadDiffThemePreferences(): DiffThemePreferences {
-  if (typeof window === "undefined") return DEFAULT_DIFF_THEME_PREFERENCES;
+  if (globalThis.window === undefined) return DEFAULT_DIFF_THEME_PREFERENCES;
   try {
     const serialized = window.localStorage.getItem(storageKey);
     // parseDiffThemePreferences migrates the retired {pierre-light,
@@ -70,7 +76,7 @@ export function loadDiffThemePreferences(): DiffThemePreferences {
 
 /** Removes renderer preference keys after config.json accepts the durable value. */
 export function clearDiffThemePreferences(): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   try {
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(v1StorageKey);
@@ -94,23 +100,28 @@ export function diffThemeFor(
   return preferences;
 }
 
+// The v1 format stored either the bare family literal directly, or an
+// object carrying it under `family`. Both shapes resolve to the same
+// `"github" | "high_contrast" | undefined` family before mapping to a pair,
+// so a value that isn't either shape (or omits `family`) falls through to
+// `undefined` just like the pair fields above fall through to their default.
+const v1FamilySchema = v.picklist(["github", "high_contrast"]);
+const v1PayloadSchema = v.union([
+  v1FamilySchema,
+  v.pipe(
+    v.object({ family: v.optional(v1FamilySchema) }),
+    v.transform((value) => value.family),
+  ),
+]);
+
 function parseV1DiffThemePreference(
   value: string | null,
 ): DiffThemePreferences | undefined {
   if (value === null) return undefined;
   try {
     const parsed: unknown = JSON.parse(value);
-    if (parsed === "github")
-      return { light: "pierre-light", dark: "pierre-dark" };
-    if (parsed === "high_contrast") {
-      return {
-        light: "github-light-high-contrast",
-        dark: "github-dark-high-contrast",
-      };
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
-      return undefined;
-    const family = (parsed as Record<string, unknown>).family;
+    const result = v.safeParse(v1PayloadSchema, parsed);
+    const family = result.success ? result.output : undefined;
     if (family === "github")
       return { light: "pierre-light", dark: "pierre-dark" };
     if (family === "high_contrast") {

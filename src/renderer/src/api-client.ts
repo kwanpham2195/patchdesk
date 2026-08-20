@@ -44,8 +44,7 @@ export async function requestJson(
 ): Promise<unknown> {
   const startedAt = performance.now();
   const skipLogging = path === "/v1/logs" || path === "/health";
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
-  if (typeof window === "undefined" || !("patchdesk" in window)) {
+  if (globalThis.window === undefined || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",
       503,
@@ -94,8 +93,7 @@ export async function selectDirectory(
   defaultPath?: string,
 ): Promise<string | undefined> {
   const startedAt = performance.now();
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
-  if (typeof window === "undefined" || !("patchdesk" in window)) {
+  if (globalThis.window === undefined || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",
       503,

@@ -1,5 +1,4 @@
-// oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects whether this test file's environment provides DOM globals; most suites run in vitest's "node" environment, where there is no schema for "does the global HTMLElement exist".
-if (typeof HTMLElement !== "undefined") {
+if (globalThis.HTMLElement !== undefined) {
   if (HTMLElement.prototype.hasPointerCapture === undefined) {
     HTMLElement.prototype.hasPointerCapture = () => false;
   }
@@ -21,8 +20,7 @@ if (typeof HTMLElement !== "undefined") {
 
 // jsdom has no PointerEvent; Base UI primitives re-dispatch clicks as
 // PointerEvent on their hidden inputs, so polyfill it as a MouseEvent subclass.
-// oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects whether this test file's environment provides DOM globals; most suites run in vitest's "node" environment, where there is no schema for "does the global window exist".
-if (typeof window !== "undefined" && window.PointerEvent === undefined) {
+if (globalThis.window !== undefined && window.PointerEvent === undefined) {
   class PointerEventPolyfill extends MouseEvent {
     public readonly pointerId: number;
     public readonly pointerType: string;
@@ -46,15 +44,13 @@ if (typeof window !== "undefined" && window.PointerEvent === undefined) {
 // jsdom lacks Element.getAnimations; Base UI scroll-area uses it to sync
 // thumb visibility with running transitions.
 if (
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects whether this test file's environment provides DOM globals; most suites run in vitest's "node" environment, where there is no schema for "does the global Element exist".
-  typeof Element !== "undefined" &&
+  globalThis.Element !== undefined &&
   Element.prototype.getAnimations === undefined
 ) {
   Element.prototype.getAnimations = () => [];
 }
 
-// oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects whether this test file's environment provides DOM globals; most suites run in vitest's "node" environment, where there is no schema for "does the global ResizeObserver exist".
-if (typeof ResizeObserver === "undefined") {
+if (globalThis.ResizeObserver === undefined) {
   globalThis.ResizeObserver = class ResizeObserverStub implements ResizeObserver {
     disconnect(): void {}
     observe(): void {}

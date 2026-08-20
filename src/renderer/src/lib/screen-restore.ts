@@ -6,6 +6,8 @@
  * open. Values are validated on load and corrupt data is ignored.
  */
 
+import * as v from "valibot";
+
 const WORKBENCH_UI_KEY_PREFIX = "patchdesk.workbench-ui.v1.";
 const SETTINGS_RESTORE_KEY = "patchdesk.settings.v1";
 
@@ -27,7 +29,7 @@ export function workbenchUiKey(reviewId: string): string {
 export function loadWorkbenchUiState(
   reviewId: string,
 ): WorkbenchUiState | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (globalThis.window === undefined) return undefined;
   const raw = window.localStorage.getItem(workbenchUiKey(reviewId));
   if (raw === null) return undefined;
   return parseWorkbenchUiState(raw);
@@ -38,7 +40,7 @@ export function saveWorkbenchUiState(
   reviewId: string,
   state: WorkbenchUiState,
 ): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   const normalized: WorkbenchUiState = {};
   if (state.activeTab !== undefined) normalized.activeTab = state.activeTab;
   if (state.section !== undefined) normalized.section = state.section;
@@ -52,13 +54,13 @@ export function saveWorkbenchUiState(
 
 /** Remove the persisted position for one review (e.g., review removed from the workspace). */
 export function clearWorkbenchUiState(reviewId: string): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   window.localStorage.removeItem(workbenchUiKey(reviewId));
 }
 
 /** Load the Settings overlay restore; undefined when absent or invalid. */
 export function loadSettingsRestore(): SettingsRestoreState | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (globalThis.window === undefined) return undefined;
   const raw = window.sessionStorage.getItem(SETTINGS_RESTORE_KEY);
   if (raw === null) return undefined;
   return parseSettingsRestore(raw);
@@ -66,7 +68,7 @@ export function loadSettingsRestore(): SettingsRestoreState | undefined {
 
 /** Persist the open Settings section so a reload reopens the same section. */
 export function saveSettingsRestore(section: string): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   window.sessionStorage.setItem(
     SETTINGS_RESTORE_KEY,
     JSON.stringify({ section: section.slice(0, 48) }),
@@ -75,49 +77,58 @@ export function saveSettingsRestore(section: string): void {
 
 /** Called when Settings closes normally: a later reload must not reopen it. */
 export function clearSettingsRestore(): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   window.sessionStorage.removeItem(SETTINGS_RESTORE_KEY);
 }
+
+const activeTabSchema = v.picklist(["conversation", "diff", "insights"]);
+const sectionNameSchema = v.picklist(["files", "commits", "insights"]);
+const selectedPathSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.transform((value) => value.slice(0, 2_000)),
+);
+
+// Each field falls back independently to `undefined` (i.e. is simply
+// omitted), matching the old hand-rolled checks: one wrong-typed or
+// unrecognized field drops only itself, never the other sound fields.
+const workbenchUiStateSchema = v.object({
+  activeTab: v.fallback(v.optional(activeTabSchema), undefined),
+  section: v.fallback(v.optional(sectionNameSchema), undefined),
+  selectedPath: v.fallback(v.optional(selectedPathSchema), undefined),
+});
 
 function parseWorkbenchUiState(raw: string): WorkbenchUiState | undefined {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const record = parsed as Record<string, unknown>;
+    const decoded = v.safeParse(workbenchUiStateSchema, parsed);
+    if (!decoded.success) return undefined;
+    const { activeTab, section, selectedPath } = decoded.output;
     const result: WorkbenchUiState = {};
-    if (
-      record.activeTab === "conversation" ||
-      record.activeTab === "diff" ||
-      record.activeTab === "insights"
-    ) {
-      result.activeTab = record.activeTab;
-    }
-    if (
-      record.section === "files" ||
-      record.section === "commits" ||
-      record.section === "insights"
-    ) {
-      result.section = record.section;
-    }
-    if (
-      typeof record.selectedPath === "string" &&
-      record.selectedPath.length > 0
-    ) {
-      result.selectedPath = record.selectedPath.slice(0, 2_000);
-    }
+    if (activeTab !== undefined) result.activeTab = activeTab;
+    if (section !== undefined) result.section = section;
+    if (selectedPath !== undefined) result.selectedPath = selectedPath;
     return Object.keys(result).length === 0 ? undefined : result;
   } catch {
     return undefined;
   }
 }
 
+const settingsSectionSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.transform((value) => value.slice(0, 48)),
+);
+
+const settingsRestoreSchema = v.object({
+  section: settingsSectionSchema,
+});
+
 function parseSettingsRestore(raw: string): SettingsRestoreState | undefined {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const section = (parsed as Record<string, unknown>).section;
-    if (typeof section !== "string" || section.length === 0) return undefined;
-    return { section: section.slice(0, 48) };
+    const decoded = v.safeParse(settingsRestoreSchema, parsed);
+    return decoded.success ? { section: decoded.output.section } : undefined;
   } catch {
     return undefined;
   }

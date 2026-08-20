@@ -196,8 +196,8 @@ export function App({
   fixtureContentLoader = loadFixtureContent,
   performanceFixtureLoader = loadPerformanceFixture,
 }: AppProps): React.JSX.Element {
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
-  const fixtureHash = typeof window === "undefined" ? "" : window.location.hash;
+  const fixtureHash =
+    globalThis.window === undefined ? "" : window.location.hash;
   const fixtureMode = isFixtureHash(fixtureHash);
   const [reviewLoaderGeneration, setReviewLoaderGeneration] = useState(0);
   const LazyReviewWorkbench = useMemo(
@@ -214,8 +214,7 @@ export function App({
   );
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; parseDestination is the actual boundary parser for the stored value.
-      typeof window === "undefined"
+      globalThis.window === undefined
         ? null
         : window.localStorage.getItem("patchdesk.destination"),
     ),
@@ -283,8 +282,7 @@ export function App({
       applyAppearance(appearance);
     };
     apply();
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects browser capability support, not external input to decode; there is no schema for "does matchMedia exist".
-    if (typeof window.matchMedia !== "function") return undefined;
+    if (window.matchMedia === undefined) return undefined;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
@@ -293,8 +291,7 @@ export function App({
     applyDiffThemePreferences(diffThemePreferences);
   }, [diffThemePreferences]);
   useEffect(() => {
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.request present".
-    if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
+    if (fixtureMode || window.patchdesk?.request === undefined) return;
     let active = true;
     const loadGlobalPreferences = async (): Promise<void> => {
       preferenceRetry.current = loadGlobalPreferences;
@@ -372,8 +369,7 @@ export function App({
   const loadWorkspace = useCallback(async (): Promise<void> => {
     const generation = ++workspaceGeneration.current;
     inboxRefreshGeneration.current += 1;
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects a non-browser (SSR/test) runtime, not external input to decode; there is no schema for "does the global window exist".
-    if (typeof window === "undefined" || !("patchdesk" in window)) {
+    if (globalThis.window === undefined || !("patchdesk" in window)) {
       dispatchWorkspace({ _tag: "failed", screen: initialState ?? "empty" });
       return;
     }
@@ -509,8 +505,7 @@ export function App({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fixtureMode, navigationState]);
   useEffect(() => {
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.request present".
-    if (fixtureMode || typeof window.patchdesk?.request !== "function") return;
+    if (fixtureMode || window.patchdesk?.request === undefined) return;
     void window.patchdesk
       .request({ operation: "setNavigationState", state: navigationState })
       .catch(() => undefined);
@@ -545,9 +540,7 @@ export function App({
     [navigationState],
   );
   useEffect(() => {
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- detects desktop-bridge capability support, not external input to decode; there is no schema for "is window.patchdesk.onNavigate present".
-    if (fixtureMode || typeof window.patchdesk?.onNavigate !== "function")
-      return;
+    if (fixtureMode || window.patchdesk?.onNavigate === undefined) return;
     return window.patchdesk.onNavigate((next) => {
       if (next === "settings") openSettings();
     });
