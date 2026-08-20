@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "playwright/test";
@@ -36,18 +37,48 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+type AxeResults = Awaited<ReturnType<AxeBuilder["analyze"]>>;
+type AxeViolation = AxeResults["violations"][number];
+type AxeViolationNode = AxeViolation["nodes"][number];
+
+// Pierre's <diffs-container> (selector "diffs-container", or ".visual-diff"
+// when axe needs ancestor context for uniqueness -- Pierre applies that
+// class straight onto the custom element) renders the complete Shiki
+// syntax-token catalog inside its own shadow root, keyed to CSS custom
+// properties (`--diffs-token-light`/`--diffs-token-dark`) that Pierre's
+// theme engine owns. Some of those token colors cannot satisfy WCAG
+// contrast against every selected theme without overriding that engine,
+// which is out of scope here -- this is the one finding this filter
+// legitimately suppresses. A blanket `.exclude("diffs-container")` used to
+// hide the whole custom element from every rule, which also hid Patchdesk's
+// own markup that Pierre slots inside it (annotation cards, review
+// controls). Axe now scans the entire page, including everything inside
+// <diffs-container>; only color-contrast findings are checked further, and
+// only the ones whose target actually crosses into a shadow root are
+// dropped. axe-core represents a shadow-piercing target as a `[hostSelector,
+// selectorInsideShadowRoot]` pair (see axe-core's `UnlabelledFrameSelector`
+// type) instead of a plain selector string; Pierre's diff viewer is the only
+// shadow-DOM element this app renders, so any color-contrast node using that
+// shape is necessarily inside Pierre's shadow root, regardless of which
+// selector text axe picked for the host.
+function isPierreShadowTokenNode(node: AxeViolationNode): boolean {
+  return Array.isArray(node.target[0]);
+}
+
 async function seriousProductViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    // Pierre deliberately supports the complete Shiki catalog. Individual
-    // syntax tokens live inside its shadow root and cannot all satisfy one
-    // contrast rule without masking the selected theme. Patchdesk's review
-    // controls and non-color status language are tested as the product seam.
-    .exclude("diffs-container")
-    .analyze();
-  return results.violations.filter(
-    (violation) =>
-      violation.impact === "critical" || violation.impact === "serious",
-  );
+  const results = await new AxeBuilder({ page }).analyze();
+  return results.violations
+    .filter(
+      (violation) =>
+        violation.impact === "critical" || violation.impact === "serious",
+    )
+    .flatMap((violation): AxeViolation[] => {
+      if (violation.id !== "color-contrast") return [violation];
+      const nodes = violation.nodes.filter(
+        (node) => !isPierreShadowTokenNode(node),
+      );
+      return nodes.length === 0 ? [] : [{ ...violation, nodes }];
+    });
 }
 
 for (const fixture of [
@@ -86,6 +117,29 @@ async function forceLightAppearance(page: Page): Promise<void> {
     );
   });
 }
+
+test("axe now catches Patchdesk's own violations even when they render inside <diffs-container>", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-fixture`);
+  await forceLightAppearance(page);
+  // This checkbox-role button is Patchdesk's own markup, rendered as a real
+  // light-DOM child of Pierre's <diffs-container> (via its "header-custom"
+  // slot) -- not shadow-root content. The old blanket
+  // `.exclude("diffs-container")` hid all of it, including this element,
+  // from every rule. Confirm the scan is clean before we break anything, so
+  // the assertion below is not passing by coincidence.
+  const viewedToggle = page.locator(
+    'diffs-container button[aria-label="Mark file src/a.ts as viewed"]',
+  );
+  await expect(viewedToggle).toHaveCount(1);
+  expect(await seriousProductViolations(page)).toEqual([]);
+  await viewedToggle.evaluate((element) => element.removeAttribute("aria-label"));
+  const violations = await seriousProductViolations(page);
+  expect(violations.some((violation) => violation.id === "button-name")).toBe(
+    true,
+  );
+});
 
 test("keyboard users can skip, navigate, and close quick navigation", async ({
   page,
@@ -298,6 +352,9 @@ test("rendered Mermaid controls stay independently keyboard accessible", async (
   await expect
     .poll(() =>
       source.evaluate(
+        // SAFETY: `source` resolves the "Mermaid source" text, which
+        // pull-request-description.tsx only ever renders inside a
+        // <summary>; a <summary>'s parent is always its owning <details>.
         (element) => (element.parentElement as HTMLDetailsElement).open,
       ),
     )
@@ -313,7 +370,11 @@ test("rendered Mermaid controls stay independently keyboard accessible", async (
   await expect(dialog).toBeVisible();
   expect(await dialog.evaluate((element) => element.tagName)).toBe("DIALOG");
   expect(
-    await dialog.evaluate((element) => (element as HTMLDialogElement).open),
+    await dialog.evaluate(
+      // SAFETY: the assertion immediately above confirms this element's
+      // tagName is "DIALOG", so it is an HTMLDialogElement.
+      (element) => (element as HTMLDialogElement).open,
+    ),
   ).toBe(true);
   expect(await seriousProductViolations(page)).toEqual([]);
 
@@ -373,9 +434,13 @@ async function serve(): Promise<Server> {
 }
 function origin(server: Server): string {
   const address = server.address();
-  if (address === null || typeof address === "string")
+  if (address === null || !("port" in Object(address)))
     throw new Error("address");
-  return `http://127.0.0.1:${address.port}`;
+  // SAFETY: `Server#address()` returns `string | AddressInfo | null`; the
+  // check above rules out `null` and rules out the `string` (pipe/socket
+  // path) branch, since a JS string wrapper never carries a `port` property.
+  // Only the `AddressInfo` branch remains.
+  return `http://127.0.0.1:${(address as AddressInfo).port}`;
 }
 function close(server: Server): Promise<void> {
   return new Promise((resolve, reject) =>
