@@ -382,9 +382,19 @@ test("native diff scrolling passively follows the active file without changing f
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toHaveAttribute("data-selected-path", "src/b.ts");
+    // Focus legitimately stays on the tree row the user actually clicked:
+    // nothing here -- not the click handler, not passive scroll-follow --
+    // ever moves DOM focus to the diff viewport. Verified by checking
+    // `document.activeElement` right after the click, before any scrolling:
+    // it was already "body" on the pre-fix `key={activePath}` tree (the
+    // click's own activePath update remounted the tree it had just placed
+    // focus on) and is "file-tree-container" once the tree stops remounting
+    // on every active-file change. Mouse-wheel-scrolling an unrelated
+    // region (the diff viewport, not the tree) correctly leaves focus where
+    // the user's last real interaction put it.
     expect(
       await page.evaluate(() => document.activeElement?.localName),
-    ).not.toBe("file-tree-container");
+    ).toBe("file-tree-container");
   } finally {
     await close(server);
   }
@@ -417,6 +427,121 @@ test("streamed files can become the passive active path", async ({ page }) => {
     await expect(
       page.getByRole("button", { name: /Load more files/ }),
     ).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("the file tree does not remount when the active file changes via passive scroll-follow", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    await expect(
+      page.locator('file-tree-container[data-active-path="src/a.ts"]'),
+    ).toBeVisible();
+
+    // Capture a live reference to the tree's shadow host before the active
+    // file changes. If `PierreFileTree` still keyed its inner model on the
+    // active path, this change below would unmount and remount the whole
+    // tree -- a brand new `<file-tree-container>` element, DOM identity and
+    // all -- rather than reusing the same node.
+    const containerBefore = await page
+      .locator("file-tree-container")
+      .elementHandle();
+    if (containerBefore === null)
+      throw new Error("Expected the file tree container to exist");
+
+    const viewport = page.locator(".review-diff-viewport");
+    const box = await viewport.boundingBox();
+    if (box === null) throw new Error("Review diff viewport was not visible");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 10_000);
+    await expect(
+      page.locator("[data-review-diff-loaded-file-count]"),
+    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
+    await page.mouse.wheel(0, 3_000);
+    await expect(
+      page.locator('file-tree-container[data-active-path="src/c.ts"]'),
+    ).toBeVisible();
+
+    const containerAfter = await page
+      .locator("file-tree-container")
+      .elementHandle();
+    if (containerAfter === null)
+      throw new Error("Expected the file tree container to still exist");
+    const isSameNode = await page.evaluate(
+      ([before, after]) => before === after,
+      [containerBefore, containerAfter],
+    );
+    expect(isSameNode).toBe(true);
+  } finally {
+    await close(server);
+  }
+});
+
+test("the active-file highlight replaces stale click selection instead of leaving two rows looking selected", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+
+    const rowBackgrounds = () =>
+      page.evaluate(() => {
+        const container = document.querySelector("file-tree-container");
+        const shadow = container?.shadowRoot;
+        if (shadow == null) throw new Error("Expected an open shadow root");
+        const backgroundOf = (path: string): string | null => {
+          const row = shadow.querySelector(`[data-item-path="${path}"]`);
+          return row === null
+            ? null
+            : getComputedStyle(row).backgroundColor;
+        };
+        return {
+          a: backgroundOf("src/a.ts"),
+          b: backgroundOf("src/b.ts"),
+          c: backgroundOf("src/c.ts"),
+        };
+      });
+
+    // Real click selection: @pierre/trees' own click handling sets its
+    // internal `data-item-selected="true"` on src/b.ts, which is also the
+    // active file at this point, so exactly one row (b) should be
+    // highlighted.
+    await page.getByRole("treeitem", { name: "b.ts" }).click();
+    await expect(
+      page.getByRole("region", { name: "Review diff" }),
+    ).toHaveAttribute("data-selected-path", "src/b.ts");
+    const afterClick = await rowBackgrounds();
+    expect(afterClick.b).not.toBe(afterClick.a);
+
+    // Passive scroll-follow now moves the active file on to src/c.ts. Pierre
+    // never updates its own click-selection state on its own, so without
+    // this fix's stale-selection neutralization, b would still carry
+    // `data-item-selected="true"` and keep looking highlighted alongside c.
+    const viewport = page.locator(".review-diff-viewport");
+    const box = await viewport.boundingBox();
+    if (box === null) throw new Error("Review diff viewport was not visible");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 10_000);
+    await expect(
+      page.locator("[data-review-diff-loaded-file-count]"),
+    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
+    await page.mouse.wheel(0, 3_000);
+    await expect(
+      page.locator('file-tree-container[data-active-path="src/c.ts"]'),
+    ).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        const settled = await rowBackgrounds();
+        return settled.b === settled.a && settled.c !== settled.a;
+      })
+      .toBe(true);
   } finally {
     await close(server);
   }
