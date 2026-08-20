@@ -43,7 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  Reflect.deleteProperty(window, "patchdesk");
   restoreDialogMethod("showModal", originalShowModalDescriptor);
   restoreDialogMethod("close", originalCloseDescriptor);
 });
@@ -108,6 +108,30 @@ describe("PullRequestDescription", () => {
     ).toBeTruthy();
   });
 
+  it("keys repeated inline nodes by position so React does not warn about duplicate keys", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      render(
+        <PullRequestDescriptionPreview
+          markdown={
+            "[Same](https://github.com/centraldigital/patchdesk) and [Same](https://github.com/centraldigital/patchdesk)\n\n`dup` and `dup`"
+          }
+          pullRequest={pullRequest}
+        />,
+      );
+
+      expect(screen.getAllByRole("button", { name: "Same" })).toHaveLength(2);
+      expect(screen.getAllByText("dup")).toHaveLength(2);
+      for (const call of consoleError.mock.calls) {
+        expect(String(call[0])).not.toMatch(/same key/i);
+      }
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("states when the author did not provide a description", () => {
     render(<PullRequestDescription />);
     expect(
@@ -131,22 +155,24 @@ describe("PullRequestDescription", () => {
       screen.getByRole("img", { name: "Architecture diagram" }),
     ).toBeTruthy();
     expect(document.querySelector("script")).toBeNull();
-    expect((window as unknown as { bad?: boolean }).bad).toBeUndefined();
+    expect("bad" in window).toBe(false);
   });
 
   it("keeps rendered Mermaid source and lightbox controls independent", async () => {
     const user = userEvent.setup();
-    const svgPrototype = SVGElement.prototype as unknown as Record<
-      string,
-      unknown
-    >;
-    const previousGetBBox = svgPrototype.getBBox;
-    const previousTextLength = svgPrototype.getComputedTextLength;
-    Object.defineProperty(svgPrototype, "getBBox", {
+    const originalGetBBox = Object.getOwnPropertyDescriptor(
+      SVGElement.prototype,
+      "getBBox",
+    );
+    const originalGetComputedTextLength = Object.getOwnPropertyDescriptor(
+      SVGElement.prototype,
+      "getComputedTextLength",
+    );
+    Object.defineProperty(SVGElement.prototype, "getBBox", {
       configurable: true,
       value: () => ({ x: 0, y: 0, width: 100, height: 30 }),
     });
-    Object.defineProperty(svgPrototype, "getComputedTextLength", {
+    Object.defineProperty(SVGElement.prototype, "getComputedTextLength", {
       configurable: true,
       value: () => 100,
     });
@@ -167,7 +193,11 @@ describe("PullRequestDescription", () => {
       await user.keyboard("{Enter}");
       expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
       await user.click(summary);
-      expect((summary.parentElement as HTMLDetailsElement).open).toBe(true);
+      const detailsElement = summary.parentElement;
+      if (!(detailsElement instanceof HTMLDetailsElement)) {
+        throw new Error("expected the Mermaid summary's parent to be <details>");
+      }
+      expect(detailsElement.open).toBe(true);
       diagramButton.focus();
       await user.keyboard("{Enter}");
       const dialog = screen.getByRole("dialog", { name: "Image viewer" });
@@ -175,11 +205,20 @@ describe("PullRequestDescription", () => {
       fireEvent(dialog, new Event("cancel", { cancelable: true }));
       expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
     } finally {
-      if (previousGetBBox === undefined) delete svgPrototype.getBBox;
-      else svgPrototype.getBBox = previousGetBBox;
-      if (previousTextLength === undefined)
-        delete svgPrototype.getComputedTextLength;
-      else svgPrototype.getComputedTextLength = previousTextLength;
+      if (originalGetBBox === undefined) {
+        Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+      } else {
+        Object.defineProperty(SVGElement.prototype, "getBBox", originalGetBBox);
+      }
+      if (originalGetComputedTextLength === undefined) {
+        Reflect.deleteProperty(SVGElement.prototype, "getComputedTextLength");
+      } else {
+        Object.defineProperty(
+          SVGElement.prototype,
+          "getComputedTextLength",
+          originalGetComputedTextLength,
+        );
+      }
     }
   });
 
@@ -209,10 +248,10 @@ describe("PullRequestDescription", () => {
       configurable: true,
       get: () => 320,
     });
-    class TestResizeObserver {
+    class TestResizeObserver implements ResizeObserver {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe(): void {
-        this.callback([], this as unknown as ResizeObserver);
+        this.callback([], this);
       }
       disconnect(): void {}
       unobserve(): void {}
@@ -234,8 +273,7 @@ describe("PullRequestDescription", () => {
       ).not.toMatch(/max-h/);
     } finally {
       if (originalScrollHeight === undefined) {
-        delete (HTMLElement.prototype as { scrollHeight?: number })
-          .scrollHeight;
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
       } else {
         Object.defineProperty(
           HTMLElement.prototype,

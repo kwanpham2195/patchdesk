@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
+import * as v from "valibot";
 
 import { useLightbox } from "../use-lightbox";
 
@@ -68,7 +69,7 @@ export function PullRequestDescription({
     const measure = (): void =>
       setOverflows(element.scrollHeight > collapsedDescriptionHeight + 1);
     measure();
-    if (typeof ResizeObserver === "undefined") return;
+    if (globalThis.ResizeObserver === undefined) return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
@@ -159,6 +160,11 @@ function lexSafely(markdown: string): TokensList {
   try {
     return marked.lexer(markdown);
   } catch {
+    // SAFETY: `TokensList` is `Token[] & { links: Links }`. The array literal
+    // below is a single well-formed paragraph token (all fields `marked`
+    // itself would set), and `Object.assign` attaches the required `links`
+    // map onto that same array, so the assembled value structurally matches
+    // `TokensList` even though `Object.assign`'s overloads can't express it.
     return Object.assign(
       [
         {
@@ -177,12 +183,15 @@ function renderBlocks(
   tokens: ReadonlyArray<Token>,
   pullRequest: PullRequestRef | undefined,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token) => {
-    const key = tokenKey(token);
+  return tokens.map((token, index) => {
+    const key = tokenKey(token, index);
     switch (token.type) {
       case "space":
         return null;
       case "heading": {
+        // SAFETY: `Math.min(Math.max(token.depth, 1), 6)` clamps the depth to
+        // the integers 1..6, so this template string is always exactly one
+        // of "h1".."h6", each a valid intrinsic element tag.
         const Tag =
           `h${Math.min(Math.max(token.depth, 1), 6)}` as keyof React.JSX.IntrinsicElements;
         return (
@@ -292,8 +301,8 @@ function renderInline(
   tokens: ReadonlyArray<Token>,
   pullRequest: PullRequestRef | undefined,
 ): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token) => {
-    const key = tokenKey(token);
+  return tokens.map((token, index) => {
+    const key = tokenKey(token, index);
     switch (token.type) {
       case "text":
       case "escape":
@@ -350,9 +359,12 @@ function renderInline(
   });
 }
 
-/** Provides React with the parsed source identity for a Markdown token. */
-function tokenKey(token: Token): string {
-  return `${token.type}-${token.raw}`;
+/** Provides React with a stable per-position key for a Markdown token. Keyed
+ * by position rather than content so repeated identical nodes (two links,
+ * two matching code spans, …) don't collide and cause React to misapply
+ * reconciliation across siblings. */
+function tokenKey(token: Token, index: number): string {
+  return `${index}-${token.type}`;
 }
 
 function tokensOf(token: Token): ReadonlyArray<Token> {
@@ -361,22 +373,28 @@ function tokensOf(token: Token): ReadonlyArray<Token> {
     : [token];
 }
 
+// `renderMarkdownImage` receives `Tokens.Image | Tokens.Generic`: real
+// `marked.lexer()` output always satisfies `Tokens.Image` (href/text typed as
+// `string`), but `Tokens.Generic` widens the union to `[index: string]: any`
+// for custom extension tokens, so the type system can't guarantee `href`/
+// `text` are strings. Parse the token at this boundary instead of narrowing
+// its shape by hand.
+const markdownImageTokenSchema = v.object({
+  href: v.string(),
+  text: v.string(),
+});
+
 function renderMarkdownImage(
   token: Tokens.Image | Tokens.Generic,
   pullRequest: PullRequestRef | undefined,
   key: string,
 ): React.ReactNode {
-  if (
-    !("href" in token) ||
-    typeof token.href !== "string" ||
-    !("text" in token) ||
-    typeof token.text !== "string"
-  ) {
-    return null;
-  }
-  const src = resolvePullRequestExternalUrl(token.href, pullRequest);
-  if (src === undefined) return <span key={key}>[Image: {token.text}]</span>;
-  return <ClickableImage key={key} src={src} alt={token.text} />;
+  const parsed = v.safeParse(markdownImageTokenSchema, token);
+  if (!parsed.success) return null;
+  const { href, text } = parsed.output;
+  const src = resolvePullRequestExternalUrl(href, pullRequest);
+  if (src === undefined) return <span key={key}>[Image: {text}]</span>;
+  return <ClickableImage key={key} src={src} alt={text} />;
 }
 
 function HtmlContent({
@@ -386,7 +404,7 @@ function HtmlContent({
   readonly html: string;
   readonly pullRequest: PullRequestRef | undefined;
 }): React.JSX.Element {
-  if (typeof DOMParser === "undefined") return <span>{html}</span>;
+  if (globalThis.DOMParser === undefined) return <span>{html}</span>;
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
   return (
     <>
@@ -503,6 +521,8 @@ function renderHtmlNode(
     case "h4":
     case "h5":
     case "h6": {
+      // SAFETY: this `switch` arm is only reached when `tag` matched one of
+      // the literal cases "h1".."h6" above, each a valid intrinsic tag.
       const Heading = tag as keyof React.JSX.IntrinsicElements;
       return (
         <Heading key={key} className="font-semibold tracking-tight">
@@ -623,7 +643,11 @@ function MermaidDiagram({
   }, [id, source]);
 
   return (
-    <ClickableMermaid svg={svg as never} source={source} failed={failed} />
+    <ClickableMermaid
+      {...(svg === undefined ? {} : { svg })}
+      source={source}
+      failed={failed}
+    />
   );
 }
 
