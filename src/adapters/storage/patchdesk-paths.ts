@@ -258,4 +258,20 @@ export class PatchdeskPaths {
       "review-worktrees",
     );
   }
+
+  /**
+   * Shared per-profile avatar byte cache, keyed by a hash of the source
+   * avatar URL (see `hashAvatarUrl`). Deliberately alongside the other
+   * re-fetchable per-profile caches (`inboxCacheFile`, `worktreeDirectory`)
+   * rather than under `dataDirectory`: avatars are re-derivable from GitHub
+   * at any time and shared across every review a reviewer appears in, so
+   * they belong with cache state, not durable per-review data.
+   */
+  avatarsDirectory(profileId: WorkspaceProfileId): string {
+    return join(this.cacheDirectory(), "profiles", profileId, "avatars");
+  }
+
+  avatarFile(profileId: WorkspaceProfileId, avatarHash: string): string {
+    return join(this.avatarsDirectory(profileId), `${avatarHash}.bin`);
+  }
 }

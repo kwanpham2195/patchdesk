@@ -45,6 +45,7 @@ import { hashSnapshot } from "../adapters/storage/review-remote-store";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { AppLogService } from "./app-log-service";
+import type { AvatarSyncService } from "./avatar-sync-service";
 
 export type ReviewRefreshFailure = {
   readonly reason:
@@ -125,6 +126,12 @@ export type ReviewRefreshDependencies = {
   readonly operationCoordinator: ReviewOperationCoordinator;
   /** Local diagnostic log stream; best effort, never gates a refresh. Wire-visible failures stay collapsed to "storage" — this only makes the underlying cause observable in `patchdesk.jsonl`. */
   readonly log?: Pick<AppLogService, "write">;
+  /**
+   * Best-effort commenter-avatar cache warm. Absent in tests that don't care
+   * about it; when present, a failure here must never fail the refresh — see
+   * the try/catch around its call site in `refresh`.
+   */
+  readonly avatars?: Pick<AvatarSyncService, "syncCommentAuthors">;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
     readonly sessionId: ReviewSessionId;
@@ -600,6 +607,18 @@ export class ReviewRefreshService {
             meta: saveFailureMeta,
           });
           return err({ reason: "storage" });
+        }
+        // Best effort, always: a slow, failed, or offline avatar fetch must
+        // never fail this refresh. AvatarSyncService already swallows every
+        // per-avatar failure internally; the try/catch here is defense in
+        // depth against a misbehaving injected dependency.
+        try {
+          await this.dependencies.avatars?.syncCommentAuthors({
+            profileId: input.profileId,
+            snapshot: candidate,
+          });
+        } catch {
+          // Decorative only; ignored.
         }
         let sessionId = review.currentSessionId;
         if (current.value.headSha !== review.currentHeadSha) {

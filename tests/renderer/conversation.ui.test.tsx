@@ -215,4 +215,107 @@ describe("Conversation", () => {
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
   });
+
+  it("renders a cached avatar image for an issue comment when authorAvatarDataUri is present, and initials when it is absent", () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    // SAFETY: these `IssueComment` literals match the wire shape the
+    // `Conversation` component under test destructures; fixture data, not a
+    // runtime-decoded value.
+    const { container } = render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            {
+              _tag: "IssueComment",
+              comment: {
+                id: "ic-1",
+                author: "reviewer",
+                authorAvatarDataUri: dataUri,
+                body: "Synced avatar.",
+                createdAt: "2026-08-01T00:00:00.000Z",
+              },
+            },
+            {
+              _tag: "IssueComment",
+              comment: {
+                id: "ic-2",
+                author: "nobody",
+                body: "No avatar synced yet.",
+                createdAt: "2026-08-01T00:01:00.000Z",
+              },
+            },
+          ] as WorkbenchResponse["conversation"]["entries"],
+        }}
+      />,
+    );
+    const avatars = container.querySelectorAll('[data-slot="avatar"]');
+    expect(avatars).toHaveLength(2);
+    const [withAvatar, withoutAvatar] = avatars;
+    expect(withAvatar?.tagName).toBe("IMG");
+    expect(withAvatar?.getAttribute("src")).toBe(dataUri);
+    expect(withoutAvatar?.tagName).toBe("SPAN");
+    expect(withoutAvatar?.textContent).toBe("N");
+  });
+
+  it("renders a cached avatar image for a general thread comment when authorAvatarDataUri is present", () => {
+    const dataUri = "data:image/png;base64,BBBB";
+    const { container } = render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            generalThreadEntry({
+              thread: {
+                id: "thread-1",
+                state: "open",
+                complete: true,
+                comments: [
+                  {
+                    id: "c-1",
+                    author: "reviewer",
+                    authorAvatarDataUri: dataUri,
+                    body: "General comment with a synced avatar.",
+                    createdAt: "2026-08-01T00:00:00.000Z",
+                  },
+                ],
+              },
+            }),
+          ],
+        }}
+      />,
+    );
+    const avatar = container.querySelector('[data-slot="avatar"]');
+    expect(avatar?.tagName).toBe("IMG");
+    expect(avatar?.getAttribute("src")).toBe(dataUri);
+  });
+
+  it("renders the initials fallback for a review summary, since PublishedReview carries no avatar data", () => {
+    // SAFETY: this `ReviewSummary` literal matches the wire shape the
+    // `Conversation` component under test destructures; fixture data, not a
+    // runtime-decoded value.
+    const { container } = render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            {
+              _tag: "ReviewSummary",
+              review: {
+                id: "r-1",
+                author: "approver",
+                body: "Looks good.",
+                event: "APPROVED",
+                submittedAt: "2026-08-01T00:00:00.000Z",
+                canDismiss: false,
+              },
+            },
+          ] as WorkbenchResponse["conversation"]["entries"],
+        }}
+      />,
+    );
+    const avatar = container.querySelector('[data-slot="avatar"]');
+    expect(avatar?.tagName).toBe("SPAN");
+    expect(avatar?.textContent).toBe("A");
+  });
 });

@@ -1,8 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { createReviewId } from "../../src/domain/ids";
 import { err, ok } from "../../src/domain/result";
 import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+
+/**
+ * A raw, untrusted JSON-shaped fixture value: exactly what a stored Insight
+ * record's `retained` or `retained.value` looks like before the service
+ * under test decodes it. Named (rather than `unknown`) so these fixtures
+ * satisfy `anti-slop/no-unknown-parameters`, and a named-property object
+ * literal (rather than `Record<string, unknown>`) so it isn't itself an
+ * unsafe dictionary contract — while staying just as permissive as the
+ * malformed literals these tests inject.
+ */
+type RawJsonObject = Readonly<{
+  title?: unknown;
+  focus?: unknown;
+  chapters?: unknown;
+  sections?: unknown;
+  prose?: unknown;
+  runId?: unknown;
+  revision?: unknown;
+  generatedAt?: unknown;
+  provenance?: unknown;
+  value?: unknown;
+}>;
+type RawJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ReadonlyArray<unknown>
+  | RawJsonObject;
+
+// No fixture below gives a comment an `authorAvatarUrl`, so the projection
+// never reads the avatar cache; this path need not exist on disk.
+const paths = PatchdeskPaths.forTest(
+  "/does-not-exist/patchdesk-projection-test",
+);
 
 // SAFETY: `as never` casts throughout this file bypass branded-primitive
 // construction for test-only fixture literals; the brands only exist for
@@ -174,6 +211,7 @@ function fixture(stable = review()) {
       sessions as never,
       reviews as never,
       insights as never,
+      paths,
     ),
     profiles,
     sessions,
@@ -348,6 +386,306 @@ describe("ReviewWorkbenchProjectionService", () => {
         conversation: { prDescription: "represented description" },
         revision: { freshness: "unavailable" },
       },
+    });
+  });
+});
+
+// This fixture's Session `patchPath` ("/does-not-exist") never resolves, so
+// every retained Walkthrough here fails artifact verification and is
+// rendered through `loadWalkthroughRecord`'s readable-without-artifact
+// fallback. These tests pin that fallback's graceful degradation for
+// malformed, missing, and over-length stored data — the exact behavior the
+// oxlint-driven refactor from hand-rolled `typeof`/cast walking to a
+// valibot-based reader must reproduce byte-for-byte.
+describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", () => {
+  const walkthroughRunId = "insight-walkthrough-1-aaaaaaaaaaaa-x";
+
+  function walkthroughRecord(value: RawJsonValue) {
+    // SAFETY: this fixture is cast `as never` because it stands in for a
+    // full, internal `InsightRecord<unknown>` the service never
+    // re-validates beyond the fields it reads; every field but `value`
+    // already matches its real runtime shape, and `value` is the field
+    // under test — deliberately malformed in most cases below.
+    return ok({
+      schemaVersion: 2,
+      reviewId,
+      type: "walkthrough",
+      nextToken: 1,
+      retained: {
+        runId: walkthroughRunId,
+        revision: { sessionId, headSha, patchHash: hash },
+        generatedAt: at,
+        provenance: {
+          provider: "pi",
+          model: "test-model",
+          reasoning: "medium",
+        },
+        value,
+      },
+      updatedAt: at,
+    }) as never;
+  }
+
+  async function projectWalkthrough(value: RawJsonValue) {
+    const fx = fixture();
+    fx.insights.load.mockResolvedValueOnce(walkthroughRecord(value));
+    const result = await fx.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    if (result._tag !== "ok") throw new Error("expected an ok projection");
+    return result.value.insights.walkthrough;
+  }
+
+  it("degrades a non-object retained value to every fallback default", async () => {
+    const projection = await projectWalkthrough("not an object");
+    expect(projection).toMatchObject({
+      status: "outdated",
+      artifactStatus: "mismatch",
+      retained: {
+        value: {
+          title: "Stored Walkthrough",
+          focus: "Stored source evidence is unavailable.",
+          chapters: [],
+          citationStatus: "unverified",
+        },
+      },
+    });
+  });
+
+  it("degrades one malformed chapter to its fallback title and empty sections, without dropping sibling chapters", async () => {
+    const projection = await projectWalkthrough({
+      title: "Real title",
+      chapters: [
+        "not an object",
+        { title: "Chapter Two", sections: [{ title: "S", prose: "P" }] },
+      ],
+    });
+    expect(projection.retained?.value.chapters).toEqual([
+      { id: "chapter-1", title: "Untitled chapter", sections: [] },
+      {
+        id: "chapter-2",
+        title: "Chapter Two",
+        sections: [
+          {
+            id: "section-2-1",
+            title: "S",
+            prose: "P",
+            hunkIds: [],
+            hunks: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("degrades a chapter with a missing sections array to an empty section list", async () => {
+    const projection = await projectWalkthrough({
+      chapters: [{ title: "Solo" }],
+    });
+    expect(projection.retained?.value.chapters).toEqual([
+      { id: "chapter-1", title: "Solo", sections: [] },
+    ]);
+  });
+
+  it("falls back non-string title/prose fields to their defaults instead of rejecting the record", async () => {
+    const projection = await projectWalkthrough({
+      title: 42,
+      chapters: [{ title: null, sections: [{ title: [], prose: {} }] }],
+    });
+    expect(projection.retained?.value.title).toBe("Stored Walkthrough");
+    expect(projection.retained?.value.chapters).toEqual([
+      {
+        id: "chapter-1",
+        title: "Untitled chapter",
+        sections: [
+          {
+            id: "section-1-1",
+            title: "Untitled section",
+            prose: "Stored section text is unavailable.",
+            hunkIds: [],
+            hunks: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("truncates an over-length title instead of rejecting the record", async () => {
+    const projection = await projectWalkthrough({
+      title: "x".repeat(500),
+      chapters: [],
+    });
+    expect(projection.retained?.value.title).toBe("x".repeat(200));
+  });
+
+  it("caps chapters at 12 and sections at 32, keeping the leading entries", async () => {
+    const projection = await projectWalkthrough({
+      chapters: Array.from({ length: 15 }, (_unused, chapterIndex) => ({
+        title: `Chapter ${chapterIndex + 1}`,
+        sections: Array.from({ length: 40 }, (_unused2, sectionIndex) => ({
+          title: `Section ${sectionIndex + 1}`,
+          prose: "p",
+        })),
+      })),
+    });
+    const chapters = projection.retained?.value.chapters ?? [];
+    expect(chapters).toHaveLength(12);
+    expect(chapters[0]?.title).toBe("Chapter 1");
+    expect(chapters[11]?.title).toBe("Chapter 12");
+    expect(chapters[0]?.sections).toHaveLength(32);
+  });
+});
+
+// `insights.loadTyped` is mocked at the interface boundary everywhere above,
+// so it never actually calls the parser callback `loadStoredInsights`
+// passes it — the callback that now runs the analysis retained value
+// through `retainedEnvelopeSchema` + `parseRetainedBase` + a valibot
+// envelope for provenance. These tests make the mock behave like the real
+// `InsightStore.loadTyped` (invoke the callback, wrap its result), so the
+// callback itself — not just the surrounding service — is under test.
+describe("ReviewWorkbenchProjectionService analysis retained decode", () => {
+  const analysisRunId = "insight-analysis-1-aaaaaaaaaaaa-x";
+  const validReviewResult = {
+    changeSummary: "Adds one guarded change.",
+    verdict: "approve",
+    summary: "Looks fine.",
+    findings: [],
+    validationPlan: [],
+    assumptions: [],
+  };
+
+  /** Matches `InsightStore.loadTyped`'s `parseRetainedValue` callback shape, keyed to `RawJsonValue` rather than `unknown`. */
+  type RawInsightParser = (input: RawJsonValue) => {
+    readonly _tag: "ok" | "err";
+    readonly value?: unknown;
+  };
+
+  function stubLoadTyped(
+    fx: ReturnType<typeof fixture>,
+    rawRetained: RawJsonValue,
+  ) {
+    fx.insights.loadTyped.mockImplementationOnce(
+      // SAFETY: this stand-in for `InsightStore.loadTyped` is cast `as
+      // never` because the mock's inferred signature (from the fixture's
+      // default zero-argument implementation) doesn't describe the real
+      // 4-argument method; the body below reproduces exactly what the real
+      // implementation does with its `parseRetainedValue` callback — call
+      // it with the raw stored value and wrap a successful result in the
+      // same envelope fields (`schemaVersion`/`reviewId`/`type`/`nextToken`/`updatedAt`).
+      (async (...args: ReadonlyArray<unknown>) => {
+        // SAFETY: `loadStoredInsights` always calls `insights.loadTyped`
+        // with `(profileId, reviewId, "analysis", parseRetainedValue)`; the
+        // 4th positional argument is always that callback.
+        const parseRetainedValue = args[3] as RawInsightParser;
+        const retained = parseRetainedValue(rawRetained);
+        if (retained._tag === "err")
+          return err({ reason: "invalid_stored_value" });
+        return ok({
+          schemaVersion: 2,
+          reviewId,
+          type: "analysis",
+          nextToken: 1,
+          retained: retained.value,
+          updatedAt: at,
+        });
+      }) as never,
+    );
+  }
+
+  it("decodes a well-formed retained analysis record end to end", async () => {
+    const fx = fixture();
+    stubLoadTyped(fx, {
+      runId: analysisRunId,
+      revision: { sessionId, headSha, patchHash: hash },
+      generatedAt: at,
+      provenance: { provider: "pi", model: "test-model", reasoning: "medium" },
+      value: validReviewResult,
+    });
+    const result = await fx.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        insights: {
+          analysis: {
+            retained: { value: { changeSummary: "Adds one guarded change." } },
+          },
+        },
+      },
+    });
+  });
+
+  it("degrades a retained analysis record with a missing runId to not_generated instead of throwing", async () => {
+    const fx = fixture();
+    stubLoadTyped(fx, {
+      revision: { sessionId, headSha, patchHash: hash },
+      generatedAt: at,
+      provenance: { provider: "pi", model: "test-model", reasoning: "medium" },
+      value: validReviewResult,
+    });
+    const result = await fx.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { insights: { analysis: { status: "not_generated" } } },
+    });
+  });
+
+  it("degrades a retained analysis record whose value fails ReviewResult validation to not_generated", async () => {
+    const fx = fixture();
+    stubLoadTyped(fx, {
+      runId: analysisRunId,
+      revision: { sessionId, headSha, patchHash: hash },
+      generatedAt: at,
+      provenance: { provider: "pi", model: "test-model", reasoning: "medium" },
+      value: { ...validReviewResult, verdict: "not-a-real-verdict" },
+    });
+    const result = await fx.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { insights: { analysis: { status: "not_generated" } } },
+    });
+  });
+
+  it("degrades a retained analysis record with a blank provenance model to not_generated", async () => {
+    const fx = fixture();
+    stubLoadTyped(fx, {
+      runId: analysisRunId,
+      revision: { sessionId, headSha, patchHash: hash },
+      generatedAt: at,
+      provenance: { provider: "pi", model: "   ", reasoning: "medium" },
+      value: validReviewResult,
+    });
+    const result = await fx.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: { insights: { analysis: { status: "not_generated" } } },
     });
   });
 });

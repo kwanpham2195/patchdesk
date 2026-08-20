@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -43,15 +44,14 @@ export type ConversationThreadCardData = {
     threadId: string,
     state: "open" | "resolved",
   ) => Promise<void>;
-  readonly onReply?: (
-    threadId: string,
-    body: string,
-  ) => Promise<string | void>;
+  readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
   readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
   readonly onDeleteComment?: (commentId: string) => Promise<void>;
   readonly comments: ReadonlyArray<{
     readonly id: string;
     readonly author: string;
+    /** `data:` URI resolved from the avatar cache; absent when never synced, failed, or the author has none. */
+    readonly authorAvatarDataUri?: string | undefined;
     readonly body: string;
     readonly createdAt: string;
     readonly viewerDidAuthor?: boolean | undefined;
@@ -83,85 +83,88 @@ function ConversationCommentRow({
     comment.viewerDidAuthor === true &&
     (onEdit !== undefined || onDelete !== undefined);
   return (
-    <div>
-      <p className="font-semibold">{comment.author}</p>
-      {editing ? (
-        <div className="mt-1">
-          <Textarea
-            aria-label="Edit comment"
-            value={editBody}
-            onChange={(event) => setEditBody(event.target.value)}
-          />
-          <div className="mt-2 flex gap-2">
-            <Button
-              size="sm"
-              onClick={async () => {
-                if (
-                  editBody.trim().length === 0 ||
-                  saving ||
-                  onEdit === undefined
-                )
-                  return;
-                setSaving(true);
-                setError(undefined);
-                try {
-                  await onEdit(comment.id, editBody);
-                  setEditing(false);
-                } catch {
-                  setError("Patchdesk could not edit this comment.");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-              disabled={editBody.trim().length === 0 || saving}
-            >
-              {saving ? "Saving…" : "Save"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setEditing(false)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
+    <div className="flex gap-3">
+      <Avatar name={comment.author} dataUri={comment.authorAvatarDataUri} />
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{comment.author}</p>
+        {editing ? (
+          <div className="mt-1">
+            <Textarea
+              aria-label="Edit comment"
+              value={editBody}
+              onChange={(event) => setEditBody(event.target.value)}
+            />
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (
+                    editBody.trim().length === 0 ||
+                    saving ||
+                    onEdit === undefined
+                  )
+                    return;
+                  setSaving(true);
+                  setError(undefined);
+                  try {
+                    await onEdit(comment.id, editBody);
+                    setEditing(false);
+                  } catch {
+                    setError("Patchdesk could not edit this comment.");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={editBody.trim().length === 0 || saving}
+              >
+                {saving ? "Saving…" : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <PullRequestDescriptionPreview markdown={comment.body} />
-      )}
-      {editable && !editing ? (
-        <div className="mt-1 flex gap-3">
-          <button
-            type="button"
-            className="text-xs font-medium text-sky-400 hover:underline"
-            onClick={() => {
-              setEditing(true);
-              setEditBody(comment.body);
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="text-xs font-medium text-destructive hover:underline"
-            onClick={() => {
-              if (!window.confirm("Delete this published comment?")) return;
-              if (onDelete === undefined) return;
-              void onDelete(comment.id).catch(() =>
-                setError("Patchdesk could not delete this comment."),
-              );
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      ) : null}
-      {error === undefined ? null : (
-        <p role="alert" className="mt-1 text-sm text-destructive">
-          {error}
-        </p>
-      )}
+        ) : (
+          <PullRequestDescriptionPreview markdown={comment.body} />
+        )}
+        {editable && !editing ? (
+          <div className="mt-1 flex gap-3">
+            <button
+              type="button"
+              className="text-xs font-medium text-sky-400 hover:underline"
+              onClick={() => {
+                setEditing(true);
+                setEditBody(comment.body);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium text-destructive hover:underline"
+              onClick={() => {
+                if (!window.confirm("Delete this published comment?")) return;
+                if (onDelete === undefined) return;
+                void onDelete(comment.id).catch(() =>
+                  setError("Patchdesk could not delete this comment."),
+                );
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
+        {error === undefined ? null : (
+          <p role="alert" className="mt-1 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -309,8 +312,8 @@ export function ConversationThreadCard({
       ) : null}
       {thread.target._tag === "comment_only" ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          Reply and Resolve aren&apos;t available for this comment yet.
-          Refresh to pick up its GitHub thread.
+          Reply and Resolve aren&apos;t available for this comment yet. Refresh
+          to pick up its GitHub thread.
         </p>
       ) : null}
       {thread.onSetState === undefined ? null : (

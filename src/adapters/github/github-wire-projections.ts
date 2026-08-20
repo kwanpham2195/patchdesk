@@ -479,6 +479,9 @@ export function parseComment(
     body: input.body,
     createdAt: createdAt.value,
   };
+  const authorAvatarUrl = input.author?.avatarUrl ?? undefined;
+  if (authorAvatarUrl !== undefined)
+    comment = { ...comment, authorAvatarUrl };
   if (updatedAt !== undefined)
     comment = { ...comment, updatedAt: updatedAt.value };
   const url = input.url ?? undefined;

@@ -1306,6 +1306,7 @@ export class GitHubAdapter
         undefined,
       );
       const author = comment.user?.login ?? "ghost";
+      const authorAvatarUrl = comment.user?.avatar_url ?? undefined;
       const owned =
         account._tag === "ok" &&
         account.value.account === input.profile.ghAccount &&
@@ -1318,6 +1319,8 @@ export class GitHubAdapter
         canEdit: owned && canWrite === true,
         canDelete: owned && canWrite === true,
       };
+      if (authorAvatarUrl !== undefined)
+        published = { ...published, authorAvatarUrl };
       if (comment.node_id !== undefined)
         published = { ...published, nodeId: comment.node_id };
       if (updatedAt !== undefined)

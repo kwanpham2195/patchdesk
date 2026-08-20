@@ -62,6 +62,7 @@ export type ReviewRemoteStoreFailure = StorageFailure & {
 const commentSchema = v.strictObject({
   id: v.string(),
   author: v.string(),
+  authorAvatarUrl: v.optional(v.string()),
   body: v.string(),
   createdAt: v.string(),
   updatedAt: v.optional(v.string()),
@@ -655,10 +656,15 @@ function parsePublishedFeedback(
       location === undefined ? {} : { location: location.value };
     const reviewIdField =
       comment.reviewId === undefined ? {} : { reviewId: comment.reviewId };
+    const authorAvatarUrlField =
+      comment.authorAvatarUrl === undefined
+        ? {}
+        : { authorAvatarUrl: comment.authorAvatarUrl };
     comments.push({
       id: comment.id,
       ...nodeIdField,
       author: comment.author,
+      ...authorAvatarUrlField,
       body: comment.body,
       createdAt: createdAt.value,
       ...updatedAtField,
@@ -752,11 +758,16 @@ function parseConversation(
       entry.comment.canDelete === undefined
         ? {}
         : { canDelete: entry.comment.canDelete };
+    const authorAvatarUrlField =
+      entry.comment.authorAvatarUrl === undefined
+        ? {}
+        : { authorAvatarUrl: entry.comment.authorAvatarUrl };
     entries.push({
       _tag: "IssueComment",
       comment: {
         id: entry.comment.id,
         author: entry.comment.author,
+        ...authorAvatarUrlField,
         body: entry.comment.body,
         createdAt: createdAt.value,
         ...updatedAtField,
@@ -822,9 +833,14 @@ function parseComments(
           : { viewerDidAuthor: comment.viewerDidAuthor };
       const locationField =
         location === undefined ? {} : { location: location.value };
+      const authorAvatarUrlField =
+        comment.authorAvatarUrl === undefined
+          ? {}
+          : { authorAvatarUrl: comment.authorAvatarUrl };
       comments.push({
         id: comment.id,
         author: comment.author,
+        ...authorAvatarUrlField,
         body: comment.body,
         createdAt: createdAt.value,
         ...updatedAtField,

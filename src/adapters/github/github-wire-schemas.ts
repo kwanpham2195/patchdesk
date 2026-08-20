@@ -24,7 +24,12 @@ export const publishedCommentSchema = v.array(
   v.looseObject({
     id: v.union([v.string(), v.number()]),
     node_id: v.optional(v.string()),
-    user: v.nullish(v.looseObject({ login: v.string() })),
+    user: v.nullish(
+      v.looseObject({
+        login: v.string(),
+        avatar_url: v.optional(v.nullable(v.string())),
+      }),
+    ),
     body: v.string(),
     created_at: v.string(),
     updated_at: v.optional(v.nullable(v.string())),
@@ -249,7 +254,12 @@ export const threadResponseSchema = v.looseObject({
                     updatedAt: v.optional(v.nullable(v.string())),
                     url: v.optional(v.nullable(v.string())),
                     viewerDidAuthor: v.optional(v.boolean()),
-                    author: v.nullish(v.looseObject({ login: v.string() })),
+                    author: v.nullish(
+                      v.looseObject({
+                        login: v.string(),
+                        avatarUrl: v.optional(v.nullable(v.string())),
+                      }),
+                    ),
                     path: v.optional(v.nullable(v.string())),
                   }),
                 ),
@@ -337,7 +347,12 @@ export const threadCommentsResponseSchema = v.looseObject({
             updatedAt: v.optional(v.nullable(v.string())),
             url: v.optional(v.nullable(v.string())),
             viewerDidAuthor: v.optional(v.boolean()),
-            author: v.nullish(v.looseObject({ login: v.string() })),
+            author: v.nullish(
+              v.looseObject({
+                login: v.string(),
+                avatarUrl: v.optional(v.nullable(v.string())),
+              }),
+            ),
             path: v.optional(v.nullable(v.string())),
           }),
         ),

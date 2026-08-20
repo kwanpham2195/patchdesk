@@ -1,5 +1,5 @@
 export const threadQuery =
-  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
+  "query PullRequestThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved isOutdated path line startLine diffSide startDiffSide originalLine comments(first: 100) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login avatarUrl } path } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }";
 // Reverse pagination confirmed against a live PR (2026-08-17): `reviewThreads`
 // returns oldest-first, and `last`/`before` is schema-valid, so `last: 20`
 // reliably surfaces a just-created thread regardless of how many older
@@ -17,7 +17,7 @@ export const pendingReviewThreadsQuery =
 export const maxReviewThreadPages = 10;
 export const maxReviewThreads = 1_000;
 export const threadCommentsQuery =
-  "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login } path } pageInfo { hasNextPage endCursor } } } } }";
+  "query ReviewThreadComments($id: ID!, $cursor: String) { node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { id body createdAt updatedAt url viewerDidAuthor author { login avatarUrl } path } pageInfo { hasNextPage endCursor } } } } }";
 // Single-node ownership proofs: one `$id` variable, no conversation content.
 // PR identity comes from the node's pull request (threads derive it from
 // their first comment), and any owner/repository/number mismatch is resolved

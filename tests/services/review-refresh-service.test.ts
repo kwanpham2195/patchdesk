@@ -2961,4 +2961,103 @@ describe("ReviewRefreshService", () => {
       commentAt,
     );
   });
+
+  it("still succeeds when the injected avatar sync fails (avatars are decorative, never fatal)", async () => {
+    const service = new ReviewRefreshService({
+      profiles: {
+        async load() {
+          // SAFETY: this fixture stub's return value is never read by the code path this test exercises; only its Result envelope matters.
+          return ok({} as never);
+        },
+      },
+      reviews: {
+        async load() {
+          return ok(review);
+        },
+        async save() {
+          return ok(undefined);
+        },
+      },
+      sessions: {
+        async load() {
+          // SAFETY: detect()/refresh() on this path only read `key`/`id` from the session; other ReviewSession fields are unused.
+          return ok({ key: { ...identity, headSha }, id: sessionId } as never);
+        },
+        async save() {
+          return ok(undefined);
+        },
+      },
+      remote: {
+        async load() {
+          return ok(snapshot);
+        },
+        async saveCandidate(input) {
+          return ok({ snapshotHash: hashSnapshot(input.snapshot) });
+        },
+      },
+      github: {
+        async getPullRequest() {
+          return ok(snapshot.pullRequest);
+        },
+        async getPullRequestChecks() {
+          return ok(snapshot.checks);
+        },
+        async getPullRequestComments() {
+          return ok(snapshot.comments);
+        },
+        async getPullRequestCommits() {
+          return ok([]);
+        },
+        async loadConversation() {
+          return ok(snapshot.conversation);
+        },
+        async getMergePolicy() {
+          return ok({
+            pr: {
+              host: identity.host,
+              owner: identity.owner,
+              repo: identity.repo,
+              number: identity.prNumber,
+            },
+            headSha,
+            isOpen: true,
+            isDraft: false,
+            mergeability: "blocked",
+            mergeStateStatus: "blocked",
+            reviewDecision: "review_required",
+            checks: snapshot.checks,
+            complete: true,
+          });
+        },
+      },
+      preparation: {
+        async prepare() {
+          // SAFETY: detect()/refresh() on this path only read `session.key.headSha`/`session.id`; other ReviewSession fields are unused.
+          return ok({ session: { id: sessionId, key: { headSha } } } as never);
+        },
+      },
+      pendingReview: {
+        async reconcileWithinReviewLock() {
+          return ok({
+            // SAFETY: this reconciled session is not read by detect()/refresh() on this path; only state/unavailable feed the (unused here) pending-review projection.
+            session: {} as never,
+            state: { _tag: "None" } as const,
+            unavailable: false,
+          });
+        },
+      },
+      operationCoordinator: new ReviewOperationCoordinator(),
+      recentWrites: { load: async () => ok([]), clear: async () => ok(undefined) },
+      // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the branded IsoTimestamp contract `now` is expected to return.
+      now: () => "2026-08-01T00:10:00.000Z" as never,
+      avatars: {
+        async syncCommentAuthors() {
+          throw new Error("avatar host unreachable");
+        },
+      },
+    });
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+  });
 });

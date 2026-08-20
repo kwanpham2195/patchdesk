@@ -16,6 +16,17 @@ export type DiffLocation = {
 export type GitHubComment = {
   readonly id: string;
   readonly author: string;
+  /** GitHub's avatar image URL for the comment author; absent for a deleted account. */
+  readonly authorAvatarUrl?: string;
+  /**
+   * `data:` URI resolved from the on-disk avatar cache for `authorAvatarUrl`.
+   * Only the Workbench projection populates this (never the storage or
+   * GitHub-adapter layers): it is undefined whenever there is no
+   * `authorAvatarUrl`, the avatar was never synced, or the sync failed. The
+   * renderer's `img-src 'self' data:` CSP cannot load `authorAvatarUrl`
+   * directly, so this is the only form an `<img>` may point at.
+   */
+  readonly authorAvatarDataUri?: string;
   readonly body: string;
   readonly createdAt: IsoTimestamp;
   readonly updatedAt?: IsoTimestamp;

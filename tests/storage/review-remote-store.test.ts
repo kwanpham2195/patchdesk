@@ -195,6 +195,60 @@ describe("ReviewRemoteStore", () => {
     ).resolves.toEqual({ _tag: "ok", value: withComment });
   });
 
+  it("round-trips authorAvatarUrl on thread comments, and still accepts a sibling comment without it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withAvatar: ReviewRemoteSnapshot = {
+      ...snapshot,
+      comments: {
+        threads: [
+          {
+            // SAFETY: a test-only opaque thread id string; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
+            id: "t" as never,
+            state: "open" as const,
+            comments: [
+              {
+                id: "c1",
+                author: "pmquan2",
+                authorAvatarUrl: "https://avatars.githubusercontent.com/u/1",
+                body: "has an avatar",
+                // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
+                createdAt: "2026-08-01T00:05:00.000Z" as never,
+              },
+              {
+                // A comment from a deleted account carries no author object at
+                // all, so `authorAvatarUrl` must stay representable as absent
+                // — this sibling proves an existing snapshot without the
+                // field still validates under the same (optional) schema.
+                id: "c2",
+                author: "ghost",
+                body: "no avatar",
+                // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
+                createdAt: "2026-08-01T00:06:00.000Z" as never,
+              },
+            ],
+          },
+        ],
+        complete: true,
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withAvatar,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withAvatar });
+  });
+
   it("accepts conversation IssueComment entries with review-attached nodeId", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

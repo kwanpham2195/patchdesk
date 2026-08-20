@@ -343,6 +343,9 @@ const githubCommentSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   nodeId: v.optional(v.string()),
   author: v.pipe(v.string(), v.minLength(1)),
+  authorAvatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /** `data:` URI resolved server-side from the on-disk avatar cache; the renderer's CSP cannot load `authorAvatarUrl` directly. */
+  authorAvatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
   body: v.string(),
   createdAt: v.pipe(v.string(), v.isoTimestamp()),
   updatedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),

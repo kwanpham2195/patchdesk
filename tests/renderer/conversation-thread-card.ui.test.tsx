@@ -30,6 +30,7 @@ const thread = (
     readonly comments?: readonly {
       readonly id: string;
       readonly author: string;
+      readonly authorAvatarDataUri?: string | undefined;
       readonly body: string;
       readonly createdAt: string;
       readonly viewerDidAuthor?: boolean | undefined;
@@ -214,12 +215,16 @@ describe("ConversationThreadCard", () => {
   it("explains why Reply and Resolve are unavailable on a comment-only card", () => {
     render(
       <ConversationThreadCard
-        thread={thread({ target: { _tag: "comment_only", commentId: "c-new" } })}
+        thread={thread({
+          target: { _tag: "comment_only", commentId: "c-new" },
+        })}
       />,
     );
     expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
-    expect(screen.getByText(/Reply and Resolve aren.t available/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Reply and Resolve aren.t available/i),
+    ).toBeTruthy();
   });
 
   it("never shows the comment-only fallback copy on a confirmed thread card", () => {
@@ -227,5 +232,39 @@ describe("ConversationThreadCard", () => {
     expect(
       screen.queryByText(/Reply and Resolve aren.t available/i),
     ).toBeNull();
+  });
+
+  it("renders a cached avatar image when authorAvatarDataUri is present, and initials when it is absent", () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    const { container } = render(
+      <ConversationThreadCard
+        thread={thread({
+          comments: [
+            {
+              id: "c-1",
+              author: "reviewer",
+              authorAvatarDataUri: dataUri,
+              body: "Check this line.",
+              createdAt: "2026-08-01T00:00:00.000Z",
+            },
+            {
+              id: "c-2",
+              author: "nobody",
+              body: "No avatar synced yet.",
+              createdAt: "2026-08-01T00:01:00.000Z",
+            },
+          ],
+        })}
+      />,
+    );
+    const avatars = container.querySelectorAll('[data-slot="avatar"]');
+    expect(avatars).toHaveLength(2);
+    const [withAvatar, withoutAvatar] = avatars;
+    expect(withAvatar?.tagName).toBe("IMG");
+    expect(withAvatar?.getAttribute("src")).toBe(dataUri);
+    expect(withAvatar?.getAttribute("aria-hidden")).toBe("true");
+    expect(withoutAvatar?.tagName).toBe("SPAN");
+    expect(withoutAvatar?.textContent).toBe("N");
+    expect(withoutAvatar?.getAttribute("aria-hidden")).toBe("true");
   });
 });

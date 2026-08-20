@@ -83,6 +83,10 @@ import {
 } from "../services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import type { RecentReviewWrite } from "../services/review-refresh-service";
+import {
+  AvatarSyncService,
+  type AvatarFetcher,
+} from "../services/avatar-sync-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewObservationService } from "../services/review-observation-service";
@@ -286,6 +290,8 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Composition-root local log stream; defaults to a fresh on-disk service. */
   readonly logs?: Pick<AppLogService, "write" | "tail">;
+  /** Test-only avatar download seam; production keeps the real network fetcher. */
+  readonly fetchAvatar?: AvatarFetcher;
   /** Main-process-owned durable Review Insight lifecycle seam. */
   readonly insights?: Pick<
     InsightRunCoordinator,
@@ -473,6 +479,7 @@ export async function startLocalApiServer(
     sessions,
     reviews,
     insights,
+    paths,
   );
   const inlineConversations = new InlineConversationService(
     reviewWriteGate,
@@ -543,6 +550,11 @@ export async function startLocalApiServer(
     pendingReview: pendingReviews,
     recentWrites: recentWriteJournals,
     log: logs,
+    avatars: new AvatarSyncService({
+      paths,
+      fetchAvatar: configuration.fetchAvatar ?? createAvatarFetcher(),
+      log: logs,
+    }),
     project: ({
       profileId,
       sessionId,
@@ -551,7 +563,13 @@ export async function startLocalApiServer(
       freshness,
       pendingReview,
     }) => {
-      const projectInput = { profileId, sessionId, snapshot, refreshedAt, freshness };
+      const projectInput = {
+        profileId,
+        sessionId,
+        snapshot,
+        refreshedAt,
+        freshness,
+      };
       return reviewProjection.loadRepresented(
         pendingReview === undefined
           ? projectInput
@@ -1095,11 +1113,9 @@ export async function startLocalApiServer(
       const candidate = safeParse(rendererLogEntrySchema, raw);
       if (!candidate.success) continue;
       const optionalLogFields: {
-        -readonly [K in
-          | "meta"
-          | "profileId"
-          | "sessionId"
-          | "correlationId"]?: LogEntryInput[K];
+        -readonly [
+          K in "meta" | "profileId" | "sessionId" | "correlationId"
+        ]?: LogEntryInput[K];
       } = {};
       if (candidate.output.meta !== undefined)
         optionalLogFields.meta = candidate.output.meta;
@@ -2377,6 +2393,35 @@ export async function healthCheckLocalApi(
   });
 
   return response.status === 200;
+}
+
+/** GitHub avatar URLs accept `?s=<pixels>`; a small size keeps cached files tiny. */
+const AVATAR_FETCH_SIZE_PX = 64;
+/** Bounds one avatar download so a slow or hanging host can never stall a sync. */
+const AVATAR_FETCH_TIMEOUT_MS = 3_000;
+
+/**
+ * Plain-HTTP avatar downloader for `AvatarSyncService`. Deliberately not the
+ * gh-CLI-backed `GitHubAdapter`: avatar images are public, unauthenticated
+ * URLs, so this uses the same bare `fetch` already used for the health
+ * check above and the desktop bridge, bounded by an abort timeout.
+ */
+function createAvatarFetcher(): AvatarFetcher {
+  return async (avatarUrl) => {
+    let target: string;
+    try {
+      const sized = new URL(avatarUrl);
+      sized.searchParams.set("s", String(AVATAR_FETCH_SIZE_PX));
+      target = sized.toString();
+    } catch {
+      return undefined;
+    }
+    const response = await fetch(target, {
+      signal: AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return undefined;
+    return { bytes: new Uint8Array(await response.arrayBuffer()) };
+  };
 }
 
 function requireLocalApiAccess(

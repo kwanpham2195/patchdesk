@@ -6,6 +6,7 @@ import type {
 } from "../../../domain/github-context";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import {
   ConversationThreadCard,
@@ -187,6 +188,8 @@ function parseGeneralThreadComment(
     if (parsedUpdatedAt._tag === "ok") parsed.updatedAt = parsedUpdatedAt.value;
   }
   if (comment.url !== undefined) parsed.url = comment.url;
+  if (comment.authorAvatarDataUri !== undefined)
+    parsed.authorAvatarDataUri = comment.authorAvatarDataUri;
   // `location` is intentionally not carried through: a location-less
   // GeneralThread's comments never have one, and ConversationThreadCard
   // doesn't read it.
@@ -233,15 +236,18 @@ function IssueCommentEntry({
   readonly comment: GitHubComment;
 }): React.JSX.Element {
   return (
-    <div className="border-b py-3">
-      <div className="flex items-baseline gap-2">
-        <span className="text-xs font-semibold">{comment.author}</span>
-        <span className="text-[11px] text-muted-foreground">
-          {comment.createdAt}
-        </span>
-      </div>
-      <div className="mt-1 text-sm leading-6">
-        <PullRequestDescriptionPreview markdown={comment.body} />
+    <div className="flex gap-3 border-b py-3">
+      <Avatar name={comment.author} dataUri={comment.authorAvatarDataUri} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-xs font-semibold">{comment.author}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {comment.createdAt}
+          </span>
+        </div>
+        <div className="mt-1 text-sm leading-6">
+          <PullRequestDescriptionPreview markdown={comment.body} />
+        </div>
       </div>
     </div>
   );
@@ -261,21 +267,27 @@ function ReviewSummaryEntry({
           ? "Dismissed"
           : "Commented";
   return (
-    <div className="border-b py-3">
-      <div className="flex items-baseline gap-2">
-        <span className="text-xs font-semibold">{review.author}</span>
-        <span className="text-[11px] text-muted-foreground">
-          {review.submittedAt}
-        </span>
-        <Badge variant="outline" className="text-[10px]">
-          {verdictLabel}
-        </Badge>
-      </div>
-      {review.body.length > 0 && (
-        <div className="mt-1 text-sm leading-6">
-          <PullRequestDescriptionPreview markdown={review.body} />
+    <div className="flex gap-3 border-b py-3">
+      {/* `PublishedReview.author` is a plain string with no avatar field,
+          so this always renders the initials fallback rather than a
+          cached image. */}
+      <Avatar name={review.author} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-xs font-semibold">{review.author}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {review.submittedAt}
+          </span>
+          <Badge variant="outline" className="text-[10px]">
+            {verdictLabel}
+          </Badge>
         </div>
-      )}
+        {review.body.length > 0 && (
+          <div className="mt-1 text-sm leading-6">
+            <PullRequestDescriptionPreview markdown={review.body} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

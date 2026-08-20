@@ -2,7 +2,14 @@ import { createHash } from "node:crypto";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import { readFile } from "node:fs/promises";
 
+import * as v from "valibot";
+
+import {
+  avatarDataUri,
+  hashAvatarUrl,
+} from "../adapters/storage/avatar-cache-store";
 import type { InsightStore } from "../adapters/storage/insight-store";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -12,6 +19,8 @@ import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-sto
 import type {
   CheckSummary,
   Conversation,
+  ConversationEntry,
+  GitHubComment,
   GitHubMergeEvidence,
   MergeDisplayReason,
   PullRequestCommit,
@@ -138,6 +147,35 @@ export type WorkbenchProjectionFailure =
   | { readonly _tag: "ReviewNotFound" }
   | { readonly _tag: "SessionStorageUnavailable" };
 
+/** Mutable draft of `Conversation`, built in statements by `resolveAvatars`. */
+type MutableConversation = {
+  -readonly [K in keyof Conversation]: Conversation[K];
+};
+
+/** The remote-read snapshot `project` renders; `undefined` when only the durable Session is available. */
+type ProjectRemoteInput = {
+  readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
+  readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
+  readonly commits?: ReadonlyArray<PullRequestCommit>;
+  readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
+  readonly mergeEvidence?: GitHubMergeEvidence;
+};
+
+/** Mutable draft of `ProjectRemoteInput`, built in statements by `loadRepresented`. */
+type MutableProjectRemoteInput = {
+  -readonly [K in keyof ProjectRemoteInput]: ProjectRemoteInput[K];
+};
+
+/** Mutable draft of `ReviewWorkbenchProjection["revision"]`, built in statements by `project`. */
+type MutableRevisionProjection = {
+  -readonly [K in keyof ReviewWorkbenchProjection["revision"]]: ReviewWorkbenchProjection["revision"][K];
+};
+
+/** Mutable draft of `ReviewWorkbenchProjection`, built in statements by `project`. */
+type MutableReviewWorkbenchProjection = {
+  -readonly [K in keyof ReviewWorkbenchProjection]: ReviewWorkbenchProjection[K];
+};
+
 /**
  * Read-side owner of the renderer-safe model for the exact snapshot held by
  * the durable Review. It never performs live GitHub reads or session-only
@@ -149,6 +187,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly sessions: ReviewSessionStore,
     private readonly reviews: Pick<ReviewStore, "load">,
     private readonly insights: Pick<InsightStore, "loadTyped" | "load">,
+    private readonly paths: PatchdeskPaths,
   ) {}
 
   /** Projects the exact remote snapshot represented by the durable Review. */
@@ -168,18 +207,18 @@ export class ReviewWorkbenchProjectionService {
       sessionId: input.sessionId,
     });
     if (session._tag === "err") return session;
+    const remote: MutableProjectRemoteInput = {
+      current: { _tag: "ok", value: input.snapshot.pullRequest },
+      conversation: ok(input.snapshot.conversation),
+      commits: input.snapshot.commits,
+      checks: { _tag: "ok", value: input.snapshot.checks },
+    };
+    if (input.snapshot.mergeEvidence !== undefined)
+      remote.mergeEvidence = input.snapshot.mergeEvidence;
     return this.project(
       session.value.profile,
       session.value.session,
-      {
-        current: { _tag: "ok", value: input.snapshot.pullRequest },
-        conversation: ok(input.snapshot.conversation),
-        commits: input.snapshot.commits,
-        checks: { _tag: "ok", value: input.snapshot.checks },
-        ...(input.snapshot.mergeEvidence === undefined
-          ? {}
-          : { mergeEvidence: input.snapshot.mergeEvidence }),
-      },
+      remote,
       input.refreshedAt,
       input.freshness,
       input.pendingReview,
@@ -204,22 +243,80 @@ export class ReviewWorkbenchProjectionService {
     return ok({ profile: profile.value, session: session.value });
   }
 
+  /**
+   * Resolves each comment's `authorAvatarUrl` to a cached `data:` URI the
+   * renderer's `img-src 'self' data:` CSP can actually load. Only
+   * `conversation.entries` (`IssueComment`/`GeneralThread`) and
+   * `conversation.inline` reach the renderer via `ConversationThreadCard`;
+   * `ReviewSummary`/`PrDescription` entries carry no comment and pass
+   * through untouched. A per-call cache avoids re-reading the same avatar
+   * file for every comment a repeat commenter left.
+   */
+  private async resolveAvatars(
+    conversation: Conversation,
+    profileId: WorkspaceProfileId,
+  ): Promise<Conversation> {
+    const resolved = new Map<string, string | undefined>();
+    const resolveUrl = async (
+      avatarUrl: string,
+    ): Promise<string | undefined> => {
+      const cached = resolved.get(avatarUrl);
+      if (cached !== undefined || resolved.has(avatarUrl)) return cached;
+      const read = await avatarDataUri(
+        this.paths,
+        profileId,
+        hashAvatarUrl(avatarUrl),
+      );
+      const dataUri = read._tag === "ok" ? read.value : undefined;
+      resolved.set(avatarUrl, dataUri);
+      return dataUri;
+    };
+    const resolveComment = async <T extends GitHubComment>(
+      comment: T,
+    ): Promise<T> => {
+      if (comment.authorAvatarUrl === undefined) return comment;
+      const dataUri = await resolveUrl(comment.authorAvatarUrl);
+      return dataUri === undefined
+        ? comment
+        : { ...comment, authorAvatarDataUri: dataUri };
+    };
+    const entries = await Promise.all(
+      conversation.entries.map(async (entry): Promise<ConversationEntry> => {
+        if (entry._tag === "IssueComment")
+          return { ...entry, comment: await resolveComment(entry.comment) };
+        if (entry._tag === "GeneralThread")
+          return {
+            ...entry,
+            thread: {
+              ...entry.thread,
+              comments: await Promise.all(
+                entry.thread.comments.map(resolveComment),
+              ),
+            },
+          };
+        return entry;
+      }),
+    );
+    const result: MutableConversation = { ...conversation, entries };
+    if (conversation.inline !== undefined) {
+      const inlineThreads = conversation.inline;
+      result.inline = {
+        ...inlineThreads,
+        threads: await Promise.all(
+          inlineThreads.threads.map(async (thread) => ({
+            ...thread,
+            comments: await Promise.all(thread.comments.map(resolveComment)),
+          })),
+        ),
+      };
+    }
+    return result;
+  }
+
   private async project(
     profile: WorkspaceProfileConfig,
     session: ReviewSession,
-    remote:
-      | {
-          readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
-          readonly conversation: Awaited<
-            ReturnType<GitHubReader["loadConversation"]>
-          >;
-          readonly commits?: ReadonlyArray<PullRequestCommit>;
-          readonly checks: Awaited<
-            ReturnType<GitHubReader["getPullRequestChecks"]>
-          >;
-          readonly mergeEvidence?: GitHubMergeEvidence;
-        }
-      | undefined,
+    remote: ProjectRemoteInput | undefined,
     representedAt: IsoTimestamp,
     durableFreshness: ReviewFreshness,
     pendingReview?: {
@@ -236,6 +333,11 @@ export class ReviewWorkbenchProjectionService {
       fullPatch === undefined
         ? undefined
         : createHash("sha256").update(fullPatch).digest("hex");
+    // SAFETY: `patchHash` is produced immediately above by
+    // `createHash("sha256").digest("hex")`, which always yields a lowercase
+    // 64-character hex string — exactly the syntax `parseContentHash`
+    // checks — so this cast cannot diverge from a genuine `ContentHash`.
+    const patchHashBranded = patchHash as ContentHash | undefined;
 
     const current = remote?.current;
     const currentHeadSha =
@@ -265,10 +367,14 @@ export class ReviewWorkbenchProjectionService {
       remote?.checks?._tag === "ok"
         ? remote.checks.value
         : { overall: "unknown", checks: [] };
-    const conversation: Conversation =
+    const rawConversation: Conversation =
       remote?.conversation?._tag === "ok"
         ? remote.conversation.value
         : { prDescription: "", entries: [] };
+    const conversation = await this.resolveAvatars(
+      rawConversation,
+      session.key.profileId,
+    );
     const freshness =
       durableFreshness._tag === "Fresh"
         ? ("fresh" as const)
@@ -334,25 +440,23 @@ export class ReviewWorkbenchProjectionService {
       analysis,
       session,
       freshness,
-      patchHash: patchHash as ContentHash | undefined,
+      patchHash: patchHashBranded,
       pendingReview: pendingReview?.state ?? session.pendingReview,
     });
 
-    return ok({
+    const revision: MutableRevisionProjection = {
+      reviewedHeadSha: session.key.headSha,
+      freshness,
+      refreshedAt,
+    };
+    if (patchHashBranded !== undefined) revision.patchHash = patchHashBranded;
+    if (currentHeadSha !== undefined) revision.currentHeadSha = currentHeadSha;
+
+    const projection: MutableReviewWorkbenchProjection = {
       state: "review",
       review: { id: reviewId, status: reviewStatus },
       session: projectSession(session),
-      revision: {
-        reviewedHeadSha: session.key.headSha,
-        ...(patchHash === undefined
-          ? {}
-          : { patchHash: patchHash as ContentHash }),
-        ...(currentHeadSha === undefined ? {} : { currentHeadSha }),
-        freshness,
-        refreshedAt,
-      },
-      ...(fullPatch === undefined ? {} : { fullPatch }),
-      ...(pullRequest === undefined ? {} : { pullRequest }),
+      revision,
       commits: remote?.commits ?? [],
       insights: {
         analysis,
@@ -369,7 +473,10 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       mergeReasons,
-    });
+    };
+    if (fullPatch !== undefined) projection.fullPatch = fullPatch;
+    if (pullRequest !== undefined) projection.pullRequest = pullRequest;
+    return ok(projection);
   }
 
   private async loadStoredInsights(
@@ -383,7 +490,20 @@ export class ReviewWorkbenchProjectionService {
         session.key.profileId,
         createReviewId(session.key),
         "analysis",
-        parseRetainedAnalysis,
+        // The callback's parameter is left uninferred here (rather than
+        // annotated `unknown`) so it takes its type from `loadTyped`'s
+        // signature; this is the actual I/O boundary where a stored
+        // Insight's `retained` value first becomes available to parse.
+        (input) => {
+          const envelope = v.safeParse(retainedEnvelopeSchema, input);
+          if (!envelope.success) return err(undefined);
+          const base = parseRetainedBase(envelope.output);
+          if (base._tag === "err") return base;
+          const value = parseReviewResult(readObjectField(input, "value"));
+          return value._tag === "err"
+            ? err(undefined)
+            : ok({ ...base.value, value: value.value });
+        },
       ),
       this.loadWalkthroughRecord(session),
     ]);
@@ -408,22 +528,20 @@ export class ReviewWorkbenchProjectionService {
             analysis.value.retained,
           )
         : undefined;
-    return ok({
-      ...(analysis._tag === "ok" ? { analysis: analysis.value } : {}),
-      ...(walkthrough._tag === "ok"
-        ? { walkthrough: walkthrough.value.record }
-        : {}),
-      ...(analysisArtifact?.scope === undefined
-        ? {}
-        : { analysisScope: analysisArtifact.scope }),
-      ...(analysisArtifact?.artifactStatus === undefined
-        ? {}
-        : { analysisArtifactStatus: analysisArtifact.artifactStatus }),
-      ...(walkthrough._tag === "ok" &&
+    const records: MutableStoredInsightRecords = {};
+    if (analysis._tag === "ok") records.analysis = analysis.value;
+    if (walkthrough._tag === "ok")
+      records.walkthrough = walkthrough.value.record;
+    if (analysisArtifact?.scope !== undefined)
+      records.analysisScope = analysisArtifact.scope;
+    if (analysisArtifact?.artifactStatus !== undefined)
+      records.analysisArtifactStatus = analysisArtifact.artifactStatus;
+    if (
+      walkthrough._tag === "ok" &&
       walkthrough.value.artifactStatus !== undefined
-        ? { walkthroughArtifactStatus: walkthrough.value.artifactStatus }
-        : {}),
-    });
+    )
+      records.walkthroughArtifactStatus = walkthrough.value.artifactStatus;
+    return ok(records);
   }
 
   private async readInsightScope(
@@ -488,14 +606,26 @@ export class ReviewWorkbenchProjectionService {
       return err({ reason: "storage" });
     }
     if (loaded.value.retained === undefined) {
+      // SAFETY: `retained` is undefined, and the generic `T` in
+      // `InsightRecord<RetainedInsight<T>>` only ever appears inside
+      // `retained.value`. With no `retained` present on the loaded record,
+      // its shape is identical for every `T`, so re-typing it here to
+      // `NarrativeWalkthrough` cannot misrepresent the value.
       return ok({
         record: loaded.value as InsightRecord<
           RetainedInsight<NarrativeWalkthrough>
         >,
       });
     }
-    const base = parseRetainedBase(loaded.value.retained);
+    const retainedValue = loaded.value.retained;
+    const envelope = v.safeParse(retainedEnvelopeSchema, retainedValue);
+    if (!envelope.success) return err({ reason: "invalid_stored_value" });
+    const base = parseRetainedBase(envelope.output);
     if (base._tag === "err") return err({ reason: "invalid_stored_value" });
+    // Readable-without-artifact fallback: preserves bounded prose while
+    // dropping hunk coordinates that no longer have trusted patch bytes to
+    // resolve against. Each stored field degrades independently instead of
+    // rejecting the whole record, matching the original hand-walked reader.
     const fallback = (): Result<
       {
         readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
@@ -505,11 +635,53 @@ export class ReviewWorkbenchProjectionService {
         readonly reason: "not_found" | "invalid_stored_value" | "storage";
       }
     > => {
-      const value = readableWalkthroughWithoutArtifact(
-        readObjectField(loaded.value.retained, "value"),
-        session.key.profileId,
-        base.value,
-      );
+      const rawValue = readObjectField(retainedValue, "value");
+      const rawChapters = readObjectField(rawValue, "chapters");
+      const chapters = Array.isArray(rawChapters)
+        ? rawChapters.slice(0, 12).map((chapter, chapterIndex) => {
+            const rawSections = readObjectField(chapter, "sections");
+            const sections = Array.isArray(rawSections)
+              ? rawSections.slice(0, 32).map((section, sectionIndex) => ({
+                  id: `section-${chapterIndex + 1}-${sectionIndex + 1}`,
+                  title: v.parse(
+                    boundedTextSchema(160, "Untitled section"),
+                    readObjectField(section, "title"),
+                  ),
+                  prose: v.parse(
+                    boundedTextSchema(
+                      4_000,
+                      "Stored section text is unavailable.",
+                    ),
+                    readObjectField(section, "prose"),
+                  ),
+                  hunkIds: [],
+                  hunks: [],
+                }))
+              : [];
+            return {
+              id: `chapter-${chapterIndex + 1}`,
+              title: v.parse(
+                boundedTextSchema(80, "Untitled chapter"),
+                readObjectField(chapter, "title"),
+              ),
+              sections,
+            };
+          })
+        : [];
+      const value: NarrativeWalkthrough = {
+        snapshot: { profileId: session.key.profileId, ...base.value.revision },
+        citationStatus: "unverified",
+        title: v.parse(
+          boundedTextSchema(200, "Stored Walkthrough"),
+          readObjectField(rawValue, "title"),
+        ),
+        focus: v.parse(
+          boundedTextSchema(2_000, "Stored source evidence is unavailable."),
+          readObjectField(rawValue, "focus"),
+        ),
+        chapters,
+        support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
+      };
       return ok({
         record: { ...loaded.value, retained: { ...base.value, value } },
         artifactStatus: "mismatch",
@@ -527,14 +699,22 @@ export class ReviewWorkbenchProjectionService {
     if (retainedPatch === undefined) return fallback();
     const actualHash = createHash("sha256").update(retainedPatch).digest("hex");
     if (actualHash !== base.value.revision.patchHash) return fallback();
-    const parsed = parseRetainedWalkthrough(
-      loaded.value.retained,
+    const normalized = normalizeNarrativeWalkthrough(
+      readObjectField(retainedValue, "value"),
       retainedPatch,
-      session.key.profileId,
+      {
+        profileId: session.key.profileId,
+        sessionId: base.value.revision.sessionId,
+        headSha: base.value.revision.headSha,
+        patchHash: base.value.revision.patchHash,
+      },
     );
-    if (parsed._tag === "err") return err({ reason: "storage" });
+    if (normalized._tag === "err") return err({ reason: "storage" });
     return ok({
-      record: { ...loaded.value, retained: parsed.value },
+      record: {
+        ...loaded.value,
+        retained: { ...base.value, value: normalized.value },
+      },
       artifactStatus: "verified",
     });
   }
@@ -787,6 +967,27 @@ type StoredInsightRecords = {
   readonly walkthroughArtifactStatus?: InsightArtifactStatus;
 };
 
+/** Mutable draft of `StoredInsightRecords`, built in statements by `loadStoredInsights`. */
+type MutableStoredInsightRecords = {
+  -readonly [K in keyof StoredInsightRecords]: StoredInsightRecords[K];
+};
+
+/**
+ * `projectStoredInsight` is generic in `T`, so a locally declared
+ * `-readonly [K in keyof InsightProjection<T>]` draft type (the pattern used
+ * elsewhere in this file for concrete, non-generic shapes) is flagged by
+ * `anti-slop/no-known-value-widening`: a generic mapped-type alias is always
+ * treated as a container that can silently swallow the literal evidence in
+ * an assigned object. Building and returning each branch's literal directly,
+ * omitting an optional key with `...(cond && { key })` instead of a typed
+ * draft plus assignment, keeps every branch checked against this function's
+ * own `InsightProjection<T>` return type and avoids that widening entirely.
+ * `cond && {...}` (a `LogicalExpression`) also isn't the ternary-with-`{}`
+ * shape `no-conditional-empty-object-spread` matches: when `cond` is false
+ * it spreads `false`, which — like spreading `undefined` or `null` —
+ * contributes no properties, so omission behaves identically to the
+ * original conditional spread.
+ */
 function projectStoredInsight<T>(
   record: InsightRecord<RetainedInsight<T>> | undefined,
   session: ReviewSession,
@@ -806,16 +1007,16 @@ function projectStoredInsight<T>(
           headSha: record.retained.revision.headSha,
           generatedAt: record.retained.generatedAt,
           value: decorate(record.retained.value, record),
-          ...(scope === undefined ? {} : { scope }),
+          ...(scope !== undefined && { scope }),
         };
   if (record?.activeRun !== undefined) {
     return {
       status: "running",
-      ...(artifactStatus === undefined ? {} : { artifactStatus }),
-      ...(record.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
-      ...(retained === undefined ? {} : { retained }),
+      ...(artifactStatus !== undefined && { artifactStatus }),
+      ...(record.walkthroughProgress !== undefined && {
+        progress: record.walkthroughProgress,
+      }),
+      ...(retained !== undefined && { retained }),
       activeRun: {
         runId: record.activeRun.id,
         sessionId: record.activeRun.revision.sessionId,
@@ -826,16 +1027,16 @@ function projectStoredInsight<T>(
   if (record?.replacementFailure !== undefined) {
     return {
       status: "failed",
-      ...(artifactStatus === undefined ? {} : { artifactStatus }),
-      ...(record.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
-      ...(retained === undefined ? {} : { retained }),
+      ...(artifactStatus !== undefined && { artifactStatus }),
+      ...(record.walkthroughProgress !== undefined && {
+        progress: record.walkthroughProgress,
+      }),
+      ...(retained !== undefined && { retained }),
       replacementFailure: {
         runId: record.replacementFailure.runId,
-        ...(record.replacementFailure.category === undefined
-          ? {}
-          : { category: record.replacementFailure.category }),
+        ...(record.replacementFailure.category !== undefined && {
+          category: record.replacementFailure.category,
+        }),
         model: record.replacementFailure.model,
         reasoning: record.replacementFailure.reasoning,
         retryable: record.replacementFailure.retryable,
@@ -845,9 +1046,9 @@ function projectStoredInsight<T>(
   if (retained === undefined)
     return {
       status: "not_generated",
-      ...(record?.walkthroughProgress === undefined
-        ? {}
-        : { progress: record.walkthroughProgress }),
+      ...(record?.walkthroughProgress !== undefined && {
+        progress: record.walkthroughProgress,
+      }),
     };
   const retainedRecord = record?.retained;
   const isCurrent =
@@ -856,10 +1057,10 @@ function projectStoredInsight<T>(
     retainedRecord.revision.patchHash === patchHash;
   return {
     status: isCurrent ? "current" : "outdated",
-    ...(artifactStatus === undefined ? {} : { artifactStatus }),
-    ...(record?.walkthroughProgress === undefined
-      ? {}
-      : { progress: record.walkthroughProgress }),
+    ...(artifactStatus !== undefined && { artifactStatus }),
+    ...(record?.walkthroughProgress !== undefined && {
+      progress: record.walkthroughProgress,
+    }),
     retained,
   };
 }
@@ -882,26 +1083,76 @@ function projectAnalysisFindings(
   };
 }
 
+/**
+ * Envelope for one stored `RetainedInsight`'s scalar fields, decoded at the
+ * I/O boundary. Every field stays `v.unknown()` here — this schema only
+ * establishes that the field is present, exactly like the `readObjectField`
+ * walk it replaces; the real per-field validation still happens in the
+ * domain parsers (`parseInsightRunId`, `parseGitSha`, ...) below, so a
+ * malformed value degrades identically to before: any missing or
+ * wrong-shaped piece fails at the domain parser instead of here, and both
+ * paths converge on the same `err(undefined)`.
+ */
+const retainedEnvelopeSchema = v.object({
+  runId: v.unknown(),
+  revision: v.optional(
+    v.object({
+      sessionId: v.unknown(),
+      headSha: v.unknown(),
+      patchHash: v.unknown(),
+    }),
+  ),
+  generatedAt: v.unknown(),
+  provenance: v.unknown(),
+});
+type RetainedEnvelope = v.InferOutput<typeof retainedEnvelopeSchema>;
+
+const provenanceEnvelopeSchema = v.object({
+  provider: v.unknown(),
+  model: v.unknown(),
+  reasoning: v.unknown(),
+});
+type ProvenanceEnvelope = v.InferOutput<typeof provenanceEnvelopeSchema>;
+
+/** Matches the original inline check (`model.trim().length > 0 && model.length <= 200`) without a runtime `typeof`. */
+const provenanceModelSchema = v.pipe(
+  v.string(),
+  v.check((value) => value.trim().length > 0, "model must not be blank"),
+  v.maxLength(200),
+);
+
+/**
+ * A bounded-text field that never fails: a non-blank string is truncated to
+ * `maxLength` (its original, untrimmed bytes — matching the prior
+ * `value.slice(0, maxLength)` behavior exactly), anything else falls back.
+ */
+function boundedTextSchema(maxLength: number, fallback: string) {
+  return v.pipe(
+    v.unknown(),
+    v.transform((value) => {
+      const parsed = v.safeParse(v.string(), value);
+      return parsed.success && parsed.output.trim().length > 0
+        ? parsed.output.slice(0, maxLength)
+        : fallback;
+    }),
+  );
+}
+
 function parseRetainedBase(
-  input: unknown,
+  envelope: RetainedEnvelope,
 ): Result<RetainedInsight<unknown>, undefined> {
-  const revision = readObjectField(input, "revision");
-  const runId = parseInsightRunId(readObjectField(input, "runId"));
-  const sessionId = parseReviewSessionId(
-    readObjectField(revision, "sessionId"),
+  const runId = parseInsightRunId(envelope.runId);
+  const sessionId = parseReviewSessionId(envelope.revision?.sessionId);
+  const headSha = parseGitSha(envelope.revision?.headSha);
+  const patchHash = parseContentHash(envelope.revision?.patchHash);
+  const generatedAt = parseIsoTimestamp(envelope.generatedAt);
+  const provenanceEnvelope = v.safeParse(
+    provenanceEnvelopeSchema,
+    envelope.provenance,
   );
-  const headSha = parseGitSha(readObjectField(revision, "headSha"));
-  const patchHash = parseContentHash(readObjectField(revision, "patchHash"));
-  const generatedAt = parseIsoTimestamp(readObjectField(input, "generatedAt"));
-  const provenance = parseRetainedProvenance(
-    readObjectField(input, "provenance"),
-  );
-  if (
-    [runId, sessionId, headSha, patchHash, generatedAt, provenance].some(
-      (value) => value._tag === "err",
-    )
-  )
-    return err(undefined);
+  const provenance = provenanceEnvelope.success
+    ? parseRetainedProvenance(provenanceEnvelope.output)
+    : err(undefined);
   if (
     runId._tag === "err" ||
     sessionId._tag === "err" ||
@@ -925,125 +1176,12 @@ function parseRetainedBase(
 }
 
 function parseRetainedProvenance(
-  input: unknown,
+  envelope: ProvenanceEnvelope,
 ): Result<InsightProvenance, undefined> {
-  const provider = parseInsightProvider(readObjectField(input, "provider"));
-  const model = readObjectField(input, "model");
-  const reasoning = parseInsightReasoning(readObjectField(input, "reasoning"));
-  return typeof model === "string" &&
-    model.trim().length > 0 &&
-    model.length <= 200 &&
-    provider._tag === "ok" &&
-    reasoning._tag === "ok"
-    ? ok({ provider: provider.value, model, reasoning: reasoning.value })
+  const provider = parseInsightProvider(envelope.provider);
+  const model = v.safeParse(provenanceModelSchema, envelope.model);
+  const reasoning = parseInsightReasoning(envelope.reasoning);
+  return provider._tag === "ok" && model.success && reasoning._tag === "ok"
+    ? ok({ provider: provider.value, model: model.output, reasoning: reasoning.value })
     : err(undefined);
-}
-
-function parseRetainedAnalysis(
-  input: unknown,
-): Result<RetainedInsight<ReviewResult>, undefined> {
-  const base = parseRetainedBase(input);
-  if (base._tag === "err") return base;
-  const value = parseReviewResult(readObjectField(input, "value"));
-  return value._tag === "err"
-    ? err(undefined)
-    : ok({ ...base.value, value: value.value });
-}
-
-function parseRetainedWalkthrough(
-  input: unknown,
-  patch: string,
-  profileId: WorkspaceProfileId,
-): Result<RetainedInsight<NarrativeWalkthrough>, undefined> {
-  const base = parseRetainedBase(input);
-  if (base._tag === "err") return base;
-  const normalized = normalizeNarrativeWalkthrough(
-    readObjectField(input, "value"),
-    patch,
-    {
-      profileId,
-      sessionId: base.value.revision.sessionId,
-      headSha: base.value.revision.headSha,
-      patchHash: base.value.revision.patchHash,
-    },
-  );
-  return normalized._tag === "err"
-    ? err(undefined)
-    : ok({ ...base.value, value: normalized.value });
-}
-
-/** Preserve bounded prose while removing coordinates that no longer have trusted bytes. */
-function readableWalkthroughWithoutArtifact(
-  input: unknown,
-  profileId: WorkspaceProfileId,
-  retained: RetainedInsight<unknown>,
-): NarrativeWalkthrough {
-  const raw =
-    typeof input === "object" && input !== null
-      ? (input as {
-          readonly title?: unknown;
-          readonly focus?: unknown;
-          readonly chapters?: unknown;
-        })
-      : {};
-  const chapters = Array.isArray(raw.chapters)
-    ? raw.chapters.slice(0, 12).map((chapter, chapterIndex) => {
-        const value =
-          typeof chapter === "object" && chapter !== null
-            ? (chapter as {
-                readonly title?: unknown;
-                readonly sections?: unknown;
-              })
-            : {};
-        const sections = Array.isArray(value.sections)
-          ? value.sections.slice(0, 32).map((section, sectionIndex) => {
-              const item =
-                typeof section === "object" && section !== null
-                  ? (section as {
-                      readonly title?: unknown;
-                      readonly prose?: unknown;
-                    })
-                  : {};
-              return {
-                id: `section-${chapterIndex + 1}-${sectionIndex + 1}`,
-                title: boundedArtifactText(item.title, 160, "Untitled section"),
-                prose: boundedArtifactText(
-                  item.prose,
-                  4_000,
-                  "Stored section text is unavailable.",
-                ),
-                hunkIds: [],
-                hunks: [],
-              };
-            })
-          : [];
-        return {
-          id: `chapter-${chapterIndex + 1}`,
-          title: boundedArtifactText(value.title, 80, "Untitled chapter"),
-          sections,
-        };
-      })
-    : [];
-  return {
-    snapshot: { profileId, ...retained.revision },
-    citationStatus: "unverified",
-    title: boundedArtifactText(raw.title, 200, "Stored Walkthrough"),
-    focus: boundedArtifactText(
-      raw.focus,
-      2_000,
-      "Stored source evidence is unavailable.",
-    ),
-    chapters,
-    support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
-  };
-}
-
-function boundedArtifactText(
-  value: unknown,
-  maxLength: number,
-  fallback: string,
-): string {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.slice(0, maxLength)
-    : fallback;
 }
