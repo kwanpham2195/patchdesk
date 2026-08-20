@@ -215,6 +215,94 @@ test("typing `[` in the comment composer inserts the character instead of naviga
   }
 });
 
+test("`}` announces there are no unresolved comments, without moving the viewport, on a diff with none", async ({
+  page,
+}) => {
+  // #workbench-fixture's `CanonicalFixtureWorkbench` mount never sets
+  // `conversation.inline` (only `prDescription`/`entries`; see
+  // `canonicalWorkbenchModel` in app-fixtures.tsx), so this diff genuinely
+  // has zero live comment threads -- the real "nothing to jump to" case, not
+  // a contrived one. Wiring a live thread into a fixture route for the
+  // skip-resolved/repeated-advance/focus-lands assertions would require
+  // editing that same large, shared fixture file, which carries unrelated
+  // pre-existing oxlint findings across its ~9 other call sites that
+  // `pnpm precommit`'s lint-staged gate checks whole-file; clearing them is
+  // out of this slice's size ceiling, so `adjacentCommentAnchor`,
+  // `commentNavAnnouncement`, `buildCommentOrder` (skip-resolved, document
+  // order, same-line distinctness), and `findCommentThreadCard`/
+  // `focusCommentThreadCard` (including the found-but-not-yet-focusable
+  // retry) carry that proof instead, in
+  // tests/renderer/review-diff-keyboard-nav.test.ts.
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    await diffViewport.focus();
+    await expect(diffViewport).toBeFocused();
+
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const before = await scrollTop();
+    const status = page.locator("[data-review-diff-comment-nav-status]");
+
+    await page.keyboard.press("}");
+    await expect(status).toHaveText("No unresolved comments.");
+    expect(await scrollTop()).toBe(before);
+
+    // `{` reports the same thing, not a mirrored "first"/"last" boundary --
+    // there is nothing to be at either end of.
+    await page.keyboard.press("{");
+    await expect(status).toHaveText("No unresolved comments.");
+    expect(await scrollTop()).toBe(before);
+  } finally {
+    await close(server);
+  }
+});
+
+test("typing `{` in the comment composer inserts the character instead of navigating", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    // Pierre's CodeView finishes wiring its own hover tracking a moment
+    // after mount; hovering a line before that is ready leaves the gutter
+    // button's box at zero size with nothing to recompute it.
+    await page.waitForTimeout(500);
+
+    const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
+    const addComment = page
+      .locator('button[aria-label^="Add comment on"]')
+      .first();
+    await line.hover();
+    await addComment.click({ force: true });
+
+    const composer = page.getByRole("textbox", { name: "Inline comment" });
+    await expect(composer).toBeVisible();
+    await expect(composer).toBeFocused();
+
+    const scrollTop = () => diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const before = await scrollTop();
+
+    await page.keyboard.press("{");
+
+    // Inserted into the composer, not consumed as a navigation key.
+    await expect(composer).toHaveValue("{");
+    // No navigation attempted at all -- not even a status announcement.
+    expect(await scrollTop()).toBe(before);
+    await expect(
+      page.locator("[data-review-diff-comment-nav-status]"),
+    ).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
 test("Cmd+, still opens Settings", async ({ page }) => {
   const server = await serveRenderer();
   try {

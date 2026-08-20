@@ -171,8 +171,14 @@ function ConversationCommentRow({
 
 export function ConversationThreadCard({
   thread,
+  navAnchorId,
 }: {
   readonly thread: ConversationThreadCardData;
+  /** Stable id (the owning `ReviewInlineAnnotation.id`) that `{`/`}` comment
+   * navigation in `review-diff-view.tsx` uses to find and focus this exact
+   * card after a jump lands on it. Absent for render paths outside that
+   * navigation surface (e.g. the Conversation tab's general-thread list). */
+  readonly navAnchorId?: string;
 }): React.JSX.Element {
   const [pending, setPending] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -227,6 +233,14 @@ export function ConversationThreadCard({
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
       aria-label={`${thread.state} conversation thread`}
+      // Programmatically focusable (not a Tab stop of its own) so `{`/`}`
+      // comment navigation can move focus onto the card the keyboard jump
+      // landed on; the next Tab then reaches its first real control (Reply,
+      // Resolve, or a comment's Edit/Delete link).
+      tabIndex={-1}
+      {...(navAnchorId === undefined
+        ? {}
+        : { "data-review-comment-thread": navAnchorId })}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">

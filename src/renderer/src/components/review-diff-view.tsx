@@ -68,9 +68,14 @@ import {
   type MaterializeScrollProgress,
 } from "@/review-diff-materialize-and-scroll";
 import {
+  adjacentCommentAnchor,
   adjacentFilePath,
   adjacentHunkAnchor,
+  buildCommentOrder,
+  commentNavAnnouncement,
+  focusCommentThreadCard,
   shouldIgnoreReviewNavKey,
+  type CommentAnchor,
   type HunkAnchor,
   type ReviewNavDirection,
 } from "@/review-diff-keyboard-nav";
@@ -1509,6 +1514,112 @@ function ReviewDiffSurface({
     };
   }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
 
+  // `{`/`}` jump to the previous/next unresolved comment thread, in document
+  // order (file order, then line order within each file -- the same order
+  // the diff and file tree already use). A resolved thread is finished work
+  // and is never a target: the point of this binding is "have I dealt with
+  // everything", not a tour of every thread ever opened. Shares
+  // `fileNavLatest`'s items/appendItemsThrough/onActiveFileChange snapshot,
+  // same rationale as `[`/`]` above.
+  const commentNavJump = useRef<{ token: number; cancel?: () => void }>({
+    token: 0,
+  });
+  // Where a `{`/`}` press considers itself to be -- never read back from
+  // `activePathRef` or any other scroll-derived state, for the same
+  // short-landing trap `hunkNavCurrentAnchor` guards against above (a
+  // `type: "line"` jump's `align: "start"` can land short of the target's
+  // true top, which would make `updateActivePath` recompute the wrong file
+  // as active and overwrite `activePathRef` right after `onScrolled` sets
+  // it). This ref is written only by a keyboard jump.
+  const commentNavCurrentAnchor = useRef<CommentAnchor | undefined>(
+    undefined,
+  );
+  const [commentNavStatus, setCommentNavStatus] = useState<
+    string | undefined
+  >(undefined);
+  useEffect(() => {
+    // Same surface restriction as the file- and hunk-jump listeners above.
+    if (!virtualized || preferences.fileMode !== "all") return;
+    // Guards the bounded post-scroll focus poll below against outliving
+    // this effect (a mode change or unmount while a poll is mid-flight);
+    // `commentNavJump.current.token` alone only detects a *newer* press,
+    // not the listener going away entirely.
+    let cancelled = false;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "{" && event.key !== "}") return;
+      if (shouldIgnoreReviewNavKey(event)) return;
+      event.preventDefault();
+      const {
+        items: currentItems,
+        onActiveFileChange: currentOnActiveFileChange,
+        appendItemsThrough: currentAppendItemsThrough,
+      } = fileNavLatest.current;
+      const direction: ReviewNavDirection =
+        event.key === "}" ? "next" : "previous";
+      // Rebuilt fresh every press, mirroring `hunkOrder` above: document
+      // order across the whole diff, unresolved comment threads only (see
+      // `buildCommentOrder`'s own doc comment for the exact rules and why a
+      // thread that never mapped into any visible file needs no special
+      // case here).
+      const commentOrder: CommentAnchor[] = buildCommentOrder(currentItems);
+      const target = adjacentCommentAnchor(
+        commentOrder,
+        commentNavCurrentAnchor.current,
+        direction,
+      );
+      setCommentNavStatus(
+        commentNavAnnouncement(commentOrder, target, direction),
+      );
+      if (target === undefined) return;
+      // Set eagerly, not only in `onScrolled` below: a rapid second press
+      // before this jump's scroll resolves must still advance from this
+      // target, not re-derive the same "current" and repeat itself.
+      commentNavCurrentAnchor.current = target;
+      commentNavJump.current.cancel?.();
+      const token = commentNavJump.current.token + 1;
+      commentNavJump.current.token = token;
+      const progress: MaterializeScrollProgress = { attempts: 0 };
+      commentNavJump.current.cancel = materializeAndScrollTo({
+        viewer,
+        // The target's file, not the thread, is what must exist in the
+        // viewer before a line inside it can be scrolled to.
+        items: currentItems,
+        itemId: target.filePath,
+        nextItemIndex,
+        appendItemsThrough: currentAppendItemsThrough,
+        progress,
+        isStale: () => commentNavJump.current.token !== token,
+        buildTarget: () => ({
+          type: "line",
+          id: target.filePath,
+          lineNumber: target.lineNumber,
+          side: target.side,
+          align: "start",
+        }),
+        onScrolled: () => {
+          activePathRef.current = target.filePath;
+          currentOnActiveFileChange?.(target.filePath);
+          // Move focus to the thread's card, not just the viewport, so
+          // keyboard and screen-reader users land somewhere Tab continues
+          // usefully from. The card can render a frame after this scroll
+          // resolves (CodeView mounts its annotation portal once the
+          // target's own DOM node exists), so poll a bounded number of
+          // frames instead of assuming one is enough.
+          focusCommentThreadCard(
+            target.id,
+            () => cancelled || commentNavJump.current.token !== token,
+          );
+        },
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("keydown", onKeyDown);
+      commentNavJump.current.cancel?.();
+    };
+  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+
   const setAllCollapsed = (collapsed: boolean): void => {
     onCollapsedPathsChange(
       collapsed ? new Set(files.map((file) => file.name)) : new Set(),
@@ -1683,7 +1794,9 @@ function ReviewDiffSurface({
             );
           };
         }
-        return <ConversationThreadCard thread={cardThread} />;
+        return (
+          <ConversationThreadCard thread={cardThread} navAnchorId={finding.id} />
+        );
       }
       if (finding.localComment !== undefined) {
         return (
@@ -1946,6 +2059,15 @@ function ReviewDiffSurface({
           data-review-diff-hunk-nav-boundary
         >
           {hunkNavBoundary}
+        </p>
+      )}
+      {commentNavStatus === undefined ? null : (
+        <p
+          className="sr-only"
+          aria-live="polite"
+          data-review-diff-comment-nav-status
+        >
+          {commentNavStatus}
         </p>
       )}
       {!browserSupportsPierre ? (
