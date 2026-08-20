@@ -204,6 +204,176 @@ describe("MaintainerInbox", () => {
     expect(screen.queryByText(/New feature/)).toBeNull();
   });
 
+  it("filters rows by selected repositories, multi-select, without narrowing the label list", async () => {
+    const user = userEvent.setup();
+    const acmeRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "acme", repo: "widgets", number: 1 },
+      title: "Acme fix",
+      labels: [{ name: "bug", color: "d73a4a" }],
+    };
+    const otherRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "other", repo: "gizmos", number: 2 },
+      title: "Other feature",
+      labels: [{ name: "enhancement", color: "a2eeef" }],
+    };
+    const thirdRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "third", repo: "gadgets", number: 3 },
+      title: "Third change",
+      labels: [],
+    };
+    render(
+      <MaintainerInbox
+        profileId="repo-filter"
+        profileLabel="P"
+        rows={[acmeRow, otherRow, thirdRow]}
+        repos={[
+          { host: "github.com", owner: "acme", repo: "widgets" },
+          { host: "github.com", owner: "other", repo: "gizmos" },
+          { host: "github.com", owner: "third", repo: "gadgets" },
+        ]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText(/Acme fix/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Other feature/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Third change/).length).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", { name: "Filter by repository" }),
+    );
+    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    expect(
+      screen.getByRole("button", { name: "Filter by repository" }).textContent,
+    ).toContain("acme/widgets");
+    expect(screen.getAllByText(/Acme fix/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Other feature/)).toBeNull();
+    expect(screen.queryByText(/Third change/)).toBeNull();
+
+    // Selecting a second repository widens the result rather than narrowing
+    // further, proving this is a multi-select rather than a single choice.
+    await user.click(
+      await screen.findByRole("checkbox", { name: "other/gizmos" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Filter by repository" }).textContent,
+    ).toContain("2 repositories");
+    expect(screen.getAllByText(/Acme fix/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Other feature/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Third change/)).toBeNull();
+
+    // Selecting repositories must not narrow the label filter's own options
+    // — the two filters compose independently, exactly like labels do today.
+    await user.click(screen.getByRole("button", { name: "Filter by label" }));
+    expect(await screen.findByRole("checkbox", { name: "bug" })).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: "enhancement" }),
+    ).toBeTruthy();
+  });
+
+  it("clears the repository filter via the popover's Clear affordance", async () => {
+    const user = userEvent.setup();
+    const acmeRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "acme", repo: "widgets", number: 1 },
+      title: "Acme fix",
+    };
+    const otherRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "other", repo: "gizmos", number: 2 },
+      title: "Other feature",
+    };
+    render(
+      <MaintainerInbox
+        profileId="repo-clear"
+        profileLabel="P"
+        rows={[acmeRow, otherRow]}
+        repos={[
+          { host: "github.com", owner: "acme", repo: "widgets" },
+          { host: "github.com", owner: "other", repo: "gizmos" },
+        ]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Filter by repository" }),
+    );
+    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    expect(screen.queryByText(/Other feature/)).toBeNull();
+
+    // The popover is still open from the selection above — click Clear
+    // directly rather than re-toggling the trigger, which would close it.
+    await user.click(await screen.findByRole("button", { name: /clear/i }));
+    expect(await screen.findByText(/Other feature/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Filter by repository" }).textContent,
+    ).toContain("All repositories");
+  });
+
+  it("restores a saved view's selected repositories", async () => {
+    const user = userEvent.setup();
+    const acmeRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "acme", repo: "widgets", number: 1 },
+      title: "Acme fix",
+    };
+    const otherRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, owner: "other", repo: "gizmos", number: 2 },
+      title: "Other feature",
+    };
+    render(
+      <MaintainerInbox
+        profileId="repo-saved-view"
+        profileLabel="P"
+        rows={[acmeRow, otherRow]}
+        repos={[
+          { host: "github.com", owner: "acme", repo: "widgets" },
+          { host: "github.com", owner: "other", repo: "gizmos" },
+        ]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Filter by repository" }),
+    );
+    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    expect(screen.queryByText(/Other feature/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /save current view/i }));
+    fireEvent.change(screen.getByLabelText(/name/i), {
+      target: { value: "Acme only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save view/i }));
+
+    // Clear the repo filter directly; "Other feature" becomes visible again.
+    await user.click(
+      await screen.findByRole("button", { name: "Filter by repository" }),
+    );
+    await user.click(await screen.findByRole("button", { name: /clear/i }));
+    expect(await screen.findByText(/Other feature/)).toBeTruthy();
+
+    // Re-select the saved view; the repository filter should be restored.
+    fireEvent.click(screen.getByRole("button", { name: "Acme only" }));
+    expect(screen.getAllByText(/Acme fix/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Other feature/)).toBeNull();
+  });
+
   it("restores a saved view's selected label", async () => {
     const user = userEvent.setup();
     const bugRow: InboxRow = {

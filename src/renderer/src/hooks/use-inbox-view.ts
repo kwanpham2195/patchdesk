@@ -28,7 +28,7 @@ type InboxViewState = {
   readonly view: InboxView;
   readonly search: string;
   readonly sort: InboxSort;
-  readonly selectedRepo: string;
+  readonly selectedRepos: ReadonlyArray<string>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly queueOpen: boolean;
   readonly inspectorOpen: boolean;
@@ -42,7 +42,10 @@ type InboxViewAction =
   | { readonly _tag: "savedViewSelected"; readonly view: SavedInboxView }
   | { readonly _tag: "searchChanged"; readonly search: string }
   | { readonly _tag: "sortChanged"; readonly sort: InboxSort }
-  | { readonly _tag: "repositoryChanged"; readonly selectedRepo: string }
+  | {
+      readonly _tag: "repositoriesChanged";
+      readonly selectedRepos: ReadonlyArray<string>;
+    }
   | {
       readonly _tag: "labelChanged";
       readonly selectedLabels: ReadonlyArray<string>;
@@ -60,7 +63,7 @@ function inboxViewState(
     view: preferences.view,
     search: preferences.search,
     sort: preferences.sort,
-    selectedRepo: preferences.selectedRepo,
+    selectedRepos: preferences.selectedRepos,
     selectedLabels: preferences.selectedLabels,
     queueOpen: preferences.queueRailOpen,
     inspectorOpen: preferences.inspectorOpen,
@@ -86,15 +89,15 @@ function inboxViewReducer(
         view: action.view.view,
         search: action.view.search,
         sort: action.view.sort,
-        selectedRepo: action.view.selectedRepo,
+        selectedRepos: action.view.selectedRepos,
         selectedLabels: action.view.selectedLabels,
       };
     case "searchChanged":
       return { ...state, search: action.search };
     case "sortChanged":
       return { ...state, sort: action.sort };
-    case "repositoryChanged":
-      return { ...state, selectedRepo: action.selectedRepo };
+    case "repositoriesChanged":
+      return { ...state, selectedRepos: action.selectedRepos };
     case "labelChanged":
       return { ...state, selectedLabels: action.selectedLabels };
     case "rowSelected":
@@ -146,10 +149,11 @@ export function filterRows(
   rows: ReadonlyArray<InboxRow>,
   view: InboxView,
   search: string,
-  selectedRepo: string = "",
+  selectedRepos: ReadonlyArray<string> = [],
   selectedLabels: ReadonlyArray<string> = [],
 ): ReadonlyArray<InboxRow> {
   const needle = search.trim().toLocaleLowerCase();
+  const selectedRepoSet = new Set(selectedRepos);
   const selectedLabelSet = new Set(selectedLabels);
   return rows.filter(
     (row) =>
@@ -158,8 +162,8 @@ export function filterRows(
         `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`
           .toLocaleLowerCase()
           .includes(needle)) &&
-      (selectedRepo.length === 0 ||
-        `${row.identity.owner}/${row.identity.repo}` === selectedRepo) &&
+      (selectedRepoSet.size === 0 ||
+        selectedRepoSet.has(`${row.identity.owner}/${row.identity.repo}`)) &&
       (selectedLabelSet.size === 0 ||
         row.labels.some((label) => selectedLabelSet.has(label.name))),
   );
@@ -261,7 +265,7 @@ export function useInboxView(params: {
     view,
     search,
     sort,
-    selectedRepo,
+    selectedRepos,
     selectedLabels,
     queueOpen,
     inspectorOpen,
@@ -292,13 +296,11 @@ export function useInboxView(params: {
   }, [profileId]);
 
   const repoItems = useMemo(
-    () => [
-      { label: "All repositories", value: "" },
-      ...(repos ?? []).map((repo) => ({
+    () =>
+      (repos ?? []).map((repo) => ({
         label: `${repo.owner}/${repo.repo}`,
         value: `${repo.owner}/${repo.repo}`,
       })),
-    ],
     [repos],
   );
 
@@ -314,10 +316,10 @@ export function useInboxView(params: {
   const visibleRows = useMemo(
     () =>
       sortRows(
-        filterRows(rows, view, search, selectedRepo, selectedLabels),
+        filterRows(rows, view, search, selectedRepos, selectedLabels),
         sort,
       ),
-    [rows, search, sort, view, selectedRepo, selectedLabels],
+    [rows, search, sort, view, selectedRepos, selectedLabels],
   );
   // The repository reads as noise when every visible row shares it, so rows
   // only carry it while the view actually spans more than one repository.
@@ -350,7 +352,7 @@ export function useInboxView(params: {
       view: next.view,
       search: next.search,
       sort: next.sort,
-      selectedRepo: next.selectedRepo,
+      selectedRepos: next.selectedRepos,
       selectedLabels: next.selectedLabels,
     });
   };
@@ -363,7 +365,7 @@ export function useInboxView(params: {
       view,
       search,
       sort,
-      selectedRepo,
+      selectedRepos: [...selectedRepos],
       selectedLabels: [...selectedLabels],
     };
     const updated = [...savedViews, next].slice(-20);
@@ -394,9 +396,9 @@ export function useInboxView(params: {
     dispatchInboxView({ _tag: "sortChanged", sort: next });
     saveInboxViewPreferences(profileId, { sort: next });
   };
-  const changeSelectedRepo = (next: string): void => {
-    dispatchInboxView({ _tag: "repositoryChanged", selectedRepo: next });
-    saveInboxViewPreferences(profileId, { selectedRepo: next });
+  const changeSelectedRepos = (next: ReadonlyArray<string>): void => {
+    dispatchInboxView({ _tag: "repositoriesChanged", selectedRepos: next });
+    saveInboxViewPreferences(profileId, { selectedRepos: next });
   };
   const changeSelectedLabels = (next: ReadonlyArray<string>): void => {
     dispatchInboxView({ _tag: "labelChanged", selectedLabels: next });
@@ -457,7 +459,7 @@ export function useInboxView(params: {
     view,
     search,
     sort,
-    selectedRepo,
+    selectedRepos,
     selectedLabels,
     queueOpen,
     inspectorOpen,
@@ -483,7 +485,7 @@ export function useInboxView(params: {
     selectRow,
     changeSearch,
     changeSort,
-    changeSelectedRepo,
+    changeSelectedRepos,
     changeSelectedLabels,
     toggleQueue,
     toggleInspector,

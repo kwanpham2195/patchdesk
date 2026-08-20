@@ -33,46 +33,78 @@ const trimmed = (limit: number) =>
     v.minLength(1),
   );
 
-const cappedLabels = (max: number) =>
+// Shared by selectedRepos and selectedLabels: both are string lists capped
+// at 50 entries so a runaway stored value can't grow the payload unbounded.
+const cappedStrings = (max: number) =>
   v.pipe(
     v.array(clipped(200)),
     v.transform((values) => values.slice(0, max)),
   );
 
-const savedViewSchema = v.object({
-  id: trimmed(80),
-  name: trimmed(60),
-  view: inboxViewSchema,
-  search: v.fallback(clipped(200), ""),
-  sort: v.fallback(inboxSortSchema, "priority"),
-  selectedRepo: v.fallback(clipped(200), ""),
-  selectedLabels: v.fallback(cappedLabels(50), []),
-});
+// Pre-VERSION-bump payloads carried a single `selectedRepo: string` field,
+// where "" meant "all repositories". Every field here uses `v.fallback`, so
+// a straight rename would silently drop the old value instead of erroring:
+// stored preferences and saved views would keep loading fine, just without
+// their repo filter. Parse both the legacy and current shape and resolve
+// them at the schema boundary so the old value survives.
+function resolveSelectedRepos(
+  legacy: string | undefined,
+  current: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  if (current !== undefined) return current;
+  if (legacy === undefined || legacy.length === 0) return [];
+  return [legacy];
+}
+
+const savedViewSchema = v.pipe(
+  v.object({
+    id: trimmed(80),
+    name: trimmed(60),
+    view: inboxViewSchema,
+    search: v.fallback(clipped(200), ""),
+    sort: v.fallback(inboxSortSchema, "priority"),
+    selectedRepo: v.fallback(v.optional(clipped(200)), undefined),
+    selectedRepos: v.fallback(v.optional(cappedStrings(50)), undefined),
+    selectedLabels: v.fallback(cappedStrings(50), []),
+  }),
+  v.transform(({ selectedRepo, selectedRepos, ...rest }) => ({
+    ...rest,
+    selectedRepos: resolveSelectedRepos(selectedRepo, selectedRepos),
+  })),
+);
 
 /** A named local shortcut for a composed inbox filter; it never changes review state. */
 export type SavedInboxView = v.InferOutput<typeof savedViewSchema>;
 
 // Every field falls back independently: one stale or hand-edited value resets
 // itself instead of discarding the whole stored view.
-const preferencesSchema = v.object({
-  view: v.fallback(inboxViewSchema, "my_inbox"),
-  search: v.fallback(clipped(200), ""),
-  sort: v.fallback(inboxSortSchema, "priority"),
-  selectedRepo: v.fallback(clipped(200), ""),
-  selectedLabels: v.fallback(cappedLabels(50), []),
-  queueRailOpen: v.fallback(v.boolean(), true),
-  inspectorOpen: v.fallback(v.boolean(), true),
-  selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
-  // Saved views are parsed per item below so one bad entry drops itself
-  // instead of resetting the whole list.
-  savedViews: v.fallback(v.array(v.unknown()), []),
-});
+const preferencesSchema = v.pipe(
+  v.object({
+    view: v.fallback(inboxViewSchema, "my_inbox"),
+    search: v.fallback(clipped(200), ""),
+    sort: v.fallback(inboxSortSchema, "priority"),
+    selectedRepo: v.fallback(v.optional(clipped(200)), undefined),
+    selectedRepos: v.fallback(v.optional(cappedStrings(50)), undefined),
+    selectedLabels: v.fallback(cappedStrings(50), []),
+    queueRailOpen: v.fallback(v.boolean(), true),
+    inspectorOpen: v.fallback(v.boolean(), true),
+    selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
+    // Saved views are parsed per item below so one bad entry drops itself
+    // instead of resetting the whole list. Each item goes through
+    // `savedViewSchema`, which carries the same legacy-repo migration.
+    savedViews: v.fallback(v.array(v.unknown()), []),
+  }),
+  v.transform(({ selectedRepo, selectedRepos, ...rest }) => ({
+    ...rest,
+    selectedRepos: resolveSelectedRepos(selectedRepo, selectedRepos),
+  })),
+);
 
 export type InboxViewPreferences = {
   readonly view: InboxView;
   readonly search: string;
   readonly sort: InboxSort;
-  readonly selectedRepo: string;
+  readonly selectedRepos: ReadonlyArray<string>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly queueRailOpen: boolean;
   readonly inspectorOpen: boolean;
@@ -84,7 +116,7 @@ export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   view: "my_inbox",
   search: "",
   sort: "priority",
-  selectedRepo: "",
+  selectedRepos: [],
   selectedLabels: [],
   queueRailOpen: true,
   inspectorOpen: true,
@@ -135,7 +167,7 @@ function preferencesFrom(
     view: parsed.view,
     search: parsed.search,
     sort: parsed.sort,
-    selectedRepo: parsed.selectedRepo,
+    selectedRepos: parsed.selectedRepos,
     selectedLabels: parsed.selectedLabels,
     queueRailOpen: parsed.queueRailOpen,
     inspectorOpen: parsed.inspectorOpen,

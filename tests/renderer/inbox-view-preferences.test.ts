@@ -34,7 +34,7 @@ describe("inbox view preferences", () => {
       view: "checks_failing",
       search: "nanoid",
       sort: "not-a-sort",
-      selectedRepo: "owner/repo",
+      selectedRepos: ["owner/repo"],
       queueRailOpen: false,
       inspectorOpen: true,
       savedViews: [],
@@ -60,7 +60,7 @@ describe("inbox view preferences", () => {
           view: "waiting",
           search: "",
           sort: "size",
-          selectedRepo: "",
+          selectedRepos: [],
         },
         { id: "a", name: "Duplicate", view: "waiting" },
         { id: "  ", name: "Blank id", view: "waiting" },
@@ -70,6 +70,63 @@ describe("inbox view preferences", () => {
     const { savedViews } = loadInboxViewPreferences("profile-1");
     expect(savedViews.map((view) => view.id)).toEqual(["a"]);
     expect(savedViews[0]?.sort).toBe("size");
+  });
+
+  it("lifts a legacy top-level selectedRepo string into selectedRepos, surviving the migration", () => {
+    store({
+      view: "checks_failing",
+      search: "nanoid",
+      selectedRepo: "acme/widgets",
+    });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.selectedRepos).toEqual(["acme/widgets"]);
+    expect(loaded.view).toBe("checks_failing");
+    expect(loaded.search).toBe("nanoid");
+  });
+
+  it("lifts a legacy top-level selectedRepo of '' (all repositories) to an empty array", () => {
+    store({
+      view: "checks_failing",
+      selectedRepo: "",
+    });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.selectedRepos).toEqual([]);
+  });
+
+  it("lifts a legacy selectedRepo string inside a saved view into selectedRepos, surviving the migration", () => {
+    store({
+      savedViews: [
+        {
+          id: "a",
+          name: "Acme only",
+          view: "waiting",
+          sort: "size",
+          selectedRepo: "acme/widgets",
+        },
+      ],
+    });
+    const { savedViews } = loadInboxViewPreferences("profile-1");
+    expect(savedViews.map((view) => view.id)).toEqual(["a"]);
+    expect(savedViews[0]?.selectedRepos).toEqual(["acme/widgets"]);
+    expect(savedViews[0]?.sort).toBe("size");
+  });
+
+  it("round-trips a selectedRepos array", () => {
+    saveInboxViewPreferences("profile-1", {
+      selectedRepos: ["acme/widgets", "acme/gizmos"],
+    });
+    expect(loadInboxViewPreferences("profile-1").selectedRepos).toEqual([
+      "acme/widgets",
+      "acme/gizmos",
+    ]);
+  });
+
+  it("caps selectedRepos at 50 entries", () => {
+    const repos = Array.from({ length: 60 }, (_, index) => `owner/repo-${index}`);
+    store({ selectedRepos: repos });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.selectedRepos).toHaveLength(50);
+    expect(loaded.selectedRepos).toEqual(repos.slice(0, 50));
   });
 
   it("degrades a stale string selectedLabel to an empty array without dropping siblings", () => {

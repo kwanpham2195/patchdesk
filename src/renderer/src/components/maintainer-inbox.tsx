@@ -144,7 +144,7 @@ export function MaintainerInbox({
     view,
     search,
     sort,
-    selectedRepo,
+    selectedRepos,
     selectedLabels,
     queueOpen,
     inspectorOpen,
@@ -170,7 +170,7 @@ export function MaintainerInbox({
     selectRow,
     changeSearch,
     changeSort,
-    changeSelectedRepo,
+    changeSelectedRepos,
     changeSelectedLabels,
     toggleQueue,
     toggleInspector,
@@ -199,10 +199,9 @@ export function MaintainerInbox({
         onToggleQueue={toggleQueue}
         search={search}
         onSearchChange={changeSearch}
-        {...(repos === undefined ? {} : { repos })}
         repoItems={repoItems}
-        selectedRepo={selectedRepo}
-        onRepositoryChange={changeSelectedRepo}
+        selectedRepos={selectedRepos}
+        onRepositoriesChange={changeSelectedRepos}
         labelItems={labelItems}
         selectedLabels={selectedLabels}
         onLabelChange={changeSelectedLabels}
@@ -243,7 +242,7 @@ export function MaintainerInbox({
         rows={rows}
         view={view}
         savedViews={savedViews}
-        selectedRepo={selectedRepo}
+        selectedRepos={selectedRepos}
         selectedLabels={selectedLabels}
         open={queueOpen}
         onSelect={selectView}
@@ -379,10 +378,9 @@ function InboxFiltersBar({
   onToggleQueue,
   search,
   onSearchChange,
-  repos,
   repoItems,
-  selectedRepo,
-  onRepositoryChange,
+  selectedRepos,
+  onRepositoriesChange,
   labelItems,
   selectedLabels,
   onLabelChange,
@@ -396,10 +394,9 @@ function InboxFiltersBar({
   readonly onToggleQueue: () => void;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
-  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
   readonly repoItems: ReadonlyArray<{ label: string; value: string }>;
-  readonly selectedRepo: string;
-  readonly onRepositoryChange: (value: string) => void;
+  readonly selectedRepos: ReadonlyArray<string>;
+  readonly onRepositoriesChange: (value: ReadonlyArray<string>) => void;
   readonly labelItems: ReadonlyArray<{ label: string; value: string }>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
@@ -409,6 +406,7 @@ function InboxFiltersBar({
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
+  const selectedRepoSet = new Set(selectedRepos);
   const selectedLabelSet = new Set(selectedLabels);
   return (
     <section
@@ -436,31 +434,61 @@ function InboxFiltersBar({
           aria-label="Filter pull requests"
         />
       </InputGroup>
-      {repos !== undefined && repos.length > 0 ? (
-        <Select
-          items={repoItems}
-          value={selectedRepo}
-          onValueChange={(value) => onRepositoryChange(value ?? "")}
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-32 max-w-44 text-xs"
-            aria-label="Filter by repository"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {repoItems.map((item) => (
-              <SelectItem
-                key={item.value}
-                value={item.value}
-                className="text-xs"
+      {repoItems.length > 0 ? (
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-28 max-w-40 justify-start text-xs"
+                aria-label="Filter by repository"
               >
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+                <span className="truncate">
+                  {repoFilterTriggerText(selectedRepos)}
+                </span>
+              </Button>
+            }
+          />
+          <PopoverContent align="start">
+            {selectedRepos.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="mb-1 w-full justify-start"
+                onClick={() => onRepositoriesChange([])}
+              >
+                Clear
+              </Button>
+            ) : null}
+            <div className="max-h-64 overflow-y-auto">
+              <ul className="flex flex-col gap-0.5" aria-label="Repositories">
+                {repoItems.map((item) => {
+                  const checked = selectedRepoSet.has(item.value);
+                  return (
+                    <li key={item.value}>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-muted/50">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() =>
+                            onRepositoriesChange(
+                              checked
+                                ? selectedRepos.filter(
+                                    (value) => value !== item.value,
+                                  )
+                                : [...selectedRepos, item.value],
+                            )
+                          }
+                        />
+                        {item.label}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </PopoverContent>
+        </Popover>
       ) : null}
       {labelItems.length > 0 ? (
         <Popover>
@@ -570,6 +598,13 @@ function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
   if (selected.length === 0) return "All labels";
   if (selected.length === 1) return selected[0] ?? "All labels";
   return `${selected.length} labels`;
+}
+
+/** Trigger copy for the repository filter: names the single selection, or a count once more than one is picked. */
+function repoFilterTriggerText(selected: ReadonlyArray<string>): string {
+  if (selected.length === 0) return "All repositories";
+  if (selected.length === 1) return selected[0] ?? "All repositories";
+  return `${selected.length} repositories`;
 }
 
 function InboxRowsPanel({
@@ -829,7 +864,7 @@ function QueueRail({
   rows,
   view,
   savedViews,
-  selectedRepo,
+  selectedRepos,
   selectedLabels,
   open,
   onSelect,
@@ -841,7 +876,7 @@ function QueueRail({
   readonly rows: ReadonlyArray<InboxRow>;
   readonly view: InboxView;
   readonly savedViews: ReadonlyArray<SavedInboxView>;
-  readonly selectedRepo: string;
+  readonly selectedRepos: ReadonlyArray<string>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly open: boolean;
   readonly onSelect: (view: InboxView) => void;
@@ -909,7 +944,7 @@ function QueueRail({
               variant="outline"
               className="ml-2 h-4 min-w-4 px-1 text-[10px]"
             >
-              {viewCount(rows, item.id, selectedRepo, selectedLabels)}
+              {viewCount(rows, item.id, selectedRepos, selectedLabels)}
             </Badge>
           </Button>
         ))}
@@ -1263,10 +1298,10 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
 function viewCount(
   rows: ReadonlyArray<InboxRow>,
   view: InboxView,
-  selectedRepo: string,
+  selectedRepos: ReadonlyArray<string>,
   selectedLabels: ReadonlyArray<string>,
 ): number {
-  return filterRows(rows, view, "", selectedRepo, selectedLabels).length;
+  return filterRows(rows, view, "", selectedRepos, selectedLabels).length;
 }
 function queueIndicatorClass(view: InboxView): string {
   switch (view) {
