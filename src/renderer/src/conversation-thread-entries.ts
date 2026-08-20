@@ -28,3 +28,100 @@ export function deriveConversationThreadEntries(
   );
   return [...publishedEntries, ...pending];
 }
+
+/** A Threads navigator row's display state: the three published thread
+ * states plus `"pending"` for a viewer-authored reply not yet submitted. */
+export type ConversationThreadRowState =
+  | "open"
+  | "resolved"
+  | "outdated"
+  | "unknown"
+  | "pending";
+
+/** One row the Threads navigator section renders. */
+export type ConversationThreadRow = {
+  readonly id: string;
+  readonly path: string;
+  readonly start: number;
+  readonly end: number;
+  readonly side: "new" | "old";
+  readonly author: string;
+  /** Short, whitespace-collapsed excerpt of the opening comment body. */
+  readonly preview: string;
+  readonly state: ConversationThreadRowState;
+};
+
+const PREVIEW_MAX_LENGTH = 80;
+
+function previewOf(body: string): string {
+  const collapsed = body.replace(/\s+/g, " ").trim();
+  return collapsed.length > PREVIEW_MAX_LENGTH
+    ? `${collapsed.slice(0, PREVIEW_MAX_LENGTH - 1)}…`
+    : collapsed;
+}
+
+/**
+ * Projects a `deriveConversationThreadEntries` entry to a Threads row.
+ * Published and pending entries are mutually exclusive by construction
+ * (disjoint construction sites in `review-workbench.tsx`), so this
+ * discriminates on field presence rather than a tag. An entry with neither
+ * field (findings, or a future annotation kind) contributes no row.
+ */
+function projectConversationThreadRow(
+  entry: ReviewInlineAnnotation,
+): ReadonlyArray<ConversationThreadRow> {
+  if (entry.conversationThread !== undefined) {
+    const opening = entry.conversationThread.comments[0];
+    return [
+      {
+        id: entry.id,
+        path: entry.path,
+        start: entry.start,
+        end: entry.end,
+        side: entry.side,
+        author: opening?.author ?? "Unknown",
+        preview: previewOf(opening?.body ?? ""),
+        state: entry.conversationThread.state,
+      },
+    ];
+  }
+  if (entry.pendingReviewThread !== undefined) {
+    return [
+      {
+        id: entry.id,
+        path: entry.path,
+        start: entry.start,
+        end: entry.end,
+        side: entry.side,
+        author: "You",
+        preview: previewOf(entry.pendingReviewThread.body),
+        state: "pending",
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Projects Conversation thread entries into Threads navigator rows, ordered
+ * by the entry's file position in `fileOrder` (the parsed patch's file
+ * order, as already computed for the file tree) then by `start` ascending —
+ * diff order, not alphabetical and not the published-then-pending concat
+ * order `deriveConversationThreadEntries` returns. An entry whose path is
+ * absent from `fileOrder` (should not happen for a well-formed patch) sorts
+ * after every entry whose file the patch does place.
+ */
+export function projectConversationThreadRows(
+  entries: ReadonlyArray<ReviewInlineAnnotation>,
+  fileOrder: ReadonlyArray<string>,
+): ReadonlyArray<ConversationThreadRow> {
+  const orderByPath = new Map(
+    fileOrder.map((path, index) => [path, index] as const),
+  );
+  const rows = entries.flatMap(projectConversationThreadRow);
+  return rows.sort((a, b) => {
+    const orderA = orderByPath.get(a.path) ?? fileOrder.length;
+    const orderB = orderByPath.get(b.path) ?? fileOrder.length;
+    return orderA !== orderB ? orderA - orderB : a.start - b.start;
+  });
+}

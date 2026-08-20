@@ -94,11 +94,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * each optional callback is added only when its action is wired, instead of
  * a conditional empty-object spread. */
 type MutableConversationThreadCardData = {
-  -readonly [K in keyof ConversationThreadCardData]: ConversationThreadCardData[K];
+  -readonly [
+    K in keyof ConversationThreadCardData
+  ]: ConversationThreadCardData[K];
 };
 /** Mutable draft of `ReviewConversationActions`. */
 type MutableReviewConversationActions = {
-  -readonly [K in keyof ReviewConversationActions]: ReviewConversationActions[K];
+  -readonly [
+    K in keyof ReviewConversationActions
+  ]: ReviewConversationActions[K];
 };
 /** The subset of `Conversation`'s props built conditionally, so the
  * `conversationActions` prop is only added (never spread from a conditional
@@ -133,7 +137,9 @@ type MutableCanonicalReviewOverviewRevision = {
  * Conversation tab is independent of that selection. */
 type DirectConversationActionProps = {
   readonly conversationTabProps: ConversationTabProps;
-  readonly diffConversationActions: MutableReviewConversationActions | undefined;
+  readonly diffConversationActions:
+    | MutableReviewConversationActions
+    | undefined;
 };
 function directConversationActionProps(
   actions: Pick<
@@ -147,8 +153,9 @@ function directConversationActionProps(
     actions.replyToThread !== undefined ||
     actions.editComment !== undefined ||
     actions.deleteComment !== undefined;
-  const conversationActionsForTab: MutableReviewConversationActions | undefined =
-    hasAnyAction ? {} : undefined;
+  const conversationActionsForTab:
+    | MutableReviewConversationActions
+    | undefined = hasAnyAction ? {} : undefined;
   if (conversationActionsForTab !== undefined) {
     if (actions.setThreadState !== undefined)
       conversationActionsForTab.setThreadState = actions.setThreadState;
@@ -407,16 +414,15 @@ export function ReviewWorkbench({
   // The desktop close guard blocks quitting while a GitHub write is in
   // flight; report write_pending on busy transitions (and clear afterwards).
   const writePending =
-    actions.pendingReview?.busy === true || actions.directSummary?.busy === true;
+    actions.pendingReview?.busy === true ||
+    actions.directSummary?.busy === true;
   const reportedWritePending = useRef(writePending);
   const reportNavigationStateRef = useRef(actions.reportNavigationState);
   useEffect(() => {
     reportNavigationStateRef.current = actions.reportNavigationState;
     if (reportedWritePending.current === writePending) return;
     reportedWritePending.current = writePending;
-    reportNavigationStateRef.current(
-      writePending ? "write_pending" : "clear",
-    );
+    reportNavigationStateRef.current(writePending ? "write_pending" : "clear");
   });
 
   const [overviewOpen, setOverviewOpen] = useState(
@@ -711,7 +717,8 @@ export function ReviewWorkbench({
     overview.description = model.pullRequest.description;
   if (externalPullRequest !== undefined)
     overview.pullRequest = externalPullRequest;
-  if (model.review.status !== "open") overview.terminalState = model.review.status;
+  if (model.review.status !== "open")
+    overview.terminalState = model.review.status;
   const commitHeader =
     selectedCommit === undefined || commitDiff === undefined
       ? undefined
@@ -742,9 +749,7 @@ export function ReviewWorkbench({
     directConversationActionProps(actions, selectedCommitSha);
 
   return (
-    <PublishedFeedbackNavigationContext.Provider
-      value={focusPublishedFeedback}
-    >
+    <PublishedFeedbackNavigationContext.Provider value={focusPublishedFeedback}>
       <section
         className="flex min-h-0 flex-1 flex-col"
         aria-label="Review workbench"
@@ -925,9 +930,7 @@ export function ReviewWorkbench({
               ) : (
                 <div
                   data-review-diff-layout={
-                    navigatorVisible
-                      ? "with-navigator"
-                      : "collapsed-navigator"
+                    navigatorVisible ? "with-navigator" : "collapsed-navigator"
                   }
                   style={navigatorVisible ? navigatorGridStyle : undefined}
                   className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
@@ -936,10 +939,9 @@ export function ReviewWorkbench({
                     <ReviewNavigator
                       patch={model.fullPatch}
                       commits={model.commits}
+                      conversationThreadEntries={conversationThreadEntries}
                       section={section}
-                      {...(selectedPath === undefined
-                        ? {}
-                        : { selectedPath })}
+                      {...(selectedPath === undefined ? {} : { selectedPath })}
                       {...(activePath === undefined ? {} : { activePath })}
                       {...(selectedCommitSha === undefined
                         ? {}
@@ -954,6 +956,14 @@ export function ReviewWorkbench({
                         setActivePath(path);
                       }}
                       onCommitSelect={selectCommit}
+                      onThreadSelect={(path) => {
+                        commitWorkbenchPosition({
+                          activeTab: "diff",
+                          section: "threads",
+                          selectedPath: path,
+                        });
+                        setActivePath(path);
+                      }}
                       onCollapse={() => setNavigatorVisible(false)}
                     />
                   ) : (
@@ -999,8 +1009,7 @@ export function ReviewWorkbench({
                       <>
                         <DiffWorkbench
                           key={
-                            selectedCommitSha ??
-                            model.revision.reviewedHeadSha
+                            selectedCommitSha ?? model.revision.reviewedHeadSha
                           }
                           patch={displayedPatch}
                           {...(selectedCommitSha === undefined
@@ -1044,8 +1053,7 @@ export function ReviewWorkbench({
                             : commitCommentAuthoring === undefined
                               ? {}
                               : {
-                                  localCommentAuthoring:
-                                    commitCommentAuthoring,
+                                  localCommentAuthoring: commitCommentAuthoring,
                                 })}
                           {...(actions.pendingReviewComposer === undefined
                             ? {}
@@ -1121,8 +1129,7 @@ export function ReviewWorkbench({
             open={actions.pendingReview.finishDialogOpen}
             onOpenChange={actions.pendingReview.onCloseFinishDialog}
             projection={actions.pendingReview.projection}
-            {...(actions.pendingReview.finishDialogInitialSummary ===
-            undefined
+            {...(actions.pendingReview.finishDialogInitialSummary === undefined
               ? {}
               : {
                   initialSummary:
@@ -1151,8 +1158,7 @@ export function ReviewWorkbench({
             {...(actions.directSummary.recoveryResolution === undefined
               ? {}
               : {
-                  recoveryResolution:
-                    actions.directSummary.recoveryResolution,
+                  recoveryResolution: actions.directSummary.recoveryResolution,
                 })}
             approvalCapability={actions.directSummary.approvalCapability}
             {...(actions.directSummary.error === undefined

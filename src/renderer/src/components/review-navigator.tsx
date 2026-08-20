@@ -2,8 +2,14 @@ import { useMemo } from "react";
 import { PanelLeftClose } from "lucide-react";
 
 import { parseUnifiedPatch } from "../../../domain/patch";
+import {
+  projectConversationThreadRows,
+  type ConversationThreadRowState,
+} from "../conversation-thread-entries";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
+import { cn } from "@/lib/utils";
+import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -14,11 +20,12 @@ const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
 
-export type ReviewNavigatorSection = "files" | "commits";
+export type ReviewNavigatorSection = "files" | "commits" | "threads";
 
 type ReviewNavigatorProps = {
   readonly patch: string;
   readonly commits: WorkbenchResponse["commits"];
+  readonly conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>;
   readonly section: ReviewNavigatorSection;
   readonly selectedPath?: string;
   readonly activePath?: string;
@@ -26,6 +33,7 @@ type ReviewNavigatorProps = {
   readonly onSectionChange: (section: ReviewNavigatorSection) => void;
   readonly onFileSelect: (path: string) => void;
   readonly onCommitSelect: (sha: string) => void;
+  readonly onThreadSelect: (path: string) => void;
   readonly onCollapse?: () => void;
 };
 
@@ -33,6 +41,7 @@ type ReviewNavigatorProps = {
 export function ReviewNavigator({
   patch,
   commits,
+  conversationThreadEntries,
   section,
   selectedPath,
   activePath,
@@ -40,6 +49,7 @@ export function ReviewNavigator({
   onSectionChange,
   onFileSelect,
   onCommitSelect,
+  onThreadSelect,
   onCollapse,
 }: ReviewNavigatorProps): React.JSX.Element {
   const parsed = useMemo(() => {
@@ -56,6 +66,14 @@ export function ReviewNavigator({
     }));
     return { files: items, firstPath: items[0]?.path };
   }, [patch]);
+  const threadRows = useMemo(
+    () =>
+      projectConversationThreadRows(
+        conversationThreadEntries,
+        parsed.files.map((file) => file.path),
+      ),
+    [conversationThreadEntries, parsed.files],
+  );
 
   const fileTreeActivePath = activePath ?? selectedPath ?? parsed.firstPath;
   return (
@@ -66,6 +84,9 @@ export function ReviewNavigator({
       <Tabs
         value={section}
         onValueChange={(value) =>
+          // SAFETY: every TabsTrigger below is keyed by a ReviewNavigatorSection
+          // literal ("files" | "commits" | "threads"), so Base UI's reported
+          // value can only ever be one of those.
           onSectionChange(value as ReviewNavigatorSection)
         }
         className="flex min-h-0 flex-1 flex-col"
@@ -78,6 +99,15 @@ export function ReviewNavigator({
           >
             <TabsTrigger value="files">Browse</TabsTrigger>
             <TabsTrigger value="commits">Commits</TabsTrigger>
+            <TabsTrigger value="threads" className="gap-1.5">
+              Threads
+              <Badge
+                variant="secondary"
+                className="h-4 min-w-4 px-1 text-[10px]"
+              >
+                {threadRows.length}
+              </Badge>
+            </TabsTrigger>
           </TabsList>
           {onCollapse === undefined ? null : (
             <Tooltip>
@@ -153,6 +183,54 @@ export function ReviewNavigator({
             )}
           </div>
         </TabsContent>
+        <TabsContent
+          value="threads"
+          className="min-h-0 flex-1 overflow-auto p-3"
+          keepMounted
+        >
+          <div
+            className="flex flex-col gap-1"
+            aria-label="Conversation threads"
+          >
+            {threadRows.length === 0 ? (
+              <p className="p-2 text-sm text-muted-foreground">
+                No Conversation threads on this revision.
+              </p>
+            ) : (
+              threadRows.map((row) => {
+                const badge = threadRowStateBadge(row.state);
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    aria-pressed={selectedPath === row.path}
+                    className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
+                    onClick={() => onThreadSelect(row.path)}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="truncate font-medium">{row.author}</span>
+                      <Badge
+                        variant={badge.variant}
+                        className={cn("shrink-0", badge.className)}
+                      >
+                        {badge.label}
+                      </Badge>
+                    </span>
+                    <span className="line-clamp-2 text-xs text-muted-foreground">
+                      {row.preview.length === 0 ? "(no body)" : row.preview}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {row.path}:
+                      {row.start === row.end
+                        ? row.start
+                        : `${row.start}-${row.end}`}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
     </aside>
   );
@@ -173,4 +251,38 @@ function formatCommitDate(value: string): string {
     if (Math.abs(seconds) >= divisor)
       return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
   return relativeTimeFormatter.format(seconds, "second");
+}
+
+type ThreadStateBadge = {
+  readonly label: string;
+  readonly variant: "default" | "secondary" | "outline";
+  readonly className?: string;
+};
+
+/**
+ * Badge look for a Threads row's state. Published open, published resolved,
+ * and pending must read as visually distinct at a glance: open is the
+ * filled primary badge, resolved a muted secondary badge, and pending an
+ * outline badge in a warm accent color so a not-yet-submitted reply never
+ * reads as an already-published thread.
+ */
+function threadRowStateBadge(
+  state: ConversationThreadRowState,
+): ThreadStateBadge {
+  switch (state) {
+    case "open":
+      return { label: "Open", variant: "default" };
+    case "resolved":
+      return { label: "Resolved", variant: "secondary" };
+    case "outdated":
+      return { label: "Outdated", variant: "outline" };
+    case "unknown":
+      return { label: "Unknown", variant: "outline" };
+    case "pending":
+      return {
+        label: "Pending",
+        variant: "outline",
+        className: "border-amber-500/40 text-amber-600 dark:text-amber-400",
+      };
+  }
 }
