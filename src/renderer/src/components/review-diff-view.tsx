@@ -16,6 +16,7 @@ import {
   type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
+  type LineDiffTypes,
 } from "@pierre/diffs";
 import {
   CodeView,
@@ -60,6 +61,7 @@ import {
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { activeFilePathAtScrollTop } from "@/review-diff-active-file";
+import { materializeAndScrollTo } from "@/review-diff-materialize-and-scroll";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { reviewContextControl } from "@/review-context-control";
@@ -109,10 +111,10 @@ const WALKTHROUGH_DIFF_COLORS_CSS = `
 }
 `;
 const TREE_ORDER_SORT_LIMIT = 256;
-// Each attempt materializes up to 128 more items and waits a frame. This
-// bounds the retry chain so a file that never resolves in the viewer (a
-// defect in its own right) gives up honestly instead of polling forever.
-const MAX_SELECTION_SCROLL_ATTEMPTS = 120;
+// Matches @pierre/diffs' own default (DiffHunksRenderer destructures
+// `lineDiffType = "word-alt"`). Named explicitly so the three render call
+// sites below share one value instead of three hand-copied literals.
+const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
 
 /** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
  * each optional field is added only when it has a value. */
@@ -1210,62 +1212,35 @@ function ReviewDiffSurface({
     // change (hydration, collapse, annotations) restarting this effect must
     // not re-fight wherever the user has scrolled to since.
     if (selectionScrollProgress.current.completed) return;
-    let secondFrame: number | undefined;
-    let continuationFrame: number | undefined;
-    const scrollToSelection = (): void => {
-      const progress = selectionScrollProgress.current;
-      // A newer selection superseded this one while a stale frame from this
-      // closure was still pending.
-      if (progress.key !== selectionScrollKey || progress.completed) return;
-      const targetIndex = items.findIndex((item) => item.id === selectedPath);
-      if (targetIndex === -1) return;
+    return materializeAndScrollTo({
+      viewer,
+      items,
+      itemId: selectedPath,
+      nextItemIndex,
+      appendItemsThrough,
+      progress: selectionScrollProgress.current,
+      isStale: () =>
+        selectionScrollProgress.current.key !== selectionScrollKey ||
+        selectionScrollProgress.current.completed,
       // DiffWorkbench promotes exceptionally deep direct selections to its
       // explicit selected-file mode. Do not spend a frame materializing a
       // large all-files stream while that controlled preference update is in
       // flight.
-      if (preferences.fileMode === "all" && targetIndex > 128) return;
-      if (viewer.current?.getItem(selectedPath) === undefined) {
-        if (progress.attempts >= MAX_SELECTION_SCROLL_ATTEMPTS) {
-          // Give up honestly: the target never materialized in the viewer,
-          // so stop polling rather than retry forever.
-          return;
-        }
-        progress.attempts += 1;
-        // Keep direct navigation responsive for large all-files patches. The
-        // selected path is committed before this progressive CodeView work,
-        // then files are materialized in small animation-frame batches.
-        appendItemsThrough(Math.min(targetIndex, nextItemIndex.current + 127));
-        continuationFrame = requestAnimationFrame(scrollToSelection);
-        return;
-      }
-      if (selectedLines === null) {
-        viewer.current?.scrollTo({
-          type: "item",
-          id: selectedPath,
-          align: "start",
-        });
-      } else {
-        viewer.current?.scrollTo({
-          type: "range",
-          id: selectedLines.id,
-          range: selectedLines.range,
-          align: "center",
-        });
-      }
-      progress.completed = true;
-    };
-    // CodeView recalculates line metrics after expanding a selected unchanged
-    // hunk. Scroll on the following frame so the target range uses those
-    // expanded metrics rather than the previous virtual window.
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(scrollToSelection);
+      shouldBail: (targetIndex) =>
+        preferences.fileMode === "all" && targetIndex > 128,
+      buildTarget: () =>
+        selectedLines === null
+          ? { type: "item", id: selectedPath, align: "start" }
+          : {
+              type: "range",
+              id: selectedLines.id,
+              range: selectedLines.range,
+              align: "center",
+            },
+      onScrolled: () => {
+        selectionScrollProgress.current.completed = true;
+      },
     });
-    return () => {
-      cancelAnimationFrame(firstFrame);
-      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
-      if (continuationFrame !== undefined)
-        cancelAnimationFrame(continuationFrame);
-    };
   }, [
     appendItemsThrough,
     items,
@@ -1301,7 +1276,7 @@ function ReviewDiffSurface({
       hunkSeparators: "line-info" as const,
       expandUnchanged: expandUnchanged || expandSelectedRange,
       stickyHeaders: true,
-      lineDiffType: "word-alt" as const,
+      lineDiffType: DEFAULT_LINE_DIFF_TYPE,
       diffIndicators: "bars" as const,
       lineHoverHighlight: "both" as const,
       enableLineSelection: localCommentAuthoring?.enabled === true,
@@ -1367,7 +1342,7 @@ function ReviewDiffSurface({
           >
             {collapsedPaths.has(path) ? "✓" : null}
           </button>
-          <FileCode2 className="size-4 shrink-0 text-amber-300" />
+          <FileCode2 className="size-4 shrink-0 text-muted-foreground dark:text-amber-300" />
           <span className="min-w-0 truncate font-medium" title={path}>
             {path}
           </span>
@@ -1486,7 +1461,7 @@ function ReviewDiffSurface({
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => (
       <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-sm">
-        <FileCode2 className="size-4 shrink-0 text-amber-300" />
+        <FileCode2 className="size-4 shrink-0 text-muted-foreground dark:text-amber-300" />
         <span className="min-w-0 truncate font-medium" title={file.name}>
           {file.name}
         </span>
@@ -1719,7 +1694,7 @@ function ReviewDiffSurface({
               overflow: preferences.overflow,
               hunkSeparators: "line-info",
               expandUnchanged: expandUnchanged || expandSelectedRange,
-              lineDiffType: "word-alt",
+              lineDiffType: DEFAULT_LINE_DIFF_TYPE,
               diffIndicators: "bars",
               lineHoverHighlight: "both",
               enableGutterUtility: localCommentAuthoring?.enabled === true,
@@ -1750,7 +1725,7 @@ function ReviewDiffSurface({
               overflow: preferences.overflow,
               hunkSeparators: "line-info",
               expandUnchanged: expandUnchanged || expandSelectedRange,
-              lineDiffType: "word-alt",
+              lineDiffType: DEFAULT_LINE_DIFF_TYPE,
               diffIndicators: "bars",
               lineHoverHighlight: "both",
               enableGutterUtility: localCommentAuthoring?.enabled === true,
