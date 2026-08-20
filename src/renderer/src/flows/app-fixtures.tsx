@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ReviewWorkbench,
+  type ReviewWorkbenchActions,
   type ReviewWorkbenchInitialState,
 } from "../components/review-workbench";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
@@ -30,6 +31,22 @@ import { parsePullRequestInput } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
+
+/** A `conversation.inline.threads` entry, as the Threads navigator section
+ * consumes it -- seeded per fixture so the browser suite can exercise the
+ * Threads section against real thread data without inventing a new model
+ * shape. */
+type FixtureConversationThread = NonNullable<
+  WorkbenchResponse["conversation"]["inline"]
+>["threads"][number];
+const noConversationThreads: ReadonlyArray<FixtureConversationThread> = [];
+
+/** Mutable form of `ReviewWorkbenchActions`, so a fixture can assign its
+ * optional `merge` field only when present instead of using a conditional
+ * empty-object spread. */
+type MutableReviewWorkbenchActions = {
+  -readonly [K in keyof ReviewWorkbenchActions]: ReviewWorkbenchActions[K];
+};
 
 export function AppFixtureContent({
   hash,
@@ -96,6 +113,12 @@ export function AppFixtureContent({
           blockers: [],
           warnings: ["request_changes", "analysis_finding"],
         };
+    // SAFETY: `readiness` is a MergeReadiness domain value built two lines
+    // above; its `blockers`/`warnings` are readonly arrays of a narrower
+    // literal-union blocker/warning code, which the renderer-contract type
+    // widens to plain `string[]`. Every element is already a valid member of
+    // that wider type, so the cast only relaxes readonly-ness and literal
+    // narrowing, not the runtime shape.
     const mergeReadiness = readiness as WorkbenchResponse["mergeReadiness"];
     const mergeReasons = blocked
       ? [
@@ -357,19 +380,25 @@ function CanonicalFixtureWorkbench({
   const model = canonicalWorkbenchModel(data);
   const merged =
     modelOverrides === undefined ? model : { ...model, ...modelOverrides };
+  // Built as a mutable local (assignable to the readonly-field
+  // `ReviewWorkbenchActions` structurally) and given `merge` only when
+  // present, rather than a conditional empty-object spread: under this
+  // project's `exactOptionalPropertyTypes`, an optional field must be
+  // absent, not merely set to `undefined`.
+  const actions: MutableReviewWorkbenchActions = {
+    detectUpdates: async () => undefined,
+    refresh: async () => undefined,
+    loadCommitDiff: async () => {
+      throw new Error("No commit fixture is configured");
+    },
+    localCommentAuthoring: { enabled: true, onSave: async () => undefined },
+    reportNavigationState: onNavigationStateChange,
+  };
+  if (mergeAction !== undefined) actions.merge = mergeAction;
   return (
     <ReviewWorkbench
       model={merged}
-      actions={{
-        detectUpdates: async () => undefined,
-        refresh: async () => undefined,
-        loadCommitDiff: async () => {
-          throw new Error("No commit fixture is configured");
-        },
-        localCommentAuthoring: { enabled: true, onSave: async () => undefined },
-        reportNavigationState: onNavigationStateChange,
-        ...(mergeAction === undefined ? {} : { merge: mergeAction }),
-      }}
+      actions={actions}
       slots={{
         insights: (
           <section aria-label="Review insights" className="p-6">
@@ -467,47 +496,50 @@ export function createUnifiedReviewFixture(
     reasoning: "medium" as const,
     retryable: true,
   };
-  const analysis =
-    state === "analysis-running"
-      ? {
-          status: "running" as const,
-          activeRun: {
-            runId: "analysis-first-run",
-            sessionId: base.session.id,
-            startedAt: base.revision.refreshedAt,
-          },
-        }
-      : state === "analysis-replacement-running"
-        ? {
-            ...base.insights.analysis,
-            status: "running" as const,
-            activeRun: {
-              runId: "analysis-replacement-run",
-              sessionId: base.session.id,
-              startedAt: base.revision.refreshedAt,
-            },
-          }
-        : state === "analysis-failed"
-          ? { status: "failed" as const, replacementFailure: analysisFailure }
-          : state === "analysis-outdated" ||
-              state === "analysis-replacement-failed"
-            ? {
-                ...base.insights.analysis,
-                status:
-                  state === "analysis-outdated"
-                    ? ("outdated" as const)
-                    : ("failed" as const),
-                ...(state === "analysis-replacement-failed"
-                  ? {
-                      replacementFailure: {
-                        ...analysisFailure,
-                      },
-                    }
-                  : {}),
-              }
-            : state === "analysis-current"
-              ? { ...base.insights.analysis, status: "current" as const }
-              : base.insights.analysis;
+  let analysis: WorkbenchResponse["insights"]["analysis"];
+  if (state === "analysis-running") {
+    analysis = {
+      status: "running",
+      activeRun: {
+        runId: "analysis-first-run",
+        sessionId: base.session.id,
+        startedAt: base.revision.refreshedAt,
+      },
+    };
+  } else if (state === "analysis-replacement-running") {
+    analysis = {
+      ...base.insights.analysis,
+      status: "running",
+      activeRun: {
+        runId: "analysis-replacement-run",
+        sessionId: base.session.id,
+        startedAt: base.revision.refreshedAt,
+      },
+    };
+  } else if (state === "analysis-failed") {
+    analysis = { status: "failed", replacementFailure: analysisFailure };
+  } else if (
+    state === "analysis-outdated" ||
+    state === "analysis-replacement-failed"
+  ) {
+    analysis = {
+      ...base.insights.analysis,
+      status: state === "analysis-outdated" ? "outdated" : "failed",
+    };
+    // Built as a separate statement rather than a conditional spread: only
+    // the replacement-failed branch of this already-narrowed state carries
+    // `replacementFailure`.
+    if (state === "analysis-replacement-failed") {
+      analysis = {
+        ...analysis,
+        replacementFailure: { ...analysisFailure },
+      };
+    }
+  } else if (state === "analysis-current") {
+    analysis = { ...base.insights.analysis, status: "current" };
+  } else {
+    analysis = base.insights.analysis;
+  }
   const walkthrough =
     state === "walkthrough-current" || state === "walkthrough-outdated"
       ? {
@@ -632,6 +664,28 @@ function canonicalWorkbenchModel(
   data: typeof workbenchFixtureData,
 ): WorkbenchResponse {
   const headSha = data.pullRequest.headSha;
+  const conversation: WorkbenchResponse["conversation"] = {
+    prDescription: "",
+    entries: [],
+  };
+  // Built as a separate statement rather than a conditional spread: most
+  // fixtures carry no seeded Conversation threads at all, so `inline` is
+  // genuinely absent (not present-with-an-empty-array) for them.
+  if (data.conversationThreads.length > 0) {
+    // A mutable copy: `data.conversationThreads` is deliberately a
+    // `ReadonlyArray`, and the contract's `inline.threads` field is plain
+    // `Array`, so this spread relaxes variance without a cast.
+    const threads = [...data.conversationThreads];
+    conversation.inline = { threads };
+  }
+  // SAFETY: `data.pullRequest` and `data.result` are deliberately typed with
+  // widened `string` fields (not `as const`), not narrowed
+  // `WorkbenchResponse` literal unions (e.g. `reviewState`, `verdict`,
+  // finding `severity`), so `longWorkbenchFixtureData` below can override one
+  // finding via `.map()` without TypeScript treating "index 0" and "index 1"
+  // as interchangeable branches of a narrowed union. Every fixture literal's
+  // actual string values are already valid members of the narrower target
+  // enums; only that intentional widening needs bridging here.
   return {
     state: "review",
     review: { id: "fixture-review", status: "open" },
@@ -668,12 +722,11 @@ function canonicalWorkbenchModel(
       },
       walkthrough: { status: "not_generated" },
     },
-    conversation: { prDescription: "", entries: [] },
-    comments: data.comments,
+    conversation,
     checks: data.checks,
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
-  } as unknown as WorkbenchResponse;
+  } as WorkbenchResponse;
 }
 
 function WalkthroughFixtureControls({
@@ -930,7 +983,7 @@ export const workbenchFixtureData = {
             id: "comment-1",
             author: "reviewer",
             body: "Existing GitHub review comment.",
-            createdAt: "2026-07-16T00:00:00.000Z" as never,
+            createdAt: "2026-07-16T00:00:00.000Z",
             url: "https://github.com/centraldigital/patchdesk/pull/1#discussion_r1",
           },
         ],
@@ -950,10 +1003,79 @@ export const workbenchFixtureData = {
       { name: "docs", required: false as const, status: "queued" as const },
     ],
   },
+  conversationThreads: noConversationThreads,
 };
+// Threads placed for the browser suite's Threads-navigator coverage: one new-
+// side single line, one old-side single line, one multi-line range, and one
+// in src/c.ts -- the third file of `activeFollowFixturePatch`, which the
+// diff's progressive loading leaves un-hydrated until scrolled to (see
+// "streamed files can become the passive active path" above), so selecting
+// it exercises the same progressive-materialization path a deep file-tree
+// jump does.
+const activeFollowFixtureConversationThreads: ReadonlyArray<FixtureConversationThread> =
+  [
+    {
+      // Kept in src/a.ts -- the file the diff already shows before any
+      // selection -- but deep enough (line 45 of 48) that centering the
+      // target row still forces the viewport to scroll away from its
+      // initial scrollTop: 0 render, rather than landing on a position
+      // close enough to 0 that a real regression could hide behind it.
+      id: "thread-new-side",
+      state: "open",
+      location: { path: "src/a.ts", line: 45, diffSide: "new" },
+      comments: [
+        {
+          id: "comment-new-side",
+          author: "new-side-thread-author",
+          body: "New-side thread body.",
+          createdAt: "2026-07-17T00:00:00.000Z",
+        },
+      ],
+    },
+    {
+      id: "thread-old-side",
+      state: "open",
+      location: { path: "src/b.ts", line: 12, diffSide: "old" },
+      comments: [
+        {
+          id: "comment-old-side",
+          author: "old-side-thread-author",
+          body: "Old-side thread body.",
+          createdAt: "2026-07-17T00:00:00.000Z",
+        },
+      ],
+    },
+    {
+      id: "thread-multiline",
+      state: "open",
+      location: { path: "src/b.ts", line: 30, lineEnd: 33, diffSide: "new" },
+      comments: [
+        {
+          id: "comment-multiline",
+          author: "multiline-thread-author",
+          body: "Multi-line thread body.",
+          createdAt: "2026-07-17T00:00:00.000Z",
+        },
+      ],
+    },
+    {
+      id: "thread-deep-file",
+      state: "open",
+      location: { path: "src/c.ts", line: 30, diffSide: "new" },
+      comments: [
+        {
+          id: "comment-deep-file",
+          author: "deep-file-thread-author",
+          body: "Deep-file thread body.",
+          createdAt: "2026-07-17T00:00:00.000Z",
+        },
+      ],
+    },
+  ];
 const activeFollowFixtureData = {
   ...workbenchFixtureData,
   fullPatch: activeFollowFixturePatch,
+  conversationThreads: activeFollowFixtureConversationThreads,
 };
 const longFixturePath =
   "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
@@ -1029,12 +1151,12 @@ export const submissionFixtureData = {
     items: [
       {
         _tag: "InlineComment" as const,
-        id: "p1" as never,
+        id: "p1",
         provenance: { _tag: "human" as const },
         source: "manual" as const,
         include: true,
         anchor: {
-          path: "src/services/review-submission-service.ts" as never,
+          path: "src/services/review-submission-service.ts",
           startLine: 34,
           line: 34,
           side: "new" as const,
@@ -1044,7 +1166,7 @@ export const submissionFixtureData = {
       },
     ],
     receipts: [],
-    createdAt: "2026-07-18T10:00:00.000Z" as never,
-    updatedAt: "2026-07-18T10:00:00.000Z" as never,
+    createdAt: "2026-07-18T10:00:00.000Z",
+    updatedAt: "2026-07-18T10:00:00.000Z",
   },
 };

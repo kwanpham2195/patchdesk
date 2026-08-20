@@ -638,6 +638,172 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
   }
 });
 
+test("Threads section selection on the new side scrolls the diff and marks the anchored line", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+
+    await page.getByRole("tab", { name: "Threads" }).click();
+    await page
+      .getByRole("button", { name: "new-side-thread-author" })
+      .click();
+
+    await expect(diff).toHaveAttribute("data-selected-path", "src/a.ts");
+    // src/a.ts is already the file the diff shows before any selection, so
+    // this only proves a real scroll (not a no-op re-render) because the
+    // fixture's thread sits deep in the file (line 45 of 48): centering
+    // that row on selection cannot land back at scrollTop 0.
+    await expect
+      .poll(() => diffViewport.evaluate((viewport) => viewport.scrollTop))
+      .toBeGreaterThan(0);
+
+    // Pierre's CodeView marks a selected row with `[data-selected-line]` and
+    // carries the line number on `data-line`, inside an open shadow root
+    // that Playwright's CSS locators pierce transparently -- confirmed
+    // empirically (a throwaway probe test) before relying on it here.
+    const marked = page.locator("[data-selected-line][data-line]");
+    await expect(marked).toHaveCount(1);
+    await expect(marked.first()).toHaveAttribute("data-line", "45");
+    await expect(marked.first()).toHaveAttribute(
+      "data-line-type",
+      "change-addition",
+    );
+  } finally {
+    await close(server);
+  }
+});
+
+test("Threads section selection on the old side scrolls the diff and marks the anchored line", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+
+    await page.getByRole("tab", { name: "Threads" }).click();
+    await page
+      .getByRole("button", { name: "old-side-thread-author" })
+      .click();
+
+    await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
+    await expect
+      .poll(() => diffViewport.evaluate((viewport) => viewport.scrollTop))
+      .toBeGreaterThan(0);
+
+    const marked = page.locator("[data-selected-line][data-line]");
+    await expect(marked).toHaveCount(1);
+    await expect(marked.first()).toHaveAttribute("data-line", "12");
+    await expect(marked.first()).toHaveAttribute(
+      "data-line-type",
+      "change-deletion",
+    );
+  } finally {
+    await close(server);
+  }
+});
+
+test("Threads section selection on a multi-line thread marks the whole anchored range", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+
+    await page.getByRole("tab", { name: "Threads" }).click();
+    await page
+      .getByRole("button", { name: "multiline-thread-author" })
+      .click();
+
+    await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
+    await expect
+      .poll(() => diffViewport.evaluate((viewport) => viewport.scrollTop))
+      .toBeGreaterThan(0);
+
+    // The fixture's thread anchors src/b.ts lines 30-33 (new side). Assert
+    // every line in that inclusive range is marked, not merely that marking
+    // happened somewhere -- a single-line regression in the range plumbing
+    // would still leave `marked` non-empty.
+    const marked = page.locator("[data-selected-line][data-line]");
+    await expect(marked).toHaveCount(4);
+    const lines = await marked.evaluateAll((elements) =>
+      elements
+        .map((element) => element.getAttribute("data-line"))
+        .sort((a, b) => Number(a) - Number(b)),
+    );
+    expect(lines).toEqual(["30", "31", "32", "33"]);
+  } finally {
+    await close(server);
+  }
+});
+
+test("Threads section selection on a file not yet loaded progressively materializes it, scrolls, and marks the anchored line", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+    const path = "src/c.ts";
+
+    // src/c.ts is the third file of the active-follow fixture's patch, which
+    // (per "streamed files can become the passive active path" above) is
+    // not among the files the diff loads up front -- selecting its thread
+    // must drive the same progressive-materialization path a deep file-tree
+    // jump does, not just scroll within already-rendered content.
+    await expect(
+      page.locator(`[data-review-diff-file-header="${path}"]`),
+    ).toHaveCount(0);
+
+    await page.getByRole("tab", { name: "Threads" }).click();
+    await page
+      .getByRole("button", { name: "deep-file-thread-author" })
+      .click();
+
+    await expect(diff).toHaveAttribute("data-selected-path", path);
+    const header = page.locator(`[data-review-diff-file-header="${path}"]`);
+    await expect(header).toBeVisible({ timeout: 5_000 });
+
+    // As in "file-tree search selects a file deep in a large patch...",
+    // scrollTop alone would not prove src/c.ts's header actually reached the
+    // viewport: only a vertical overlap between the header's box and the
+    // viewport's visible box does.
+    const [headerBox, viewportBox] = await Promise.all([
+      header.boundingBox(),
+      diffViewport.boundingBox(),
+    ]);
+    if (headerBox === null || viewportBox === null) {
+      throw new Error(
+        "expected both the selected file's header and the diff viewport to report a layout box",
+      );
+    }
+    expect(headerBox.y + headerBox.height).toBeGreaterThan(viewportBox.y);
+    expect(headerBox.y).toBeLessThan(viewportBox.y + viewportBox.height);
+
+    const marked = page.locator("[data-selected-line][data-line]");
+    await expect(marked).toHaveCount(1);
+    await expect(marked.first()).toHaveAttribute("data-line", "30");
+    await expect(marked.first()).toHaveAttribute(
+      "data-line-type",
+      "change-addition",
+    );
+  } finally {
+    await close(server);
+  }
+});
+
 test("file-tree search selects a file deep in a large patch and scrolls its header into view despite concurrent item churn", async ({
   page,
 }) => {
