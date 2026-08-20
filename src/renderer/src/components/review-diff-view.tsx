@@ -62,7 +62,10 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
-import { activeFilePathAtScrollTop } from "@/review-diff-active-file";
+import {
+  activeFilePathAtScrollTop,
+  type ActiveFileViewport,
+} from "@/review-diff-active-file";
 import {
   materializeAndScrollTo,
   type MaterializeScrollProgress,
@@ -1169,27 +1172,52 @@ function ReviewDiffSurface({
     activePathRef.current = undefined;
   }, [items, preferences.fileMode]);
 
+  // Reads the scroll container's own clientHeight/scrollHeight for
+  // `activeFilePathAtScrollTop`'s viewport geometry (never
+  // `window.__INSTANCE`, an upstream debug leak in `@pierre/diffs`). When
+  // `viewerContainer.current` is null -- not yet mounted -- both fall back
+  // to 0, which makes `maxScrollTop` 0 too, so the "unreachable but
+  // visible" relaxation (`top > maxScrollTop && top < scrollTop +
+  // viewportHeight`) collapses to `top > 0 && top < scrollTop`, a strict
+  // subset of the ordinary `top <= scrollTop` rule. Eligibility therefore
+  // degrades to exactly the pre-fix top-of-viewport-only rule -- the
+  // correct behavior for "no container to measure", not a bug. Do not
+  // change this fallback to a nonzero default: that would silently alter
+  // selection on every unmounted-ref call instead of leaving it inert.
+  const readActiveFileViewport = useCallback(
+    (scrollTop: number): ActiveFileViewport => {
+      const viewportElement = viewerContainer.current;
+      return {
+        scrollTop,
+        viewportHeight: viewportElement?.clientHeight ?? 0,
+        contentHeight: viewportElement?.scrollHeight ?? 0,
+      };
+    },
+    [viewerContainer],
+  );
+
   const updateActivePath = useCallback(
     (
       scrollTop: number,
       codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
     ): void => {
       if (preferences.fileMode !== "all") return;
-      const viewportElement = viewerContainer.current;
       const path = activeFilePathAtScrollTop(
         items.slice(0, loadedCount),
-        {
-          scrollTop,
-          viewportHeight: viewportElement?.clientHeight ?? 0,
-          contentHeight: viewportElement?.scrollHeight ?? 0,
-        },
+        readActiveFileViewport(scrollTop),
         (id) => codeView.getTopForItem(id),
       );
       if (path === undefined || path === activePathRef.current) return;
       activePathRef.current = path;
       onActiveFileChange?.(path);
     },
-    [items, loadedCount, onActiveFileChange, preferences.fileMode],
+    [
+      items,
+      loadedCount,
+      onActiveFileChange,
+      preferences.fileMode,
+      readActiveFileViewport,
+    ],
   );
 
   useEffect(() => {
@@ -1346,17 +1374,12 @@ function ReviewDiffSurface({
       // rather than always from the first file in the diff.
       if (fileNavCurrentPath.current === undefined) {
         const codeView = viewer.current?.getInstance();
-        const viewportElement = viewerContainer.current;
         fileNavCurrentPath.current =
           codeView === undefined
             ? undefined
             : activeFilePathAtScrollTop(
                 currentItems,
-                {
-                  scrollTop: codeView.getScrollTop(),
-                  viewportHeight: viewportElement?.clientHeight ?? 0,
-                  contentHeight: viewportElement?.scrollHeight ?? 0,
-                },
+                readActiveFileViewport(codeView.getScrollTop()),
                 (id) => codeView.getTopForItem(id),
               );
       }
@@ -1402,7 +1425,7 @@ function ReviewDiffSurface({
       window.removeEventListener("keydown", onKeyDown);
       fileNavJump.current.cancel?.();
     };
-  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+  }, [fileNavLatest, nextItemIndex, preferences.fileMode, readActiveFileViewport, virtualized]);
 
   // `[`/`]` jump to the previous/next hunk, across file boundaries once a
   // file's hunks are exhausted. Shares `fileNavLatest`'s items/
@@ -1459,17 +1482,12 @@ function ReviewDiffSurface({
       // one advances from `hunkNavCurrentAnchor`, not from scroll position.
       if (hunkNavCurrentAnchor.current === undefined) {
         const codeView = viewer.current?.getInstance();
-        const viewportElement = viewerContainer.current;
         const activePath =
           codeView === undefined
             ? undefined
             : activeFilePathAtScrollTop(
                 currentItems,
-                {
-                  scrollTop: codeView.getScrollTop(),
-                  viewportHeight: viewportElement?.clientHeight ?? 0,
-                  contentHeight: viewportElement?.scrollHeight ?? 0,
-                },
+                readActiveFileViewport(codeView.getScrollTop()),
                 (id) => codeView.getTopForItem(id),
               );
         hunkNavCurrentAnchor.current =
@@ -1527,7 +1545,7 @@ function ReviewDiffSurface({
       window.removeEventListener("keydown", onKeyDown);
       hunkNavJump.current.cancel?.();
     };
-  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+  }, [fileNavLatest, nextItemIndex, preferences.fileMode, readActiveFileViewport, virtualized]);
 
   // `{`/`}` jump to the previous/next unresolved comment thread, in document
   // order (file order, then line order within each file -- the same order
