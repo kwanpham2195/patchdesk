@@ -42,6 +42,19 @@ function rootFontSizePx(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 16;
 }
 
+// `aria-valuenow` alone announces a bare number ("18"), which is
+// meaningless to a screen reader user: rem is a developer unit, not one a
+// person can act on. `aria-valuetext` overrides that announcement with the
+// pane's position within its allowed range instead.
+function widthValueText(widthRem: number): string {
+  const percent = Math.round(
+    ((widthRem - MIN_NAVIGATOR_WIDTH_REM) /
+      (MAX_NAVIGATOR_WIDTH_REM - MIN_NAVIGATOR_WIDTH_REM)) *
+      100,
+  );
+  return `${percent}% of the allowed width`;
+}
+
 /**
  * Drag or keyboard handle for the review navigator pane's right edge. The
  * navigator's own row label truncation (`@pierre/trees`, hardcoded to
@@ -108,24 +121,44 @@ export function ReviewNavigatorResizeHandle({
     [onResizeEnd, widthFromDrag],
   );
 
+  // Arrow keys repeat at roughly 30/sec while held, so persisting on every
+  // keydown would fire that many synchronous localStorage writes a second.
+  // Arrow keys only update the live width here; handleKeyUp persists once
+  // the key is released. Home/End are single jumps, not repeatable holds,
+  // so they persist immediately.
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      const next =
-        event.key === "ArrowLeft"
-          ? clampWidth(widthRem - KEYBOARD_STEP_REM)
-          : event.key === "ArrowRight"
-            ? clampWidth(widthRem + KEYBOARD_STEP_REM)
-            : event.key === "Home"
-              ? MIN_NAVIGATOR_WIDTH_REM
-              : event.key === "End"
-                ? MAX_NAVIGATOR_WIDTH_REM
-                : undefined;
-      if (next === undefined) return;
-      event.preventDefault();
-      onResize(next);
-      onResizeEnd(next);
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        onResize(clampWidth(widthRem - KEYBOARD_STEP_REM));
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        onResize(clampWidth(widthRem + KEYBOARD_STEP_REM));
+        return;
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        onResize(MIN_NAVIGATOR_WIDTH_REM);
+        onResizeEnd(MIN_NAVIGATOR_WIDTH_REM);
+        return;
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        onResize(MAX_NAVIGATOR_WIDTH_REM);
+        onResizeEnd(MAX_NAVIGATOR_WIDTH_REM);
+      }
     },
     [onResize, onResizeEnd, widthRem],
+  );
+
+  const handleKeyUp = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      onResizeEnd(widthRem);
+    },
+    [onResizeEnd, widthRem],
   );
 
   const handleDoubleClick = useCallback(() => {
@@ -141,6 +174,7 @@ export function ReviewNavigatorResizeHandle({
       aria-valuenow={Math.round(widthRem)}
       aria-valuemin={MIN_NAVIGATOR_WIDTH_REM}
       aria-valuemax={MAX_NAVIGATOR_WIDTH_REM}
+      aria-valuetext={widthValueText(widthRem)}
       tabIndex={0}
       data-review-navigator-resize-handle
       className="group relative hidden h-full w-3 shrink-0 cursor-col-resize touch-none items-center justify-center outline-none select-none min-[1100px]:flex"
@@ -149,6 +183,7 @@ export function ReviewNavigatorResizeHandle({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
       onDoubleClick={handleDoubleClick}
     >
       <span
