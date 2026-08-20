@@ -2434,8 +2434,25 @@ async function listenOnLoopback(
   });
 }
 
+/**
+ * `server.close()`'s callback only fires once every open connection has
+ * ended -- Node never force-closes sockets on its own. A keep-alive client
+ * (e.g. the renderer logger's debounced `POST /v1/logs`) can hold a
+ * connection open indefinitely, which would otherwise make shutdown hang.
+ *
+ * `ServerType` is `net.Server | Http2Server | Http2SecureServer`, and only
+ * `net.Server`'s `http.Server` subtype declares `closeIdleConnections()` /
+ * `closeAllConnections()` (added in Node 18.2). `Http2Server` and
+ * `Http2SecureServer` extend `net.Server`/`tls.Server` directly and do not
+ * declare them, so they're not callable on `ServerType` as a whole. Narrow
+ * with `in` (a real runtime check, not a cast) rather than forcing the type.
+ */
 async function closeServer(server: ServerType): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+  if ("closeIdleConnections" in server) {
+    server.closeIdleConnections();
+  }
+
+  const closed = new Promise<void>((resolve, reject) => {
     server.close((cause) => {
       if (cause === undefined) {
         resolve();
@@ -2445,4 +2462,21 @@ async function closeServer(server: ServerType): Promise<void> {
       reject(cause);
     });
   });
+
+  // Give any in-flight request a brief window to finish normally, then force
+  // whatever connections remain closed so shutdown is always bounded. 500ms
+  // is well under Node's 5s default keepAliveTimeout (the actual cause of
+  // the hang) and far more than a same-machine loopback request needs.
+  const graceMs = 500;
+  const forceClose = setTimeout(() => {
+    if ("closeAllConnections" in server) {
+      server.closeAllConnections();
+    }
+  }, graceMs);
+
+  try {
+    await closed;
+  } finally {
+    clearTimeout(forceClose);
+  }
 }
