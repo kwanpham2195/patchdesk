@@ -17,6 +17,7 @@ import {
   type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
+  type Hunk,
   type LineDiffTypes,
 } from "@pierre/diffs";
 import {
@@ -68,7 +69,9 @@ import {
 } from "@/review-diff-materialize-and-scroll";
 import {
   adjacentFilePath,
+  adjacentHunkAnchor,
   shouldIgnoreReviewNavKey,
+  type HunkAnchor,
   type ReviewNavDirection,
 } from "@/review-diff-keyboard-nav";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
@@ -125,6 +128,19 @@ const TREE_ORDER_SORT_LIMIT = 256;
 // `lineDiffType = "word-alt"`). Named explicitly so the three render call
 // sites below share one value instead of three hand-copied literals.
 const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
+
+/**
+ * The line `[`/`]` scroll to for one hunk: its first addition-side line, or
+ * (a pure-deletion hunk with no addition-side presence at all) its first
+ * deletion-side line. Mirrors `toDiffLineAnnotation`'s new/old -> additions/
+ * deletions mapping so a hunk's anchor lands on the same line-numbering
+ * convention `CodeViewLineScrollTarget` and `DiffLineAnnotation` both use.
+ */
+function hunkAnchor(filePath: string, hunk: Hunk): HunkAnchor {
+  return hunk.additionCount > 0
+    ? { filePath, lineNumber: hunk.additionStart, side: "additions" }
+    : { filePath, lineNumber: hunk.deletionStart, side: "deletions" };
+}
 
 /** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
  * each optional field is added only when it has a value. */
@@ -1373,6 +1389,126 @@ function ReviewDiffSurface({
     };
   }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
 
+  // `[`/`]` jump to the previous/next hunk, across file boundaries once a
+  // file's hunks are exhausted. Shares `fileNavLatest`'s items/
+  // appendItemsThrough/onActiveFileChange snapshot -- the same
+  // unrelated-re-render rationale documented above applies unchanged.
+  const hunkNavJump = useRef<{ token: number; cancel?: () => void }>({
+    token: 0,
+  });
+  // Where a `[`/`]` press considers itself to be -- never read back from
+  // `activePathRef` or any other scroll-derived state, for the same reason
+  // `fileNavCurrentPath` isn't (see its comment above). A `type: "line"`
+  // jump's `align: "start"` subtracts the sticky header offset too
+  // (CodeView's `resolveAlignedScrollPosition` takes a `stickyOffset` for
+  // line/range targets that `type: "item"` targets don't get), so it can
+  // land short of the target line's true top -- most visibly when the
+  // target is the first hunk of a newly-entered file, where "short" means
+  // *above* that file's own top. `updateActivePath` would then recompute
+  // the *previous* file as active from that landing and overwrite
+  // `activePathRef` right after `onScrolled` sets it, exactly the trap
+  // `,`/`.` guards against. This ref is written only by a keyboard jump.
+  const hunkNavCurrentAnchor = useRef<HunkAnchor | undefined>(undefined);
+  const [hunkNavBoundary, setHunkNavBoundary] = useState<string | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    // Same surface restriction as the file-jump listener above: only the
+    // primary, continuously-scrolling all-files diff supports hunk jumps.
+    if (!virtualized || preferences.fileMode !== "all") return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "[" && event.key !== "]") return;
+      if (shouldIgnoreReviewNavKey(event)) return;
+      event.preventDefault();
+      const {
+        items: currentItems,
+        onActiveFileChange: currentOnActiveFileChange,
+        appendItemsThrough: currentAppendItemsThrough,
+      } = fileNavLatest.current;
+      const direction: ReviewNavDirection =
+        event.key === "]" ? "next" : "previous";
+      // Rebuilt fresh every press, mirroring `currentItems.map((item) =>
+      // item.id)` above: cheap, and never goes stale the way a memoized
+      // order keyed on a ref's contents could.
+      const hunkOrder: HunkAnchor[] = currentItems.flatMap((item) =>
+        item.fileDiff.hunks.map((hunk) => hunkAnchor(item.id, hunk)),
+      );
+      // Nothing has jumped yet this session: seed from the file nearest the
+      // current scroll position (the same call `,`/`.` falls back to), then
+      // its first hunk. This is a file-granularity approximation of "nearest
+      // hunk" -- CodeView exposes `getTopForItem` per file item but no
+      // per-line equivalent (`getLineScrollPosition` is private), so a
+      // deeper scroll position within a multi-hunk file can still cost an
+      // extra press to reach the exact hunk the user was already at. Only
+      // the first press of a session pays that cost; every press after this
+      // one advances from `hunkNavCurrentAnchor`, not from scroll position.
+      if (hunkNavCurrentAnchor.current === undefined) {
+        const codeView = viewer.current?.getInstance();
+        const activePath =
+          codeView === undefined
+            ? undefined
+            : activeFilePathAtScrollTop(
+                currentItems,
+                codeView.getScrollTop(),
+                (id) => codeView.getTopForItem(id),
+              );
+        hunkNavCurrentAnchor.current =
+          activePath === undefined
+            ? undefined
+            : hunkOrder.find((anchor) => anchor.filePath === activePath);
+      }
+      const target = adjacentHunkAnchor(
+        hunkOrder,
+        hunkNavCurrentAnchor.current,
+        direction,
+      );
+      if (target === undefined) {
+        setHunkNavBoundary(
+          direction === "next"
+            ? "Already at the last hunk."
+            : "Already at the first hunk.",
+        );
+        return;
+      }
+      setHunkNavBoundary(undefined);
+      // Set eagerly, not only in `onScrolled` below: a rapid second press
+      // before this jump's scroll resolves must still advance from this
+      // target, not re-derive the same "current" and repeat itself.
+      hunkNavCurrentAnchor.current = target;
+      hunkNavJump.current.cancel?.();
+      const token = hunkNavJump.current.token + 1;
+      hunkNavJump.current.token = token;
+      const progress: MaterializeScrollProgress = { attempts: 0 };
+      hunkNavJump.current.cancel = materializeAndScrollTo({
+        viewer,
+        // The target's file, not the hunk, is what must exist in the viewer
+        // before a line inside it can be scrolled to.
+        items: currentItems,
+        itemId: target.filePath,
+        nextItemIndex,
+        appendItemsThrough: currentAppendItemsThrough,
+        progress,
+        isStale: () => hunkNavJump.current.token !== token,
+        buildTarget: () => ({
+          type: "line",
+          id: target.filePath,
+          lineNumber: target.lineNumber,
+          side: target.side,
+          align: "start",
+        }),
+        onScrolled: () => {
+          activePathRef.current = target.filePath;
+          currentOnActiveFileChange?.(target.filePath);
+        },
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      hunkNavJump.current.cancel?.();
+    };
+  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+
   const setAllCollapsed = (collapsed: boolean): void => {
     onCollapsedPathsChange(
       collapsed ? new Set(files.map((file) => file.name)) : new Set(),
@@ -1801,6 +1937,15 @@ function ReviewDiffSurface({
           data-review-diff-file-nav-boundary
         >
           {fileNavBoundary}
+        </p>
+      )}
+      {hunkNavBoundary === undefined ? null : (
+        <p
+          className="sr-only"
+          aria-live="polite"
+          data-review-diff-hunk-nav-boundary
+        >
+          {hunkNavBoundary}
         </p>
       )}
       {!browserSupportsPierre ? (

@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   adjacentFilePath,
+  adjacentHunkAnchor,
   shouldIgnoreReviewNavKey,
+  type HunkAnchor,
 } from "../../src/renderer/src/review-diff-keyboard-nav";
 
 function keyEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
@@ -56,6 +58,91 @@ describe("adjacentFilePath", () => {
   it("returns undefined for an empty order", () => {
     expect(adjacentFilePath([], "a", "next")).toBeUndefined();
     expect(adjacentFilePath([], undefined, "next")).toBeUndefined();
+  });
+});
+
+describe("adjacentHunkAnchor", () => {
+  // Two hunks in "a", one hunk in "b" -- document order across the whole
+  // diff, same as `[`/`]` builds by flattening `item.fileDiff.hunks` across
+  // every file item in order.
+  const first: HunkAnchor = { filePath: "a", lineNumber: 1, side: "additions" };
+  const second: HunkAnchor = {
+    filePath: "a",
+    lineNumber: 10,
+    side: "additions",
+  };
+  const third: HunkAnchor = { filePath: "b", lineNumber: 5, side: "additions" };
+  const order = [first, second, third];
+
+  it("moves to the next hunk within the same file", () => {
+    expect(adjacentHunkAnchor(order, first, "next")).toEqual(second);
+  });
+
+  it("moves to the previous hunk within the same file", () => {
+    expect(adjacentHunkAnchor(order, second, "previous")).toEqual(first);
+  });
+
+  it("crosses a file boundary moving forward off the last hunk of a file", () => {
+    expect(adjacentHunkAnchor(order, second, "next")).toEqual(third);
+  });
+
+  it("crosses a file boundary moving backward off the first hunk of a file", () => {
+    expect(adjacentHunkAnchor(order, third, "previous")).toEqual(second);
+  });
+
+  it("stops rather than wrapping past the last hunk", () => {
+    expect(adjacentHunkAnchor(order, third, "next")).toBeUndefined();
+  });
+
+  it("stops rather than wrapping past the first hunk", () => {
+    expect(adjacentHunkAnchor(order, first, "previous")).toBeUndefined();
+  });
+
+  it("treats an unresolved current hunk as just before the first hunk", () => {
+    expect(adjacentHunkAnchor(order, undefined, "next")).toEqual(first);
+    expect(
+      adjacentHunkAnchor(order, undefined, "previous"),
+    ).toBeUndefined();
+  });
+
+  it("treats a current hunk missing from order the same as unresolved", () => {
+    const notInOrder: HunkAnchor = {
+      filePath: "z",
+      lineNumber: 1,
+      side: "deletions",
+    };
+    expect(adjacentHunkAnchor(order, notInOrder, "next")).toEqual(first);
+  });
+
+  it("matches structurally, not by reference -- a rebuilt anchor with the same fields still resolves", () => {
+    const rebuiltFirst: HunkAnchor = {
+      filePath: "a",
+      lineNumber: 1,
+      side: "additions",
+    };
+    expect(adjacentHunkAnchor(order, rebuiltFirst, "next")).toEqual(second);
+  });
+
+  it("distinguishes anchors on the same line by side", () => {
+    const additionsSide: HunkAnchor = {
+      filePath: "a",
+      lineNumber: 1,
+      side: "additions",
+    };
+    const deletionsSide: HunkAnchor = {
+      filePath: "a",
+      lineNumber: 1,
+      side: "deletions",
+    };
+    const mixed = [additionsSide, deletionsSide];
+    expect(adjacentHunkAnchor(mixed, additionsSide, "next")).toEqual(
+      deletionsSide,
+    );
+  });
+
+  it("returns undefined for an empty order", () => {
+    expect(adjacentHunkAnchor([], first, "next")).toBeUndefined();
+    expect(adjacentHunkAnchor([], undefined, "next")).toBeUndefined();
   });
 });
 

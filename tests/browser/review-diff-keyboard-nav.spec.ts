@@ -4,12 +4,15 @@ import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
 import { expect, test, type Locator, type Page } from "playwright/test";
 
-// This suite proves the focus discipline behind `,`/`.` file navigation --
-// the actual point of this slice, per review-diff-keyboard-nav.ts. Unit
-// tests already cover `shouldIgnoreReviewNavKey` and `adjacentFilePath` in
-// isolation (tests/renderer/review-diff-keyboard-nav.test.ts); what only a
-// real browser can prove is that the global listener, wired into the real
-// diff surface, actually defers to a real text field and a real dialog.
+// This suite proves the focus discipline behind `,`/`.` file navigation and
+// `[`/`]` hunk navigation -- the actual point of these slices, per
+// review-diff-keyboard-nav.ts. Unit tests already cover
+// `shouldIgnoreReviewNavKey`, `adjacentFilePath`, and `adjacentHunkAnchor`
+// in isolation (tests/renderer/review-diff-keyboard-nav.test.ts); what only
+// a real browser can prove is that the global listeners, wired into the
+// real diff surface, actually defer to a real text field and a real
+// dialog, and that a jump's real scroll geometry doesn't retrigger the
+// stale-recompute trap documented in review-diff-view.tsx.
 
 test("`.` and `,` jump between files, stopping (not wrapping) at either end", async ({
   page,
@@ -100,6 +103,112 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     expect(await scrollTop()).toBe(before);
     await expect(
       page.locator("[data-review-diff-file-nav-boundary]"),
+    ).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, including across a file boundary", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    await diffViewport.focus();
+    await expect(diffViewport).toBeFocused();
+
+    const boundary = page.locator("[data-review-diff-hunk-nav-boundary]");
+    const overlapsViewport = (path: string) =>
+      headerOverlapsViewport(page, diffViewport, path);
+
+    // The fixture's two files each carry exactly one hunk, so `]`/`[`
+    // behaves like file navigation here in terms of which file surfaces --
+    // but it proves the hunk-anchor machinery (a `type: "line"` scroll
+    // target, not `type: "item"`) and, since src/b.ts's only hunk starts at
+    // line 1 of a newly-entered file, this is exactly the landing geometry
+    // documented as the trap in review-diff-view.tsx: the `align: "start"`
+    // line jump can land short of that file's own top, so a second press
+    // reading back scroll-derived state instead of the dedicated
+    // `hunkNavCurrentAnchor` ref would silently re-jump to src/b.ts's hunk
+    // instead of reporting the boundary.
+    await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
+
+    await page.keyboard.press("]");
+    await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
+    await expect(boundary).toHaveCount(0);
+
+    // Already at the last hunk: stop, don't wrap and don't silently re-jump
+    // to the same (or any other) hunk.
+    await page.keyboard.press("]");
+    await expect(boundary).toHaveText("Already at the last hunk.");
+    await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
+
+    await page.keyboard.press("[");
+    await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
+    await expect(boundary).toHaveCount(0);
+
+    // Already at the first hunk: stop, don't wrap.
+    await page.keyboard.press("[");
+    await expect(boundary).toHaveText("Already at the first hunk.");
+    await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
+
+    // Repeated presses in the same direction must keep advancing, not
+    // re-jump to whatever the previous press already landed on. Walk
+    // forward across the same boundary twice in a row from a fresh first
+    // press to prove that.
+    await page.keyboard.press("]");
+    await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
+    await page.keyboard.press("]");
+    await expect(boundary).toHaveText("Already at the last hunk.");
+  } finally {
+    await close(server);
+  }
+});
+
+test("typing `[` in the comment composer inserts the character instead of navigating", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+    // Pierre's CodeView finishes wiring its own hover tracking a moment
+    // after mount; hovering a line before that is ready leaves the gutter
+    // button's box at zero size with nothing to recompute it.
+    await page.waitForTimeout(500);
+
+    const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
+    const addComment = page
+      .locator('button[aria-label^="Add comment on"]')
+      .first();
+    await line.hover();
+    await addComment.click({ force: true });
+
+    const composer = page.getByRole("textbox", { name: "Inline comment" });
+    await expect(composer).toBeVisible();
+    await expect(composer).toBeFocused();
+
+    const scrollTop = () => diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const before = await scrollTop();
+
+    await page.keyboard.press("[");
+
+    // Inserted into the composer, not consumed as a navigation key.
+    await expect(composer).toHaveValue("[");
+    // No navigation attempted at all -- not even a "stop at the boundary"
+    // announcement (this fixture's first file is the current one, so a real
+    // "previous hunk" jump target -- src/b.ts, whose only hunk is the
+    // adjacent target once seeded -- was not yet resolved, but the guard
+    // must reject the keystroke before any of that runs).
+    expect(await scrollTop()).toBe(before);
+    await expect(
+      page.locator("[data-review-diff-hunk-nav-boundary]"),
     ).toHaveCount(0);
   } finally {
     await close(server);
