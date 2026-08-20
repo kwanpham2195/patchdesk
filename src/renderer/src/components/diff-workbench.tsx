@@ -90,6 +90,13 @@ export function DiffWorkbench({
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
+  // Keyboard nav (`,` `.` `[` `]` `{` `}` in review-diff-view) moves
+  // activePath without changing selectedPath, so the fixed panel header
+  // must prefer activePath to stay in sync with the file on screen. Hoisted
+  // to a single value (rather than repeating the expression at both the
+  // test-hook attribute and the displayed text) so the two can never
+  // silently disagree.
+  const headerPath = diffTitle ?? activePath ?? selectedPath;
   const [previousMappedPath, setPreviousMappedPath] = useState<
     string | undefined
   >(undefined);
@@ -196,15 +203,9 @@ export function DiffWorkbench({
           <div className="min-w-0">
             <p
               className="truncate text-sm font-medium"
-              data-diff-workbench-header-path={
-                diffTitle ?? activePath ?? selectedPath ?? undefined
-              }
+              data-diff-workbench-header-path={headerPath}
             >
-              {/* Keyboard nav (`,` `.` `[` `]` `{` `}` in review-diff-view)
-                  moves activePath without changing selectedPath, so this
-                  fixed header must prefer activePath to stay in sync with
-                  the file on screen. */}
-              {diffTitle ?? activePath ?? selectedPath ?? "No file selected"}
+              {headerPath ?? "No file selected"}
             </p>
             <p className="text-xs text-muted-foreground">
               {diffSubtitle ??
