@@ -851,6 +851,157 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
       },
     });
   });
+
+  type RuleParametersFixture = {
+    // `| string` lets one test exercise the malformed-payload path deliberately.
+    readonly required_approving_review_count?: number | string;
+    readonly dismiss_stale_reviews_on_push?: boolean;
+    readonly require_code_owner_review?: boolean;
+    readonly require_last_push_approval?: boolean;
+    readonly required_review_thread_resolution?: boolean;
+    readonly required_status_checks?: ReadonlyArray<{
+      readonly context: string;
+    }>;
+  };
+  type RulesFixture = ReadonlyArray<{
+    readonly type: string;
+    readonly name?: string;
+    readonly parameters?: RuleParametersFixture;
+  }>;
+
+  async function withRules(
+    rulesPayload: RulesFixture,
+  ): ReturnType<GitHubAdapter["getMergePolicyEvidence"]> {
+    const adapter = testAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify(branchProtection),
+            stderr: "",
+          },
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify(rulesPayload),
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+    return adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" });
+  }
+
+  it("parses all five pull_request rule parameters through to the domain type", async () => {
+    // Trimmed shape from a live probe of the ruleset endpoint.
+    const result = await withRules([
+      {
+        type: "pull_request",
+        parameters: {
+          required_approving_review_count: 1,
+          dismiss_stale_reviews_on_push: false,
+          require_code_owner_review: false,
+          require_last_push_approval: true,
+          required_review_thread_resolution: true,
+        },
+      },
+    ]);
+    expect(result).toEqual({
+      _tag: "ok",
+      value: expect.objectContaining({
+        appliedRuleset: {
+          state: "available",
+          value: {
+            rules: [
+              {
+                type: "pull_request",
+                pullRequestParameters: {
+                  requiredApprovingReviewCount: 1,
+                  dismissStaleReviewsOnPush: false,
+                  requireCodeOwnerReview: false,
+                  requireLastPushApproval: true,
+                  requiredReviewThreadResolution: true,
+                },
+              },
+            ],
+          },
+        },
+      }),
+    });
+  });
+
+  it("parses required_status_checks contexts through to the expected list", async () => {
+    // Trimmed shape from a live probe of the ruleset endpoint.
+    const result = await withRules([
+      {
+        type: "required_status_checks",
+        parameters: {
+          required_status_checks: [
+            { context: "buildkite/dynamic-onboarding-service" },
+          ],
+        },
+      },
+    ]);
+    expect(result).toEqual({
+      _tag: "ok",
+      value: expect.objectContaining({
+        appliedRuleset: {
+          state: "available",
+          value: {
+            rules: [
+              {
+                type: "required_status_checks",
+                requiredStatusCheckContexts: [
+                  "buildkite/dynamic-onboarding-service",
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    });
+  });
+
+  it("parses a rule with no parameters and an unrecognised rule type without inventing values", async () => {
+    const result = await withRules([
+      { type: "pull_request" },
+      {
+        type: "some_future_rule_type",
+        parameters: { required_approving_review_count: 5 },
+      },
+    ]);
+    expect(result).toEqual({
+      _tag: "ok",
+      value: expect.objectContaining({
+        appliedRuleset: {
+          state: "available",
+          value: {
+            rules: [
+              { type: "pull_request" },
+              { type: "some_future_rule_type" },
+            ],
+          },
+        },
+      }),
+    });
+  });
+
+  it("returns a typed adapter failure for a malformed rule parameters payload", async () => {
+    const result = await withRules([
+      {
+        type: "pull_request",
+        parameters: { required_approving_review_count: "one" },
+      },
+    ]);
+    expect(result).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "GitHubResponseInvalid",
+        operation: "get_merge_policy_evidence",
+      },
+    });
+  });
 });
 
 describe("GitHubAdapter Published feedback capabilities", () => {

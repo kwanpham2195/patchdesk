@@ -120,11 +120,24 @@ export type GitHubClassicBranchProtectionEvidence = {
   readonly requireCodeOwnerReviews?: boolean;
 };
 
-/** Bounded rule names/types returned by the applied branch-rules endpoint. */
+/** Bounded `pull_request` rule parameters read from the applied branch-rules endpoint. */
+export type GitHubAppliedRulesetPullRequestParameters = {
+  readonly requiredApprovingReviewCount?: number;
+  readonly requireLastPushApproval?: boolean;
+  readonly requiredReviewThreadResolution?: boolean;
+  readonly dismissStaleReviewsOnPush?: boolean;
+  readonly requireCodeOwnerReview?: boolean;
+};
+
+/** Bounded rule names/types/parameters returned by the applied branch-rules endpoint. */
 export type GitHubAppliedRulesetEvidence = {
   readonly rules: ReadonlyArray<{
     readonly type: string;
     readonly name?: string;
+    /** Present only for a `type: "pull_request"` rule with at least one configured field. */
+    readonly pullRequestParameters?: GitHubAppliedRulesetPullRequestParameters;
+    /** Present only for a `type: "required_status_checks"` rule; the required check contexts. */
+    readonly requiredStatusCheckContexts?: ReadonlyArray<string>;
   }>;
 };
 

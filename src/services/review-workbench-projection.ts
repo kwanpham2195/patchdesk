@@ -136,6 +136,21 @@ export type ReviewWorkbenchProjection = {
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
 };
 
+/** Mutable draft of `ReviewWorkbenchProjection`, built in statements so each
+ * optional field (`fullPatch`, `pullRequest`) is added only when it has a value. */
+type MutableReviewWorkbenchProjection = {
+  -readonly [
+    K in keyof ReviewWorkbenchProjection
+  ]: ReviewWorkbenchProjection[K];
+};
+/** Mutable draft of `ReviewWorkbenchProjection["revision"]`, built in
+ * statements so `patchHash`/`currentHeadSha` are added only when known. */
+type MutableRevisionProjection = {
+  -readonly [
+    K in keyof ReviewWorkbenchProjection["revision"]
+  ]: ReviewWorkbenchProjection["revision"][K];
+};
+
 export type LoadWorkbenchInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
@@ -152,7 +167,7 @@ type MutableConversation = {
   -readonly [K in keyof Conversation]: Conversation[K];
 };
 
-/** The remote-read snapshot `project` renders; `undefined` when only the durable Session is available. */
+/** Live-read evidence `project` combines with the durable Session; absent when no GitHub read was attempted. */
 type ProjectRemoteInput = {
   readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
   readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
@@ -160,20 +175,10 @@ type ProjectRemoteInput = {
   readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
   readonly mergeEvidence?: GitHubMergeEvidence;
 };
-
-/** Mutable draft of `ProjectRemoteInput`, built in statements by `loadRepresented`. */
+/** Mutable draft of `ProjectRemoteInput`, built in statements so the
+ * optional `mergeEvidence` is added only when the snapshot carried one. */
 type MutableProjectRemoteInput = {
   -readonly [K in keyof ProjectRemoteInput]: ProjectRemoteInput[K];
-};
-
-/** Mutable draft of `ReviewWorkbenchProjection["revision"]`, built in statements by `project`. */
-type MutableRevisionProjection = {
-  -readonly [K in keyof ReviewWorkbenchProjection["revision"]]: ReviewWorkbenchProjection["revision"][K];
-};
-
-/** Mutable draft of `ReviewWorkbenchProjection`, built in statements by `project`. */
-type MutableReviewWorkbenchProjection = {
-  -readonly [K in keyof ReviewWorkbenchProjection]: ReviewWorkbenchProjection[K];
 };
 
 /**
@@ -329,15 +334,16 @@ export class ReviewWorkbenchProjectionService {
       this.loadStoredInsights(session),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
-    const patchHash =
+    const rawPatchHash =
       fullPatch === undefined
         ? undefined
         : createHash("sha256").update(fullPatch).digest("hex");
-    // SAFETY: `patchHash` is produced immediately above by
-    // `createHash("sha256").digest("hex")`, which always yields a lowercase
-    // 64-character hex string — exactly the syntax `parseContentHash`
-    // checks — so this cast cannot diverge from a genuine `ContentHash`.
-    const patchHashBranded = patchHash as ContentHash | undefined;
+    // SAFETY: `createHash("sha256").digest("hex")` always yields a
+    // 64-character lowercase hex string, which already satisfies
+    // ContentHash's runtime shape (`parseContentHash` checks exactly
+    // `/^[a-f0-9]{64}$/`).
+    const patchHash =
+      rawPatchHash === undefined ? undefined : (rawPatchHash as ContentHash);
 
     const current = remote?.current;
     const currentHeadSha =
@@ -440,7 +446,7 @@ export class ReviewWorkbenchProjectionService {
       analysis,
       session,
       freshness,
-      patchHash: patchHashBranded,
+      patchHash,
       pendingReview: pendingReview?.state ?? session.pendingReview,
     });
 
@@ -449,7 +455,7 @@ export class ReviewWorkbenchProjectionService {
       freshness,
       refreshedAt,
     };
-    if (patchHashBranded !== undefined) revision.patchHash = patchHashBranded;
+    if (patchHash !== undefined) revision.patchHash = patchHash;
     if (currentHeadSha !== undefined) revision.currentHeadSha = currentHeadSha;
 
     const projection: MutableReviewWorkbenchProjection = {
@@ -606,11 +612,10 @@ export class ReviewWorkbenchProjectionService {
       return err({ reason: "storage" });
     }
     if (loaded.value.retained === undefined) {
-      // SAFETY: `retained` is undefined, and the generic `T` in
-      // `InsightRecord<RetainedInsight<T>>` only ever appears inside
-      // `retained.value`. With no `retained` present on the loaded record,
-      // its shape is identical for every `T`, so re-typing it here to
-      // `NarrativeWalkthrough` cannot misrepresent the value.
+      // SAFETY: `loaded.value.retained` is undefined here, so the generic
+      // `RetainedInsight<NarrativeWalkthrough>` parameter names no runtime
+      // data this branch actually inspects; only the `retained?` field's
+      // absence, which is what the check above already confirmed, matters.
       return ok({
         record: loaded.value as InsightRecord<
           RetainedInsight<NarrativeWalkthrough>
@@ -821,6 +826,13 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
   };
 }
 
+// Ordering: most-actionable-first. A maintainer reading this list top to
+// bottom sees the reasons whose next action is on them (get another review,
+// address feedback, resolve a named rule, update the branch, resolve
+// conflicts, wait on a check) before reasons that are purely informational
+// (has_hooks, unstable) or, worse, admittedly vague (the generic blocked
+// fallback). The fallback is pushed last and only when nothing more specific
+// was already collected, so it never buries a real answer under a vague one.
 function deriveMergeReasons(
   current: PullRequestSummary | undefined,
   evidence: GitHubMergeEvidence | undefined,
@@ -843,91 +855,156 @@ function deriveMergeReasons(
                   : ("unknown" as const),
         });
   if (aggregate === undefined) return [];
-  const protection = aggregate.policy?.branchProtection;
+
+  const branchProtection = aggregate.policy?.branchProtection;
   // Only a positive classic branch-protection count matches an approval
   // requirement. Zero and rules that do not expose approval configuration are
   // unavailable evidence, not an exact policy claim.
-  const requiredCount =
-    protection?.state === "available" &&
-    protection.value.requiredApprovingReviewCount !== undefined &&
-    protection.value.requiredApprovingReviewCount > 0
-      ? protection.value.requiredApprovingReviewCount
+  const classicCount =
+    branchProtection?.state === "available" &&
+    branchProtection.value.requiredApprovingReviewCount !== undefined &&
+    branchProtection.value.requiredApprovingReviewCount > 0
+      ? branchProtection.value.requiredApprovingReviewCount
       : undefined;
-  const policySource =
-    requiredCount === undefined
-      ? ("github_pr_state" as const)
+
+  const appliedRuleset = aggregate.policy?.appliedRuleset;
+  const pullRequestRule =
+    appliedRuleset?.state === "available"
+      ? appliedRuleset.value.rules.find(
+          (rule) => rule.pullRequestParameters !== undefined,
+        )?.pullRequestParameters
+      : undefined;
+  // Same "only a positive count is evidence" rule as classic protection.
+  const rulesetCount =
+    pullRequestRule?.requiredApprovingReviewCount !== undefined &&
+    pullRequestRule.requiredApprovingReviewCount > 0
+      ? pullRequestRule.requiredApprovingReviewCount
+      : undefined;
+  // Ruleset evidence is preferred: on a repo governed by Rulesets the classic
+  // `branches/{branch}/protection` endpoint legitimately 404s, so a
+  // ruleset-sourced count is the more direct evidence when both exist.
+  const requiredCount = rulesetCount ?? classicCount;
+  const requiredCountSource =
+    rulesetCount !== undefined
+      ? ("ruleset_configuration" as const)
       : ("branch_protection" as const);
+
+  const policyReadable =
+    branchProtection?.state === "available" ||
+    appliedRuleset?.state === "available";
+  const blocked =
+    aggregate.mergeStateStatus === "blocked" ||
+    aggregate.mergeable === "blocked";
+
+  const reasons: MergeDisplayReason[] = [];
+
+  // `reviewDecision` reconciliation: GraphQL `reviewDecision` stays the gate
+  // for whether a review is outstanding at all. It reflects live
+  // approval/dismissal state that no static ruleset field can express, and a
+  // live probe found it can under-report on a ruleset-governed repo (null,
+  // mapped to "unknown", on a PR that already had a genuine approving review
+  // from a non-last-pusher) — never over-report a requirement ruleset config
+  // says doesn't exist. So ruleset evidence never invents a review
+  // requirement by itself (this branch is still gated strictly on
+  // `reviewDecision === "review_required"`) and never overrides an
+  // "approved" decision; it only supplies a higher-confidence count/source
+  // once the gate already says a review is outstanding.
   if (aggregate.reviewDecision === "review_required") {
-    return [
-      {
-        code: "review_required",
-        message:
-          requiredCount === undefined
-            ? "Approval required by GitHub."
-            : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by branch protection.`,
-        source: policySource,
-        availability: requiredCount === undefined ? "partial" : "available",
-        openOnGitHub: requiredCount === undefined,
-      },
-    ];
+    reasons.push({
+      code: "review_required",
+      message:
+        requiredCount === undefined
+          ? "Approval required by GitHub."
+          : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by ${requiredCountSource === "ruleset_configuration" ? "ruleset configuration" : "branch protection"}.`,
+      source:
+        requiredCount === undefined ? "github_pr_state" : requiredCountSource,
+      availability: requiredCount === undefined ? "partial" : "available",
+      openOnGitHub: requiredCount === undefined,
+    });
+  } else if (aggregate.reviewDecision === "changes_requested") {
+    reasons.push({
+      code: "changes_requested",
+      message: "Changes requested.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
   }
-  if (aggregate.reviewDecision === "changes_requested")
-    return [
-      {
-        code: "changes_requested",
-        message: "Changes requested.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+
+  // GitHub says blocked and the ruleset says why: name the specific rules,
+  // matching what GitHub's own UI renders for each.
+  if (blocked && pullRequestRule?.requireLastPushApproval === true)
+    reasons.push({
+      code: "review_required",
+      message:
+        "New changes require approval from someone other than the last pusher.",
+      source: "ruleset_configuration",
+      availability: "available",
+      openOnGitHub: false,
+    });
+  if (blocked && pullRequestRule?.requiredReviewThreadResolution === true)
+    reasons.push({
+      code: "blocked",
+      message: "All review threads must be resolved before this can merge.",
+      source: "ruleset_configuration",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (aggregate.mergeStateStatus === "behind")
-    return [
-      {
-        code: "behind",
-        message: "Update this branch with the base branch.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+    reasons.push({
+      code: "behind",
+      message: "Update this branch with the base branch.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (
     aggregate.mergeStateStatus === "dirty" ||
     aggregate.mergeable === "conflicting"
   )
-    return [
-      {
-        code: "conflicts",
-        message: "Resolve merge conflicts.",
-        source: "github_pr_state",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
+    reasons.push({
+      code: "conflicts",
+      message: "Resolve merge conflicts.",
+      source: "github_pr_state",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
   if (checks.overall === "failing")
-    return [
-      {
-        code: "checks",
-        message: "Required checks have not passed.",
-        source: "checks",
-        availability: "available",
-        openOnGitHub: false,
-      },
-    ];
-  if (
-    aggregate.mergeStateStatus === "blocked" ||
-    aggregate.mergeable === "blocked"
-  )
-    return [
-      {
-        code: "blocked",
-        message: "GitHub merge requirements are not satisfied.",
-        source: "github_pr_state",
-        availability: requiredCount === undefined ? "partial" : "available",
-        openOnGitHub: true,
-      },
-    ];
-  return [];
+    reasons.push({
+      code: "checks",
+      message: "Required checks have not passed.",
+      source: "checks",
+      availability: "available",
+      openOnGitHub: false,
+    });
+
+  // `has_hooks` and `unstable` are both mergeable states per GitHub's own
+  // `MergeStateStatus` semantics (HAS_HOOKS: "Mergeable with passing commit
+  // status and pre-receive hooks"; UNSTABLE: "Mergeable with non-passing
+  // commit status" — i.e. only non-required checks are failing). Neither is
+  // a blocker, so neither contributes a reason here; surfacing them as
+  // informational content (not a blocker) is a display concern for a later
+  // slice.
+
+  // The generic fallback only fires when GitHub reports blocked and nothing
+  // above already explained why — including the two named rules above, but
+  // also any review/checks reason from another axis, since a maintainer
+  // shown a specific reason does not need an additional vague one.
+  if (blocked && reasons.length === 0)
+    reasons.push({
+      code: "blocked",
+      message: policyReadable
+        ? "GitHub reports this merge is blocked, but none of the readable merge rules explain why."
+        : "Patchdesk could not read this repository's merge rules, so it cannot say why GitHub blocked this merge.",
+      source: "github_pr_state",
+      availability: policyReadable ? "available" : "partial",
+      openOnGitHub: true,
+    });
+
+  return reasons;
 }
 
 function evaluateReadiness(
@@ -966,8 +1043,8 @@ type StoredInsightRecords = {
   readonly analysisArtifactStatus?: InsightArtifactStatus;
   readonly walkthroughArtifactStatus?: InsightArtifactStatus;
 };
-
-/** Mutable draft of `StoredInsightRecords`, built in statements by `loadStoredInsights`. */
+/** Mutable draft of `StoredInsightRecords`, built in statements so each
+ * optional field is added only when storage actually held it. */
 type MutableStoredInsightRecords = {
   -readonly [K in keyof StoredInsightRecords]: StoredInsightRecords[K];
 };
@@ -1182,6 +1259,10 @@ function parseRetainedProvenance(
   const model = v.safeParse(provenanceModelSchema, envelope.model);
   const reasoning = parseInsightReasoning(envelope.reasoning);
   return provider._tag === "ok" && model.success && reasoning._tag === "ok"
-    ? ok({ provider: provider.value, model: model.output, reasoning: reasoning.value })
+    ? ok({
+        provider: provider.value,
+        model: model.output,
+        reasoning: reasoning.value,
+      })
     : err(undefined);
 }

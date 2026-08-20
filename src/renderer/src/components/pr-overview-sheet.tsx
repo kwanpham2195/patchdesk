@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   GitMerge,
+  Info,
   RefreshCw,
   Sparkles,
   XCircle,
@@ -193,8 +194,14 @@ export function CanonicalReviewOverviewSheet({
             title="Merge readiness"
             defaultOpen
             icon={<GitMerge className="size-3.5" />}
-            trailing={mergeReadinessLabel(overview.mergeReadiness._tag)}
-            trailingTone={mergeReadinessTone(overview.mergeReadiness._tag)}
+            trailing={mergeReadinessLabel(
+              overview.mergeReadiness._tag,
+              overview.mergeReadiness.blockers,
+            )}
+            trailingTone={mergeReadinessTone(
+              overview.mergeReadiness._tag,
+              overview.mergeReadiness.blockers,
+            )}
           >
             <MergeReadinessDetail overview={overview} />
             {merge === undefined ||
@@ -238,12 +245,19 @@ const successTone = "text-status-success";
 const warningTone = "text-status-warning";
 const destructiveTone = "text-destructive";
 const mutedTone = "text-muted-foreground";
+const infoTone = "text-status-info";
 const destructiveCard =
   "border-destructive/30 bg-destructive/10 text-destructive";
 const warningCard =
   "border-status-warning/30 bg-status-warning/10 text-status-warning";
 const successCard =
   "border-status-success/30 bg-status-success/10 text-status-success";
+// Not-yet-confirmed evidence (a "partial" reason, or the mergeability_unknown
+// blocker) is Patchdesk saying it does not fully know, not a confirmed
+// blocker. It gets a neutral info treatment rather than the destructive one
+// reserved for evidence GitHub or a rule actually confirmed. See ADR 0027,
+// "Unknown is not failure."
+const infoCard = "border-status-info/30 bg-status-info/10 text-status-info";
 
 function RevisionDetails({
   overview,
@@ -351,53 +365,78 @@ function MergeReadinessDetail({
     mergeReasons.length === 0 &&
     mergeReadiness.blockers.length === 0 &&
     mergeReadiness.warnings.length === 0;
+  // Every reason links to the same pull request, so only the first
+  // GitHub-worthy reason gets the "Open on GitHub" action; repeating it on
+  // every stacked card would be noise once several reasons render at once.
+  const firstOpenOnGitHubIndex = mergeReasons.findIndex(
+    (reason) => reason.openOnGitHub,
+  );
   return (
     <div className="flex flex-col gap-2 text-sm">
-      {mergeReasons.map((reason) => (
-        <p
-          key={reason.code}
-          className={cn(
-            "flex items-start gap-2 rounded-md border px-3 py-2",
-            destructiveCard,
-          )}
-        >
-          <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0">
-            {reason.message}
-            <span className="ml-1 text-xs opacity-80">
-              {reasonSourceLabel(reason.source)} · {reason.availability}
+      {mergeReasons.map((reason, index) => {
+        const isConfirmed = reason.availability === "available";
+        const cardTone = isConfirmed ? destructiveCard : infoCard;
+        const Icon = isConfirmed ? XCircle : Info;
+        const showOpenOnGitHub =
+          reason.openOnGitHub &&
+          index === firstOpenOnGitHubIndex &&
+          pullRequest !== undefined;
+        return (
+          <p
+            key={`${reason.code}-${reason.source}-${reason.message}`}
+            data-reason-availability={reason.availability}
+            className={cn(
+              "flex items-start gap-2 rounded-md border px-3 py-2",
+              cardTone,
+            )}
+          >
+            <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">
+              {reason.message}
+              <span className="ml-1 text-xs opacity-80">
+                {reasonSourceLabel(reason.source)}
+              </span>
+              {showOpenOnGitHub ? (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="ml-1 h-auto p-0 align-baseline text-inherit underline"
+                  onClick={() =>
+                    void openPullRequestExternalUrl(
+                      pullRequestPageUrl(pullRequest).toString(),
+                      pullRequest,
+                    )
+                  }
+                >
+                  Open on GitHub
+                </Button>
+              ) : null}
             </span>
-            {reason.openOnGitHub && pullRequest !== undefined ? (
-              <Button
-                variant="link"
-                size="sm"
-                className="ml-1 h-auto p-0 align-baseline"
-                onClick={() =>
-                  void openPullRequestExternalUrl(
-                    pullRequestPageUrl(pullRequest).toString(),
-                    pullRequest,
-                  )
-                }
-              >
-                Open on GitHub
-              </Button>
-            ) : null}
-          </span>
-        </p>
-      ))}
+          </p>
+        );
+      })}
       {showBlockers
-        ? mergeReadiness.blockers.map((blocker) => (
-            <p
-              key={`blocker-${blocker}`}
-              className={cn(
-                "flex items-start gap-2 rounded-md border px-3 py-2",
-                destructiveCard,
-              )}
-            >
-              <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              {readinessBlockerLabel(blocker)}
-            </p>
-          ))
+        ? mergeReadiness.blockers.map((blocker) => {
+            const isUnknown = blocker === "mergeability_unknown";
+            const cardTone = isUnknown ? infoCard : destructiveCard;
+            const Icon = isUnknown ? Info : XCircle;
+            return (
+              <p
+                key={`blocker-${blocker}`}
+                data-blocker={blocker}
+                className={cn(
+                  "flex items-start gap-2 rounded-md border px-3 py-2",
+                  cardTone,
+                )}
+              >
+                <Icon
+                  className="mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                {readinessBlockerLabel(blocker)}
+              </p>
+            );
+          })
         : null}
       {mergeReadiness.warnings.map((warning) => (
         <p
@@ -612,9 +651,28 @@ function insightTone(status: ReviewInsightStatus): string {
   }
 }
 
+// A "Blocked" tag whose only blocker is mergeability_unknown is not a
+// confirmed block — it's Patchdesk saying it does not yet know GitHub's
+// merge status. The header must not contradict the neutral info treatment
+// the body already gives that case (see the infoCard comment above and
+// ADR 0027, "Unknown is not failure"). Any additional blocker alongside it
+// is a real, confirmed block, so it keeps the destructive treatment.
+function isUnconfirmedBlock(
+  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
+): boolean {
+  return (
+    tag === "Blocked" &&
+    blockers.length === 1 &&
+    blockers[0] === "mergeability_unknown"
+  );
+}
+
 function mergeReadinessLabel(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
 ): string {
+  if (isUnconfirmedBlock(tag, blockers)) return "Unknown";
   switch (tag) {
     case "Ready":
       return "Ready to merge";
@@ -627,7 +685,9 @@ function mergeReadinessLabel(
 
 function mergeReadinessTone(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
 ): string {
+  if (isUnconfirmedBlock(tag, blockers)) return infoTone;
   switch (tag) {
     case "Ready":
       return successTone;
