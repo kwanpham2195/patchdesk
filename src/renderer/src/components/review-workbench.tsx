@@ -809,6 +809,7 @@ export function ReviewWorkbench({
           {model.pullRequest === undefined ? null : (
             <div
               className="flex flex-wrap items-center gap-1"
+              role="group"
               aria-label="Pull request labels"
             >
               {model.pullRequest.labels.map((label) => (
