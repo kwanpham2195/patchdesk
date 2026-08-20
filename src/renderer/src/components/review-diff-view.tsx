@@ -62,11 +62,20 @@ import {
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
 import { activeFilePathAtScrollTop } from "@/review-diff-active-file";
-import { materializeAndScrollTo } from "@/review-diff-materialize-and-scroll";
+import {
+  materializeAndScrollTo,
+  type MaterializeScrollProgress,
+} from "@/review-diff-materialize-and-scroll";
+import {
+  adjacentFilePath,
+  shouldIgnoreReviewNavKey,
+  type ReviewNavDirection,
+} from "@/review-diff-keyboard-nav";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { reviewContextControl } from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
+import { useLatestCommitted } from "@/hooks/use-latest-committed";
 import {
   selectPatch,
   useReviewDiffHydration,
@@ -1253,6 +1262,117 @@ function ReviewDiffSurface({
     selectedPath,
   ]);
 
+  // `,`/`.` jump to the previous/next file. `items` and `onActiveFileChange`
+  // are read from this latest-committed snapshot instead of the effect's own
+  // dependency array so an unrelated re-render (a file hydrating, an
+  // annotation changing) never tears down the listener or cancels a jump
+  // already in flight -- only leaving "all files" mode or unmounting should
+  // do that.
+  const fileNavLatest = useLatestCommitted({
+    items,
+    onActiveFileChange,
+    appendItemsThrough,
+  });
+  // Owns the in-flight keypress-triggered scroll, independent of
+  // `selectionScrollProgress` above. That progress ref's `completed` latch
+  // exists so an unrelated re-render doesn't re-fight where the user
+  // scrolled from a click-driven selection; an explicit keypress must move
+  // every time, so it gets its own token instead of sharing that latch.
+  const fileNavJump = useRef<{ token: number; cancel?: () => void }>({
+    token: 0,
+  });
+  // Where a `,`/`.` press considers itself to be, kept deliberately separate
+  // from `activePathRef`. A jump's `align: "start"` lands the viewport just
+  // under the target's sticky header -- short of that same item's own
+  // `getTopForItem` by however tall the header is -- so the scroll event the
+  // jump itself triggers makes `updateActivePath` recompute the *previous*
+  // file as active and overwrite `activePathRef` right after `onScrolled`
+  // sets it. Reading `activePathRef` back on the next press would then read
+  // that overwrite and jump again instead of recognizing arrival. This ref
+  // is never written by that scroll-driven recomputation, only by a
+  // keyboard jump itself, so repeated presses always advance from where the
+  // last press left off.
+  const fileNavCurrentPath = useRef<string | undefined>(undefined);
+  const [fileNavBoundary, setFileNavBoundary] = useState<string | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    // Only the primary, continuously-scrolling diff surface supports file
+    // jumps. Walkthrough and finding-evidence cards render with
+    // virtualized={false} and can mount several at once; "selected" file
+    // mode materializes only the one selected file, so an adjacent file's id
+    // would never resolve in `items`.
+    if (!virtualized || preferences.fileMode !== "all") return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "." && event.key !== ",") return;
+      if (shouldIgnoreReviewNavKey(event)) return;
+      event.preventDefault();
+      const {
+        items: currentItems,
+        onActiveFileChange: currentOnActiveFileChange,
+        appendItemsThrough: currentAppendItemsThrough,
+      } = fileNavLatest.current;
+      const direction: ReviewNavDirection =
+        event.key === "." ? "next" : "previous";
+      // Nothing has jumped yet this session: fall back to the nearest file
+      // at the current scroll position, the same call `updateActivePath`
+      // makes, so the first press starts from where the user actually is
+      // rather than always from the first file in the diff.
+      if (fileNavCurrentPath.current === undefined) {
+        const codeView = viewer.current?.getInstance();
+        fileNavCurrentPath.current =
+          codeView === undefined
+            ? undefined
+            : activeFilePathAtScrollTop(
+                currentItems,
+                codeView.getScrollTop(),
+                (id) => codeView.getTopForItem(id),
+              );
+      }
+      const target = adjacentFilePath(
+        currentItems.map((item) => item.id),
+        fileNavCurrentPath.current,
+        direction,
+      );
+      if (target === undefined) {
+        setFileNavBoundary(
+          direction === "next"
+            ? "Already at the last file."
+            : "Already at the first file.",
+        );
+        return;
+      }
+      setFileNavBoundary(undefined);
+      // Set eagerly, not only in `onScrolled` below: a rapid second press
+      // before this jump's scroll resolves must still advance from this
+      // target, not re-derive the same "current" and repeat itself.
+      fileNavCurrentPath.current = target;
+      fileNavJump.current.cancel?.();
+      const token = fileNavJump.current.token + 1;
+      fileNavJump.current.token = token;
+      const progress: MaterializeScrollProgress = { attempts: 0 };
+      fileNavJump.current.cancel = materializeAndScrollTo({
+        viewer,
+        items: currentItems,
+        itemId: target,
+        nextItemIndex,
+        appendItemsThrough: currentAppendItemsThrough,
+        progress,
+        isStale: () => fileNavJump.current.token !== token,
+        buildTarget: () => ({ type: "item", id: target, align: "start" }),
+        onScrolled: () => {
+          activePathRef.current = target;
+          currentOnActiveFileChange?.(target);
+        },
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      fileNavJump.current.cancel?.();
+    };
+  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+
   const setAllCollapsed = (collapsed: boolean): void => {
     onCollapsedPathsChange(
       collapsed ? new Set(files.map((file) => file.name)) : new Set(),
@@ -1674,6 +1794,15 @@ function ReviewDiffSurface({
           Additional unchanged context is unavailable for {selectedPath}.
         </p>
       ) : null}
+      {fileNavBoundary === undefined ? null : (
+        <p
+          className="sr-only"
+          aria-live="polite"
+          data-review-diff-file-nav-boundary
+        >
+          {fileNavBoundary}
+        </p>
+      )}
       {!browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
