@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
 
@@ -564,6 +565,58 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
       return scrollTop();
     };
 
+    // Home alone feeds an assertion about WHERE the viewport ended up, not
+    // just that it moved, so pressUntil's "any change in the right
+    // direction" wait condition is too weak for it: Pierre's virtualizer can
+    // revert part of a key's native jump on a later frame as it re-anchors
+    // (see comment above), and pressUntil's poll can return on that
+    // transient, not-yet-corrected position. pressUntilSettled instead keeps
+    // re-pressing the key until two consecutive reads agree, i.e. the
+    // position has actually stopped moving.
+    //
+    // This is deliberately NOT reused for End (see the comment at afterEnd
+    // below): End scrolling toward the bottom can trigger this fixture's
+    // progressive file loading, which keeps extending scrollHeight out from
+    // under a "wait for scrollTop to stop changing" loop -- two consecutive
+    // equal reads there can mean "no more files have streamed in yet", not
+    // "truly at rest", making that signal actively misleading for End.
+    // Scrolling up toward already-rendered content triggers no such
+    // loading, so it is a sound settle signal for Home specifically.
+    const pressUntilSettled = async (key: string): Promise<number> => {
+      let previous = await scrollTop();
+      let observedMovement = false;
+      let stableStreak = 0;
+      await expect
+        .poll(
+          async () => {
+            await page.keyboard.press(key);
+            const current = await scrollTop();
+            // A press's native scroll can land on the compositor a frame
+            // after this synchronous read returns, so the very first
+            // post-press read sometimes still reports the pre-press value.
+            // Treating that as "settled" would be the exact bug being fixed
+            // here (declaring victory before the key has done anything), so
+            // equality only counts once at least one real change has been
+            // observed. A single repeated read isn't enough either: this
+            // fixture's virtualizer can also pause at a genuine intermediate
+            // position (observed: two identical reads at ~1868 that then
+            // continued on toward 0 on a later press), so settling requires
+            // several consecutive identical reads, not just one pair.
+            if (observedMovement && current === previous) {
+              stableStreak += 1;
+            } else {
+              stableStreak = 0;
+            }
+            if (current !== previous) observedMovement = true;
+            previous = current;
+            return stableStreak >= 3;
+          },
+          { timeout: 8_000 },
+        )
+        .toBe(true);
+      return scrollTop();
+    };
+
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
     expect(await scrollTop()).toBe(0);
@@ -574,18 +627,51 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
     await pressUntil("PageDown", (c, b) => c > b);
     await pressUntil("ArrowDown", (c, b) => c > b);
     const afterSecondPageDown = await pressUntil("PageDown", (c, b) => c > b);
-    const afterPageUp = await pressUntil("PageUp", (c, b) => c < b);
+    await pressUntil("PageUp", (c, b) => c < b);
     const afterEnd = await pressUntil("End", (c, b) => c > b);
     // End should reach materially further than a page-up/page-down dance
     // did, proving it is not merely replaying the previous key's effect.
+    //
+    // This comparison's wait condition has the same "any movement" shape
+    // flagged for Home below, but is not the same flake risk: the pre-End
+    // position here (after PageUp) is a modest few-page-heights value, not
+    // the near-maximum position Home starts from after End, so Pierre's
+    // few-pixel re-anchoring correction cannot plausibly invert this
+    // comparison the way it inverted Home's. A settle-based wait was tried
+    // here too and made things worse: this viewport streams its ~1,000
+    // files in 5-file batches as you scroll near the bottom
+    // (`useProgressiveReviewDiffStream` / `handleViewerScroll` in
+    // review-diff-view.tsx), each gated by an async hydrate() call, so
+    // "wait until scrollTop stops changing" chases a target that keeps
+    // growing on its own schedule and can declare a false settle mid-batch
+    // (observed: afterEnd landing anywhere from ~400 to ~1200 across
+    // otherwise-identical runs, well short of a real bottom). Left on
+    // pressUntil's original wait condition, which only needs a single
+    // genuine jump past afterSecondPageDown to hold.
     expect(afterEnd).toBeGreaterThan(afterSecondPageDown);
 
-    const afterHome = await pressUntil("Home", (c, b) => c < b);
+    const afterHome = await pressUntilSettled("Home");
     // Home is not asserted to land at exactly 0: after a large scroll
     // excursion Pierre's virtualizer can settle a few pixels off true top
     // as it re-measures rendered items, which is layout behavior unrelated
     // to this fix's key-focusability change.
-    expect(afterHome).toBeLessThan(afterPageUp);
+    //
+    // This used to be `expect(afterHome).toBeLessThan(afterPageUp)`, fed by
+    // `pressUntil("Home", (c, b) => c < b)` -- satisfied by ANY decrease
+    // from the pre-Home (near-bottom) position, so it could return long
+    // before the virtualizer's re-anchoring actually settled. Observed
+    // flaky failures included afterHome=14964 against afterPageUp=1253, and
+    // afterHome=209 against afterPageUp=40: a barely-moved value that still
+    // happened to satisfy "less than" whichever position the page-up step
+    // had reached. pressUntilSettled fixes the wait condition itself (wait
+    // for the position to stop changing, not for a single decrease), and a
+    // fixed, small pixel threshold -- independent of any other poll's
+    // result, and not scaled to a scrollHeight that this same fixture can
+    // still be growing via progressive loading -- keeps the assertion
+    // meaningful: it still fails if Home does nothing (stays at a
+    // multi-hundred/thousand-pixel scroll position) or only moves a little
+    // (one PageUp-sized step is itself already ~800px).
+    expect(afterHome).toBeLessThan(300);
 
     const afterSpace = await pressUntil("Space", (c, b) => c > b);
     await pressUntil("Shift+Space", (c) => c < afterSpace);
@@ -918,10 +1004,12 @@ async function serveRenderer(): Promise<Server> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return server;
 }
+function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
+  return Object.prototype.hasOwnProperty.call(address, "port");
+}
 function origin(server: Server): string {
   const address = server.address();
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows Node's net.Server.address() union (AddressInfo | string | null) to the TCP shape this loopback helper needs; there is no schema for a stdlib return type.
-  if (address === null || typeof address === "string")
+  if (address === null || !isAddressInfo(address))
     throw new Error("missing address");
   return `http://127.0.0.1:${address.port}`;
 }

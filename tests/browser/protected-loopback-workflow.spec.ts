@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { test, expect } from "playwright/test";
@@ -108,7 +109,10 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Workspace" }).click();
-  await page.getByRole("button", { name: "Discover" }).click();
+  // Workspace-root discovery is automatic: saving the profile above scans
+  // its workspace roots via `GET /v1/watchlist/suggestions` from a
+  // `useEffect` (see `useWorkspaceRootDiscovery`), with no button to drive
+  // it. Wait directly for that scan's result to appear.
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await expect(
     page.getByRole("checkbox", {
@@ -161,9 +165,13 @@ async function serveRenderer(): Promise<Server> {
   return server;
 }
 
+function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
+  return Object.prototype.hasOwnProperty.call(address, "port");
+}
+
 function serverOrigin(server: Server): string {
   const address = server.address();
-  if (address === null || typeof address === "string")
+  if (address === null || !isAddressInfo(address))
     throw new Error("missing address");
   return `http://127.0.0.1:${address.port}`;
 }
