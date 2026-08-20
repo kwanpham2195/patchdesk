@@ -123,18 +123,21 @@ test("axe now catches Patchdesk's own violations even when they render inside <d
 }) => {
   await page.goto(`${origin(renderer)}/#workbench-fixture`);
   await forceLightAppearance(page);
-  // This checkbox-role button is Patchdesk's own markup, rendered as a real
+  // This icon-only button is Patchdesk's own markup, rendered as a real
   // light-DOM child of Pierre's <diffs-container> (via its "header-custom"
   // slot) -- not shadow-root content. The old blanket
   // `.exclude("diffs-container")` hid all of it, including this element,
-  // from every rule. Confirm the scan is clean before we break anything, so
-  // the assertion below is not passing by coincidence.
-  const viewedToggle = page.locator(
-    'diffs-container button[aria-label="Mark file src/a.ts as viewed"]',
+  // from every rule. It has to be the icon-only chevron rather than the
+  // "Viewed" pill next to it: the pill carries a visible text label, so
+  // stripping its aria-label still leaves it named and can't be driven
+  // nameless. Confirm the scan is clean before we break anything, so the
+  // assertion below is not passing by coincidence.
+  const collapseToggle = page.locator(
+    'diffs-container button[aria-label="Collapse file src/a.ts"]',
   );
-  await expect(viewedToggle).toHaveCount(1);
+  await expect(collapseToggle).toHaveCount(1);
   expect(await seriousProductViolations(page)).toEqual([]);
-  await viewedToggle.evaluate((element) => element.removeAttribute("aria-label"));
+  await collapseToggle.evaluate((element) => element.removeAttribute("aria-label"));
   const violations = await seriousProductViolations(page);
   expect(violations.some((violation) => violation.id === "button-name")).toBe(
     true,
