@@ -139,6 +139,20 @@ Codex runs against the immutable represented worktree only, through a read-only 
   - Confirm no new login or credential store entry appeared: Patchdesk must not read or persist Codex credentials.
 - `run when:` anything changes in `codex-insight-invoker.ts`, `codex-app-server-client.ts`, or the provider catalog.
 
+## Pull request metadata rail
+
+The Conversation screen's rail owns the pull request's Reviewers, Assignees, and Labels. Every write gates on the current session (not diff freshness), resolves permission per write type, fails closed, and journals so a maintainer's own change never reads back as remote activity.
+
+- `automated:` `tests/browser/conversation-rail.spec.ts` (the rail's sections, pickers, empty states, permission rendering, narrow-window stacking, terminal read-only), `tests/services/label-service.test.ts`, `tests/services/assignee-service.test.ts` (ten-assignee cap, self-assign), `tests/services/reviewer-service.test.ts` (subtractive removal, additive request), `tests/domain/review-verdicts.test.ts` (the verdict union, dropped drafts, outdated marking), `tests/browser/accessibility.spec.ts` (rail controls from the keyboard).
+- `manual:`
+  - Apply and remove a label from the rail against a real PR: GitHub must show the change, and the next refresh must not report it as remote activity.
+  - Assign and unassign a person, and use the empty state's self-assign shortcut: GitHub must show the change.
+  - Request a review, then toggle the same person off: the request must appear and disappear on GitHub, and a reviewer requested by someone else must survive the removal.
+  - On a PR with an approval given before the latest push, confirm the verdict renders as outdated.
+  - With an unfinished GitHub pending review open, confirm the Reviewers section shows it as a draft with its comment count and still shows every submitted verdict.
+  - Sign in as a triage-only account: labels must stay editable while the reviewer and assignee controls report that the account cannot make the change.
+- `run when:` anything changes in `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `review-verdicts.ts`, `pull-request-metadata-rail.tsx`, the three pickers, or the rail's routes in `local-api.ts`.
+
 ## Browser, accessibility, performance, and package
 
 The built app is the outermost boundary.
