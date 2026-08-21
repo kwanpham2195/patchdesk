@@ -39,7 +39,7 @@ function actionsFixture(
 }
 
 async function openPicker(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Labels" }));
+  await user.click(screen.getByRole("button", { name: "Manage labels" }));
 }
 
 describe("LabelPicker", () => {

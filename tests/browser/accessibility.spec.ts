@@ -401,6 +401,36 @@ test("400 percent zoom equivalent keeps constrained review controls reachable", 
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });
 
+test("the pull request metadata rail is free of serious axe violations", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-fixture`);
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(
+    page.getByRole("complementary", { name: "Pull request metadata" }),
+  ).toBeVisible();
+  await forceLightAppearance(page);
+  expect(await seriousProductViolations(page)).toEqual([]);
+});
+
+test("the rail's Labels picker is fully keyboard-reachable and operable", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-fixture`);
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  const manageLabels = page.getByRole("button", { name: "Manage labels" });
+  await manageLabels.focus();
+  await expect(manageLabels).toBeFocused();
+  await page.keyboard.press("Enter");
+  const docsCheckbox = page.getByRole("checkbox", { name: "documentation" });
+  await expect(docsCheckbox).toBeVisible();
+  await docsCheckbox.focus();
+  await expect(docsCheckbox).toBeFocused();
+  expect(await docsCheckbox.getAttribute("aria-checked")).toBe("false");
+  await page.keyboard.press("Space");
+  await expect(docsCheckbox).toHaveAttribute("aria-checked", "true");
+});
+
 async function serve(): Promise<Server> {
   const root = join(process.cwd(), "out/renderer");
   const server = createServer(async (request, response) => {

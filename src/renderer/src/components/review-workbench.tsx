@@ -36,8 +36,8 @@ import {
 } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
-import { LabelChip } from "./label-chip";
-import { LabelPicker, type LabelPickerActions } from "./label-picker";
+import type { LabelPickerActions } from "./label-picker";
+import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -764,6 +764,22 @@ export function ReviewWorkbench({
   const { conversationTabProps, diffConversationActions } =
     directConversationActionProps(actions, selectedCommitSha);
 
+  // Built here (not inside `Conversation`) because it's the model that owns
+  // `model.pullRequest`/`model.revision`/`terminal` -- `Conversation` only
+  // ever renders what it's handed, which keeps the rail off the Diff and
+  // Insights tabs by construction rather than by a conditional inside them.
+  const conversationRail =
+    model.pullRequest === undefined ? undefined : (
+      <PullRequestMetadataRail
+        labels={model.pullRequest.labels}
+        freshness={model.revision.freshness}
+        terminal={terminal}
+        {...(actions.labels === undefined
+          ? {}
+          : { labelActions: actions.labels })}
+      />
+    );
+
   return (
     <PublishedFeedbackNavigationContext.Provider value={focusPublishedFeedback}>
       <section
@@ -840,23 +856,6 @@ export function ReviewWorkbench({
               )}
             </div>
           </div>
-          {model.pullRequest === undefined ? null : (
-            <div
-              className="flex flex-wrap items-center gap-1"
-              role="group"
-              aria-label="Pull request labels"
-            >
-              {model.pullRequest.labels.map((label) => (
-                <LabelChip key={label.name} label={label} />
-              ))}
-              <LabelPicker
-                attachedLabels={model.pullRequest.labels}
-                {...(actions.labels === undefined
-                  ? {}
-                  : { actions: actions.labels })}
-              />
-            </div>
-          )}
           <PendingReviewNotice pendingReview={actions.pendingReview} />
           <p
             className="text-xs text-muted-foreground"
@@ -936,6 +935,9 @@ export function ReviewWorkbench({
             <Conversation
               conversation={model.conversation}
               {...conversationTabProps}
+              {...(conversationRail === undefined
+                ? {}
+                : { rail: conversationRail })}
             />
           ) : activeTab === "diff" ? (
             <div className="min-h-0 flex-1 overflow-hidden">

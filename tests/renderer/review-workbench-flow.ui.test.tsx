@@ -334,7 +334,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(insights.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("renders real GitHub label chips in the header when the pull request carries labels", async () => {
+  it("renders real GitHub label chips in the Conversation rail's Labels section when the pull request carries labels", async () => {
     bridge(async (input) =>
       input.path === "/v1/reviews/detect-updates"
         ? { updatesAvailable: false }
@@ -354,6 +354,14 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(labeled);
     expect(
       screen.getByRole("heading", { name: "Canonical workbench" }),
+    ).toBeTruthy();
+    // The rail only renders inside the Conversation tab's content (it is
+    // never rendered on Diff, the tab this flow defaults to).
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Conversation" }));
+    expect(
+      screen.getByRole("complementary", { name: "Pull request metadata" }),
     ).toBeTruthy();
     expect(screen.getByText("bug")).toBeTruthy();
     expect(screen.getByText("enhancement")).toBeTruthy();

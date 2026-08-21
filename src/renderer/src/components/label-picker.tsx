@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Tag } from "lucide-react";
+import { Settings2 } from "lucide-react";
 
 import type {
   RepositoryLabel,
@@ -67,10 +67,13 @@ function withoutName<T extends string>(
 }
 
 /**
- * Assigns and removes labels on the pull request under review, rendered
- * next to the read-only chips `LabelChip` already draws in the workbench
- * header — this component reuses `LabelChip` for its own rows rather than
- * drawing a second chip renderer.
+ * Assigns and removes labels on the pull request under review. Rendered as
+ * the Labels section's settings control in `PullRequestMetadataRail`, next
+ * to the read-only chips `LabelChip` already draws there — this component
+ * reuses `LabelChip` for its own rows rather than drawing a second chip
+ * renderer. It has exactly one trigger style (a gear-icon button); the rail
+ * is its only mount point now that the workbench header no longer renders a
+ * labels row.
  *
  * Mirrors `ConversationThreadCard`'s resolve/unresolve override: toggling a
  * label applies to local state immediately, is dropped once the
@@ -81,7 +84,11 @@ function withoutName<T extends string>(
  *
  * `actions` is `undefined` when the Review can no longer accept label
  * writes (e.g. closed/merged); the picker renders nothing in that case, the
- * same way other write-only workbench actions withhold themselves.
+ * same way other write-only workbench actions withhold themselves. Under
+ * Terminal, `PullRequestMetadataRail` withholds this component entirely
+ * (rather than relying on `actions` being undefined), so every rail section
+ * goes read-only the same way regardless of whether its actions happen to be
+ * wired.
  */
 export function LabelPicker({
   attachedLabels,
@@ -199,11 +206,11 @@ export function LabelPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Button variant="outline" size="xs">
-            <Tag /> Labels
-          </Button>
+          <Button variant="ghost" size="icon-xs" aria-label="Manage labels" />
         }
-      />
+      >
+        <Settings2 />
+      </PopoverTrigger>
       <PopoverContent align="start">
         <PopoverHeader>
           <PopoverTitle>Labels</PopoverTitle>

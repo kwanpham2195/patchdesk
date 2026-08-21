@@ -28,7 +28,10 @@ import {
 } from "../components/ui/select";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import type {
+  RepositoryLabelListResponse,
+  WorkbenchResponse,
+} from "../renderer-contracts";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
 
@@ -99,6 +102,39 @@ export function AppFixtureContent({
       />
     );
   }
+  if (hash === "#workbench-empty-labels-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={{
+          ...workbenchFixtureData,
+          pullRequest: { ...workbenchFixtureData.pullRequest, labels: [] },
+        }}
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    );
+  if (hash === "#workbench-merged-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        modelOverrides={{
+          review: { id: "fixture-review", status: "merged" },
+        }}
+      />
+    );
+  if (hash === "#conversation-rail-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        modelOverrides={{
+          conversation: {
+            prDescription: "",
+            entries: longConversationFixtureEntries,
+          },
+        }}
+      />
+    );
   if (
     hash === "#blocked-merge-fixture" ||
     hash === "#acknowledgement-merge-fixture" ||
@@ -364,6 +400,22 @@ function WalkthroughFixture({
   );
 }
 
+// The repository's full label catalog, as the Labels picker's `fetchLabels`
+// reads it -- deliberately a superset of `workbenchFixtureData.pullRequest
+// .labels` (one already-attached label plus one not-yet-attached one) so a
+// browser test can open the picker and toggle a label that starts
+// unchecked.
+const fixtureLabelCatalog: RepositoryLabelListResponse = {
+  state: "ready",
+  labels: [
+    { id: "LA_bug", name: "bug", color: "d73a4a" },
+    { id: "LA_needs_review", name: "needs-review", color: "0075ca" },
+    { id: "LA_documentation", name: "documentation", color: "0e8a16" },
+  ],
+  totalCount: 3,
+  permission: "permitted",
+};
+
 function CanonicalFixtureWorkbench({
   data,
   onNavigationStateChange,
@@ -373,7 +425,10 @@ function CanonicalFixtureWorkbench({
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
   readonly modelOverrides?: Partial<
-    Pick<WorkbenchResponse, "mergeReadiness" | "mergeReasons" | "conversation">
+    Pick<
+      WorkbenchResponse,
+      "mergeReadiness" | "mergeReasons" | "conversation" | "review"
+    >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
 }): React.JSX.Element {
@@ -393,6 +448,11 @@ function CanonicalFixtureWorkbench({
     },
     localCommentAuthoring: { enabled: true, onSave: async () => undefined },
     reportNavigationState: onNavigationStateChange,
+    labels: {
+      fetchLabels: async () => fixtureLabelCatalog,
+      addLabels: async () => undefined,
+      removeLabels: async () => undefined,
+    },
   };
   if (mergeAction !== undefined) actions.merge = mergeAction;
   return (
@@ -896,6 +956,22 @@ function buildActiveFollowPatch(): string {
   }).join("");
 }
 
+// A Conversation timeline long enough that its tab genuinely scrolls past
+// the viewport -- `#workbench-fixture`'s own conversation is empty ("No
+// conversation yet."), which can't exercise "the rail stays in view while
+// the timeline scrolls" (nothing to scroll). Twenty multi-sentence issue
+// comments comfortably exceed any realistic test viewport height.
+const longConversationFixtureEntries: WorkbenchResponse["conversation"]["entries"] =
+  Array.from({ length: 20 }, (_, index) => ({
+    _tag: "IssueComment" as const,
+    comment: {
+      id: `conversation-rail-comment-${index}`,
+      author: `reviewer-${index}`,
+      body: `Comment ${index}: this fixture body is deliberately long enough, across several sentences, to make the Conversation timeline taller than any realistic browser viewport. It exists only to prove the metadata rail stays pinned in view while this timeline scrolls underneath it.`,
+      createdAt: "2026-07-17T00:00:00.000Z",
+    },
+  }));
+
 // oxlint-disable-next-line react/only-export-components -- Design reuses this deterministic completed-workbench payload.
 export const workbenchFixtureData = {
   fullPatch: fixturePatch,
@@ -917,7 +993,10 @@ export const workbenchFixtureData = {
     isDraft: false,
     reviewState: "none",
     mergeability: "mergeable",
-    labels: [],
+    labels: [
+      { name: "bug", color: "d73a4a" },
+      { name: "needs-review", color: "0075ca" },
+    ],
     updatedAt: "2026-07-17T00:00:00.000Z",
   },
   result: {

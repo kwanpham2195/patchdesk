@@ -39,9 +39,17 @@ type GeneralThreadOverrides = Readonly<MutableGeneralThreadOverrides>;
 export function Conversation({
   conversation,
   conversationActions,
+  rail,
 }: {
   readonly conversation: WorkbenchResponse["conversation"];
   readonly conversationActions?: ReviewConversationActions;
+  /** The pull-request metadata rail (Labels, and later Assignees/Reviewers),
+   * built by `ReviewWorkbench` since it holds the model. `Conversation` only
+   * owns the layout here — rendering `rail` beside (or, below the
+   * `min-[1100px]` breakpoint, beneath) the reading column when supplied,
+   * and nothing extra when it's not. That keeps the rail off the Diff and
+   * Insights tabs by construction: those tabs never pass it. */
+  readonly rail?: React.ReactNode;
 }): React.JSX.Element {
   const [resolvedThreads, setResolvedThreads] = useState<
     ReadonlyMap<string, "open" | "resolved">
@@ -99,42 +107,49 @@ export function Conversation({
 
   return (
     <div className="flex-1 overflow-y-auto" data-review-conversation>
-      <div className="mx-auto max-w-[680px] px-4 py-4">
-        {/* PR description */}
-        {conversation.prDescription.length > 0 && (
-          <div className="mb-4 rounded-md border p-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Pull request description
-            </p>
-            <PullRequestDescriptionPreview
-              markdown={conversation.prDescription}
-            />
-          </div>
-        )}
-
-        {/* Timeline entries */}
-        <div className="flex flex-col">
-          {conversation.prDescription.length === 0 &&
-          conversation.entries.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No conversation yet.
-            </p>
-          ) : (
-            conversation.entries.map((entry) => (
-              <ConversationTimelineEntry
-                key={conversationEntryKey(entry)}
-                entry={entry}
-                generalThreadOverrides={generalThreadOverrides}
+      <div className="mx-auto flex w-full max-w-[1024px] flex-col gap-6 px-4 py-4 min-[1100px]:flex-row min-[1100px]:items-start">
+        <div
+          className="mx-auto w-full min-w-0 max-w-[680px] min-[1100px]:mx-0 min-[1100px]:flex-1"
+          data-conversation-reading-column
+        >
+          {/* PR description */}
+          {conversation.prDescription.length > 0 && (
+            <div className="mb-4 rounded-md border p-4">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Pull request description
+              </p>
+              <PullRequestDescriptionPreview
+                markdown={conversation.prDescription}
               />
-            ))
+            </div>
+          )}
+
+          {/* Timeline entries */}
+          <div className="flex flex-col">
+            {conversation.prDescription.length === 0 &&
+            conversation.entries.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No conversation yet.
+              </p>
+            ) : (
+              conversation.entries.map((entry) => (
+                <ConversationTimelineEntry
+                  key={conversationEntryKey(entry)}
+                  entry={entry}
+                  generalThreadOverrides={generalThreadOverrides}
+                />
+              ))
+            )}
+          </div>
+
+          {conversation.complete === false && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Some conversation was not loaded. Refresh GitHub state to load
+              more.
+            </p>
           )}
         </div>
-
-        {conversation.complete === false && (
-          <p className="mt-4 text-xs text-muted-foreground">
-            Some conversation was not loaded. Refresh GitHub state to load more.
-          </p>
-        )}
+        {rail}
       </div>
     </div>
   );
