@@ -382,7 +382,12 @@ function MergeReadinessDetail({
                 <Button
                   variant="link"
                   size="sm"
-                  className="h-auto gap-1 p-0 text-inherit underline"
+                  // `text-inherit` keeps the card's own tone (destructive or
+                  // info) instead of the variant's `text-primary`, which would
+                  // read as a third colour inside a tinted card. Everything
+                  // else is left to the variant: it underlines on hover, and
+                  // `size="sm"` supplies the icon gap via `data-icon`.
+                  className="h-auto p-0 text-inherit"
                   onClick={() =>
                     void openPullRequestExternalUrl(
                       pullRequestPageUrl(pullRequest).toString(),
@@ -390,7 +395,7 @@ function MergeReadinessDetail({
                     )
                   }
                 >
-                  <ExternalLink /> Open on GitHub
+                  <ExternalLink data-icon="inline-start" /> Open on GitHub
                 </Button>
               </div>
             ) : null}
@@ -411,10 +416,7 @@ function MergeReadinessDetail({
                   cardTone,
                 )}
               >
-                <Icon
-                  className="mt-0.5 size-4 shrink-0"
-                  aria-hidden="true"
-                />
+                <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 {readinessBlockerLabel(blocker)}
               </p>
             );
