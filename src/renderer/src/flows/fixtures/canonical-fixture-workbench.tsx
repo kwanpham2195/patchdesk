@@ -42,6 +42,7 @@ export function CanonicalFixtureWorkbench({
       | "conversation"
       | "review"
       | "pendingReview"
+      | "revision"
     >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;

@@ -86,6 +86,8 @@ for (const fixture of [
   "#workbench-fixture",
   "#submission-fixture",
   "#merge-fixture",
+  "#workbench-refresh-unavailable-fixture",
+  "#workbench-updates-available-fixture",
 ]) {
   test(`axe has no serious Patchdesk violations for ${fixture || "dashboard"}`, async ({
     page,
@@ -431,6 +433,18 @@ test("the rail's Labels picker is fully keyboard-reachable and operable", async 
   expect(await docsCheckbox.getAttribute("aria-checked")).toBe("false");
   await page.keyboard.press("Space");
   await expect(docsCheckbox).toHaveAttribute("aria-checked", "true");
+});
+
+test("the header refresh control is keyboard-reachable with an accessible name", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-fixture`);
+  const refresh = page.getByRole("button", { name: "Refresh GitHub state" });
+  await refresh.focus();
+  await expect(refresh).toBeFocused();
+  await page.keyboard.press("Enter");
+  await forceLightAppearance(page);
+  expect(await seriousProductViolations(page)).toEqual([]);
 });
 
 test("the rail's Assignees picker is fully keyboard-reachable and operable", async ({

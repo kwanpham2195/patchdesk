@@ -1192,13 +1192,97 @@ test("PR overview shows a blocked merge state without a duplicate alert", async 
     await expect(reason).toContainText("Required checks have not passed.");
     await expect(reason).toContainText("Checks");
     await expect(reason).not.toContainText("available");
-    await expect(
-      overview.getByRole("button", { name: "Open on GitHub" }),
-    ).toBeVisible();
+    // Not-yet-confirmed evidence (availability: "partial") must say in words
+    // that Patchdesk could not confirm the rule -- the info-tone card alone
+    // does not carry that meaning (see ADR 0027, "Unknown is not failure").
+    const partial = overview.locator("[data-reason-availability='partial']");
+    await expect(partial).toContainText("Approval required by GitHub.");
+    await expect(partial).toContainText("Patchdesk could not confirm this rule");
+    await expect(partial).toContainText("GitHub PR state");
+    await expect(partial).not.toContainText("partial");
+    const openOnGitHub = partial.getByRole("button", {
+      name: "Open on GitHub",
+    });
+    await expect(openOnGitHub).toBeVisible();
+    // "Open on GitHub" reads as its own control on its own line, not as
+    // inline text glued onto the reason sentence -- assert the stacking by
+    // bounding box rather than by markup, since either a real block element
+    // or a wrapped inline span could otherwise satisfy a DOM-shape check.
+    const message = partial.getByText("Approval required by GitHub.");
+    const [messageBox, buttonBox] = await Promise.all([
+      message.boundingBox(),
+      openOnGitHub.boundingBox(),
+    ]);
+    expect(messageBox).not.toBeNull();
+    expect(buttonBox).not.toBeNull();
+    if (messageBox === null || buttonBox === null) {
+      throw new Error("missing reason message or Open on GitHub bounding box");
+    }
+    expect(buttonBox.y).toBeGreaterThan(messageBox.y + messageBox.height);
     await expect(
       overview.getByRole("button", { name: "Prepare merge confirmation" }),
     ).toHaveCount(0);
     await expect(overview.getByText("Merge blocked")).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("the header refresh control is reachable when GitHub state is fresh", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    const freshRefresh = page.getByRole("button", {
+      name: "Refresh GitHub state",
+    });
+    await expect(freshRefresh).toBeVisible();
+    await expect(freshRefresh).toBeEnabled();
+  } finally {
+    await close(server);
+  }
+});
+
+test("the header refresh control is reachable when GitHub state is unavailable, and the sheet no longer drives refresh", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.goto(`${origin(server)}/#workbench-refresh-unavailable-fixture`);
+    await expect(page.getByText("Remote state unavailable")).toBeVisible();
+    const unavailableRefresh = page.getByRole("button", {
+      name: "Refresh GitHub state",
+    });
+    await expect(unavailableRefresh).toBeVisible();
+    await expect(unavailableRefresh).toBeEnabled();
+    // The sheet no longer drives refresh -- it only reads state.
+    await page.getByRole("button", { name: "PR overview" }).click();
+    const overview = page.getByRole("dialog", { name: "PR overview" });
+    await expect(overview).toBeVisible();
+    await expect(
+      overview.getByRole("button", { name: "Refresh GitHub state" }),
+    ).toHaveCount(0);
+  } finally {
+    await close(server);
+  }
+});
+
+test("the amber Updates available indicator renders as a signal without its own button", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.goto(`${origin(server)}/#workbench-updates-available-fixture`);
+    const indicator = page.locator("[data-review-new-version-indicator]");
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toHaveAttribute("role", "status");
+    await expect(indicator).toHaveText("Updates available");
+    await expect(indicator.getByRole("button")).toHaveCount(0);
+    // Refresh lives in exactly one place now: the header control beside it.
+    await expect(
+      page.getByRole("button", { name: "Refresh GitHub state" }),
+    ).toBeVisible();
   } finally {
     await close(server);
   }

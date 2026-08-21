@@ -4,9 +4,9 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ExternalLink,
   GitMerge,
   Info,
-  RefreshCw,
   Sparkles,
   XCircle,
 } from "lucide-react";
@@ -112,13 +112,11 @@ export function CanonicalReviewOverviewSheet({
   onOpenChange,
   overview,
   merge,
-  onRefresh,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly overview: CanonicalReviewOverview;
   readonly merge?: PullRequestOverviewMerge;
-  readonly onRefresh?: () => Promise<void>;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -150,11 +148,7 @@ export function CanonicalReviewOverviewSheet({
             trailing={revisionFreshnessLabel(freshness)}
             trailingTone={revisionFreshnessTone(freshness)}
           >
-            <RevisionDetails
-              overview={overview}
-              terminal={terminal}
-              {...(onRefresh === undefined ? {} : { onRefresh })}
-            />
+            <RevisionDetails overview={overview} />
           </OverviewRow>
           <Separator />
           <OverviewRow
@@ -261,12 +255,8 @@ const infoCard = "border-status-info/30 bg-status-info/10 text-status-info";
 
 function RevisionDetails({
   overview,
-  terminal,
-  onRefresh,
 }: {
   readonly overview: CanonicalReviewOverview;
-  readonly terminal: boolean;
-  readonly onRefresh?: () => Promise<void>;
 }): React.JSX.Element {
   const revision = overview.revision;
   if (revision === undefined)
@@ -313,17 +303,6 @@ function RevisionDetails({
       </p>
       {counts.length === 0 ? null : (
         <p className="text-xs text-muted-foreground">{counts.join(" · ")}</p>
-      )}
-      {terminal ? null : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="self-start"
-          onClick={() => void onRefresh?.()}
-        >
-          <RefreshCw data-icon="inline-start" />
-          Refresh GitHub state
-        </Button>
       )}
     </div>
   );
@@ -381,26 +360,29 @@ function MergeReadinessDetail({
           reason.openOnGitHub &&
           index === firstOpenOnGitHubIndex &&
           pullRequest !== undefined;
+        const caption = isConfirmed
+          ? reasonSourceLabel(reason.source)
+          : `Patchdesk could not confirm this rule · ${reasonSourceLabel(reason.source)}`;
         return (
-          <p
+          <div
             key={`${reason.code}-${reason.source}-${reason.message}`}
             data-reason-availability={reason.availability}
             className={cn(
-              "flex items-start gap-2 rounded-md border px-3 py-2",
+              "flex flex-col gap-1.5 rounded-md border px-3 py-2",
               cardTone,
             )}
           >
-            <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span className="min-w-0">
-              {reason.message}
-              <span className="ml-1 text-xs opacity-80">
-                {reasonSourceLabel(reason.source)}
-              </span>
-              {showOpenOnGitHub ? (
+            <div className="flex items-start gap-2">
+              <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">{reason.message}</span>
+            </div>
+            <p className="pl-6 text-xs opacity-80">{caption}</p>
+            {showOpenOnGitHub ? (
+              <div className="pl-6">
                 <Button
                   variant="link"
                   size="sm"
-                  className="ml-1 h-auto p-0 align-baseline text-inherit underline"
+                  className="h-auto gap-1 p-0 text-inherit underline"
                   onClick={() =>
                     void openPullRequestExternalUrl(
                       pullRequestPageUrl(pullRequest).toString(),
@@ -408,11 +390,11 @@ function MergeReadinessDetail({
                     )
                   }
                 >
-                  Open on GitHub
+                  <ExternalLink /> Open on GitHub
                 </Button>
-              ) : null}
-            </span>
-          </p>
+              </div>
+            ) : null}
+          </div>
         );
       })}
       {showBlockers

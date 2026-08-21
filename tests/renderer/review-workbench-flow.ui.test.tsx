@@ -381,12 +381,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     const { replace } = mount(projection());
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "PR overview" }));
-    await userEvent.setup().click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Refresh GitHub state",
-      }),
-    );
+      .click(screen.getByRole("button", { name: "Refresh GitHub state" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -456,11 +451,8 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         .at(0);
       if (close === undefined) throw new Error("missing summary close button");
       await user.click(close);
-      await user.click(screen.getByRole("button", { name: "PR overview" }));
       await user.click(
-        within(screen.getByRole("dialog")).getByRole("button", {
-          name: "Refresh GitHub state",
-        }),
+        screen.getByRole("button", { name: "Refresh GitHub state" }),
       );
       await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
       observe(

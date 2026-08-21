@@ -16,6 +16,7 @@ import {
   ExternalLink,
   LoaderCircle,
   PanelLeftOpen,
+  RefreshCw,
   XCircle,
 } from "lucide-react";
 
@@ -879,36 +880,48 @@ export function ReviewWorkbench({
             </div>
           </div>
           <PendingReviewNotice pendingReview={actions.pendingReview} />
-          <p
-            className="text-xs text-muted-foreground"
-            title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
-          >
-            {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
-            {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
-            {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
-            refreshed {model.revision.refreshedAt}
-            {hasUpdates ? (
-              <span
-                className="ml-2 inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400"
-                role="status"
-                data-review-new-version-indicator
-              >
-                Updates available
-                {/* A renderer reload loads the stored projection; only the explicit
-                refresh action replaces represented GitHub state. */}
-                <button
-                  type="button"
-                  className="underline decoration-amber-500/60 underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
-                  disabled={actions.refreshing === true || terminal}
-                  onClick={() => void actions.refresh()}
+          <div className="flex items-center gap-1">
+            <p
+              className="text-xs text-muted-foreground"
+              title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
+            >
+              {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
+              {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
+              {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
+              refreshed {model.revision.refreshedAt}
+              {hasUpdates ? (
+                <span
+                  className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400"
+                  role="status"
+                  data-review-new-version-indicator
                 >
-                  {actions.refreshing === true
-                    ? "Refreshing…"
-                    : "Refresh GitHub state"}
-                </button>
-              </span>
-            ) : null}
-          </p>
+                  Updates available
+                </span>
+              ) : null}
+            </p>
+            {terminal ? null : (
+              // A renderer reload loads the stored projection; only the explicit
+              // refresh action replaces represented GitHub state.
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0"
+                disabled={actions.refreshing === true}
+                onClick={() => void actions.refresh()}
+                aria-label={
+                  actions.refreshing === true
+                    ? "Refresh GitHub state — refreshing"
+                    : "Refresh GitHub state"
+                }
+              >
+                {actions.refreshing === true ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <RefreshCw />
+                )}
+              </Button>
+            )}
+          </div>
           <p className="sr-only" aria-live="polite">
             {hasUpdates
               ? "Remote updates are available. Refresh before publishing or merging."
@@ -1175,7 +1188,6 @@ export function ReviewWorkbench({
           onOpenChange={setOverviewOpen}
           overview={overview}
           {...(actions.merge === undefined ? {} : { merge: actions.merge })}
-          onRefresh={actions.refresh}
         />
         {actions.pendingReview === undefined ||
         actions.pendingReview.projection?.state !== "pending" ? null : (
