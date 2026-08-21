@@ -198,7 +198,11 @@ export function SettingsModal({
             orientation="horizontal"
             className="min-h-0 flex-1 gap-0"
           >
-            <TabsList className="mx-10 mt-8" aria-label="Settings sections">
+            <TabsList
+              variant="line"
+              className="mx-10 mt-8"
+              aria-label="Settings sections"
+            >
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="workspace">Workspace</TabsTrigger>
               <TabsTrigger value="review">Review</TabsTrigger>
