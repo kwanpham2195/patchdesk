@@ -863,6 +863,13 @@ function containsRecentWrites(
         write.removed.every((name) => !labelNames.has(name))
       );
     }
+    if (write._tag === "AssigneeChange") {
+      const assigneeLogins = new Set(snapshot.pullRequest.assignees ?? []);
+      return (
+        write.added.every((login) => assigneeLogins.has(login)) &&
+        write.removed.every((login) => !assigneeLogins.has(login))
+      );
+    }
     return (
       snapshot.comments.threads.some((thread) =>
         thread.comments.some((comment) => comment.id === write.commentId),

@@ -11,6 +11,7 @@ import {
   type GitHubCredentials,
 } from "./github-credentials";
 import type {
+  AssignableUserListing,
   CheckRunSummary,
   CheckSummary,
   Conversation,
@@ -21,6 +22,7 @@ import type {
   PublishedReviewComment,
   GitHubMergePolicyEvidence,
   PublishedReview,
+  PullRequestAssigneePermission,
   PullRequestCommit,
   PullRequestSummary,
   MergePolicySnapshot,
@@ -57,7 +59,9 @@ import type { GitHubReviewEvent } from "../../domain/pending-review";
 import type { GitHubWriteFailure } from "../../domain/github-write";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
 import {
+  addAssigneesToAssignableMutation,
   addLabelsToLabelableMutation,
+  assignableUsersQuery,
   confirmCreatedCommentThreadQuery,
   maintainerInboxQuery,
   maxMergePolicyPages,
@@ -68,6 +72,7 @@ import {
   maxReviewThreads,
   mergePolicyQuery,
   pendingReviewThreadsQuery,
+  removeAssigneesFromAssignableMutation,
   removeLabelsFromLabelableMutation,
   repositoryLabelsQuery,
   reviewCommentTargetQuery,
@@ -78,6 +83,7 @@ import {
 import {
   addedReviewThreadSchema,
   addedThreadReplySchema,
+  assignableUsersResponseSchema,
   branchProtectionSchema,
   checkRunsSchema,
   commitStatusesSchema,
@@ -112,6 +118,7 @@ import {
   isManagedFetchedRef,
   matchesPullRequest,
   overallCheckStatus,
+  parseAssignableUser,
   parseComment,
   parseDirectSummaryReceipt,
   parseGitHubTimestamp,
@@ -159,6 +166,12 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: PullRequestRef;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>>;
+  /** Bounded list of repository collaborators eligible for assignment, for populating an assignee picker. `query` filters server-side by login/name substring. */
+  listAssignableUsers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+    readonly query?: string;
+  }): Promise<Result<AssignableUserListing, GitHubReadFailure>>;
   getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -347,6 +360,18 @@ export interface GitHubReviewWriter {
     readonly profile: WorkspaceProfileConfig;
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Assigns people to an assignable (e.g. a pull request) by GraphQL node ID. */
+  addAssigneesToAssignable?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Unassigns people from an assignable (e.g. a pull request) by GraphQL node ID. */
+  removeAssigneesFromAssignable?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -540,10 +565,29 @@ export type RepositoryPermissionEvidence = {
  * extreme in either direction — see `RepositoryLabelPermission`.
  */
 export function repositoryLabelPermission(
-  permission: Result<RepositoryPermissionEvidence, GitHubReadFailure> | undefined,
+  permission:
+    | Result<RepositoryPermissionEvidence, GitHubReadFailure>
+    | undefined,
 ): RepositoryLabelPermission {
   if (permission === undefined || permission._tag === "err") return "unknown";
   return permission.value.canManageLabels ? "permitted" : "denied";
+}
+
+/**
+ * Projects optional repository-permission evidence into a three-state
+ * assignee-write capability. Derived from `pullRequestsWrite`, not
+ * `canManageLabels` — per ADR "The conversation rail owns pull request
+ * metadata writes", assigning needs pull-request write, unlike labeling
+ * which `triage` can also do. Missing or failed evidence yields `unknown`,
+ * never a wrong extreme in either direction — see `PullRequestAssigneePermission`.
+ */
+export function pullRequestAssigneePermission(
+  permission:
+    | Result<RepositoryPermissionEvidence, GitHubReadFailure>
+    | undefined,
+): PullRequestAssigneePermission {
+  if (permission === undefined || permission._tag === "err") return "unknown";
+  return permission.value.pullRequestsWrite ? "permitted" : "denied";
 }
 
 export type BranchProtectionEvidence = {
@@ -580,6 +624,7 @@ export type GitHubReadOperation =
   | "list_open_prs"
   | "list_maintainer_prs"
   | "list_repository_labels"
+  | "list_assignable_users"
   | "get_pr"
   | "get_merge_policy"
   | "get_merge_policy_evidence"
@@ -688,7 +733,11 @@ export class GitHubAdapter
       return err({ _tag: "GitHubRateLimited", operation, ...resumeAtField });
     }
     if (failure._tag === "CommandForbidden") {
-      return err({ _tag: "GitHubForbidden", operation, reason: failure.reason });
+      return err({
+        _tag: "GitHubForbidden",
+        operation,
+        reason: failure.reason,
+      });
     }
     return err({ _tag: "GitHubReadFailed", operation });
   }
@@ -708,7 +757,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("list_open_prs", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "list_open_prs",
+        response.error,
+        input.profile.githubHost,
+      );
     if (!Array.isArray(response.value)) return invalid("list_open_prs");
 
     const summaries: Array<PullRequestSummary> = [];
@@ -811,12 +864,53 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("list_repository_labels", response.error, host);
+      return this.commandFailure(
+        "list_repository_labels",
+        response.error,
+        host,
+      );
     const parsed = v.safeParse(repositoryLabelsResponseSchema, response.value);
     if (!parsed.success) return invalid("list_repository_labels");
     const connection = parsed.output.data.repository.labels;
     return ok({
       labels: connection.nodes.map(parseRepositoryLabel),
+      totalCount: connection.totalCount,
+    });
+  }
+
+  /** Fetches up to 100 repository collaborators eligible for assignment in one bounded page; `totalCount` reveals truncation beyond that. `query` filters server-side by login/name substring when provided. */
+  async listAssignableUsers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+    readonly query?: string;
+  }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${assignableUsersQuery}`,
+        "-F",
+        `owner=${input.repo.owner}`,
+        "-F",
+        `name=${input.repo.repo}`,
+        ...(input.query !== undefined && input.query.length > 0
+          ? ["-F", `search=${input.query}`]
+          : []),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("list_assignable_users", response.error, host);
+    const parsed = v.safeParse(assignableUsersResponseSchema, response.value);
+    if (!parsed.success) return invalid("list_assignable_users");
+    const connection = parsed.output.data.repository.assignableUsers;
+    return ok({
+      users: connection.nodes.map(parseAssignableUser),
       totalCount: connection.totalCount,
     });
   }
@@ -836,7 +930,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") {
-      return this.commandFailure("get_pr", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_pr",
+        response.error,
+        input.profile.githubHost,
+      );
     }
     const raw = v.safeParse(pullRequestSchema, response.value);
     if (!raw.success) return invalid("get_pr");
@@ -878,7 +976,11 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err")
-        return this.commandFailure("get_merge_policy", response.error, input.profile.githubHost);
+        return this.commandFailure(
+          "get_merge_policy",
+          response.error,
+          input.profile.githubHost,
+        );
       const raw = v.safeParse(mergePolicyResponseSchema, response.value);
       if (!raw.success) return invalid("get_merge_policy");
       const parsed = parseMergePolicyPage(raw.output);
@@ -948,7 +1050,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_pr", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_pr",
+        response.error,
+        input.profile.githubHost,
+      );
     const raw = v.safeParse(mergeOutcomeSchema, response.value);
     return raw.success ? parseMergeOutcome(raw.output) : invalid("get_pr");
   }
@@ -972,7 +1078,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_pr_commits", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_pr_commits",
+        response.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(
       v.array(v.array(pullRequestCommitSchema)),
       response.value,
@@ -1042,7 +1152,11 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err") {
-        return this.commandFailure("get_comments", response.error, input.profile.githubHost);
+        return this.commandFailure(
+          "get_comments",
+          response.error,
+          input.profile.githubHost,
+        );
       }
       const parsed = v.safeParse(threadResponseSchema, response.value);
       if (!parsed.success) return invalid("get_comments");
@@ -1214,9 +1328,17 @@ export class GitHubAdapter
       this.resolveAuthenticatedAccount(input.profile),
     ]);
     if (reviews._tag === "err")
-      return this.commandFailure("get_reviews", reviews.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_reviews",
+        reviews.error,
+        input.profile.githubHost,
+      );
     if (comments._tag === "err")
-      return this.commandFailure("get_comments", comments.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_comments",
+        comments.error,
+        input.profile.githubHost,
+      );
     const permission =
       account._tag === "ok" && account.value.account === input.profile.ghAccount
         ? await this.getRepositoryPermission({
@@ -1368,7 +1490,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_repository_permission", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_repository_permission",
+        response.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(repositoryPermissionSchema, response.value);
     if (!parsed.success) return invalid("get_repository_permission");
     const roleName = parsed.output.role_name;
@@ -1416,7 +1542,11 @@ export class GitHubAdapter
       return ok({ protected: false, allowedDismissers: [] });
     }
     if (response._tag === "err")
-      return this.commandFailure("get_branch_protection", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_branch_protection",
+        response.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(branchProtectionSchema, response.value);
     if (!parsed.success) return invalid("get_branch_protection");
     const rules = parsed.output.required_pull_request_reviews;
@@ -1549,7 +1679,11 @@ export class GitHubAdapter
       }),
     ]);
     if (checkRunsResponse._tag === "err" && statusesResponse._tag === "err")
-      return this.commandFailure("get_checks", checkRunsResponse.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_checks",
+        checkRunsResponse.error,
+        input.profile.githubHost,
+      );
     const checks =
       checkRunsResponse._tag === "ok"
         ? v.safeParse(checkRunsSchema, checkRunsResponse.value)
@@ -1596,7 +1730,11 @@ export class GitHubAdapter
       });
       return exact._tag === "ok"
         ? exact
-        : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
+        : this.commandFailure(
+            "get_diff",
+            exact.error,
+            input.profile.githubHost,
+          );
     }
 
     if (input.snapshot !== undefined) {
@@ -1614,7 +1752,11 @@ export class GitHubAdapter
       });
       return exact._tag === "ok"
         ? exact
-        : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
+        : this.commandFailure(
+            "get_diff",
+            exact.error,
+            input.profile.githubHost,
+          );
     }
 
     const response = await this.ghText(input.profile, {
@@ -1634,7 +1776,11 @@ export class GitHubAdapter
       response._tag === "err" &&
       response.error._tag === "CommandAuthenticationRequired"
     ) {
-      return this.commandFailure("get_diff", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_diff",
+        response.error,
+        input.profile.githubHost,
+      );
     }
     return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
@@ -1660,7 +1806,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_file", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_file",
+        response.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(repositoryFileSchema, response.value);
     if (!parsed.success || parsed.output.type !== "file")
       return invalid("get_file");
@@ -1866,7 +2016,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_direct_summary_reviews", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_direct_summary_reviews",
+        response.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(publishedReviewSchema, response.value);
     if (!parsed.success) return invalid("get_direct_summary_reviews");
     const reviews: DirectSummaryPublishedReview[] = [];
@@ -1920,7 +2074,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (reviews._tag === "err")
-      return this.commandFailure("get_pending_review", reviews.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_pending_review",
+        reviews.error,
+        input.profile.githubHost,
+      );
     const parsed = v.safeParse(publishedReviewSchema, reviews.value);
     if (!parsed.success) return invalid("get_pending_review");
     const pending = parsed.output.filter(
@@ -1979,7 +2137,11 @@ export class GitHubAdapter
       timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
-      return this.commandFailure("get_pending_review", response.error, input.profile.githubHost);
+      return this.commandFailure(
+        "get_pending_review",
+        response.error,
+        input.profile.githubHost,
+      );
     const threads = v.safeParse(
       pendingReviewThreadsResponseSchema,
       response.value,
@@ -2513,6 +2675,62 @@ export class GitHubAdapter
       : ok(undefined);
   }
 
+  async addAssigneesToAssignable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${addAssigneesToAssignableMutation}`,
+        "-F",
+        `assignableId=${input.assignableId}`,
+        ...input.assigneeIds.flatMap((assigneeId) => [
+          "-F",
+          `assigneeIds[]=${assigneeId}`,
+        ]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  async removeAssigneesFromAssignable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${removeAssigneesFromAssignableMutation}`,
+        "-F",
+        `assignableId=${input.assignableId}`,
+        ...input.assigneeIds.flatMap((assigneeId) => [
+          "-F",
+          `assigneeIds[]=${assigneeId}`,
+        ]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
   async updateThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
@@ -2810,4 +3028,3 @@ export {
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-

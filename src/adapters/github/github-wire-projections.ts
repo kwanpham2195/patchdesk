@@ -3,6 +3,7 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import type {
+  AssignableUser,
   CheckRunSummary,
   CheckSummary,
   GitHubAppliedRulesetEvidence,
@@ -37,9 +38,13 @@ import {
   type MergeOutcome,
   type PendingReviewComment,
 } from "./github-adapter";
-import { invalid, optionalPolicyUnavailableReason } from "./github-write-failures";
+import {
+  invalid,
+  optionalPolicyUnavailableReason,
+} from "./github-write-failures";
 import {
   appliedRulesetSchema,
+  type assignableUsersResponseSchema,
   type checkRunsSchema,
   type commitStatusesSchema,
   type directSummaryReceiptSchema,
@@ -115,7 +120,29 @@ export function parseRepositoryLabel(
     typeof repositoryLabelsResponseSchema
   >["data"]["repository"]["labels"]["nodes"][number],
 ): RepositoryLabel {
-  return { id: input.id, name: input.name, color: input.color };
+  const label = { id: input.id, name: input.name, color: input.color };
+  return input.description !== null &&
+    input.description !== undefined &&
+    input.description.length > 0
+    ? { ...label, description: input.description }
+    : label;
+}
+
+export function parseAssignableUser(
+  input: v.InferOutput<
+    typeof assignableUsersResponseSchema
+  >["data"]["repository"]["assignableUsers"]["nodes"][number],
+): AssignableUser {
+  const user = { id: input.id, login: input.login };
+  const withName =
+    input.name !== null && input.name !== undefined && input.name.length > 0
+      ? { ...user, name: input.name }
+      : user;
+  return input.avatarUrl !== null &&
+    input.avatarUrl !== undefined &&
+    input.avatarUrl.length > 0
+    ? { ...withName, avatarUrl: input.avatarUrl }
+    : withName;
 }
 
 export function parseMergeOutcome(
@@ -481,8 +508,7 @@ export function parseComment(
     createdAt: createdAt.value,
   };
   const authorAvatarUrl = input.author?.avatarUrl ?? undefined;
-  if (authorAvatarUrl !== undefined)
-    comment = { ...comment, authorAvatarUrl };
+  if (authorAvatarUrl !== undefined) comment = { ...comment, authorAvatarUrl };
   if (updatedAt !== undefined)
     comment = { ...comment, updatedAt: updatedAt.value };
   const url = input.url ?? undefined;
@@ -753,8 +779,7 @@ function buildPullRequestParameters(
     built.requiredReviewThreadResolution =
       parameters.required_review_thread_resolution;
   if (parameters.dismiss_stale_reviews_on_push !== undefined)
-    built.dismissStaleReviewsOnPush =
-      parameters.dismiss_stale_reviews_on_push;
+    built.dismissStaleReviewsOnPush = parameters.dismiss_stale_reviews_on_push;
   if (parameters.require_code_owner_review !== undefined)
     built.requireCodeOwnerReview = parameters.require_code_owner_review;
   return Object.keys(built).length === 0 ? undefined : built;

@@ -286,6 +286,14 @@ export type GitHubLabel = {
 export type RepositoryLabel = GitHubLabel & {
   /** GitHub GraphQL node ID, e.g. for the future `addLabelsToLabelable` mutation. */
   readonly id: string;
+  /**
+   * `| undefined` (not just `?:`) so this structurally accepts the renderer
+   * contract's parsed wire shape directly under `exactOptionalPropertyTypes`
+   * — see `contracts.ts`'s optional fields for the same reasoning. Producers
+   * still omit the key entirely rather than setting it to `undefined`
+   * (`parseRepositoryLabel` in `github-wire-projections.ts`).
+   */
+  readonly description?: string | undefined;
 };
 
 export type RepositoryLabelListing = {
@@ -293,6 +301,30 @@ export type RepositoryLabelListing = {
   /** GitHub's exact total label count; compare against `labels.length` to detect truncation, mirroring `PullRequestSummary.labelCount`. */
   readonly totalCount: number;
 };
+
+/** A repository collaborator eligible to be assigned to a pull request, for populating an assignee picker. */
+export type AssignableUser = {
+  /** GraphQL node ID — required by `addAssigneesToAssignable`/`removeAssigneesFromAssignable`; the logins already on `PullRequestSummary.assignees` are not sufficient. */
+  readonly id: string;
+  readonly login: string;
+  readonly name?: string;
+  readonly avatarUrl?: string;
+};
+
+export type AssignableUserListing = {
+  readonly users: ReadonlyArray<AssignableUser>;
+  /** GitHub's exact total; compare against `users.length` to detect truncation, mirroring `RepositoryLabelListing.totalCount`. */
+  readonly totalCount: number;
+};
+
+/**
+ * Whether the authenticated account may assign people to this pull request.
+ * A plain alias, not a duplicated union: assigning requires pull-request
+ * write (unlike labeling, which `triage` can also do — see ADR "The
+ * conversation rail owns pull request metadata writes"), but the state names
+ * and fail-closed semantics are identical to `RepositoryLabelPermission`.
+ */
+export type PullRequestAssigneePermission = RepositoryLabelPermission;
 
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;

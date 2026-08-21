@@ -1,4 +1,5 @@
 import type {
+  AssignableUserListing,
   CheckSummary,
   Conversation,
   GitHubComments,
@@ -89,6 +90,17 @@ export class FakeGitHubAdapter
     return this.values.repositoryLabels === undefined
       ? missing("list_repository_labels")
       : ok(this.values.repositoryLabels);
+  }
+
+  async listAssignableUsers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: PullRequestRef;
+    readonly query?: string;
+  }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
+    void input;
+    return this.values.assignableUsers === undefined
+      ? missing("list_assignable_users")
+      : ok(this.values.assignableUsers);
   }
 
   async getPullRequest(input: {
@@ -311,6 +323,36 @@ export class FakeGitHubAdapter
           _tag: "GitHubWriteFailure",
           category: "unavailable",
           message: "set_thread_state",
+        })
+      : ok(undefined);
+  }
+
+  async addAssigneesToAssignable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.addAssigneesToAssignable === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "add_assignees",
+        })
+      : ok(undefined);
+  }
+
+  async removeAssigneesFromAssignable(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly assignableId: string;
+    readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.removeAssigneesFromAssignable === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "remove_assignees",
         })
       : ok(undefined);
   }
@@ -558,6 +600,7 @@ export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
   readonly maintainerPullRequests: MaintainerPullRequestListing;
   readonly repositoryLabels: RepositoryLabelListing;
+  readonly assignableUsers: AssignableUserListing;
   readonly pullRequest: PullRequestSummary;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
@@ -615,4 +658,6 @@ export type FakeGitHubAdapterValues = {
   readonly setReviewThreadState?: Record<string, never>;
   readonly updateThreadComment?: Record<string, never>;
   readonly deleteThreadComment?: Record<string, never>;
+  readonly addAssigneesToAssignable?: Record<string, never>;
+  readonly removeAssigneesFromAssignable?: Record<string, never>;
 };

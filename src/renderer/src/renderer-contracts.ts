@@ -275,6 +275,7 @@ const repositoryLabelListResponseSchema = v.strictObject({
         id: v.pipe(v.string(), v.minLength(1)),
         name: v.pipe(v.string(), v.minLength(1)),
         color: v.pipe(v.string(), v.minLength(1)),
+        description: v.optional(v.pipe(v.string(), v.minLength(1))),
       }),
     ),
   ),
@@ -301,6 +302,54 @@ export function parseRepositoryLabelListResponse(
   input: unknown,
 ): RepositoryLabelListResponse | undefined {
   const parsed = v.safeParse(repositoryLabelListResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
+// `GET /v1/reviews/assignees` mirrors `repositoryLabelListResponseSchema`
+// exactly in structure and validation style; see its comment above. It
+// fails closed the same way: a consumer applies `permission ?? "unknown"`
+// (that consumer is the renderer's assignee picker, owned elsewhere).
+const assignableUserListResponseSchema = v.strictObject({
+  state: v.picklist([
+    "ready",
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ]),
+  users: v.optional(
+    v.array(
+      v.strictObject({
+        id: v.pipe(v.string(), v.minLength(1)),
+        login: v.pipe(v.string(), v.minLength(1)),
+        name: v.optional(v.pipe(v.string(), v.minLength(1))),
+        avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+      }),
+    ),
+  ),
+  // GitHub's exact total; compare against `users.length` to detect
+  // truncation of the bounded page the local API returns.
+  totalCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  // Only present on `state: "ready"` — the real, service-computed
+  // three-state assignee-write permission (never inferred from a failed
+  // write). See `AssigneeListOutcome` in `src/services/assignee-service.ts`.
+  permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
+  resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+  forbiddenReason: v.optional(
+    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
+  ),
+});
+
+export type AssignableUserListResponse = v.InferOutput<
+  typeof assignableUserListResponseSchema
+>;
+
+/** Parses the local API's assignable-user listing before an assignee picker owns it. */
+export function parseAssignableUserListResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): AssignableUserListResponse | undefined {
+  const parsed = v.safeParse(assignableUserListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 

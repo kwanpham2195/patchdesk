@@ -64,6 +64,12 @@ const entrySchema = v.variant("_tag", [
     removed: v.array(v.string()),
     writtenAt: v.string(),
   }),
+  v.strictObject({
+    _tag: v.literal("AssigneeChange"),
+    added: v.array(v.string()),
+    removed: v.array(v.string()),
+    writtenAt: v.string(),
+  }),
 ]);
 const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),

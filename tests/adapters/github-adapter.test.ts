@@ -14,6 +14,7 @@ import {
   createFetchedDiffRefs,
   FakeGitHubAdapter,
   GitHubAdapter,
+  pullRequestAssigneePermission,
   repositoryLabelPermission,
   type GitHubReadFailure,
 } from "../../src/adapters/github/github-adapter";
@@ -194,7 +195,10 @@ type PullRequestPayload = {
   readonly updated_at: string;
   readonly body?: string | null;
   readonly mergeable_state?: string | undefined;
-  readonly labels?: ReadonlyArray<{ readonly name: string; readonly color: string }>;
+  readonly labels?: ReadonlyArray<{
+    readonly name: string;
+    readonly color: string;
+  }>;
   readonly requested_reviewers?: ReadonlyArray<{ readonly login: string }>;
   readonly assignees?: ReadonlyArray<{ readonly login: string }>;
   readonly additions?: number | undefined;
@@ -1373,6 +1377,47 @@ describe("repositoryLabelPermission", () => {
   });
 });
 
+describe("pullRequestAssigneePermission", () => {
+  const failure: GitHubReadFailure = {
+    _tag: "GitHubReadFailed",
+    operation: "get_repository_permission",
+  };
+
+  it("reports permitted when evidence grants pull-request write, unlike label management which triage alone also grants", () => {
+    expect(
+      pullRequestAssigneePermission(
+        ok({
+          account: "pmquan2cfw",
+          permission: "write",
+          pullRequestsWrite: true,
+          canManageLabels: true,
+        }),
+      ),
+    ).toBe("permitted");
+  });
+
+  it("reports denied for triage evidence, since triage can manage labels but cannot assign", () => {
+    expect(
+      pullRequestAssigneePermission(
+        ok({
+          account: "pmquan2cfw",
+          permission: "triage",
+          pullRequestsWrite: false,
+          canManageLabels: true,
+        }),
+      ),
+    ).toBe("denied");
+  });
+
+  it("reports unknown when the evidence read failed", () => {
+    expect(pullRequestAssigneePermission(err(failure))).toBe("unknown");
+  });
+
+  it("reports unknown when no evidence was fetched at all", () => {
+    expect(pullRequestAssigneePermission(undefined)).toBe("unknown");
+  });
+});
+
 describe("GitHubAdapter read boundary", () => {
   it("returns parsed GraphQL inbox rows and marks a capped listing incomplete", async () => {
     const page = (hasNextPage: boolean, endCursor: string | null) => ({
@@ -1535,7 +1580,11 @@ describe("GitHubAdapter read boundary", () => {
             totalCount: 2,
             nodes: [
               { id: "LA_kwDOL7JuT87MAAAB", name: "bug", color: "d73a4a" },
-              { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+              {
+                id: "LA_kwDOL7JuT87MAAAC",
+                name: "enhancement",
+                color: "a2eeef",
+              },
             ],
           },
         },
@@ -1565,6 +1614,57 @@ describe("GitHubAdapter read boundary", () => {
     ).toBe(true);
   });
 
+  it("carries a label's description when GitHub reports one, and omits the field entirely when GitHub reports null", async () => {
+    const page = {
+      data: {
+        repository: {
+          labels: {
+            totalCount: 2,
+            nodes: [
+              {
+                id: "LA_kwDOL7JuT87MAAAB",
+                name: "bug",
+                color: "d73a4a",
+                description: "Something isn't working",
+              },
+              {
+                id: "LA_kwDOL7JuT87MAAAC",
+                name: "enhancement",
+                color: "a2eeef",
+                description: null,
+              },
+            ],
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listRepositoryLabels({ profile, repo: pr });
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        totalCount: 2,
+        labels: [
+          {
+            id: "LA_kwDOL7JuT87MAAAB",
+            name: "bug",
+            color: "d73a4a",
+            description: "Something isn't working",
+          },
+          { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.labels[1]).not.toHaveProperty("description");
+  });
+
   it("surfaces repository-label truncation via totalCount when more labels exist than the bounded page returned", async () => {
     const page = {
       data: {
@@ -1573,7 +1673,11 @@ describe("GitHubAdapter read boundary", () => {
             totalCount: 5,
             nodes: [
               { id: "LA_kwDOL7JuT87MAAAB", name: "bug", color: "d73a4a" },
-              { id: "LA_kwDOL7JuT87MAAAC", name: "enhancement", color: "a2eeef" },
+              {
+                id: "LA_kwDOL7JuT87MAAAC",
+                name: "enhancement",
+                color: "a2eeef",
+              },
               { id: "LA_kwDOL7JuT87MAAAD", name: "question", color: "d876e3" },
             ],
           },
@@ -1593,6 +1697,129 @@ describe("GitHubAdapter read boundary", () => {
     expect(result.value.labels).toHaveLength(3);
     // The caller derives the remaining, uncaptured labels from these two counts.
     expect(result.value.totalCount - result.value.labels.length).toBe(2);
+  });
+
+  it("fetches assignable users with their GraphQL node ids", async () => {
+    const page = {
+      data: {
+        repository: {
+          assignableUsers: {
+            totalCount: 2,
+            nodes: [
+              {
+                id: "U_kwDOL7JuT87MAAAB",
+                login: "octocat",
+                name: "The Octocat",
+                avatarUrl: "https://avatars.example/octocat.png",
+              },
+              {
+                id: "U_kwDOL7JuT87MAAAC",
+                login: "hubot",
+                name: null,
+                avatarUrl: null,
+              },
+            ],
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.listAssignableUsers({ profile, repo: pr });
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        totalCount: 2,
+        users: [
+          {
+            id: "U_kwDOL7JuT87MAAAB",
+            login: "octocat",
+            name: "The Octocat",
+            avatarUrl: "https://avatars.example/octocat.png",
+          },
+          { id: "U_kwDOL7JuT87MAAAC", login: "hubot" },
+        ],
+      },
+    });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.users[1]).not.toHaveProperty("name");
+    expect(result.value.users[1]).not.toHaveProperty("avatarUrl");
+    expect(
+      executor.requests[0]?.some((argument) =>
+        argument.includes("assignableUsers(first: 100"),
+      ),
+    ).toBe(true);
+  });
+
+  it("passes a caller-supplied search string as the assignableUsers `search` GraphQL variable, omitting it entirely when absent", async () => {
+    const page = {
+      data: {
+        repository: {
+          assignableUsers: { totalCount: 0, nodes: [] },
+        },
+      },
+    };
+    const withQuery = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    await testAdapter(new CommandRunner(withQuery)).listAssignableUsers({
+      profile,
+      repo: pr,
+      query: "octo",
+    });
+    expect(
+      withQuery.requests[0]?.some((argument) => argument === "search=octo"),
+    ).toBe(true);
+
+    const withoutQuery = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    await testAdapter(new CommandRunner(withoutQuery)).listAssignableUsers({
+      profile,
+      repo: pr,
+    });
+    expect(
+      withoutQuery.requests[0]?.some((argument) =>
+        argument.startsWith("search="),
+      ),
+    ).toBe(false);
+  });
+
+  it("sends addAssigneesToAssignable/removeAssigneesFromAssignable with repeated assigneeIds[] flags", async () => {
+    const okResponse: CommandExecution = {
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ data: {} }),
+      stderr: "",
+    };
+    const addExecutor = new FakeProcessExecutor([okResponse]);
+    const addResult = await testAdapter(
+      new CommandRunner(addExecutor),
+    ).addAssigneesToAssignable({
+      profile,
+      assignableId: "PR_node",
+      assigneeIds: ["U_a", "U_b"],
+    });
+    expect(addResult).toEqual({ _tag: "ok", value: undefined });
+    expect(addExecutor.requests[0]).toContain("assigneeIds[]=U_a");
+    expect(addExecutor.requests[0]).toContain("assigneeIds[]=U_b");
+    expect(addExecutor.requests[0]).toContain("assignableId=PR_node");
+
+    const removeExecutor = new FakeProcessExecutor([okResponse]);
+    const removeResult = await testAdapter(
+      new CommandRunner(removeExecutor),
+    ).removeAssigneesFromAssignable({
+      profile,
+      assignableId: "PR_node",
+      assigneeIds: ["U_a"],
+    });
+    expect(removeResult).toEqual({ _tag: "ok", value: undefined });
+    expect(removeExecutor.requests[0]).toContain("assigneeIds[]=U_a");
   });
 
   it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {

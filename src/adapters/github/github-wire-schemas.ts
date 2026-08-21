@@ -478,6 +478,25 @@ export const repositoryLabelsResponseSchema = v.looseObject({
             id: v.string(),
             name: v.string(),
             color: v.string(),
+            description: v.optional(v.nullable(v.string())),
+          }),
+        ),
+      }),
+    }),
+  }),
+});
+
+export const assignableUsersResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      assignableUsers: v.looseObject({
+        totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        nodes: v.array(
+          v.looseObject({
+            id: v.string(),
+            login: v.string(),
+            name: v.optional(v.nullable(v.string())),
+            avatarUrl: v.optional(v.nullable(v.string())),
           }),
         ),
       }),

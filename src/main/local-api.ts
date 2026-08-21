@@ -67,6 +67,12 @@ import {
   type LabelListFailure,
   type LabelListOutcome,
 } from "../services/label-service";
+import {
+  AssigneeService,
+  type AssigneeCommand,
+  type AssigneeListFailure,
+  type AssigneeListOutcome,
+} from "../services/assignee-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import {
   PendingReviewService,
@@ -226,6 +232,24 @@ const labelCommandSchema = strictObject({
     strictObject({
       _tag: picklist(["RemoveLabels"] as const),
       labels: pipe(array(labelRefSchema), minLength(1)),
+    }),
+  ]),
+});
+const assigneeRefSchema = strictObject({
+  id: pipe(string(), minLength(1)),
+  login: pipe(string(), minLength(1)),
+});
+const assigneeCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  command: variant("_tag", [
+    strictObject({
+      _tag: picklist(["AddAssignees"] as const),
+      assignees: pipe(array(assigneeRefSchema), minLength(1)),
+    }),
+    strictObject({
+      _tag: picklist(["RemoveAssignees"] as const),
+      assignees: pipe(array(assigneeRefSchema), minLength(1)),
     }),
   ]),
 });
@@ -491,6 +515,15 @@ export async function startLocalApiServer(
     recentWriteJournals,
   );
   const labelWrites = new LabelService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
+    () => new Date().toISOString() as never,
+    recentWriteJournals,
+  );
+  const assigneeWrites = new AssigneeService(
     reviewWriteGate,
     github,
     reviewOperations,
@@ -807,6 +840,26 @@ export async function startLocalApiServer(
       await labelWrites.list({
         profileId: profileId.value,
         reviewId: reviewId.value,
+      }),
+    );
+  });
+  app.post("/v1/reviews/assignees/command", async (context) =>
+    assigneeResponse(context, assigneeWrites, await jsonBody(context)),
+  );
+  app.get("/v1/reviews/assignees", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const reviewId = parseReviewId(context.req.query("reviewId"));
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const rawQuery = context.req.query("query");
+    const queryField =
+      rawQuery !== undefined && rawQuery.length > 0 ? { query: rawQuery } : {};
+    return assigneeListResponse(
+      context,
+      await assigneeWrites.list({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        ...queryField,
       }),
     );
   });
@@ -2004,6 +2057,83 @@ function labelListResponse(
     return context.json({
       state: "ready",
       labels: outcome.labels,
+      totalCount: outcome.totalCount,
+      permission: outcome.permission,
+    });
+  if (outcome._tag === "github_rate_limited") {
+    const resumeAtField =
+      outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+    return context.json({ state: "github_rate_limited", ...resumeAtField });
+  }
+  if (outcome._tag === "github_forbidden")
+    return context.json({
+      state: "github_forbidden",
+      forbiddenReason: outcome.reason,
+    });
+  return context.json({ state: outcome._tag });
+}
+
+async function assigneeResponse(
+  context: Context,
+  service: AssigneeService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+): Promise<Response> {
+  const parsed = safeParse(assigneeCommandSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err")
+    return context.json({ error: "invalid_input" }, 400);
+  const command: AssigneeCommand = parsed.output.command;
+  const result = await service.execute({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command,
+  });
+  if (result._tag === "ok") return context.json(result.value);
+  const status =
+    result.error === "not_found"
+      ? 404
+      : result.error === "forbidden"
+        ? 403
+        : result.error === "permission_denied" ||
+            result.error === "review_write_in_progress"
+          ? 409
+          : result.error === "github_read_failed" ||
+              result.error === "github_write_failed" ||
+              result.error === "rate_limited"
+            ? 503
+            : // "invalid_input" and "assignee_cap_exceeded" both land here: each
+              // is a locally-detected rule violation the service checks before
+              // ever contacting GitHub, not a GitHub-reported conflict, so
+              // neither belongs in the 409 bucket above.
+              400;
+  return context.json({ error: result.error }, status);
+}
+
+/**
+ * Shapes an assignable-user listing the same way `labelListResponse` shapes
+ * a repository label listing: a GitHub read failure (auth/rate-limit/forbidden)
+ * is data in a 200 response, not an HTTP error, so its specific reason
+ * survives to the renderer. Only the review-resolution half — the review
+ * itself missing or refused — becomes an HTTP error, mirroring
+ * `assigneeResponse`'s write-path status mapping.
+ */
+function assigneeListResponse(
+  context: Context,
+  result: Result<AssigneeListOutcome, AssigneeListFailure>,
+): Response {
+  if (result._tag === "err")
+    return context.json(
+      { error: result.error },
+      result.error === "not_found" ? 404 : 409,
+    );
+  const outcome = result.value;
+  if (outcome._tag === "ready")
+    return context.json({
+      state: "ready",
+      users: outcome.users,
       totalCount: outcome.totalCount,
       permission: outcome.permission,
     });

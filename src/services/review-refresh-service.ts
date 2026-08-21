@@ -86,6 +86,11 @@ export type RecentReviewWrite =
       readonly _tag: "LabelChange";
       readonly added: ReadonlyArray<string>;
       readonly removed: ReadonlyArray<string>;
+    }
+  | {
+      readonly _tag: "AssigneeChange";
+      readonly added: ReadonlyArray<string>;
+      readonly removed: ReadonlyArray<string>;
     };
 
 export type DetectionResult = {
@@ -269,6 +274,11 @@ export class ReviewRefreshService {
           represented.value.pullRequest,
           journal,
         );
+        const assigneePair = withoutRecentAssigneeChanges(
+          labelPair.candidate,
+          labelPair.represented,
+          journal,
+        );
         const candidateFeedback =
           publishedFeedbackAvailable && publishedFeedback.value !== undefined
             ? withoutJournaledFeedback(publishedFeedback.value, journal)
@@ -286,7 +296,7 @@ export class ReviewRefreshService {
         // optional fields for explicit refresh.
         const candidateForFingerprint = {
           ...candidate,
-          pullRequest: labelPair.candidate,
+          pullRequest: assigneePair.candidate,
           comments: commentPair.candidate,
         };
         const candidateFingerprintInput =
@@ -295,7 +305,7 @@ export class ReviewRefreshService {
             : { ...candidateForFingerprint, publishedFeedback: candidateFeedback };
         const representedForFingerprint = {
           ...represented.value,
-          pullRequest: labelPair.represented,
+          pullRequest: assigneePair.represented,
           comments: commentPair.represented,
         };
         const representedFingerprintInput =
@@ -974,6 +984,39 @@ function withoutRecentLabelChanges(
   };
 }
 
+function withoutRecentAssigneeChanges(
+  candidate: PullRequestSummary,
+  represented: PullRequestSummary,
+  journal: ReadonlyArray<RecentReviewWrite>,
+): WithoutRecentLabelChangesResult {
+  // Mirrors withoutRecentLabelChanges: an assignee this session added or
+  // removed is not yet stably reflected on both sides, so the touched
+  // logins are symmetrically stripped from both, while any other assignee
+  // change still reads as an update.
+  const touched = new Set<string>();
+  for (const entry of journal) {
+    if (entry._tag !== "AssigneeChange") continue;
+    for (const login of entry.added) touched.add(login);
+    for (const login of entry.removed) touched.add(login);
+  }
+  if (touched.size === 0) return { candidate, represented };
+  const withoutTouchedAssignees = (
+    pullRequest: PullRequestSummary,
+  ): PullRequestSummary =>
+    pullRequest.assignees === undefined
+      ? pullRequest
+      : {
+          ...pullRequest,
+          assignees: pullRequest.assignees.filter(
+            (login) => !touched.has(login),
+          ),
+        };
+  return {
+    candidate: withoutTouchedAssignees(candidate),
+    represented: withoutTouchedAssignees(represented),
+  };
+}
+
 function withoutJournaledFeedback(
   feedback: GitHubPublishedFeedback,
   journal: ReadonlyArray<RecentReviewWrite>,
@@ -1107,6 +1150,10 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       // Two label writes are the same write only if they touched the exact
       // same label names; sort so key order doesn't depend on call order.
       return `LabelChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
+    case "AssigneeChange":
+      // Mirrors LabelChange: two assignee writes are the same write only if
+      // they touched the exact same logins.
+      return `AssigneeChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
   }
 }
 
