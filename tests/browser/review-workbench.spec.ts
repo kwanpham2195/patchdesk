@@ -360,8 +360,29 @@ test("the file tree does not remount when the active file changes via passive sc
     const box = await viewport.boundingBox();
     if (box === null) throw new Error("Review diff viewport was not visible");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(0, 10_000);
-    await page.mouse.wheel(0, 3_000);
+    // A single big wheel jump can land before the active-file effect has
+    // caught up. Under whole-suite load, the margin that used to cover that
+    // gap -- the loaded-file-count waits and materializeAndScrollTo's
+    // append-and-retry chain, both removed by 26391b4 now that CodeView gets
+    // every file at mount -- is gone, leaving a single two-frame attempt
+    // against Playwright's default 5s expect timeout with no polling. Nudge
+    // the same way the still-passing sibling test above ("native diff
+    // scrolling passively follows...") does: repeat the wheel and re-check,
+    // instead of betting everything on one big scroll landing in time.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.mouse.wheel(0, 10_000);
+    }
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await page.mouse.wheel(0, 1_000);
+      await page.waitForTimeout(100);
+      if (
+        (await page
+          .locator("file-tree-container")
+          .getAttribute("data-active-path")) === "src/c.ts"
+      ) {
+        break;
+      }
+    }
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
     ).toBeVisible();
@@ -424,8 +445,27 @@ test("the active-file highlight replaces stale click selection instead of leavin
     const box = await viewport.boundingBox();
     if (box === null) throw new Error("Review diff viewport was not visible");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(0, 10_000);
-    await page.mouse.wheel(0, 3_000);
+    // Same settle-polling as "the file tree does not remount..." above: a
+    // single big wheel jump can land before the active-file effect has
+    // caught up, and under whole-suite load there is no longer any timing
+    // margin borrowed from the removed loaded-file-count waits and
+    // materializeAndScrollTo retry chain to cover that gap. Nudge like the
+    // still-passing "native diff scrolling passively follows..." sibling
+    // test does.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.mouse.wheel(0, 10_000);
+    }
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await page.mouse.wheel(0, 1_000);
+      await page.waitForTimeout(100);
+      if (
+        (await page
+          .locator("file-tree-container")
+          .getAttribute("data-active-path")) === "src/c.ts"
+      ) {
+        break;
+      }
+    }
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
     ).toBeVisible();
@@ -721,17 +761,40 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
       if (checkbox === null) {
         throw new Error("expected an already-loaded file's viewed checkbox");
       }
+      delete document.documentElement.dataset.reviewDiffChurnDone;
       let frame = 0;
       const churn = (): void => {
         checkbox.click();
         frame += 1;
-        if (frame < 90) requestAnimationFrame(churn);
+        if (frame < 90) {
+          requestAnimationFrame(churn);
+        } else {
+          document.documentElement.dataset.reviewDiffChurnDone = "true";
+        }
       };
       requestAnimationFrame(churn);
     });
     await target.click();
 
     await expect(diff).toHaveAttribute("data-selected-path", path);
+
+    // The scroll-to-selection effect restarts on every `items` change (see
+    // the comment above), so it cannot complete while the churn loop above
+    // is still mutating `items` on nearly every frame -- only once churn
+    // itself finishes does the effect's last restart get an uninterrupted
+    // run. Under whole-suite load this fixture's hydration is slower, so the
+    // churn loop's 90 rAF frames take longer in wall-clock time than in an
+    // isolated run, eating into the single two-frame attempt's margin
+    // against Playwright's default 5s expect timeout -- the loaded-file-count
+    // waits and materializeAndScrollTo's own append-and-retry chain that used
+    // to cover this were removed by 26391b4. Wait on the churn loop's own
+    // completion signal -- a real condition the test controls, not a blind
+    // timeout bump -- before expecting the header, so the header check below
+    // gets its full 5s against a settled `items` instead of racing churn.
+    await page.waitForFunction(
+      () => document.documentElement.dataset.reviewDiffChurnDone === "true",
+    );
+
     const header = page.locator(`[data-review-diff-file-header="${path}"]`);
     await expect(header).toBeVisible({ timeout: 5_000 });
 
@@ -871,12 +934,51 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
 
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
-    expect(await scrollTop()).toBe(0);
+
+    // This fixture's linked finding sits on file-0999, the last file, so the
+    // mount-time scroll-to-finding effect drives the viewport away from the
+    // top before any key is pressed -- 0 is not a valid baseline here. (It
+    // used to be, by accident: under progressive loading file-0999 stayed
+    // absent long enough that the scroll never fired. Now that every file is
+    // in `items` from the first frame, it fires like any other finding
+    // link.) Wait for that mount-time scroll to settle, then read whatever
+    // position it actually lands on -- reading mid-scroll would make the
+    // first key's "did it move" comparison meaningless.
+    let priorScrollTop: number | undefined;
+    await expect
+      .poll(async () => {
+        const current = await scrollTop();
+        const settled = current === priorScrollTop;
+        priorScrollTop = current;
+        return settled;
+      })
+      .toBe(true);
+    const initialScrollTop = priorScrollTop;
+    if (initialScrollTop === undefined) {
+      throw new Error("expected a settled initial scrollTop");
+    }
 
     // Focus + PageDown is the load-bearing proof: with no tabIndex, this
-    // press would leave scrollTop at 0 forever (verified by temporarily
-    // reverting the fix, see commit message).
+    // press would leave scrollTop exactly at initialScrollTop forever
+    // (verified by temporarily reverting the fix, see commit message).
     await pressUntil("PageDown", (c, b) => c > b);
+    expect(await scrollTop()).toBeGreaterThan(initialScrollTop);
+
+    // The rest of this test's PageDown/PageUp/End/Home dance is designed to
+    // run from a stable, already-hydrated position (pre-26391b4 that was
+    // true at scrollTop 0 for free). It is not true where the fix above just
+    // proved a keypress lands: `initialScrollTop` sits near file-0999's
+    // position, i.e. near the diff's tail, where per-file hydration can
+    // still be shifting scrollHeight moment to moment (see the comment on
+    // afterEnd below). Left there, afterSecondPageDown and afterEnd both fall
+    // within a few dozen pixels of the same shifting maxScrollTop, so
+    // hydration noise -- not a real regression -- can invert the
+    // afterEnd/afterSecondPageDown comparison below. Relocate to the top
+    // first (already-hydrated, stable content) so that comparison is decided
+    // by End actually reaching the tail, not by which of two near-identical,
+    // still-moving values happened to read higher.
+    await pressUntilSettled("Home");
+
     await pressUntil("ArrowDown", (c, b) => c > b);
     const afterSecondPageDown = await pressUntil("PageDown", (c, b) => c > b);
     await pressUntil("PageUp", (c, b) => c < b);
